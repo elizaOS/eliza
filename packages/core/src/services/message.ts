@@ -335,8 +335,8 @@ import {
 import { modelProviderErrorDetail } from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
+	createFirstSentenceStreamTracker,
 	extractFirstSentence,
-	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { truncateWellFormed } from "../utils/well-formed";
@@ -435,10 +435,14 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 
 function buildDirectChannelResponseFieldSelection(
 	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+	options?: { includeShouldRespond?: boolean },
 ): ResponseHandlerFieldSelectionOptions {
 	const includeFieldNames = new Set<string>();
 	for (const field of fields) {
-		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+		if (
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(options?.includeShouldRespond === true && field.name === "shouldRespond")
+		) {
 			includeFieldNames.add(field.name);
 		}
 	}
@@ -846,7 +850,6 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
-	"RUNTIME_MODEL_CONTEXT",
 	// FACTS is dynamic and would otherwise never run during response
 	// composition. Stage 1 keeps it rendered when present (see
 	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
@@ -1516,6 +1519,7 @@ type ResolvedMessageOptions = {
 	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
@@ -2771,11 +2775,12 @@ async function collectV5PlannerCandidateActions(args: {
 		disclosureRejectedReasons: string[];
 		/** Normalized names of EXPLICIT stage-1 candidates rejected by a
 		 * NON-disclosure gate: role/context/private-action (#20679), plus
-		 * connector-account-policy denials and `validate() === false` (#20869).
-		 * A privacy denial only proves a disclosure boundary; when the same turn
-		 * also has a non-disclosure rejection the request is compound, so the
-		 * privacy short-circuit must stand down and let the planner/recovery
-		 * path answer the non-disclosure limitation honestly. */
+		 * connector-account-policy denials, unavailable explicit capabilities,
+		 * `validate() === false`, and failed policy/validation checks (#20869). A
+		 * privacy denial only proves a disclosure boundary; when the same turn also
+		 * has a non-disclosure rejection the request is compound, so the privacy
+		 * short-circuit must stand down and let the planner/recovery path answer the
+		 * non-disclosure limitation honestly. */
 		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
@@ -2911,6 +2916,15 @@ async function collectV5PlannerCandidateActions(args: {
 			selectedActions.push(action);
 			return true;
 		} catch (error) {
+			if (explicitCandidateName) {
+				// Provider-policy and validate exceptions are fail-closed capability
+				// rejections, not disclosure decisions. Preserve that distinction so
+				// a sibling disclosure denial cannot mislabel the compound turn as
+				// purely private.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					action.name,
+				);
+			}
 			// error-policy:J1 planner exposure fails closed for the affected action
 			// while reporting the validation failure to the agent.
 			args.runtime.reportError(
@@ -2948,6 +2962,15 @@ async function collectV5PlannerCandidateActions(args: {
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
 		if (resolved.length === 0) {
+			const normalizedCandidate = normalizeActionIdentifier(candidateName);
+			if (normalizedCandidate) {
+				// A missing capability is another non-disclosure limitation. Recording
+				// it keeps a simultaneous disclosure rejection from short-circuiting
+				// the planner with an unrelated privacy-only response.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					normalizedCandidate,
+				);
+			}
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
@@ -4485,6 +4508,22 @@ direct/private rules:
 Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
 `;
 
+// Live voice keeps the compact direct-message prompt and its single model call,
+// but must retain the runtime's engagement decision. This pays no additional
+// inference round trip while allowing natural acknowledgements and ambient
+// speech to end in deliberate silence.
+const VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE =
+	DIRECT_MESSAGE_HANDLER_TEMPLATE.replace(
+		"task: Plan this direct message.",
+		"task: Decide whether to respond, then plan this live voice turn.",
+	).replace("- Never invent omitted shouldRespond.\n", "");
+const VOICE_ENGAGEMENT_RULES = [
+	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
+	"- shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise, or ambient speech clearly not addressed to the agent.",
+	"- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
+	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
+].join("\n");
+
 /**
  * Answer-free refusal stubs, matched against the WHOLE normalized reply after
  * an optional leading apology ("I'm sorry, but …") is stripped. A refusal that
@@ -4776,21 +4815,27 @@ function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
 ): string {
-	// Three tiers: DM/private (compact, no shouldRespond), unaddressed
+	// Four tiers: DM/private (compact, no shouldRespond), live voice DM
+	// (compact + shouldRespond), unaddressed
 	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
 	// so they must not pay the full ~16KB rule block), and the full template
 	// for addressed/respond-likely turns.
 	const compactTier =
-		options?.directMessage === true || options?.groupTriage === true;
-	const baselineTemplate = options?.directMessage
-		? DIRECT_MESSAGE_HANDLER_TEMPLATE
-		: options?.groupTriage
-			? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
-			: messageHandlerTemplate;
+		options?.directMessage === true ||
+		options?.voiceDirectMessage === true ||
+		options?.groupTriage === true;
+	const baselineTemplate = options?.voiceDirectMessage
+		? VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE
+		: options?.directMessage
+			? DIRECT_MESSAGE_HANDLER_TEMPLATE
+			: options?.groupTriage
+				? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
+				: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
@@ -4806,12 +4851,19 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
-	const renderedWithSharedRules = compactTier
-		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
+	const renderedWithVoiceRules = options?.voiceDirectMessage
+		? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
 				"\n",
 			)
+		: rendered;
+	const renderedWithSharedRules = compactTier
+		? [
+				renderedWithVoiceRules,
+				"",
+				`- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n")
 		: [
-				rendered,
+				renderedWithVoiceRules,
 				"",
 				"## Shared Response Quality Rules",
 				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -4834,6 +4886,7 @@ function renderMessageHandlerModelInput(
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
@@ -7706,6 +7759,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		const voiceDirectMessageChannel =
+			args.message.content?.channelType === ChannelType.VOICE_DM;
 		// Ambient turn = a positively-identified unaddressed text-group turn
 		// (structural classifier only — channel type + addressing + source
 		// metadata, never message text; anything uncertain fails open to
@@ -7741,7 +7796,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// point) but render the compressed prompt slices; the schema is
 		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
 		const responseHandlerFieldSelection = directMessageChannel
-			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields, {
+					includeShouldRespond: voiceDirectMessageChannel,
+				})
 			: groupTriageTurn
 				? { compact: true }
 				: undefined;
@@ -7763,7 +7820,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			context,
 			availableContexts,
 			{
-				directMessage: directMessageChannel,
+				directMessage: directMessageChannel && !voiceDirectMessageChannel,
+				voiceDirectMessage: voiceDirectMessageChannel,
 				groupTriage: groupTriageTurn,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
@@ -12193,9 +12251,39 @@ export class DefaultMessageService implements IMessageService {
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
 				let firstSentenceSent = false;
+				let firstSentenceChecked = false;
 				let firstSentenceText = "";
+				const firstSentenceTracker = createFirstSentenceStreamTracker();
 				let streamTextFallback = "";
 				let runTerminalOwner: MessageRunTerminalOwner | undefined;
+				const acceptFirstSentence = (first: string): void => {
+					firstSentenceChecked = true;
+					if (first.length <= 5) return;
+					firstSentenceSent = true;
+					firstSentenceText = first;
+					// Audio does not stall the text stream, but its model capture
+					// remains owned by the run-terminal barrier.
+					const deliverVoice = () =>
+						deliverFirstSentenceVoice(
+							runtime,
+							first,
+							callback,
+							options?.abortSignal,
+						);
+					if (!runTerminalOwner) {
+						throw new ElizaError(
+							"Voice streaming requires a live run terminal owner",
+							{
+								code: "RUN_TERMINAL_OWNER_REQUIRED",
+								context: {
+									messageId: message.id,
+									roomId: message.roomId,
+								},
+							},
+						);
+					}
+					runTerminalOwner.track("first-sentence-voice", deliverVoice);
+				};
 				// Envelope-echo latch for this turn's stream: once the accumulated
 				// text reads as envelope material, every downstream chunk consumer
 				// (model_stream_chunk hook re-emission, first-sentence TTS, the
@@ -12209,7 +12297,7 @@ export class DefaultMessageService implements IMessageService {
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
-						? async (chunk, messageId, accumulated) => {
+						? async (chunk, messageId, accumulated, streamRevision) => {
 								// Sensitive turns deliver once through the final callback,
 								// where the audience is re-read. Streaming bytes cannot be
 								// recalled if room membership changes mid-generation.
@@ -12252,46 +12340,27 @@ export class DefaultMessageService implements IMessageService {
 								// the local-inference voice loop is a separate layer, see its
 								// JSDoc). Only run detection when `accumulated` is present:
 								// raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and
+								// structured output that would garble sentence detection and
 								// TTS.
 								if (
-									!firstSentenceSent &&
+									!firstSentenceChecked &&
 									accumulated !== undefined &&
-									hasFirstSentence(streamText)
+									firstSentenceTracker.push(
+										chunk,
+										accumulated,
+										streamRevision,
+									) !== undefined
 								) {
 									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
-										firstSentenceText = first;
-										// Audio does not stall the text stream, but its model capture
-										// remains owned by the run-terminal barrier.
-										const deliverVoice = () =>
-											deliverFirstSentenceVoice(
-												runtime,
-												first,
-												callback,
-												opts.abortSignal,
-											);
-										if (!runTerminalOwner) {
-											throw new ElizaError(
-												"Voice streaming requires a live run terminal owner",
-												{
-													code: "RUN_TERMINAL_OWNER_REQUIRED",
-													context: {
-														messageId: message.id,
-														roomId: message.roomId,
-													},
-												},
-											);
-										}
-										runTerminalOwner.track(
-											"first-sentence-voice",
-											deliverVoice,
-										);
-									}
+									acceptFirstSentence(first);
 								}
 
-								await userOnStreamChunk(chunk, messageId, accumulated);
+								await userOnStreamChunk(
+									chunk,
+									messageId,
+									accumulated,
+									streamRevision,
+								);
 							}
 						: undefined;
 
@@ -12321,6 +12390,11 @@ export class DefaultMessageService implements IMessageService {
 					...(options?.onTrajectoryTerminalOwner
 						? {
 								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
+							}
+						: {}),
+					...(options?.onInferenceTimingSummary
+						? {
+								onInferenceTimingSummary: options.onInferenceTimingSummary,
 							}
 						: {}),
 				};
@@ -12526,6 +12600,15 @@ export class DefaultMessageService implements IMessageService {
 					);
 
 					const result = await processingPromise;
+					if (
+						!firstSentenceChecked &&
+						firstSentenceTracker.finish() !== undefined &&
+						result.responseContent?.text
+					) {
+						acceptFirstSentence(
+							extractFirstSentence(result.responseContent.text).first,
+						);
+					}
 
 					// Voice: Handle the rest of the message
 					if (firstSentenceSent && result.responseContent?.text) {
@@ -12607,6 +12690,21 @@ export class DefaultMessageService implements IMessageService {
 						? emitInferenceTiming(inferenceTimer)
 						: null;
 					if (inferenceSummary) {
+						try {
+							opts.onInferenceTimingSummary?.(inferenceSummary);
+						} catch (error) {
+							// error-policy:J7 host timing export must not replace the
+							// user-visible result whose summary it observes.
+							runtime.logger.warn(
+								{ error, turnId: inferenceSummary.turnId },
+								"Inference timing summary callback failed",
+							);
+							runtime.reportError(
+								"MessageService.inferenceTimingSummary",
+								error,
+								{ turnId: inferenceSummary.turnId },
+							);
+						}
 						detachPostDeliverySideEffect(
 							runtime,
 							"persist_inference_timing",
@@ -12934,10 +13032,20 @@ export class DefaultMessageService implements IMessageService {
 				() => this.processAttachments(runtime, attachments),
 			);
 			if (message.id) {
+				// API chat can pass a prompt-only clone whose text includes language
+				// or document guidance while the canonical user memory already exists.
+				// Attachment enrichment must update only the durable attachment view,
+				// not overwrite the stored user's words with those internal prompt
+				// instructions. Preserve the canonical persisted text when available.
+				const canonicalMessage = await runtime.getMemoryById(message.id);
+				const canonicalText = canonicalMessage?.content?.text;
 				await runtime.updateMemory({
 					id: message.id,
 					content: {
 						...message.content,
+						...(typeof canonicalText === "string"
+							? { text: canonicalText }
+							: {}),
 						attachments: sanitizeAttachmentsForStorage(
 							message.content.attachments,
 						),

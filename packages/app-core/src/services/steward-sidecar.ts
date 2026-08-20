@@ -109,6 +109,8 @@ export class StewardSidecar {
     exited?: Promise<number>;
   } | null = null;
   private stopping = false;
+  private lifecycleGeneration = 0;
+  private startPromise: Promise<StewardSidecarStatus> | null = null;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private credentials: StewardCredentials | null = null;
   private healthCheckAbort: AbortController | null = null;
@@ -146,26 +148,61 @@ export class StewardSidecar {
       return this.status;
     }
 
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+
+    const generation = ++this.lifecycleGeneration;
+    const startPromise = this.startLifecycle(generation);
+    this.startPromise = startPromise;
+
+    try {
+      return await startPromise;
+    } finally {
+      if (this.startPromise === startPromise) {
+        this.startPromise = null;
+      }
+    }
+  }
+
+  private async startLifecycle(
+    generation: number,
+  ): Promise<StewardSidecarStatus> {
     this.stopping = false;
     this.updateStatus({ state: "starting", error: null });
 
     try {
       await this.ensureDataDir();
       await this.loadOrCreateCredentials();
-      await this.spawnProcess();
+      if (!(await this.spawnProcess(generation))) {
+        return this.status;
+      }
 
       const abort = new AbortController();
       this.healthCheckAbort = abort;
       await waitForHealthy(this.getApiBase(), abort);
-      this.healthCheckAbort = null;
+      if (this.healthCheckAbort === abort) {
+        this.healthCheckAbort = null;
+      }
+      if (!this.isLifecycleActive(generation)) {
+        return this.status;
+      }
 
-      this.credentials = await ensureWalletSetup(
+      const credentials = await ensureWalletSetup(
         this.credentials,
         this.getApiBase(),
         this.config.masterPassword,
         this.config.dataDir,
-        (p) => this.updateStatus(p),
+        (p) => {
+          if (this.isLifecycleActive(generation)) {
+            this.updateStatus(p);
+          }
+        },
       );
+      if (!this.isLifecycleActive(generation)) {
+        return this.status;
+      }
+      this.credentials = credentials;
 
       this.updateStatus({
         state: "running",
@@ -175,6 +212,9 @@ export class StewardSidecar {
 
       return this.status;
     } catch (err) {
+      if (!this.isLifecycleActive(generation)) {
+        return this.status;
+      }
       const error = err instanceof Error ? err.message : String(err);
       this.updateStatus({ state: "error", error });
       throw err;
@@ -184,6 +224,8 @@ export class StewardSidecar {
   /** Stop the Steward sidecar process gracefully. */
   async stop(): Promise<void> {
     this.stopping = true;
+    const generation = ++this.lifecycleGeneration;
+    this.startPromise = null;
 
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
@@ -195,33 +237,38 @@ export class StewardSidecar {
       this.healthCheckAbort = null;
     }
 
-    if (this.process) {
+    const processToStop = this.process;
+    if (processToStop) {
       try {
-        this.process.kill("SIGTERM");
+        processToStop.kill("SIGTERM");
         const timeout = setTimeout(() => {
           try {
-            this.process?.kill("SIGKILL");
+            processToStop.kill("SIGKILL");
           } catch {
             // already dead
           }
         }, 5_000);
 
-        if (this.process.exited) {
-          await this.process.exited;
+        if (processToStop.exited) {
+          await processToStop.exited;
         }
         clearTimeout(timeout);
       } catch {
         // process already dead
       }
-      this.process = null;
+      if (this.process === processToStop) {
+        this.process = null;
+      }
     }
 
-    this.updateStatus({
-      state: "stopped",
-      port: null,
-      pid: null,
-      startedAt: null,
-    });
+    if (this.lifecycleGeneration === generation) {
+      this.updateStatus({
+        state: "stopped",
+        port: null,
+        pid: null,
+        startedAt: null,
+      });
+    }
   }
 
   /** Restart the sidecar (stop + start). */
@@ -328,7 +375,7 @@ export class StewardSidecar {
     }
   }
 
-  private async spawnProcess(): Promise<void> {
+  private async spawnProcess(generation: number): Promise<boolean> {
     const entryPoint =
       this.config.stewardEntryPoint || (await findStewardEntryPoint());
 
@@ -340,6 +387,9 @@ export class StewardSidecar {
 
     const preferredPort = this.config.port;
     const allocatedPort = await allocateFirstFreeLoopbackPort(preferredPort);
+    if (!this.isLifecycleActive(generation)) {
+      return false;
+    }
     if (allocatedPort !== preferredPort) {
       logger.warn(
         `[StewardSidecar] Port ${preferredPort} is busy; using ${allocatedPort} instead`,
@@ -449,10 +499,14 @@ export class StewardSidecar {
         }
       });
     }
+
+    return true;
   }
 
   private async handleCrash(exitCode: number | null): Promise<void> {
     if (this.stopping) return;
+
+    const generation = this.lifecycleGeneration;
 
     this.status.restartCount += 1;
 
@@ -477,15 +531,22 @@ export class StewardSidecar {
     this.updateStatus({ state: "restarting", pid: null });
 
     this.restartTimer = setTimeout(async () => {
-      if (this.stopping) return;
+      if (!this.isLifecycleActive(generation)) return;
 
       try {
-        await this.spawnProcess();
+        if (!(await this.spawnProcess(generation))) {
+          return;
+        }
 
         const abort = new AbortController();
         this.healthCheckAbort = abort;
         await waitForHealthy(this.getApiBase(), abort);
-        this.healthCheckAbort = null;
+        if (this.healthCheckAbort === abort) {
+          this.healthCheckAbort = null;
+        }
+        if (!this.isLifecycleActive(generation)) {
+          return;
+        }
 
         // ensureWalletSetup is intentionally skipped on crash restart:
         // credentials (tenant, agent, wallet) are created on first launch
@@ -498,10 +559,17 @@ export class StewardSidecar {
           error: null,
         });
       } catch (err) {
+        if (!this.isLifecycleActive(generation)) {
+          return;
+        }
         const error = err instanceof Error ? err.message : String(err);
         this.updateStatus({ state: "error", error });
       }
     }, backoff);
+  }
+
+  private isLifecycleActive(generation: number): boolean {
+    return !this.stopping && this.lifecycleGeneration === generation;
   }
 
   private updateStatus(partial: Partial<StewardSidecarStatus>): void {

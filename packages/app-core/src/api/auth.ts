@@ -255,7 +255,14 @@ export function readCookie(
     const k = part.slice(0, eq).trim();
     if (k !== name) continue;
     const v = part.slice(eq + 1).trim();
-    return v.length > 0 ? decodeURIComponent(v) : null;
+    if (v.length === 0) return null;
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      // error-policy:J3 untrusted cookie values — a malformed percent-escape
+      // is an absent session cookie, not a server fault.
+      return null;
+    }
   }
   return null;
 }

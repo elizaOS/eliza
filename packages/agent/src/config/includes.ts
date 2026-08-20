@@ -5,6 +5,9 @@
  * { "$include": "./base.json5" }
  * { "$include": ["./a.json5", "./b.json5"] }
  * ```
+ *
+ * Included files are byte-capped on an opened handle before allocation and
+ * share an aggregate graph budget so startup cannot be pinned by breadth.
  */
 
 import fs from "node:fs";
@@ -17,6 +20,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 export const INCLUDE_KEY = "$include";
 export const MAX_INCLUDE_DEPTH = 10;
+const MAX_INCLUDE_BYTES = 1_048_576;
+const MAX_INCLUDE_FILES = 256;
+const MAX_INCLUDE_TOTAL_BYTES = 8 * MAX_INCLUDE_BYTES;
 const BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export type IncludeResolver = {
@@ -68,6 +74,7 @@ class IncludeProcessor {
   constructor(
     private basePath: string,
     private resolver: IncludeResolver,
+    private readonly budget = { files: 0, bytes: 0 },
   ) {
     this.visited.add(path.normalize(basePath));
   }
@@ -161,6 +168,7 @@ class IncludeProcessor {
     try {
       raw = this.resolver.readFile(normalized);
     } catch (err) {
+      // error-policy:J2 preserve the filesystem failure at the include boundary.
       throw new ConfigIncludeError(
         `Failed to read include file: ${includePath} (resolved: ${normalized})`,
         includePath,
@@ -168,10 +176,30 @@ class IncludeProcessor {
       );
     }
 
+    const rawBytes = Buffer.byteLength(raw, "utf8");
+    this.budget.files += 1;
+    this.budget.bytes += rawBytes;
+    if (rawBytes > MAX_INCLUDE_BYTES) {
+      throw new ConfigIncludeError(
+        `Include file exceeds ${MAX_INCLUDE_BYTES} bytes at: ${includePath}`,
+        includePath,
+      );
+    }
+    if (
+      this.budget.files > MAX_INCLUDE_FILES ||
+      this.budget.bytes > MAX_INCLUDE_TOTAL_BYTES
+    ) {
+      throw new ConfigIncludeError(
+        `Include graph exceeds ${MAX_INCLUDE_FILES} files or ${MAX_INCLUDE_TOTAL_BYTES} bytes at: ${includePath}`,
+        includePath,
+      );
+    }
+
     let parsed: unknown;
     try {
       parsed = this.resolver.parseJson(raw);
     } catch (err) {
+      // error-policy:J2 preserve the parser failure at the include boundary.
       throw new ConfigIncludeError(
         `Failed to parse include file: ${includePath} (resolved: ${normalized})`,
         includePath,
@@ -179,15 +207,51 @@ class IncludeProcessor {
       );
     }
 
-    const nested = new IncludeProcessor(normalized, this.resolver);
+    const nested = new IncludeProcessor(normalized, this.resolver, this.budget);
     nested.visited = new Set([...this.visited, normalized]);
     nested.depth = this.depth + 1;
     return nested.process(parsed);
   }
 }
 
+function readBoundedIncludeFile(filePath: string): string {
+  const handle = fs.openSync(filePath, "r");
+  try {
+    const before = fs.fstatSync(handle);
+    if (
+      !before.isFile() ||
+      !Number.isSafeInteger(before.size) ||
+      before.size > MAX_INCLUDE_BYTES
+    ) {
+      throw new Error(
+        `include is not a regular file within ${MAX_INCLUDE_BYTES} bytes`,
+      );
+    }
+    const bytes = Buffer.allocUnsafe(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = fs.readSync(
+        handle,
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (read === 0) break;
+      offset += read;
+    }
+    const after = fs.fstatSync(handle);
+    if (after.size > MAX_INCLUDE_BYTES || after.size !== before.size) {
+      throw new Error("include changed while it was being read");
+    }
+    return bytes.subarray(0, offset).toString("utf8");
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
 const defaultResolver: IncludeResolver = {
-  readFile: (p) => fs.readFileSync(p, "utf-8"),
+  readFile: readBoundedIncludeFile,
   parseJson: (raw) => JSON5.parse(raw),
 };
 

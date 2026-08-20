@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import {
   createPlaywrightTestSessionToken,
+  isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
 } from "@/lib/auth/playwright-test-session";
@@ -16,11 +17,14 @@ import { usersService } from "@/lib/services/users";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 function isEnabled(c: AppContext): boolean {
-  return c.env.PLAYWRIGHT_TEST_AUTH === "true";
+  return isPlaywrightTestAuthEnabled(testAuthEnv(c));
 }
 
 function testAuthEnv(c: AppContext): PlaywrightTestAuthEnv {
   return {
+    NODE_ENV: typeof c.env.NODE_ENV === "string" ? c.env.NODE_ENV : undefined,
+    ENVIRONMENT:
+      typeof c.env.ENVIRONMENT === "string" ? c.env.ENVIRONMENT : undefined,
     PLAYWRIGHT_TEST_AUTH:
       typeof c.env.PLAYWRIGHT_TEST_AUTH === "string"
         ? c.env.PLAYWRIGHT_TEST_AUTH

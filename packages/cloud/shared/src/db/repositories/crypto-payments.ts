@@ -1,5 +1,9 @@
-// Persists crypto payments records for cloud services through the shared DB boundary.
+/** Persists crypto payments records for cloud services through the shared DB boundary. */
 import { and, desc, eq, lt, sql } from "drizzle-orm";
+import {
+  canonicalizeCryptoTransactionHash,
+  isHexTransactionHash,
+} from "../crypto-payment-transaction-hash";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type CryptoPayment,
@@ -34,9 +38,17 @@ export class CryptoPaymentsRepository {
   }
 
   async findByTransactionHash(txHash: string): Promise<CryptoPayment | undefined> {
-    return await dbRead.query.cryptoPayments.findFirst({
-      where: eq(cryptoPayments.transaction_hash, txHash),
-    });
+    const canonicalTxHash = canonicalizeCryptoTransactionHash(txHash);
+    const [payment] = await dbRead
+      .select()
+      .from(cryptoPayments)
+      .where(
+        isHexTransactionHash(canonicalTxHash)
+          ? sql`lower(${cryptoPayments.transaction_hash}) = ${canonicalTxHash}`
+          : eq(cryptoPayments.transaction_hash, canonicalTxHash),
+      )
+      .limit(1);
+    return payment;
   }
 
   async findByTrackId(trackId: string): Promise<CryptoPayment | undefined> {
@@ -79,10 +91,15 @@ export class CryptoPaymentsRepository {
   // ============================================================================
 
   async create(data: NewCryptoPayment): Promise<CryptoPayment> {
+    const transactionHash =
+      typeof data.transaction_hash === "string"
+        ? canonicalizeCryptoTransactionHash(data.transaction_hash, data.network)
+        : data.transaction_hash;
     const [payment] = await dbWrite
       .insert(cryptoPayments)
       .values({
         ...data,
+        transaction_hash: transactionHash,
         created_at: new Date(),
         updated_at: new Date(),
       })
@@ -91,10 +108,15 @@ export class CryptoPaymentsRepository {
   }
 
   async update(id: string, data: Partial<NewCryptoPayment>): Promise<CryptoPayment | undefined> {
+    const transactionHash =
+      typeof data.transaction_hash === "string"
+        ? canonicalizeCryptoTransactionHash(data.transaction_hash, data.network)
+        : data.transaction_hash;
     const [payment] = await dbWrite
       .update(cryptoPayments)
       .set({
         ...data,
+        ...(data.transaction_hash !== undefined && { transaction_hash: transactionHash }),
         updated_at: new Date(),
       })
       .where(eq(cryptoPayments.id, id))
@@ -112,7 +134,7 @@ export class CryptoPaymentsRepository {
       .update(cryptoPayments)
       .set({
         status: "confirmed",
-        transaction_hash: txHash,
+        transaction_hash: canonicalizeCryptoTransactionHash(txHash),
         block_number: blockNumber,
         received_amount: receivedAmount,
         confirmed_at: new Date(),

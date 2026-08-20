@@ -36,6 +36,7 @@ import { useRole } from "../../hooks/useRole";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
+import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -44,6 +45,7 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
+const TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS = 15_000;
 
 /** Resolve an attachment URL for fetch (absolute pass-through; `/api/…` joined). */
 function resolveUrl(url: string): string {
@@ -108,6 +110,7 @@ function copyButtonLabel(status: CopyStatus): string {
  */
 async function readInlineText(
   att: MessageAttachment,
+  signal: AbortSignal,
 ): Promise<{ text: string; loadFailed?: boolean }> {
   if (att.text?.trim()) return { text: att.text };
   const src = resolveUrl(att.url);
@@ -127,8 +130,18 @@ async function readInlineText(
     }
   }
   try {
-    const res = await fetch(src);
-    if (res.ok) return { text: await res.text() };
+    const text = await fetchWithDeadline(
+      src,
+      { method: "GET" },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(`Transcript request failed (${response.status})`);
+        }
+        return await response.text();
+      },
+      { signal, timeoutMs: TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS },
+    );
+    return { text };
   } catch {
     // error-policy:J4 transport failure — flagged below; the viewer renders
     // an error state when no stored record covers for it
@@ -222,9 +235,11 @@ export function TranscriptViewerOverlay({
 
   // Load the rich record (or the inline text) once.
   React.useEffect(() => {
+    const controller = new AbortController();
     let live = true;
     void (async () => {
-      const inline = await readInlineText(attachment);
+      const inline = await readInlineText(attachment, controller.signal);
+      if (!live) return;
       const id = attachment.transcriptId;
       if (id) {
         try {
@@ -270,6 +285,9 @@ export function TranscriptViewerOverlay({
     })();
     return () => {
       live = false;
+      controller.abort(
+        new DOMException("Transcript load superseded", "AbortError"),
+      );
     };
   }, [attachment]);
 

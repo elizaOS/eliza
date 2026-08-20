@@ -19,7 +19,6 @@ import {
   useIntervalWhenDocumentVisible,
 } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
-import { withTimeout } from "../../../utils/with-timeout";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -212,40 +211,46 @@ export function CalendarUpcomingWidget({
   // phase flips because it participates in the callback deps below.
   const authenticated = useIsAuthenticated();
 
-  const probeConnection = useCallback(async () => {
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
-      setConnection("unsupported");
-      setFeedLoaded(true);
-      setEvents([]);
-      return false;
-    }
-    if (!authenticated) return false;
+  const probeConnection = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+        setConnection("unsupported");
+        setFeedLoaded(true);
+        setEvents([]);
+        return false;
+      }
+      if (!authenticated) return false;
 
-    try {
-      const res = await withTimeout(
-        client.listConnectorAccounts(GOOGLE_PROVIDER),
-        PROBE_TIMEOUT_MS,
-      );
-      // Linked ONLY when an account is actually connected, a "needs-reauth" /
-      // "pending" account is NOT usable, and treating it as linked left the tile
-      // stuck on "Loading…" forever (the feed never returns), instead of showing
-      // the "Connect calendar" affordance (matching the connectors strip).
-      const linked = res.accounts.some(
-        (account) => account.status === "connected",
-      );
-      setConnection(linked ? "connected" : "disconnected");
-      return linked;
-    } catch {
-      // error-policy:J4 a probe failure must SETTLE the widget (show the
-      // connect affordance), never leave it on "unknown" → a permanent
-      // "Loading…" tile (the reported stuck-loading bug:
-      // listConnectorAccounts failing/timing out on device).
-      setConnection("disconnected");
-      return false;
-    }
-  }, [authenticated]);
+      try {
+        const res = await client.listConnectorAccounts(
+          GOOGLE_PROVIDER,
+          undefined,
+          { timeoutMs: PROBE_TIMEOUT_MS, signal },
+        );
+        // Linked ONLY when an account is actually connected, a "needs-reauth" /
+        // "pending" account is NOT usable, and treating it as linked left the tile
+        // stuck on "Loading…" forever (the feed never returns), instead of showing
+        // the "Connect calendar" affordance (matching the connectors strip).
+        const linked = res.accounts.some(
+          (account) => account.status === "connected",
+        );
+        if (!signal?.aborted) {
+          setConnection(linked ? "connected" : "disconnected");
+        }
+        return linked;
+      } catch {
+        // error-policy:J4 a probe failure must SETTLE the widget (show the
+        // connect affordance), never leave it on "unknown" → a permanent
+        // "Loading…" tile (the reported stuck-loading bug:
+        // listConnectorAccounts failing/timing out on device).
+        if (!signal?.aborted) setConnection("disconnected");
+        return false;
+      }
+    },
+    [authenticated],
+  );
 
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (signal?: AbortSignal) => {
     const now = new Date();
     const timeMin = now.toISOString();
     const timeMax = new Date(now.getTime() + FEED_LOOKAHEAD_MS).toISOString();
@@ -257,35 +262,34 @@ export function CalendarUpcomingWidget({
       timeZone,
     });
     try {
-      const res = await withTimeout(
-        fetch(
-          `${client.getBaseUrl()}/api/lifeops/calendar/feed?${params.toString()}`,
-        ),
-        FEED_TIMEOUT_MS,
+      const json = await client.fetch<unknown>(
+        `/api/lifeops/calendar/feed?${params.toString()}`,
+        signal ? { signal } : undefined,
+        { timeoutMs: FEED_TIMEOUT_MS },
       );
-      if (!res.ok) return;
-      const json: unknown = await res.json();
       const next = parseCalendarFeed(json);
       // Skip the state update (and the re-render) when the poll is unchanged.
-      setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
+      if (!signal?.aborted) {
+        setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
+      }
     } catch {
       // error-policy:J4 timeout / network, settle via the finally so the
       // glance tile shows
       // "No events today" instead of spinning on "Loading…".
     } finally {
-      setFeedLoaded(true);
+      if (!signal?.aborted) setFeedLoaded(true);
     }
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
-      const linked = await probeConnection();
-      if (cancelled || !linked) return;
-      await loadEvents();
+      const linked = await probeConnection(controller.signal);
+      if (controller.signal.aborted || !linked) return;
+      await loadEvents(controller.signal);
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [probeConnection, loadEvents]);
 

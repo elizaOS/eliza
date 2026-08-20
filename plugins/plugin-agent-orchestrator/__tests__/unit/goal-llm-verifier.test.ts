@@ -79,14 +79,16 @@ describe("buildVerificationPrompt", () => {
   });
 
   it("truncates very long completion evidence to keep the prompt bounded", () => {
-    const longEvidence = "X".repeat(20_000);
+    // #21240 raised the verifier evidence budget to 28_000 chars; oversize
+    // beyond it so head+tail truncation actually fires.
+    const longEvidence = "X".repeat(40_000);
     const prompt = buildVerificationPrompt({
       goal: "X",
       acceptanceCriteria: ["c"],
       completionEvidence: longEvidence,
     });
     expect(prompt).toMatch(/\[…evidence truncated…\]/);
-    expect(prompt.length).toBeLessThan(20_000);
+    expect(prompt.length).toBeLessThan(40_000);
   });
 
   it("demands concrete proof per criterion and rejects unproven claims", () => {

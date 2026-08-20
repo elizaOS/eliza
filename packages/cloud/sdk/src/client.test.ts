@@ -344,10 +344,13 @@ describe("ElizaCloudClient path parameter encoding", () => {
 describe("ElizaCloudClient CLI login", () => {
   it("uses the API host for session creation but the web host for browser auth", async () => {
     let requestedUrl: string | undefined;
-    const fetchImpl = (async (input) => {
+    let requestedBody: string | undefined;
+    const fetchImpl = (async (input, init) => {
       requestedUrl = String(input);
+      requestedBody = init?.body as string | undefined;
       return new Response(
         JSON.stringify({
+          sessionId: "11111111-2222-4333-8444-555555555555",
           status: "pending",
           expiresAt: "2026-05-14T08:00:00.000Z",
         }),
@@ -368,12 +371,17 @@ describe("ElizaCloudClient CLI login", () => {
     });
 
     expect(requestedUrl).toBe("https://api.eliza.app/api/auth/cli-session");
+    expect(JSON.parse(requestedBody ?? "null")).toEqual({
+      sessionId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    });
     expect(result.browserUrl).toBe(
-      "https://eliza.app/auth/cli-login?session=cli-test-session",
+      "https://eliza.app/auth/cli-login?session=11111111-2222-4333-8444-555555555555",
     );
   });
 
-  it("honors the server-minted session id over the locally generated one", async () => {
+  it("uses the authoritative server-minted session id", async () => {
     const fetchImpl = (async (_input: unknown) => {
       return new Response(
         JSON.stringify({
@@ -400,6 +408,30 @@ describe("ElizaCloudClient CLI login", () => {
       "https://eliza.app/auth/cli-login?session=11111111-2222-4333-8444-555555555555",
     );
   });
+
+  it.each([
+    undefined,
+    "",
+    "client-chosen",
+    "11111111-2222-6333-8444-555555555555",
+  ])(
+    "rejects a missing or malformed server-minted session id: %s",
+    async (sessionId) => {
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ sessionId }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+      const client = new ElizaCloudClient({
+        baseUrl: "https://api.eliza.app",
+        fetchImpl,
+      });
+
+      await expect(client.startCliLogin()).rejects.toThrow(
+        "invalid login session ID",
+      );
+    },
+  );
 });
 
 describe("ElizaCloudClient web sign-in + app-credits affordances", () => {

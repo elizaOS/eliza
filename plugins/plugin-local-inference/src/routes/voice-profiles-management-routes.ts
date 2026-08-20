@@ -192,6 +192,15 @@ function validId(id: string): boolean {
 	return PROFILE_ID_RE.test(id);
 }
 
+function decodeProfileId(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 malformed path encoding is invalid client input.
+		return null;
+	}
+}
+
 export async function handleVoiceProfilesManagementRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -206,7 +215,23 @@ export async function handleVoiceProfilesManagementRoutes(
 	if (pathname === "/api/voice/profiles") {
 		if (method === "GET") return listProfiles(res);
 		if (method === "DELETE") {
-			return deleteAll(res, url.searchParams.get("includeOwner") === "true");
+			const requestedOwnerValues = url.searchParams.getAll("includeOwner");
+			const requestedOwner = requestedOwnerValues[0];
+			if (
+				requestedOwnerValues.length > 1 ||
+				(requestedOwner != null &&
+					requestedOwner !== "" &&
+					requestedOwner !== "true" &&
+					requestedOwner !== "false")
+			) {
+				sendJsonError(
+					res,
+					'includeOwner must be specified at most once as "true" or "false".',
+					400,
+				);
+				return true;
+			}
+			return deleteAll(res, requestedOwner === "true");
 		}
 		return false;
 	}
@@ -216,7 +241,11 @@ export async function handleVoiceProfilesManagementRoutes(
 
 	const m = ID_SUB.exec(pathname);
 	if (!m) return false;
-	const id = decodeURIComponent(m[1] ?? "");
+	const id = decodeProfileId(m[1] ?? "");
+	if (id === null) {
+		sendJsonError(res, "invalid profile id: malformed URL encoding", 400);
+		return true;
+	}
 	const sub = m[2];
 	if (!validId(id)) {
 		sendJsonError(res, `invalid profile id: ${id}`, 400);

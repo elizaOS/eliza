@@ -23,12 +23,8 @@ import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
 } from "@/lib/constants/pricing";
-import {
-  computeContainerBillingPeriod,
-  computeContainerBillingPlan,
-} from "@/lib/services/container-billing-policy";
-import { containerJobsWriter } from "@/lib/services/container-jobs-writer";
-import { enqueueContainerStop } from "@/lib/services/container-stop-job-service";
+import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
+import { enqueueContainerStopOnce } from "@/lib/services/container-stop-job-service";
 import { emailService } from "@/lib/services/email";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
@@ -85,13 +81,24 @@ async function processContainerBilling(
   const containerName = container.name;
   const organizationId = container.organization_id;
 
-  // Calculate daily cost for this container
-  const dailyCost = calculateDailyContainerCost({
+  const dailyRate = calculateDailyContainerCost({
     desiredCount: container.desired_count,
     cpu: container.cpu,
     memory: container.memory,
   });
 
+  const periodStart =
+    container.last_billed_at ??
+    new Date(
+      Math.max(
+        container.created_at?.getTime() ?? now.getTime() - 24 * 60 * 60 * 1000,
+        now.getTime() - 24 * 60 * 60 * 1000,
+      ),
+    );
+  const periodEnd = now;
+  const dailyCost =
+    dailyRate *
+    ((periodEnd.getTime() - periodStart.getTime()) / (24 * 60 * 60 * 1000));
   const currentBalance = Number(org.credit_balance);
   const plan = computeContainerBillingPlan({
     dailyCost,
@@ -101,10 +108,6 @@ async function processContainerBilling(
   });
   const earningsAvailable = plan.earningsEligible;
   const totalAvailable = plan.totalAvailable;
-  // Day-aligned period this charge covers. Deterministic across same-day
-  // re-runs, so the idempotency key and unique indexes below all collide.
-  const { periodStart, periodEnd } = computeContainerBillingPeriod(now);
-
   logger.info(`[Container Billing] Processing ${containerName}`, {
     containerId,
     dailyCost,
@@ -125,33 +128,23 @@ async function processContainerBilling(
       `[Container Billing] Shutting down container ${containerName} due to insufficient credits`,
     );
 
-    await containerBillingRepository.suspendContainer(containerId, now);
-
-    // Flipping the DB row stops billing but does NOT stop the live container:
-    // it runs with `--restart unless-stopped` on the Hetzner node, and this
-    // cron is a Cloudflare Worker that can't SSH. Enqueue a CONTAINER_STOP job
-    // the provisioning-worker daemon runs to actually `docker stop` it (volume
-    // preserved, node slot freed) — otherwise the org gets unbounded free
-    // compute after billing ends (#8342). Best-effort: a failed enqueue must
-    // not crash the per-container billing pass (the row is already suspended,
-    // and a reconciler/operator can re-stop) — so log and continue.
-    try {
-      await enqueueContainerStop(containerJobsWriter, {
+    // The durable, tenant-bound stop request remains independently recoverable.
+    // Billing stays shutdown_pending until the daemon proves the provider
+    // runtime absent; a failed/terminal provider call therefore cannot hide a
+    // still-live workload from this cron's ordinary scan.
+    const stopRequest = await enqueueContainerStopOnce({
+      containerId,
+      organizationId,
+      userId: container.user_id,
+    });
+    if (!stopRequest.requested) {
+      return {
         containerId,
+        containerName,
         organizationId,
-        userId: container.user_id,
-      });
-    } catch (enqueueError) {
-      logger.error(
-        `[Container Billing] Failed to enqueue stop job for ${containerName}`,
-        {
-          containerId,
-          error:
-            enqueueError instanceof Error
-              ? enqueueError.message
-              : String(enqueueError),
-        },
-      );
+        action: "skipped",
+        error: "Funding restored before provider stop",
+      };
     }
 
     return {
@@ -177,6 +170,7 @@ async function processContainerBilling(
 
       await containerBillingRepository.scheduleShutdownWarning(
         containerId,
+        organizationId,
         now,
         shutdownTime,
       );
@@ -242,74 +236,23 @@ async function processContainerBilling(
     };
   }
 
-  // Pay-as-you-go split (decided by computeContainerBillingPlan above):
-  // take what we can from earnings first, then charge the remainder to
-  // credits. Earnings → org credits conversion goes through
-  // redeemableEarningsService so we get a credit_conversion ledger entry
-  // for the audit trail.
-  let fromEarnings = plan.fromEarnings;
-  let fromCredits = plan.fromCredits;
-
-  if (fromEarnings > 0 && org.earnings_source_user_id) {
-    try {
-      const conversion = await redeemableEarningsService.convertToCredits({
-        userId: org.earnings_source_user_id,
-        amount: fromEarnings,
-        organizationId,
-        description: `Container hosting: ${containerName}`,
-        // Stable per container+period so a same-day cron re-run does not
-        // debit the owner's earnings twice.
-        idempotencyKey: `container:${containerId}:${periodStart.toISOString()}`,
-        metadata: {
-          container_id: containerId,
-          container_name: containerName,
-          billing_type: "daily_container",
-          billing_period: periodStart.toISOString().split("T")[0],
-        },
-      });
-      if (!conversion.success) {
-        throw new Error("earnings conversion returned success=false");
-      }
-    } catch (conversionError) {
-      // convertToCredits debits the earnings ledger and THROWS on
-      // insufficient/contended earnings (it never returns success=false). The
-      // earnings were not debited, so do NOT spare credits by fromEarnings —
-      // charge the full day to credits. Previously this threw out of the whole
-      // handler, leaving the container unbilled (free hosting) for the day, and
-      // the unconditional `+ fromEarnings` below would have inflated the balance
-      // by undebited earnings.
-      logger.error(
-        `[Container Billing] Earnings convert failed for ${containerName}; charging full cost to credits`,
-        {
-          containerId,
-          error:
-            conversionError instanceof Error
-              ? conversionError.message
-              : String(conversionError),
-        },
-      );
-      fromEarnings = 0;
-      fromCredits = dailyCost;
-    }
-  }
-
-  const newBalance = currentBalance + fromEarnings - dailyCost;
-
-  // Atomic billing — credits down by (dailyCost - fromEarnings), record kept.
+  // The repository locks the workload, tenant balance, and optional earnings
+  // balance and commits both ledgers, the receipt, and lifecycle cursor in one
+  // transaction. No route-level conversion can escape without its charge.
   const billingResult =
     await containerBillingRepository.recordSuccessfulDailyBilling({
       containerId,
       organizationId,
       userId: container.user_id,
       containerName,
-      currentTotalBilled: container.total_billed,
+      dailyRate,
+      earningsSourceUserId: org.earnings_source_user_id,
+      payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
       dailyCost,
-      newBalance,
-      fromEarnings,
-      fromCredits,
+      fromEarnings: plan.fromEarnings,
+      fromCredits: plan.fromCredits,
+      newBalance: currentBalance,
       now,
-      billingPeriodStart: periodStart,
-      billingPeriodEnd: periodEnd,
     });
 
   // The row-lock guard found this period already billed (e.g. an overlapping
@@ -329,8 +272,30 @@ async function processContainerBilling(
     };
   }
 
+  if (billingResult.insufficient) {
+    const shutdownTime = new Date(
+      now.getTime() + CONTAINER_PRICING.SHUTDOWN_WARNING_HOURS * 60 * 60 * 1000,
+    );
+    await containerBillingRepository.scheduleShutdownWarning(
+      containerId,
+      organizationId,
+      now,
+      shutdownTime,
+    );
+    return {
+      containerId,
+      containerName,
+      organizationId,
+      action: "warning_sent",
+      amount: billingResult.amount ?? dailyCost,
+    };
+  }
+
+  const billedAmount = billingResult.amount ?? dailyCost;
+  const billedFromEarnings = billingResult.fromEarnings ?? 0;
+
   logger.info(
-    `[Container Billing] Billed ${containerName}: $${dailyCost.toFixed(4)} (earnings $${fromEarnings.toFixed(4)} + credits $${fromCredits.toFixed(4)})`,
+    `[Container Billing] Billed ${containerName}: $${billedAmount.toFixed(6)} (earnings $${billedFromEarnings.toFixed(6)})`,
     {
       containerId,
       newBalance: billingResult.newBalance,
@@ -343,8 +308,8 @@ async function processContainerBilling(
     containerName,
     organizationId,
     action: "billed",
-    amount: dailyCost,
-    paidFromEarnings: fromEarnings,
+    amount: billedAmount,
+    paidFromEarnings: billedFromEarnings,
     newBalance: billingResult.newBalance,
   };
 }

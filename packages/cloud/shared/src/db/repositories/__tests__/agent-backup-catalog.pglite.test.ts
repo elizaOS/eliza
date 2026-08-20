@@ -1,6 +1,6 @@
 /** Real-PGlite proofs for the v2 backup catalogue and exact-key GC outbox. */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import {
@@ -39,6 +39,7 @@ import {
   agentBackupCatalogAuthorities,
   agentBackupGcOutbox,
   agentBackupObjects,
+  agentBackupRestoreLeases,
 } from "../../schemas/agent-backup-catalog";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import { dockerNodes } from "../../schemas/docker-nodes";
@@ -60,10 +61,13 @@ import {
   transitionAgentBackupOperation,
 } from "../agent-backup-catalog";
 import {
+  adoptAgentBackupGcObservedLocator,
   claimAgentBackupGc,
   enqueueAgentBackupDeletion,
   failAgentBackupGc,
   finalizeAgentBackupDeletion,
+  listDueAgentBackupDeletions,
+  listFinalizableAgentBackupDeletions,
   settleAgentBackupGc,
 } from "../agent-backup-gc";
 import {
@@ -922,6 +926,48 @@ async function protectManifestV3Backup() {
   return { backupId: reserved.id, manifest };
 }
 
+async function createActiveRestoreLease(backupId: string) {
+  const [backup] = await dbWrite
+    .select()
+    .from(agentSandboxBackups)
+    .where(eq(agentSandboxBackups.id, backupId));
+  if (
+    !backup?.catalog_organization_id ||
+    !backup.catalog_agent_id ||
+    !backup.backup_operation_id ||
+    !backup.lifecycle_generation ||
+    backup.lifecycle_revision === null ||
+    !backup.manifest_digest
+  ) {
+    throw new Error("Expected exact backup authority fixture");
+  }
+  const [authority] = await dbWrite
+    .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+    .from(agentBackupCatalogAuthorities)
+    .where(eq(agentBackupCatalogAuthorities.organization_id, backup.catalog_organization_id));
+  if (!authority) throw new Error("Expected catalogue authority fixture");
+  const [lease] = await dbWrite
+    .insert(agentBackupRestoreLeases)
+    .values({
+      organization_id: backup.catalog_organization_id,
+      agent_id: backup.catalog_agent_id,
+      backup_id: backup.id,
+      operation_id: backup.backup_operation_id,
+      activation_generation: backup.lifecycle_generation,
+      lifecycle_revision: backup.lifecycle_revision,
+      expected_manifest_sha256: backup.manifest_digest,
+      copy_role: "primary",
+      restore_attempt_id: randomUUID(),
+      owner_id: "restore-worker-1",
+      generation: randomUUID(),
+      catalog_epoch: authority.revision,
+      expires_at: sql`NOW() + INTERVAL '1 hour'`,
+    })
+    .returning();
+  if (!lease) throw new Error("Expected active restore lease fixture");
+  return lease;
+}
+
 beforeAll(async () => {
   try {
     const { apply } = await pushSchema(
@@ -935,6 +981,7 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentBackupObjects,
         agentBackupGcOutbox,
+        agentBackupRestoreLeases,
       } as never,
       dbWrite as never,
     );
@@ -946,6 +993,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentBackupGcOutbox);
   await dbWrite.delete(agentBackupObjects);
   await dbWrite.delete(agentSandboxBackups);
@@ -997,12 +1045,37 @@ beforeEach(async () => {
     lifecycle_revision: 0,
     activation_generation: LIFECYCLE_GENERATION,
     activation_lifecycle_revision: 0n,
+    activation_purpose: "provision",
     activation_phase: "active",
+    activation_receipt: {
+      schemaVersion: 1,
+      generation: LIFECYCLE_GENERATION,
+      purpose: "provision",
+      agentId: AGENT_ID,
+      organizationId: ORG_ID,
+      lifecycleRevision: "0",
+      backupId: null,
+      backupHash: null,
+      manifestHash: null,
+      componentHashes: null,
+      freshAuthorization: null,
+      containerId: SOURCE_CONTAINER_ID,
+      imageDigest: SOURCE_IMAGE_DIGEST,
+      receiptId: NODE_INCARNATION,
+      receiptHash: SHA_D,
+      receiptMac: SHA_C,
+      appliedAt: "2026-08-17T00:00:00.000Z",
+      restored: true,
+      requiresRestart: false,
+    },
     activation_receipt_hash: SHA_D,
     activation_container_id: SOURCE_CONTAINER_ID,
     activation_node_id: "robot-node-1",
     activation_image_digest: SOURCE_IMAGE_DIGEST,
     activation_boot_id: NODE_INCARNATION,
+    activation_token_hash: SHA_A,
+    activation_token_ciphertext: "sealed-activation-token",
+    activation_funding_revision: 0n,
     activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
     activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
     activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
@@ -1851,6 +1924,37 @@ describe("agent backup catalogue on primary PGlite", () => {
     expect(expiring.catalog_state).toBe("expiration_pending");
   });
 
+  test("fences a late active restore lease and replays direct expiration after release", async () => {
+    const { backupId } = await protectBackup();
+    const lease = await createActiveRestoreLease(backupId);
+    const transition = {
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "protected" as const,
+      to: "expiration_pending" as const,
+    };
+
+    await expect(transitionAgentBackupOperation(transition)).rejects.toThrow(
+      "active restore lease",
+    );
+    const [fenced] = await dbWrite
+      .select({ state: agentSandboxBackups.catalog_state })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, backupId));
+    expect(fenced?.state).toBe("protected");
+
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: sql`NOW()` })
+      .where(eq(agentBackupRestoreLeases.id, lease.id));
+    const expired = await transitionAgentBackupOperation(transition);
+    const replay = await transitionAgentBackupOperation(transition);
+    expect(expired.catalog_state).toBe("expiration_pending");
+    expect(replay.catalog_revision).toBe(expired.catalog_revision);
+  });
+
   test("rejects a cross-tenant object at the database boundary", async () => {
     const { backupId } = await protectBackup();
     await expect(
@@ -1934,6 +2038,233 @@ describe("agent backup catalogue on primary PGlite", () => {
       to: "expiration_pending",
     });
     expect(expiration.catalog_state).toBe("expiration_pending");
+  });
+
+  test("keeps an actively restored backup out of GC discovery and enqueue", async () => {
+    const { backupId } = await protectBackup();
+    const lease = await createActiveRestoreLease(backupId);
+
+    expect(
+      (await listDueAgentBackupDeletions({ limit: 10 })).some(
+        (candidate) => candidate.backupId === backupId,
+      ),
+    ).toBe(false);
+    await expect(
+      enqueueAgentBackupDeletion({
+        organizationId: ORG_ID,
+        backupId,
+        operationId: OPERATION_ID,
+      }),
+    ).rejects.toThrow("active restore lease");
+
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: sql`NOW()` })
+      .where(eq(agentBackupRestoreLeases.id, lease.id));
+    expect(
+      (await listDueAgentBackupDeletions({ limit: 10 })).some(
+        (candidate) => candidate.backupId === backupId,
+      ),
+    ).toBe(true);
+  });
+
+  test("rechecks a late restore lease before final GC tombstoning", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    const claims = await claimAgentBackupGc({
+      ownerId: "restore-fenced-gc-worker",
+      limit: 10,
+      leaseMs: 60_000,
+    });
+    expect(claims).toHaveLength(2);
+    for (const claim of claims) {
+      await settleAgentBackupGc({
+        outboxId: claim.outbox.id,
+        ownerId: "restore-fenced-gc-worker",
+        generation: claim.outbox.claim_generation as string,
+        receiptDigest: claim.object.copy_role === "primary" ? SHA_A : SHA_B,
+      });
+    }
+
+    const lease = await createActiveRestoreLease(backupId);
+    expect(
+      (await listFinalizableAgentBackupDeletions({ limit: 10 })).some(
+        (candidate) => candidate.backupId === backupId,
+      ),
+    ).toBe(false);
+    await expect(
+      finalizeAgentBackupDeletion({
+        organizationId: ORG_ID,
+        backupId,
+        operationId: OPERATION_ID,
+      }),
+    ).rejects.toThrow("Restore lease blocks GC finalization");
+
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: sql`NOW()` })
+      .where(eq(agentBackupRestoreLeases.id, lease.id));
+    expect(
+      (await listFinalizableAgentBackupDeletions({ limit: 10 })).some(
+        (candidate) => candidate.backupId === backupId,
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await finalizeAgentBackupDeletion({
+          organizationId: ORG_ID,
+          backupId,
+          operationId: OPERATION_ID,
+        })
+      ).catalog_state,
+    ).toBe("deleted");
+  });
+
+  test("starts each GC lease from its own post-lock database clock", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    await dbWrite.execute(sql`
+      CREATE OR REPLACE FUNCTION test_delay_gc_claim() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.claim_owner = 'delayed-gc-worker' AND NEW.state = 'leased' THEN
+          PERFORM pg_sleep(0.03);
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await dbWrite.execute(sql`
+      CREATE TRIGGER test_delay_gc_claim
+      BEFORE UPDATE ON agent_backup_gc_outbox
+      FOR EACH ROW EXECUTE FUNCTION test_delay_gc_claim()
+    `);
+    try {
+      const claims = await claimAgentBackupGc({
+        ownerId: "delayed-gc-worker",
+        limit: 2,
+        leaseMs: 1_000,
+      });
+      expect(claims).toHaveLength(2);
+      for (const claim of claims) {
+        expect(claim.outbox.lease_expires_at!.getTime() - claim.outbox.updated_at.getTime()).toBe(
+          1_000,
+        );
+      }
+      const [clock] = await dbWrite
+        .select({ databaseNow: sql<Date | string>`clock_timestamp()` })
+        .from(agentBackupGcOutbox)
+        .limit(1);
+      const databaseNow =
+        clock!.databaseNow instanceof Date ? clock!.databaseNow : new Date(clock!.databaseNow);
+      expect(
+        claims.every((claim) => claim.outbox.lease_expires_at!.getTime() > databaseNow.getTime()),
+      ).toBe(true);
+      expect(
+        claims[1]!.outbox.updated_at.getTime() - claims[0]!.outbox.updated_at.getTime(),
+      ).toBeGreaterThanOrEqual(20);
+    } finally {
+      await dbWrite.execute(
+        sql`DROP TRIGGER IF EXISTS test_delay_gc_claim ON agent_backup_gc_outbox`,
+      );
+      await dbWrite.execute(sql`DROP FUNCTION IF EXISTS test_delay_gc_claim()`);
+    }
+  });
+
+  test("rolls back a GC claim when DB-side delay consumes its whole lease", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    await dbWrite.execute(sql`
+      CREATE OR REPLACE FUNCTION test_expire_gc_claim() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.claim_owner = 'expired-before-return-gc-worker' AND NEW.state = 'leased' THEN
+          PERFORM pg_sleep(0.03);
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await dbWrite.execute(sql`
+      CREATE TRIGGER test_expire_gc_claim
+      BEFORE UPDATE ON agent_backup_gc_outbox
+      FOR EACH ROW EXECUTE FUNCTION test_expire_gc_claim()
+    `);
+    try {
+      await expect(
+        claimAgentBackupGc({
+          ownerId: "expired-before-return-gc-worker",
+          limit: 1,
+          leaseMs: 1,
+        }),
+      ).rejects.toThrow("GC claim expired before it could be returned");
+      const [intent] = await dbWrite
+        .select()
+        .from(agentBackupGcOutbox)
+        .where(eq(agentBackupGcOutbox.state, "pending"));
+      expect(intent?.claim_owner).toBeNull();
+      expect(intent?.claim_generation).toBeNull();
+      expect(intent?.lease_expires_at).toBeNull();
+    } finally {
+      await dbWrite.execute(
+        sql`DROP TRIGGER IF EXISTS test_expire_gc_claim ON agent_backup_gc_outbox`,
+      );
+      await dbWrite.execute(sql`DROP FUNCTION IF EXISTS test_expire_gc_claim()`);
+    }
+  });
+
+  test("rejects GC settlement when validation crosses the execution-lease expiry", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    const [claim] = await claimAgentBackupGc({
+      ownerId: "expiry-gc-worker",
+      limit: 1,
+      leaseMs: 20,
+    });
+    expect(claim).toBeDefined();
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    const digestSpy = spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
+      await Bun.sleep(40);
+      return originalDigest(algorithm, data);
+    });
+    try {
+      await expect(
+        settleAgentBackupGc({
+          outboxId: claim!.outbox.id,
+          ownerId: "expiry-gc-worker",
+          generation: claim!.outbox.claim_generation as string,
+          receiptDigest: SHA_A,
+        }),
+      ).rejects.toThrow("execution lease expired");
+    } finally {
+      digestSpy.mockRestore();
+    }
+    const [intent] = await dbWrite
+      .select()
+      .from(agentBackupGcOutbox)
+      .where(eq(agentBackupGcOutbox.id, claim!.outbox.id));
+    const [object] = await dbWrite
+      .select()
+      .from(agentBackupObjects)
+      .where(eq(agentBackupObjects.id, claim!.object.id));
+    expect(intent?.state).toBe("leased");
+    expect(object?.state).toBe("delete_pending");
   });
 
   test("receipts every exact object before tombstoning", async () => {
@@ -2021,5 +2352,41 @@ describe("agent backup catalogue on primary PGlite", () => {
     expect(poisonedObject?.state).toBe("quarantined");
     expect(poisonedIntent?.state).toBe("quarantined");
     expect(poisonedIntent?.last_error_code).toBe("GC_LOCATOR_CHANGED");
+  });
+
+  test("refuses exact-replay adoption once the execution lease has expired", async () => {
+    const { backupId } = await protectBackup();
+    await enqueueAgentBackupDeletion({
+      organizationId: ORG_ID,
+      backupId,
+      operationId: OPERATION_ID,
+    });
+    const [claim] = await claimAgentBackupGc({
+      ownerId: "adopt-expiry-worker",
+      limit: 1,
+      leaseMs: 40,
+    });
+    expect(claim).toBeDefined();
+    await Bun.sleep(80);
+    const before = await dbWrite
+      .select()
+      .from(agentBackupObjects)
+      .where(eq(agentBackupObjects.id, claim!.object.id));
+    await expect(
+      adoptAgentBackupGcObservedLocator({
+        outboxId: claim!.outbox.id,
+        ownerId: "adopt-expiry-worker",
+        generation: claim!.outbox.claim_generation as string,
+        providerVersionId: claim!.object.provider_version_id,
+        providerEtag: claim!.object.provider_etag,
+        providerChecksum: claim!.object.provider_checksum,
+        uploadReceiptDigest: claim!.object.upload_receipt_digest as string,
+      }),
+    ).rejects.toThrow("GC execution lease expired");
+    const after = await dbWrite
+      .select()
+      .from(agentBackupObjects)
+      .where(eq(agentBackupObjects.id, claim!.object.id));
+    expect(after).toEqual(before);
   });
 });

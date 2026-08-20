@@ -22,14 +22,17 @@
  *     `gateway-webhook` both speak native TCP Redis).
  * Neither path adds a runtime dependency (this module is also bundled for
  * mobile via the agent): REST uses `fetch`, TCP uses the `node:net` builtin.
+ * TCP replies are byte-capped: a declared bulk string above 1 MiB fails closed
+ * instead of concatenating until the 10s socket timeout.
  */
 
 import net from "node:net";
 
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;
+const MAX_REGISTRY_TCP_BYTES = 1_048_576;
 
 function formatErr(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -37,6 +40,25 @@ function formatErr(err: unknown): string {
 
 function isTcpRedisUrl(url: string): boolean {
   return /^rediss?:\/\//i.test(url);
+}
+
+export class SandboxRegistryRedisUrlError extends ElizaError {
+  constructor(cause: unknown) {
+    super("Sandbox registry Redis URL has malformed userinfo encoding", {
+      code: "SANDBOX_REGISTRY_REDIS_USERINFO_INVALID",
+      cause,
+    });
+  }
+}
+
+/** Percent-decode Redis URL userinfo or reject malformed credentials. */
+export function decodeRedisUrlUserinfo(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch (cause) {
+    // error-policy:J2 preserve the URIError while adding the registry boundary.
+    throw new SandboxRegistryRedisUrlError(cause);
+  }
 }
 
 export interface SandboxRegistryConfig {
@@ -212,8 +234,8 @@ export class SandboxRegistry {
     const secure = url.protocol === "rediss:";
     const host = url.hostname;
     const port = url.port ? Number(url.port) : 6379;
-    const username = decodeURIComponent(url.username || "");
-    const password = decodeURIComponent(url.password || "");
+    const username = decodeRedisUrlUserinfo(url.username || "");
+    const password = decodeRedisUrlUserinfo(url.password || "");
     const db = url.pathname.length > 1 ? url.pathname.slice(1) : "";
 
     const preamble: string[][] = [];
@@ -235,7 +257,9 @@ export class SandboxRegistry {
 
     return new Promise<unknown[]>((resolve, reject) => {
       let settled = false;
-      let buffer = Buffer.alloc(0);
+      const buffer = Buffer.allocUnsafe(MAX_REGISTRY_TCP_BYTES);
+      let receivedBytes = 0;
+      const parser = new RespReplyParser(buffer, all.length);
 
       const finish = (err: Error | null, replies?: unknown[]): void => {
         if (settled) return;
@@ -255,14 +279,28 @@ export class SandboxRegistry {
       socket.once(secure ? "secureConnect" : "connect", onConnect);
 
       socket.on("data", (chunk: Buffer) => {
-        buffer = Buffer.concat([buffer, chunk]);
-        const parsed = parseRespReplies(buffer, all.length);
+        if (receivedBytes + chunk.length > MAX_REGISTRY_TCP_BYTES) {
+          finish(
+            new ElizaError(
+              `Sandbox registry TCP reply exceeded ${MAX_REGISTRY_TCP_BYTES} bytes`,
+              { code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE" },
+            ),
+          );
+          return;
+        }
+        chunk.copy(buffer, receivedBytes);
+        receivedBytes += chunk.length;
+        const parsed = parser.parse(receivedBytes);
         if (!parsed) return; // need more bytes
         const firstErr = parsed.replies.find((r) => r instanceof RespError) as
           | RespError
           | undefined;
         if (firstErr) {
-          finish(new Error(`Redis error: ${firstErr.message}`));
+          finish(
+            new ElizaError(`Redis error: ${firstErr.message}`, {
+              code: firstErr.code,
+            }),
+          );
           return;
         }
         // Strip the AUTH/SELECT preamble replies; return only command results.
@@ -274,7 +312,10 @@ export class SandboxRegistry {
 
 /** A RESP `-ERR ...` reply, kept distinct so callers can detect failures. */
 class RespError {
-  constructor(public readonly message: string) {}
+  constructor(
+    public readonly message: string,
+    public readonly code = "SANDBOX_REGISTRY_TCP_REPLY_INVALID",
+  ) {}
 }
 
 /** Encode commands as a single RESP2 buffer (inline pipelining). */
@@ -299,62 +340,104 @@ function encodeRespCommands(commands: string[][]): Buffer {
  * returns for SET/GET/DEL/AUTH/SELECT: simple string, error, integer, bulk
  * string (and null bulk), plus RESP3 null.
  */
-function parseRespReplies(
-  buffer: Buffer,
-  expected: number,
-): { replies: unknown[] } | null {
-  const replies: unknown[] = [];
-  let offset = 0;
+class RespReplyParser {
+  private readonly replies: unknown[] = [];
+  private offset = 0;
+  private lineSearchOffset = 0;
+  private pendingBulk: { start: number; end: number } | null = null;
 
-  const parseOne = (): { value: unknown; next: number } | null => {
-    if (offset >= buffer.length) return null;
-    const type = buffer[offset];
-    const lineEnd = buffer.indexOf("\r\n", offset);
-    if (lineEnd === -1) return null;
-    const line = buffer.toString("utf8", offset + 1, lineEnd);
-    const afterLine = lineEnd + 2;
-    switch (type) {
-      case 0x2b: // '+' simple string
-        return { value: line, next: afterLine };
-      case 0x2d: // '-' error
-        return { value: new RespError(line), next: afterLine };
-      case 0x3a: // ':' integer
-        return { value: Number(line), next: afterLine };
-      case 0x5f: // '_' RESP3 null
-        return { value: null, next: afterLine };
-      case 0x24: {
-        // '$' bulk string
-        const len = Number(line);
-        if (len === -1) return { value: null, next: afterLine };
-        const end = afterLine + len;
-        if (buffer.length < end + 2) return null; // bulk + trailing CRLF
-        return {
-          value: buffer.toString("utf8", afterLine, end),
-          next: end + 2,
-        };
+  constructor(
+    private readonly buffer: Buffer,
+    private readonly expected: number,
+  ) {}
+
+  parse(receivedBytes: number): { replies: unknown[] } | null {
+    while (this.replies.length < this.expected) {
+      if (this.pendingBulk) {
+        if (receivedBytes < this.pendingBulk.end + 2) return null;
+        if (
+          this.buffer[this.pendingBulk.end] !== 0x0d ||
+          this.buffer[this.pendingBulk.end + 1] !== 0x0a
+        ) {
+          this.replies.push(
+            new RespError("bulk string has invalid terminator"),
+          );
+        } else {
+          this.replies.push(
+            this.buffer.toString(
+              "utf8",
+              this.pendingBulk.start,
+              this.pendingBulk.end,
+            ),
+          );
+        }
+        this.offset = this.pendingBulk.end + 2;
+        this.lineSearchOffset = this.offset;
+        this.pendingBulk = null;
+        if (this.replies.at(-1) instanceof RespError) {
+          return { replies: this.replies };
+        }
+        continue;
       }
-      default:
-        // Unexpected/array reply — not produced by the registry's commands.
-        return {
-          value: new RespError(
-            `unsupported RESP type ${String.fromCharCode(type)}`,
-          ),
-          next: afterLine,
-        };
-    }
-  };
 
-  while (replies.length < expected) {
-    const savedOffset = offset;
-    const one = parseOne();
-    if (!one) {
-      offset = savedOffset;
-      return null;
+      if (this.offset >= receivedBytes) return null;
+      const lineEnd = this.buffer.indexOf(
+        "\r\n",
+        this.lineSearchOffset,
+        "utf8",
+      );
+      if (lineEnd === -1 || lineEnd >= receivedBytes) {
+        this.lineSearchOffset = Math.max(this.offset, receivedBytes - 1);
+        return null;
+      }
+
+      const type = this.buffer[this.offset];
+      const line = this.buffer.toString("utf8", this.offset + 1, lineEnd);
+      const afterLine = lineEnd + 2;
+      this.offset = afterLine;
+      this.lineSearchOffset = afterLine;
+
+      if (type === 0x2b) this.replies.push(line);
+      else if (type === 0x2d) this.replies.push(new RespError(line));
+      else if (type === 0x5f) this.replies.push(null);
+      else if (type === 0x3a) {
+        const value = /^-?(?:0|[1-9]\d*)$/.test(line)
+          ? Number(line)
+          : Number.NaN;
+        this.replies.push(
+          Number.isSafeInteger(value)
+            ? value
+            : new RespError(`invalid integer ${line}`),
+        );
+      } else if (type === 0x24) {
+        if (line === "-1") {
+          this.replies.push(null);
+          continue;
+        }
+        const length = /^(?:0|[1-9]\d*)$/.test(line)
+          ? Number(line)
+          : Number.NaN;
+        if (!Number.isSafeInteger(length) || length > MAX_REGISTRY_TCP_BYTES) {
+          this.replies.push(
+            new RespError(
+              `bulk string length ${line} exceeds TCP budget`,
+              "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+            ),
+          );
+          return { replies: this.replies };
+        }
+        this.pendingBulk = { start: afterLine, end: afterLine + length };
+      } else {
+        this.replies.push(
+          new RespError(`unsupported RESP type ${String.fromCharCode(type)}`),
+        );
+      }
+      if (this.replies.at(-1) instanceof RespError) {
+        return { replies: this.replies };
+      }
     }
-    replies.push(one.value);
-    offset = one.next;
+    return { replies: this.replies };
   }
-  return { replies };
 }
 
 /**

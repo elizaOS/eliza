@@ -433,6 +433,7 @@ declare module "./client-base" {
     listConnectorAccounts(
       provider: string,
       connectorId?: string,
+      options?: { timeoutMs?: number; signal?: AbortSignal },
     ): Promise<ConnectorAccountsListResponse>;
     addConnectorAccount(
       provider: string,
@@ -1828,10 +1829,16 @@ ElizaClient.prototype.listConnectorAccounts = async function (
   this: ElizaClient,
   provider,
   connectorId = provider,
+  options,
 ) {
-  const response = await this.fetch<unknown>(
-    connectorAccountsPath(provider, connectorId),
-  );
+  const path = connectorAccountsPath(provider, connectorId);
+  const response = options
+    ? await this.fetch<unknown>(
+        path,
+        { signal: options.signal },
+        { timeoutMs: options.timeoutMs },
+      )
+    : await this.fetch<unknown>(path);
   return normalizeConnectorAccountsListResponse(
     provider,
     connectorId,

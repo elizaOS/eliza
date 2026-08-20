@@ -5,9 +5,17 @@
  * mutation, subscription-header extraction, and sender-filter/unsubscribe
  * helpers. Maps Gmail API payloads into the plugin's `GoogleGmail*` DTOs. Each
  * method acquires a scoped googleapis client from `GoogleApiClientFactory`.
+ * MIME `parts` trees are bounded in `gmail-mime-parts.ts` so a hostile nest
+ * cannot RangeError ingest.
  */
+import { ElizaError } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
+import {
+  extractGmailMimeBody,
+  snapshotGmailMimePart,
+  walkGmailMimeParts,
+} from "./gmail-mime-parts.js";
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
@@ -44,6 +52,51 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
 const MAX_GMAIL_RESULTS = 1000;
+const MAX_GMAIL_PAGES = 1_000;
+
+interface GmailPaginationState {
+  pageCount: number;
+  seenPageTokens: Set<string>;
+}
+
+function createGmailPaginationState(): GmailPaginationState {
+  return { pageCount: 0, seenPageTokens: new Set<string>() };
+}
+
+// Both searchGmailMessages and getGmailSubscriptionHeaders loop `while
+// (results.length < limit)`, but a page with zero mapped messages (e.g. every
+// message.id was blank, or the API returned an empty page with a distinct
+// nextPageToken) never grows that count. Without this guard, an API or proxy
+// that keeps minting novel page tokens on empty pages loops forever.
+function nextGmailPageToken(
+  value: string | null | undefined,
+  state: GmailPaginationState,
+  resource: string
+): string | undefined {
+  state.pageCount += 1;
+  if (!value?.trim()) {
+    return undefined;
+  }
+  // Google page tokens are opaque. Whitespace-only values are terminal, but
+  // a non-empty token must be replayed byte-for-byte rather than normalized.
+  const token = value;
+  if (state.seenPageTokens.has(token)) {
+    throw new ElizaError(`Gmail repeated a ${resource} page token.`, {
+      code: "GOOGLE_GMAIL_PAGINATION_LOOP",
+      context: { resource },
+      severity: "fatal",
+    });
+  }
+  if (state.pageCount >= MAX_GMAIL_PAGES) {
+    throw new ElizaError(`Gmail ${resource} pagination exceeded ${MAX_GMAIL_PAGES} pages.`, {
+      code: "GOOGLE_GMAIL_PAGINATION_LIMIT_EXCEEDED",
+      context: { maxPages: MAX_GMAIL_PAGES, resource },
+      severity: "fatal",
+    });
+  }
+  state.seenPageTokens.add(token);
+  return token;
+}
 
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
@@ -122,6 +175,7 @@ export class GoogleGmailClient {
     );
     const maxResults = normalizedLimit(params.maxResults, 20, MAX_GMAIL_RESULTS);
     const messages: GoogleGmailMessageSummary[] = [];
+    const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
     while (messages.length < maxResults) {
@@ -152,11 +206,13 @@ export class GoogleGmailClient {
           messages.push(message);
         }
       }
-      const nextPageToken = response.data.nextPageToken?.trim();
-      if (!nextPageToken || nextPageToken === pageToken) {
+      if (messages.length >= maxResults) {
         break;
       }
-      pageToken = nextPageToken;
+      pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
+      if (!pageToken) {
+        break;
+      }
     }
 
     return sortGmailMessages(messages).slice(0, maxResults);
@@ -385,6 +441,7 @@ export class GoogleGmailClient {
     const query = params.query?.trim() || SUBSCRIPTION_SCAN_QUERY_DEFAULT;
     const maxMessages = normalizedLimit(params.maxMessages, 200, MAX_GMAIL_RESULTS);
     const results: GoogleGmailSubscriptionMessageHeaders[] = [];
+    const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
     while (results.length < maxMessages) {
@@ -415,11 +472,17 @@ export class GoogleGmailClient {
           results.push(headers);
         }
       }
-      const nextPageToken = response.data.nextPageToken?.trim();
-      if (!nextPageToken || nextPageToken === pageToken) {
+      if (results.length >= maxMessages) {
         break;
       }
-      pageToken = nextPageToken;
+      pageToken = nextGmailPageToken(
+        response.data.nextPageToken,
+        pagination,
+        "subscription header scan"
+      );
+      if (!pageToken) {
+        break;
+      }
     }
 
     return results;
@@ -678,18 +741,16 @@ function collectMessagePart(
   part: gmail_v1.Schema$MessagePart,
   body: Pick<GoogleMessageSummary, "bodyHtml" | "bodyText">
 ): void {
-  const data = part.body?.data ? decodeBase64Url(part.body.data) : undefined;
+  walkGmailMimeParts(part, (node) => {
+    const data = node.body?.data ? decodeBase64Url(node.body.data) : undefined;
 
-  if (data && part.mimeType === "text/plain" && !body.bodyText) {
-    body.bodyText = data;
-  }
-  if (data && part.mimeType === "text/html" && !body.bodyHtml) {
-    body.bodyHtml = data;
-  }
-
-  for (const child of part.parts ?? []) {
-    collectMessagePart(child, body);
-  }
+    if (data && node.mimeType === "text/plain" && !body.bodyText) {
+      body.bodyText = data;
+    }
+    if (data && node.mimeType === "text/html" && !body.bodyHtml) {
+      body.bodyHtml = data;
+    }
+  });
 }
 
 function encodeMessage(input: GoogleSendEmailInput): string {
@@ -949,10 +1010,14 @@ function extractGoogleGmailBody(payload: gmail_v1.Schema$MessagePart | undefined
   if (htmlText) {
     return htmlText;
   }
-  const directBody = payload?.body?.data;
+  if (!payload) {
+    return "";
+  }
+  const snapshot = snapshotGmailMimePart(payload);
+  const directBody = snapshot.body?.data;
   if (typeof directBody === "string") {
     const decoded = decodeBase64Url(directBody);
-    return payload?.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
+    return snapshot.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   }
   return "";
 }
@@ -961,21 +1026,12 @@ function extractGoogleGmailBodyByMime(
   payload: gmail_v1.Schema$MessagePart | undefined,
   mimeType: "text/plain" | "text/html"
 ): string {
-  if (!payload) {
-    return "";
-  }
-  const directBody = payload.body?.data;
-  if (payload.mimeType === mimeType && typeof directBody === "string") {
+  return extractGmailMimeBody(payload, mimeType, (node) => {
+    const directBody = node.body?.data;
+    if (typeof directBody !== "string") return "";
     const decoded = decodeBase64Url(directBody);
     return mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
-  }
-  for (const part of payload.parts ?? []) {
-    const nested = extractGoogleGmailBodyByMime(part, mimeType);
-    if (nested) {
-      return nested;
-    }
-  }
-  return "";
+  });
 }
 
 function htmlToPlainText(value: string): string {

@@ -2,13 +2,9 @@
  * Locks the protected Headscale self-enrollment, ACL policy, and workflow
  * boundaries without connecting to a host or using live credentials.
  *
- * A malformed or over-broad `acl.hujson` fails here instead of taking the
- * control plane's tailnet down after the next converge run. The policy is read
- * with json5, a superset of HuJSON: it accepts a few forms headscale rejects
- * (unquoted keys, single quotes, leading `+`), so a green parse is necessary
- * but not sufficient. It catches the failure that actually matters — a
- * malformed edit shipping base64-encoded and taking headscale down on restart
- * — without hand-rolling a parser to chase parity.
+ * The ACL assertions parse the committed policy the same way Headscale does, so
+ * a malformed or over-broad `acl.hujson` fails here instead of taking the
+ * control plane's tailnet down after the next converge run.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -110,10 +106,21 @@ function renderRemoteScript(extraArgs: string[] = []): string {
   return result.stdout;
 }
 
-/** Re-read per call so a malformed ACL fails the test that reads it, rather
- * than aborting collection for the whole file. */
+/**
+ * Parse the committed policy. json5 is a superset of HuJSON: it accepts a few
+ * forms headscale rejects (unquoted keys, single quotes, leading `+`), so a
+ * green parse here is necessary but not sufficient. It catches the failure that
+ * actually matters — a malformed edit shipping base64-encoded and taking
+ * headscale down on restart — without hand-rolling a parser to chase parity.
+ */
+function parsePolicy(source: string): HeadscalePolicy {
+  return JSON5.parse(source) as HeadscalePolicy;
+}
+
+/** Parsed inside each test so a malformed policy fails a named test rather
+ * than aborting collection. */
 function committedPolicy(): HeadscalePolicy {
-  return JSON5.parse(readFileSync(aclPath, "utf8")) as HeadscalePolicy;
+  return parsePolicy(readFileSync(aclPath, "utf8"));
 }
 
 function rulesFrom(
@@ -214,9 +221,9 @@ describe("Headscale ACL policy", () => {
     )?.[1];
     if (!encoded) throw new Error("remote script does not install an ACL file");
 
-    const shipped = JSON5.parse(
+    const shipped = parsePolicy(
       Buffer.from(encoded, "base64").toString("utf8"),
-    ) as HeadscalePolicy;
+    );
 
     const shippedProxyToAgent = rulesFrom(
       shipped,

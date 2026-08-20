@@ -18,6 +18,7 @@ import {
   useConnectorAccounts,
 } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
@@ -95,9 +96,16 @@ function sortConnectorAccounts(
   });
 }
 
-function openConnectorAuthUrl(authUrl: string | undefined): void {
-  if (!authUrl || typeof window === "undefined") return;
+/**
+ * Open a connector OAuth URL in a new tab. The authUrl is a wire value, so it
+ * passes the navigation scheme allowlist first; returns `false` when nothing
+ * was opened (rejected or non-browser environment).
+ */
+function openConnectorAuthUrl(authUrl: string | undefined): boolean {
+  if (!authUrl || typeof window === "undefined") return false;
+  if (!isSafeNavigationUrl(authUrl)) return false;
   window.open(authUrl, "_blank", "noopener,noreferrer");
+  return true;
 }
 
 function defaultTitleForRole(
@@ -148,6 +156,9 @@ export function ConnectorAccountList({
   const [selectedOAuthCapabilities, setSelectedOAuthCapabilities] = useState(
     () => new Set<string>(),
   );
+  // Rejection of a wire-supplied OAuth URL surfaces here — the hook-level
+  // `error` only covers fetch/mutation failures.
+  const [authUrlError, setAuthUrlError] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedAccountId !== undefined) {
@@ -181,6 +192,7 @@ export function ConnectorAccountList({
   };
 
   const handleAdd = async () => {
+    setAuthUrlError(null);
     if (onAddAccount) {
       const body = await onAddAccount();
       if (!body) return;
@@ -203,7 +215,11 @@ export function ConnectorAccountList({
         privacy: requestedRole === "OWNER" ? "owner_only" : "team_visible",
       },
     });
-    openConnectorAuthUrl(result.authUrl);
+    if (result.authUrl && !openConnectorAuthUrl(result.authUrl)) {
+      setAuthUrlError(
+        "The sign-in link returned by the server is not a valid URL.",
+      );
+    }
   };
 
   const addBusy =
@@ -267,9 +283,9 @@ export function ConnectorAccountList({
         </div>
       ) : null}
 
-      {connectorAccounts.error ? (
+      {connectorAccounts.error || authUrlError ? (
         <div className="rounded-sm border border-border/45 bg-card/30 px-3 py-2 text-xs text-muted">
-          {connectorAccounts.error}
+          {connectorAccounts.error ?? authUrlError}
         </div>
       ) : null}
 

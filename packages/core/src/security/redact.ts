@@ -34,7 +34,7 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// Authorization credentials are either one token68 value or a complete
@@ -165,6 +165,14 @@ export function isSensitiveKeyName(key: string): boolean {
 			lower.includes("api") ||
 			lower.includes("signing"))
 	) {
+		return true;
+	}
+	// Separator-free concatenations (masterKey, MASTERKEY, encryption-key, …)
+	// have no word boundary for the substring rules above; a closed suffix set
+	// on the normalized name catches them without opening `key$` to lookalikes
+	// (monkey/turnkey/KEYBOARD stay non-sensitive). Same closed set as the leaf
+	// logger's isSensitiveLogKey and the agent's isSensitiveConfigKey.
+	if (/(?:master|signing|ssh|encryption)key$/i.test(normalized)) {
 		return true;
 	}
 	return false;
@@ -529,6 +537,20 @@ const MAX_LOG_REDACT_DEPTH = 8;
  * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
  * or not the caller wrapped the context first.
  *
+ * Function values never survive the walk. They are executable serializer hooks
+ * (toJSON/valueOf/toString), and a copied hook re-runs when a JSON sink
+ * stringifies the clone, able to reconstitute the very secrets the walk just
+ * masked. A bare function argument collapses to null and a function-valued
+ * property is dropped outright — matching JSON.stringify, which emits null for
+ * array functions and omits object function props. Symbol-keyed hooks such as
+ * util.inspect.custom never reach the clone because the walk copies string keys
+ * only.
+ *
+ * Buffer/TypedArray/DataView/ArrayBuffer values collapse to a size-only marker:
+ * the indexed walk would otherwise emit the raw bytes as {"0":115,…} under an
+ * innocent-looking key, and JSON.stringify would emit them as
+ * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
+ *
  * Depth is bounded and cycles are broken (returning the mask) so a pathological
  * log payload cannot hang or blow the stack — a redactor must never be the thing
  * that takes the process down.
@@ -541,6 +563,9 @@ function redactLogArg(
 	if (typeof value === "string") {
 		return redactSensitiveText(value);
 	}
+	if (typeof value === "function") {
+		return null;
+	}
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
@@ -549,7 +574,15 @@ function redactLogArg(
 	}
 	seen.add(value);
 	if (Array.isArray(value)) {
-		return value.map((item) => redactLogArg(item, seen, depth + 1));
+		// Do not call value.map: an Array subclass, custom Symbol.species, or own
+		// map property can return caller-owned data carrying a serializer hook.
+		// Index into the input but construct the output with the intrinsic Array
+		// constructor so no caller-controlled method or result prototype survives.
+		const result: unknown[] = [];
+		for (let index = 0; index < value.length; index += 1) {
+			result.push(redactLogArg(value[index], seen, depth + 1));
+		}
+		return result;
 	}
 	if (value instanceof Error) {
 		// Preserve the Error shape (name/stack) callers rely on, but scrub the
@@ -559,10 +592,27 @@ function redactLogArg(
 		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
 		return redacted;
 	}
-	const result: Record<string, unknown> = {};
+	// Binary payloads carry raw bytes that JSON serializes verbatim
+	// ({"type":"Buffer","data":[...]}); walked as indexed objects they emit the
+	// same bytes as {"0":115,...} under an innocent-looking key, so mask with a
+	// size-only marker (same marker shape as the leaf logger's).
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
+	}
+	// A null-prototype target prevents a __proto__ input key from changing the
+	// clone's prototype and reintroducing inherited serializer behavior.
+	const result = Object.create(null) as Record<string, unknown>;
 	for (const [key, entry] of Object.entries(value)) {
 		if (isSensitiveKeyName(key)) {
 			result[key] = REDACTED_MASK;
+			continue;
+		}
+		// Function-valued properties are executable serializer hooks
+		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
+		// JSON-stringifies the clone and can reconstitute the very secrets the
+		// walk just masked. JSON.stringify omits function props anyway, so
+		// dropping the key matches serialization semantics.
+		if (typeof entry === "function") {
 			continue;
 		}
 		result[key] = redactLogArg(entry, seen, depth + 1);

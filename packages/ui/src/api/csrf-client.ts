@@ -36,7 +36,13 @@ export function readCsrfTokenFromCookie(): string | null {
   for (const part of document.cookie.split(";")) {
     const trimmed = part.trim();
     if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
+      try {
+        return decodeURIComponent(trimmed.slice(prefix.length));
+      } catch {
+        // error-policy:J3 untrusted cookie values — a malformed percent-escape
+        // is an absent CSRF token, not a client crash.
+        return null;
+      }
     }
   }
   return null;

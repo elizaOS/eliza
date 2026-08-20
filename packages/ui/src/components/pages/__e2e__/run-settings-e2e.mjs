@@ -189,7 +189,6 @@ async function snap(page, name) {
 // The MVP-visible hub rows, in expected registry order per group.
 const VISIBLE_SECTIONS = [
   "identity",
-  "ai-model",
   "voice",
   "connectors",
   "appearance",
@@ -198,6 +197,9 @@ const VISIBLE_SECTIONS = [
   "cloud-overview",
 ];
 const HIDDEN_SECTIONS = [
+  // The fixture boots a managed-cloud runtime, where provider selection is
+  // owned by the managed agent rather than the local Models & Providers tab.
+  "ai-model",
   "capabilities",
   "apps",
   "background",
@@ -235,10 +237,12 @@ for (const id of VISIBLE_SECTIONS) {
   );
 }
 for (const id of HIDDEN_SECTIONS) {
+  const reason =
+    id === "ai-model" ? "managed-cloud runtime" : "Developer Mode off";
   assert(
     (await p.locator(`[data-testid="desktop-settings-item-${id}"]`).count()) ===
       0,
-    `rail hides the "${id}" item (Developer Mode off)`,
+    `rail hides the "${id}" item (${reason})`,
   );
 }
 assert(

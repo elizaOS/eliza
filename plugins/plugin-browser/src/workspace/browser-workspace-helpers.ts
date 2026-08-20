@@ -1,7 +1,13 @@
 /**
- * Shared browser workspace utilities for command normalization, tabs, and URLs.
+ * Shared browser workspace utilities for command normalization, tabs, URLs,
+ * and workspace-rooted file reads/writes.
+ *
+ * Command `filePath` / `outputPath` / `baselinePath` values are confined with a
+ * realpath ancestor walk so a symlink parent cannot smuggle a write or state
+ * load outside the process working directory.
  */
 
+import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
@@ -204,11 +210,100 @@ export async function sleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Separator-aware containment: `..safe.js` is a sibling name, not a traversal.
+ * Compare realpaths so macOS `/var` vs `/private/var` is not a false escape.
+ */
+export function isWithinBrowserWorkspaceRoot(
+  child: string,
+  parent: string,
+): boolean {
+  if (child === parent) return true;
+  const rel = path.relative(parent, child);
+  return (
+    rel.length > 0 &&
+    rel !== ".." &&
+    !rel.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(rel)
+  );
+}
+
+/**
+ * Realpath the longest existing ancestor, then rejoin the missing tail so a
+ * workspace symlink-to-elsewhere cannot hide behind a not-yet-created basename.
+ */
+export function resolveBrowserWorkspaceRealPath(target: string): string {
+  const absolute = path.resolve(target);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // error-policy:J3 missing leaf — walk up to the longest existing prefix.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  for (;;) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Confine a command-supplied filesystem path to `root` (default: process cwd).
+ * Rejects UNC, NUL, empty, lexical `..`, and symlink-parent escapes.
+ */
+export function resolveBrowserWorkspaceFilePath(
+  filePath: string,
+  root: string = process.cwd(),
+): string {
+  const trimmed = typeof filePath === "string" ? filePath.trim() : "";
+  if (!trimmed) {
+    throw createBrowserWorkspaceError(
+      "path_forbidden",
+      "file_path",
+      "browser workspace rejected an empty file path",
+    );
+  }
+  if (trimmed.includes("\0")) {
+    throw createBrowserWorkspaceError(
+      "path_forbidden",
+      "file_path",
+      "browser workspace rejected a NUL in file path",
+    );
+  }
+  if (trimmed.startsWith("\\\\") || trimmed.startsWith("//")) {
+    throw createBrowserWorkspaceError(
+      "path_forbidden",
+      "file_path",
+      "browser workspace rejected a UNC file path",
+    );
+  }
+  const rootReal = resolveBrowserWorkspaceRealPath(root);
+  const resolved = resolveBrowserWorkspaceRealPath(trimmed);
+  if (
+    resolved !== rootReal &&
+    !isWithinBrowserWorkspaceRoot(resolved, rootReal)
+  ) {
+    throw createBrowserWorkspaceError(
+      "path_forbidden",
+      "file_path",
+      `browser workspace file path escapes the workspace root: ${trimmed}`,
+    );
+  }
+  return resolved;
+}
+
 export async function writeBrowserWorkspaceFile(
   filePath: string,
   contents: string | Uint8Array,
+  root: string = process.cwd(),
 ): Promise<string> {
-  const resolved = path.resolve(filePath);
+  const resolved = resolveBrowserWorkspaceFilePath(filePath, root);
   await fsp.mkdir(path.dirname(resolved), { recursive: true });
   await fsp.writeFile(resolved, contents);
   return resolved;
@@ -218,18 +313,24 @@ export function normalizeBrowserWorkspaceCommand(
   command: BrowserWorkspaceCommand,
 ): BrowserWorkspaceCommand {
   const raw = command as BrowserWorkspaceCommand & Record<string, unknown>;
-  const normalizedSubaction =
-    typeof raw.subaction === "string"
-      ? raw.subaction.trim().toLowerCase()
-      : typeof raw.operation === "string"
-        ? raw.operation.trim().toLowerCase()
-        : "";
+  // A trimmed-empty `subaction` is absent, not a value: fall back to
+  // `operation` before resolving so whitespace cannot mask a valid alias.
+  // Precedence is explicit — a non-empty `subaction` always wins over
+  // `operation`; the raw `command.subaction` is only restored when neither
+  // yields a usable token, preserving the executor's unsupported-subaction
+  // diagnostic.
+  const trimmedSubaction =
+    typeof raw.subaction === "string" ? raw.subaction.trim().toLowerCase() : "";
+  const trimmedOperation =
+    typeof raw.operation === "string" ? raw.operation.trim().toLowerCase() : "";
+  const normalizedSubaction = trimmedSubaction || trimmedOperation;
   const subaction =
     normalizedSubaction === "goto"
       ? "navigate"
       : normalizedSubaction === "read"
         ? "get"
-        : command.subaction;
+        : ((normalizedSubaction ||
+            command.subaction) as BrowserWorkspaceSubaction);
   const timeoutMs =
     parseBrowserWorkspaceNumberLike(command.timeoutMs) ??
     parseBrowserWorkspaceNumberLike(raw.ms) ??

@@ -80,8 +80,10 @@ import {
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
+  validateQueryEntitiesPagination,
   type World,
 } from "@elizaos/core";
+import { sanitizeJsonObject } from "./sanitize-json";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
   if (bio == null) return [];
@@ -356,6 +358,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
+import { documentsFromDb } from "./agent-mapping";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
@@ -429,15 +432,10 @@ function normalizeAgentMessageExamples(messageExamples: unknown): AgentMessageEx
 }
 
 function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowledge {
-  return knowledge.flatMap((item): AgentKnowledge => {
-    if (typeof item === "string") {
-      return [{ item: { case: "path", value: item } }];
-    }
-    if (item && typeof item === "object" && typeof item.path === "string") {
-      return [{ item: { case: "path", value: item.path } }];
-    }
-    return [];
-  });
+  // Delegate to the single shared reader so `mapAgentRow` and `AgentStore.get`
+  // restore directory knowledge identically (canonical `{ path, shared }`
+  // value) instead of maintaining a second, divergent normalizer.
+  return documentsFromDb(knowledge);
 }
 
 function transformAgentSettings(
@@ -2314,6 +2312,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     limit?: number;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -2332,7 +2331,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
+    const { entityId, agentId, roomId, worldId, unique, start, end, offset, cursor } = params;
     const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
     // tableName is required by the IDatabaseAdapter contract (there is no
@@ -2347,13 +2346,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const effectiveLimit = params.limit ?? params.count;
     // Default newest-first; `orderDirection: "asc"` powers around-message paging
     // (load the messages immediately *after* an anchor, not the newest tail).
+    // `Memory.createdAt` is a JavaScript millisecond timestamp. PostgreSQL
+    // stores microseconds, so keyset ordering must truncate to the precision
+    // represented by the cursor; comparing the raw column to a reconstructed
+    // Date would skip rows later in the same millisecond.
+    const cursorCreatedAt = sql`date_trunc('milliseconds', ${memoryTable.createdAt})`;
     const order =
       params.orderDirection === "asc"
-        ? [asc(memoryTable.createdAt), asc(memoryTable.id)]
-        : [desc(memoryTable.createdAt), desc(memoryTable.id)];
+        ? [asc(cursorCreatedAt), asc(memoryTable.id)]
+        : [desc(cursorCreatedAt), desc(memoryTable.id)];
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
+    }
+    if (cursor && offset !== undefined) {
+      throw new Error("getMemories cursor and offset are mutually exclusive");
     }
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
@@ -2376,6 +2383,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (end !== undefined) {
         conditions.push(lte(memoryTable.createdAt, new Date(end)));
+      }
+
+      if (cursor) {
+        const cursorTimestamp = sql`(
+          timestamp 'epoch' + ${cursor.createdAt} * interval '1 millisecond'
+        )`;
+        conditions.push(
+          params.orderDirection === "asc"
+            ? sql`(
+                ${cursorCreatedAt} > ${cursorTimestamp}
+                OR (${cursorCreatedAt} = ${cursorTimestamp} AND ${memoryTable.id} > ${cursor.id}::uuid)
+              )`
+            : sql`(
+                ${cursorCreatedAt} < ${cursorTimestamp}
+                OR (${cursorCreatedAt} = ${cursorTimestamp} AND ${memoryTable.id} < ${cursor.id}::uuid)
+              )`
+        );
       }
 
       if (unique) {
@@ -2963,7 +2987,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       try {
         // Sanitize JSON body to prevent Unicode escape sequence errors
-        const sanitizedBody = this.sanitizeJsonObject(params.body);
+        const sanitizedBody = sanitizeJsonObject(params.body);
 
         // Serialize to JSON string first for an additional layer of protection
         // This ensures any problematic characters are properly escaped during JSON serialization
@@ -2995,68 +3019,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
     });
-  }
-
-  /**
-   * Sanitizes a JSON object for jsonb storage: strips NUL characters (which
-   * PostgreSQL/PGlite jsonb rejects as the `\u0000` escape) and breaks
-   * circular references.
-   *
-   * WHY nothing else is rewritten: the sanitized value is serialized with
-   * JSON.stringify, which already escapes backslashes and control characters
-   * correctly. This function used to ALSO double every backslash not followed
-   * by ["\/bfnrtu] and mangle non-hex `\u` sequences, so a body value like
-   * "C:\Users" was stored (and read back) as "C:\\Users" — silent data
-   * corruption of any string containing a backslash.
-   *
-   * @param value - The value to sanitize
-   * @returns The sanitized value
-   */
-  private sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-    if (value === null || value === undefined) {
-      return value;
-    }
-
-    if (typeof value === "string") {
-      return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
-    }
-
-    if (typeof value === "bigint") {
-      return value.toString();
-    }
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    if (value instanceof Date) {
-      return Number.isFinite(value.getTime()) ? value.toISOString() : null;
-    }
-
-    if (typeof value === "object") {
-      if (seen.has(value as object)) {
-        return null;
-      } else {
-        seen.add(value as object);
-      }
-
-      if (Array.isArray(value)) {
-        return value.map((item) => this.sanitizeJsonObject(item, seen));
-      } else {
-        const result: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(value)) {
-          // Also sanitize object keys
-          const sanitizedKey =
-            typeof key === "string"
-              ? key.replace(new RegExp(String.fromCharCode(0), "g"), "")
-              : key;
-          result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
-        }
-        return result;
-      }
-    }
-
-    return value;
   }
 
   /**
@@ -6175,6 +6137,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
+    validateQueryEntitiesPagination(params);
     return this.withDatabase(async () => {
       const conditions: SQL[] = [];
       const hasComponentQuery =

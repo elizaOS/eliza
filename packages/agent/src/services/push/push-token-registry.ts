@@ -33,6 +33,8 @@ const cacheKeyFor = (agentId: string): string => `push-tokens:${agentId}`;
 export class PushTokenRegistry {
   private tokens = new Map<string, PushTokenRecord>();
   private hydrated = false;
+  private hydrationPromise: Promise<void> | null = null;
+  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly runtime: IAgentRuntime) {}
 
@@ -43,6 +45,21 @@ export class PushTokenRegistry {
   /** Load persisted tokens from the DB-backed cache. Idempotent. */
   async hydrate(): Promise<void> {
     if (this.hydrated) return;
+    if (!this.hydrationPromise) {
+      this.hydrationPromise = this.loadPersistedTokens();
+    }
+    const hydrationPromise = this.hydrationPromise;
+    try {
+      await hydrationPromise;
+    } catch (error) {
+      if (this.hydrationPromise === hydrationPromise) {
+        this.hydrationPromise = null;
+      }
+      throw error;
+    }
+  }
+
+  private async loadPersistedTokens(): Promise<void> {
     const stored = await this.runtime.getCache<PushTokenRecord[]>(
       this.cacheKey,
     );
@@ -60,6 +77,17 @@ export class PushTokenRegistry {
     await this.runtime.setCache(this.cacheKey, [...this.tokens.values()]);
   }
 
+  private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const pending = this.mutationTail.then(mutation);
+    // error-policy:J5 the caller observes `pending`; this recovery keeps one
+    // failed persistence attempt from poisoning every later registry mutation.
+    this.mutationTail = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    return pending;
+  }
+
   /**
    * Register (upsert) a device token. Re-registering an existing token under a
    * new platform moves it to that platform and refreshes `createdAt`.
@@ -69,23 +97,27 @@ export class PushTokenRegistry {
     if (!trimmed) {
       throw new Error("[PushTokenRegistry] token is required");
     }
-    await this.hydrate();
-    this.tokens.set(trimmed, {
-      token: trimmed,
-      platform,
-      createdAt: Date.now(),
+    await this.enqueueMutation(async () => {
+      await this.hydrate();
+      this.tokens.set(trimmed, {
+        token: trimmed,
+        platform,
+        createdAt: Date.now(),
+      });
+      await this.persist();
     });
-    await this.persist();
   }
 
   /** Unregister a device token. Returns true if it existed. */
   async unregister(token: string): Promise<boolean> {
-    await this.hydrate();
-    const removed = this.tokens.delete(token.trim());
-    if (removed) {
-      await this.persist();
-    }
-    return removed;
+    return this.enqueueMutation(async () => {
+      await this.hydrate();
+      const removed = this.tokens.delete(token.trim());
+      if (removed) {
+        await this.persist();
+      }
+      return removed;
+    });
   }
 
   /** List every registered token record. */

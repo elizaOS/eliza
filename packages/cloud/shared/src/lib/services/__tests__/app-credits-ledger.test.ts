@@ -69,6 +69,29 @@ class MockInsufficientCreditsError extends Error {
 }
 
 mock.module("../credits", () => ({
+  assertCreditRefundWithinReservation: ({
+    reservedAmount,
+    refundAmount,
+  }: {
+    reservedAmount: number;
+    refundAmount: number;
+  }) => {
+    if (refundAmount > reservedAmount) throw new Error("refund exceeds reservation");
+  },
+  assertValidCreditSettlementCosts: ({
+    reservedAmount,
+    actualCost,
+  }: {
+    reservedAmount: number;
+    actualCost: number;
+  }) => {
+    if (!Number.isFinite(reservedAmount) || reservedAmount < 0) {
+      throw new Error("invalid reserved cost");
+    }
+    if (!Number.isFinite(actualCost) || actualCost < 0) {
+      throw new Error("invalid actual cost");
+    }
+  },
   InsufficientCreditsError: MockInsufficientCreditsError,
   // Must mirror the real export — app-credits.ts imports it for the $0-estimate
   // floor; a missing export would break the module link under this mock.
@@ -507,6 +530,31 @@ describe("reserveInferenceCredits — holds app inference cost before model work
 });
 
 describe("reconcileCredits — charges/refunds the estimate↔actual delta (#9145)", () => {
+  test.each([
+    { label: "negative actual cost", estimatedBaseCost: 1, actualBaseCost: -1 },
+    { label: "non-finite actual cost", estimatedBaseCost: 1, actualBaseCost: Number.NaN },
+    { label: "negative estimate", estimatedBaseCost: -1, actualBaseCost: 0 },
+  ])(
+    "rejects $label before any app or ledger mutation",
+    async ({ estimatedBaseCost, actualBaseCost }) => {
+      await expect(
+        freshService().reconcileCredits({
+          appId: APP_ID,
+          userId: USER_ID,
+          estimatedBaseCost,
+          actualBaseCost,
+          description: "invalid app settlement",
+        }),
+      ).rejects.toThrow(/invalid (actual|reserved) cost/);
+
+      expect(findAppById).not.toHaveBeenCalled();
+      expect(findUserById).not.toHaveBeenCalled();
+      expect(refundCredits).not.toHaveBeenCalled();
+      expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+      expect(markReservationSettled).not.toHaveBeenCalled();
+    },
+  );
+
   test("no-ops when the difference is below the reconciliation threshold", async () => {
     const result = await freshService().reconcileCredits({
       appId: APP_ID,

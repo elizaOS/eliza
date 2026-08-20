@@ -147,12 +147,12 @@
 		"@elizaos/shared": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.7",
+		"@biomejs/biome": "2.5.8",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.4"
+		"vitest": "^4.1.10"
 	},
 	"publishConfig": {
 		"access": "public"

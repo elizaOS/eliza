@@ -963,6 +963,14 @@ export interface ActionResult {
 	 */
 	data?: ProviderDataRecord;
 
+	/**
+	 * Optional model-bound projection of `data`. When present, prompt renderers
+	 * use this object while runtime state and trajectories retain the complete
+	 * `data` payload. Use it when an action's machine result is substantially
+	 * larger than the fields a model needs to continue or evaluate the turn.
+	 */
+	promptData?: ProviderDataRecord;
+
 	/** Error information if the action failed */
 	error?: string | Error;
 
@@ -976,6 +984,19 @@ export interface ActionResult {
 	 * no opinion about whether the overall turn is complete.
 	 */
 	turnComplete?: boolean;
+
+	/**
+	 * Requests exactly one model-authored reply after this successful action.
+	 * The planner honors this only when the result is the turn's sole completed
+	 * tool, its queue is empty, and the native call explicitly declared final
+	 * scope. A safe no-tool model reply then completes the turn without a second
+	 * evaluator model call; failures, additional tools, unsafe replies, and
+	 * incomplete planner scope retain the normal evaluator path.
+	 *
+	 * Use for UI effects whose wording must remain model-owned (for example,
+	 * navigation). Do not pair it with canned `userFacingText`.
+	 */
+	modelReplyRequired?: boolean;
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue
@@ -1026,11 +1047,16 @@ export interface ActionContext {
  *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
+ * @param streamRevision - Monotonically allocated structured-extractor attempt
+ *   number. A change means `accumulated` restarted and consumers must discard
+ *   incremental state from the preceding attempt. Undefined for raw-token
+ *   streams.
  */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
 	accumulated?: string,
+	streamRevision?: number,
 ) => void | Promise<void>;
 
 /**

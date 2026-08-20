@@ -111,6 +111,31 @@ vi.mock("@elizaos/core", () => {
 
 	return {
 		annotateActiveTrajectoryStep: vi.fn(async () => true),
+		// Faithful double of core's structured error (errors.ts): preserves the
+		// code/context/severity fields tests assert on.
+		ElizaError: class ElizaError extends Error {
+			readonly code: string;
+			readonly context?: Record<string, unknown>;
+			readonly severity?: string;
+			constructor(
+				message: string,
+				options: {
+					code: string;
+					cause?: unknown;
+					context?: Record<string, unknown>;
+					severity?: string;
+				},
+			) {
+				super(
+					message,
+					options.cause !== undefined ? { cause: options.cause } : undefined,
+				);
+				this.name = "ElizaError";
+				this.code = options.code;
+				this.context = options.context;
+				this.severity = options.severity;
+			}
+		},
 		// Confirmation double: tests exercising confirm-gated paths get an
 		// immediate "confirmed" so handlers run to completion in one call.
 		requireConfirmation: vi.fn(async () => ({ status: "confirmed" })),

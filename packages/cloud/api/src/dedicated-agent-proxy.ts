@@ -425,6 +425,7 @@ async function resumeAndRespond(
     return Response.json(
       {
         success: false,
+        code: "agent_error_state",
         error:
           "Agent is in an error state. Resolve the failure before connecting.",
         data: { status: sandbox.status },

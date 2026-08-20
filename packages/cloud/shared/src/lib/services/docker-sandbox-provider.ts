@@ -47,13 +47,17 @@ import {
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
   buildAgentContainerLabelFlags,
+  buildDockerContainerEnvTransport,
+  buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
   ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
+  getContainerSecretEnvPath,
   getVolumePath,
+  getVolumeVaultPassphrasePath,
   parseDockerNodes,
   requiresDockerHostGateway,
   resolveAgentContainerClass,
@@ -1037,6 +1041,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 1. Input validation
     validateAgentName(agentName);
     validateAgentId(agentId);
+    // Reject env-file record splitting before node allocation, SSH, volume, or
+    // vault setup can mutate remote state. Errors identify only the key.
+    for (const [key, value] of Object.entries(environmentVars)) {
+      validateEnvKey(key);
+      validateEnvValue(key, value);
+    }
     if (
       (config.onReplacementCreated || config.onReplacementVpnRegistered) &&
       !config.onReplacementCreateIntent
@@ -1322,8 +1332,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       // that lifecycle: it seeds the persisted key on first provision and
       // must match it afterwards (fail-closed on mismatch), so a later
       // replacement launched without the override still reads the same key.
-      const vaultPassphrase = await ensureVolumeVaultPassphrase(
-        (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
+      await ensureVolumeVaultPassphrase(
+        (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
         volumePath,
         DOCKER_CMD_TIMEOUT_MS,
         environmentVars.ELIZA_VAULT_PASSPHRASE,
@@ -1425,14 +1435,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         // provisioned containers (no token + cloud flag = 401).
         AGENT_DISABLE_AUTO_API_TOKEN: "1",
         ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-        // V2 image refuses to boot on headless Linux without a passphrase
-        // (no D-Bus keychain). The key must be STABLE across container
-        // replacement over the same agent volume: the state-dir vault
-        // ciphertext survives on the mount, so a fresh per-launch key would
-        // orphan every stored credential (#18080 / #19225). Always the key
-        // persisted on the agent volume; a caller-injected value only seeds
-        // that key on first provision and must match it afterwards.
-        ELIZA_VAULT_PASSPHRASE: vaultPassphrase,
         // Durable state root on the `${volumePath}/eliza:/root/.eliza` mount.
         // Without it the runtime resolves state (including the vault) to
         // /root/.local/state/eliza in the container's writable layer, which
@@ -1458,6 +1460,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           : {}),
       });
 
+      // The persisted vault value is appended to the stdin-backed env file on
+      // the Docker host; never retain the caller's override in the generic env
+      // map where it could accidentally return to command construction.
+      delete allEnv.ELIZA_VAULT_PASSPHRASE;
+
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays
       // consistent across caller-supplied and provider-generated values.
@@ -1466,9 +1473,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         validateEnvValue(key, value);
       }
 
-      const envFlags = Object.entries(allEnv)
-        .map(([key, value]) => `-e ${shellQuote(`${key}=${value}`)}`)
-        .join(" ");
+      const envTransport = buildDockerContainerEnvTransport(allEnv);
+      const secretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
 
       const dockerCreateCmd = [
         "docker create",
@@ -1522,9 +1528,15 @@ export class DockerSandboxProvider implements SandboxProvider {
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
         `-p ${bridgePort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
         `-p ${webUiPort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
-        envFlags,
+        ...envTransport.commandFlags,
+        `--env-file ${shellQuote(secretEnvPath)}`,
         shellQuote(resolvedImage),
       ].join(" ");
+      const dockerCreateWithSecretEnvCmd = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: dockerCreateCmd,
+        secretEnvPath,
+        vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+      });
 
       const persistReplacementIntent = config.onReplacementCreateIntent;
 
@@ -1573,7 +1585,12 @@ export class DockerSandboxProvider implements SandboxProvider {
                 }
               }
             : undefined,
-          createContainer: () => ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+          createContainer: () =>
+            ssh.execStdin(
+              dockerCreateWithSecretEnvCmd,
+              envTransport.secretInput,
+              DOCKER_CMD_TIMEOUT_MS,
+            ),
         }),
       );
       createdContainerId = containerId;

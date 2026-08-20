@@ -22,14 +22,7 @@ import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 // Config redaction
 // ---------------------------------------------------------------------------
 
-export function isBlockedObjectKey(key: string): boolean {
-  return (
-    key === "__proto__" ||
-    key === "constructor" ||
-    key === "prototype" ||
-    key === "$include"
-  );
-}
+export { isBlockedObjectKey } from "./blocked-object-keys.ts";
 
 function redactValue(val: unknown): unknown {
   if (val === null || val === undefined) return val;

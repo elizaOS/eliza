@@ -84,9 +84,19 @@ export class CameraWeb extends WebPlugin {
   private currentDeviceId: string | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
+  // Microphone stream acquired separately in startRecording() when audio is
+  // requested. MediaRecorder.stop() and the camera stream teardown never touch
+  // these tracks, so we retain the stream here and stop it explicitly on
+  // recording/preview teardown to avoid leaving the OS microphone engaged.
+  private recordingAudioStream: MediaStream | null = null;
   private recordingStartTime = 0;
   private recordingStateInterval: ReturnType<typeof setInterval> | null = null;
   private isRecording = false;
+  // Guards the async window between entering startRecording() and start()
+  // succeeding. Set synchronously before the first await so a concurrent
+  // startRecording() cannot pass the guard, acquire a second microphone
+  // stream, and orphan a track by overwriting the single audio-stream slot.
+  private isStartingRecording = false;
   private currentSettings: CameraSettings = {
     flash: "off",
     zoom: 1,
@@ -223,7 +233,18 @@ export class CameraWeb extends WebPlugin {
 
   async stopPreview(): Promise<void> {
     if (this.isRecording) {
-      await this.stopRecording();
+      try {
+        await this.stopRecording();
+      } catch (err) {
+        // error-policy:J6 recording teardown failed while stopping preview;
+        // force the shared finalizer and continue tearing down the camera so a
+        // failed stop cannot leave the OS camera or microphone engaged.
+        this.finalizeRecordingTeardown();
+        console.error(
+          "[Camera] Recording teardown during stopPreview failed:",
+          err,
+        );
+      }
     }
 
     if (this.mediaStream) {
@@ -232,6 +253,11 @@ export class CameraWeb extends WebPlugin {
       });
       this.mediaStream = null;
     }
+
+    // Defensive: stopRecording() already releases the mic on a normal stop, but
+    // if the stream was torn down while a recording was mid-flight or the
+    // recorder never fired onstop, the mic could still be live here.
+    this.releaseRecordingAudio();
 
     if (this.videoElement) {
       if (this.previewElement?.contains(this.videoElement)) {
@@ -337,49 +363,95 @@ export class CameraWeb extends WebPlugin {
       throw new Error("Preview not started");
     }
 
-    if (this.isRecording) {
+    if (this.isRecording || this.isStartingRecording) {
       throw new Error("Recording already in progress");
     }
 
     assertRecordingOptions(options);
 
-    let streamToRecord = this.mediaStream;
+    // Claim the lifecycle slot synchronously, before the first await, so a
+    // concurrent startRecording() is rejected instead of racing to acquire a
+    // second microphone stream.
+    this.isStartingRecording = true;
 
-    if (options?.audio !== false) {
-      const audioStream = await getMediaDevices().getUserMedia({
-        audio: true,
-      });
-      streamToRecord = new MediaStream([
-        ...this.mediaStream.getVideoTracks(),
-        ...audioStream.getAudioTracks(),
-      ]);
-    }
+    // The mic stays in this local until start() succeeds and ownership
+    // transfers to the session. Any throw before that point runs the catch
+    // cleanup, so a failed or aborted start never leaves the OS mic engaged.
+    let acquiredAudioStream: MediaStream | null = null;
 
-    const mimeType = getSupportedMimeType();
-    if (!mimeType) throw new Error("No supported video mime type found");
+    try {
+      let streamToRecord = this.mediaStream;
 
-    const recorderOptions: MediaRecorderOptions = { mimeType };
-    if (options?.bitrate) recorderOptions.videoBitsPerSecond = options.bitrate;
-
-    this.recordedChunks = [];
-    this.mediaRecorder = new MediaRecorder(streamToRecord, recorderOptions);
-
-    this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        this.recordedChunks.push(event.data);
+      if (options?.audio !== false) {
+        acquiredAudioStream = await getMediaDevices().getUserMedia({
+          audio: true,
+        });
+        // stopPreview() can clear the camera stream while the mic prompt is
+        // in flight; treat a lost preview as an aborted start rather than
+        // dereferencing a now-null stream and orphaning the acquired mic.
+        if (!this.mediaStream) {
+          throw new Error("Preview stopped before recording could start");
+        }
+        streamToRecord = new MediaStream([
+          ...this.mediaStream.getVideoTracks(),
+          ...acquiredAudioStream.getAudioTracks(),
+        ]);
       }
-    };
 
-    this.mediaRecorder.onerror = (event) => {
-      this.notifyListeners("error", {
-        code: "RECORDING_ERROR",
-        message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
-      });
-    };
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) throw new Error("No supported video mime type found");
 
-    this.recordingStartTime = Date.now();
-    this.isRecording = true;
-    this.mediaRecorder.start(1000);
+      const recorderOptions: MediaRecorderOptions = { mimeType };
+      if (options?.bitrate) {
+        recorderOptions.videoBitsPerSecond = options.bitrate;
+      }
+
+      this.recordedChunks = [];
+      const recorder = new MediaRecorder(streamToRecord, recorderOptions);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+
+      recorder.onerror = (event) => {
+        // error-policy:J4 a recorder error aborts the session without firing
+        // onstop; run the shared finalizer so the interval, recorder, and
+        // separately-acquired mic are released, then surface a distinct error
+        // event to listeners.
+        this.finalizeRecordingTeardown();
+        this.notifyListeners("error", {
+          code: "RECORDING_ERROR",
+          message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+        });
+      };
+
+      // start() can throw a synchronous DOMException; keeping it inside the
+      // guarded block means a failure releases the mic and never wedges the
+      // instance with isRecording still true.
+      recorder.start(1000);
+
+      // start() succeeded: the mic and recorder now belong to this session, so
+      // the catch cleanup must not stop the mic.
+      this.mediaRecorder = recorder;
+      this.recordingAudioStream = acquiredAudioStream;
+      acquiredAudioStream = null;
+      this.recordingStartTime = Date.now();
+      this.isRecording = true;
+    } catch (err) {
+      // error-policy:J2 start failed after the mic may have been acquired;
+      // stop the still-session-unowned mic before rethrowing so a failed or
+      // aborted start does not leave the OS microphone engaged.
+      if (acquiredAudioStream) {
+        acquiredAudioStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      }
+      throw err;
+    } finally {
+      this.isStartingRecording = false;
+    }
 
     this.notifyListeners("recordingState", {
       isRecording: true,
@@ -423,24 +495,19 @@ export class CameraWeb extends WebPlugin {
     }
 
     return new Promise((resolve, reject) => {
-      if (!this.mediaRecorder) {
+      const recorder = this.mediaRecorder;
+      if (!recorder) {
         reject(new Error("MediaRecorder not initialized"));
         return;
       }
 
       const duration = (Date.now() - this.recordingStartTime) / 1000;
 
-      this.mediaRecorder.onstop = () => {
-        if (this.recordingStateInterval) {
-          clearInterval(this.recordingStateInterval);
-          this.recordingStateInterval = null;
-        }
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "video/webm";
+        this.finalizeRecordingTeardown();
 
-        this.isRecording = false;
-
-        const blob = new Blob(this.recordedChunks, {
-          type: this.mediaRecorder?.mimeType || "video/webm",
-        });
+        const blob = new Blob(this.recordedChunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
 
         const video = document.createElement("video");
@@ -453,7 +520,7 @@ export class CameraWeb extends WebPlugin {
             width: video.videoWidth,
             height: video.videoHeight,
             fileSize: blob.size,
-            mimeType: this.mediaRecorder?.mimeType || "video/webm",
+            mimeType,
           });
         };
 
@@ -464,7 +531,7 @@ export class CameraWeb extends WebPlugin {
             width: 0,
             height: 0,
             fileSize: blob.size,
-            mimeType: this.mediaRecorder?.mimeType || "video/webm",
+            mimeType,
           });
         };
 
@@ -475,8 +542,45 @@ export class CameraWeb extends WebPlugin {
         });
       };
 
-      this.mediaRecorder.stop();
+      try {
+        recorder.stop();
+      } catch (err) {
+        // error-policy:J2 stop() threw before onstop could fire; force the
+        // shared teardown so the interval, recorder, and mic are released,
+        // then reject so the caller sees the failure instead of a wedged
+        // recording state.
+        this.finalizeRecordingTeardown();
+        reject(err);
+      }
     });
+  }
+
+  // Idempotent teardown for a recording session: clears the state-reporting
+  // interval, drops recording/recorder state, and releases the separately
+  // acquired microphone. Invoked from the onstop handler, the onerror handler,
+  // and every stop/preview failure path so no throw, abort, or race can leave
+  // the interval running, the instance wedged as recording, or the OS mic
+  // engaged.
+  private finalizeRecordingTeardown(): void {
+    if (this.recordingStateInterval) {
+      clearInterval(this.recordingStateInterval);
+      this.recordingStateInterval = null;
+    }
+    this.isRecording = false;
+    this.mediaRecorder = null;
+    this.releaseRecordingAudio();
+  }
+
+  // Stops and clears the separately-acquired microphone stream. Safe to call
+  // when no audio was recorded; the null guard makes it idempotent across the
+  // finalizeRecordingTeardown() paths and the defensive stopPreview() teardown.
+  private releaseRecordingAudio(): void {
+    if (this.recordingAudioStream) {
+      this.recordingAudioStream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      this.recordingAudioStream = null;
+    }
   }
 
   async getRecordingState(): Promise<VideoRecordingState> {

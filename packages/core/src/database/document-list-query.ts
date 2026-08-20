@@ -25,6 +25,8 @@ export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
 export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
+export const DOCUMENT_LIST_MAX_PINNED_PAGES =
+	Math.floor(DOCUMENT_LIST_MAX_OFFSET / DOCUMENT_LIST_MAX_LIMIT) + 1;
 
 export interface DocumentListQueryCapableAdapter {
 	readonly documentListQueryCapability: typeof DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -62,6 +64,118 @@ function invalidPagination(
 
 function isUuid(value: unknown): value is UUID {
 	return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function normalizeDocumentListCursor(
+	value: unknown,
+): DocumentListCursor | null {
+	if (value === null || typeof value !== "object") return null;
+	const cursor = value as Record<string, unknown>;
+	if (!Number.isSafeInteger(cursor.createdAt) || !isUuid(cursor.id)) {
+		return null;
+	}
+	const hasSnapshotCreatedAt = cursor.snapshotCreatedAt !== undefined;
+	const hasSnapshotId = cursor.snapshotId !== undefined;
+	if (hasSnapshotCreatedAt !== hasSnapshotId) return null;
+	if (!hasSnapshotCreatedAt) {
+		return { createdAt: cursor.createdAt as number, id: cursor.id };
+	}
+	if (
+		!Number.isSafeInteger(cursor.snapshotCreatedAt) ||
+		!isUuid(cursor.snapshotId)
+	) {
+		return null;
+	}
+	if (
+		(cursor.createdAt as number) > (cursor.snapshotCreatedAt as number) ||
+		((cursor.createdAt as number) === (cursor.snapshotCreatedAt as number) &&
+			(cursor.id as UUID).toLowerCase() >
+				(cursor.snapshotId as UUID).toLowerCase())
+	) {
+		return null;
+	}
+	return {
+		createdAt: cursor.createdAt as number,
+		id: cursor.id,
+		snapshotCreatedAt: cursor.snapshotCreatedAt as number,
+		snapshotId: cursor.snapshotId,
+	};
+}
+
+function invalidDocumentListResult(
+	message: string,
+	context: Record<string, unknown>,
+): never {
+	throw new ElizaError(message, {
+		code: "DOCUMENT_LIST_INVALID_RESULT",
+		context,
+		severity: "fatal",
+	});
+}
+
+/** Validates the bounded runtime result returned by a database adapter. */
+export function validateDocumentListQueryResult(
+	value: unknown,
+	params: DocumentListQueryParams,
+): asserts value is DocumentListQueryResult {
+	if (value === null || typeof value !== "object") {
+		invalidDocumentListResult("Document list adapter returned a non-object", {
+			resultType: typeof value,
+		});
+	}
+	const result = value as Record<string, unknown>;
+	for (const field of ["documents", "availableDocuments"] as const) {
+		const rows = result[field];
+		if (
+			!Array.isArray(rows) ||
+			rows.length > params.limit ||
+			rows.some((row) => row === null || typeof row !== "object")
+		) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${field}`,
+				{
+					field,
+					rowCount: Array.isArray(rows) ? rows.length : undefined,
+					maxRows: params.limit,
+				},
+			);
+		}
+	}
+	for (const field of [
+		"totalVisible",
+		"totalAvailable",
+		"totalMatched",
+	] as const) {
+		const count = result[field];
+		if (!Number.isSafeInteger(count) || (count as number) < 0) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${field}`,
+				{ field, count },
+			);
+		}
+	}
+	for (const [moreField, cursorField] of [
+		["hasMore", "nextCursor"],
+		["availableHasMore", "availableNextCursor"],
+	] as const) {
+		const hasMore = result[moreField];
+		const cursor = result[cursorField];
+		if (
+			typeof hasMore !== "boolean" ||
+			hasMore !== (cursor !== undefined) ||
+			(cursor !== undefined && !normalizeDocumentListCursor(cursor))
+		) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${cursorField}`,
+				{
+					moreField,
+					hasMore,
+					cursorField,
+					cursorType: cursor === null ? "null" : typeof cursor,
+				},
+			);
+		}
+	}
 }
 
 export function documentCreatedAt(memory: Memory): number {
@@ -527,29 +641,8 @@ export function validateDocumentListQueryParams(
 			{ offset: params.offset },
 		);
 	}
-	if (
-		params.cursor &&
-		(!Number.isSafeInteger(params.cursor.createdAt) ||
-			!isUuid(params.cursor.id))
-	) {
+	if (params.cursor && !normalizeDocumentListCursor(params.cursor)) {
 		invalidPagination("Document list cursor is invalid", {
-			cursor: params.cursor,
-		});
-	}
-	if (
-		params.cursor &&
-		((params.cursor.snapshotCreatedAt === undefined) !==
-			(params.cursor.snapshotId === undefined) ||
-			(params.cursor.snapshotCreatedAt !== undefined &&
-				(!Number.isSafeInteger(params.cursor.snapshotCreatedAt) ||
-					!isUuid(params.cursor.snapshotId))) ||
-			(params.cursor.snapshotCreatedAt !== undefined &&
-				(params.cursor.createdAt > params.cursor.snapshotCreatedAt ||
-					(params.cursor.createdAt === params.cursor.snapshotCreatedAt &&
-						params.cursor.id.toLowerCase() >
-							(params.cursor.snapshotId as UUID).toLowerCase()))))
-	) {
-		invalidPagination("Document list snapshot cursor is invalid", {
 			cursor: params.cursor,
 		});
 	}
@@ -816,5 +909,29 @@ export async function queryDocumentsWithCapability(
 ): Promise<DocumentListQueryResult> {
 	validateDocumentListQueryParams(params);
 	requireDocumentListQueryCapability(adapter);
-	return adapter.queryDocuments(params);
+	const result: unknown = await adapter.queryDocuments(params);
+	validateDocumentListQueryResult(result, params);
+	return {
+		documents: result.documents,
+		availableDocuments: result.availableDocuments,
+		totalVisible: result.totalVisible,
+		totalAvailable: result.totalAvailable,
+		totalMatched: result.totalMatched,
+		hasMore: result.hasMore,
+		availableHasMore: result.availableHasMore,
+		...(result.nextCursor
+			? {
+					nextCursor: normalizeDocumentListCursor(
+						result.nextCursor,
+					) as DocumentListCursor,
+				}
+			: {}),
+		...(result.availableNextCursor
+			? {
+					availableNextCursor: normalizeDocumentListCursor(
+						result.availableNextCursor,
+					) as DocumentListCursor,
+				}
+			: {}),
+	};
 }

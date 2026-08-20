@@ -13,6 +13,7 @@
 
 import type { ServerResponse } from "node:http";
 import { ElizaError } from "../../errors";
+import type { TrajectorySemanticStageRecord } from "../../services/trajectory-semantic-stage";
 import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
@@ -61,6 +62,7 @@ interface ServiceTrajectoryStep {
 	providerAccesses: ServiceProviderAccess[];
 	/** Absent on action-optional Agent-bridge steps (LLM-only capture). */
 	action?: ServiceActionAttempt;
+	semanticStages?: TrajectorySemanticStageRecord[];
 }
 
 interface ServiceTrajectory {
@@ -203,9 +205,11 @@ function detailToUi(
 	const llmCalls: Array<Record<string, unknown>> = [];
 	const providerAccesses: Array<Record<string, unknown>> = [];
 	const toolEvents: Array<Record<string, unknown>> = [];
+	const semanticStages: TrajectorySemanticStageRecord[] = [];
 
 	const steps = traj.steps;
 	for (const step of steps) {
+		if (step.semanticStages) semanticStages.push(...step.semanticStages);
 		const calls = step.llmCalls;
 		for (const c of calls) {
 			llmCalls.push({
@@ -280,6 +284,7 @@ function detailToUi(
 		providerAccesses,
 		toolEvents,
 		evaluationEvents: [],
+		semanticStages,
 	};
 }
 

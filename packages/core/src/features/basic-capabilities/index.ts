@@ -108,7 +108,11 @@ export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./providers/index.ts";
 
-import { describeImageCached } from "../../media/index.ts";
+import {
+	describeImageCached,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../../media/index.ts";
 import { recentErrorsProvider } from "../../providers/recent-errors.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
@@ -206,6 +210,27 @@ interface PostCreationJson {
 
 const MAX_POST_GENERATION_ATTEMPTS = 3;
 
+/** Hard cap for any single media fetch — attacker-supplied URLs can lie about size. */
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+
+async function readBoundedMediaResponse(
+	response: Response,
+	label: string,
+	url: string,
+): Promise<Buffer> {
+	const contentLength = response.headers.get("content-length");
+	if (contentLength !== null) {
+		const declared = Number(contentLength);
+		if (Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) {
+			throw new MediaFetchError(
+				"max_bytes",
+				`${label} exceeds size limit ${declared} > ${MAX_MEDIA_BYTES}: ${url}`,
+			);
+		}
+	}
+	return await readResponseWithLimit(response, MAX_MEDIA_BYTES);
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -267,7 +292,11 @@ export async function fetchMediaData(
 					if (!response.ok) {
 						throw new Error(`Failed to fetch file: ${attachment.url}`);
 					}
-					const mediaBuffer = Buffer.from(await response.arrayBuffer());
+					const mediaBuffer = await readBoundedMediaResponse(
+						response,
+						"Media",
+						attachment.url,
+					);
 					const mediaType = attachment.contentType || "image/png";
 					return { data: mediaBuffer, mediaType };
 				} finally {
@@ -333,8 +362,7 @@ export async function processAttachments(
 					throw new Error(`Failed to fetch image: ${res.statusText}`);
 				}
 
-				const arrayBuffer = await res.arrayBuffer();
-				const buffer = Buffer.from(arrayBuffer);
+				const buffer = await readBoundedMediaResponse(res, "Image", url);
 				const contentType =
 					res.headers.get("content-type") || "application/octet-stream";
 				imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
@@ -400,7 +428,9 @@ export async function processAttachments(
 					"Processing text document",
 				);
 
-				const textContent = await res.text();
+				const textContent = (
+					await readBoundedMediaResponse(res, "Text document", url)
+				).toString("utf8");
 				processedAttachment.text = textContent;
 				processedAttachment.title = processedAttachment.title || "Text File";
 
@@ -421,7 +451,7 @@ export async function processAttachments(
 				const { convertPdfToTextFromBuffer } = await import(
 					"../documents/utils"
 				);
-				const pdfBuffer = Buffer.from(await res.arrayBuffer());
+				const pdfBuffer = await readBoundedMediaResponse(res, "PDF", url);
 				const textContent = await convertPdfToTextFromBuffer(
 					pdfBuffer,
 					processedAttachment.title ?? undefined,

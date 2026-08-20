@@ -128,8 +128,49 @@ function pruneCache(): void {
   }
 }
 
-function cacheKey(messageId: string | null | undefined, model: string): string {
-  return `${messageId ?? "anon"}::${model}`;
+function stableMessageIdentity(message: EmailLikeMessage): string | null {
+  for (const candidate of [message.id, message.externalId]) {
+    const normalized = candidate?.trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function canonicalClassificationInput(message: EmailLikeMessage): string {
+  return JSON.stringify({
+    subject: message.subject ?? null,
+    from: message.from ?? null,
+    fromEmail: message.fromEmail ?? null,
+    snippet: message.snippet ?? null,
+    bodyText: message.bodyText ?? null,
+    labels: message.labels ?? null,
+    headers: message.headers
+      ? Object.entries(message.headers).sort(([left], [right]) =>
+          left.localeCompare(right),
+        )
+      : null,
+  });
+}
+
+async function cacheKey(
+  runtime: IAgentRuntime,
+  messageId: string,
+  model: string,
+  message: EmailLikeMessage,
+): Promise<string> {
+  const canonicalTuple = JSON.stringify([
+    runtime.agentId,
+    messageId,
+    model,
+    canonicalClassificationInput(message),
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalTuple),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function readSettingString(runtime: IAgentRuntime, key: string): string | null {
@@ -392,9 +433,12 @@ export async function classifyEmail(
 
   const modelSetting =
     opts.modelOverride?.trim() || getConfiguredEmailClassifierModel(runtime);
-  const cacheId = message.id ?? message.externalId ?? null;
-  const key = cacheKey(cacheId, modelSetting);
-  const cached = CLASSIFICATION_CACHE.get(key);
+  const cacheId = stableMessageIdentity(message);
+  const key =
+    cacheId === null
+      ? null
+      : await cacheKey(runtime, cacheId, modelSetting, message);
+  const cached = key === null ? undefined : CLASSIFICATION_CACHE.get(key);
   if (cached && Date.now() - cached.storedAt <= CACHE_TTL_MS) {
     return cached.classification;
   }
@@ -422,11 +466,13 @@ export async function classifyEmail(
         confidence: 0,
         signals: ["llm_unparseable"],
       };
-    CLASSIFICATION_CACHE.set(key, {
-      classification,
-      storedAt: Date.now(),
-    });
-    pruneCache();
+    if (key !== null) {
+      CLASSIFICATION_CACHE.set(key, {
+        classification,
+        storedAt: Date.now(),
+      });
+      pruneCache();
+    }
     return classification;
   } catch (error) {
     logger.warn(

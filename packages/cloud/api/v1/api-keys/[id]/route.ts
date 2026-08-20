@@ -14,6 +14,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -79,7 +80,12 @@ app.patch("/", async (c) => {
       c,
     });
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const { name, description, rate_limit, is_active, expires_at } =
       updateApiKeySchema.parse(body);
 

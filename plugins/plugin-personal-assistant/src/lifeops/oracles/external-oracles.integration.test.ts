@@ -29,6 +29,7 @@ import {
   GOOGLE_ROUTES_FIELD_MASK,
   GoogleRoutesMatrixAdapter,
 } from "./google-routes.js";
+import { requestBoundedJson } from "./http.js";
 import { NwsForecastAdapter } from "./nws.js";
 import {
   ExternalOracleRegistry,
@@ -195,7 +196,13 @@ describe("NWS point forecast adapter", () => {
       code: "ORACLE_HTTP_TIMEOUT",
     });
     mode = "invalid-json";
-    await expect(adapter.forecast(query)).rejects.toMatchObject({
+    const invalidJsonAdapter = new NwsForecastAdapter({
+      endpointOverride: endpoint,
+      allowInsecureLoopbackForTests: true,
+      userAgent: "oracle-test (test@example.com)",
+      timeoutMs: 500,
+    });
+    await expect(invalidJsonAdapter.forecast(query)).rejects.toMatchObject({
       code: "ORACLE_HTTP_INVALID_JSON",
     });
   });
@@ -237,6 +244,39 @@ describe("NWS point forecast adapter", () => {
     expect(snapshot.issues.map((issue) => issue.code)).toContain(
       "NWS_HOURLY_UNAVAILABLE",
     );
+  });
+});
+
+describe("bounded HTTP oracle transport", () => {
+  it("times out and closes a real response that stalls after its headers", async () => {
+    let resolveClosed: (() => void) | undefined;
+    const closed = new Promise<void>((resolve) => {
+      resolveClosed = resolve;
+    });
+    const endpoint = await startServer((_request, response) => {
+      response.once("close", () => resolveClosed?.());
+      response.writeHead(200, {
+        "Content-Type": "application/json",
+        "Transfer-Encoding": "chunked",
+      });
+      response.flushHeaders();
+      response.write('{"partial":');
+    });
+
+    await expect(
+      requestBoundedJson({
+        url: new URL(endpoint),
+        safeResource: "loopback/stalled-body",
+        timeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({ code: "ORACLE_HTTP_TIMEOUT" });
+
+    await Promise.race([
+      closed,
+      delay(500).then(() => {
+        throw new Error("Timed-out oracle response remained connected.");
+      }),
+    ]);
   });
 });
 

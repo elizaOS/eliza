@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetPreparedDesktopCloudLoginSessionForTests,
   buildSameTabCloudLoginPath,
   CLOUD_LOGIN_POPUP_NAME,
   canNavigateSameTabForBlockedPopup,
@@ -18,10 +19,12 @@ import {
   hasSameOriginStewardLogin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
+  prepareDesktopCloudLoginSession,
   releaseClaimedCloudLoginWindow,
   resolveCloudSignInPageUrl,
   shouldUseSameTabCloudLogin,
   takeClaimedCloudLoginWindow,
+  takePreparedDesktopCloudLoginSession,
 } from "./cloud-login-launch";
 
 const globalWithPlatform = globalThis as typeof globalThis & {
@@ -87,9 +90,74 @@ afterEach(() => {
   // Drain the module-level gesture stash so a handle claimed in one test can
   // never leak into (or be closed by) the next test's claim.
   void takeClaimedCloudLoginWindow();
+  __resetPreparedDesktopCloudLoginSessionForTests();
   vi.restoreAllMocks();
   restoreDescriptor("location", originalLocationDescriptor);
   restoreDescriptor("matchMedia", originalMatchMediaDescriptor);
+});
+
+describe("desktop Cloud login session warm-up", () => {
+  const cloudApiBase = "https://api.eliza.app";
+  const response = {
+    ok: true,
+    apiBase: cloudApiBase,
+    browserUrl: "https://eliza.app/auth/cli-login?session=prepared",
+    sessionId: "prepared",
+  };
+
+  it("starts one server session while the CTA is visible and consumes it once", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const start = vi.fn(async () => response);
+
+    const prepared = prepareDesktopCloudLoginSession(cloudApiBase, start);
+    const duplicate = prepareDesktopCloudLoginSession(cloudApiBase, start);
+
+    expect(prepared).not.toBeNull();
+    expect(duplicate).toBe(prepared);
+    await expect(prepared).resolves.toEqual(response);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBe(prepared);
+    expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBeNull();
+  });
+
+  it("does not create unused login sessions outside Electrobun", () => {
+    const start = vi.fn(async () => response);
+
+    expect(prepareDesktopCloudLoginSession(cloudApiBase, start)).toBeNull();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("drops a failed warm-up so the deliberate click can start fresh", async () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const start = vi
+      .fn<() => Promise<typeof response>>()
+      .mockResolvedValueOnce({ ...response, ok: false })
+      .mockResolvedValueOnce(response);
+
+    await prepareDesktopCloudLoginSession(cloudApiBase, start);
+    expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBeNull();
+
+    await prepareDesktopCloudLoginSession(cloudApiBase, start);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not consume a warm session after its safe desktop window", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-19T10:00:00.000Z"));
+      windowWithElectrobun.__electrobunWindowId = 1;
+      const prepared = prepareDesktopCloudLoginSession(
+        cloudApiBase,
+        async () => response,
+      );
+      await prepared;
+
+      vi.advanceTimersByTime(5 * 60_000);
+      expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("shouldUseSameTabCloudLogin", () => {
@@ -178,6 +246,14 @@ describe("buildSameTabCloudLoginPath", () => {
 });
 
 describe("preOpenCloudLoginWindow", () => {
+  it("skips renderer popups in Electrobun so desktop RPC can open the system browser", () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const openSpy = vi.spyOn(window, "open");
+
+    expect(preOpenCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("skips the popup attempt on touch-primary hosted web (redirect-first)", () => {
     stubMatchMedia(true);
     const openSpy = vi.spyOn(window, "open");

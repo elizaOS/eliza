@@ -293,7 +293,6 @@
         "scripts/**/*.{mjs,ts}",
         "test/**/*.{ts,tsx}",
         "vitest.config.ts",
-        "vitest.e2e.config.ts",
         "vitest.app-real-e2e.config.ts",
         "vitest.harvest-live-agent.config.ts"
       ],

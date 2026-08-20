@@ -22,7 +22,10 @@ import {
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).
-import { isCloudProvisionedContainer } from "@elizaos/shared";
+import {
+  isCloudProvisionedContainer,
+  parseCanonicalInteger,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
@@ -161,19 +164,15 @@ interface RuntimeServiceOrderItem {
   instances: RuntimeOrderItem[];
 }
 
-function parseDebugPositiveInt(
+export function parseDebugPositiveInt(
   raw: string | null,
   fallback: number,
   min: number,
   max: number,
-): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  const intValue = Math.floor(parsed);
-  if (intValue < min) return min;
-  if (intValue > max) return max;
-  return intValue;
+): number | "invalid" {
+  if (raw === null || raw === "") return fallback;
+  const parsed = parseCanonicalInteger(raw, { min, max, clamp: true });
+  return parsed === undefined ? fallback : parsed;
 }
 
 function classNameFor(value: object): string {
@@ -683,6 +682,19 @@ export async function handleHealthRoutes(
       64,
       100_000,
     );
+    if (
+      maxDepth === "invalid" ||
+      maxArrayLength === "invalid" ||
+      maxObjectEntries === "invalid" ||
+      maxStringLength === "invalid"
+    ) {
+      error(
+        res,
+        "depth, maxArrayLength, maxObjectEntries, and maxStringLength must be canonical positive integers",
+        400,
+      );
+      return true;
+    }
 
     const serializeOptions: RuntimeDebugSerializeOptions = {
       maxDepth,

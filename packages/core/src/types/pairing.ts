@@ -141,12 +141,16 @@ export function normalizePairingPageOptions(
  * Result of upserting a pairing request
  */
 export interface UpsertPairingRequestResult {
-	/** The pairing code (existing or newly generated) */
+	/**
+	 * The pairing code (existing or newly generated). Empty when the request
+	 * was rejected because the channel's pending queue is at
+	 * `maxPendingRequests` — pending requests are never evicted to make room.
+	 */
 	code: string;
 	/** Whether a new request was created (vs updating existing) */
 	created: boolean;
-	/** The full request object */
-	request: PairingRequest;
+	/** The full request object; absent when the request was rejected at the pending-queue cap */
+	request?: PairingRequest;
 }
 
 /**
@@ -197,7 +201,11 @@ export interface ChannelPairingAdapter {
  * Pairing configuration for DM access control
  */
 export interface PairingConfig {
-	/** Maximum pending requests per channel (default: 3) */
+	/**
+	 * Maximum pending requests per channel (default: 3). New senders are
+	 * rejected at the cap; pending requests are never pruned to make room, so
+	 * a flood of fresh identities cannot evict a legitimate sender's request.
+	 */
 	maxPendingRequests?: number;
 	/** Request expiration time in milliseconds (default: 1 hour) */
 	requestTtlMs?: number;

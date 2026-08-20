@@ -1,6 +1,7 @@
 /** Drives the genuine Shared AgentRuntime reminder action with a fixed clock and deterministic model boundary. */
 
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
+import { ChannelType } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 
 const NOW = "2026-08-16T04:48:56.509Z";
@@ -36,6 +37,9 @@ const reminderRunner = {
     return [];
   },
   async apply() {
+    throw new Error("Reminder mutation is outside this runtime creation proof");
+  },
+  async applyWithResult() {
     throw new Error("Reminder mutation is outside this runtime creation proof");
   },
   async pipeline() {
@@ -206,7 +210,7 @@ describe("Shared reminder relative-delay runtime authority", () => {
         assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
         reminders: {
           runner: reminderRunner,

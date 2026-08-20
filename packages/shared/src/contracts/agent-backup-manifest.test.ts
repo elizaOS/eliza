@@ -1636,6 +1636,66 @@ describe("agent backup manifest v2", () => {
     expect(expired.live).toEqual([]);
   });
 
+  it("releases a data key whose unwrap finishes after the deadline", async () => {
+    const fixture = await encryptedPayloadFixture();
+    const verified = await verifyAgentBackupManifestV2ForRestore(
+      fixture.manifest,
+      restoreAuthority(fixture.manifest),
+    );
+    const harness = restoreProvidersFor(fixture);
+    let finishUnwrap: ((dataKey: Buffer) => void) | undefined;
+    harness.providers.unwrapDek = () =>
+      new Promise<Buffer>((resolve) => {
+        finishUnwrap = resolve;
+      });
+
+    await expect(
+      verifyAgentBackupManifestV2Payload(
+        verified,
+        harness.providers,
+        { deadlineEpochMs: Date.now() + 20 },
+        restoreAttempt(),
+      ),
+    ).rejects.toThrow(/deadline/);
+    expect(harness.transactions[0]).toMatchObject({ aborted: true });
+    expect(harness.calls.release).toBe(0);
+
+    finishUnwrap?.(fixture.key);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(harness.calls.release).toBe(1);
+    expect(harness.live).toEqual([]);
+  });
+
+  it("releases a data key returned while its unwrap cancels the operation", async () => {
+    const fixture = await encryptedPayloadFixture();
+    const verified = await verifyAgentBackupManifestV2ForRestore(
+      fixture.manifest,
+      restoreAuthority(fixture.manifest),
+    );
+    const harness = restoreProvidersFor(fixture);
+    const controller = new AbortController();
+    harness.providers.unwrapDek = () => {
+      controller.abort();
+      return fixture.key;
+    };
+
+    await expect(
+      verifyAgentBackupManifestV2Payload(
+        verified,
+        harness.providers,
+        {
+          deadlineEpochMs: Date.now() + 60_000,
+          signal: controller.signal,
+        },
+        restoreAttempt(),
+      ),
+    ).rejects.toThrow(/cancelled/);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(harness.calls.release).toBe(1);
+    expect(harness.transactions[0]).toMatchObject({ aborted: true });
+    expect(harness.live).toEqual([]);
+  });
+
   it("supports a bounded incremental manifest sourced from a Cloud node", async () => {
     const draft = await fixtureDraft();
     draft.operationId = ids.nextOperation;

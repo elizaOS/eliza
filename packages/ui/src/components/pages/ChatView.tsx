@@ -98,7 +98,6 @@ import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
-import { ServingProviderChip } from "../composites/chat/ServingProviderChip";
 import { Input } from "../ui/input";
 import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
 import {
@@ -998,7 +997,6 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          <ServingProviderChip className="self-end px-1 pb-0.5" />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
               <ContinuousChatToggle
@@ -1072,7 +1070,6 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          <ServingProviderChip className="self-end px-1 pb-0.5" />
           {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
               <ContinuousChatToggle

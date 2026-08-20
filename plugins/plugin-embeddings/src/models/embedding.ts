@@ -35,6 +35,16 @@ type EmbeddingEndpoint = {
 // safe buffer at the conventional ~4 chars/token estimate.
 const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
+const EMBEDDING_TIMEOUT_MS = 30_000;
+
+function resolveEmbeddingSignal(
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number
+): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+}
+
 export function validateEmbeddingDimension(dimension: number): VectorDimension {
   const validDimensions = Object.values(VECTOR_DIMS) as number[];
   if (!validDimensions.includes(dimension)) {
@@ -134,7 +144,7 @@ async function requestEmbeddings(
   runtime: IAgentRuntime,
   input: string | string[],
   embeddingDimension: VectorDimension,
-  signal?: AbortSignal
+  callerSignal?: AbortSignal
 ): Promise<number[][]> {
   const endpoints = getEmbeddingEndpoints(runtime);
   const expectedCount = Array.isArray(input) ? input.length : 1;
@@ -148,10 +158,10 @@ async function requestEmbeddings(
         input,
         embeddingDimension,
         expectedCount,
-        signal
+        callerSignal
       );
     } catch (error) {
-      if (signal?.aborted) {
+      if (callerSignal?.aborted) {
         throw error;
       }
       failures.push(`${endpoint.role} ${endpoint.baseURL}: ${formatFailure(error)}`);
@@ -180,9 +190,10 @@ async function requestEmbeddingsFromEndpoint(
   input: string | string[],
   embeddingDimension: VectorDimension,
   expectedCount: number,
-  signal?: AbortSignal
+  callerSignal?: AbortSignal
 ): Promise<number[][]> {
   const url = `${endpoint.baseURL}/embeddings`;
+  const signal = resolveEmbeddingSignal(callerSignal, EMBEDDING_TIMEOUT_MS);
 
   logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`);
 
@@ -198,7 +209,7 @@ async function requestEmbeddingsFromEndpoint(
       input,
       ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
-    ...(signal ? { signal } : {}),
+    signal,
   });
 
   if (!response.ok) {
@@ -320,5 +331,5 @@ export async function handleBatchTextEmbedding(
     return truncate(text.trim());
   });
 
-  return requestEmbeddings(runtime, prepared, embeddingDimension);
+  return requestEmbeddings(runtime, prepared, embeddingDimension, undefined);
 }

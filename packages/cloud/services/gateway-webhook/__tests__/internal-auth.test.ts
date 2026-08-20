@@ -71,6 +71,38 @@ describe("validateInternalSecret", () => {
   });
 });
 
+// W5-033: POST /drain latches the process-global draining flag, so it must sit
+// behind the same X-Internal-Secret gate as /internal/deliver — the service is
+// the public webhook ingress, and an unauthenticated drain 503s /ready on every
+// replica until restart. These pin the route wiring in src/index.ts so the
+// guard cannot be dropped without failing CI (mirrors gateway-discord's
+// internal-auth contract).
+describe("operational route auth wiring", () => {
+  const indexSource = async () =>
+    Bun.file(new URL("../src/index.ts", import.meta.url)).text();
+
+  test("/drain and /internal/deliver require the internal secret", async () => {
+    const source = await indexSource();
+    for (const route of ['"/drain"', '"/internal/deliver"']) {
+      const routeIndex = source.indexOf(route);
+      expect(routeIndex).toBeGreaterThan(-1);
+      const handler = source.slice(routeIndex, routeIndex + 500);
+      expect(handler).toContain("validateInternalSecret(c.req.raw)");
+      expect(handler).toContain("401");
+    }
+  });
+
+  test("/health and /ready stay unauthenticated for probes", async () => {
+    const source = await indexSource();
+    for (const route of ['"/health"', '"/ready"']) {
+      const routeIndex = source.indexOf(route);
+      expect(routeIndex).toBeGreaterThan(-1);
+      const handler = source.slice(routeIndex, routeIndex + 300);
+      expect(handler).not.toContain("validateInternalSecret");
+    }
+  });
+});
+
 // enforceForwarderSecret gates the public webhook routes (finding L3, #12878).
 // Uses the DEDICATED ELIZA_APP_WEBHOOK_GATEWAY_SECRET (decoupled from the
 // internal-event GATEWAY_INTERNAL_SECRET). Fail-closed when the dedicated secret

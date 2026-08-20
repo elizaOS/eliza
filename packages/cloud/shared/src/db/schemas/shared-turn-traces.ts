@@ -1,9 +1,15 @@
 // Defines the shared turn traces Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { SharedRuntimeTimingReceipt } from "../../lib/services/shared-runtime/shared-runtime-timing";
 
 /** Terminal outcome of a Shared turn as classified by the trace recorder. */
-export type SharedTurnTraceFinishReason = "reply" | "capability-wall" | "degraded";
+export type SharedTurnTraceFinishReason =
+  | "reply"
+  | "capability-wall"
+  | "degraded"
+  | "error"
+  | "aborted";
 
 /**
  * One compact stage in a Shared turn trace: a short machine name, an optional
@@ -20,6 +26,8 @@ export type SharedTurnTraceStage = {
 export type SharedTurnTraceStages = {
   finishReason: SharedTurnTraceFinishReason;
   stages: SharedTurnTraceStage[];
+  /** Content-free terminal runtime receipt captured by the same sampled row. */
+  terminalTiming?: SharedRuntimeTimingReceipt;
 };
 
 /** Token counts mirrored from `SharedAgentTurnUsage` (numbers only, no text). */

@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "../guards";
@@ -22,7 +23,13 @@ app.post("/", async (c) => {
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const parsed = CheckSchema.safeParse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const parsed = CheckSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
         {
@@ -39,16 +46,23 @@ app.post("/", async (c) => {
     if (!availability.available) {
       return c.json({ success: true, domain, available: false });
     }
-    const price = computeDomainPrice(availability.priceUsdCents);
-    const renewal = computeDomainPrice(
-      availability.renewalUsdCents ?? availability.priceUsdCents,
-    );
+    const years =
+      await cloudflareRegistrarService.getMinimumRegistrationYears(domain);
+    const renewalWholesaleUsdCents =
+      availability.renewalUsdCents ?? availability.priceUsdCents;
+    const aggregateWholesaleUsdCents =
+      availability.priceUsdCents + renewalWholesaleUsdCents * (years - 1);
+    if (!Number.isSafeInteger(aggregateWholesaleUsdCents)) {
+      throw new Error("Cloudflare registrar quote exceeds safe integer cents");
+    }
+    const price = computeDomainPrice(aggregateWholesaleUsdCents);
+    const renewal = computeDomainPrice(renewalWholesaleUsdCents);
     return c.json({
       success: true,
       domain,
       available: true,
       currency: availability.currency,
-      years: availability.years,
+      years,
       price: {
         wholesaleUsdCents: price.wholesaleUsdCents,
         marginUsdCents: price.marginUsdCents,

@@ -10,6 +10,7 @@ import {
   buildOwnerVoiceStyleCard,
   type CreativeMemoTranscript,
   createCreativeDraftArtifact,
+  creativeDraftNarrativeViolations,
   type OwnerVoiceSource,
   scoreOwnerVoiceFidelity,
 } from "../src/lifeops/creative-draft/index.js";
@@ -130,11 +131,122 @@ describe("creative draft owner-voice primitives", () => {
 
     expect(revised.id).toBe(initial.id);
     expect(revised.acceptedEdits).toEqual(["Sharper opening approved."]);
+    expect(revised.acceptedPassages).toEqual([
+      "Look, the honest version starts by naming the waste.",
+    ]);
     expect(revised.vetoedPhrases).toEqual(["best-in-class"]);
     expect(revised.sections[0]?.text).toBe(
       "Look, the honest version starts by naming the waste.",
     );
     expect(revised.sections[1]).toEqual(initial.sections[1]);
+    expect(revised.narrative).toBeUndefined();
+    expect(
+      creativeDraftNarrativeViolations(
+        "LOOK, the honest version starts by naming the waste. Ship it.",
+        revised,
+      ),
+    ).toEqual([]);
+    expect(
+      creativeDraftNarrativeViolations(
+        "This is a best-in-class rewrite that drops the approved opening.",
+        revised,
+      ),
+    ).toEqual([
+      "vetoed phrase reintroduced: best-in-class",
+      "accepted passage omitted: Look, the honest version starts by naming the waste.",
+    ]);
+  });
+
+  it("rejects a veto that remains in a structured draft section", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Vetoed copy",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [
+        {
+          id: "memo-veto",
+          transcript: "Never call this a game changer again.",
+        },
+      ],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    expect(() =>
+      applyCreativeDraftRevision(initial, {
+        instruction: "Veto that phrase.",
+        vetoedPhrase: "game changer",
+        revisedAt: "2026-07-06T10:20:00.000Z",
+      }),
+    ).toThrow(/still contains vetoed phrase/u);
+  });
+
+  it("matches vetoes as phrases instead of fragments of other words", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Token boundaries",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-boundary", transcript: "Start with the result." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Never use art as a standalone label.",
+      vetoedPhrase: "art",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+
+    expect(
+      creativeDraftNarrativeViolations("Start with the result.", revised),
+    ).toEqual([]);
+    expect(
+      creativeDraftNarrativeViolations("The ART label is misleading.", revised),
+    ).toEqual(["vetoed phrase reintroduced: art"]);
+
+    const repeatedFragments = `${"start ".repeat(50_000)}finish`;
+    const startedAt = performance.now();
+    expect(
+      creativeDraftNarrativeViolations(repeatedFragments, revised),
+    ).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(250);
+  });
+
+  it("replaces a superseded accepted passage instead of requiring both", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Successive approvals",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-approval", transcript: "First source version." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+    const first = applyCreativeDraftRevision(initial, {
+      instruction: "Approve the first rewrite.",
+      acceptedEdit: "First opening approved.",
+      replacementText: "The first approved opening.",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+    const second = applyCreativeDraftRevision(first, {
+      instruction: "Replace that opening with this approved version.",
+      acceptedEdit: "Replacement opening approved.",
+      replacementText: "The final approved opening.",
+      revisedAt: "2026-07-06T10:30:00.000Z",
+    });
+
+    expect(second.acceptedPassages).toEqual(["The final approved opening."]);
+    expect(
+      creativeDraftNarrativeViolations(
+        "The final approved opening. Continue from here.",
+        second,
+      ),
+    ).toEqual([]);
   });
 
   it("revises a non-first section by sectionIndex", () => {

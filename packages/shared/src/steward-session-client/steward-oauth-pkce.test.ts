@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildStewardOAuthAuthorizeUrl,
+  consumeStewardPkceVerifier,
   createStewardPkceChallenge,
   createStewardPkcePair,
   generateStewardOAuthState,
@@ -101,5 +102,47 @@ describe("steward-oauth-pkce", () => {
       JSON.stringify({ verifier: "v", expiresAt: Date.now() + 60_000 }),
     );
     expect(peekStewardOAuthState()).toBeNull();
+  });
+
+  it("peeks state and consumes the verifier from local storage when session storage is unavailable", () => {
+    const previousWindow = globalThis.window;
+    const stored = JSON.stringify({
+      verifier: "local-verifier",
+      state: "local-state",
+      expiresAt: Date.now() + 60_000,
+    });
+    let removed = false;
+    const localStorage = {
+      getItem: () => (removed ? null : stored),
+      removeItem: () => {
+        removed = true;
+      },
+    };
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: Object.create(null),
+    });
+    Object.defineProperty(globalThis.window, "sessionStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("Access denied", "SecurityError");
+      },
+    });
+    Object.defineProperty(globalThis.window, "localStorage", {
+      configurable: true,
+      value: localStorage,
+    });
+
+    try {
+      expect(peekStewardOAuthState()).toBe("local-state");
+      expect(removed).toBe(false);
+      expect(consumeStewardPkceVerifier()).toBe("local-verifier");
+      expect(removed).toBe(true);
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+      });
+    }
   });
 });

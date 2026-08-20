@@ -311,9 +311,30 @@ jobs:
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
+      # The heavy suites gate on a real Chromium binary; without one they
+      # self-skip and run-heavy-e2e.mjs fails the lane closed. Install the
+      # browser revision pinned by the workspace's Playwright lock entry.
+      - name: Provision Chromium for heavy E2E regression suite
+        id: provision-chrome
+        run: |
+          .github/scripts/install-playwright-browsers.sh chromium
+          chrome_path="$(bun -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
+          if [ ! -x "$chrome_path" ]; then
+            echo "::error::Pinned Playwright Chromium is not executable at $chrome_path; the heavy E2E gate cannot run." >&2
+            exit 1
+          fi
+          echo "chrome-path=$chrome_path" >> "$GITHUB_OUTPUT"
+
+      # run-heavy-e2e.mjs fails closed: missing env here turns the step red
+      # instead of letting both suites self-skip to a vacuous green.
       - name: Run heavy E2E regression suite
-        # TODO: verify this target exists in eliza root package.json.
         run: bun run test:e2e:heavy
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZA_CHROME_PATH: ${{ steps.provision-chrome.outputs.chrome-path }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Probe optional cloud live regression key
         id: probe-cloud-live-key
@@ -468,7 +489,15 @@ jobs:
             curl \
             desktop-file-utils \
             file \
-            rpm
+            flatpak \
+            libayatana-appindicator3-1 \
+            rpm \
+            xauth \
+            xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive -y flathub \
+            org.gnome.Platform//49 \
+            org.gnome.Sdk//49
 
       - name: Install root dependencies
         # --ignore-scripts skips native dependency install scripts (e.g. @tensorflow/tfjs-node
@@ -879,6 +908,37 @@ jobs:
             --version=${{ needs.prepare.outputs.version }} \
             --channel=${{ needs.prepare.outputs.env }} \
             --arch=x64
+          node packages/app-core/scripts/package-electrobun-flatpak.mjs \
+            --version=${{ needs.prepare.outputs.version }} \
+            --arch=x86_64
+
+      - name: Smoke test packaged Linux desktop
+        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELIZA_TEST_PACKAGED_AUTO_BUILD: "0"
+          STARTUP_TIMEOUT: "420"
+          LIVENESS_TIMEOUT: "10"
+          SKIP_BUILD: "1"
+          SKIP_SIGNATURE_CHECK: "1"
+        run: bun run test:desktop:packaged
+
+      - name: Install and launch Flatpak artifact
+        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
+        run: |
+          bundle="$(find packages/app-core/platforms/electrobun/artifacts -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
+          test -n "$bundle"
+          flatpak install --user --noninteractive -y --reinstall "$bundle"
+          set +e
+          timeout 45s xvfb-run --auto-servernum \
+            --server-args="-screen 0 1280x900x24 -nolisten tcp" \
+            flatpak run ai.elizaos.app
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "::error::Flatpak app exited before the 45-second liveness window (status $status)."
+            exit 1
+          fi
+          flatpak info --user ai.elizaos.app
 
       - name: List build output
         run: |
@@ -910,9 +970,21 @@ jobs:
         shell: pwsh
         run: |
           $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe"
+          # SHA256-pinned like the actionlint/gitleaks installers; bump the
+          # version, URL, and hash together. Recorded from the is-6_7_1 release
+          # asset digest exposed by the GitHub API.
+          $expectedSha256 = "4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0"
           $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.1.exe"
           Write-Host "Downloading Inno Setup 6.7.1..."
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          # This job holds the Windows signing certificate, so the installer
+          # bytes must be verified before they are executed.
+          $actualSha256 = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            Write-Error "Inno Setup installer SHA256 mismatch: expected $expectedSha256, got $actualSha256"
+            exit 1
+          }
+          Write-Host "SHA256 verified: $actualSha256"
           Write-Host "Installing silently..."
           Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -NoNewWindow
 
@@ -1613,6 +1685,7 @@ jobs:
             packages/app-core/platforms/electrobun/artifacts/*.AppImage
             packages/app-core/platforms/electrobun/artifacts/*.deb
             packages/app-core/platforms/electrobun/artifacts/*.rpm
+            packages/app-core/platforms/electrobun/artifacts/*.flatpak
             packages/app-core/platforms/electrobun/artifacts/*.tar.zst
             packages/app-core/platforms/electrobun/artifacts/*.exe
             packages/app-core/platforms/electrobun/artifacts/*.exe.zip

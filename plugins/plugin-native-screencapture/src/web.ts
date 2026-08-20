@@ -81,6 +81,21 @@ export class ScreenCaptureWeb extends WebPlugin {
     callback: (event: ScreenCaptureEventData) => void;
   }> = [];
 
+  /**
+   * Active-capture length in seconds. MediaRecorder emits no data while paused,
+   * so an in-progress pause segment is subtracted alongside the already-
+   * accumulated `pausedDuration`; otherwise stopping while paused would count
+   * paused wall-clock time as recorded content and desync `duration` from the
+   * stored media length.
+   */
+  private elapsedSeconds(): number {
+    const pausedNow = this.isPaused ? Date.now() - this.pauseStartTime : 0;
+    return (
+      (Date.now() - this.recordingStartTime - this.pausedDuration - pausedNow) /
+      1000
+    );
+  }
+
   async isSupported(): Promise<{ supported: boolean; features: string[] }> {
     const supported = hasDisplayMedia();
     const features: string[] = [];
@@ -156,6 +171,19 @@ export class ScreenCaptureWeb extends WebPlugin {
     };
   }
 
+  /**
+   * Stop and drop the currently held display/microphone stream. Used both on
+   * startRecording failure paths and after stopRecording so a leaked stream can
+   * never keep the OS screen-sharing indicator on or be orphaned by a later
+   * startRecording() call.
+   */
+  private releaseMediaStream(): void {
+    this.mediaStream?.getTracks().forEach((t) => {
+      t.stop();
+    });
+    this.mediaStream = null;
+  }
+
   async startRecording(options?: ScreenRecordingOptions): Promise<void> {
     if (this.isRecording) throw new Error("Recording already in progress");
     if (options?.fps !== undefined) {
@@ -181,59 +209,81 @@ export class ScreenCaptureWeb extends WebPlugin {
       audio: options?.captureSystemAudio !== false,
     });
 
-    if (options?.captureMicrophone) {
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      micStream.getAudioTracks().forEach((t) => {
-        this.mediaStream?.addTrack(t);
-      });
-    }
-
-    const mimeType = getSupportedMimeType();
-    if (!mimeType) {
-      this.mediaStream.getTracks().forEach((t) => {
-        t.stop();
-      });
-      throw new Error("No supported video mime type found");
-    }
-
-    const recorderOptions: MediaRecorderOptions = { mimeType };
-    if (options?.bitrate) recorderOptions.videoBitsPerSecond = options.bitrate;
-
-    this.recordedChunks = [];
-    this.mediaRecorder = new MediaRecorder(this.mediaStream, recorderOptions);
-
-    this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        this.recordedChunks.push(event.data);
-      }
-    };
-
-    this.mediaRecorder.onerror = (event) => {
-      this.notifyListeners("error", {
-        code: "RECORDING_ERROR",
-        message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
-      });
-    };
-
-    this.mediaStream.getVideoTracks()[0].addEventListener("ended", () => {
-      if (this.isRecording) {
-        this.stopRecording().catch((err: unknown) => {
-          // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
-          this.notifyListeners("error", {
-            code: "AUTO_STOP_FAILED",
-            message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
-          });
+    // Once the display stream is live the OS "sharing your screen" indicator is
+    // on. Treat the remaining setup as one transaction: any failure must
+    // release every acquired track and restore the idle state before the error
+    // reaches the caller.
+    let microphoneStream: MediaStream | null = null;
+    try {
+      if (options?.captureMicrophone) {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        microphoneStream.getAudioTracks().forEach((t) => {
+          this.mediaStream?.addTrack(t);
         });
       }
-    });
 
-    this.recordingStartTime = Date.now();
-    this.pausedDuration = 0;
-    this.isRecording = true;
-    this.isPaused = false;
-    this.mediaRecorder.start(1000);
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) {
+        throw new Error("No supported video mime type found");
+      }
+
+      const recorderOptions: MediaRecorderOptions = { mimeType };
+      if (options?.bitrate)
+        recorderOptions.videoBitsPerSecond = options.bitrate;
+
+      this.recordedChunks = [];
+      this.mediaRecorder = new MediaRecorder(this.mediaStream, recorderOptions);
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onerror = (event) => {
+        this.notifyListeners("error", {
+          code: "RECORDING_ERROR",
+          message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
+        });
+      };
+
+      const videoTrack = this.mediaStream.getVideoTracks()[0];
+      if (!videoTrack) {
+        throw new Error("Display capture produced no video track");
+      }
+      videoTrack.addEventListener("ended", () => {
+        if (this.isRecording) {
+          this.stopRecording().catch((err: unknown) => {
+            // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
+            this.notifyListeners("error", {
+              code: "AUTO_STOP_FAILED",
+              message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
+            });
+          });
+        }
+      });
+
+      this.recordingStartTime = Date.now();
+      this.pausedDuration = 0;
+      this.mediaRecorder.start(1000);
+      this.isRecording = true;
+      this.isPaused = false;
+    } catch (err) {
+      // error-policy:J2 release acquired media, restore idle state, and rethrow
+      // the original setup failure to the caller.
+      microphoneStream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+      this.releaseMediaStream();
+      this.mediaRecorder = null;
+      this.recordedChunks = [];
+      this.isRecording = false;
+      this.isPaused = false;
+      this.recordingStartTime = 0;
+      this.pausedDuration = 0;
+      throw err;
+    }
 
     this.notifyListeners("recordingState", {
       isRecording: true,
@@ -245,8 +295,7 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.recordingStateInterval = setInterval(() => {
       if (!this.isRecording || this.isPaused || autoStopping) return;
 
-      const duration =
-        (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+      const duration = this.elapsedSeconds();
       const fileSize = this.recordedChunks.reduce(
         (acc, chunk) => acc + chunk.size,
         0,
@@ -286,8 +335,7 @@ export class ScreenCaptureWeb extends WebPlugin {
         return;
       }
 
-      const duration =
-        (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+      const duration = this.elapsedSeconds();
 
       this.mediaRecorder.onstop = () => {
         if (this.recordingStateInterval) {
@@ -298,12 +346,7 @@ export class ScreenCaptureWeb extends WebPlugin {
         this.isRecording = false;
         this.isPaused = false;
 
-        if (this.mediaStream) {
-          this.mediaStream.getTracks().forEach((track) => {
-            track.stop();
-          });
-          this.mediaStream = null;
-        }
+        this.releaseMediaStream();
 
         const blob = new Blob(this.recordedChunks, {
           type: this.mediaRecorder?.mimeType || "video/webm",
@@ -359,8 +402,7 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.isPaused = true;
     this.pauseStartTime = Date.now();
 
-    const duration =
-      (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+    const duration = this.elapsedSeconds();
     const fileSize = this.recordedChunks.reduce(
       (acc, chunk) => acc + chunk.size,
       0,
@@ -388,9 +430,7 @@ export class ScreenCaptureWeb extends WebPlugin {
   }
 
   async getRecordingState(): Promise<ScreenRecordingState> {
-    const duration = this.isRecording
-      ? (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000
-      : 0;
+    const duration = this.isRecording ? this.elapsedSeconds() : 0;
     const fileSize = this.recordedChunks.reduce(
       (acc, chunk) => acc + chunk.size,
       0,

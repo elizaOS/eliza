@@ -2,7 +2,9 @@
  * Remote-control sessions (T9a control plane).
  *
  * Tracks pending/active/revoked/denied sessions issued by an agent via the
- * cloud `pair` endpoint. The actual data plane (VNC / tunnel) is separate.
+ * cloud `pair` endpoint. The versioned pairing verifier carries its signed
+ * expiry so a restart or delayed consumer cannot turn an expired grant back
+ * into authority. The actual data plane (VNC / tunnel) is separate.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";

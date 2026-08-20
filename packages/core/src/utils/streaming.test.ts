@@ -113,4 +113,17 @@ describe("createStreamingContext", () => {
 		await context.onStreamChunk("ignored");
 		expect(receivedChunks).toEqual(["first ", "second"]);
 	});
+
+	it("forwards the structured-stream revision to the downstream callback", async () => {
+		const callback = vi.fn();
+		const context = createStreamingContext(
+			new MarkableExtractor(),
+			callback,
+			"msg-revision",
+		);
+
+		await context.onStreamChunk("new", "msg-revision", "new", 7);
+
+		expect(callback).toHaveBeenCalledWith("new", "msg-revision", "new", 7);
+	});
 });

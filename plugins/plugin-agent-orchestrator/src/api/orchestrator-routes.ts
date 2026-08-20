@@ -47,6 +47,16 @@ import {
 
 const PREFIX = "/api/orchestrator";
 
+function decodeOrchestratorPathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed percent-escape
+    // is client garbage; null tells the caller to 400, not the 500 boundary.
+    return null;
+  }
+}
+
 const PRIORITIES: ReadonlySet<string> = new Set([
   "low",
   "normal",
@@ -101,6 +111,26 @@ function parseLimit(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseIncludeArchivedFlag(
+  query: URLSearchParams,
+): { ok: true; value: boolean } | { ok: false } {
+  const requested = query.getAll("includeArchived");
+  const raw = requested[0];
+  if (requested.length > 1) {
+    return { ok: false };
+  }
+  if (raw == null || raw === "") {
+    return { ok: true, value: false };
+  }
+  if (raw === "true") {
+    return { ok: true, value: true };
+  }
+  if (raw === "false") {
+    return { ok: true, value: false };
+  }
+  return { ok: false };
 }
 
 function recoveryConflictStatus(error: unknown): number {
@@ -205,8 +235,12 @@ async function dispatchOrchestratorRoutes(
     builtAppsRest.length > 0
   ) {
     const segments = builtAppsRest.split("/").filter((s) => s.length > 0);
-    const target = decodeURIComponent(segments[0] ?? "");
-    const slug = decodeURIComponent(segments[1] ?? "");
+    const target = decodeOrchestratorPathSegment(segments[0] ?? "");
+    const slug = decodeOrchestratorPathSegment(segments[1] ?? "");
+    if (target === null || slug === null) {
+      sendError(res, "Invalid built-app path: malformed URL encoding", 400);
+      return true;
+    }
     if (segments.length !== 2 || !slug) {
       sendError(res, "target and slug are required", 400);
       return true;
@@ -278,9 +312,14 @@ async function dispatchOrchestratorRoutes(
   // task/progress widgets. The full task detail remains on /tasks/:id; this
   // snapshot is intentionally small enough to refresh beside chat messages.
   if (method === "GET" && pathname === `${PREFIX}/widgets`) {
+    const includeArchived = parseIncludeArchivedFlag(query);
+    if (!includeArchived.ok) {
+      sendError(res, "Invalid includeArchived", 400);
+      return true;
+    }
     const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
     const allTasks = await service.listTasks({
-      includeArchived: query.get("includeArchived") === "true",
+      includeArchived: includeArchived.value,
       projectId: query.get("projectId") ?? undefined,
     });
     sendJson(
@@ -298,6 +337,11 @@ async function dispatchOrchestratorRoutes(
   // Clients receive an initial snapshot and then can refresh on the lightweight
   // change event. Per-task /stream remains the high-frequency detail channel.
   if (method === "GET" && pathname === `${PREFIX}/widgets/stream`) {
+    const includeArchived = parseIncludeArchivedFlag(query);
+    if (!includeArchived.ok) {
+      sendError(res, "Invalid includeArchived", 400);
+      return true;
+    }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
@@ -307,7 +351,7 @@ async function dispatchOrchestratorRoutes(
     const writeSnapshot = async () => {
       const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
       const allTasks = await service.listTasks({
-        includeArchived: query.get("includeArchived") === "true",
+        includeArchived: includeArchived.value,
         projectId: query.get("projectId") ?? undefined,
       });
       if (!res.writableEnded) {
@@ -385,10 +429,15 @@ async function dispatchOrchestratorRoutes(
 
   // GET /api/orchestrator/tasks
   if (method === "GET" && pathname === `${PREFIX}/tasks`) {
+    const includeArchived = parseIncludeArchivedFlag(query);
+    if (!includeArchived.ok) {
+      sendError(res, "Invalid includeArchived", 400);
+      return true;
+    }
     const tasks = await service.listTasks({
       status: query.get("status") ?? undefined,
       search: query.get("search") ?? undefined,
-      includeArchived: query.get("includeArchived") === "true",
+      includeArchived: includeArchived.value,
       projectId: query.get("projectId") ?? undefined,
       limit: parseLimit(query.get("limit")),
     });
@@ -435,9 +484,13 @@ async function dispatchOrchestratorRoutes(
   const rest = pathname.slice(`${PREFIX}/tasks/`.length);
   if (pathname.startsWith(`${PREFIX}/tasks/`) && rest.length > 0) {
     const segments = rest.split("/").filter((s) => s.length > 0);
-    const taskId = decodeURIComponent(segments[0] ?? "");
+    const taskId = decodeOrchestratorPathSegment(segments[0] ?? "");
     const sub = segments[1];
 
+    if (taskId === null) {
+      sendError(res, "Invalid task id: malformed URL encoding", 400);
+      return true;
+    }
     if (!taskId) {
       sendError(res, "taskId is required", 400);
       return true;
@@ -1116,7 +1169,11 @@ async function dispatchOrchestratorRoutes(
         segments.length === 4 &&
         segments[3] === "stop"
       ) {
-        const sessionId = decodeURIComponent(segments[2] ?? "");
+        const sessionId = decodeOrchestratorPathSegment(segments[2] ?? "");
+        if (sessionId === null) {
+          sendError(res, "Invalid session id: malformed URL encoding", 400);
+          return true;
+        }
         let stopped: boolean;
         try {
           stopped = await service.stopTaskAgent(taskId, sessionId);

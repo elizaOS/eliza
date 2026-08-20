@@ -40,10 +40,34 @@ export interface ToolCallCacheOptions {
   now?: () => number;
 }
 
+type CacheOutputValidator<T> = (output: unknown) => output is T & ToolOutput;
+
+function isToolOutput(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): value is ToolOutput {
+  if (value === null) return true;
+  if (typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isToolOutput(entry, seen));
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return (
+    (prototype === Object.prototype || prototype === null) &&
+    Object.values(value).every((entry) => isToolOutput(entry, seen))
+  );
+}
+
 export class ToolCallCache {
   private readonly memory: Lru<string, ToolCacheEntry>;
   private readonly disk: DiskStore;
   private readonly now: () => number;
+  private readonly inFlight = new Map<string, Promise<unknown>>();
 
   constructor(options: ToolCallCacheOptions) {
     const root = options.diskRoot ?? path.join(resolveStateDir(), "tool-cache");
@@ -79,7 +103,7 @@ export class ToolCallCache {
     }
 
     if (!fromMemory) this.memory.set(key, candidate);
-    return candidate;
+    return structuredClone(candidate);
   }
 
   /**
@@ -101,7 +125,7 @@ export class ToolCallCache {
       toolVersion: descriptor.version,
       cachedAt,
       expiresAt: cachedAt + descriptor.ttlMs,
-      output,
+      output: structuredClone(output),
     };
     this.memory.set(key, entry);
     this.disk.write(entry);
@@ -146,11 +170,40 @@ export class ToolCallCache {
     descriptor: CacheableToolDescriptor,
     args: ToolArgs,
     execute: () => Promise<ToolOutput>,
-  ): Promise<ToolOutput> {
+  ): Promise<ToolOutput>;
+  async run<T>(
+    descriptor: CacheableToolDescriptor,
+    args: ToolArgs,
+    execute: () => Promise<T>,
+    shouldCache: CacheOutputValidator<T>,
+  ): Promise<T>;
+  async run(
+    descriptor: CacheableToolDescriptor,
+    args: ToolArgs,
+    execute: () => Promise<unknown>,
+    shouldCache: (output: unknown) => output is ToolOutput = isToolOutput,
+  ): Promise<unknown> {
     const hit = this.get(descriptor, args);
-    if (hit) return hit.output;
-    const output = await execute();
-    this.set(descriptor, args, output);
-    return output;
+    if (hit && shouldCache(hit.output)) return hit.output;
+    if (hit) this.invalidate(descriptor.name, hit.key);
+    if (!descriptor.cacheable) return execute();
+
+    const cacheKey = buildCacheKey(descriptor.name, args);
+    const inFlightKey = `${cacheKey}:${descriptor.version}`;
+    const existing = this.inFlight.get(inFlightKey);
+    if (existing) return existing;
+
+    const pending = execute()
+      .then((output) => {
+        if (shouldCache(output)) this.set(descriptor, args, output);
+        return output;
+      })
+      .finally(() => {
+        if (this.inFlight.get(inFlightKey) === pending) {
+          this.inFlight.delete(inFlightKey);
+        }
+      });
+    this.inFlight.set(inFlightKey, pending);
+    return pending;
   }
 }

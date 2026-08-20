@@ -7,7 +7,7 @@
  */
 import { Moon } from "lucide-react";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
@@ -21,6 +21,7 @@ const HEALTH_SLEEP_WIDGET_KEY = "health/health.sleep";
 // HealthView polls the same `/api/lifeops/sleep/*` endpoints every 20s
 // (POLL_INTERVAL_MS in plugins/plugin-health/src/components/health/HealthView.tsx).
 const SLEEP_REFRESH_INTERVAL_MS = 20_000;
+const SLEEP_REQUEST_TIMEOUT_MS = 15_000;
 const WINDOW_DAYS = 14;
 
 // ---------------------------------------------------------------------------
@@ -129,20 +130,28 @@ function parseRegularity(value: unknown): SleepRegularityClass | null {
   return isRegularityResponse(value) ? value.classification : null;
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
+async function getJson(
+  path: string,
+  callerSignal: AbortSignal,
+): Promise<unknown> {
+  const deadline = AbortSignal.timeout(SLEEP_REQUEST_TIMEOUT_MS);
+  const response = await fetch(`${client.getBaseUrl()}${path}`, {
+    method: "GET",
+    signal: AbortSignal.any([callerSignal, deadline]),
+  });
   if (!response.ok) {
     throw new Error(`Sleep request failed (${response.status}): ${path}`);
   }
   return (await response.json()) as unknown;
 }
 
-async function fetchSleep(): Promise<SleepWidgetData> {
+async function fetchSleep(signal: AbortSignal): Promise<SleepWidgetData> {
   const [historyRaw, regularityRaw] = await Promise.all([
     getJson(
       `/api/lifeops/sleep/history?windowDays=${WINDOW_DAYS}&includeNaps=true`,
+      signal,
     ),
-    getJson(`/api/lifeops/sleep/regularity?windowDays=${WINDOW_DAYS}`),
+    getJson(`/api/lifeops/sleep/regularity?windowDays=${WINDOW_DAYS}`, signal),
   ]);
   return {
     latest: parseHistory(historyRaw),
@@ -187,32 +196,50 @@ export function HealthSleepWidget({
   // but no episode. This keeps the home surface blank until we actually know
   // there's data, and a transient fetch error never clobbers a populated card.
   const [data, setData] = useState<SleepWidgetData | null>(null);
+  const activeLoadRef = useRef<AbortController | null>(null);
   const nav = useWidgetNavigation();
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // the 20s sleep poll must stay dormant until the session is authenticated.
   const authenticated = useIsAuthenticated();
 
-  const load = useCallback(async () => {
-    if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
-      setData({ latest: null, classification: null });
-      return;
-    }
+  const load = useCallback(
+    (background = false) => {
+      activeLoadRef.current?.abort();
+      const controller = new AbortController();
+      activeLoadRef.current = controller;
 
-    try {
-      const next = await fetchSleep();
-      // Skip the state update (and the re-render) when the poll is unchanged.
-      setData((prev) => (sleepEqual(prev, next) ? prev : next));
-    } catch {
-      // error-policy:J4 glance tile — keep the last good render on a poll
-      // failure (todo.tsx pattern); the next tick refreshes.
-    }
-  }, [authenticated]);
+      if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
+        setData({ latest: null, classification: null });
+        activeLoadRef.current = null;
+        return;
+      }
+
+      void fetchSleep(controller.signal)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          setData((prev) => (sleepEqual(prev, next) ? prev : next));
+        })
+        .catch(() => {
+          if (controller.signal.aborted || background) return;
+          // error-policy:J4 foreground read failure resolves the glance to its
+          // designed-empty state; background failures retain the last good card.
+          setData({ latest: null, classification: null });
+        })
+        .finally(() => {
+          if (activeLoadRef.current === controller) {
+            activeLoadRef.current = null;
+          }
+        });
+    },
+    [authenticated],
+  );
 
   useEffect(() => {
-    void load();
+    load();
+    return () => activeLoadRef.current?.abort();
   }, [load]);
   // Poll only while the document is visible, at HealthView's 20s cadence.
-  useIntervalWhenDocumentVisible(() => void load(), SLEEP_REFRESH_INTERVAL_MS);
+  useIntervalWhenDocumentVisible(() => load(true), SLEEP_REFRESH_INTERVAL_MS);
 
   const offRhythm = isOffRhythm(data?.classification ?? null);
   // Float the home card up while sleep regularity reads as off-rhythm; clear it

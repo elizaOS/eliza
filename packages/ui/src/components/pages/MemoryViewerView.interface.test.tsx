@@ -106,6 +106,21 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView interface contract", () => {
+  it("keeps memory content scrollable above the persistent chat overlay", async () => {
+    const { container } = render(<MemoryViewerView />);
+
+    await screen.findByTestId("memory-card-mem-1");
+
+    const scroller = container.querySelector(".eliza-chat-scroll");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.className).toContain(
+      "pb-[var(--eliza-chat-clearance,5.25rem)]",
+    );
+    expect(scroller?.className).toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+  });
+
   it("stacks memory cards and exposes expand state", async () => {
     render(<MemoryViewerView />);
 
@@ -134,6 +149,64 @@ describe("MemoryViewerView interface contract", () => {
     );
   });
 
+  it("loads older tied-timestamp rows with the full tuple cursor", async () => {
+    clientMock.getMemoryFeed
+      .mockResolvedValueOnce({
+        memories: [
+          {
+            id: "feed-newer",
+            type: "messages",
+            text: "newer tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+          {
+            id: "feed-cursor",
+            type: "messages",
+            text: "cursor tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+        ],
+        count: 2,
+        limit: 50,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        memories: [
+          {
+            id: "feed-older-tie",
+            type: "messages",
+            text: "older tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+        ],
+        count: 1,
+        limit: 50,
+        hasMore: false,
+      });
+
+    const user = userEvent.setup();
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByRole("button", { name: "Load older" }));
+
+    await waitFor(() =>
+      expect(clientMock.getMemoryFeed).toHaveBeenCalledTimes(2),
+    );
+    expect(clientMock.getMemoryFeed).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ before: 200, beforeId: "feed-cursor" }),
+    );
+    expect(await screen.findByText("older tied row")).not.toBeNull();
+  });
+
   it("points the empty feed forward with Ask Eliza", async () => {
     clientMock.getMemoryStats.mockResolvedValue({ total: 0, byType: {} });
     clientMock.getMemoryFeed.mockResolvedValue({
@@ -153,5 +226,37 @@ describe("MemoryViewerView interface contract", () => {
     ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Ask Eliza" }));
     expect(dispatchChatOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps pagination enabled while presenting an incomplete total honestly", async () => {
+    clientMock.browseMemories.mockResolvedValue({
+      memories: [
+        {
+          id: "mem-browse-1",
+          type: "messages",
+          text: "bounded browse result",
+          source: "client_chat",
+          createdAt: Date.now(),
+          entityId: "entity-1",
+          roomId: "room-1",
+        },
+      ],
+      total: 51,
+      totalIsExact: false,
+      hasMore: true,
+      limit: 50,
+      offset: 0,
+    });
+
+    const user = userEvent.setup();
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByTestId("memory-view-browse"));
+
+    expect(await screen.findByText("bounded browse result")).not.toBeNull();
+    expect(screen.getByText("1–1 of at least 51")).not.toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 });

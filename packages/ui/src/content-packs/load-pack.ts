@@ -14,6 +14,8 @@ import {
   validateContentPackManifest,
 } from "@elizaos/shared";
 
+const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+
 export class ContentPackLoadError extends Error {
   constructor(
     message: string,
@@ -33,6 +35,7 @@ const filePackObjectUrls = new WeakMap<ResolvedContentPack, string[]>();
  */
 export async function loadContentPackFromUrl(
   baseUrl: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<ResolvedContentPack> {
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const source: ContentPackSource = { kind: "url", url: normalizedBase };
@@ -40,12 +43,23 @@ export async function loadContentPackFromUrl(
 
   let raw: unknown;
   try {
-    const res = await fetch(manifestUrl);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const timeoutSignal = AbortSignal.timeout(
+      CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+    );
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, timeoutSignal])
+      : timeoutSignal;
+    const response = await globalThis.fetch(manifestUrl, {
+      method: "GET",
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
-    raw = await res.json();
+    raw = await response.json();
   } catch (err) {
+    // error-policy:J2 retain the source URL while preserving the transport,
+    // body-read, timeout, or caller-cancellation failure as the cause.
     throw new ContentPackLoadError(
       `Failed to fetch pack manifest from ${manifestUrl}`,
       source,

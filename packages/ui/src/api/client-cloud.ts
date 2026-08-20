@@ -83,7 +83,10 @@ import {
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
-const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
+// Cloud account reads can legitimately take longer than 15 seconds on a cold
+// regional worker. Keep the request bounded, but leave enough room for the
+// billing/credits response the desktop dashboard depends on.
+const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 30_000;
 
 type DirectCloudAgent = {
   id?: string;
@@ -416,22 +419,28 @@ function parseCloudLoginPollData(data: unknown): {
   };
 }
 
-function generateCloudLoginSessionId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-      "",
-    );
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const CLOUD_LOGIN_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cloudLoginSessionIdOrNull(value: unknown): string | null {
+  const sessionId = stringOrNull(value);
+  return sessionId && CLOUD_LOGIN_SESSION_ID_RE.test(sessionId)
+    ? sessionId
+    : null;
+}
+
+function createCloudLoginRequestId(): string | null {
+  return cloudLoginSessionIdOrNull(globalThis.crypto?.randomUUID?.());
 }
 
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
-  if (shouldUseNativeCloudHttp() || typeof window === "undefined") return null;
+  if (
+    shouldUseNativeCloudHttp() ||
+    isElectrobunRuntime() ||
+    typeof window === "undefined"
+  ) {
+    return null;
+  }
   try {
     const { origin, pathname, protocol, search, hash } = window.location;
     if (protocol !== "http:" && protocol !== "https:") return null;
@@ -934,7 +943,6 @@ async function directCloudRequest<T>(
   const apiBase = resolveDirectCloudClientApiBase(client);
   if (!apiBase) return null;
 
-  const isDedicatedRequest = isDedicatedCloudAgentClient(client);
   const token = readDirectCloudToken(client);
   if (!token) return null;
 
@@ -963,7 +971,7 @@ async function directCloudRequest<T>(
       }),
       { method, url },
     );
-    if (res.status === 401 && isDedicatedRequest) {
+    if (res.status === 401) {
       clearStoredStewardTokenIfCurrent(token);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
@@ -987,7 +995,7 @@ async function directCloudRequest<T>(
     { ...init, method, headers },
     { method, url },
   );
-  if (res.status === 401 && isDedicatedRequest) {
+  if (res.status === 401) {
     clearStoredStewardTokenIfCurrent(token);
   }
   const data = await res.json().catch(async () => ({
@@ -3200,7 +3208,13 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
-  const sessionId = generateCloudLoginSessionId();
+  const requestSessionId = createCloudLoginRequestId();
+  if (!requestSessionId) {
+    return {
+      ok: false,
+      error: "Login failed: a secure UUID generator is unavailable",
+    };
+  }
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3208,13 +3222,21 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: { sessionId },
+        data: { sessionId: requestSessionId },
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
       });
       if (res.status < 200 || res.status >= 300) {
         return { ok: false, error: `Login failed (${res.status})` };
+      }
+      const responseData = recordOrNull(parseDirectCloudJsonSafe(res.data));
+      const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+      if (!sessionId) {
+        return {
+          ok: false,
+          error: "Login failed: Eliza Cloud returned an invalid session ID",
+        };
       }
       return {
         ok: true,
@@ -3229,11 +3251,19 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: requestSessionId }),
       },
     );
     if (!res.ok) {
       return { ok: false, error: `Login failed (${res.status})` };
+    }
+    const responseData = recordOrNull(await res.json());
+    const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+    if (!sessionId) {
+      return {
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      };
     }
     return {
       ok: true,

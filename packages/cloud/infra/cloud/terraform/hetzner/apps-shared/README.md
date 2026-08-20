@@ -87,13 +87,14 @@ gates every connection.
 ### Operator rollout (the pooler is INERT until you do step 2)
 
 1. **Roll the tenant-db node** so the new cloud-init runs (installs + configures
-   pgbouncer). `user_data` is under `lifecycle.ignore_changes`, so editing the
-   template alone does nothing — taint and replace:
-   ```bash
-   terraform apply -var-file=shared.tfvars -replace=hcloud_server.tenant_db
-   ```
-   The data volume (PGDATA) survives the replace; it's a disruptive restart.
-   (Currently gated on the staging Hetzner server limit — see #8318.)
+   pgbouncer). `user_data` is under `lifecycle.ignore_changes`, and
+   `lifecycle.prevent_destroy` deliberately blocks `terraform taint` or
+   `-replace` from destroying the server. Use a separately reviewed maintenance
+   change that temporarily removes only the server guard, keeps the PGDATA
+   volume and network guarded, and proves in its exact plan that only the
+   intended VM is replaced. The replacement is a disruptive restart; restore
+   the server guard immediately afterward. (Currently gated on the staging
+   Hetzner server limit — see #8318.)
 2. **Route apps through the pooler:** set the `tenant_db_clusters.host` column
    (the **app-facing** per-tenant DSN host) to the `tenant_db_pooler_endpoint`
    output (`10.30.1.10:6432`). New per-tenant DSNs then point at the pooler;
@@ -112,3 +113,31 @@ gates every connection.
 - `tenant_db_public_ip` — SSH/admin only.
 - `tenant_db_admin_dsn` — **sensitive**; seed into `tenant_db_clusters` (`:5432`, direct).
 - `tenant_db_pooler_endpoint` — `10.30.1.10:6432`; set as `tenant_db_clusters.host` to route apps through pgbouncer (after rolling the node).
+
+## Persistent-resource safeguards and rollback
+
+The shared tenant Postgres VM has Hetzner backups plus delete and rebuild
+protection. Its attached PGDATA volume and private network have delete
+protection. Provider backups are a short-term host safeguard only: they do not
+provide application-consistent Postgres recovery, point-in-time recovery, or
+environment isolation. Those require a separate reviewed design and recurring
+restore proof.
+
+The server, volume, and network also use Terraform
+`lifecycle.prevent_destroy`. Hetzner's provider removes API delete protection
+when Terraform intentionally destroys a resource, so provider protection alone
+does not block an accidental replacement from an apply. Removing a resource
+block also removes the lifecycle guard and requires a separately reviewed
+retirement plan.
+
+Before any apply, run the protected `Infrastructure` workflow with
+`component=apps-shared`, `environment=production`, and `operation=plan`, then
+review the exact bound plan artifact. Adoption should be in-place. Any server,
+volume, or network replacement is a stop condition.
+
+Rollback must preserve the data dependency order: keep volume and network
+lifecycle guards and delete protection enabled while the database uses them;
+remove the server lifecycle guard or rebuild protection only for an explicitly
+reviewed replacement; and remove volume or network guards only in a later
+retirement plan after a verified off-host restore. Never detach or destroy the
+volume as a shortcut for rolling back backup billing.

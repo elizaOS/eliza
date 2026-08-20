@@ -34,7 +34,11 @@ import {
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
-import { SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN } from "../types";
+import {
+  SKILL_DESCRIPTION_MAX_LENGTH,
+  SKILL_NAME_MAX_LENGTH,
+  SKILL_NAME_PATTERN,
+} from "../types";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
 
 const WORKSPACE_MARKERS = [
@@ -181,6 +185,53 @@ export interface SkillsServerState {
 // ---------------------------------------------------------------------------
 
 const SAFE_SKILL_ID_RE = /^[a-zA-Z0-9._-]+$/;
+
+const SCAFFOLD_FALLBACK_DESCRIPTION = "Describe what this skill does.";
+
+/**
+ * Normalize a user-supplied skill description to the exact string that should be
+ * stored in the scaffold's `description:` frontmatter field.
+ *
+ * Trimming yields the stored value; an all-whitespace description falls back to
+ * the scaffold default so the required field never renders blank. This function
+ * deliberately does no lossy rewriting — quote/backslash/newline/coercion safety
+ * is handled at serialization time by {@link serializeScaffoldDescription},
+ * which emits an unambiguously quoted scalar. Kept exported for the round-trip
+ * regression test.
+ */
+export function sanitizeScaffoldDescription(description: string): string {
+  const trimmed = description.trim();
+  return trimmed || SCAFFOLD_FALLBACK_DESCRIPTION;
+}
+
+/**
+ * Serialize a description into an unambiguously double-quoted YAML scalar for
+ * the scaffold's `description:` field.
+ *
+ * `JSON.stringify` emits a JSON string literal — a valid YAML double-quoted flow
+ * scalar — with quotes, backslashes, C0 controls, and lone surrogates escaped.
+ * JavaScript line/paragraph separators are escaped explicitly because JSON
+ * permits them literally while the filesystem discovery regex treats them as
+ * line boundaries. Because the value is quoted, `parseFrontmatter` never coerces
+ * it to a boolean/number/null/object/array (which would make `toSkillFrontmatter`
+ * reject the skill for having a non-string description) and cannot be tricked
+ * into parsing embedded newlines as extra frontmatter keys. The parser decodes
+ * the same literal via `decodeFrontmatterScalarString`, so the stored
+ * description round-trips back to `sanitizeScaffoldDescription(input)` exactly.
+ *
+ * `JSON.stringify` leaves U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR
+ * literal, but JavaScript regexes treat both as line terminators — so the
+ * discovery scan's single-line `description:` match (`scanSkillsDir`) would
+ * truncate a scalar containing either character and disagree with the canonical
+ * parser. They are escaped to their `\uXXXX` forms, which remain valid JSON
+ * (and therefore YAML double-quoted) escapes that `decodeFrontmatterScalarString`
+ * decodes back to the exact source character.
+ */
+export function serializeScaffoldDescription(description: string): string {
+  return JSON.stringify(sanitizeScaffoldDescription(description))
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
 
 function validateSkillId(
   skillId: string,
@@ -910,6 +961,17 @@ export async function handleSkillsRoutes(
       return true;
     }
 
+    const description = body.description ?? SCAFFOLD_FALLBACK_DESCRIPTION;
+    const safeDescription = sanitizeScaffoldDescription(description);
+    if (safeDescription.length > SKILL_DESCRIPTION_MAX_LENGTH) {
+      error(
+        res,
+        `Skill description must be ${SKILL_DESCRIPTION_MAX_LENGTH} characters or less`,
+        400,
+      );
+      return true;
+    }
+
     const workspaceDir =
       state.config.agents?.defaults?.workspace ??
       resolveDefaultAgentWorkspaceDir();
@@ -920,13 +982,14 @@ export async function handleSkillsRoutes(
       return true;
     }
 
-    const description = body.description ?? "Describe what this skill does.";
-    const escapedDescription = description
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"');
+    const descriptionScalar = serializeScaffoldDescription(safeDescription);
     const template = skillScaffoldMarkdown
       .replace(/__SLUG__/g, slug)
-      .replace(/__DESCRIPTION__/g, escapedDescription);
+      // Use a function replacer so any `$`-sequence produced by JSON string
+      // escaping (or a literal `$&`/`$1` inside the description) is inserted
+      // verbatim rather than treated as a replacement pattern by
+      // String.prototype.replace.
+      .replace(/__DESCRIPTION__/g, () => descriptionScalar);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
@@ -939,7 +1002,12 @@ export async function handleSkillsRoutes(
     const skill = state.skills.find((s) => s.id === slug);
     json(res, {
       ok: true,
-      skill: skill ?? { id: slug, name: slug, description, enabled: true },
+      skill: skill ?? {
+        id: slug,
+        name: slug,
+        description: safeDescription,
+        enabled: true,
+      },
       path: skillDir,
     });
     return true;

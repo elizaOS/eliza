@@ -4018,7 +4018,8 @@ function routePageAliasesForUrl(
 ): string[] {
   const match = routeMatchForUrl(url, routeVerification.mappings);
   if (!match) return [];
-  const relativePath = decodeURIComponent(match.relativePath);
+  const relativePath = decodeMappedRelativePath(match.relativePath);
+  if (!relativePath) return [];
   const directory = pageDirectoryForRelativePath(relativePath);
   if (!directory) return [];
   const representative = urlForRouteMapping(match.mapping, directory);
@@ -4069,6 +4070,18 @@ function verifyMappedLocalUrl(
   return undefined;
 }
 
+/** Percent-decode a mapped route path or reject malformed URL encoding. */
+export function decodeMappedRelativePath(raw: string): string | undefined {
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded || undefined;
+  } catch {
+    // error-policy:J3 untrusted narration URL path; malformed percent-encoding
+    // is not a mapped local target.
+    return undefined;
+  }
+}
+
 function mappedLocalTarget(
   url: string,
   workdir: string,
@@ -4088,7 +4101,7 @@ function mappedLocalTarget(
     ? prefix.pathname
     : `${prefix.pathname}/`;
   if (!parsed.pathname.startsWith(prefixPath)) return undefined;
-  const relativePath = decodeURIComponent(
+  const relativePath = decodeMappedRelativePath(
     parsed.pathname.slice(prefixPath.length),
   );
   if (!relativePath) return undefined;

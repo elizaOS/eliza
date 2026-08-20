@@ -122,6 +122,46 @@ export function getImageModel(runtime: IAgentRuntime): string {
  */
 export const DEFAULT_GOOGLE_EMBEDDING_MODEL = "gemini-embedding-001";
 
+/**
+ * Per-model input token limit for the embedding endpoint. Google documents a
+ * 2,048-token input limit for `gemini-embedding-001`, while the larger-window
+ * `gemini-embedding-2` accepts 8,192 tokens. `handleTextEmbedding` derives its
+ * provider-tokenized truncation boundary from this map so the request never
+ * exceeds the model's real limit; an unmapped/override id falls back to 2,048
+ * limit (`DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT`) rather than assuming the larger
+ * window. This is a hard model constraint — it must not be confused with the
+ * telemetry-only `length / 4` estimate in `utils/tokenization.ts`.
+ */
+export const EMBEDDING_INPUT_TOKEN_LIMITS: Readonly<Record<string, number>> = {
+  "gemini-embedding-001": 2_048,
+  "gemini-embedding-2": 8_192,
+};
+
+/**
+ * Safe default input token limit used when a `GOOGLE_EMBEDDING_MODEL` override
+ * names a model that is not in `EMBEDDING_INPUT_TOKEN_LIMITS`. Matches the
+ * current default model (`gemini-embedding-001`) so an unknown id can never be
+ * truncated to a window larger than it supports.
+ */
+export const DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT = 2_048;
+
+/**
+ * Resolve the documented input token limit for an embedding model id, falling
+ * back to the safe default for unmapped overrides. Google accepts either a
+ * bare model id or its `models/` resource name, so the optional resource prefix
+ * is ignored only for this local constraint lookup; callers still pass the
+ * configured model string unchanged to the SDK.
+ */
+export function getEmbeddingInputTokenLimit(model: string): number {
+  const lookupModel = model.startsWith("models/")
+    ? model.slice("models/".length)
+    : model;
+  return (
+    EMBEDDING_INPUT_TOKEN_LIMITS[lookupModel] ??
+    DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT
+  );
+}
+
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return (
     getSetting(

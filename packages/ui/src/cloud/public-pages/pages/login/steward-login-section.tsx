@@ -3,7 +3,7 @@
  *
  * Supports phone OTP when Steward advertises SMS, passkey where browser
  * WebAuthn is actually available, plus email magic-link, OAuth, wallets, and
- * the post-redirect OAuth `code` / `#token` consumption + cookie sync.
+ * the post-redirect OAuth `code` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -81,12 +81,12 @@ import {
 } from "../../lib/steward-oauth-url";
 import {
   consumeStewardCodeFromQuery,
-  consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
   recoverStewardEmailSessionViaCookie,
   recoverStewardSessionViaCookie,
   refreshStewardSessionViaCookie,
+  stripLegacyTokenHashFromAddressBar,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
 import {
@@ -142,8 +142,9 @@ function persistStewardToken(token: string): void {
 
 /**
  * `?token=` / `?refreshToken=` query links are not honored (a plain GET link
- * must never plant a session — only the `#hash` legacy path remains). Strip
- * them, plus the consumed OAuth `state` echo, from the address bar
+ * must never plant a session — the `#token=` hash path is likewise stripped
+ * unconsumed, see `stripLegacyTokenHashFromAddressBar`). Strip them, plus the
+ * consumed OAuth `state` echo, from the address bar
  * immediately so no credential lingers in history, copy/paste, or the reach
  * of third-party scripts booting with the page. Returns true when anything
  * was stripped.
@@ -534,7 +535,7 @@ export default function StewardLoginSection() {
     | undefined
   >(undefined);
   // Detected once, synchronously, BEFORE the callback-consuming effect below
-  // strips `?code`/`#token` from the URL. While this is true the section shows a
+  // strips `?code`/`#code` from the URL. While this is true the section shows a
   // terminal "completing sign-in" state instead of re-rendering the provider
   // options underneath the in-flight token exchange — that re-render is what read
   // as the login flashing back to the sign-in options after a successful
@@ -759,32 +760,14 @@ export default function StewardLoginSection() {
       return;
     }
 
-    // No OAuth code: drop any legacy query-token link from the address bar
-    // (never consumed), then honor only the `#hash` legacy path.
+    // No OAuth code: drop any legacy credential link from the address bar.
+    // Neither `?token=` nor `#token=` is ever consumed — a clicked link must
+    // never plant a session (login-CSRF). A stripped credential link (or no
+    // callback at all) must not hold the terminal "completing sign-in"
+    // state — render the sign-in options.
     stripLegacyTokenParamsFromAddressBar();
-    const fromHash = consumeStewardTokensFromHash();
-    const token = fromHash?.token;
-    const refreshToken = fromHash?.refreshToken ?? null;
-    if (!token) {
-      // A stripped `?token=` link (or no callback at all) must not hold the
-      // terminal "completing sign-in" state — render the sign-in options.
-      setCompletingCallback(false);
-      return;
-    }
-
-    syncStewardSessionCookie(token, refreshToken)
-      .then(() => {
-        persistStewardToken(token);
-        setRedirectTo(
-          resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
-        );
-      })
-      .catch((sessionError) => {
-        setCompletingCallback(false);
-        setCallbackError(
-          getErrorMessage(sessionError, "Could not establish a local session"),
-        );
-      });
+    stripLegacyTokenHashFromAddressBar();
+    setCompletingCallback(false);
   }, [searchParams, t]);
 
   useEffect(() => {
@@ -799,7 +782,10 @@ export default function StewardLoginSection() {
         const storedToken = readStoredStewardToken();
         if (storedToken) {
           try {
-            await syncStewardSessionCookie(storedToken);
+            // Session recovery establishes auth only. A pending Telegram claim
+            // remains inert until /get-started previews it and the user
+            // confirms it explicitly.
+            await syncStewardSessionCookie(storedToken, null);
             if (!cancelled) {
               setRedirectTo(resolveLoginReturnTo(searchParams));
             }
@@ -1865,10 +1851,7 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            setShowPasskeyRecovery(false);
-          }}
+          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {

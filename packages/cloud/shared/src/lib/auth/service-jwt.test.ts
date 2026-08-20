@@ -93,11 +93,38 @@ describe("verifyServiceJwt — token lifecycle claims", () => {
     expect(await verify(token)).toBeNull();
   });
 
+  test("rejects a long-lived token presented during its final hour", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new SignJWT({ userId: "waifu:svc" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt(now - 23 * 60 * 60)
+      .setExpirationTime(now + 60 * 60)
+      .sign(secretKey());
+    expect(await verify(token)).toBeNull();
+  });
+
+  test("rejects exp without iat and malformed NumericDate relationships", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const invalidClaims = [
+      ["missing iat", { exp: now + 60 }],
+      ["inverted", { iat: now, exp: now }],
+      ["fractional", { iat: now + 0.5, exp: now + 60 }],
+      ["future iat", { iat: now + 301, exp: now + 601 }],
+      ["nbf after exp", { iat: now, exp: now + 60, nbf: now + 61 }],
+    ] as const;
+    for (const [label, claims] of invalidClaims) {
+      const token = await new SignJWT({ userId: "waifu:svc", ...claims })
+        .setProtectedHeader({ alg: "HS256" })
+        .sign(secretKey());
+      expect(await verify(token), label).toBeNull();
+    }
+  });
+
   test("rejects an already-expired token", async () => {
     const token = await new SignJWT({ userId: "waifu:svc" })
       .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt(Math.floor(Date.now() / 1000) - 120)
-      .setExpirationTime(Math.floor(Date.now() / 1000) - 60)
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 420)
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 301)
       .sign(secretKey());
     expect(await verify(token)).toBeNull();
   });

@@ -38,10 +38,10 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text-embedding-004",
+      "default": "gemini-embedding-001",
       "label": "Embedding Model",
       "help": "Overrides the default text embedding model used by Google Generative AI.",
-      "placeholder": "e.g., text-embedding-3-small",
+      "placeholder": "e.g., gemini-embedding-001, gemini-embedding-2",
       "advanced": false
     },
     "GOOGLE_IMAGE_MODEL": {

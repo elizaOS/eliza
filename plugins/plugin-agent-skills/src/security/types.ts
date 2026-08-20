@@ -50,7 +50,9 @@ export interface SkillScanOptions {
 
 export function truncateEvidence(evidence: string, maxLen = 120): string {
 	if (evidence.length <= maxLen) return evidence;
-	return `${evidence.slice(0, maxLen)}…`;
+	if (maxLen <= 0) return "";
+	if (maxLen === 1) return "…";
+	return `${evidence.slice(0, maxLen - 1)}…`;
 }
 
 /** Line-level rule: matches per-line, fires at most once per file. */
@@ -61,6 +63,13 @@ export interface LineRule {
 	pattern: RegExp;
 	/** Only fires when the full source also matches this pattern. */
 	requiresContext?: RegExp;
+	/**
+	 * Optional predicate that overrides `pattern` for the per-line decision.
+	 * Used when a correct verdict needs structured parsing (for example URL
+	 * host extraction) that a single regex cannot express safely. `pattern`
+	 * remains as a cheap pre-filter and documentation of intent.
+	 */
+	match?: (line: string) => boolean;
 }
 
 /** Source-level rule: matches against the full file content. */

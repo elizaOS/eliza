@@ -39,6 +39,9 @@ mock.module("./steward-client", () => ({
 }));
 
 mock.module("./playwright-test-session", () => ({
+  // Playwright path is inert in these tests (no cookie is ever presented);
+  // the export must exist because workers-hono-auth imports it.
+  isPlaywrightTestAuthEnabled: mock(() => false),
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME: "pw-test-session",
   verifyPlaywrightTestSessionToken: mock(() => null),
 }));

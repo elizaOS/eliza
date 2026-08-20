@@ -7,6 +7,8 @@ import type { Bindings } from "../../types/cloud-worker-env";
 
 const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
+export type PublicObjectBindings = Pick<Bindings, "BLOB" | "R2_PUBLIC_HOST">;
+
 export interface PutPublicObjectOptions {
   /** R2 object key (no leading slash). */
   key: string;
@@ -15,7 +17,7 @@ export interface PutPublicObjectOptions {
   customMetadata?: Record<string, string>;
 }
 
-export function publicUrlForR2Key(env: Bindings, key: string): string {
+export function publicUrlForR2Key(env: PublicObjectBindings, key: string): string {
   const host =
     typeof env.R2_PUBLIC_HOST === "string" && env.R2_PUBLIC_HOST.length > 0
       ? env.R2_PUBLIC_HOST
@@ -24,7 +26,7 @@ export function publicUrlForR2Key(env: Bindings, key: string): string {
 }
 
 export async function putPublicObject(
-  env: Bindings,
+  env: PublicObjectBindings,
   opts: PutPublicObjectOptions,
 ): Promise<{ url: string; key: string }> {
   await env.BLOB.put(opts.key, opts.body, {

@@ -29,6 +29,10 @@
  * derived from the field-registry signature + the context-id set + the channel
  * flag + the action set). A small process-wide cache is kept here keyed on that
  * id.
+ *
+ * Simple regex `{n}` / `{n,m}` expansion is fail-closed at both a per-repeat
+ * ceiling and a total compiled-grammar budget. Exact `{1000000}` and nested
+ * repeats otherwise allocate unbounded GBNF atoms.
  */
 
 import {
@@ -193,8 +197,18 @@ interface SimpleRegexParserState {
 	end: number;
 }
 
+/** Maximum expanded count for one simple regex repeat. */
+export const MAX_SIMPLE_REGEX_REPEAT = 32;
+const MAX_SIMPLE_REGEX_PATTERN_LENGTH = 4_096;
+const MAX_SIMPLE_REGEX_GBNF_LENGTH = 4_096;
+
 function compileSimplePatternToGbnf(pattern: string): string | null {
-	if (pattern.length < 2 || pattern[0] !== "^" || pattern.at(-1) !== "$") {
+	if (
+		pattern.length < 2 ||
+		pattern.length > MAX_SIMPLE_REGEX_PATTERN_LENGTH ||
+		pattern[0] !== "^" ||
+		pattern.at(-1) !== "$"
+	) {
 		return null;
 	}
 
@@ -205,7 +219,84 @@ function compileSimplePatternToGbnf(pattern: string): string | null {
 	};
 	const parsed = parseSimpleRegexSequence(state, false);
 	if (parsed === null || state.index !== state.end) return null;
+	if (estimateSimpleRegexNodeLength(parsed) === null) return null;
 	return compileSimpleRegexNode(parsed);
+}
+
+function addEstimatedLength(left: number, right: number): number | null {
+	const sum = left + right;
+	return sum <= MAX_SIMPLE_REGEX_GBNF_LENGTH ? sum : null;
+}
+
+function multiplyEstimatedLength(value: number, count: number): number | null {
+	if (count === 0) return 0;
+	if (value > Math.floor(MAX_SIMPLE_REGEX_GBNF_LENGTH / count)) return null;
+	return value * count;
+}
+
+function estimateSimpleRegexNodeLength(node: SimpleRegexNode): number | null {
+	if (node.kind === "alternation") {
+		let length = 4;
+		for (let index = 0; index < node.branches.length; index += 1) {
+			const branchLength = estimateSimpleRegexNodeLength(node.branches[index]);
+			if (branchLength === null) return null;
+			const withBranch = addEstimatedLength(length, branchLength);
+			if (withBranch === null) return null;
+			length = withBranch;
+			if (index > 0) {
+				const withSeparator = addEstimatedLength(length, 3);
+				if (withSeparator === null) return null;
+				length = withSeparator;
+			}
+		}
+		return length;
+	}
+
+	if (node.terms.length === 0) return gbnfLiteral("").length;
+	let length = node.terms.length - 1;
+	for (const term of node.terms) {
+		const termLength = estimateSimpleRegexTermLength(term);
+		if (termLength === null) return null;
+		const withTerm = addEstimatedLength(length, termLength);
+		if (withTerm === null) return null;
+		length = withTerm;
+	}
+	return length;
+}
+
+function estimateSimpleRegexTermLength(term: SimpleRegexTerm): number | null {
+	const atomLength = estimateSimpleRegexAtomLength(term.atom);
+	if (atomLength === null) return null;
+	if (term.quantifier === undefined) return atomLength;
+	if (term.quantifier.kind !== "repeat") {
+		return addEstimatedLength(atomLength, 1);
+	}
+
+	const { min, max } = term.quantifier;
+	if (min === 0 && max === 0) return gbnfLiteral("").length;
+	if (max === null) {
+		if (min === 0) return addEstimatedLength(atomLength, 1);
+		const atomsLength = multiplyEstimatedLength(atomLength, min + 1);
+		if (atomsLength === null) return null;
+		return addEstimatedLength(atomsLength, min + 1);
+	}
+
+	const atomsLength = multiplyEstimatedLength(atomLength, max);
+	if (atomsLength === null) return null;
+	return addEstimatedLength(atomsLength, Math.max(0, max - 1) + (max - min));
+}
+
+function estimateSimpleRegexAtomLength(atom: SimpleRegexAtom): number | null {
+	switch (atom.kind) {
+		case "literal":
+			return gbnfLiteral(atom.value).length;
+		case "class":
+			return addEstimatedLength(atom.value.length, 2);
+		case "group": {
+			const innerLength = estimateSimpleRegexNodeLength(atom.value);
+			return innerLength === null ? null : addEstimatedLength(innerLength, 4);
+		}
+	}
 }
 
 function parseSimpleRegexAlternation(
@@ -550,7 +641,11 @@ function parseSimpleRegexBracedQuantifier(
 		state.index = start;
 		return null;
 	}
-	if (max !== null && max - min > 32) {
+	if (min > MAX_SIMPLE_REGEX_REPEAT) {
+		state.index = start;
+		return null;
+	}
+	if (max !== null && max > MAX_SIMPLE_REGEX_REPEAT) {
 		state.index = start;
 		return null;
 	}
@@ -563,7 +658,10 @@ function parseSimpleRegexDecimal(state: SimpleRegexParserState): number | null {
 		state.index += 1;
 	}
 	if (state.index === start) return null;
-	return Number.parseInt(state.source.slice(start, state.index), 10);
+	const digits = state.source.slice(start, state.index);
+	const value = Number(digits);
+	if (!Number.isSafeInteger(value)) return null;
+	return value;
 }
 
 function compileSimpleRegexNode(node: SimpleRegexNode): string {
@@ -729,7 +827,9 @@ function selectResponseFieldsForChannel(
 ): ResponseHandlerFieldShape[] {
 	if (!isDirectResponseChannel(channelType)) return fields;
 	return fields.filter(
-		(field) => !DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name),
+		(field) =>
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(channelType === "VOICE_DM" && field.name === "shouldRespond"),
 	);
 }
 
@@ -901,9 +1001,12 @@ export function buildResponseGrammar(
 		fields.length === baseFields.length
 			? suppliedFieldSignature
 			: `${suppliedFieldSignature}|selected:${deriveFieldSignature(fields)}`;
-	const channelProfile = isDirectResponseChannel(options.channelType)
-		? "direct"
-		: "default";
+	const channelProfile =
+		options.channelType === "VOICE_DM"
+			? "voice-direct"
+			: isDirectResponseChannel(options.channelType)
+				? "direct"
+				: "default";
 
 	const cacheKey = [
 		"stage1",

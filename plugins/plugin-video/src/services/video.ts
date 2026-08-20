@@ -23,6 +23,7 @@ import {
   type VideoProcessingOptions,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
+import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import { BinaryResolver } from "./binaries";
 import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
@@ -237,16 +238,15 @@ export class VideoService extends IVideoService {
     }
 
     try {
-      const downloadOptions: Record<string, string | boolean> = {
+      const downloadOptions: YtDlpFlags = {
         verbose: true,
         output: outputFile,
-        writeInfoJson: true,
+        writeInfoJson: options?.writeInfoJson ?? true,
       };
 
       if (options?.format) {
         downloadOptions.format = options.format;
-      }
-      if (options?.quality) {
+      } else if (options?.quality) {
         downloadOptions.format = options.quality;
       }
       if (options?.audioOnly) {
@@ -255,6 +255,12 @@ export class VideoService extends IVideoService {
       }
       if (options?.videoOnly) {
         downloadOptions.format = "bestvideo[ext=mp4]/best[ext=mp4]/best";
+      }
+      if (options?.subtitles) {
+        downloadOptions.writeSub = true;
+      }
+      if (options?.embedSubs) {
+        downloadOptions.embedSubs = true;
       }
 
       await this.binaries.runYtDlp(url, downloadOptions);

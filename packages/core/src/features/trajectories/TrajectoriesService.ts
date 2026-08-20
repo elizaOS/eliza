@@ -1670,11 +1670,12 @@ export class TrajectoriesService extends Service {
 	private async getTrajectoryById(
 		trajectoryId: string,
 		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+		forUpdate = false,
 	): Promise<Trajectory | null> {
 		const result = await execute(
 			`SELECT * FROM trajectories
 			 WHERE id = ${sqlLiteral(trajectoryId)}
-			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
+			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1${forUpdate ? " FOR UPDATE" : ""}`,
 		);
 		if (result.rows.length === 0) return null;
 		return this.rowToTrajectory(result.rows[0]);
@@ -2704,6 +2705,67 @@ export class TrajectoriesService extends Service {
 				err,
 			);
 		});
+	}
+
+	/**
+	 * Add delayed outcome reward without reopening or rewriting a completed
+	 * trajectory step. The persisted idempotency key makes repeated domain-event
+	 * delivery safe across processes.
+	 */
+	async applyReward(params: {
+		trajectoryId: string;
+		idempotencyKey: string;
+		reward: number;
+		component: string;
+	}): Promise<boolean> {
+		if (!Number.isFinite(params.reward)) {
+			throw new ElizaError("Trajectory reward is invalid", {
+				code: "TRAJECTORY_REWARD_INVALID",
+				context: { trajectoryId: params.trajectoryId },
+			});
+		}
+		let rewardApplied = false;
+		await this.withTrajectoryWriteLock(params.trajectoryId, async () =>
+			this.executeRawSqlTransaction(async (execute) => {
+				const trajectory = await this.getTrajectoryById(
+					params.trajectoryId,
+					execute,
+					true,
+				);
+				if (!trajectory) return;
+				const applied = Array.isArray(trajectory.metadata.appliedRewardKeys)
+					? trajectory.metadata.appliedRewardKeys.filter(
+							(value): value is string => typeof value === "string",
+						)
+					: [];
+				if (applied.includes(params.idempotencyKey)) {
+					rewardApplied = true;
+					return;
+				}
+				trajectory.metadata.appliedRewardKeys = [
+					...applied,
+					params.idempotencyKey,
+				];
+				trajectory.totalReward += params.reward;
+				trajectory.rewardComponents = {
+					...trajectory.rewardComponents,
+					components: {
+						...(trajectory.rewardComponents.components ?? {}),
+						[params.component]:
+							(trajectory.rewardComponents.components?.[params.component] ??
+								0) + params.reward,
+					},
+				};
+				await execute(`UPDATE trajectories SET
+				  total_reward = ${trajectory.totalReward},
+				  reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
+				  metadata_json = ${sqlLiteral(trajectory.metadata)},
+				  updated_at = ${sqlLiteral(new Date().toISOString())}
+				WHERE id = ${sqlLiteral(params.trajectoryId)}`);
+				rewardApplied = true;
+			}),
+		);
+		return rewardApplied;
 	}
 
 	/**

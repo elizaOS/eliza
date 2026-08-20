@@ -84,7 +84,12 @@ const META = {
   containerPort: 3000,
 };
 
-const ROW = { id: "ct1", organization_id: "org1", hcloud_volume_id: null };
+const ROW = {
+  id: "ct1",
+  organization_id: "org1",
+  hcloud_volume_id: null,
+  lifecycle_revision: 7,
+};
 
 afterAll(() => {
   mock.module("../../../../db/repositories/containers", () => realContainersRepoSnap);
@@ -171,6 +176,44 @@ describe("deleteContainer — fail-closed host teardown", () => {
       code: "ssh_unreachable",
     });
     expect(deleteRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("billing stop — provider absence proof", () => {
+  test("a retry after docker removal confirms exact container absence", async () => {
+    execMock.mockImplementation(async (cmd: string) => {
+      if (cmd.includes("docker rm -f")) {
+        throw new Error(
+          "[docker-ssh] Command exited with code 1 on 10.0.0.1: [stderr] Error response from daemon: No such container: app-ct1",
+        );
+      }
+      return "";
+    });
+
+    const client = getHetznerContainersClient();
+    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).resolves.toEqual({
+      nodeId: "node-1",
+    });
+  });
+
+  test("malformed provider metadata cannot fabricate runtime absence", async () => {
+    readMetadata.mockReturnValue(null);
+    const client = getHetznerContainersClient();
+    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+    expect(execMock).not.toHaveBeenCalled();
+  });
+
+  test("generic not-found text remains a retryable provider failure", async () => {
+    execMock.mockImplementation(async (cmd: string) => {
+      if (cmd.includes("docker rm -f")) throw new Error("docker helper binary not found");
+      return "";
+    });
+    const client = getHetznerContainersClient();
+    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).rejects.toThrow(
+      "docker helper binary not found",
+    );
   });
 });
 

@@ -19,6 +19,11 @@ on:
         required: false
         type: string
         default: ""
+      cleanup_only:
+        description: "Delete only the exact prior dedicated canary; never create a replacement"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   # The shared smoke credential must remain attached to an empty organization.
@@ -33,7 +38,9 @@ permissions:
 jobs:
   smoke:
     name: ${{ inputs.suite }}
-    if: inputs.suite != 'dedicated'
+    # cleanup_only is an exclusive destructive-recovery mode. Never run an
+    # unrelated live suite under the same dispatch, regardless of suite input.
+    if: ${{ !inputs.cleanup_only && inputs.suite != 'dedicated' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -42,7 +49,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       ELIZAOS_CLOUD_BASE_URL: ${{ vars.ELIZAOS_CLOUD_BASE_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -69,6 +76,13 @@ jobs:
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
 
+      # Cloud API e2e loads the compiled Workerd export from
+      # @elizaos/core/edge. The lean install above skips lifecycle scripts, so
+      # this artifact must be built explicitly on a clean runner.
+      - name: Build core runtime contract
+        if: inputs.suite == 'all' || inputs.suite == 'cloud'
+        run: bun run build:core
+
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'
         run: bun run test:cloud:e2e
@@ -88,7 +102,7 @@ jobs:
 
   dedicated:
     name: Managed dedicated staging canary
-    if: inputs.suite == 'all' || inputs.suite == 'dedicated'
+    if: inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'
     runs-on: ubuntu-24.04
     environment: staging
     # Serialize this live lifecycle even when an `all` run overlaps a
@@ -103,6 +117,11 @@ jobs:
       CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.eliza.app
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
       CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
+      CLOUD_DEDICATED_CANARY_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
+      # Conditional identity checks and lifecycle locking first shipped here.
+      # Cleanup-only may run from a newer workflow branch, so bind it to this
+      # minimum deployed API contract instead of incorrectly requiring HEAD.
+      CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA: aada8198bc10045c8c841ea4d6dab974ac2a3319
       # Keep this identical to App Live's accepted repository-secret contract.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
     steps:
@@ -153,8 +172,13 @@ jobs:
           const raw =
             process.env.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX ?? "";
           const requested = raw !== "";
+          const cleanupOnly =
+            process.env.CLOUD_DEDICATED_CANARY_CLEANUP_ONLY === "true";
           if (requested && !/^r[1-9]\d{7,19}a[1-9]\d{0,3}$/.test(raw)) {
             throw new Error("Stale-canary recovery input is invalid");
+          }
+          if (cleanupOnly && !requested) {
+            throw new Error("Cleanup-only requires an exact stale-canary suffix");
           }
           appendFileSync(
             process.env.GITHUB_OUTPUT,
@@ -168,10 +192,55 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Preflight cleanup API ancestry
+        id: cleanup_api_preflight
+        if: inputs.cleanup_only
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_commit="$(
+            node --input-type=module <<'NODE'
+            const response = await fetch("https://api-staging.eliza.app/api/health", {
+              headers: { accept: "application/json" },
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (!response.ok) {
+              throw new Error(`Staging health returned HTTP ${response.status}`);
+            }
+            const body = await response.json();
+            if (
+              typeof body !== "object" ||
+              body === null ||
+              typeof body.commit !== "string" ||
+              !/^[a-f0-9]{40}$/.test(body.commit)
+            ) {
+              throw new Error("Staging health did not return an exact deploy commit");
+            }
+            process.stdout.write(body.commit);
+          NODE
+          )"
+          minimum_cleanup_api_sha="${CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA:-}"
+          if [[ -z "$minimum_cleanup_api_sha" ]] || ! git cat-file -e "${minimum_cleanup_api_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Required cleanup API contract commit is absent from this repository checkout."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Staging reported a deploy commit absent from this repository checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"; then
+            echo "::error::Staging deploy predates the conditional cleanup API contract."
+            exit 1
+          fi
+          echo "deployed_commit=$deployed_commit" >> "$GITHUB_OUTPUT"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.14"
+
+      - name: Install contract dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate canary and workflow contracts
         run: |
@@ -182,6 +251,9 @@ jobs:
 
       - name: Run bounded managed dedicated canary
         id: live
+        if: ${{ success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success') }}
+        env:
+          CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT: ${{ steps.cleanup_api_preflight.outputs.deployed_commit || '' }}
         shell: bash
         run: |
           set +e
@@ -239,6 +311,7 @@ jobs:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
           PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
           EXPECTED_RECOVERY_REQUESTED: ${{ steps.recovery_intent.outputs.requested }}
+          EXPECTED_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
         shell: bash
         run: |
@@ -256,9 +329,15 @@ jobs:
           deployed_commit="$(
             bun -e '
               import { readFileSync } from "node:fs";
-              import { validateManagedDedicatedCanaryEvidence } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
+              import {
+                validateManagedDedicatedCanaryCleanupEvidence,
+                validateManagedDedicatedCanaryEvidence,
+              } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
               const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
-              const errors = validateManagedDedicatedCanaryEvidence(evidence);
+              const cleanupOnly = process.env.EXPECTED_CLEANUP_ONLY === "true";
+              const errors = cleanupOnly
+                ? validateManagedDedicatedCanaryCleanupEvidence(evidence)
+                : validateManagedDedicatedCanaryEvidence(evidence);
               const expectedRecoveryRequested =
                 process.env.EXPECTED_RECOVERY_REQUESTED === "true";
               if (evidence.recovery?.requested !== expectedRecoveryRequested) {
@@ -280,14 +359,26 @@ jobs:
             echo "::error::Staging reported a deploy commit absent from this repository checkout."
             exit 1
           fi
-          expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
-          if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
-            echo "::error::Expected canary source commit is absent from this repository checkout."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
-            echo "::error::Staging deploy does not contain this canary's expected source commit."
-            exit 1
+          if [[ "${EXPECTED_CLEANUP_ONLY:-false}" != "true" ]]; then
+            expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
+            if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
+              echo "::error::Expected canary source commit is absent from this repository checkout."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
+              echo "::error::Staging deploy does not contain this canary's expected source commit."
+              exit 1
+            fi
+          else
+            minimum_cleanup_api_sha="${CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA:-}"
+            if [[ -z "$minimum_cleanup_api_sha" ]] || ! git cat-file -e "${minimum_cleanup_api_sha}^{commit}" 2>/dev/null; then
+              echo "::error::Required cleanup API contract commit is absent from this repository checkout."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"; then
+              echo "::error::Staging deploy predates the conditional cleanup API contract."
+              exit 1
+            fi
           fi
 
           bun -e '
@@ -296,6 +387,7 @@ jobs:
             const t = evidence.timingsMs;
             console.log("### Managed dedicated staging canary");
             console.log("");
+            console.log("- operation: `" + evidence.operation + "`");
             console.log("- deployed commit: `" + evidence.deployedCommit + "`");
             console.log("- tier: `" + evidence.path.observedTier + "`");
             console.log("- paths: `" + evidence.path.successfulPaths + "/2`");
@@ -314,12 +406,16 @@ jobs:
             }
           ' >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Managed dedicated canary passed with exact cleanup."
+          if [[ "${EXPECTED_CLEANUP_ONLY:-false}" == "true" ]]; then
+            echo "Exact staging canary cleanup passed without creating a replacement."
+          else
+            echo "Managed dedicated canary passed with exact cleanup."
+          fi
 
   shared-staging-onboarding:
     name: Shared staging onboarding
     needs: smoke
-    if: ${{ always() && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
+    if: ${{ always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 20

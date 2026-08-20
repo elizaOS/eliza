@@ -74,6 +74,22 @@ describe("HomePill", () => {
     expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("keeps the real resting pill when its host uses ChatOverlay for the composer", () => {
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        showComposerPreview={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+  });
+
   it("waits for the native hover frame before painting the wide preview", () => {
     const onPreviewHoverChange = vi.fn();
     const { rerender } = render(
@@ -103,6 +119,26 @@ describe("HomePill", () => {
     );
     expect(button.className).toContain("w-[36rem]");
     expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+  });
+
+  it("dismisses the wide preview on wheel so scrolling continues behind it", () => {
+    const onPreviewHoverChange = vi.fn();
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+
+    fireEvent.wheel(button, { deltaY: 120 });
+
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
   });
 
   it("uses the same hover composer while Cloud auth is required", () => {
@@ -185,6 +221,24 @@ describe("HomePill", () => {
       expect(bar.className).toContain("home-pill-wave-bar");
       expect(bar.className).toContain("motion-reduce:animate-none");
     }
+  });
+
+  it("keeps listening compact until the native shallow host is ready", () => {
+    render(
+      <HomePill
+        phase="listening"
+        onOpen={() => {}}
+        onClose={() => {}}
+        previewHostReady={false}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(button.className).toContain("w-16");
+    expect(button.className).not.toContain("w-[36rem]");
+    expect(mark.className).toContain("w-20");
+    expect(mark.className).not.toContain("w-full");
   });
 
   it("keeps the capsule white with no waveform bars outside listening", () => {
@@ -355,6 +409,44 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     expect(hold.onHoldEnd).toHaveBeenCalledTimes(1);
     expect(hold.onHoldCancel).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens chat on the next click after a closed-pill voice response", () => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const hold = holdHandlers();
+    const { rerender } = render(
+      <HomePill
+        phase="idle"
+        open={false}
+        onOpen={onOpen}
+        onClose={onClose}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button");
+
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(HOLD_THRESHOLD_MS + 10);
+    rerender(
+      <HomePill
+        phase="responding"
+        open={false}
+        onOpen={onOpen}
+        onClose={onClose}
+        {...hold}
+      />,
+    );
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+    expect(onOpen).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("releasing farther than the slide-off distance cancels instead of sending", () => {

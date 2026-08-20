@@ -9,6 +9,7 @@ import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import {
   API_BASE_URL,
   BIRDEYE_ENDPOINTS,
+  DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   RETRY_DELAY_MS,
 } from "./constants";
@@ -142,6 +143,12 @@ export class BirdeyeProvider {
       try {
         const resp = await fetch(url, {
           ...options,
+          signal: options.signal
+            ? AbortSignal.any([
+                options.signal,
+                AbortSignal.timeout(DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS),
+              ])
+            : AbortSignal.timeout(DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS),
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",

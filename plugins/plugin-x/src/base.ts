@@ -126,6 +126,24 @@ function errorDetail(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const DEFAULT_MAX_AUTH_RETRIES = 3;
+
+/**
+ * Resolve the authentication retry budget from MAX_RETRIES. The budget feeds
+ * both `retryCount < maxRetries` and the `retryCount >= maxRetries` failure
+ * guard, and NaN is false in both — a non-numeric value would skip the
+ * authenticate loop AND its failure throw, letting init() continue
+ * unauthenticated. Surrounding environment whitespace is ignored, but any
+ * token that is not a canonical positive safe integer falls back to the
+ * default so authentication always gets at least one attempt.
+ */
+export function resolveMaxAuthRetries(raw: string | undefined): number {
+  const normalized = raw?.trim() ?? "";
+  if (!/^[1-9]\d*$/.test(normalized)) return DEFAULT_MAX_AUTH_RETRIES;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) ? parsed : DEFAULT_MAX_AUTH_RETRIES;
+}
+
 /**
  * Class representing a request queue for handling asynchronous requests in a controlled manner.
  */
@@ -570,9 +588,7 @@ export class ClientBase {
     );
     const provider = createTwitterAuthProvider(this.runtime, this.state);
 
-    const maxRetries = process.env.MAX_RETRIES
-      ? parseInt(process.env.MAX_RETRIES, 10)
-      : 3;
+    const maxRetries = resolveMaxAuthRetries(process.env.MAX_RETRIES);
     let retryCount = 0;
     let lastError: Error | null = null;
 

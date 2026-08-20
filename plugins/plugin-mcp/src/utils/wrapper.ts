@@ -27,7 +27,7 @@ export interface WithModelRetryOptions<T> {
   readonly message: Memory;
   readonly state: State;
   readonly input: Input;
-  readonly validationFn: (data: Input) => ValidationResult<T>;
+  readonly validationFn: (data: Input) => ValidationResult<T> | Promise<ValidationResult<T>>;
   readonly createFeedbackPromptFn: CreateFeedbackPromptFn;
   readonly callback?: HandlerCallback;
   readonly failureMsg?: string;
@@ -53,7 +53,7 @@ export async function withModelRetry<T>({
       typeof input === "string"
         ? parseStructuredModelOutput<Record<string, unknown>>(input)
         : input;
-    validationResult = validationFn(parsedInput);
+    validationResult = await validationFn(parsedInput);
   } catch (error) {
     // error-policy:J3 untrusted model output — a parse failure becomes an explicit
     // invalid ValidationResult that drives the re-prompt/retry loop below.

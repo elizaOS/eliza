@@ -11,6 +11,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { whatsappAutomationService } from "@/lib/services/whatsapp-automation";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -27,7 +28,12 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const rawBody = await c.req.json();
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
     const parsed = WhatsappConnectBody.safeParse(rawBody);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message || "Invalid request body";

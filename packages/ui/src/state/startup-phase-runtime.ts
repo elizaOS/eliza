@@ -17,12 +17,16 @@ import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
 } from "./agent-startup-timing";
+import { isTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
-import { loadPersistedActiveServer } from "./persistence";
+import {
+  clearPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "./persistence";
 import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 import { runStartupProbe } from "./startup-probe";
 import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
@@ -43,6 +47,7 @@ export interface StartingRuntimeDeps {
   setConnected: (v: boolean) => void;
   setStartupError: (v: StartupErrorState | null) => void;
   setFirstRunLoading: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
   setAuthRequired: (v: boolean) => void;
   setPairingEnabled: (v: boolean) => void;
   setPairingExpiresAt: (v: number | null) => void;
@@ -193,14 +198,28 @@ type PassthroughProbe =
   | { kind: "serving" }
   | { kind: "warming" }
   | { kind: "auth-required"; status: 401 | 429 }
+  | { kind: "terminal-agent-error" }
   | { kind: "errored"; status: number };
 
-async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
+async function probeCloudProxyPassthrough(
+  signal?: AbortSignal,
+): Promise<PassthroughProbe> {
   try {
-    await client.listConversations();
+    await client.listConversations({ signal });
     return { kind: "serving" };
   } catch (err) {
-    const status = asApiLikeError(err)?.status;
+    const apiError = asApiLikeError(err);
+    const status = apiError?.status;
+    if (
+      isTerminalDedicatedCloudAgentErrorState({
+        status,
+        code: apiError?.code,
+        message: apiError?.message,
+        clientBaseUrl: client.getBaseUrl(),
+      })
+    ) {
+      return { kind: "terminal-agent-error" };
+    }
     if ((status === 401 || status === 429) && client.hasToken()) {
       return { kind: "auth-required", status };
     }
@@ -222,9 +241,13 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
  * genuinely-serving agent on the boot screen — if status says `canRespond`, the
  * agent is ready and the user should be let into chat (CONVERSATIONS-500).
  */
-async function isCloudProxyStatusReady(): Promise<boolean> {
+async function isCloudProxyStatusReady(signal?: AbortSignal): Promise<boolean> {
   try {
-    const status = await client.fetch<AgentStatus>("/api/status");
+    const status = await client.fetch<AgentStatus>(
+      "/api/status",
+      { signal },
+      { timeoutMs: 30_000 },
+    );
     return status?.state === "running" && status?.canRespond === true;
   } catch {
     return false;
@@ -642,6 +665,12 @@ async function runCloudManagedWarmup(
     dispatch({ type: "AGENT_RUNNING" });
   };
 
+  const advanceAuthGate = (): void => {
+    deps.setConnected(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "AGENT_RUNNING" });
+  };
+
   logger.info(
     "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
   );
@@ -661,11 +690,72 @@ async function runCloudManagedWarmup(
       return;
     }
 
-    const probe = await probeCloudProxyPassthrough();
+    // Both requests traverse the genuine per-agent proxy. A direct
+    // `/api/status` response with `running + canRespond` is as authoritative as
+    // a successful conversation list and is substantially cheaper for a
+    // returning shared Cloud agent whose list endpoint is cold or slow. Run
+    // them concurrently so startup pays one proxy wake, not serial 10-second
+    // timeouts. The status request has a 30s budget because production shared
+    // runtimes regularly answer just beyond the generic 10s client timeout.
+    const conversationAbort = new AbortController();
+    const statusAbort = new AbortController();
+    const conversationProbe = probeCloudProxyPassthrough(
+      conversationAbort.signal,
+    );
+    const statusProbe = isCloudProxyStatusReady(statusAbort.signal);
+    const firstDecisive = await Promise.race([
+      conversationProbe.then((probe) =>
+        probe.kind === "serving"
+          ? "conversations"
+          : probe.kind === "auth-required"
+            ? "auth-required"
+            : null,
+      ),
+      statusProbe.then((ready) => (ready ? "status" : null)),
+    ]);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
 
-    if (probe.kind === "serving") {
+    if (firstDecisive === "status") {
+      conversationAbort.abort();
+      await conversationProbe;
+      await advanceReady("status reports running and canRespond");
+      return;
+    }
+
+    if (firstDecisive === "conversations") {
+      statusAbort.abort();
+      await statusProbe;
       // The passthrough answers → the warmed runtime is genuinely serving.
+      await advanceReady("conversations passthrough serving");
+      return;
+    }
+
+    if (firstDecisive === "auth-required") {
+      statusAbort.abort();
+      await statusProbe;
+      // Authentication is a definitive routing result; a concurrent status
+      // probe cannot make the adopted bearer valid. Mount the auth gate now
+      // instead of waiting through the status request's 30-second budget.
+      advanceAuthGate();
+      return;
+    }
+
+    // The first request completed without proving readiness. Await the other
+    // already-running request before classifying the iteration; this preserves
+    // the existing auth/error handling without making a positive fast signal
+    // wait for the slower endpoint.
+    const [probe, statusReady] = await Promise.all([
+      conversationProbe,
+      statusProbe,
+    ]);
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+
+    if (statusReady) {
+      await advanceReady("status reports running and canRespond");
+      return;
+    }
+
+    if (probe.kind === "serving") {
       await advanceReady("conversations passthrough serving");
       return;
     }
@@ -675,9 +765,21 @@ async function runCloudManagedWarmup(
       // the normal auth gate, where managed Cloud recovery can exchange a
       // fresh agent credential; treating this as warmup would hide that gate
       // behind the startup screen until the absolute timeout.
+      advanceAuthGate();
+      return;
+    }
+
+    if (probe.kind === "terminal-agent-error") {
+      // The selected sandbox cannot recover through polling or Retry. Remove
+      // the poisoned persisted target and return to the Cloud agent picker,
+      // which keeps the switcher reachable without rebinding to another host.
+      clearPersistedActiveServer();
+      client.setBaseUrl(null);
+      client.setToken(null);
       deps.setConnected(false);
+      deps.setFirstRunComplete(false);
       deps.setFirstRunLoading(false);
-      dispatch({ type: "AGENT_RUNNING" });
+      dispatch({ type: "CLOUD_AGENT_SELECTION_REQUIRED" });
       return;
     }
 
@@ -687,19 +789,9 @@ async function runCloudManagedWarmup(
       // NOT treat it as a warming 404.
       consecutive5xx += 1;
       if (consecutive5xx >= PERSISTENT_5XX_THRESHOLD) {
-        // Confirm readiness off /api/status so a broken LIST endpoint alone
-        // can't strand a genuinely-serving agent on the boot screen.
-        const statusReady = await isCloudProxyStatusReady();
-        if (cancelled.current || effectRunRef.current !== effectRunId) return;
-        if (statusReady) {
-          logger.warn(
-            `[eliza][startup:init] cloud-managed conversations passthrough is persistently ${probe.status}, but /api/status reports canRespond — advancing to chat despite the broken list endpoint`,
-          );
-          await advanceReady(
-            `status canRespond despite conversations ${probe.status}`,
-          );
-          return;
-        }
+        // The concurrent status probe above already failed to confirm
+        // readiness. Do not issue the same potentially slow request a second
+        // time in this iteration.
         // Runtime is up (5xx, not 404) but neither the list read nor /status
         // can confirm it can serve. Surface an ACTIONABLE error with Retry
         // instead of spinning "initializing agent" to the absolute-max deadline.

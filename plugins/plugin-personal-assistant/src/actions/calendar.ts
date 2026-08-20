@@ -66,6 +66,7 @@ import type {
   CalendarCancellationMode,
   CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
+import { settleBriefEngagementReward } from "../lifeops/briefing/engagement-reward.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import {
   normalizeTimeZone,
@@ -80,6 +81,7 @@ import {
   type OwnerQuietHours,
   resolveOwnerFactStore,
 } from "../lifeops/owner/fact-store.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   buildUtcDateFromLocalParts,
   getZonedDateParts,
@@ -575,6 +577,66 @@ const calendarActionDeps: CalendarActionDeps = {
 };
 
 const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
+
+/**
+ * Attribute a committed built-in calendar time update. Provider-backed writes
+ * already pass through `CalendarDomain`; the calendar action deliberately
+ * writes built-in events directly, so it needs this post-commit bridge.
+ */
+export async function attributeBuiltInCalendarBriefReschedule(args: {
+  runtime: IAgentRuntime;
+  event: LifeOpsCalendarEvent;
+  previous: LifeOpsCalendarEvent;
+}): Promise<void> {
+  if (
+    args.event.provider !== "eliza" ||
+    (args.event.startAt === args.previous.startAt &&
+      args.event.endAt === args.previous.endAt)
+  ) {
+    return;
+  }
+  try {
+    const repository = new LifeOpsRepository(args.runtime);
+    const engagement = await repository.attributeBriefItemEngagement({
+      agentId: args.runtime.agentId,
+      source: "calendar",
+      sourceId: args.event.id,
+      eventType: "rescheduled",
+      eventAt: args.event.updatedAt,
+      domainEventId: `calendar_rescheduled:${args.event.id}:${args.event.updatedAt}`,
+      weight: 1,
+    });
+    if (engagement) {
+      await settleBriefEngagementReward({
+        runtime: args.runtime,
+        repository,
+        engagement,
+      });
+    }
+  } catch (error) {
+    // error-policy:J7 the built-in calendar mutation already committed;
+    // delayed learning telemetry cannot rewrite its successful result.
+    args.runtime.reportError(
+      "CalendarAction.attributeBuiltInBriefReschedule",
+      error,
+      { eventId: args.event.id },
+    );
+  }
+}
+
+function actionResultCalendarEvent(
+  value: unknown,
+): LifeOpsCalendarEvent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const event = value as Partial<LifeOpsCalendarEvent>;
+  return typeof event.id === "string" &&
+    typeof event.provider === "string" &&
+    typeof event.startAt === "string" &&
+    typeof event.endAt === "string" &&
+    typeof event.updatedAt === "string"
+    ? (event as LifeOpsCalendarEvent)
+    : null;
+}
 
 // Re-exported for consumers that route calendar-plan extraction without going
 // through the umbrella handler (multilingual routing test, live LLM extraction
@@ -1422,7 +1484,7 @@ async function route(
   };
 
   switch (target) {
-    case "calendar":
+    case "calendar": {
       if (subaction === "create_event") {
         const guarded = await guardProtectedSleepCreate({
           runtime,
@@ -1432,13 +1494,26 @@ async function route(
         });
         if (guarded) return guarded;
       }
-      return (await googleCalendarAction.handler(
+      const result = (await googleCalendarAction.handler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
       )) as ActionResult;
+      if (subaction === "update_event" && result.success) {
+        const event = actionResultCalendarEvent(result.data?.event);
+        const previous = actionResultCalendarEvent(result.data?.targetEvent);
+        if (event && previous) {
+          await attributeBuiltInCalendarBriefReschedule({
+            runtime,
+            event,
+            previous,
+          });
+        }
+      }
+      return result;
+    }
     case "bulk_reschedule":
       return handleBulkReschedulePreview({
         runtime,

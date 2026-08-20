@@ -751,7 +751,7 @@ function getDefaultScenarioRoom(
   return firstRoom;
 }
 
-function matchRoutePath(
+export function matchRoutePath(
   pattern: string,
   pathname: string,
 ): Record<string, string> | null {
@@ -770,7 +770,12 @@ function matchRoutePath(
       return null;
     }
     if (patternSegment.startsWith(":")) {
-      params[patternSegment.slice(1)] = decodeURIComponent(pathSegment);
+      try {
+        params[patternSegment.slice(1)] = decodeURIComponent(pathSegment);
+      } catch {
+        // error-policy:J3 malformed percent-escape is not a matched route.
+        return null;
+      }
       continue;
     }
     if (patternSegment !== pathSegment) {

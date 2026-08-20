@@ -16,7 +16,10 @@ const SCRIPT = path.resolve(
   "run-all-tests.mjs",
 );
 
-function runPlan(extraArgs: string[], env: Record<string, string> = {}) {
+function runPlan(
+  extraArgs: readonly string[],
+  env: Record<string, string> = {},
+) {
   return spawnSync(
     process.execPath,
     [
@@ -45,22 +48,31 @@ describe("run-all-tests --concurrency usage boundary", () => {
     expect(result.stdout).not.toContain("concurrency=1");
   });
 
-  test("missing and malformed --concurrency values fail with exit 2, not a stack", () => {
-    for (const args of [
-      ["--concurrency"],
-      ["--concurrency", "--no-cloud"],
-      ["--concurrency=1e3"],
-      ["--concurrency=8abc"],
-      ["--concurrency=0"],
-      ["--concurrency=999999"],
-    ]) {
+  for (const [label, args] of [
+    ["missing value", ["--concurrency"]],
+    ["missing value before flag", ["--concurrency", "--no-cloud"]],
+    ["scientific notation", ["--concurrency=1e3"]],
+    ["trailing characters", ["--concurrency=8abc"]],
+    ["zero", ["--concurrency=0"]],
+    ["above maximum", ["--concurrency=999999"]],
+  ] as const) {
+    test(`${label} fails usage instead of running or throwing`, () => {
       const result = runPlan(args);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("[eliza-test] ERROR");
-      expect(result.stderr).toContain("concurrency");
-      expect(result.stderr).not.toMatch(/\n\s+at /);
-    }
-  });
+      expect({
+        error: result.error?.message,
+        signal: result.signal,
+        status: result.status,
+        stderr: result.stderr,
+      }).toEqual({
+        error: undefined,
+        signal: null,
+        status: 2,
+        stderr: expect.stringMatching(
+          /^\[eliza-test\] ERROR .*concurrency.*\nRun with --help for usage\.\n$/,
+        ),
+      });
+    });
+  }
 
   test("valid --concurrency still plans", () => {
     const valid = runPlan(["--concurrency=3"]);

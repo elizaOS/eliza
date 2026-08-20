@@ -183,6 +183,8 @@ export interface PlannerToolResult {
 	 */
 	summary?: string;
 	data?: Record<string, unknown>;
+	/** Model-bound projection of `data`; complete data remains on the result. */
+	promptData?: Record<string, unknown>;
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
@@ -194,6 +196,11 @@ export interface PlannerToolResult {
 	 * evaluation, while omission delegates completion to the planner/evaluator.
 	 */
 	turnComplete?: boolean;
+	/**
+	 * Requests one safe model-authored terminal reply after a successful sole
+	 * action whose planner call explicitly declared final scope.
+	 */
+	modelReplyRequired?: boolean;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget

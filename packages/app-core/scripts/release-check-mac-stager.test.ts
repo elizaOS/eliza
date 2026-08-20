@@ -26,6 +26,19 @@ const stagerPath = path.join(
 const stager = readFileSync(stagerPath, "utf8");
 
 describe("macOS stager permission-host identity gate", () => {
+  it("allows cloud-only release artifacts to omit the embedded runtime without weakening full builds", () => {
+    expect(stager).toContain(
+      'BRAND_CONFIG_PATH="$STAGED_APP_PATH/Contents/Resources/app/brand-config.json"',
+    );
+    expect(stager).toContain('if [[ "$CLOUD_ONLY_BUILD" == "1" ]]; then');
+    expect(stager).toContain(
+      "cloud-only app unexpectedly embeds a local runtime",
+    );
+    expect(stager).toContain(
+      "expected extracted app content is missing: $RUNTIME_DIR",
+    );
+  });
+
   it("derives the permission-host identity from the staged app bundle", () => {
     expect(
       containsContiguousBlock(stager, requiredMacAppIdentifierReadBlock),

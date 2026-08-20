@@ -12,8 +12,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { getCliVersion } from "./package-info.js";
 import {
   buildFullstackTemplateValues,
   buildPluginTemplateValues,
@@ -70,6 +72,7 @@ describe("template value builders", () => {
   it("builds fullstack defaults from normalized project names", () => {
     expect(buildFullstackTemplateValues("My App!!")).toMatchObject({
       appName: "My App",
+      elizaVersion: getCliVersion(),
       appUrl: "https://example.com/my-app",
       bundleId: "com.example.myapp",
       fileExtension: ".my-app.agent",
@@ -83,6 +86,76 @@ describe("template value builders", () => {
       packageScope: "project",
       projectSlug: "project",
     });
+  });
+
+  it("maps the fullstack version token to the CLI's own version", () => {
+    const values = buildFullstackTemplateValues("my-app");
+    const entries = Object.fromEntries(
+      getTemplateReplacementEntries({ templateId: "project", values }),
+    );
+
+    expect(entries.__ELIZAOS_VERSION__).toBe(getCliVersion());
+  });
+
+  it("ships no npm dist-tag pins for workspace packages in the fullstack template", () => {
+    // "latest" resolves each @elizaos package independently on npm, which has
+    // produced installs mixing the v1 core with two different v2 alphas. The
+    // template must carry the version token so scaffolds pin the lockstep set.
+    const templateRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "templates",
+      "project",
+    );
+    const manifests = [
+      join(templateRoot, "apps", "app", "package.json"),
+      join(templateRoot, "apps", "app", "electrobun", "package.json"),
+    ];
+
+    for (const manifest of manifests) {
+      const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      for (const [name, spec] of Object.entries({
+        ...parsed.dependencies,
+        ...parsed.devDependencies,
+      })) {
+        if (!name.startsWith("@elizaos/")) continue;
+        expect(spec, `${manifest} pins ${name} to an npm dist-tag`).not.toBe(
+          "latest",
+        );
+        expect(
+          spec,
+          `${manifest} must carry the version token for ${name}`,
+        ).toBe("__ELIZAOS_VERSION__");
+      }
+    }
+  });
+
+  it("keeps the minimal templates on the npm latest tag deliberately", () => {
+    // min-plugin and min-project are NOT rendered by this CLI's replacement
+    // machinery: min-plugin is scaffolded by the runtime plugin-manager
+    // create flow (packages/core plugin-handlers/create.ts), which
+    // substitutes only the name/display placeholders — a version token here
+    // would land raw in scaffolds and break `bun install` — and min-project
+    // currently has no runtime scaffolder at all. Their minimal surfaces are
+    // v1-compatible: a standalone min-plugin scaffold passes all four
+    // SCAFFOLD.md verification commands against @elizaos/core@1.7.2 (#22412
+    // evidence), so `latest` is coherent today. If either template starts
+    // using v2-only core APIs, teach its scaffolder to substitute a version
+    // BEFORE tokenizing this pin — do not just copy the fullstack fix.
+    const templatesRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "templates",
+    );
+    for (const template of ["min-plugin", "min-project"]) {
+      const parsed = JSON.parse(
+        readFileSync(join(templatesRoot, template, "package.json"), "utf8"),
+      ) as { dependencies?: Record<string, string> };
+      expect(parsed.dependencies?.["@elizaos/core"]).toBe("latest");
+    }
   });
 });
 

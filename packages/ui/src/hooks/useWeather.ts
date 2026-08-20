@@ -6,9 +6,13 @@
 
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import { shellLocalStorage } from "../surface-realm-channel";
-import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
+import {
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+} from "./useDocumentVisibility";
 import { useProtectedAgentProbesEnabled } from "./useProtectedAgentProbesEnabled";
 
 /**
@@ -197,9 +201,12 @@ interface ResolvedCoords extends Coords {
 
 /** Server-side coarse IP-geolocation (city centroid). Same-origin/agent-API
  *  call, so it works on hosted origins where a browser-side lookup CORS-fails. */
-async function fetchApproximateCoords(): Promise<ResolvedCoords> {
+async function fetchApproximateCoords(
+  signal: AbortSignal,
+): Promise<ResolvedCoords> {
   const data = await client.fetch<{ lat: number; lon: number }>(
     "/api/location/approximate",
+    { signal },
   );
   if (
     typeof data.lat !== "number" ||
@@ -218,35 +225,51 @@ async function fetchApproximateCoords(): Promise<ResolvedCoords> {
  * IP-based approximate coordinates. Only when both paths fail does the widget
  * degrade to its unavailable state.
  */
-async function resolveCoords(): Promise<ResolvedCoords> {
+async function resolveCoords(signal: AbortSignal): Promise<ResolvedCoords> {
   const canUseDevice =
     typeof navigator !== "undefined" &&
     !!navigator.geolocation &&
     (await geolocationAlreadyGranted());
+  signal.throwIfAborted();
 
   if (canUseDevice) {
-    const deviceCoords = await new Promise<Coords | null>((resolve) => {
+    const deviceCoords = await new Promise<Coords | null>((resolve, reject) => {
+      const onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      const settle = (coords: Coords | null) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(coords);
+      };
       navigator.geolocation.getCurrentPosition(
         (pos) =>
-          resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-        () => resolve(null),
+          settle({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => settle(null),
         { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
       );
     });
     if (deviceCoords) return { ...deviceCoords, approximate: false };
   }
 
-  return fetchApproximateCoords();
+  return fetchApproximateCoords(signal);
 }
+
+const WEATHER_JSON_TIMEOUT_MS = 15_000;
 
 async function fetchWeatherAt(
   coords: Coords,
   approximate: boolean,
+  signal: AbortSignal,
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`);
-  const data = (await res.json()) as {
+  const response = await globalThis.fetch(url, {
+    method: "GET",
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS),
+    ]),
+  });
+  if (!response.ok) throw new Error(`open-meteo ${response.status}`);
+  const data = (await response.json()) as {
     current?: { temperature_2m?: number; weather_code?: number };
   };
   const tempRaw = data.current?.temperature_2m;
@@ -263,9 +286,9 @@ async function fetchWeatherAt(
   };
 }
 
-async function fetchWeather(): Promise<Weather> {
-  const resolved = await resolveCoords();
-  return fetchWeatherAt(resolved, resolved.approximate);
+async function fetchWeather(signal: AbortSignal): Promise<Weather> {
+  const resolved = await resolveCoords(signal);
+  return fetchWeatherAt(resolved, resolved.approximate, signal);
 }
 
 /**
@@ -315,13 +338,22 @@ function noteApproximateLocationOnce(): void {
  * unavailable tile, never on home load (the no-prompt rule stays intact for the
  * automatic path in {@link resolveCoords}).
  */
-async function promptForCoords(): Promise<Coords> {
+async function promptForCoords(signal: AbortSignal): Promise<Coords> {
   if (typeof navigator === "undefined" || !navigator.geolocation)
     throw new Error("no-geolocation");
   return new Promise<Coords>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    const settle = (callback: () => void) => {
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => reject(new Error("denied")),
+      (pos) =>
+        settle(() =>
+          resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        ),
+      () => settle(() => reject(new Error("denied"))),
       { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
     );
   });
@@ -372,10 +404,13 @@ export function useWeather(): WeatherState {
   // continuation past unmount — the canonical guard used across the ui hooks
   // (see useCachedResource.ts).
   const mountedRef = React.useRef(true);
+  const activeRequestRef = React.useRef<AbortController | null>(null);
   React.useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
     };
   }, []);
 
@@ -383,6 +418,10 @@ export function useWeather(): WeatherState {
   // hold it until probes are allowed so fresh Cloud onboarding fires no 401
   // (#16242). Re-runs to load real conditions once the gate opens post-sign-in.
   const probesEnabled = useProtectedAgentProbesEnabled();
+  const documentVisible = useDocumentVisibility();
+  const automaticWeatherSupported = !isLimitedCloudAgentApiBase(
+    client.getBaseUrl(),
+  );
 
   const applyUnavailable = React.useCallback(() => {
     if (!mountedRef.current) return;
@@ -398,25 +437,47 @@ export function useWeather(): WeatherState {
     const cached = readCache();
     if (cached && Date.now() - cached.fetchedAt < WEATHER_TTL_MS)
       return Promise.resolve();
-    return fetchWeather()
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    return fetchWeather(controller.signal)
       .then((next) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
         if (next.approximate) noteApproximateLocationOnce();
       })
       .catch(() => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
         // error-policy:J4 stale/no-location/weather failure renders the
         // explicit unavailable tile instead of a healthy old reading.
         setWeather({ ...LOADING, status: "unavailable" });
+      })
+      .finally(() => {
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null;
+        }
       });
   }, []);
 
   React.useEffect(() => {
-    if (!probesEnabled) return;
+    if (!automaticWeatherSupported) {
+      applyUnavailable();
+      return;
+    }
+    if (!probesEnabled || !documentVisible) {
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+      return;
+    }
     void revalidate();
-  }, [revalidate, probesEnabled]);
+  }, [
+    applyUnavailable,
+    automaticWeatherSupported,
+    revalidate,
+    probesEnabled,
+    documentVisible,
+  ]);
 
   // Revalidate while the home stays open — a long-lived session no longer shows
   // a frozen temperature — but only when the document is visible (no background
@@ -427,14 +488,24 @@ export function useWeather(): WeatherState {
   }, WEATHER_TTL_MS);
 
   const requestLocation = React.useCallback(() => {
-    void promptForCoords()
-      .then((coords) => fetchWeatherAt(coords, false))
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    void promptForCoords(controller.signal)
+      .then((coords) => fetchWeatherAt(coords, false, controller.signal))
       .then((next) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || controller.signal.aborted) return;
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
       })
-      .catch(applyUnavailable);
+      .catch(() => {
+        if (!controller.signal.aborted) applyUnavailable();
+      })
+      .finally(() => {
+        if (activeRequestRef.current === controller) {
+          activeRequestRef.current = null;
+        }
+      });
   }, [applyUnavailable]);
 
   return React.useMemo(

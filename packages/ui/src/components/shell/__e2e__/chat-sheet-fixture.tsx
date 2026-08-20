@@ -227,8 +227,8 @@ function Harness(): React.JSX.Element {
   const [transcriptionMode, setTranscriptionMode] =
     React.useState(initialTranscribing);
   // Onboarding is stateful so the e2e can drive the completion (falling) edge —
-  // `window.__setFirstRun(false)` flips it, exercising the #12178 opaque-backdrop
-  // fade + auto-collapse reveal that a static prop can't reach (#12364).
+  // `window.__setFirstRun(false)` flips it, exercising the pinned-half to
+  // authenticated-full transition that a static prop can't reach (#12364).
   const [firstRunOpen, setFirstRunOpen] = React.useState(firstRun);
   React.useEffect(() => {
     window.__setFirstRun = setFirstRunOpen;

@@ -138,6 +138,7 @@ export class CloudBridgeService extends Service {
     this.connections.set(containerId, conn);
 
     ws.addEventListener("open", () => {
+      if (this.connections.get(containerId) !== conn) return;
       conn.state = "connected";
       conn.connectedAt = Date.now();
       conn.reconnectAttempts = 0;
@@ -150,6 +151,7 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("message", (event) => {
+      if (this.connections.get(containerId) !== conn) return;
       const raw = event.data;
       const data =
         typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
@@ -183,6 +185,12 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("close", (event) => {
+      // A late close must clean up its own timer without mutating the replacement.
+      if (this.connections.get(containerId) !== conn) {
+        if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
+        return;
+      }
+
       conn.state = "disconnected";
       if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
 
@@ -199,6 +207,7 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("error", () => {
+      if (this.connections.get(containerId) !== conn) return;
       logger.error(`[CloudBridge] WebSocket error for ${containerId}`);
     });
   }
@@ -225,6 +234,7 @@ export class CloudBridgeService extends Service {
     if (conn) {
       conn.state = "reconnecting";
       conn.reconnectTimer = setTimeout(() => {
+        if (this.connections.get(containerId) !== conn) return;
         this.establishConnection(containerId, attempt);
       }, delay + jitter);
     }

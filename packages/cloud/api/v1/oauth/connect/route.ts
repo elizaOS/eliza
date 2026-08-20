@@ -18,6 +18,7 @@ import {
   oauthService,
   validationErrorResponse,
 } from "@/lib/services/oauth";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -41,12 +42,12 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     organizationId = user.organization_id;
 
-    let body: ConnectRequestBody;
-    try {
-      body = (await c.req.json()) as ConnectRequestBody;
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
       return c.json(validationErrorResponse("Invalid JSON body"), 400);
     }
+    const body = decodedBody.value as ConnectRequestBody;
 
     if (!isValidString(body.platform)) {
       return c.json(

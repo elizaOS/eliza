@@ -38,6 +38,7 @@ export * from "./labels";
 export * from "./log-prefix";
 export * from "./name-tokens";
 export * from "./namespace-defaults";
+export * from "./navigation-url";
 export * from "./openExternalUrl";
 export * from "./owner-name";
 export * from "./rate-limiter";

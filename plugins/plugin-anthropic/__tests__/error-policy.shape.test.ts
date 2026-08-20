@@ -52,6 +52,7 @@ function fakeBun(stdout: string, stderr: string, exitCode: number) {
       stdout: streamOf(stdout),
       stderr: streamOf(stderr),
       exited: Promise.resolve(exitCode),
+      kill: vi.fn(),
     })),
   };
 }

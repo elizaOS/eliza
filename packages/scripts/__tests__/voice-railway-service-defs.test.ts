@@ -159,6 +159,7 @@ interface WorkflowStep {
   run?: string;
 }
 interface WorkflowJob {
+  env?: Record<string, string>;
   "runs-on"?: unknown;
   steps?: WorkflowStep[];
 }
@@ -183,6 +184,12 @@ describe("manual live contract lane (live-smoke.yml)", () => {
     expect(smoke).toBeDefined();
     expect(contractStep?.run).toContain(LIVE_TEST_PATH);
     expect(contractStep?.if).toContain("inputs.suite == 'voice'");
+  });
+
+  test("accepts the established cloud smoke credential alias", () => {
+    expect(smoke?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
+      "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
+    );
   });
 
   test("gates the live test with ELIZA_VOICE_LIVE_RAILWAY=1", () => {

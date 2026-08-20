@@ -23,12 +23,10 @@ import type {
   SchemaTable,
   SchemaUniqueConstraint,
 } from "../types";
+import { buildArrayString, type SqlArrayDefaultElement } from "./sql-array-default";
 
 // Drizzle schema type - an object mapping table names to PgTable instances
 type DrizzleSchema = Record<string, unknown>;
-
-// Array element type for building SQL arrays
-type ArrayElement = number | bigint | boolean | string | Date | object | ArrayElement[];
 
 /**
  * Internal Drizzle column config interface.
@@ -64,35 +62,6 @@ function escapeSingleQuotes(str: string): string {
 
 function isPgArrayType(sqlType: string): boolean {
   return sqlType.match(/.*\[\d*\].*|.*\[\].*/g) !== null;
-}
-
-function buildArrayString(array: ArrayElement[], sqlType: string): string {
-  sqlType = sqlType.split("[")[0];
-  const values = array
-    .map((value) => {
-      if (typeof value === "number" || typeof value === "bigint") {
-        return value.toString();
-      } else if (typeof value === "boolean") {
-        return value ? "true" : "false";
-      } else if (Array.isArray(value)) {
-        return buildArrayString(value, sqlType);
-      } else if (value instanceof Date) {
-        if (sqlType === "date") {
-          return `"${value.toISOString().split("T")[0]}"`;
-        } else if (sqlType === "timestamp") {
-          return `"${value.toISOString().replace("T", " ").slice(0, 23)}"`;
-        } else {
-          return `"${value.toISOString()}"`;
-        }
-      } else if (typeof value === "object") {
-        return `"${JSON.stringify(value).replaceAll('"', '\\"')}"`;
-      }
-
-      return `"${value}"`;
-    })
-    .join(",");
-
-  return `{${values}}`;
 }
 
 /** Convert a Drizzle SQL expression to a string for extracting default values. */
@@ -185,7 +154,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
                 columnToSet.default = `'${column.default.toISOString()}'`;
               }
             } else if (isPgArrayType(sqlTypeLowered) && Array.isArray(column.default)) {
-              columnToSet.default = `'${buildArrayString(column.default as ArrayElement[], sqlTypeLowered)}'`;
+              columnToSet.default = `'${buildArrayString(column.default as SqlArrayDefaultElement[], sqlTypeLowered)}'`;
             } else {
               columnToSet.default = column.default as string | number | boolean;
             }

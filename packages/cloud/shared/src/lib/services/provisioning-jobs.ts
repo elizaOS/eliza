@@ -21,6 +21,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lte,
   ne,
   notInArray,
   or,
@@ -44,6 +45,7 @@ import {
   type RecoveryFailureWritebackBuilder,
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBillingStatus,
   type AgentExecutionTier,
@@ -166,7 +168,12 @@ export interface AgentSuspendJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  authorization: "user_request" | "billing_request";
 }
+
+type PersistedAgentSuspendJobData = Omit<AgentSuspendJobData, "authorization"> & {
+  authorization?: AgentSuspendJobData["authorization"];
+};
 
 export interface AgentResumeJobData {
   agentId: string;
@@ -534,21 +541,51 @@ function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
   return job.data;
 }
 
-function isAgentSuspendJobData(value: unknown): value is AgentSuspendJobData {
+function isAgentSuspendJobData(value: unknown): value is PersistedAgentSuspendJobData {
+  const authorization = (value as { authorization?: unknown } | null)?.authorization;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (authorization === undefined ||
+      authorization === "user_request" ||
+      authorization === "billing_request")
   );
 }
 
-function readAgentSuspendJobData(job: Job): AgentSuspendJobData {
+function readAgentSuspendJobData(job: Job): PersistedAgentSuspendJobData {
   if (!isAgentSuspendJobData(job.data)) {
     throw new Error(`Invalid agent suspend job data for job ${job.id}`);
   }
   return job.data;
+}
+
+/** Resolve pre-authority suspend jobs from their exact durable billing binding. */
+export async function resolveAgentSuspendAuthorization(
+  job: Job,
+): Promise<AgentSuspendJobData["authorization"]> {
+  const data = readAgentSuspendJobData(job);
+  if (data.authorization) return data.authorization;
+  const [boundIntent] = await dbWrite
+    .select({ id: agentComputeStopIntents.id })
+    .from(agentComputeStopIntents)
+    .where(
+      and(
+        eq(agentComputeStopIntents.organization_id, job.organization_id),
+        eq(agentComputeStopIntents.agent_id, data.agentId),
+        eq(agentComputeStopIntents.job_id, job.id),
+        inArray(agentComputeStopIntents.status, [
+          "pending",
+          "dispatching",
+          "retry",
+          "terminal_attention",
+        ]),
+      ),
+    )
+    .limit(1);
+  return boundIntent ? "billing_request" : "user_request";
 }
 
 function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
@@ -897,6 +934,12 @@ interface LifecycleJobOptions<TData extends object> {
     tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0],
     sandbox: LifecycleSandboxRow,
   ) => Promise<void>;
+  /** Couples operation-specific durable authority to the inserted job row. */
+  afterInsert?: (
+    tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0],
+    sandbox: LifecycleSandboxRow,
+    job: typeof jobs.$inferSelect,
+  ) => Promise<void>;
 }
 
 /**
@@ -967,6 +1010,9 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+/** Retryable provider/transport outcomes allowed before the logical job is
+ * settled terminally without restarting its ordinary-attempt ladder. */
+const PROVISION_TRANSPORT_MAX_FREE_RETRIES = 5;
 /** How many times a transient pre-deletion capture may requeue WITHOUT
  *  consuming the delete's attempt budget. At the transport retry delay above
  *  this is ~20 minutes of tolerance for a capture outage; past it the failure
@@ -1083,9 +1129,14 @@ export class UpgradeFailedError extends Error {
 }
 
 class RetryableProvisionTransportError extends Error {
-  constructor(message: string) {
+  readonly retrySnapshot: Job;
+  readonly maxRequeues: number;
+
+  constructor(message: string, retrySnapshot: Job, maxRequeues: number) {
     super(message);
     this.name = "RetryableProvisionTransportError";
+    this.retrySnapshot = retrySnapshot;
+    this.maxRequeues = maxRequeues;
   }
 }
 
@@ -1107,6 +1158,7 @@ class PreDeleteCaptureExhaustedError extends Error {
 
 class RetryableReplacementCleanupError extends Error {
   readonly retrySnapshot: Job;
+  readonly maxRequeues = PROVISION_TRANSPORT_MAX_FREE_RETRIES;
 
   constructor(message: string, retrySnapshot: Job, options?: { cause?: unknown }) {
     super(message, options);
@@ -1484,6 +1536,8 @@ export class ProvisioningJobService {
       .values(await prepareJobInsertData(newJob))
       .returning();
 
+    await opts.afterInsert?.(tx, sandbox, job);
+
     logger.info(`[provisioning-jobs] Enqueued ${opts.logName} job`, {
       jobId: job.id,
       ...logFields,
@@ -1833,6 +1887,7 @@ export class ProvisioningJobService {
     agentId: string;
     organizationId: string;
     userId: string;
+    authorization: "user_request" | "billing_request";
     webhookUrl?: string;
   }): Promise<EnqueueAgentSuspendResult> {
     return this.enqueueLifecycleJob<AgentSuspendJobData>({
@@ -1841,6 +1896,7 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        authorization: params.authorization,
       },
       toRecord: agentSuspendJobDataToRecord,
       agentId: params.agentId,
@@ -1850,6 +1906,72 @@ export class ProvisioningJobService {
       maxAttempts: 3,
       estimatedDurationMs: 30_000,
       logName: "agent_suspend",
+      idempotencyPredicates:
+        params.authorization === "user_request"
+          ? [sql`${jobs.data}->>'authorization' = 'user_request'`]
+          : [],
+      beforeInsert:
+        params.authorization === "billing_request"
+          ? async (tx, sandbox) => {
+              const [existing] = await tx
+                .select()
+                .from(agentComputeStopIntents)
+                .where(
+                  and(
+                    eq(agentComputeStopIntents.organization_id, params.organizationId),
+                    eq(agentComputeStopIntents.agent_id, params.agentId),
+                    inArray(agentComputeStopIntents.status, [
+                      "pending",
+                      "dispatching",
+                      "retry",
+                      "terminal_attention",
+                    ]),
+                  ),
+                )
+                .for("update")
+                .limit(1);
+              if (existing) {
+                await tx
+                  .update(agentComputeStopIntents)
+                  .set({
+                    lifecycle_revision: sandbox.lifecycle_revision,
+                    status: "pending",
+                    job_id: null,
+                    attempts: 0,
+                    last_error: null,
+                    provider_started_at: null,
+                    next_attempt_at: new Date(),
+                    updated_at: new Date(),
+                  })
+                  .where(eq(agentComputeStopIntents.id, existing.id));
+              } else {
+                await tx.insert(agentComputeStopIntents).values({
+                  organization_id: params.organizationId,
+                  agent_id: params.agentId,
+                  lifecycle_revision: sandbox.lifecycle_revision,
+                });
+              }
+            }
+          : undefined,
+      afterInsert:
+        params.authorization === "billing_request"
+          ? async (tx, _sandbox, job) => {
+              const bound = await tx
+                .update(agentComputeStopIntents)
+                .set({ job_id: job.id, updated_at: new Date() })
+                .where(
+                  and(
+                    eq(agentComputeStopIntents.organization_id, params.organizationId),
+                    eq(agentComputeStopIntents.agent_id, params.agentId),
+                    inArray(agentComputeStopIntents.status, ["pending", "retry"]),
+                  ),
+                )
+                .returning({ id: agentComputeStopIntents.id });
+              if (bound.length !== 1) {
+                throw new Error("Agent billing stop intent was not atomically bound to its job");
+              }
+            }
+          : undefined,
     });
   }
 
@@ -1886,6 +2008,24 @@ export class ProvisioningJobService {
       // Budget the long path so the UI doesn't show a stuck estimate.
       estimatedDurationMs: 90_000,
       logName: "agent_resume",
+      beforeInsert: async (tx) => {
+        const supersededAt = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ status: "superseded", superseded_at: supersededAt, updated_at: supersededAt })
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              inArray(agentComputeStopIntents.status, [
+                "pending",
+                "dispatching",
+                "retry",
+                "terminal_attention",
+              ]),
+            ),
+          );
+      },
     });
   }
 
@@ -3330,21 +3470,32 @@ export class ProvisioningJobService {
       err instanceof RetryableProvisionTransportError ||
       err instanceof RetryableReplacementCleanupError
     ) {
-      const retrySnapshot =
-        err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
-      const requeued = await this.retryOwnedWrite(job, "retry-later", () =>
+      const retrySnapshot = err.retrySnapshot;
+      const onExhaustedInTx = this.buildPermanentFailureWriteback(retrySnapshot, errorMsg);
+      const transition = await this.retryOwnedWrite(job, "retry-later", () =>
         jobsRepository.retryLaterWithoutIncrementingAttempts(
           retrySnapshot,
           errorMsg,
           PROVISION_TRANSPORT_RETRY_DELAY_MS,
           this.executionOwnerId,
+          { maxRequeues: err.maxRequeues, onExhaustedInTx },
         ),
       );
-      if (requeued) {
+      if (transition?.status === "pending") {
         if (result) result.retried++;
         logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
           jobId: job.id,
           delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+          requeues: transition.retryable_requeues,
+          maxRequeues: err.maxRequeues,
+          error: errorMsg,
+        });
+      } else if (transition?.status === "failed") {
+        if (result) result.failed++;
+        logger.error("[provisioning-jobs] Retryable failure exhausted its requeue budget", {
+          jobId: job.id,
+          requeues: transition.retryable_requeues,
+          maxRequeues: err.maxRequeues,
           error: errorMsg,
         });
       } else {
@@ -3723,6 +3874,11 @@ export class ProvisioningJobService {
             inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
             ne(jobs.id, job.id),
             sql`${jobs.status} IN ('pending', 'in_progress')`,
+            // A manual suspend may be a durable follow-up to an already claimed
+            // billing suspend. Both executions serialize on the sandbox row in
+            // executeSuspend; treating them as a conflict would strand the
+            // unconditional follow-up behind the stale hydrated billing job.
+            or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
           ),
         )
         .orderBy(desc(jobs.created_at))
@@ -3977,6 +4133,7 @@ export class ProvisioningJobService {
 
   private async executeAgentSuspend(job: Job): Promise<void> {
     const data = readAgentSuspendJobData(job);
+    const authorization = await resolveAgentSuspendAuthorization(job);
 
     if (data.organizationId !== job.organization_id) {
       throw new Error(
@@ -3990,7 +4147,12 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const result = await elizaSandboxService.executeSuspend(data.agentId, data.organizationId);
+    const result = await elizaSandboxService.executeSuspend(
+      data.agentId,
+      data.organizationId,
+      job.id,
+      authorization,
+    );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
@@ -4225,7 +4387,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentRestartJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
@@ -4236,6 +4398,8 @@ export class ProvisioningJobService {
       if (result.retryable) {
         throw new RetryableProvisionTransportError(
           result.error ?? "Snapshot capture temporarily unavailable",
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
       throw new Error(result.error ?? "Unknown agent_restart failure");
@@ -5043,7 +5207,7 @@ export class ProvisioningJobService {
     }
 
     if (!result.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
           error: result.error,
@@ -5052,6 +5216,8 @@ export class ProvisioningJobService {
       if (result.retryable) {
         throw new RetryableProvisionTransportError(
           result.error ?? "Snapshot capture temporarily unavailable",
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
       throw new Error(result.error ?? "Unknown agent_snapshot failure");
@@ -5111,13 +5277,16 @@ export class ProvisioningJobService {
       // transient would requeue forever and a user-requested delete would
       // become an immortal — still billed — agent. Count the free requeues on
       // the job result and escalate past the cap.
-      const priorCaptureRetries = readAgentDeleteCaptureRetryCount(job.result);
+      const priorCaptureRetries = Math.max(
+        job.retryable_requeues,
+        readAgentDeleteCaptureRetryCount(job.result),
+      );
       const captureRetryExhausted =
         delResult.retryable && priorCaptureRetries >= PRE_DELETE_CAPTURE_MAX_FREE_RETRIES;
       const captureRetryCount = delResult.retryable ? priorCaptureRetries + 1 : priorCaptureRetries;
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentDeleteJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
@@ -5133,6 +5302,8 @@ export class ProvisioningJobService {
         // budget and strand the deletion (#18517).
         throw new RetryableProvisionTransportError(
           delResult.error ?? "Pre-deletion capture temporarily unavailable",
+          retrySnapshot,
+          PRE_DELETE_CAPTURE_MAX_FREE_RETRIES,
         );
       }
       if (captureRetryExhausted) {
@@ -5200,7 +5371,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
     if (!provResult.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentProvisionJobResultToRecord({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
@@ -5208,7 +5379,11 @@ export class ProvisioningJobService {
         }),
       });
       if (provResult.retryable) {
-        throw new RetryableProvisionTransportError(provResult.error);
+        throw new RetryableProvisionTransportError(
+          provResult.error,
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
+        );
       }
       throw new Error(provResult.error);
     }
@@ -5676,6 +5851,20 @@ export interface ProcessingResult {
   retried: number;
   failed: number;
   errors: Array<{ jobId: string; error: string }>;
+}
+
+/** Operator recovery/alert scan for billing stop intents, including terminal failures. */
+export async function listRecoverableAgentComputeStopIntents(now: Date, limit = 100) {
+  return await dbWrite
+    .select()
+    .from(agentComputeStopIntents)
+    .where(
+      and(
+        inArray(agentComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
+        lte(agentComputeStopIntents.next_attempt_at, now),
+      ),
+    )
+    .limit(limit);
 }
 
 // Singleton

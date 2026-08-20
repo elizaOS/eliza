@@ -62,6 +62,36 @@ import type {
 	World,
 } from "./types";
 
+/** Enforces the shared pagination contract for entity-query boundaries. */
+export function validateQueryEntitiesPagination(params: {
+	limit?: number;
+	offset?: number;
+}): void {
+	for (const field of ["limit", "offset"] as const) {
+		const value = params[field];
+		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+			throw new RangeError(
+				`queryEntities ${field} must be a non-negative safe integer`,
+			);
+		}
+	}
+}
+
+/**
+ * Compares UUID-backed memory ids in the same order as PostgreSQL's `uuid`
+ * type. PostgreSQL normalizes hexadecimal case before ordering, so in-memory
+ * adapters and cross-table merges must do the same instead of using the
+ * locale-sensitive `localeCompare`; otherwise a valid uppercase UUID can be
+ * skipped or repeated at a keyset boundary.
+ */
+export function compareMemoryIds(left: string, right: string): number {
+	const normalizedLeft = left.toLowerCase();
+	const normalizedRight = right.toLowerCase();
+	if (normalizedLeft < normalizedRight) return -1;
+	if (normalizedLeft > normalizedRight) return 1;
+	return 0;
+}
+
 /**
  * Abstract base class for database adapters.
  *
@@ -274,6 +304,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;

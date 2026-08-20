@@ -141,6 +141,22 @@ afterEach(() => {
 });
 
 describe("InboxView — populated list", () => {
+  it("aborts the active inbox request when the view unmounts", () => {
+    const signals: AbortSignal[] = [];
+    const fetchInbox: InboxFetchers["fetchInbox"] = (_channels, signal) => {
+      if (signal) signals.push(signal);
+      return new Promise(() => {});
+    };
+    const { unmount } = render(
+      <InboxView fetchers={makeFetchers({ fetchInbox })} />,
+    );
+    expect(signals[0]?.aborted).toBe(false);
+
+    unmount();
+
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
   it("loads the inbox on mount and renders the triage items grouped by channel", async () => {
     render(<InboxView fetchers={makeFetchers()} />);
     await screen.findByText("Invoice 42 overdue");

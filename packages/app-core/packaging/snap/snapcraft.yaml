@@ -1,4 +1,5 @@
-name: elizaos-app
+name: eliza
+title: Eliza
 version: "2.0.0-beta.0"
 summary: Personal AI assistant built on elizaOS
 description: |
@@ -15,9 +16,9 @@ description: |
   - Web3 wallet integration (EVM + Solana)
   - Desktop apps for macOS, Windows, and Linux
 
-  Quick start: sudo snap install elizaos-app && elizaos-app setup
+  Quick start: sudo snap install eliza && eliza setup
 
-grade: devel
+grade: stable
 confinement: strict
 base: core22
 license: MIT
@@ -36,7 +37,7 @@ layout:
     symlink: $SNAP/usr/lib/x86_64-linux-gnu/libatomic.so.1
 
 apps:
-  elizaos-app:
+  eliza:
     command: bin/elizaos-app-wrapper
     plugs:
       - network

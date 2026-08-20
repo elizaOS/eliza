@@ -1,7 +1,7 @@
 /** Durable exact-generation GC outbox for sandbox backup objects. */
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   boundedBackupCatalogError,
   requireBoundedIdentity,
@@ -16,6 +16,7 @@ import {
   type AgentBackupObject,
   agentBackupGcOutbox,
   agentBackupObjects,
+  agentBackupRestoreLeases,
 } from "../schemas/agent-backup-catalog";
 import { agentSandboxBackups, type StoredAgentSandboxBackup } from "../schemas/agent-sandboxes";
 import {
@@ -24,6 +25,7 @@ import {
   lockAgentBackupCatalogAuthority,
   stampAgentBackupCatalogRevision,
 } from "./agent-backup-catalog";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const MAX_GC_BATCH = 100;
 const MAX_GC_LEASE_MS = 5 * 60 * 1_000;
@@ -214,7 +216,7 @@ export async function listDueAgentBackupDeletions(params: {
           )
           AND backup.catalog_organization_id IS NOT NULL
           AND backup.backup_operation_id IS NOT NULL
-          AND backup.retention_until <= NOW()
+          AND backup.retention_until <= clock_timestamp()
           AND backup.retention_reason <> 'legal-hold'
           AND (
             backup.catalog_state IN (
@@ -236,6 +238,14 @@ export async function listDueAgentBackupDeletions(params: {
                 WHERE failed_object.backup_id = backup.id
               )
             )
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${agentBackupRestoreLeases} AS restore_lease
+            WHERE restore_lease.backup_id = backup.id
+              AND restore_lease.organization_id = backup.catalog_organization_id
+              AND restore_lease.released_at IS NULL
+              AND restore_lease.expires_at > clock_timestamp()
           )
           AND NOT EXISTS (
             SELECT 1
@@ -323,6 +333,14 @@ export async function listFinalizableAgentBackupDeletions(params: {
             WHERE pending_object.backup_id = backup.id
               AND (pending_intent.state <> 'completed' OR pending_intent.receipt_digest IS NULL)
           )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${agentBackupRestoreLeases} AS restore_lease
+            WHERE restore_lease.backup_id = backup.id
+              AND restore_lease.organization_id = backup.catalog_organization_id
+              AND restore_lease.released_at IS NULL
+              AND restore_lease.expires_at > clock_timestamp()
+          )
         ORDER BY backup.catalog_organization_id, backup.created_at, backup.id
       )
       SELECT organization_id, backup_id, operation_id
@@ -369,6 +387,7 @@ export async function enqueueAgentBackupDeletion(params: {
     }
     const organizationId = backup.catalog_organization_id;
     const agentId = backup.catalog_agent_id;
+    const authority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
     const successfulState = ["protected", "retained", "restore_verified"].includes(
       backup.catalog_state as string,
     );
@@ -407,13 +426,14 @@ export async function enqueueAgentBackupDeletion(params: {
         `Backup deletion cannot start while operation is ${backup.catalog_state}`,
       );
     }
+    const databaseNow = await readPostLockDatabaseNow(tx);
     const [retentionEligible] = await tx
       .select({ id: agentSandboxBackups.id })
       .from(agentSandboxBackups)
       .where(
         and(
           eq(agentSandboxBackups.id, backup.id),
-          lte(agentSandboxBackups.retention_until, sql`NOW()`),
+          lte(agentSandboxBackups.retention_until, databaseNow),
           sql`${agentSandboxBackups.retention_reason} <> 'legal-hold'`,
         ),
       )
@@ -454,7 +474,22 @@ export async function enqueueAgentBackupDeletion(params: {
       );
     }
 
-    const authority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
+    const [activeLease] = await tx
+      .select({ id: agentBackupRestoreLeases.id })
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.backup_id, backup.id),
+          eq(agentBackupRestoreLeases.organization_id, backup.catalog_organization_id),
+          isNull(agentBackupRestoreLeases.released_at),
+          gt(agentBackupRestoreLeases.expires_at, databaseNow),
+        ),
+      )
+      .limit(1);
+    if (activeLease) {
+      throw new AgentBackupCatalogConflictError("Backup has an active restore lease");
+    }
+
     let semanticMutation = false;
     if (
       successfulState ||
@@ -474,7 +509,7 @@ export async function enqueueAgentBackupDeletion(params: {
           catalog_lease_generation: null,
           catalog_lease_expires_at: null,
           catalog_next_attempt_at: null,
-          catalog_updated_at: sql`NOW()`,
+          catalog_updated_at: databaseNow,
         })
         .where(
           and(
@@ -494,7 +529,7 @@ export async function enqueueAgentBackupDeletion(params: {
     if (backup.catalog_state === "expiration_pending") {
       const [moved] = await tx
         .update(agentSandboxBackups)
-        .set({ catalog_state: "deleting", catalog_updated_at: sql`NOW()` })
+        .set({ catalog_state: "deleting", catalog_updated_at: databaseNow })
         .where(
           and(
             eq(agentSandboxBackups.id, backup.id),
@@ -527,7 +562,7 @@ export async function enqueueAgentBackupDeletion(params: {
       ) {
         const [pending] = await tx
           .update(agentBackupObjects)
-          .set({ state: "delete_pending", updated_at: sql`NOW()` })
+          .set({ state: "delete_pending", updated_at: databaseNow })
           .where(
             and(eq(agentBackupObjects.id, object.id), eq(agentBackupObjects.state, object.state)),
           )
@@ -593,55 +628,34 @@ export async function claimAgentBackupGc(params: {
     throw new Error(`leaseMs must be between 1 and ${MAX_GC_LEASE_MS}`);
   }
   const generation = randomUUID();
-
-  return dbWrite.transaction(async (tx) => {
-    // Resolve a slightly wider non-locking window. Each row is then acquired
-    // in the global backup/authority/object/outbox order with SKIP LOCKED.
-    const due = await tx
-      .select({ id: agentBackupGcOutbox.id })
-      .from(agentBackupGcOutbox)
-      .where(
-        and(
-          lte(agentBackupGcOutbox.next_attempt_at, sql`NOW()`),
-          or(
-            eq(agentBackupGcOutbox.state, "pending"),
-            and(
-              eq(agentBackupGcOutbox.state, "leased"),
-              lte(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
-            ),
+  // Discovery does not authorize a claim. Every candidate gets its own short
+  // transaction so an early row cannot consume the lease lifetime of later rows.
+  const due = await dbWrite
+    .select({ id: agentBackupGcOutbox.id })
+    .from(agentBackupGcOutbox)
+    .where(
+      and(
+        lte(agentBackupGcOutbox.next_attempt_at, sql`clock_timestamp()`),
+        or(
+          eq(agentBackupGcOutbox.state, "pending"),
+          and(
+            eq(agentBackupGcOutbox.state, "leased"),
+            lte(agentBackupGcOutbox.lease_expires_at, sql`clock_timestamp()`),
           ),
         ),
-      )
-      .orderBy(asc(agentBackupGcOutbox.next_attempt_at), asc(agentBackupGcOutbox.created_at))
-      .limit(Math.min(MAX_GC_BATCH, params.limit * 4));
-    if (due.length === 0) return [];
-
-    const result: AgentBackupGcClaim[] = [];
-    for (const candidate of due) {
-      if (result.length >= params.limit) break;
+      ),
+    )
+    .orderBy(asc(agentBackupGcOutbox.next_attempt_at), asc(agentBackupGcOutbox.created_at))
+    .limit(Math.min(MAX_GC_BATCH, params.limit * 4));
+  const result: AgentBackupGcClaim[] = [];
+  for (const candidate of due) {
+    if (result.length >= params.limit) break;
+    const claim = await dbWrite.transaction(async (tx) => {
       const context = await lockAgentBackupGcMutation(tx, candidate.id, {
         skipLockedBackup: true,
       });
-      if (!context) continue;
+      if (!context) return null;
       const { authority, backup, object, intent } = context;
-      const [claimable] = await tx
-        .select({ id: agentBackupGcOutbox.id })
-        .from(agentBackupGcOutbox)
-        .where(
-          and(
-            eq(agentBackupGcOutbox.id, intent.id),
-            lte(agentBackupGcOutbox.next_attempt_at, sql`NOW()`),
-            or(
-              eq(agentBackupGcOutbox.state, "pending"),
-              and(
-                eq(agentBackupGcOutbox.state, "leased"),
-                lte(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
-              ),
-            ),
-          ),
-        )
-        .limit(1);
-      if (!claimable) continue;
       const locatorMatches =
         object.key_fingerprint === intent.expected_key_fingerprint &&
         object.provider_version_id === intent.expected_provider_version_id &&
@@ -649,8 +663,25 @@ export async function claimAgentBackupGc(params: {
         object.provider_checksum === intent.expected_provider_checksum &&
         object.provider_write_started === intent.expected_provider_write_started &&
         (await agentBackupGcLocatorDigest(object)) === intent.expected_locator_digest;
+      const databaseNow = await readPostLockDatabaseNow(tx);
+      const dueAt = intent.next_attempt_at.getTime() <= databaseNow.getTime();
+      const expiredLease =
+        intent.state === "leased" &&
+        intent.lease_expires_at !== null &&
+        intent.lease_expires_at.getTime() <= databaseNow.getTime();
+      if (!dueAt || (intent.state !== "pending" && !expiredLease)) return null;
+      const claimableFence = and(
+        eq(agentBackupGcOutbox.id, intent.id),
+        lte(agentBackupGcOutbox.next_attempt_at, sql`clock_timestamp()`),
+        or(
+          eq(agentBackupGcOutbox.state, "pending"),
+          and(
+            eq(agentBackupGcOutbox.state, "leased"),
+            lte(agentBackupGcOutbox.lease_expires_at, sql`clock_timestamp()`),
+          ),
+        ),
+      );
       if (!locatorMatches) {
-        const reason = "GC_LOCATOR_CHANGED";
         const [quarantined] = await tx
           .update(agentBackupGcOutbox)
           .set({
@@ -659,23 +690,18 @@ export async function claimAgentBackupGc(params: {
             claim_generation: null,
             lease_expires_at: null,
             attempts: sql`${agentBackupGcOutbox.attempts} + 1`,
-            last_error_code: reason,
+            last_error_code: "GC_LOCATOR_CHANGED",
             last_error: "Object locator authority changed while claiming",
-            updated_at: sql`NOW()`,
+            updated_at: databaseNow,
           })
-          .where(
-            and(
-              eq(agentBackupGcOutbox.id, intent.id),
-              sql`${agentBackupGcOutbox.state} IN ('pending', 'leased')`,
-            ),
-          )
+          .where(claimableFence)
           .returning({ id: agentBackupGcOutbox.id });
         if (!quarantined) {
           throw new AgentBackupCatalogConflictError("GC quarantine CAS lost");
         }
         await tx
           .update(agentBackupObjects)
-          .set({ state: "quarantined", updated_at: sql`NOW()` })
+          .set({ state: "quarantined", updated_at: databaseNow })
           .where(eq(agentBackupObjects.id, object.id));
         await stampAgentBackupCatalogRevision(tx, {
           backupId: backup.id,
@@ -683,30 +709,34 @@ export async function claimAgentBackupGc(params: {
           agentId: backup.catalog_agent_id as string,
           expectedRevision: authority.catalog_revision,
         });
-        continue;
+        return null;
       }
+      const expiresAt = new Date(databaseNow.getTime() + params.leaseMs);
       const [claimed] = await tx
         .update(agentBackupGcOutbox)
         .set({
           state: "leased",
           claim_owner: params.ownerId,
           claim_generation: generation,
-          lease_expires_at: sql`NOW() + (${params.leaseMs} * INTERVAL '1 millisecond')`,
+          lease_expires_at: expiresAt,
           attempts: sql`${agentBackupGcOutbox.attempts} + 1`,
-          updated_at: sql`NOW()`,
+          updated_at: databaseNow,
         })
-        .where(
-          and(
-            eq(agentBackupGcOutbox.id, intent.id),
-            sql`${agentBackupGcOutbox.state} IN ('pending', 'leased')`,
-          ),
-        )
+        .where(claimableFence)
         .returning();
       if (!claimed) throw new AgentBackupCatalogConflictError("GC claim CAS lost");
-      result.push({ outbox: claimed, object });
-    }
-    return result;
-  });
+      const postClaimDatabaseNow = await readPostLockDatabaseNow(tx);
+      if (
+        !claimed.lease_expires_at ||
+        claimed.lease_expires_at.getTime() <= postClaimDatabaseNow.getTime()
+      ) {
+        throw new AgentBackupCatalogConflictError("GC claim expired before it could be returned");
+      }
+      return { outbox: claimed, object };
+    });
+    if (claim) result.push(claim);
+  }
+  return result;
 }
 
 /**
@@ -747,17 +777,6 @@ export async function adoptAgentBackupGcObservedLocator(params: {
     ) {
       throw new AgentBackupCatalogConflictError("GC locator adoption lease is not owned");
     }
-    const [leaseAlive] = await tx
-      .select({ id: agentBackupGcOutbox.id })
-      .from(agentBackupGcOutbox)
-      .where(
-        and(
-          eq(agentBackupGcOutbox.id, intent.id),
-          gt(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
-        ),
-      )
-      .limit(1);
-    if (!leaseAlive) throw new AgentBackupCatalogConflictError("GC execution lease expired");
     if (!object.provider_write_started || !intent.expected_provider_write_started) {
       throw new AgentBackupCatalogConflictError(
         "GC cannot adopt a provider locator without a persisted write-start authority",
@@ -788,7 +807,13 @@ export async function adoptAgentBackupGcObservedLocator(params: {
       intent.expected_provider_version_id === providerVersionId &&
       intent.expected_provider_etag === providerEtag &&
       intent.expected_provider_checksum === providerChecksum;
-    if (exactReplay) return { outbox: intent, object };
+    if (exactReplay) {
+      const databaseNow = await readPostLockDatabaseNow(tx);
+      if (!intent.lease_expires_at || intent.lease_expires_at.getTime() <= databaseNow.getTime()) {
+        throw new AgentBackupCatalogConflictError("GC execution lease expired");
+      }
+      return { outbox: intent, object };
+    }
     if (
       object.provider_version_id !== null ||
       object.provider_etag !== null ||
@@ -808,7 +833,7 @@ export async function adoptAgentBackupGcObservedLocator(params: {
         provider_etag: providerEtag,
         provider_checksum: providerChecksum,
         upload_receipt_digest: params.uploadReceiptDigest,
-        updated_at: sql`NOW()`,
+        updated_at: sql`clock_timestamp()`,
       })
       .where(
         and(
@@ -825,6 +850,10 @@ export async function adoptAgentBackupGcObservedLocator(params: {
       .returning();
     if (!updatedObject) throw new AgentBackupCatalogConflictError("GC locator adoption CAS lost");
     const expectedLocatorDigest = await agentBackupGcLocatorDigest(updatedObject);
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (!intent.lease_expires_at || intent.lease_expires_at.getTime() <= databaseNow.getTime()) {
+      throw new AgentBackupCatalogConflictError("GC execution lease expired");
+    }
     const [updatedIntent] = await tx
       .update(agentBackupGcOutbox)
       .set({
@@ -832,7 +861,7 @@ export async function adoptAgentBackupGcObservedLocator(params: {
         expected_provider_version_id: providerVersionId,
         expected_provider_etag: providerEtag,
         expected_provider_checksum: providerChecksum,
-        updated_at: sql`NOW()`,
+        updated_at: databaseNow,
       })
       .where(
         and(
@@ -840,7 +869,7 @@ export async function adoptAgentBackupGcObservedLocator(params: {
           eq(agentBackupGcOutbox.state, "leased"),
           eq(agentBackupGcOutbox.claim_owner, params.ownerId),
           eq(agentBackupGcOutbox.claim_generation, params.generation),
-          gt(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
+          gt(agentBackupGcOutbox.lease_expires_at, sql`clock_timestamp()`),
           sql`${agentBackupGcOutbox.expected_provider_version_id} IS NULL`,
           sql`${agentBackupGcOutbox.expected_provider_etag} IS NULL`,
           sql`${agentBackupGcOutbox.expected_provider_checksum} IS NULL`,
@@ -889,17 +918,6 @@ export async function settleAgentBackupGc(params: {
     ) {
       throw new AgentBackupCatalogConflictError("GC execution lease is not owned by this worker");
     }
-    const [leaseAlive] = await tx
-      .select({ id: agentBackupGcOutbox.id })
-      .from(agentBackupGcOutbox)
-      .where(
-        and(
-          eq(agentBackupGcOutbox.id, intent.id),
-          gt(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
-        ),
-      )
-      .limit(1);
-    if (!leaseAlive) throw new AgentBackupCatalogConflictError("GC execution lease expired");
     if (
       ownedObject.key_fingerprint !== intent.expected_key_fingerprint ||
       ownedObject.provider_version_id !== intent.expected_provider_version_id ||
@@ -917,13 +935,17 @@ export async function settleAgentBackupGc(params: {
     ) {
       throw new AgentBackupCatalogConflictError("Object delete receipt replay mismatch");
     }
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (!intent.lease_expires_at || intent.lease_expires_at.getTime() <= databaseNow.getTime()) {
+      throw new AgentBackupCatalogConflictError("GC execution lease expired");
+    }
     const [object] = await tx
       .update(agentBackupObjects)
       .set({
         state: "deleted",
         delete_receipt_digest: params.receiptDigest,
-        deleted_at: sql`COALESCE(${agentBackupObjects.deleted_at}, NOW())`,
-        updated_at: sql`NOW()`,
+        deleted_at: ownedObject.deleted_at ?? databaseNow,
+        updated_at: databaseNow,
       })
       .where(
         and(
@@ -944,10 +966,10 @@ export async function settleAgentBackupGc(params: {
         claim_generation: null,
         lease_expires_at: null,
         receipt_digest: params.receiptDigest,
-        completed_at: sql`NOW()`,
+        completed_at: databaseNow,
         last_error_code: null,
         last_error: null,
-        updated_at: sql`NOW()`,
+        updated_at: databaseNow,
       })
       .where(
         and(
@@ -955,7 +977,7 @@ export async function settleAgentBackupGc(params: {
           eq(agentBackupGcOutbox.state, "leased"),
           eq(agentBackupGcOutbox.claim_owner, params.ownerId),
           eq(agentBackupGcOutbox.claim_generation, params.generation),
-          gt(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
+          gt(agentBackupGcOutbox.lease_expires_at, sql`clock_timestamp()`),
         ),
       )
       .returning();
@@ -1023,6 +1045,10 @@ export async function failAgentBackupGc(params: {
     ) {
       throw new AgentBackupCatalogConflictError("GC failure writeback lost its execution lease");
     }
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (!intent.lease_expires_at || intent.lease_expires_at.getTime() <= databaseNow.getTime()) {
+      throw new AgentBackupCatalogConflictError("GC execution lease expired");
+    }
     const quarantine = params.terminal === true || intent.attempts >= MAX_GC_ATTEMPTS;
     const [updated] = await tx
       .update(agentBackupGcOutbox)
@@ -1033,12 +1059,12 @@ export async function failAgentBackupGc(params: {
         lease_expires_at: null,
         next_attempt_at: quarantine
           ? intent.next_attempt_at
-          : sql`NOW() + (${params.retryDelayMs} * INTERVAL '1 millisecond')`,
+          : new Date(databaseNow.getTime() + params.retryDelayMs),
         last_error_code: error.code,
         last_error: error.message,
         last_failure_generation: params.generation.toLowerCase(),
         last_failure_digest: failureDigest,
-        updated_at: sql`NOW()`,
+        updated_at: databaseNow,
       })
       .where(
         and(
@@ -1046,7 +1072,7 @@ export async function failAgentBackupGc(params: {
           eq(agentBackupGcOutbox.state, "leased"),
           eq(agentBackupGcOutbox.claim_owner, params.ownerId),
           eq(agentBackupGcOutbox.claim_generation, params.generation),
-          gt(agentBackupGcOutbox.lease_expires_at, sql`NOW()`),
+          gt(agentBackupGcOutbox.lease_expires_at, sql`clock_timestamp()`),
         ),
       )
       .returning();
@@ -1054,7 +1080,7 @@ export async function failAgentBackupGc(params: {
     if (quarantine) {
       await tx
         .update(agentBackupObjects)
-        .set({ state: "quarantined", updated_at: sql`NOW()` })
+        .set({ state: "quarantined", updated_at: databaseNow })
         .where(eq(agentBackupObjects.id, intent.object_id));
     }
     await stampAgentBackupCatalogRevision(tx, {
@@ -1107,6 +1133,22 @@ export async function finalizeAgentBackupDeletion(params: {
       backup.catalog_organization_id,
       backup.catalog_agent_id,
     );
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    const [activeLease] = await tx
+      .select({ id: agentBackupRestoreLeases.id })
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.backup_id, backup.id),
+          eq(agentBackupRestoreLeases.organization_id, backup.catalog_organization_id),
+          isNull(agentBackupRestoreLeases.released_at),
+          gt(agentBackupRestoreLeases.expires_at, databaseNow),
+        ),
+      )
+      .limit(1);
+    if (activeLease) {
+      throw new AgentBackupCatalogConflictError("Restore lease blocks GC finalization");
+    }
     const objects = await tx
       .select({ id: agentBackupObjects.id, state: agentBackupObjects.state })
       .from(agentBackupObjects)
@@ -1178,8 +1220,8 @@ export async function finalizeAgentBackupDeletion(params: {
         catalog_state: "deleted",
         catalog_revision: catalogRevision,
         catalog_delete_receipt_digest: receiptDigest,
-        catalog_deleted_at: sql`NOW()`,
-        catalog_updated_at: sql`NOW()`,
+        catalog_deleted_at: databaseNow,
+        catalog_updated_at: databaseNow,
       })
       .where(
         and(

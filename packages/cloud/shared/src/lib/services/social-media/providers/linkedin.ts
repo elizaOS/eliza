@@ -14,6 +14,7 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import { downloadSocialMediaBytes } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
@@ -216,13 +217,10 @@ export const linkedinProvider: SocialMediaProvider = {
             // Download and upload the image. A non-OK download or upload must
             // surface: otherwise the asset below is marked READY and attached to
             // a published post that references bytes LinkedIn never received.
-            const imageResponse = await fetch(media.url);
-            if (!imageResponse.ok) {
-              throw new Error(
-                `LinkedIn image download failed for ${media.url}: ${imageResponse.status}`,
-              );
-            }
-            const imageData = await imageResponse.arrayBuffer();
+            const imageData = await downloadSocialMediaBytes(media.url, {
+              httpErrorMessage: (status) =>
+                `LinkedIn image download failed for ${media.url}: ${status}`,
+            });
 
             const uploadResponse = await fetch(uploadUrl, {
               method: "PUT",
@@ -230,7 +228,7 @@ export const linkedinProvider: SocialMediaProvider = {
                 Authorization: `Bearer ${credentials.accessToken}`,
                 "Content-Type": media.mimeType,
               },
-              body: imageData,
+              body: new Uint8Array(imageData),
             });
             if (!uploadResponse.ok) {
               throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);
@@ -394,11 +392,12 @@ export const linkedinProvider: SocialMediaProvider = {
     } else if (media.base64) {
       imageData = Uint8Array.from(Buffer.from(media.base64, "base64"));
     } else if (media.url) {
-      const response = await fetch(media.url);
-      if (!response.ok) {
-        throw new Error(`LinkedIn image download failed for ${media.url}: ${response.status}`);
-      }
-      imageData = new Uint8Array(await response.arrayBuffer());
+      imageData = new Uint8Array(
+        await downloadSocialMediaBytes(media.url, {
+          httpErrorMessage: (status) =>
+            `LinkedIn image download failed for ${media.url}: ${status}`,
+        }),
+      );
     } else {
       throw new Error("No media data provided");
     }
@@ -411,7 +410,7 @@ export const linkedinProvider: SocialMediaProvider = {
         Authorization: `Bearer ${credentials.accessToken}`,
         "Content-Type": media.mimeType,
       },
-      body: Buffer.from(imageData),
+      body: new Uint8Array(imageData),
     });
     if (!uploadResponse.ok) {
       throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);

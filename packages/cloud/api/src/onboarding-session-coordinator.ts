@@ -12,6 +12,7 @@ import type {
   OnboardingSession,
 } from "@/lib/services/eliza-app/onboarding-chat";
 import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -960,7 +961,12 @@ export class OnboardingSessionCoordinator {
         if (pathname !== "/turn") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        const decodedBody = await decodeRequestJson(request);
+        if (!decodedBody.ok) {
+          // error-policy:J3 malformed JSON is an explicit invalid request.
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+        const body = decodedBody.value;
         if (!isCoordinatorRequest(body)) {
           return Response.json(
             { error: "Invalid coordinator request" },

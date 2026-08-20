@@ -36,6 +36,7 @@ plugins/plugin-x/
     index.ts                       XPlugin export; services: [XService]
     base.ts                        ClientBase — wraps the twitter-api-v2 client; caches profile, fetches timeline/tweets/search
     environment.ts                 twitterEnvSchema (zod); TwitterConfig type; validateTwitterConfig()
+    dm-policy.ts                   TWITTER_DM_POLICY resolution + the one-on-one DM access gate (fail-closed pairing default) enforced by the DM polling loop
     types.ts                       TwitterClientState, ITwitterClient, event payload types, Tweet, MediaData
     constants.ts                   Shared string constants
     templates.ts                   LLM prompt templates for post/interaction generation
@@ -119,6 +120,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_ENABLE_POST` | No | `false` | Enable autonomous tweet generation loop |
 | `TWITTER_ENABLE_REPLIES` | No | `true` | Enable mention/reply handling loop |
 | `TWITTER_ENABLE_DMS` | No | `true` | Poll inbound DMs and route them through the agent message loop |
+| `TWITTER_DM_POLICY` | No | `pairing` | One-on-one DM access gate: `open` / `pairing` / `allowlist` / `disabled`. Default `pairing` routes unknown senders through the core `checkPairingAllowed` handshake (fail closed, unrecognized values included); group conversations are unaffected |
 | `TWITTER_DM_POLL_INTERVAL_SECONDS` | No | `60` | DM polling interval in seconds (minimum 15) |
 | `TWITTER_ENABLE_ACTIONS` | No | `false` | Enable timeline action loop (like/retweet/quote) |
 | `TWITTER_ENABLE_DISCOVERY` | No | `false` | Enable discovery loop (follows + engagement) |
@@ -167,6 +169,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 - **OAuth 1.0a (`env` mode)** is the default. It requires all four vars: `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`. The app must have "Read and write" permissions in the Twitter Developer Portal. After changing permissions, regenerate access tokens.
 - **OAuth 2.0 PKCE (`oauth` mode)** requires `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI`. No client secret is stored. Tokens persist per `accountId` via the runtime cache (key `twitter/oauth2/tokens/<agentId>/<accountId>`) and the connector credential store — see `client/auth-providers/token-store.ts`. There is no local-file fallback; token persistence requires runtime cache APIs.
 - **`TWITTER_ENABLE_POST=false` by default.** Posting is opt-in to prevent accidental bots.
+- **DM access fails closed by default.** One-on-one DMs are gated by `TWITTER_DM_POLICY` (default `pairing` through the core PairingService) before any world state or memory is created for the sender; `TWITTER_DM_POLICY=open` restores the legacy default-open behavior. Group conversations are not gated — the account only sees ones it was added to.
 - **`TWITTER_ENABLE_ACTIONS=false` by default.** Timeline actions (likes, retweets) are also opt-in.
 - **Discovery auto-enables with actions.** `TWITTER_ENABLE_DISCOVERY` defaults to `true` when `TWITTER_ENABLE_ACTIONS=true`, unless explicitly set to `false`.
 - **`TWITTER_DRY_RUN=true`** simulates all write operations without calling the API. Use during development.

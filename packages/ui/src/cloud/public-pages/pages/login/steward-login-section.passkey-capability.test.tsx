@@ -12,6 +12,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -109,7 +110,7 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: vi.fn(),
   recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
@@ -337,6 +338,32 @@ describe("StewardLoginSection passkey capability gating", () => {
       ),
     );
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+  });
+
+  it("keeps a complete email focused after 404 passkey recovery", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey.mockRejectedValue(
+      new StewardApiError("No passkey registered", 404),
+    );
+
+    const user = userEvent.setup();
+    renderSection();
+
+    const input = (await screen.findByPlaceholderText(
+      "you@example.com",
+    )) as HTMLInputElement;
+    await user.type(input, "first@example.com");
+    await user.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    expect(await screen.findByText("Passkey not completed")).toBeTruthy();
+
+    await user.clear(input);
+    await user.type(input, "complete@example.com");
+
+    expect(input.value).toBe("complete@example.com");
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByText("Passkey not completed")).toBeTruthy();
   });
 
   it("surfaces UV error and does not enter passkey signup when sign-in fails with user-verification required", async () => {

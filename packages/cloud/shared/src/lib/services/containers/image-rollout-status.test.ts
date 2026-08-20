@@ -103,7 +103,15 @@ describe("imageMatchesDesired", () => {
 });
 
 function row(id: string, image: string | null): RolloutPoolRow {
-  return { id, docker_image: image, node_id: null, pool_ready_at: null, health_url: null };
+  return {
+    id,
+    docker_image: image,
+    image_digest: image ? describeImageReference(image).digest : null,
+    claimable: true,
+    node_id: null,
+    pool_ready_at: null,
+    health_url: null,
+  };
 }
 
 const DESIRED = `${REPO}@${DIGEST_A}`;
@@ -163,6 +171,26 @@ describe("summarizeImageRollout — status state machine", () => {
       unknownImage: 0,
     });
     expect(s.staleRows.map((r) => r.id)).toEqual(["old"]);
+  });
+
+  test("a mutable tag is classified by persisted digest, not matching tag text", () => {
+    const tagged = `${REPO}:stable`;
+    const s = summarizeImageRollout({
+      desiredImage: tagged,
+      desiredDigest: DIGEST_A,
+      enabled: true,
+      rows: [
+        { ...row("current", tagged), image_digest: DIGEST_A },
+        { ...row("stale", tagged), image_digest: DIGEST_B },
+      ],
+    });
+    expect(s.desired.digest).toBe(DIGEST_A);
+    expect(s.counts).toMatchObject({ matchingDesired: 1, stale: 1 });
+    expect(s.staleRows[0]).toMatchObject({
+      id: "stale",
+      currentImage: tagged,
+      currentDigest: DIGEST_B,
+    });
   });
 
   test("a null-image row counts as unknown + stale", () => {

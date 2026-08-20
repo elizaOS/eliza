@@ -1,5 +1,7 @@
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
+
 import { Hono } from "hono";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -186,7 +188,12 @@ async function __hono_POST(c: AppContext) {
     timings.authMs = Date.now() - requestStart;
     const admissionStart = Date.now();
 
-    const rawBody = await request.json();
+    const decodedRawBody = await decodeRequestJson(request);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const rawBody = decodedRawBody.value;
     const parsed = TtsBody.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(

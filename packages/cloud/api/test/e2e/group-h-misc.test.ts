@@ -33,6 +33,7 @@ import {
   getBaseUrl,
   isLocalTarget,
   isServerReachable,
+  sameOriginBrowserHeaders,
   url,
 } from "./_helpers/api";
 
@@ -449,10 +450,10 @@ describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
         "/api/crypto/payments/00000000-0000-0000-0000-000000000000/confirm",
         { transactionHash: VALID_ETH_TX_HASH },
         {
-          headers: {
+          headers: sameOriginBrowserHeaders({
             Cookie: sessionCookie,
             "Content-Type": "application/json",
-          },
+          }),
         },
       );
       // The payment lookup runs first; a well-formed unknown id → 404.

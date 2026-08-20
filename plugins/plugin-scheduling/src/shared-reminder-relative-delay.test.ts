@@ -184,6 +184,9 @@ describe("explicit Shared reminder relative delay", () => {
         schedule: vi.fn(),
         list: vi.fn(async () => []),
         apply: vi.fn(),
+        applyWithResult: vi.fn(async () => {
+          throw new Error("Reminder mutation is outside this creation test");
+        }),
         pipeline: vi.fn(async () => []),
       };
       const [action] =
@@ -267,6 +270,9 @@ describe("explicit Shared reminder relative delay", () => {
       }),
       list: vi.fn(async () => []),
       apply: vi.fn(async () => {
+        throw new Error("Ambiguous reminder must not be mutated");
+      }),
+      applyWithResult: vi.fn(async () => {
         throw new Error("Ambiguous reminder must not be mutated");
       }),
       pipeline: vi.fn(async () => []),

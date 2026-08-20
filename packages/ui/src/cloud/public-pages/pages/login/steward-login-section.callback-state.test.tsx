@@ -29,7 +29,7 @@ const callbackState = vi.hoisted(() => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: () => {
     callbackState.exchangeCalls += 1;
     return callbackState.exchange();

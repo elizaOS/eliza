@@ -81,6 +81,21 @@ function isReservedKey(key: string): boolean {
   );
 }
 
+function decodeInventoryPathSegment(
+  raw: string,
+  res: http.ServerResponse,
+  field: string,
+): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed percent-encoding is invalid path input, not a
+    // vault outage.
+    sendJsonError(res, 400, `invalid ${field}: malformed URL encoding`);
+    return null;
+  }
+}
+
 export async function handleSecretsInventoryRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -202,17 +217,26 @@ export async function handleSecretsInventoryRoute(
   const activeProfileMatch = activeProfileRe.exec(tail);
 
   if (profileIdMatch) {
-    key = decodeURIComponent(profileIdMatch[1] ?? "");
-    profileId = decodeURIComponent(profileIdMatch[2] ?? "");
+    key = decodeInventoryPathSegment(profileIdMatch[1] ?? "", res, "key");
+    if (key === null) return true;
+    profileId = decodeInventoryPathSegment(
+      profileIdMatch[2] ?? "",
+      res,
+      "profileId",
+    );
+    if (profileId === null) return true;
     segment = "profile";
   } else if (profilesMatch) {
-    key = decodeURIComponent(profilesMatch[1] ?? "");
+    key = decodeInventoryPathSegment(profilesMatch[1] ?? "", res, "key");
+    if (key === null) return true;
     segment = "profiles";
   } else if (activeProfileMatch) {
-    key = decodeURIComponent(activeProfileMatch[1] ?? "");
+    key = decodeInventoryPathSegment(activeProfileMatch[1] ?? "", res, "key");
+    if (key === null) return true;
     segment = "active-profile";
   } else if (!tail.includes("/")) {
-    key = decodeURIComponent(tail);
+    key = decodeInventoryPathSegment(tail, res, "key");
+    if (key === null) return true;
     segment = "key";
   } else {
     return false;

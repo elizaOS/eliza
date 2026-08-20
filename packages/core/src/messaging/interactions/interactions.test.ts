@@ -375,6 +375,24 @@ describe("layout", () => {
 		});
 	});
 
+	it("rejects non-positive maxButtonsPerRow instead of hanging", () => {
+		const block: ChoiceInteraction = {
+			kind: "choice",
+			id: "i",
+			scope: "s",
+			prompt: "Pick",
+			options: [
+				{ value: "a", label: "A" },
+				{ value: "b", label: "B" },
+			],
+		};
+		for (const perRow of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(() =>
+				toNeutralLayout(block, { maxButtonsPerRow: perRow }),
+			).toThrow(RangeError);
+		}
+	});
+
 	it("marks allowCustom choices as needing a free-text fallback", () => {
 		const block: ChoiceInteraction = {
 			kind: "choice",

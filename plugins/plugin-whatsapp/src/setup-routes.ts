@@ -32,13 +32,40 @@ import { isWhatsAppWebhookAuthorized, readWebhookRawBody } from "./webhook-auth.
 
 interface PairingSessionLike {
   start(): Promise<void>;
-  stop(): void;
+  stop(): Promise<void>;
   getStatus(): string;
 }
 
 const whatsappPairingSessions: Map<string, PairingSessionLike> = new Map();
+let pairingTransition: Promise<void> = Promise.resolve();
 
 const MAX_PAIRING_SESSIONS = 10;
+
+async function acquirePairingTransition(): Promise<() => void> {
+  const previous = pairingTransition;
+  let releaseTransition: (() => void) | undefined;
+  const current = new Promise<void>((resolve) => {
+    releaseTransition = resolve;
+  });
+  pairingTransition = current;
+  await previous;
+  return () => {
+    releaseTransition?.();
+    if (pairingTransition === current) pairingTransition = Promise.resolve();
+  };
+}
+
+async function stopPairingSession(accountId: string): Promise<void> {
+  for (;;) {
+    const session = whatsappPairingSessions.get(accountId);
+    if (!session) return;
+    await session.stop();
+    if (whatsappPairingSessions.get(accountId) === session) {
+      whatsappPairingSessions.delete(accountId);
+      return;
+    }
+  }
+}
 
 function routeHost(req: RouteRequest): string {
   const host = req.headers?.host;
@@ -84,12 +111,16 @@ function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
 }
 
 /** Clean up disconnected / timed-out / errored sessions. */
-function cleanupStaleSessions(): void {
-  for (const [id, session] of whatsappPairingSessions) {
-    const status = session.getStatus();
-    if (status === "disconnected" || status === "timeout" || status === "error") {
-      session.stop();
-      whatsappPairingSessions.delete(id);
+async function cleanupStaleSessions(): Promise<void> {
+  for (const id of whatsappPairingSessions.keys()) {
+    const releaseTransition = await acquirePairingTransition();
+    try {
+      const status = whatsappPairingSessions.get(id)?.getStatus();
+      if (status === "disconnected" || status === "timeout" || status === "error") {
+        await stopPairingSession(id);
+      }
+    } finally {
+      releaseTransition();
     }
   }
 }
@@ -129,8 +160,13 @@ async function handleWebhookVerify(
     return;
   }
 
-  // Webhook verification must return the challenge as plain text
-  res.status(200).json(verifiedChallenge);
+  // Meta compares the GET verification response body byte-for-byte against the
+  // hub.challenge it sent, so it must be the raw challenge as text/plain. The
+  // runtime RouteResponse adapter serializes json() with JSON.stringify, which
+  // would emit a JSON-quoted string and fail verification; send() emits the
+  // string verbatim. This matches the sibling api/whatsapp-routes.ts handler.
+  res.setHeader?.("Content-Type", "text/plain");
+  res.status(200).send(verifiedChallenge);
 }
 
 // ── POST /api/whatsapp/webhook ─────────────────────────────────────────
@@ -178,8 +214,11 @@ async function handleWebhookEvent(
 
   await service.handleWebhook(body);
 
-  // Meta expects a 200 with "EVENT_RECEIVED" text
-  res.status(200).json("EVENT_RECEIVED");
+  // Meta expects a 200 with the plain "EVENT_RECEIVED" acknowledgement. send()
+  // emits the string verbatim; json() would JSON-quote it as with the sibling
+  // api/whatsapp-routes.ts handler.
+  res.setHeader?.("Content-Type", "text/plain");
+  res.status(200).send("EVENT_RECEIVED");
 }
 
 // ── POST /api/whatsapp/pair ────────────────────────────────────────────
@@ -188,7 +227,7 @@ async function handlePair(
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  cleanupStaleSessions();
+  await cleanupStaleSessions();
 
   const setupService = getSetupService(runtime);
   const body = req.body as { accountId?: string } | null;
@@ -204,75 +243,80 @@ async function handlePair(
     res.status(400).json({ error: (err as Error).message });
     return;
   }
+  const releaseTransition = await acquirePairingTransition();
 
-  const isReplacing = whatsappPairingSessions.has(accountId);
-  if (!isReplacing && whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS) {
-    res.status(429).json({
-      error: `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
-    });
-    return;
-  }
+  try {
+    const isReplacing = whatsappPairingSessions.has(accountId);
+    if (!isReplacing && whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS) {
+      res.status(429).json({
+        error: `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
+      });
+      return;
+    }
 
-  const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
-  const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
-  whatsappPairingSessions.get(accountId)?.stop();
+    const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
+    const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
+    await stopPairingSession(accountId);
 
-  const session = new WhatsAppPairingSession({
-    authDir,
-    accountId,
-    onEvent: (event: WhatsAppPairingEvent) => {
-      setupService?.broadcastWs(event);
+    const session = new WhatsAppPairingSession({
+      authDir,
+      accountId,
+      onEvent: (event: WhatsAppPairingEvent) => {
+        setupService?.broadcastWs(event);
 
-      if (event.status === "connected") {
-        if (setupService) {
-          setupService.updateConfig((config) => {
-            if (!config.connectors) config.connectors = {};
-            const connectors = config.connectors as Record<string, Record<string, unknown>>;
-            const previousConfig = connectors.whatsapp;
-            if (accountId === "default") {
-              connectors.whatsapp = {
-                ...previousConfig,
+        if (event.status === "connected") {
+          if (setupService) {
+            setupService.updateConfig((config) => {
+              if (!config.connectors) config.connectors = {};
+              const connectors = config.connectors as Record<string, Record<string, unknown>>;
+              const previousConfig = connectors.whatsapp;
+              if (accountId === "default") {
+                connectors.whatsapp = {
+                  ...previousConfig,
+                  authDir,
+                  transport: "baileys",
+                  enabled: true,
+                };
+                return;
+              }
+              const accounts =
+                typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
+                  ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
+                  : {};
+              accounts[accountId] = {
+                ...(accounts[accountId] ?? {}),
                 authDir,
                 transport: "baileys",
                 enabled: true,
               };
-              return;
-            }
-            const accounts =
-              typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
-                ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
-                : {};
-            accounts[accountId] = {
-              ...(accounts[accountId] ?? {}),
-              authDir,
-              transport: "baileys",
-              enabled: true,
-            };
-            connectors.whatsapp = {
-              ...previousConfig,
-              accounts,
-              enabled: true,
-            };
-          });
+              connectors.whatsapp = {
+                ...previousConfig,
+                accounts,
+                enabled: true,
+              };
+            });
 
-          // Auto-populate owner contact so LifeOps can deliver reminders
-          const phoneNumber = event.phoneNumber;
-          setupService.setOwnerContact({
-            source: "whatsapp",
-            channelId: phoneNumber ?? undefined,
-          });
+            // Auto-populate owner contact so LifeOps can deliver reminders
+            const phoneNumber = event.phoneNumber;
+            setupService.setOwnerContact({
+              source: "whatsapp",
+              channelId: phoneNumber ?? undefined,
+            });
+          }
         }
-      }
-    },
-  });
+      },
+    });
 
-  whatsappPairingSessions.set(accountId, session);
+    whatsappPairingSessions.set(accountId, session);
 
-  try {
-    await session.start();
-    res.status(200).json({ ok: true, accountId, status: session.getStatus() });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: String(err) });
+    try {
+      await session.start();
+      res.status(200).json({ ok: true, accountId, status: session.getStatus() });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  } finally {
+    releaseTransition();
   }
 }
 
@@ -282,7 +326,7 @@ async function handleStatus(
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  cleanupStaleSessions();
+  await cleanupStaleSessions();
 
   const setupService = getSetupService(runtime);
   const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
@@ -340,10 +384,11 @@ async function handlePairStop(
     return;
   }
 
-  const session = whatsappPairingSessions.get(accountId);
-  if (session) {
-    session.stop();
-    whatsappPairingSessions.delete(accountId);
+  const releaseTransition = await acquirePairingTransition();
+  try {
+    await stopPairingSession(accountId);
+  } finally {
+    releaseTransition();
   }
 
   res.status(200).json({ ok: true, accountId, status: "idle" });
@@ -370,48 +415,49 @@ async function handleDisconnect(
     return;
   }
 
-  const session = whatsappPairingSessions.get(accountId);
-  if (session) {
-    session.stop();
-    whatsappPairingSessions.delete(accountId);
-  }
-
-  const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
-
+  const releaseTransition = await acquirePairingTransition();
   try {
-    await whatsappLogout(workspaceDir, accountId);
-  } catch (logoutErr) {
-    console.warn(
-      `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-      String(logoutErr)
-    );
-    const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
-    try {
-      fs.rmSync(authDir, { recursive: true, force: true });
-    } catch {
-      /* may not exist */
-    }
-  }
+    await stopPairingSession(accountId);
 
-  if (setupService) {
-    setupService.updateConfig((config) => {
-      const connectors = config.connectors as Record<string, unknown> | undefined;
-      if (connectors) {
-        if (accountId === "default") {
-          delete connectors.whatsapp;
-          return;
-        }
-        const whatsappConfig = connectors.whatsapp as Record<string, unknown> | undefined;
-        const accounts = whatsappConfig?.accounts as Record<string, unknown> | undefined;
-        if (accounts) {
-          delete accounts[accountId];
-        }
-        connectors.whatsapp = {
-          ...(whatsappConfig ?? {}),
-          ...(accounts ? { accounts } : {}),
-        };
+    const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
+
+    try {
+      await whatsappLogout(workspaceDir, accountId);
+    } catch (logoutErr) {
+      console.warn(
+        `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
+        String(logoutErr)
+      );
+      const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
+      try {
+        fs.rmSync(authDir, { recursive: true, force: true });
+      } catch {
+        /* may not exist */
       }
-    });
+    }
+
+    if (setupService) {
+      setupService.updateConfig((config) => {
+        const connectors = config.connectors as Record<string, unknown> | undefined;
+        if (connectors) {
+          if (accountId === "default") {
+            delete connectors.whatsapp;
+            return;
+          }
+          const whatsappConfig = connectors.whatsapp as Record<string, unknown> | undefined;
+          const accounts = whatsappConfig?.accounts as Record<string, unknown> | undefined;
+          if (accounts) {
+            delete accounts[accountId];
+          }
+          connectors.whatsapp = {
+            ...(whatsappConfig ?? {}),
+            ...(accounts ? { accounts } : {}),
+          };
+        }
+      });
+    }
+  } finally {
+    releaseTransition();
   }
 
   res.status(200).json({ ok: true, accountId });
@@ -471,12 +517,15 @@ export const whatsappSetupRoutes: Route[] = [
 /**
  * Stop all active pairing sessions. Called during shutdown cleanup.
  */
-export function stopAllPairingSessions(): void {
-  for (const session of whatsappPairingSessions.values()) {
+export async function stopAllPairingSessions(): Promise<void> {
+  for (const accountId of whatsappPairingSessions.keys()) {
+    const releaseTransition = await acquirePairingTransition();
     try {
-      session.stop();
+      await stopPairingSession(accountId);
     } catch {
-      /* non-fatal */
+      // error-policy:J6 Shutdown continues after a best-effort pairing teardown failure.
+    } finally {
+      releaseTransition();
     }
   }
   whatsappPairingSessions.clear();

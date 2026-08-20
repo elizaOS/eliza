@@ -2,6 +2,68 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+## Managed provider contract harness
+
+`@elizaos/cloud-test-mocks/provider-contract` provides a reusable real-HTTP
+fake upstream and adapter conformance runner. It includes OAuth Authorization
+Code + state + PKCE, rotating refresh credentials, revoked/expired credentials,
+fixture responses, deterministic faults, signed webhook delivery, redacted
+request inspection, and policy receipts.
+
+Suites declare an `outbound-http` or `inbound-webhook` profile. The audit binds
+that profile and the capability list to the executed nonce report, so a caller
+cannot omit mandatory scenarios or claim OAuth credential lifecycle behavior
+when it only implements the callback/state/PKCE boundary.
+
+Action fixtures declare provider-owned account grants and policy decisions.
+The upstream authenticates and authorizes the request, performs or rejects the
+effect, and emits a canonical `EffectReceipt` in one boundary operation. Tests
+can inspect returned receipt/effect snapshots, but cannot mint receipts. Every
+receipt binds the tenant, account, opaque connection, capability, policy and
+confirmation result, request/idempotency identity, provider result, and actual
+effect; replay and denial are explicit non-applied outcomes.
+
+```ts
+import {
+  runProviderAdapterConformance,
+  startFakeProvider,
+} from "@elizaos/cloud-test-mocks/provider-contract";
+
+const upstream = await startFakeProvider({ fixtures });
+const adapter = new RealProviderAdapter({ baseUrl: upstream.url });
+
+await runProviderAdapterConformance({
+  adapterName: "RealProviderAdapter",
+  profile: "outbound-http",
+  capabilities: ["http-read", "pagination"],
+  scenarios: {
+    success: async () => {
+      await adapter.list();
+      return {
+        scenario: "success",
+        status: "passed",
+        detail: "real adapter response inspected",
+      };
+    },
+    // Add every always-required and capability-derived scenario. An optional
+    // requiredScenarios list can only add adapter-specific coverage.
+  },
+});
+
+await upstream.stop();
+```
+
+See `fixtures/provider-contract/README.md` and
+`provider-contract-inventory.json`. Every inventory ID must also appear in the
+append-only `provider-contract-protected-integrations.json` ledger. The
+`audit:provider-contracts` command rejects
+missing suites, undeclared promotions, focused/skipped suites, unknown
+or duplicate capabilities, removal of any integration ID visible in reachable
+repository history, ledger/inventory drift, or a mismatch between
+declared capabilities and nonce-bound observations emitted by the executed
+suite. Normal CI is fully offline and credential-free; live/sandbox lanes
+remain optional.
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in

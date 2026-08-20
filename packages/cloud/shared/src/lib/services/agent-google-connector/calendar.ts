@@ -15,6 +15,9 @@ import {
 const GOOGLE_CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_LIST_ENDPOINT =
   "https://www.googleapis.com/calendar/v3/users/me/calendarList";
+// Bounds provider calls independently from the accumulated Worker response.
+const MAX_GOOGLE_CALENDAR_FEED_PAGES = 1_000;
+const MAX_GOOGLE_CALENDAR_FEED_EVENTS = 10_000;
 
 type GoogleCalendarEventDate = {
   date?: string;
@@ -323,7 +326,16 @@ export async function fetchManagedGoogleCalendarFeed(args: {
 
   const events: ManagedGoogleCalendarEvent[] = [];
   let pageToken: string | undefined;
+  let pageCount = 0;
+  const seenPageTokens = new Set<string>();
   do {
+    pageCount += 1;
+    if (pageCount > MAX_GOOGLE_CALENDAR_FEED_PAGES) {
+      fail(
+        502,
+        `Google Calendar feed pagination exceeded ${MAX_GOOGLE_CALENDAR_FEED_PAGES} pages.`,
+      );
+    }
     const params = new URLSearchParams(baseParams);
     if (pageToken) {
       params.set("pageToken", pageToken);
@@ -339,12 +351,24 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       items?: GoogleCalendarApiEvent[];
       nextPageToken?: string;
     };
-    events.push(
-      ...(parsed.items ?? [])
-        .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
-        .filter((event): event is ManagedGoogleCalendarEvent => event !== null),
-    );
-    pageToken = parsed.nextPageToken?.trim() || undefined;
+    const normalizedPage = (parsed.items ?? [])
+      .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
+      .filter((event): event is ManagedGoogleCalendarEvent => event !== null);
+    if (events.length + normalizedPage.length > MAX_GOOGLE_CALENDAR_FEED_EVENTS) {
+      fail(
+        502,
+        `Google Calendar feed exceeded ${MAX_GOOGLE_CALENDAR_FEED_EVENTS} events; narrow the requested time range.`,
+      );
+    }
+    events.push(...normalizedPage);
+    const nextPageToken = parsed.nextPageToken?.trim() || undefined;
+    if (nextPageToken && seenPageTokens.has(nextPageToken)) {
+      fail(502, "Google Calendar feed pagination repeated a page token.");
+    }
+    if (nextPageToken) {
+      seenPageTokens.add(nextPageToken);
+    }
+    pageToken = nextPageToken;
   } while (pageToken);
 
   return {

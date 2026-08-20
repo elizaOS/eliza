@@ -23,6 +23,7 @@ import {
   AutoTopUpSettingsValidationError,
   autoTopUpService,
 } from "@/lib/services/auto-top-up";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -87,7 +88,12 @@ app.put(
     try {
       const user = await requireUserOrApiKeyWithOrg(c);
 
-      const body = await c.req.json();
+      const decodedBody = await decodeRequestJson(c.req);
+      if (!decodedBody.ok) {
+        // error-policy:J3 malformed JSON is an explicit invalid request.
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      const body = decodedBody.value;
       const validation = UpdateSettingsSchema.safeParse(body);
 
       if (!validation.success) {

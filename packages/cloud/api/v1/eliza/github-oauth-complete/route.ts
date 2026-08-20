@@ -20,7 +20,10 @@
 
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { createLifeOpsGithubReturnResponse } from "@/lib/services/agent-github-return";
+import {
+  createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin,
+} from "@/lib/services/agent-github-return";
 import { managedAgentGithubService } from "@/lib/services/agent-managed-github";
 import { readManagedAgentGithubBinding } from "@/lib/services/eliza-agent-config";
 import { oauthService } from "@/lib/services/oauth";
@@ -39,9 +42,28 @@ app.get("/", async (c) => {
   const connectionId = c.req.query("connection_id") ?? null;
   const githubConnected = c.req.query("github_connected") ?? null;
   const githubError = c.req.query("github_error") ?? null;
-  const postMessage = c.req.query("post_message") === "1";
+  const requestedPostMessageValues = new URL(c.req.url).searchParams.getAll(
+    "post_message",
+  );
+  const requestedPostMessage = requestedPostMessageValues[0];
+  if (
+    requestedPostMessageValues.length > 1 ||
+    (requestedPostMessage != null &&
+      requestedPostMessage !== "" &&
+      requestedPostMessage !== "1")
+  ) {
+    return c.json(
+      {
+        error: "Invalid post_message",
+        message: 'post_message must be specified at most once as "1".',
+      },
+      400,
+    );
+  }
+  const postMessage = requestedPostMessage === "1";
   const returnUrl = c.req.query("return_url") ?? null;
 
+  const targetOrigin = normalizePostMessageTargetOrigin(baseUrl);
   const respond = (args: {
     status: "connected" | "error";
     githubUsername?: string | null;
@@ -73,6 +95,7 @@ app.get("/", async (c) => {
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     if (args.status === "connected") {

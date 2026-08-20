@@ -395,6 +395,105 @@ describe("aggregate builders", () => {
     expect(inbox.messages[0]?.priorityScore).toBeUndefined();
   });
 
+  it("uses the most common category when top LLM scores tie", () => {
+    const now = Date.now();
+    const messages = [
+      inboundChat({
+        id: "tie-important",
+        text: "latest message",
+        threadId: "tie-thread",
+        timestamp: now,
+      }),
+      inboundChat({
+        id: "tie-planning-1",
+        text: "planning message one",
+        threadId: "tie-thread",
+        timestamp: now - 1000,
+      }),
+      inboundChat({
+        id: "tie-planning-2",
+        text: "planning message two",
+        threadId: "tie-thread",
+        timestamp: now - 2000,
+      }),
+      ...[0, 1, 2].map((index) =>
+        inboundChat({
+          id: `lower-casual-${index}`,
+          text: "lower-scoring casual message",
+          threadId: "tie-thread",
+          timestamp: now - 3000 - index,
+        }),
+      ),
+    ];
+    const inbox = buildInbox(messages, {
+      limit: 10,
+      allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+      sources: [{ source: "chat", state: "ok", degradations: [] }],
+      groupByThread: true,
+      llmScores: new Map([
+        [
+          "discord:tie-important",
+          { score: 90, category: "important", flags: [] },
+        ],
+        [
+          "discord:tie-planning-1",
+          { score: 90, category: "planning", flags: [] },
+        ],
+        [
+          "discord:tie-planning-2",
+          { score: 80, category: "planning", flags: [] },
+        ],
+        ...[0, 1, 2].map(
+          (index) =>
+            [
+              `discord:lower-casual-${index}`,
+              { score: 20, category: "casual", flags: [] },
+            ] as const,
+        ),
+      ]),
+    });
+
+    expect(inbox.threadGroups?.[0]?.priorityCategory).toBe("planning");
+  });
+
+  it("uses fixed priority order for an exact tied-category frequency", () => {
+    const now = Date.now();
+    const inbox = buildInbox(
+      [
+        inboundChat({
+          id: "exact-important",
+          text: "important",
+          threadId: "exact-thread",
+          timestamp: now,
+        }),
+        inboundChat({
+          id: "exact-planning",
+          text: "planning",
+          threadId: "exact-thread",
+          timestamp: now - 1000,
+        }),
+      ],
+      {
+        limit: 10,
+        allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
+        groupByThread: true,
+        llmScores: new Map([
+          [
+            "discord:exact-important",
+            { score: 90, category: "important", flags: [] },
+          ],
+          [
+            "discord:exact-planning",
+            { score: 90, category: "planning", flags: [] },
+          ],
+        ]),
+      },
+    );
+
+    expect(inbox.threadGroups?.[0]?.priorityCategory).toBe("important");
+  });
+
   it("missedOnly requires a real priority score instead of keyword fallback", () => {
     const old = Date.now() - 25 * 60 * 60 * 1000;
     const inbox = buildInbox(

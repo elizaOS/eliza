@@ -108,8 +108,15 @@ describe("staticAcceptanceCriteria", () => {
     expect(coding).not.toEqual(viewCreate);
     expect(appBuild).not.toEqual(viewCreate);
 
-    // app-build is the coding superset plus the live-URL check.
-    expect(appBuild).toEqual([...coding, "the live URL is reachable"]);
+    // app-build is serve-focused ON PURPOSE (#20794 live residual): a quick
+    // one-file app has no test/typecheck surface, so it no longer inherits the
+    // coding checks — it pins deliverable existence + live serving instead.
+    expect(appBuild).toEqual([
+      "the live URL is reachable",
+      "the deliverable file exists in the workdir",
+      "the page serves the requested content",
+    ]);
+    expect(appBuild.some((c) => coding.includes(c))).toBe(false);
     // view-create is its own distinct set (no overlap with coding's checks).
     expect(viewCreate.some((c) => coding.includes(c))).toBe(false);
   });

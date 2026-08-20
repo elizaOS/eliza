@@ -21,6 +21,7 @@ import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
+import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -45,6 +46,7 @@ import {
   normalizeProgressionRule,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
+import { callerDefinitionScopes } from "./definition-authorization.js";
 
 // Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
@@ -115,9 +117,19 @@ export class DefinitionsDomain {
   ) {}
 
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = await this.ctx.repository.listDefinitions(
-      this.ctx.agentId(),
-    );
+    const definitions = (
+      await Promise.all(
+        callerDefinitionScopes(this.ctx).map((scope) =>
+          this.ctx.repository.listDefinitions(this.ctx.agentId(), scope),
+        ),
+      )
+    )
+      .flat()
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -414,23 +426,10 @@ export class DefinitionsDomain {
   }
 
   async deleteDefinition(definitionId: string): Promise<void> {
-    const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
-      definitionId,
-    );
-    if (!definition) {
-      fail(404, "life-ops definition not found");
-    }
-    // A definition whose subject is neither this runtime's agent nor its
-    // owner belongs to another identity; report it as absent rather than
-    // disclose or destroy it.
-    const expectedSubjectId =
-      definition.subjectType === "agent"
-        ? this.ctx.agentId()
-        : this.ctx.ownerEntityId();
-    if (definition.subjectId !== expectedSubjectId) {
-      fail(404, "life-ops definition not found");
-    }
+    // Resolve through the caller-scoped record boundary before native or
+    // database side effects. An immutable ID for another domain/owner is
+    // indistinguishable from a missing definition.
+    const { definition } = await this.deps.getDefinitionRecord(definitionId);
     await this.deps.syncNativeAppleReminderForDefinition({
       definition: null,
       previousDefinition: definition,
@@ -440,6 +439,7 @@ export class DefinitionsDomain {
       definitionId,
       {
         scope: {
+          domain: definition.domain,
           subjectType: definition.subjectType,
           subjectId: definition.subjectId,
         },
@@ -482,12 +482,13 @@ export class DefinitionsDomain {
         `occurrence cannot be completed from state ${occurrence.state}`,
       );
     }
+    const completedAt = now.toISOString();
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,
       state: "completed",
       snoozedUntil: null,
       completionPayload: {
-        completedAt: now.toISOString(),
+        completedAt,
         note: normalizeOptionalString(request.note) ?? null,
         metadata: cloneRecord(request.metadata),
         previousState: occurrence.state,
@@ -528,6 +529,39 @@ export class DefinitionsDomain {
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after completion");
+    }
+    try {
+      const engagement = await this.ctx.repository.attributeBriefItemEngagement(
+        {
+          agentId: this.ctx.agentId(),
+          source: "life",
+          sourceId: updatedOccurrence.id,
+          eventType: "completed",
+          eventAt: completedAt,
+          domainEventId: `occurrence_completed:${updatedOccurrence.id}:${completedAt}`,
+          weight: 1,
+          metadata: {
+            definitionId: updatedOccurrence.definitionId,
+            occurrenceKey: updatedOccurrence.occurrenceKey,
+          },
+        },
+      );
+      if (engagement) {
+        await settleBriefEngagementReward({
+          runtime: this.ctx.runtime,
+          repository: this.ctx.repository,
+          engagement,
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 engagement attribution is diagnostic learning state;
+      // it must not turn an already-committed occurrence completion into a
+      // failed owner action. The gap remains visible through RECENT_ERRORS.
+      this.ctx.runtime.reportError(
+        "LifeOpsDefinitions.attributeBriefCompletion",
+        error,
+        { occurrenceId: updatedOccurrence.id },
+      );
     }
     return view;
   }
@@ -646,6 +680,35 @@ export class DefinitionsDomain {
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after snooze");
+    }
+    try {
+      const engagement = await this.ctx.repository.attributeBriefItemEngagement(
+        {
+          agentId: this.ctx.agentId(),
+          source: "life",
+          sourceId: updatedOccurrence.id,
+          eventType: "rescheduled",
+          eventAt: updatedOccurrence.updatedAt,
+          domainEventId: `occurrence_snoozed:${updatedOccurrence.id}:${updatedOccurrence.updatedAt}`,
+          weight: 1,
+          metadata: { snoozedUntil: updatedOccurrence.snoozedUntil },
+        },
+      );
+      if (engagement) {
+        await settleBriefEngagementReward({
+          runtime: this.ctx.runtime,
+          repository: this.ctx.repository,
+          engagement,
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 snooze already committed; learning telemetry cannot
+      // rewrite the authoritative occurrence result.
+      this.ctx.runtime.reportError(
+        "LifeOpsDefinitions.attributeBriefReschedule",
+        error,
+        { occurrenceId: updatedOccurrence.id },
+      );
     }
     return view;
   }

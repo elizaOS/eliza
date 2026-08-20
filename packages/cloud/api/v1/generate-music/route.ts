@@ -1,4 +1,5 @@
 /** Handles authenticated music generation, billing, and generation history persistence. */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -27,6 +28,7 @@ import {
   recordGenerativeSuccess,
 } from "@/lib/services/generative-provider-health";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
@@ -149,7 +151,13 @@ app.post("/", async (c) => {
   try {
     const { user, apiKeyId, admissionSnapshot } =
       await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
-    const request = musicRequestSchema.parse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const request = musicRequestSchema.parse(rawBody);
     const definition = getSupportedMusicModelDefinition(request.model);
     if (!definition) {
       return jsonError(

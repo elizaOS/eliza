@@ -16,6 +16,7 @@ import {
   listHostedBrowserSessions,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createSessionSchema = z.object({
@@ -49,7 +50,13 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const bodyResult = createSessionSchema.safeParse(await c.req.json());
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedBody.value;
+    const bodyResult = createSessionSchema.safeParse(rawBody);
     if (!bodyResult.success) {
       return c.json(
         {

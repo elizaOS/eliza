@@ -48,6 +48,7 @@ let appChargeCallbacksService: typeof import("../app-charge-callbacks").appCharg
 let callbackRoomBelongsToOrganization: typeof import("../callback-channel-authz").callbackRoomBelongsToOrganization;
 let memoriesRepository: typeof import("../../../db/repositories/agents/memories").memoriesRepository;
 let createSpy: ReturnType<typeof spyOn> | undefined;
+let findSpy: ReturnType<typeof spyOn> | undefined;
 let pgliteReady = true;
 
 async function seedCharge(creatorOrg: string, roomId: string, agentId = CHAR_A): Promise<void> {
@@ -136,6 +137,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   createSpy?.mockRestore();
+  findSpy?.mockRestore();
   if (closeDb) await closeDb();
 });
 
@@ -193,6 +195,8 @@ describe("appChargeCallbacksService.dispatch — settlement memory write is gate
   beforeEach(() => {
     if (!pgliteReady) return;
     createSpy?.mockRestore();
+    findSpy?.mockRestore();
+    findSpy = spyOn(memoriesRepository, "findById").mockResolvedValue(null);
     createSpy = spyOn(memoriesRepository, "create").mockImplementation(
       async () => ({ id: "mem", roomId: ROOM_A }) as never,
     );
@@ -215,6 +219,26 @@ describe("appChargeCallbacksService.dispatch — settlement memory write is gate
     const [memory] = createSpy.mock.calls[0] as [{ roomId: string; agentId: string }];
     expect(memory.roomId).toBe(ROOM_A);
     expect(memory.agentId).toBe(CHAR_A);
+  });
+
+  test("room callback retry reuses one deterministic memory identity", async () => {
+    if (!pgliteReady) return;
+    await seedCharge(ORG_A, ROOM_A);
+    const dispatch = {
+      appId: APP_ID,
+      chargeRequestId: CHARGE_ID,
+      status: "paid" as const,
+      provider: "stripe" as const,
+      providerPaymentId: "pi_retry_identity",
+    };
+
+    await appChargeCallbacksService.dispatch(dispatch);
+    await appChargeCallbacksService.dispatch(dispatch);
+
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    const first = createSpy.mock.calls[0]?.[0] as { id: string };
+    const second = createSpy.mock.calls[1]?.[0] as { id: string };
+    expect(second.id).toBe(first.id);
   });
 
   test("same-tenant room with a mismatched callback agent → NO memory is written", async () => {

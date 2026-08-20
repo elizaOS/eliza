@@ -144,11 +144,12 @@ export function validateCorpusMessages(
   return { ok: issues.length === 0, messages, issues };
 }
 
-export async function readCorpusShard(
+/** Parses caller-captured bytes so integrity-sensitive stages do not reopen a path. */
+export function parseCorpusShard(
+  raw: string,
   filePath: string,
   options: CorpusValidationOptions = {},
-): Promise<ShardReadResult> {
-  const raw = await fs.readFile(filePath, "utf8");
+): ShardReadResult {
   const rows: unknown[] = [];
   const issues: CorpusValidationIssue[] = [];
   const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
@@ -197,6 +198,17 @@ export async function readCorpusShard(
     sha256: sha256(raw),
     issues: [...issues, ...result.issues],
   };
+}
+
+export async function readCorpusShard(
+  filePath: string,
+  options: CorpusValidationOptions = {},
+): Promise<ShardReadResult> {
+  return parseCorpusShard(
+    await fs.readFile(filePath, "utf8"),
+    filePath,
+    options,
+  );
 }
 
 export async function findCorpusShardFiles(

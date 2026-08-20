@@ -13,7 +13,11 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
-import { DatabaseAdapter } from "../database";
+import {
+	compareMemoryIds,
+	DatabaseAdapter,
+	validateQueryEntitiesPagination,
+} from "../database";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -531,6 +535,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
+		validateQueryEntitiesPagination(_params);
 		const matchedComponentsByEntity = new Map<string, Component[]>();
 		const hasComponentQuery =
 			_params.componentType !== undefined ||
@@ -929,6 +934,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -942,6 +948,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
+		if (params.cursor && params.offset !== undefined) {
+			throw new Error("getMemories cursor and offset are mutually exclusive");
+		}
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const tableName = params.tableName;
 		let all =
@@ -1012,9 +1021,25 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const aId = typeof a.id === "string" ? a.id : "";
 			const bId = typeof b.id === "string" ? b.id : "";
 			return direction === "asc"
-				? aId.localeCompare(bId)
-				: bId.localeCompare(aId);
+				? compareMemoryIds(aId, bId)
+				: compareMemoryIds(bId, aId);
 		});
+
+		if (params.cursor) {
+			const cursor = params.cursor;
+			all = all.filter((memory) => {
+				const createdAt =
+					typeof memory.createdAt === "number" ? memory.createdAt : 0;
+				const id = typeof memory.id === "string" ? memory.id : "";
+				if (createdAt !== cursor.createdAt) {
+					return direction === "asc"
+						? createdAt > cursor.createdAt
+						: createdAt < cursor.createdAt;
+				}
+				const idOrder = compareMemoryIds(id, cursor.id);
+				return direction === "asc" ? idOrder > 0 : idOrder < 0;
+			});
+		}
 
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		return all.slice(

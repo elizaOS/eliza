@@ -656,6 +656,77 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
+  test("previews a Telegram account-claim continuation for the authenticated browser landing", async () => {
+    // Mirror the /connect DM mint: a trusted gateway turn, bound to the
+    // account that owns the attested Telegram identity, statusOnly so nothing
+    // is appended or provisioned.
+    resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
+    await dataOf(
+      await post({
+        sessionId: `platform:telegram-claim:${"a".repeat(64)}`,
+        platform: "telegram",
+        platformUserId: "9911",
+        platformDisplayName: "Ada",
+        statusOnly: true,
+      }),
+    );
+    const stored = sessionCache.get(
+      `eliza-app:onboarding:platform:telegram-claim:${"a".repeat(64)}`,
+    ) as { continuationToken?: string };
+    const continuation = stored?.continuationToken;
+    if (!continuation) throw new Error("Expected a claim continuation token");
+
+    // The claim session is bound to user-9/org-9, so the generic account-bound
+    // preview rejects the steward caller — the claim preview fallback answers
+    // with only the Telegram identity the landing asks the user to confirm.
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+    const preview = await get(continuation, STEWARD_JWT);
+    expect(preview.status).toBe(200);
+    expect(await dataOf(preview)).toEqual({
+      platform: "telegram",
+      platformUserId: "9911",
+      platformDisplayName: "Ada",
+      returnUrl: null,
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    // An unknown continuation still fails closed on both inspection paths.
+    const invalid = await get("unknown-opaque-continuation", STEWARD_JWT);
+    expect(invalid.status).toBe(403);
+    expect(await invalid.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+  });
+
+  test("does not treat an account-bound ordinary Telegram session as claim authority", async () => {
+    resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
+    await dataOf(
+      await post({
+        sessionId: "platform:telegram:9911",
+        platform: "telegram",
+        platformUserId: "9911",
+        platformDisplayName: "Ada",
+        statusOnly: true,
+      }),
+    );
+    const stored = sessionCache.get(
+      "eliza-app:onboarding:platform:telegram:9911",
+    ) as { continuationToken?: string };
+    const continuation = stored?.continuationToken;
+    if (!continuation)
+      throw new Error("Expected an onboarding continuation token");
+
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+    const preview = await get(continuation, STEWARD_JWT);
+    expect(preview.status).toBe(403);
+    expect(await preview.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
   test("a Steward caller can never mint a platform-scoped session or act as a trusted transport", async () => {
     getCurrentUser.mockResolvedValue(activeStewardUser());
 

@@ -20,12 +20,28 @@
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { CORE_BUILD_PACKAGES } from "./build-core-packages.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_TURBO = path.join(SCRIPT_DIR, "run-turbo.mjs");
-export const BUILD_CORE_PREREQUISITE_SCRIPTS = ["ensure-workspace-symlinks.mjs"];
+export const BUILD_CORE_PREREQUISITE_SCRIPTS = [
+  "ensure-workspace-symlinks.mjs",
+];
+
+/**
+ * Whether this module is the process entrypoint.
+ *
+ * `import.meta.url` is always a normalized file URL, while `process.argv[1]`
+ * is a platform-native filesystem path. Building a URL with string
+ * interpolation leaves Windows backslashes and drive-letter syntax intact,
+ * so the direct-execution guard silently fails there. Convert through Node's
+ * URL API instead, matching the representation used for `import.meta.url`.
+ */
+export function isBuildCoreEntrypoint(moduleUrl, argvPath) {
+  if (typeof argvPath !== "string" || argvPath.length === 0) return false;
+  return moduleUrl === pathToFileURL(path.resolve(argvPath)).href;
+}
 
 /** The exact `run-turbo.mjs` argv for the core build, plus any forwarded args. */
 export function buildCoreTurboArgs(extra = []) {
@@ -89,4 +105,4 @@ function main() {
   process.exit(result.status ?? 1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (isBuildCoreEntrypoint(import.meta.url, process.argv[1])) main();

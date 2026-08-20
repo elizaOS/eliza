@@ -9,6 +9,7 @@ import cloudApiWorker, {
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
   isElizaAppWebhookPath,
+  isInternalDiscordGatewayPath,
   isThinInferenceEnabled,
   isThinStewardPublicPath,
   isUnsupportedLegacyWildcardHostname,
@@ -105,6 +106,78 @@ test("matches only supported provider webhook routes", () => {
   );
   expect(isElizaAppWebhookPath("/api/eliza-app/webhook/unknown")).toBe(false);
   expect(isElizaAppWebhookPath("/api/eliza-app/webhook")).toBe(false);
+});
+
+test("matches only the managed Discord gateway route", () => {
+  expect(
+    isInternalDiscordGatewayPath("/api/internal/discord/eliza-app/messages"),
+  ).toBe(true);
+  expect(
+    isInternalDiscordGatewayPath("/api/internal/discord/eliza-app/messages/"),
+  ).toBe(false);
+  expect(
+    isInternalDiscordGatewayPath(
+      "/api/internal/discord/eliza-app/messages/admin",
+    ),
+  ).toBe(false);
+});
+
+test("dispatches managed Discord turns without full-app bootstrap", async () => {
+  const traceId = "33333333-3333-4333-8333-333333333333";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const makeRequest = () =>
+    new Request(
+      "https://api.eliza.app/api/internal/discord/eliza-app/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-eliza-trace-id": traceId,
+        },
+        body: "{}",
+      },
+    );
+
+  const response = await cloudApiWorker.fetch(makeRequest(), env, executionCtx);
+
+  expect(response.status).toBe(401);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("x-eliza-discord-path")).toBe("thin");
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(response.headers.get("server-timing")).toMatch(
+    /discord_entry_dispatch;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).toMatch(
+    /discord_module_init;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).not.toContain(
+    "full_app_dispatch",
+  );
+
+  const warmResponse = await cloudApiWorker.fetch(
+    makeRequest(),
+    env,
+    executionCtx,
+  );
+  expect(warmResponse.status).toBe(401);
+  expect(warmResponse.headers.get("server-timing")).toContain(
+    "discord_entry_dispatch",
+  );
+  expect(warmResponse.headers.get("server-timing")).not.toContain(
+    "discord_module_init",
+  );
 });
 
 test("preserves provider authentication on the thin webhook path", async () => {
@@ -460,7 +533,10 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
       env,
     );
     expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve/dashboard");
-    expect(out?.searchParams.get("host")).toBe("acme.sites.eliza.app");
+    // The hostname is preserved in the rewritten URL and is the serve route's
+    // only trusted host source; no `?host=` override is attached.
+    expect(out?.hostname).toBe("acme.sites.eliza.app");
+    expect(out?.searchParams.get("host")).toBeNull();
   });
 
   test("rewrites the root path", () => {
@@ -988,7 +1064,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(productionRoutes).toContain("*.cloud.eliza.app/*");
   });
 
-  test("publishes the genuine Shared runtime in staging and production", async () => {
+  test("has no rollback flag to bypass the canonical Shared AgentRuntime", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -999,11 +1075,13 @@ describe("cloud-api worker entrypoint", () => {
       };
     };
 
-    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("false");
-    expect(config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
-    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe(
-      "true",
-    );
+    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBeUndefined();
+    expect(
+      config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME,
+    ).toBeUndefined();
+    expect(
+      config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME,
+    ).toBeUndefined();
   });
 
   test("keeps the legacy edge guard false and reserves the replacement names for the cutover secrets", async () => {

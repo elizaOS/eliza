@@ -36,7 +36,15 @@ declare global {
     /** e2e automation hook — runs the self-test and returns its report. */
     __voiceSelfTest?: (opts?: {
       mode?: VoiceSelfTestMode;
+      microphoneDeviceId?: string;
+      speakerDeviceId?: string;
     }) => Promise<VoiceSelfTestReport>;
+    /** Exact payloads consumed/produced by the most recent self-test run. */
+    __voiceSelfTestArtifacts?: () => {
+      microphoneBase64?: string;
+      referenceBase64?: string;
+      ttsBase64?: string;
+    };
   }
 }
 
@@ -72,15 +80,23 @@ export function VoiceSelfTestShell() {
   const ttsRoute = useMemo(() => resolveTtsRoute(platform), [platform]);
   const clientRef = useRef<ElizaClient | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
+  const artifactsRef = useRef<
+    Partial<Record<"microphone" | "reference" | "tts", Uint8Array>>
+  >({});
   const [report, setReport] = useState<VoiceSelfTestReport | null>(null);
   const [running, setRunning] = useState(false);
 
   const run = useCallback(
     async (
-      mode: VoiceSelfTestMode = "wav-direct",
+      opts: {
+        mode?: VoiceSelfTestMode;
+        microphoneDeviceId?: string;
+        speakerDeviceId?: string;
+      } = {},
     ): Promise<VoiceSelfTestReport> => {
       setRunning(true);
       try {
+        artifactsRef.current = {};
         clientRef.current ??= new ElizaClient();
         audioRef.current ??= getAudioCtx();
         if (audioRef.current.state === "suspended") {
@@ -90,7 +106,7 @@ export function VoiceSelfTestShell() {
         }
         const result = await runVoiceSelfTest({
           platform,
-          mode,
+          mode: opts.mode ?? "wav-direct",
           fixtureUrl: KNOWN_PHRASE_WAV_DATA_URL,
           expectedPhrase: EXPECTED_PHRASE,
           ttsRoute,
@@ -103,6 +119,11 @@ export function VoiceSelfTestShell() {
               : undefined,
           client: clientRef.current,
           audioCtx: audioRef.current,
+          microphoneDeviceId: opts.microphoneDeviceId,
+          speakerDeviceId: opts.speakerDeviceId,
+          onArtifact: (kind, bytes) => {
+            artifactsRef.current[kind] = bytes;
+          },
         });
         setReport(result);
         return result;
@@ -115,8 +136,36 @@ export function VoiceSelfTestShell() {
 
   // Expose the harness to automation + auto-run once on mount.
   useEffect(() => {
-    window.__voiceSelfTest = (opts) => run(opts?.mode ?? "wav-direct");
-    void run("wav-direct");
+    let queue = Promise.resolve();
+    const enqueue = (opts?: {
+      mode?: VoiceSelfTestMode;
+      microphoneDeviceId?: string;
+      speakerDeviceId?: string;
+    }) => {
+      const result = queue.then(() => run(opts));
+      queue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    };
+    const base64 = (bytes?: Uint8Array) => {
+      if (!bytes) return undefined;
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(offset, offset + 0x8000),
+        );
+      }
+      return btoa(binary);
+    };
+    window.__voiceSelfTest = enqueue;
+    window.__voiceSelfTestArtifacts = () => ({
+      microphoneBase64: base64(artifactsRef.current.microphone),
+      referenceBase64: base64(artifactsRef.current.reference),
+      ttsBase64: base64(artifactsRef.current.tts),
+    });
+    void enqueue();
   }, [run]);
 
   return (
@@ -142,7 +191,7 @@ export function VoiceSelfTestShell() {
         <Button
           data-testid="voice-selftest-run"
           disabled={running}
-          onClick={() => void run("wav-direct")}
+          onClick={() => void run()}
           style={{
             background: "#e8772e",
             color: "#0b0b0b",
@@ -158,7 +207,7 @@ export function VoiceSelfTestShell() {
         <Button
           data-testid="voice-selftest-run-mic"
           disabled={running}
-          onClick={() => void run("mic-capture")}
+          onClick={() => void run({ mode: "mic-capture" })}
           style={{
             background: "transparent",
             color: "#e8e8e8",

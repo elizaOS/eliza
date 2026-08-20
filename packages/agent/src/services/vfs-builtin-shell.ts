@@ -6,9 +6,13 @@
  * single command. Supported commands: echo, printf, pwd, cat, ls, mkdir, rm, and
  * grep/rg implemented over the VFS export (no host ripgrep). Unknown commands
  * exit 127; all paths stay inside the project root and symlinks are rejected.
+ *
+ * grep/rg evaluate caller patterns in a time-bounded worker because native
+ * JavaScript regular-expression matching is synchronous.
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { runVfsSearchPattern } from "./vfs-search-pattern.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 interface VfsBuiltinShellRequest {
@@ -108,8 +112,7 @@ async function runScript(
   cwd: string,
   script: string,
 ): Promise<VfsBuiltinCommandResult> {
-  const segments = script
-    .split(/&&|;/)
+  const segments = splitScriptSegments(script)
     .map((segment) => segment.trim())
     .filter(Boolean);
   let stdout = "";
@@ -123,6 +126,40 @@ async function runScript(
     }
   }
   return { exitCode: 0, stdout, stderr };
+}
+
+function splitScriptSegments(script: string): string[] {
+  const segments: string[] = [];
+  let start = 0;
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < script.length; index += 1) {
+    const character = script[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = quote === character ? null : (quote ?? character);
+      continue;
+    }
+    if (quote !== null) continue;
+
+    const separatorLength =
+      character === ";" ? 1 : script.startsWith("&&", index) ? 2 : 0;
+    if (separatorLength === 0) continue;
+    segments.push(script.slice(start, index));
+    index += separatorLength - 1;
+    start = index + 1;
+  }
+
+  segments.push(script.slice(start));
+  return segments;
 }
 
 async function runScriptSegment(
@@ -359,35 +396,39 @@ async function searchTargets(
   options: SearchOptions,
   targets: SearchTarget[],
 ): Promise<VfsBuiltinCommandResult> {
-  let matcher: RegExp;
-  try {
-    matcher = new RegExp(pattern, options.ignoreCase ? "i" : "");
-  } catch (error) {
+  const linesByTarget = targets.map((target) =>
+    target.contents.endsWith("\n")
+      ? target.contents.slice(0, -1).split(/\r?\n/)
+      : target.contents.split(/\r?\n/),
+  );
+  const search = await runVfsSearchPattern({
+    pattern,
+    ignoreCase: options.ignoreCase,
+    invertMatch: options.invertMatch,
+    filesWithMatches: options.filesWithMatches,
+    linesByTarget,
+  });
+  if (!search.ok) {
     return {
       exitCode: 2,
       stdout: "",
-      stderr: `${tool}: ${error instanceof Error ? error.message : String(error)}\n`,
+      stderr: `${tool}: ${search.error}\n`,
     };
   }
 
   const lines: string[] = [];
-  for (const target of targets) {
-    let fileMatched = false;
-    const contentLines = target.contents.endsWith("\n")
-      ? target.contents.slice(0, -1).split(/\r?\n/)
-      : target.contents.split(/\r?\n/);
-
-    for (const [index, line] of contentLines.entries()) {
-      const matched = matcher.test(line);
-      const selected = options.invertMatch ? !matched : matched;
-      if (!selected) continue;
-      fileMatched = true;
-      if (options.filesWithMatches) break;
-      lines.push(formatSearchMatch(target.path, index + 1, line, options));
-    }
-
-    if (options.filesWithMatches && fileMatched) {
+  for (const [targetIndex, target] of targets.entries()) {
+    const selectedIndexes = search.selectedLineIndexes[targetIndex] ?? [];
+    if (options.filesWithMatches && selectedIndexes.length > 0) {
       lines.push(target.path);
+      continue;
+    }
+    const contentLines = linesByTarget[targetIndex] ?? [];
+    for (const index of selectedIndexes) {
+      const line = contentLines[index];
+      if (line !== undefined) {
+        lines.push(formatSearchMatch(target.path, index + 1, line, options));
+      }
     }
   }
 

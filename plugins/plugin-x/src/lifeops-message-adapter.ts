@@ -113,7 +113,15 @@ function parseDraftId(draftId: string): {
   if (parts.length !== 4 || parts[0] !== "twitter") {
     throw new Error(`[XDmAdapter] malformed draftId ${draftId}`);
   }
-  const participantId = parts[1] ? decodeURIComponent(parts[1]) : "";
+  let participantId = "";
+  try {
+    participantId = parts[1] ? decodeURIComponent(parts[1]) : "";
+  } catch {
+    // error-policy:J3 draft ids are untrusted client input: a lone "%" or
+    // "%ZZ" recipient segment makes decodeURIComponent throw URIError,
+    // which would escape sendDraft before the X service is even reached.
+    throw new Error(`[XDmAdapter] malformed draftId encoding ${draftId}`);
+  }
   const text = parts[3] ? decodeDraftBody(parts[3]) : "";
   if (!participantId) {
     throw new Error(

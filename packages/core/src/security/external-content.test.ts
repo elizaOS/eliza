@@ -37,6 +37,26 @@ describe("detectSuspiciousPatterns", () => {
 			detectSuspiciousPatterns("Hi, can we reschedule our meeting?"),
 		).toEqual([]);
 	});
+
+	it("still flags an honest exec command= indicator", () => {
+		expect(
+			detectSuspiciousPatterns("please exec the shell command=ls"),
+		).not.toHaveLength(0);
+	});
+
+	it("preserves legacy detection when exec and command are far apart", () => {
+		expect(
+			detectSuspiciousPatterns(
+				`exec ${"untrusted payload ".repeat(1_000)} command=ls`,
+			),
+		).not.toHaveLength(0);
+	});
+
+	it("does not hang on a 100k-char exec flood", () => {
+		const flood = "exec ".repeat(20_000);
+		const matches = detectSuspiciousPatterns(flood);
+		expect(matches).toEqual([]);
+	});
 });
 
 /**

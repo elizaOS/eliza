@@ -21,7 +21,9 @@
  * The "child_ptrs" entries point into the same flat node array — the sampler
  * walks by index, never by allocation. Pre-order traversal guarantees parent
  * index < child index, so a single forward pass can resolve every pointer
- * without a second materialisation step.
+ * without a second materialisation step. The encoder emits one connected tree:
+ * the root has no inbound edge and every other node has exactly one. The
+ * decoder enforces that invariant before reconstructing leaf paths.
  *
  * Round-trip invariants:
  *   - `deserializeTokenTree(serializeTokenTree(d))` is structurally equal to
@@ -192,7 +194,8 @@ function collectLeaves(flat: FlatNode[], rootIdx: number): TokenSequence[] {
  * the native sampler), so callers needing the original names should keep
  * the source-side descriptor around alongside the bytes.
  *
- * Throws on truncated input, unknown magic, or unsupported version.
+ * Throws on truncated input, unknown magic, unsupported version, or a graph
+ * that is not the connected tree emitted by `serializeTokenTree`.
  */
 export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
   if (input.byteLength < 16) {
@@ -225,6 +228,12 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
   offset += pathLen;
   const totalNodes = view.getUint32(offset, true);
   offset += 4;
+  const minimumNodeBytes = 9;
+  if (totalNodes > Math.floor((input.byteLength - offset) / minimumNodeBytes)) {
+    throw new Error(
+      `deserializeTokenTree: truncated node table for ${totalNodes} nodes`,
+    );
+  }
 
   const flat: FlatNode[] = [];
   for (let i = 0; i < totalNodes; i++) {
@@ -260,6 +269,25 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
     throw new Error(
       "deserializeTokenTree: root node missing or has non-sentinel tokenId",
     );
+  }
+
+  const inbound = new Uint8Array(flat.length);
+  for (let i = 0; i < flat.length; i++) {
+    for (const ptr of flat[i].childPtrs) {
+      inbound[ptr] += 1;
+      if (inbound[ptr] > 1) {
+        throw new Error(
+          `deserializeTokenTree: node ${ptr} has multiple parents`,
+        );
+      }
+    }
+  }
+  for (let i = 1; i < inbound.length; i++) {
+    if (inbound[i] !== 1) {
+      throw new Error(
+        `deserializeTokenTree: node ${i} is not connected to root`,
+      );
+    }
   }
 
   const leaves = collectLeaves(flat, 0);

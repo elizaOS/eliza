@@ -13,6 +13,7 @@ import { tailWellFormed, truncateWellFormed } from "./well-formed";
 export const MAX_PROMPTED_ACTION_RESULTS = 8;
 export const MAX_ACTION_RESULT_TEXT_CHARS = 4000;
 export const MAX_ACTION_RESULT_ERROR_CHARS = 2000;
+export const MAX_ACTION_RESULT_DATA_CHARS = 4000;
 export const ACTION_RESULT_OVERSIZE_WARNING_TOKENS = 10000;
 export const ACTION_RESULT_TOKEN_ESTIMATE_CHARS = 4;
 
@@ -54,6 +55,83 @@ export interface ActionResultSizeWarning {
 export interface ActionResultReferences {
 	text?: string;
 	error?: string;
+}
+
+const PROMPT_DATA_PRIORITY_KEYS = [
+	"actionName",
+	"awaitingUserInput",
+	"slug",
+	"op",
+	"status",
+	"id",
+] as const;
+
+function compactPromptDataValue(value: unknown, depth = 0): unknown {
+	if (typeof value === "string") {
+		return value.length <= 512
+			? value
+			: `${truncateWellFormed(value, 496)}...[truncated]`;
+	}
+	if (
+		value === null ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	if (depth >= 2) {
+		return Array.isArray(value)
+			? `[array with ${value.length} item(s)]`
+			: "[nested object omitted]";
+	}
+	if (Array.isArray(value)) {
+		const retained = value
+			.slice(0, 4)
+			.map((entry) => compactPromptDataValue(entry, depth + 1));
+		if (value.length > retained.length) {
+			retained.push(`[${value.length - retained.length} item(s) omitted]`);
+		}
+		return retained;
+	}
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>)
+				.slice(0, 8)
+				.map(([key, entry]) => [key, compactPromptDataValue(entry, depth + 1)]),
+		);
+	}
+	return String(value);
+}
+
+/**
+ * Serializes action data as complete JSON within the evaluator prompt budget.
+ * Small payloads remain byte-for-byte complete. Oversized payloads retain
+ * control scalars first and replace bulky nested values with explicit markers.
+ */
+export function formatActionResultDataForPrompt(
+	data: ProviderDataRecord,
+	maxChars = MAX_ACTION_RESULT_DATA_CHARS,
+): string {
+	const full = JSON.stringify(data);
+	if (full.length <= maxChars) return full;
+
+	const priority = new Set<string>(PROMPT_DATA_PRIORITY_KEYS);
+	const orderedEntries = [
+		...PROMPT_DATA_PRIORITY_KEYS.flatMap((key) =>
+			Object.hasOwn(data, key) ? [[key, data[key]] as const] : [],
+		),
+		...Object.entries(data).filter(([key]) => !priority.has(key)),
+	];
+	const projected: Record<string, unknown> = {};
+	for (const [key, value] of orderedEntries) {
+		const compact = compactPromptDataValue(value);
+		const candidate = { ...projected, [key]: compact, __truncated: true };
+		if (JSON.stringify(candidate).length <= maxChars) {
+			projected[key] = compact;
+		}
+	}
+	projected.__truncated = true;
+	return JSON.stringify(projected);
 }
 
 export function estimateActionResultTokens(text: string): number {
@@ -208,12 +286,14 @@ export function formatActionResultsForPrompt(
 		header?: string;
 		maxResults?: number;
 		preserveAbsoluteIndex?: boolean;
+		includeData?: boolean;
 	} = {},
 ): string {
 	const {
 		header = "# Current Chain Action Results",
 		maxResults = MAX_PROMPTED_ACTION_RESULTS,
 		preserveAbsoluteIndex = true,
+		includeData = false,
 	} = options;
 
 	if (actionResults.length === 0) {
@@ -242,12 +322,21 @@ export function formatActionResultsForPrompt(
 				`${displayIndex}. ${getActionResultActionName(result)} - ${status}`,
 			];
 			if (typeof result.text === "string" && result.text.trim()) {
-				lines.push(`Output: ${result.text.trim()}`);
+				lines.push(
+					`Output: ${truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS)}`,
+				);
 			}
 
 			const errorText = stringifyActionResultError(result.error);
 			if (errorText) {
-				lines.push(`Error: ${errorText}`);
+				lines.push(
+					`Error: ${truncateMiddle(errorText, MAX_ACTION_RESULT_ERROR_CHARS)}`,
+				);
+			}
+
+			const modelData = result.promptData ?? result.data;
+			if (includeData && modelData && Object.keys(modelData).length > 0) {
+				lines.push(`Data: ${formatActionResultDataForPrompt(modelData)}`);
 			}
 
 			const outputReference = getActionResultReference(result, "text");

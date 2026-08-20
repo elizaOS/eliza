@@ -135,7 +135,11 @@ afterEach(() => {
 });
 
 describe("AuthTokenSync 401 handling", () => {
-  it("carries a pending Telegram account claim through background token sync", async () => {
+  it("never carries a pending Telegram account claim through the passive token sync", async () => {
+    // The passive JWT → cookie mirror runs on any authenticated page load with
+    // no user gesture, so it must not execute the account-claim merge. Login
+    // and SSO establish auth only; /get-started confirmation is the sole
+    // consumer.
     const token = makeJwt({
       sub: "u1",
       exp: Math.floor(Date.now() / 1000) + 3600,
@@ -162,11 +166,10 @@ describe("AuthTokenSync 401 handling", () => {
 
     mount();
 
-    await waitFor(() => expect(peekPendingOnboardingSession()).toBeNull());
-    expect(requestBody).toEqual({
-      token,
-      telegramContinuation: "opaque-telegram-claim-token",
-    });
+    await waitFor(() => expect(requestBody).toEqual({ token }));
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      "opaque-telegram-claim-token",
+    );
   });
 
   it("keeps a still-valid token when session-sync and refresh both 401 (no re-login loop), then retries the cookie sync on the next trigger", async () => {

@@ -14,6 +14,7 @@ import {
   parseJsonArray,
   parseJsonRecord,
   sqlBoolean,
+  sqlInteger,
   sqlNumber,
   sqlQuote,
   sqlText,
@@ -150,6 +151,17 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+// Coerce a caller-supplied `LIMIT` count to a safe, bounded, positive integer
+// before it reaches raw SQL. Mirrors the clamp in unsubscribe-repository.ts.
+// A fractional value is truncated, a value below 1 is raised to 1, values are
+// capped at `max`, and a non-finite value (Infinity/NaN) falls back to
+// `fallback`. The result is still passed through `sqlInteger` at the call site
+// so a malformed literal can never be interpolated into a query.
+function resolveLimit(value?: number, fallback = 50, max = 500): number {
+  const base = Number.isFinite(value) ? (value as number) : fallback;
+  return Math.max(1, Math.min(max, Math.trunc(base)));
+}
+
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -263,7 +275,7 @@ export class InboxRepository {
        ORDER BY
          CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          created_at DESC
-       LIMIT ${limit}`,
+       LIMIT ${sqlInteger(resolveLimit(limit))}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -310,7 +322,7 @@ export class InboxRepository {
        ORDER BY
          CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          created_at DESC
-       LIMIT ${limit}`,
+       LIMIT ${sqlInteger(resolveLimit(limit))}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -338,7 +350,7 @@ export class InboxRepository {
          ${resolvedClause}
          ${snoozeClause}
        ORDER BY created_at DESC
-       LIMIT ${limit}`,
+       LIMIT ${sqlInteger(resolveLimit(limit))}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -461,7 +473,7 @@ export class InboxRepository {
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
        ORDER BY created_at DESC
-       LIMIT ${limit}`,
+       LIMIT ${sqlInteger(resolveLimit(limit, 5))}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -536,7 +548,7 @@ export class InboxRepository {
       `SELECT * FROM app_inbox.life_inbox_triage_examples
        WHERE agent_id = ${sqlText(this.agentId)}
        ORDER BY created_at DESC
-       LIMIT ${limit}`,
+       LIMIT ${sqlInteger(resolveLimit(limit, 10))}`,
     );
     return rows.map(parseTriageExample);
   }

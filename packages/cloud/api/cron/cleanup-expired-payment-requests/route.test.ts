@@ -2,16 +2,17 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const expirePast = mock(async () => ["pr-1", "pr-2"]);
-
-mock.module("@/lib/services/payment-requests-default", () => ({
-  getPaymentRequestsService: () => ({ expirePast }),
+const dispatchPaymentCallbacks = mock(async () => ({
+  claimed: 2,
+  dispatched: 1,
+  failed: 1,
 }));
 
-mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(), info: mock(), warn: mock() },
-}));
-
-const { default: app } = await import("./route");
+const { createPaymentRequestCronApp } = await import("./route");
+const app = createPaymentRequestCronApp({
+  paymentRequests: () => ({ expirePast }),
+  dispatchCallbacks: dispatchPaymentCallbacks,
+});
 const ENV = { CRON_SECRET: "cron-secret" } as Record<string, string>;
 
 function call(secret?: string, env: Record<string, string> = ENV) {
@@ -25,7 +26,10 @@ function call(secret?: string, env: Record<string, string> = ENV) {
 }
 
 describe("cleanup-expired-payment-requests cron route", () => {
-  beforeEach(() => expirePast.mockClear());
+  beforeEach(() => {
+    expirePast.mockClear();
+    dispatchPaymentCallbacks.mockClear();
+  });
 
   test("requires a configured matching cron secret", async () => {
     expect((await call("cron-secret", {})).status).toBe(403);
@@ -39,7 +43,9 @@ describe("cleanup-expired-payment-requests cron route", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       expiredCount: 2,
+      callbacks: { claimed: 2, dispatched: 1, failed: 1 },
     });
     expect(expirePast).toHaveBeenCalledTimes(1);
+    expect(dispatchPaymentCallbacks).toHaveBeenCalledWith({ limit: 50 });
   });
 });

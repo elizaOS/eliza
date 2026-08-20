@@ -30,6 +30,12 @@ mock.module("./services/characters/characters", () => ({
 
 // steward-sync's other service imports; inert stubs so the module loads.
 mock.module("./services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: { addCredits: async () => ({ success: true }) },
 }));
 mock.module("./services/organizations", () => ({

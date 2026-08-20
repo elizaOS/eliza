@@ -12,10 +12,14 @@ import {
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProviderSwitcher } from "./ProviderSwitcher";
+import {
+  ProviderSwitcher,
+  reconcileProviderEntriesWithServingAxes,
+} from "./ProviderSwitcher";
 
 const selection = vi.hoisted(() => ({
   cloudCallsDisabled: false,
+  cloudRuntimeLocked: false,
   handleProviderPanelSelect: vi.fn(),
   handleSelectCloud: vi.fn(),
   handleSelectLocalOnly: vi.fn(),
@@ -26,6 +30,16 @@ const selection = vi.hoisted(() => ({
   routingModeSaving: false,
   visibleProviderPanelId: "__local__",
 }));
+const getModelsConfig = vi.hoisted(() =>
+  vi.fn(async () => ({
+    targets: { small: {}, large: {}, coding: {} },
+    activeChat: {
+      provider: "elizacloud",
+      family: "ELIZAOS_CLOUD",
+      endpoint: "api.eliza.app",
+    },
+  })),
+);
 
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
   useDefaultProviderPresets: vi.fn(),
@@ -36,20 +50,21 @@ vi.mock("../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => ({
     state: {
       phase: "ready",
-      snapshot: { mode: "local", deploymentRuntime: "local" },
+      snapshot: {
+        mode: selection.cloudRuntimeLocked ? "cloud" : "local",
+        deploymentRuntime: selection.cloudRuntimeLocked ? "cloud" : "local",
+      },
     },
   }),
 }));
 vi.mock("../../api", () => ({
   client: {
-    getModelsConfig: vi.fn(async () => ({
-      targets: { small: {}, large: {}, coding: {} },
-      activeChat: {
-        provider: "elizacloud",
-        family: "ELIZAOS_CLOUD",
-        endpoint: "api.eliza.app",
-      },
-    })),
+    getBaseUrl: vi.fn(() =>
+      selection.cloudRuntimeLocked
+        ? "https://api.eliza.app/api/v1/eliza/agents/shared"
+        : "http://127.0.0.1:31337",
+    ),
+    getModelsConfig,
   },
 }));
 vi.mock("../../state", () => ({
@@ -191,6 +206,7 @@ describe("ProviderSwitcher", () => {
     cleanup();
     vi.clearAllMocks();
     selection.visibleProviderPanelId = "__local__";
+    selection.cloudRuntimeLocked = false;
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
@@ -240,5 +256,96 @@ describe("ProviderSwitcher", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "cloud panel" }));
     expect(selection.handleSelectCloud).toHaveBeenCalled();
+  });
+
+  it("uses the live external serving source for Active provider labels", () => {
+    const entries = [
+      {
+        id: "__local__",
+        icon: Cpu,
+        label: "Local",
+        category: "local" as const,
+        status: { tone: "ok" as const, label: "Active" },
+        current: true,
+      },
+      {
+        id: "cerebras",
+        icon: KeyRound,
+        label: "Cerebras",
+        category: "key" as const,
+        status: { tone: "ok" as const, label: "Ready" },
+        current: false,
+      },
+    ];
+
+    const displayed = reconcileProviderEntriesWithServingAxes(entries, {
+      runtime: "local",
+      inference: "external",
+      combination: "external-inference",
+      inferenceFallback: false,
+      activeChatProvider: "cerebras",
+      activeChatEndpoint: "api.cerebras.ai",
+    });
+
+    expect(displayed.find((entry) => entry.id === "__local__")?.current).toBe(
+      false,
+    );
+    expect(displayed.find((entry) => entry.id === "__local__")?.status).toEqual(
+      { tone: "muted", label: "Available" },
+    );
+    expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
+      true,
+    );
+  });
+
+  it("preserves a non-serving provider warning under external routing", () => {
+    const entries = [
+      {
+        id: "__cloud__",
+        icon: Cloud,
+        label: "Eliza Cloud",
+        category: "cloud" as const,
+        status: { tone: "warn" as const, label: "Not signed in" },
+        current: false,
+      },
+    ];
+
+    const displayed = reconcileProviderEntriesWithServingAxes(entries, {
+      runtime: "local",
+      inference: "external",
+      combination: "external-inference",
+      inferenceFallback: false,
+      activeChatProvider: "cerebras",
+      activeChatEndpoint: "api.cerebras.ai",
+    });
+
+    expect(displayed[0]?.status).toEqual({
+      tone: "warn",
+      label: "Not signed in",
+    });
+  });
+
+  it("does not advertise local inference or model controls in a Cloud-only build", async () => {
+    selection.cloudRuntimeLocked = true;
+    render(<ProviderSwitcher elizaCloudConnected />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+        "Eliza Cloud",
+      );
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "Eliza Cloud",
+      );
+    });
+
+    expect(screen.queryByRole("button", { name: "Local" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cloud" })).toBeNull();
+    expect(screen.queryByText("local panel")).toBeNull();
+    expect(screen.queryByText("accounts panel")).toBeNull();
+    expect(screen.queryByText("providers list")).toBeNull();
+    expect(screen.queryByText("routing matrix")).toBeNull();
+    expect(screen.queryByText("model config")).toBeNull();
+    expect(getModelsConfig).not.toHaveBeenCalled();
+    expect(screen.getByText("Eliza Cloud voice")).toBeTruthy();
   });
 });

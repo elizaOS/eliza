@@ -24,11 +24,114 @@ function profile(id: string): TwitterProfile {
 }
 
 describe("sendTweet", () => {
-  it("returns the accepted tweet when local cache bookkeeping fails after publish", async () => {
+  it("does not advance the mention cursor when publishing an outgoing tweet", async () => {
+    // Regression for #22433: an outgoing post must never move the incoming
+    // mention cursor (`lastCheckedTweetId`). The published tweet always carries
+    // the newest snowflake id, so advancing the cursor here would silently skip
+    // every unprocessed @mention older than this post.
+    const authenticatedProfile = profile("account-a");
+    const setCache = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      character: { name: "Agent" },
+      getSetting: () => undefined,
+      getCache: vi.fn(async () => undefined),
+      setCache,
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const client = new ClientBase(runtime, {} as TwitterClientState);
+    // A mention arrived earlier and the interactions loop has already advanced
+    // the cursor to it. The outgoing post below carries a strictly newer id.
+    const pendingMentionCursor = 1_000_000_000_000_000_500n;
+    client.profile = authenticatedProfile;
+    client.recordLatestCheckedTweetId(
+      authenticatedProfile.id,
+      pendingMentionCursor,
+    );
+    const send = vi.fn().mockResolvedValue({
+      data: { data: { id: "1000000000000001000", text: "gm" } },
+    });
+    client.twitterClient = {
+      sendTweet: send,
+    } as unknown as ClientBase["twitterClient"];
+    client.withAuthenticatedSession = async (operation) =>
+      operation({
+        client: {} as never,
+        profile: authenticatedProfile,
+        revision: 1,
+      });
+    client.isAuthenticatedSessionCurrent = () => true;
+
+    await expect(sendTweet(client, "gm")).resolves.toMatchObject({
+      id: "1000000000000001000",
+      text: "gm",
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    // The cursor is unchanged even though the published id is much newer.
+    expect(client.getLatestCheckedTweetId(authenticatedProfile.id)).toBe(
+      pendingMentionCursor,
+    );
+    // No cursor persistence write happened for the outgoing publish.
+    expect(
+      setCache.mock.calls.some(([key]) =>
+        String(key).endsWith("latest_checked_tweet_id"),
+      ),
+    ).toBe(false);
+    // The tweet itself is still cached for later reference.
+    expect(setCache).toHaveBeenCalledWith(
+      "twitter/tweets/1000000000000001000",
+      expect.objectContaining({
+        id: "1000000000000001000",
+        userId: "account-a",
+        username: "account-a",
+      }),
+    );
+  });
+
+  it("leaves a null mention cursor untouched after publishing", async () => {
+    // With no prior mention checkpoint, a send must not seed the cursor either;
+    // the interactions loop, not the poster, owns the very first checkpoint.
+    const authenticatedProfile = profile("account-a");
+    const setCache = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      character: { name: "Agent" },
+      getSetting: () => undefined,
+      getCache: vi.fn(async () => undefined),
+      setCache,
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const client = new ClientBase(runtime, {} as TwitterClientState);
+    client.profile = authenticatedProfile;
+    expect(client.getLatestCheckedTweetId(authenticatedProfile.id)).toBeNull();
+    client.twitterClient = {
+      sendTweet: vi.fn().mockResolvedValue({
+        data: { data: { id: "1000000000000002000", text: "hello" } },
+      }),
+    } as unknown as ClientBase["twitterClient"];
+    client.withAuthenticatedSession = async (operation) =>
+      operation({
+        client: {} as never,
+        profile: authenticatedProfile,
+        revision: 1,
+      });
+    client.isAuthenticatedSessionCurrent = () => true;
+
+    await sendTweet(client, "hello");
+
+    expect(client.getLatestCheckedTweetId(authenticatedProfile.id)).toBeNull();
+    expect(
+      setCache.mock.calls.some(([key]) =>
+        String(key).endsWith("latest_checked_tweet_id"),
+      ),
+    ).toBe(false);
+  });
+
+  it("reports a local receipt failure without advancing the cursor when tweet caching fails", async () => {
     const authenticatedProfile = profile("account-a");
     const reportError = vi.fn();
     const setCache = vi.fn(async (key: string) => {
-      if (key.endsWith("latest_checked_tweet_id")) {
+      if (key.startsWith("twitter/tweets/")) {
         throw new Error("cache unavailable");
       }
     });
@@ -61,18 +164,13 @@ describe("sendTweet", () => {
       text: "hello",
     });
     expect(send).toHaveBeenCalledTimes(1);
-    expect(setCache).toHaveBeenCalledWith(
-      "twitter/default/account-a/latest_checked_tweet_id",
-      "123",
-    );
     expect(reportError).toHaveBeenCalledWith(
       "X.sendTweet.localReceipt",
       expect.any(Error),
       { accountId: "default", tweetId: "123" },
     );
-    expect(
-      setCache.mock.calls.some(([key]) => String(key) === "twitter/tweets/123"),
-    ).toBe(false);
+    // Even on the failure path the cursor stays untouched.
+    expect(client.getLatestCheckedTweetId(authenticatedProfile.id)).toBeNull();
   });
 
   it("does not let a delayed account A receipt overwrite account B's cursor", async () => {

@@ -23,6 +23,7 @@ import type {
 } from "../../../db/schemas/shared-turn-traces";
 import { logger } from "../../utils/logger";
 import type { RunSharedAgentTurnResult, SharedAgentTurnUsage } from "./run-shared-agent-turn";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 /** Default keep fraction when `SHARED_TURN_TRACES_SAMPLE` is unset or invalid. */
 export const DEFAULT_SHARED_TURN_TRACES_SAMPLE = 0.1;
@@ -45,6 +46,8 @@ export interface SharedTurnSummary {
   usage?: SharedAgentTurnUsage;
   finishReason: SharedTurnTraceFinishReason;
   stages: SharedTurnTraceStage[];
+  /** Terminal runtime receipt persisted under this row's single sample decision. */
+  terminalTiming?: SharedRuntimeTimingReceipt;
 }
 
 export interface SharedTurnTraceRecorderDeps {
@@ -191,7 +194,11 @@ export async function recordSharedTurnTrace(
       latency_ms: Math.max(0, Math.round(summary.latencyMs)),
       model: summary.model,
       ...(compactedUsage ? { usage: compactedUsage } : {}),
-      stages: { finishReason: summary.finishReason, stages: summary.stages },
+      stages: {
+        finishReason: summary.finishReason,
+        stages: summary.stages,
+        ...(summary.terminalTiming ? { terminalTiming: summary.terminalTiming } : {}),
+      },
     });
     return true;
   } catch (error) {

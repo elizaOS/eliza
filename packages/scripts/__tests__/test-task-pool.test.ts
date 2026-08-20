@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
+  createSerialPackageResolver,
   isParallelSafeTask,
   MAX_TASK_CONCURRENCY,
   normalizeConcurrency,
@@ -11,9 +12,23 @@ import {
   partitionTasks,
   resolveConcurrency,
   runPool,
-  SERIALIZE_PACKAGES,
+  serialPackages,
   taskBelongsToShard,
 } from "../lib/test-task-pool.mjs";
+
+test("serial package discovery is lazy and memoized", () => {
+  let calls = 0;
+  const expected = new Set(["@elizaos/example"]);
+  const resolve = createSerialPackageResolver(() => {
+    calls += 1;
+    return expected;
+  });
+
+  expect(calls).toBe(0);
+  expect(resolve()).toBe(expected);
+  expect(resolve()).toBe(expected);
+  expect(calls).toBe(1);
+});
 
 describe("isParallelSafeTask", () => {
   test("plain `test` script in the pr lane is parallel-safe", () => {
@@ -55,7 +70,7 @@ describe("isParallelSafeTask", () => {
   });
 
   test("denylisted packages stay serial even for their `test` script", () => {
-    for (const packageName of SERIALIZE_PACKAGES) {
+    for (const packageName of serialPackages()) {
       expect(
         isParallelSafeTask({ scriptName: "test", lane: "pr", packageName }),
       ).toBe(false);
@@ -63,13 +78,13 @@ describe("isParallelSafeTask", () => {
   });
 
   test("denylist matches the packages the root test:plugins sweep pulls out", () => {
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-personal-assistant")).toBe(
+    expect(serialPackages().has("@elizaos/plugin-personal-assistant")).toBe(
       true,
     );
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-agent-orchestrator")).toBe(
+    expect(serialPackages().has("@elizaos/plugin-agent-orchestrator")).toBe(
       true,
     );
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-sql")).toBe(true);
+    expect(serialPackages().has("@elizaos/plugin-sql")).toBe(true);
   });
 });
 
@@ -390,6 +405,84 @@ describe("run-all-tests plan mode", () => {
       },
     ]);
     expect(plan.cloudStep).toBeNull();
+  });
+
+  test("matches forward-slash filters when path.relative returns Windows separators", () => {
+    const preloadSource = String.raw`
+      import path from "node:path";
+      const nativeJoin = path.join;
+      const nativeRelative = path.relative;
+      path.join = (...parts) => {
+        const joined = nativeJoin(...parts);
+        const repoPath = parts.join("/");
+        return repoPath === "packages/cloud/e2e" || repoPath === "packages/homepage"
+          ? joined.replaceAll("/", "\\")
+          : joined;
+      };
+      path.relative = (from, to) => {
+        const relativePath = nativeRelative(from, to);
+        const caller = (new Error().stack ?? "").split("\n")[2] ?? "";
+        if (caller.includes("run-all-tests.mjs")) {
+          return relativePath.replaceAll("/", "\\");
+        }
+        return relativePath;
+      };
+    `;
+    const runWindowsPlan = (...args: string[]) =>
+      spawnSync(
+        "node",
+        [
+          "--import",
+          `data:text/javascript,${encodeURIComponent(preloadSource)}`,
+          runnerPath.pathname,
+          ...args,
+        ],
+        {
+          cwd: new URL("../../..", import.meta.url).pathname,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            TEST_LANE: "pr",
+            TEST_PACKAGE_FILTER: "",
+            TEST_SCRIPT_FILTER: "",
+            TEST_SHARD: "",
+            TEST_START_AT: "",
+            TEST_CONCURRENCY: "",
+          },
+        },
+      );
+    const result = runWindowsPlan(
+      "--plan=json",
+      "--only=test",
+      "--no-cloud",
+      "--filter=^@elizaos/core \\(packages/core\\)#test$",
+    );
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const plan = JSON.parse(result.stdout);
+    expect(plan.tasks).toEqual([
+      expect.objectContaining({
+        packageName: "@elizaos/core",
+        relativeDir: "packages/core",
+        label: "@elizaos/core (packages/core)#test",
+      }),
+    ]);
+    const skippedResult = runWindowsPlan(
+      "--plan=json",
+      "--only=e2e",
+      "--no-cloud",
+    );
+    expect(skippedResult.stderr).toBe("");
+    expect(skippedResult.status).toBe(0);
+    expect(JSON.parse(skippedResult.stdout).skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativeDir: "packages/homepage",
+          reason: "operator-run visual harness excluded from the pr lane",
+        }),
+      ]),
+    );
   });
 
   test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {

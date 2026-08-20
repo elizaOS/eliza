@@ -540,6 +540,10 @@ const reactivateBillingSpy = spyOn(
   agentBillingRepository,
   "reactivateSandboxBillingAfterFunding",
 ).mockResolvedValue(undefined);
+const settleLifecycleBillingSpy = spyOn(
+  agentBillingRepository,
+  "settleAccruedBillingBeforeLifecycle",
+).mockResolvedValue({ status: "already_billed_recently" });
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -3250,6 +3254,28 @@ describe("ElizaSandboxService.executeResume", () => {
     }
   });
 
+  test("insufficient accrued debt blocks resume before provider provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      resumeRow("stopped"),
+    );
+    settleLifecycleBillingSpy.mockResolvedValueOnce({ status: "insufficient_credits" });
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res).toMatchObject({
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      });
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
   test("an unknown agent returns not-found without provisioning", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
@@ -3650,6 +3676,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       executeSuspend(
         agentId: string,
         orgId: string,
+        jobId: string,
       ): Promise<{
         success: boolean;
         containerStopped: boolean;
@@ -3668,16 +3695,45 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
     const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
     const writes: unknown[] = [];
-    upgradeTransactionImpl = async (fn) =>
-      fn({
+    let selectCount = 0;
+    upgradeTransactionImpl = async (fn) => {
+      const tx = {
         execute: async (query) => {
           writes.push(query);
           return { rows: [] };
         },
-      });
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({
+                limit: async () => {
+                  selectCount += 1;
+                  if (selectCount === 1) {
+                    return [
+                      {
+                        id: "00000000-0000-0000-0000-000000000098",
+                        organization_id: ORG,
+                        agent_id: AGENT,
+                        lifecycle_revision: rec.lifecycle_revision,
+                        status: "pending",
+                        job_id: "00000000-0000-0000-0000-000000000099",
+                        attempts: 0,
+                      },
+                    ];
+                  }
+                  return [{ credit_balance: "0" }];
+                },
+              }),
+            }),
+          }),
+        }),
+        update: () => ({ set: () => ({ where: async () => [] }) }),
+      };
+      return fn(tx);
+    };
 
     try {
-      const result = await svc.executeSuspend(AGENT, ORG);
+      const result = await svc.executeSuspend(AGENT, ORG, "00000000-0000-0000-0000-000000000099");
       expect(result).toEqual({
         success: false,
         containerStopped: false,
@@ -5739,7 +5795,8 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
 //   3. provider.create OK but the row-write hits a UNIQUE (port TOCTOU) on the
 //      first attempt → ghost stop + retry → second attempt succeeds.
 //   4. a NON-unique post-create error → markError + NO retry (one create only).
-//   5. all MAX_PROVISION_ATTEMPTS exhausted → "Provisioning failed after N".
+//   5. all MAX_PROVISION_ATTEMPTS exhausted → "Provisioning failed after 3 attempts"
+//      (no "(not retryable)" marker: the last failure was a collision).
 // The provider is a plain SandboxProvider fake; the post-create metadata uses a
 // real DockerSandboxMetadata shape so isDockerSandboxMetadata() genuinely passes.
 describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)", () => {
@@ -6082,10 +6139,13 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       prefix: "eliza_test",
     });
     const svc = new ElizaSandboxService();
+    let markedMessage = "";
     const markErrorSpy = spyOn(
       svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
       "markError",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async (_rec, msg) => {
+      markedMessage = msg;
+    });
     const ensureStartedSpy = spyOn(
       svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
       "ensureRuntimeAgentStarted",
@@ -6105,6 +6165,12 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       // Ghost deletion still runs once for the single failed attempt.
       expect(stop).toHaveBeenCalledTimes(1);
       expect(markErrorSpy).toHaveBeenCalledTimes(1);
+      // #22508: the row must record the attempt that was actually made. Naming
+      // MAX_PROVISION_ATTEMPTS here made this one-attempt failure look like an
+      // exhausted retry budget and sent a live outage down the wrong path.
+      expect(markedMessage).toBe(
+        "Provisioning failed after 1 attempt (not retryable): connection terminated unexpectedly",
+      );
     } finally {
       findSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -6173,7 +6239,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(create).toHaveBeenCalledTimes(3);
       expect(stop).toHaveBeenCalledTimes(3);
       expect(statusWrites).toBe(3);
-      expect(markedMessage).toContain("Provisioning failed after 3 attempts");
+      expect(markedMessage).toContain("Provisioning failed after 3 attempts: ");
     } finally {
       findSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -6246,13 +6312,24 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 
   test("a warm-pool provision becomes running only through the final readiness CAS", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const handle = providerHandle();
+    const configuredPoolImage = "ghcr.io/elizaos/eliza:stable";
+    const targetDigest = `sha256:${"a".repeat(64)}`;
+    const handle = {
+      ...providerHandle(),
+      metadata: {
+        ...providerHandle().metadata,
+        dockerImage: `ghcr.io/elizaos/eliza@${targetDigest}`,
+        imageDigest: targetDigest,
+      },
+    };
     const row: AgentSandbox = {
       ...provisioningReadyRow(),
       organization_id: WARM_POOL_ORG_ID,
       user_id: WARM_POOL_USER_ID,
       execution_tier: "dedicated-always",
       pool_status: "unclaimed",
+      docker_image: configuredPoolImage,
+      image_digest: targetDigest,
     };
     const adoptedRow: AgentSandbox = {
       ...row,
@@ -6262,7 +6339,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       container_name: handle.metadata.containerName,
       bridge_url: handle.bridgeUrl,
       health_url: handle.healthUrl,
-      docker_image: handle.metadata.dockerImage,
+      docker_image: configuredPoolImage,
       image_digest: handle.metadata.imageDigest,
     };
     const readyRow: AgentSandbox = {
@@ -6287,8 +6364,9 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       plainKey: "eliza_test_agent_key",
       prefix: "eliza_test",
     });
+    const create = mock(async () => handle);
     const provider: SandboxProvider = {
-      create: mock(async () => handle),
+      create,
       stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
@@ -6304,6 +6382,19 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 
       expect(result.success).toBe(true);
       expect(result.sandboxRecord).toBe(readyRow);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dockerImage: `ghcr.io/elizaos/eliza@${targetDigest}`,
+        }),
+      );
+      expect(updateSpy).toHaveBeenCalledWith(
+        AGENT,
+        expect.objectContaining({
+          status: "provisioning",
+          docker_image: configuredPoolImage,
+          image_digest: targetDigest,
+        }),
+      );
       expect(updateSpy.mock.calls.some(([, data]) => data.status === "running")).toBe(false);
       expect(commitReadySpy).toHaveBeenCalledTimes(1);
       expect(commitReadySpy).toHaveBeenCalledWith(
@@ -6777,7 +6868,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // rejected 401 Unauthorized (bridge URL routing to a dead/rotated container),
   // which is deterministic on every attempt — retrying only burned the
   // provision attempts and bricked agent 23766030 into status=error
-  // ("Provisioning failed after 3 attempts: State restore failed: HTTP 401
+  // ("Provisioning failed after 1 attempt (not retryable): State restore failed: HTTP 401
   // {"error":"Unauthorized"}"). It must instead degrade to a fresh boot on the
   // FIRST detection. Drives the REAL pushState (fetch intercepted with the
   // incident's exact response) so the classified error is the code's own throw
@@ -7441,7 +7532,7 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     expect(
       isUnrecoverableSnapshotError(
         new Error(
-          'Provisioning failed after 3 attempts: State restore failed: HTTP 401 {"error":"Unauthorized"}',
+          'Provisioning failed after 1 attempt (not retryable): State restore failed: HTTP 401 {"error":"Unauthorized"}',
         ),
       ),
     ).toBe(false);

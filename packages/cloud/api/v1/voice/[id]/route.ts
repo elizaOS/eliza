@@ -1,5 +1,7 @@
-// Handles v1 cloud API v1 voice id route traffic with route-local auth expectations.
+/** Manages an authenticated user's individual cloned voice. */
+
 import { Hono } from "hono";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -228,7 +230,12 @@ async function __hono_PATCH(
       return invalidVoiceIdResponse;
     }
 
-    const rawBody = await request.json();
+    const decodedRawBody = await decodeRequestJson(request);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const rawBody = decodedRawBody.value;
     const parsed = VoiceUpdateBody.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(

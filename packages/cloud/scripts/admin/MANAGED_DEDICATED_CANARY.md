@@ -36,6 +36,20 @@ disposable identity row to leak or clean separately.
   closed without deleting anything. The privacy-safe artifact records only
   requested/match/accepted-or-ambiguous/confirmed state; it never records the
   suffix, name, IDs, timestamps, or job IDs.
+- For recovery without a replacement canary, set `cleanup_only: true` and the
+  exact `stale_canary_suffix`. Cleanup-only is exclusive: the dedicated job
+  runs regardless of the stale `suite` selector, while every app, scenario,
+  voice, cloud, and shared-onboarding job is suppressed. The workflow also
+  proves that staging contains commit
+  `aada8198bc10045c8c841ea4d6dab974ac2a3319`, the minimum conditional-delete
+  API contract, before accepting the destructive result. Cleanup-only evidence
+  is schema version 3 with `operation: cleanup-only` and requires one accepted,
+  confirmed deletion, zero created agents, zero chat requests, zero live paths,
+  no create/readiness/inference timings, final absence, and no possible orphan.
+  The workflow performs this ancestry check before the DELETE-capable process
+  can start and binds that exact health commit into the process; if staging
+  changes between preflight and execution, cleanup stops before listing or
+  deleting an agent. The post-run ancestry check remains defense in depth.
 - Create sends top-level `alwaysOn: true`, `forceCreate: true`, and
   `autoProvision: true`. The returned and final tier must both be
   `dedicated-always`.
@@ -78,6 +92,7 @@ disposable identity row to leak or clean separately.
 | exact cleanup | `cleanup.status=passed` after delete-job completion and final `404` |
 | ambiguous create | bounded exact-name recovery; unresolved is `cleanup.failed` + `possibleOrphan` |
 | missing/skip/zero fail closed | credential preflight plus independent post-run evidence validator |
+| cleanup-only isolation | `operation=cleanup-only`, exclusive workflow job gates, minimum deployed conditional-delete commit, and zero create/path/chat evidence |
 
 The older `packages/app/scripts/cloud-provisioning-e2e.mjs` and
 `live-cloud-provision-smoke.ts` omit the canonical tier flag. They remain

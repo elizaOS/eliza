@@ -6,6 +6,7 @@
  * tests exercise the real HTTP stack without opening a production SSRF seam.
  */
 
+import { isElizaError } from "@elizaos/core";
 import { oracleError } from "./contracts.js";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -59,7 +60,8 @@ export async function requestBoundedJson(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const fetchImpl = input.fetchImpl ?? globalThis.fetch;
-  let response: Response;
+  let response: Response | undefined;
+  let bodyConsumed = false;
   try {
     response = await fetchImpl(input.url, {
       method: input.method ?? "GET",
@@ -68,7 +70,95 @@ export async function requestBoundedJson(
       redirect: "manual",
       signal: controller.signal,
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      throw oracleError(
+        "External source attempted an HTTP redirect.",
+        "ORACLE_HTTP_REDIRECT",
+        {
+          safeResource: input.safeResource,
+          status: response.status,
+        },
+      );
+    }
+    if (!response.ok) {
+      throw oracleError(
+        "External source returned an unsuccessful HTTP status.",
+        "ORACLE_HTTP_STATUS",
+        {
+          safeResource: input.safeResource,
+          status: response.status,
+        },
+      );
+    }
+    const contentType = response.headers.get("content-type")?.toLowerCase();
+    if (
+      !contentType ||
+      (!contentType.includes("application/json") &&
+        !contentType.includes("application/geo+json") &&
+        !contentType.includes("+json"))
+    ) {
+      throw oracleError(
+        "External source returned a non-JSON media type.",
+        "ORACLE_HTTP_CONTENT_TYPE",
+        { safeResource: input.safeResource },
+      );
+    }
+
+    const declaredLength = response.headers.get("content-length");
+    if (declaredLength !== null) {
+      const parsedLength = Number(declaredLength);
+      if (
+        !Number.isSafeInteger(parsedLength) ||
+        parsedLength < 0 ||
+        parsedLength > maxBodyBytes
+      ) {
+        throw oracleError(
+          "External source response exceeded the configured body limit.",
+          "ORACLE_HTTP_BODY_LIMIT",
+          { safeResource: input.safeResource, maxBodyBytes },
+        );
+      }
+    }
+
+    const bytes = await readBoundedBody(
+      response,
+      maxBodyBytes,
+      input.safeResource,
+    );
+    bodyConsumed = true;
+
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (cause) {
+      // error-policy:J3 Provider bytes must be valid UTF-8 before JSON parsing;
+      // malformed text is an explicit invalid response.
+      throw oracleError(
+        "External source returned invalid UTF-8.",
+        "ORACLE_HTTP_INVALID_UTF8",
+        { safeResource: input.safeResource },
+        cause,
+      );
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch (cause) {
+      // error-policy:J3 Provider bytes are untrusted; invalid JSON is an
+      // explicit parse failure and never becomes an empty successful payload.
+      throw oracleError(
+        "External source returned invalid JSON.",
+        "ORACLE_HTTP_INVALID_JSON",
+        { safeResource: input.safeResource },
+        cause,
+      );
+    }
+    return { body, headers: response.headers, status: response.status };
   } catch (cause) {
+    if (isElizaError(cause)) {
+      throw cause;
+    }
     // error-policy:J2 The HTTP boundary adds a safe resource label and keeps
     // provider URLs and credentials out of the error message and context.
     throw oracleError(
@@ -81,95 +171,56 @@ export async function requestBoundedJson(
     );
   } finally {
     clearTimeout(timeout);
+    if (response?.body && !bodyConsumed) {
+      try {
+        await response.body.cancel();
+      } catch {
+        // error-policy:J6 best-effort cancellation after a rejected response
+      }
+    }
   }
+}
 
-  if (response.status >= 300 && response.status < 400) {
-    throw oracleError(
-      "External source attempted an HTTP redirect.",
-      "ORACLE_HTTP_REDIRECT",
-      {
-        safeResource: input.safeResource,
-        status: response.status,
-      },
-    );
-  }
-  if (!response.ok) {
-    throw oracleError(
-      "External source returned an unsuccessful HTTP status.",
-      "ORACLE_HTTP_STATUS",
-      {
-        safeResource: input.safeResource,
-        status: response.status,
-      },
-    );
-  }
-  const contentType = response.headers.get("content-type")?.toLowerCase();
-  if (
-    !contentType ||
-    (!contentType.includes("application/json") &&
-      !contentType.includes("application/geo+json") &&
-      !contentType.includes("+json"))
-  ) {
-    throw oracleError(
-      "External source returned a non-JSON media type.",
-      "ORACLE_HTTP_CONTENT_TYPE",
-      { safeResource: input.safeResource },
-    );
-  }
+async function readBoundedBody(
+  response: Response,
+  maxBodyBytes: number,
+  safeResource: string,
+): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
 
-  const declaredLength = response.headers.get("content-length");
-  if (declaredLength !== null) {
-    const parsedLength = Number(declaredLength);
-    if (
-      !Number.isSafeInteger(parsedLength) ||
-      parsedLength < 0 ||
-      parsedLength > maxBodyBytes
-    ) {
-      throw oracleError(
-        "External source response exceeded the configured body limit.",
-        "ORACLE_HTTP_BODY_LIMIT",
-        { safeResource: input.safeResource, maxBodyBytes },
-      );
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      if (value.byteLength > maxBodyBytes - total) {
+        throw oracleError(
+          "External source response exceeded the configured body limit.",
+          "ORACLE_HTTP_BODY_LIMIT",
+          { safeResource, maxBodyBytes },
+        );
+      }
+      total += value.byteLength;
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 stream lock release is best-effort teardown
     }
   }
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > maxBodyBytes) {
-    throw oracleError(
-      "External source response exceeded the configured body limit.",
-      "ORACLE_HTTP_BODY_LIMIT",
-      { safeResource: input.safeResource, maxBodyBytes },
-    );
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
-
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch (cause) {
-    // error-policy:J3 Provider bytes must be valid UTF-8 before JSON parsing;
-    // malformed text is an explicit invalid response.
-    throw oracleError(
-      "External source returned invalid UTF-8.",
-      "ORACLE_HTTP_INVALID_UTF8",
-      { safeResource: input.safeResource },
-      cause,
-    );
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch (cause) {
-    // error-policy:J3 Provider bytes are untrusted; invalid JSON is an
-    // explicit parse failure and never becomes an empty successful payload.
-    throw oracleError(
-      "External source returned invalid JSON.",
-      "ORACLE_HTTP_INVALID_JSON",
-      { safeResource: input.safeResource },
-      cause,
-    );
-  }
-
-  return { body, headers: response.headers, status: response.status };
+  return bytes;
 }
 
 function sanitizeCause(

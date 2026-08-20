@@ -18,6 +18,20 @@ export class LocalRuntimeConversationFetchError extends Error {
   }
 }
 
+/** Decode an untrusted conversation-id path segment into a typed boundary error. */
+function decodeConversationId(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch (error) {
+    // error-policy:J3 untrusted conversation path segments are client input;
+    // malformed percent-encoding is a typed fetch error, not an uncaught URIError.
+    throw new LocalRuntimeConversationFetchError(
+      "conversation id is not valid percent-encoding",
+      { cause: error },
+    );
+  }
+}
+
 export function createLocalRuntimeConversationFetch(
   localRuntimeOrigin: string,
   fetchImpl: typeof fetch = fetch,
@@ -41,7 +55,7 @@ export function createLocalRuntimeConversationFetch(
       );
     }
 
-    const conversationId = decodeURIComponent(match[1]);
+    const conversationId = decodeConversationId(match[1]);
     const target = new URL(
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
       origin,

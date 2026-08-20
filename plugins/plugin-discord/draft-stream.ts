@@ -2,6 +2,7 @@
  * Streams an in-progress agent reply to Discord by editing a single message as
  * draft chunks arrive, using the draft-chunking break logic.
  */
+import { truncateWellFormed } from "@elizaos/core";
 import type {
 	ActionRowBuilder,
 	Message as DiscordMessage,
@@ -88,7 +89,9 @@ export function createDraftStreamController(
 
 		const displayText =
 			trimmed.length > maxChars
-				? `${trimmed.slice(0, maxChars - 3)}...`
+				? maxChars > 3
+					? `${truncateWellFormed(trimmed, maxChars - 3)}...`
+					: truncateWellFormed(trimmed, maxChars)
 				: trimmed;
 		if (displayText === lastSentText) {
 			if (components && components.length > 0 && lastSentMessage) {
@@ -241,8 +244,16 @@ export function createDraftStreamController(
 			maxChars,
 			chunkConfig.breakPreference,
 		);
-		const firstChunk = trimmed.slice(0, breakPoint).trimEnd();
-		let remaining = trimmed.slice(breakPoint).trimStart();
+		// findBreakPoint's raw maxLen fallback can land between the two UTF-16
+		// code units of a surrogate pair (most emoji), leaving a lone surrogate
+		// at the chunk boundary that corrupts the character in the delivered
+		// draft. truncateWellFormed backs the cut off by one unit instead.
+		const firstHead = truncateWellFormed(trimmed, breakPoint);
+		if (firstHead.length === 0) {
+			throw new RangeError("Discord draft chunk limit made no UTF-16 progress");
+		}
+		const firstChunk = firstHead.trimEnd();
+		let remaining = trimmed.slice(firstHead.length).trimStart();
 
 		await sendSnapshot(firstChunk);
 
@@ -252,8 +263,14 @@ export function createDraftStreamController(
 				maxChars,
 				chunkConfig.breakPreference,
 			);
-			const chunk = remaining.slice(0, nextBreak).trimEnd();
-			remaining = remaining.slice(nextBreak).trimStart();
+			const head = truncateWellFormed(remaining, nextBreak);
+			if (head.length === 0) {
+				throw new RangeError(
+					"Discord draft chunk limit made no UTF-16 progress",
+				);
+			}
+			const chunk = head.trimEnd();
+			remaining = remaining.slice(head.length).trimStart();
 			if (!chunk) {
 				continue;
 			}

@@ -332,6 +332,9 @@ export type ScheduledTaskVerb =
   | "edit"
   | "reopen";
 
+/** Lifecycle mutations whose user acknowledgement can bind to a durable log. */
+export type ScheduledTaskReceiptVerb = "snooze" | "complete" | "dismiss";
+
 export interface ScheduledTaskFilter {
   kind?: ScheduledTaskKind;
   status?: ScheduledTaskStatus | ScheduledTaskStatus[];
@@ -348,6 +351,14 @@ export interface ScheduledTaskScheduleResult {
   replayed: boolean;
 }
 
+/** Durable outcome for one receipt-keyed task mutation. */
+export interface ScheduledTaskApplyResult {
+  task: ScheduledTask;
+  commit: ScheduledTaskLogEntry;
+  idempotencyKey: string;
+  replayed: boolean;
+}
+
 export interface ScheduledTaskRunner {
   scheduleWithResult(
     task: Omit<ScheduledTask, "taskId" | "state">,
@@ -361,6 +372,12 @@ export interface ScheduledTaskRunner {
     verb: ScheduledTaskVerb,
     payload?: unknown,
   ): Promise<ScheduledTask>;
+  applyWithResult(
+    taskId: string,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+    options: { idempotencyKey: string },
+  ): Promise<ScheduledTaskApplyResult>;
   pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
 

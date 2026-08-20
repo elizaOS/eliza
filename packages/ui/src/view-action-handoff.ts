@@ -5,8 +5,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { normalizeCompletedActionHandoffId } from "@elizaos/shared/events";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
+import { dispatchCompletedActionNavigation } from "./completed-action-navigation";
 import { dispatchNavigateViewEvent } from "./events";
 import { getWindowNavigationPath } from "./navigation";
 
@@ -33,10 +35,19 @@ export interface ViewActionHandoff {
   viewId: string;
   viewPath?: string;
   subview?: string;
+  completedActionDelivered?: true;
+  completedActionHandoffId?: string;
 }
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readOwnValue(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
 }
 
 export function findViewActionHandoff(
@@ -46,20 +57,28 @@ export function findViewActionHandoff(
   for (let index = actionResults.length - 1; index >= 0; index--) {
     const result = actionResults[index];
     if (
-      result?.success !== true ||
-      result.actionName?.toUpperCase() !== "VIEWS"
+      readOwnValue(result, "success") !== true ||
+      readString(readOwnValue(result, "actionName"))?.toUpperCase() !== "VIEWS"
     ) {
       continue;
     }
-    const mode = readString(result.values?.mode)?.toLowerCase();
-    const viewId = readString(result.values?.viewId);
+    const values = readOwnValue(result, "values");
+    const mode = readString(readOwnValue(values, "mode"))?.toLowerCase();
+    const viewId = readString(readOwnValue(values, "viewId"));
     if ((mode === "show" || mode === "open") && viewId) {
-      const viewPath = readString(result.values?.viewPath);
-      const subview = readString(result.values?.subview);
+      const viewPath = readString(readOwnValue(values, "viewPath"));
+      const subview = readString(readOwnValue(values, "subview"));
+      const completedActionHandoffId = normalizeCompletedActionHandoffId(
+        readOwnValue(values, "completedActionHandoffId"),
+      );
       return {
         viewId,
         ...(viewPath ? { viewPath } : {}),
         ...(subview ? { subview } : {}),
+        ...(readOwnValue(values, "completedActionDelivered") === true
+          ? { completedActionDelivered: true }
+          : {}),
+        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
       };
     }
   }
@@ -236,12 +255,19 @@ export function dispatchViewActionHandoffDirect(
 ): boolean {
   const handoff = findViewActionHandoff(actionResults);
   if (!handoff) return false;
-  dispatch({
+  const detail = {
     viewId: handoff.viewId,
     source: "agent",
     ...(handoff.viewPath ? { viewPath: handoff.viewPath } : {}),
     ...(handoff.subview ? { subview: handoff.subview } : {}),
-  });
+    ...(handoff.completedActionHandoffId
+      ? { completedActionHandoffId: handoff.completedActionHandoffId }
+      : {}),
+  } as const;
+  if (dispatch === dispatchNavigateViewEvent) {
+    return dispatchCompletedActionNavigation(detail);
+  }
+  dispatch(detail);
   return true;
 }
 

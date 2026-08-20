@@ -23,12 +23,14 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   serialization is a certification-breaking change.
 - **Provenance is bound.** `finalize()` writes + hashes `meta.json` before
   building the manifest and embeds `metaSha256`; `verifyBundle` re-checks it
-  (`meta-mismatch`). A verified bundle contains no symlinks anywhere —
-  verification is lstat-based and reports `symlink` findings instead of
-  following links (mutable-after-signing / unswept-tree exploits).
-- **Producers are not touched.** Ingestors (`src/ingest.ts`) only discover and
-  copy. `packages/app/scripts/**` and `scripts/evidence-review/**` are hot
-  zones with in-flight PRs; this package deliberately lives outside them.
+  (`meta-mismatch`). Artifact materialization is descriptor-stable and
+  copy-only. A verified bundle contains no symlinks or multiply-linked files
+  anywhere — verification reports `symlink` / `hardlink` findings instead of
+  accepting mutable-after-signing or unswept-tree aliases.
+- **One producer inventory.** Ingestors (`src/ingest.ts`) name every canonical
+  producer root and only discover + copy. Normal review verifies and reads the
+  resulting bundle; raw directory crawling exists only behind explicit
+  `--source` compatibility.
 - **Absent ≠ empty.** An ingestor returns `status: 'absent'` when no silo root
   exists and `status: 'ingested'` with `artifactCount: 0` when a root exists
   but is empty. Never conflate them and never fabricate an empty success.
@@ -103,7 +105,9 @@ bun run --cwd packages/evidence test         # vitest suite
 bun run --cwd packages/evidence typecheck    # tsc --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
+bun run --cwd packages/evidence bundle:snapshot -- --repo-root <dir> --out <snapshot.json>
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
+bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 bun run --cwd packages/evidence certify:keygen -- [--print-private-key]
 bun run --cwd packages/evidence certify:rollup -- --bundle <dir> [--requirements <file>] [--out <file>]
 bun run --cwd packages/evidence certify:sign -- --bundle <dir> --verdicts <file> --reviewer-id <id> --reviewer-kind <agent|human>

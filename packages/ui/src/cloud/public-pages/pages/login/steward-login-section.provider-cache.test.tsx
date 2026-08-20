@@ -37,7 +37,7 @@ const harness = vi.hoisted(() => {
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => harness.hasCallback,
   consumeStewardCodeFromQuery: () => harness.code,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: () => new Promise(() => {}),
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),

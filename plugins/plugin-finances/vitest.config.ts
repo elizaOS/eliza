@@ -67,6 +67,10 @@ export default defineConfig({
   },
   test: {
     ...baseConfig.test,
+    // Date-only CSV normalization must stay distinguishable from local-time
+    // parsing on CI. UTC runners make the unfixed behavior look correct, so
+    // pin a non-UTC zone for the package test process.
+    env: { ...baseConfig.test?.env, TZ: "America/New_York" },
     // .test.ts run in the default node environment. View component tests live in
     // .test.tsx files and opt into jsdom via a `// @vitest-environment jsdom`
     // docblock at the top of each file.

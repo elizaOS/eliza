@@ -42,6 +42,7 @@ function todo(over: Partial<TodayTodo> & { id: string }): TodayTodo {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   getBaseUrlMock.mockReturnValue("http://localhost");
 });
 
@@ -136,6 +137,7 @@ describe("isOverdue / overdueCount", () => {
 
 describe("fetchTodayTodos", () => {
   it("GETs the owner-todos route and parses the response", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = vi.fn(
       async () =>
         new Response(
@@ -151,7 +153,12 @@ describe("fetchTodayTodos", () => {
     const todos = await fetchTodayTodos();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost/api/lifeops/todos",
+      expect.objectContaining({
+        method: "GET",
+        signal: expect.any(AbortSignal),
+      }),
     );
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
     expect(todos).toEqual([
       { id: "a", title: "A", status: "pending", dueDate: TOMORROW },
     ]);
@@ -165,6 +172,30 @@ describe("fetchTodayTodos", () => {
     await expect(fetchTodayTodos()).rejects.toThrow(
       "Todos request failed (500)",
     );
+  });
+
+  it("composes the caller cancellation with its request deadline", async () => {
+    const caller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const pending = fetchTodayTodos(caller.signal);
+    caller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(true);
   });
 });
 

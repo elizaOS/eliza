@@ -45,6 +45,7 @@ import {
   type CreativeDraftRevision,
   type CreativeMemoTranscript,
   createCreativeDraftArtifact,
+  creativeDraftNarrativeViolations,
   type OwnerVoiceSource,
   scoreOwnerVoiceFidelity,
 } from "../lifeops/creative-draft/index.js";
@@ -203,10 +204,13 @@ async function resolveMemoTranscripts(args: {
         },
       );
     }
+    const suppliedMemo = byId.get(attachment.id);
     byId.set(attachment.id, {
       id: attachment.id,
       transcript,
-      affect: "neutral",
+      affect: suppliedMemo?.affect,
+      toneDirective: suppliedMemo?.toneDirective,
+      capturedAt: suppliedMemo?.capturedAt,
     });
   }
   return [...byId.values()];
@@ -290,7 +294,11 @@ function parseStoredDraft(
     draft === null ||
     typeof Reflect.get(draft, "id") !== "string" ||
     typeof Reflect.get(draft, "title") !== "string" ||
-    !Array.isArray(Reflect.get(draft, "sections"))
+    !Array.isArray(Reflect.get(draft, "sections")) ||
+    !isStringArray(Reflect.get(draft, "acceptedEdits")) ||
+    !isStringArray(Reflect.get(draft, "vetoedPhrases")) ||
+    (Reflect.get(draft, "acceptedPassages") !== undefined &&
+      !isStringArray(Reflect.get(draft, "acceptedPassages")))
   ) {
     throw new ElizaError("Stored creative draft artifact is malformed", {
       code: "CREATIVE_DRAFT_STORED_INVALID",
@@ -298,6 +306,12 @@ function parseStoredDraft(
     });
   }
   return draft as CreativeDraftArtifact;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 async function persistNewDraft(args: {
@@ -387,13 +401,28 @@ async function findStandingDraftDocumentId(args: {
     addedBy: args.message.entityId,
     scope: "owner-private",
     tags: ["creative-draft"],
-    limit: 25,
+    limit: 100,
   });
-  const standing = documents.find((document) => {
+  const candidates = documents.filter((document) => {
     const metadata = document.metadata as Record<string, unknown> | undefined;
-    return metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND;
+    return (
+      metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND &&
+      document.roomId === args.message.roomId
+    );
   });
-  return standing?.id ?? null;
+  if (candidates.length > 1) {
+    throw new ElizaError(
+      "More than one standing creative draft exists in this conversation; supply draftDocumentId",
+      {
+        code: "CREATIVE_DRAFT_AMBIGUOUS",
+        context: {
+          roomId: args.message.roomId,
+          documentIds: candidates.map((document) => document.id),
+        },
+      },
+    );
+  }
+  return candidates[0]?.id ?? null;
 }
 
 async function updatePersistedDraft(args: {
@@ -546,12 +575,6 @@ export const creativeDraftAction: Action & {
     }
 
     try {
-      const ownerSources = await resolveOwnerVoiceSources({
-        documents,
-        message,
-        supplied: params.ownerSources ?? [],
-      });
-
       if (subaction === "revise") {
         if (!params.revision) {
           return {
@@ -560,16 +583,29 @@ export const creativeDraftAction: Action & {
             data: { error: "MISSING_REVISION_INPUT" },
           };
         }
-        const standingDraftDocumentId =
-          params.draftDocumentId ??
-          (await findStandingDraftDocumentId({ documents, message }));
-        const currentDraft = standingDraftDocumentId
+        // Explicit revision inputs are authoritative. Only infer a standing
+        // document when neither persisted identity nor a complete artifact was
+        // supplied, otherwise an unrelated stored draft can replace the
+        // caller's artifact or make it fail as ambiguous.
+        const standingDraftDocumentId = params.draftDocumentId
+          ? params.draftDocumentId
+          : params.currentDraft
+            ? null
+            : await findStandingDraftDocumentId({ documents, message });
+        const currentDraft = params.draftDocumentId
           ? await loadPersistedDraft({
               documents,
               message,
-              documentId: standingDraftDocumentId,
+              documentId: params.draftDocumentId,
             })
-          : params.currentDraft;
+          : (params.currentDraft ??
+            (standingDraftDocumentId
+              ? await loadPersistedDraft({
+                  documents,
+                  message,
+                  documentId: standingDraftDocumentId,
+                })
+              : undefined));
         if (!currentDraft) {
           throw new ElizaError("Creative draft is unavailable", {
             code: "CREATIVE_DRAFT_NOT_FOUND",
@@ -579,6 +615,11 @@ export const creativeDraftAction: Action & {
           currentDraft,
           params.revision,
         );
+        const ownerSources = await resolveOwnerVoiceSources({
+          documents,
+          message,
+          supplied: params.ownerSources ?? [],
+        });
         const styleCard = buildOwnerVoiceStyleCard(ownerSources);
         const narrative = await composeDraftNarrative({
           runtime,
@@ -587,10 +628,27 @@ export const creativeDraftAction: Action & {
           styleCard,
           currentDraft: revisedBase,
         });
-        const revised = narrative ? { ...revisedBase, narrative } : revisedBase;
+        const narrativeViolations = narrative
+          ? creativeDraftNarrativeViolations(narrative, revisedBase)
+          : [];
+        if (narrativeViolations.length > 0) {
+          logger.warn(
+            {
+              src: "action:creative_draft",
+              draftId: revisedBase.id,
+              violations: narrativeViolations,
+            },
+            "[CREATIVE_DRAFT] discarded narrative that violated owner revision constraints",
+          );
+        }
+        const acceptedNarrative =
+          narrative && narrativeViolations.length === 0 ? narrative : undefined;
+        const revised = acceptedNarrative
+          ? { ...revisedBase, narrative: acceptedNarrative }
+          : revisedBase;
         const fidelity =
-          narrative !== undefined
-            ? scoreOwnerVoiceFidelity(narrative, styleCard)
+          acceptedNarrative !== undefined
+            ? scoreOwnerVoiceFidelity(acceptedNarrative, styleCard)
             : undefined;
         const draftDocumentId =
           standingDraftDocumentId ??
@@ -608,7 +666,7 @@ export const creativeDraftAction: Action & {
             draft: revised,
           });
         }
-        const text = narrative ?? `Revised "${revised.title}".`;
+        const text = acceptedNarrative ?? `Revised "${revised.title}".`;
         logger.info(
           `[CREATIVE_DRAFT] revise id=${revised.id} document=${draftDocumentId} sections=${revised.sections.length} fidelity=${fidelity ?? "n/a"}`,
         );
@@ -646,6 +704,11 @@ export const creativeDraftAction: Action & {
         };
       }
 
+      const ownerSources = await resolveOwnerVoiceSources({
+        documents,
+        message,
+        supplied: params.ownerSources ?? [],
+      });
       const styleCard = buildOwnerVoiceStyleCard(ownerSources);
       const draftBase = createCreativeDraftArtifact({
         request: params.request,

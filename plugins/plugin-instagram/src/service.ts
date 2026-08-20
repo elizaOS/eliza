@@ -12,6 +12,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type Entity,
   type IAgentRuntime,
   logger,
@@ -23,6 +24,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -149,15 +151,18 @@ function getInstagramPostMetadata(content: Content): Record<string, unknown> {
     : {};
 }
 
-function normalizeInstagramMediaId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+function normalizeInstagramMediaId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
   }
   if (typeof value !== "string" || !value.trim()) {
     return null;
   }
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(parsed) ? parsed : null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  return /[1-9]/.test(trimmed) ? trimmed : null;
 }
 
 function throwMissingInstagramClient(operation: string): never {
@@ -451,7 +456,9 @@ export class InstagramService extends Service {
   /**
    * Post a comment on media
    */
-  async postComment(mediaId: number, _text: string): Promise<number> {
+  async postComment(mediaId: number, text: string): Promise<number>;
+  async postComment(mediaId: string, text: string): Promise<string>;
+  async postComment(mediaId: string | number, _text: string): Promise<string | number> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
@@ -523,15 +530,23 @@ export class InstagramService extends Service {
   /**
    * Reply to a comment
    */
-  async replyToComment(mediaId: number, _commentId: number, text: string): Promise<number> {
+  async replyToComment(mediaId: number, commentId: number, text: string): Promise<number>;
+  async replyToComment(mediaId: string, commentId: string, text: string): Promise<string>;
+  async replyToComment(
+    mediaId: string | number,
+    _commentId: string | number,
+    text: string
+  ): Promise<string | number> {
     // In a real implementation, this would tag the user and reply
-    return this.postComment(mediaId, text);
+    return typeof mediaId === "string"
+      ? this.postComment(mediaId, text)
+      : this.postComment(mediaId, text);
   }
 
   /**
    * Like media
    */
-  async likeMedia(mediaId: number): Promise<void> {
+  async likeMedia(mediaId: string | number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
@@ -542,7 +557,7 @@ export class InstagramService extends Service {
   /**
    * Unlike media
    */
-  async unlikeMedia(mediaId: number): Promise<void> {
+  async unlikeMedia(mediaId: string | number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
@@ -975,6 +990,13 @@ export class InstagramService extends Service {
  * Split a message into chunks
  */
 export function splitMessage(content: string, maxLength: number): string[] {
+  if (!Number.isInteger(maxLength) || maxLength <= 0) {
+    throw new ElizaError(`splitMessage: maxLength must be a positive integer, got ${maxLength}`, {
+      code: "INSTAGRAM_SPLIT_LIMIT_INVALID",
+      context: { maxLength },
+    });
+  }
+
   if (content.length <= maxLength) {
     return [content];
   }
@@ -1004,9 +1026,24 @@ export function splitMessage(content: string, maxLength: number): string[] {
             }
 
             if (word.length > maxLength) {
-              // Split by characters
-              for (let i = 0; i < word.length; i += maxLength) {
-                parts.push(word.slice(i, i + maxLength));
+              // A raw slice() can land between the two UTF-16 code units of a
+              // surrogate pair (most emoji), leaving a lone surrogate at the
+              // chunk boundary. truncateWellFormed backs the cut off by one
+              // unit instead — which returns "" when maxLength is too small
+              // to fit even one well-formed unit (e.g. maxLength: 1 on a
+              // pair-leading word). Throw instead of pushing an empty chunk,
+              // which would otherwise loop forever making no progress.
+              let remainingWord = word;
+              while (remainingWord.length > 0) {
+                const chunk = truncateWellFormed(remainingWord, maxLength);
+                if (!chunk) {
+                  throw new ElizaError(
+                    `splitMessage: maxLength ${maxLength} is too small to fit a single well-formed character`,
+                    { code: "INSTAGRAM_SPLIT_LIMIT_TOO_SMALL", context: { maxLength } }
+                  );
+                }
+                parts.push(chunk);
+                remainingWord = remainingWord.slice(chunk.length);
               }
             } else {
               current = word;

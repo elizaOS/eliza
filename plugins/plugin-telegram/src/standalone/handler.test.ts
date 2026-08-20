@@ -7,13 +7,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveTelegramRuntimeEntityId } from "../identity";
 import { handleTelegramStandaloneMessage } from "./handler";
 
-function makeRuntime() {
+function makeRuntime(
+  options: {
+    settings?: Record<string, unknown>;
+    pairingAllowed?: boolean;
+    pairingService?: boolean;
+  } = {},
+) {
   const cache = new Map<string, unknown>();
   const createMemory = vi.fn(async () => undefined);
   const handleMessage = vi.fn(async () => undefined);
+  const pairingService = {
+    isAllowed: vi.fn(async () => options.pairingAllowed ?? false),
+    upsertRequest: vi.fn(async () => ({ code: "PAIRCODE1", created: true })),
+    claimPairingReply: vi.fn(() => true),
+  };
   const runtime = {
     agentId: "agent-1",
-    getSetting: vi.fn(() => undefined),
+    // These tests exercise identity and redelivery, not the DM gate, so the
+    // policy defaults to the explicit open opt-in unless a case overrides it
+    // (a key present with an undefined value simulates an unset setting).
+    getSetting: vi.fn((key: string) => {
+      if (options.settings && key in options.settings) {
+        return options.settings[key];
+      }
+      return key === "TELEGRAM_DM_POLICY" ? "open" : undefined;
+    }),
+    getService: vi.fn(() =>
+      options.pairingService === false ? null : pairingService,
+    ),
     getCache: vi.fn(async (key: string) => cache.get(key)),
     setCache: vi.fn(async (key: string, value: unknown) => {
       cache.set(key, value);
@@ -24,7 +46,7 @@ function makeRuntime() {
     messageService: { handleMessage },
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
-  return { runtime, cache, createMemory, handleMessage };
+  return { runtime, cache, createMemory, handleMessage, pairingService };
 }
 
 function context(chatId: number, messageId = 7) {
@@ -134,5 +156,80 @@ describe("standalone Telegram durable identity", () => {
     expect(logged).not.toContain("hunter2");
     expect(logged).not.toContain("passphrase");
     infoSpy.mockRestore();
+  });
+});
+
+describe("standalone Telegram DM policy gate", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("holds an unconfigured private chat by default and replies with the pairing code", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    const update = context(111);
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(update.reply).toHaveBeenCalledTimes(1);
+    expect(update.reply.mock.calls[0][0]).toContain("Pairing code: PAIRCODE1");
+  });
+
+  it("fails closed when the PairingService is unavailable", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+      pairingService: false,
+    });
+    const update = context(111);
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "pairing-integration",
+      expect.any(Error),
+      expect.objectContaining({ channel: "telegram", senderId: "42" }),
+    );
+  });
+
+  it("admits a pairing-approved sender", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+      pairingAllowed: true,
+    });
+
+    await handleTelegramStandaloneMessage(runtime, context(111) as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps group chats open when nothing is configured", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    const update = context(111) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    update.chat.type = "supergroup";
+    update.message.chat.type = "supergroup";
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("still honors the allowlist before the DM policy", async () => {
+    const { runtime, handleMessage, pairingService } = makeRuntime({
+      settings: {
+        TELEGRAM_DM_POLICY: undefined,
+        TELEGRAM_ALLOWED_CHATS: '["111"]',
+      },
+    });
+
+    await handleTelegramStandaloneMessage(runtime, context(111) as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(pairingService.isAllowed).not.toHaveBeenCalled();
   });
 });

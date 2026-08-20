@@ -13,12 +13,12 @@
  * to actually exchange the code.
  *
  * The HTML enforces a strict targetOrigin so no third-party site can read
- * the code by opening this URL inside an iframe. Defaults to "*" if no
- * AGENT_APP_ORIGIN is configured (acceptable for the early integration
- * window — this is a one-shot code, not a long-lived secret).
+ * the code by opening this URL inside an iframe. It fails closed when
+ * AGENT_APP_ORIGIN is absent or invalid rather than exposing the OAuth code.
  */
 
 import { Hono } from "hono";
+import { normalizePostMessageTargetOrigin } from "@/lib/services/agent-github-return";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -38,9 +38,9 @@ app.get("/", (c) => {
   const state = c.req.query("state") ?? "";
   const error = c.req.query("error") ?? "";
   const errorDescription = c.req.query("error_description") ?? "";
-  const agentAppOrigin = (c.env.AGENT_APP_ORIGIN as string | undefined)?.trim();
-  const targetOrigin =
-    agentAppOrigin && agentAppOrigin.length > 0 ? agentAppOrigin : "*";
+  const targetOrigin = normalizePostMessageTargetOrigin(
+    c.env.AGENT_APP_ORIGIN as string | undefined,
+  );
 
   const payload = JSON.stringify({
     type: "agent-paypal-oauth",
@@ -71,9 +71,10 @@ app.get("/", (c) => {
     <script>
       (function () {
         var payload = ${payload};
+        var targetOrigin = '${escapeForJsString(targetOrigin ?? "")}';
         try {
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(payload, '${escapeForJsString(targetOrigin)}');
+          if (targetOrigin && window.opener && !window.opener.closed) {
+            window.opener.postMessage(payload, targetOrigin);
           }
         } catch (err) {
           // Cross-origin postMessage failed; user can close the window manually.

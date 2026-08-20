@@ -1,17 +1,25 @@
 /**
  * Formats OSC-8 terminal hyperlinks for CLI output, falling back to `label
- * (url)` when stdout is not a TTY. Strips ESC bytes from label/url so untrusted
- * values cannot inject escape sequences.
+ * (url)` when stdout is not a TTY. Removes C0/DEL control bytes from label and
+ * URL values so untrusted text cannot terminate or inject terminal sequences.
  */
 const DOCS_ROOT = "https://docs.eliza.ai";
+function stripTerminalControlBytes(value: string): string {
+  return [...value]
+    .filter((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && codePoint > 0x1f && codePoint !== 0x7f;
+    })
+    .join("");
+}
 
 export function formatTerminalLink(
   label: string,
   url: string,
   opts?: { fallback?: string; force?: boolean },
 ): string {
-  const safeLabel = label.replaceAll("\u001b", "");
-  const safeUrl = url.replaceAll("\u001b", "");
+  const safeLabel = stripTerminalControlBytes(label);
+  const safeUrl = stripTerminalControlBytes(url);
   const allow = opts?.force ?? Boolean(process.stdout.isTTY);
   if (!allow) {
     return opts?.fallback ?? `${safeLabel} (${safeUrl})`;

@@ -1,206 +1,160 @@
 /**
- * Exercises the storage presign route through its real Hono boundary with
- * deterministic authentication, billing, and storage collaborators. The suite
- * protects the GET-only contract and verifies that rejected requests cannot
- * initialize storage or create billing and provider side effects.
+ * Exercises the real storage presign route and proves it settles one durable
+ * server-priced receipt before minting an opaque native read capability.
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  setSystemTime,
-  test,
-} from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const ORGANIZATION_ID = "00000000-0000-4000-8000-000000021009";
-const FIXED_NOW = new Date("2026-08-17T12:00:00.000Z");
-const COST = 0.00005;
-const SIGNED_URL = "https://r2.example.test/signed-object";
 const ROUTE_PATH = "/api/v1/apis/storage/presign";
+const ORG = "00000000-0000-4000-8000-000000021009";
+const USER = "00000000-0000-4000-8000-000000021010";
+const CAPABILITY = "00000000-0000-4000-8000-000000021011";
+const RECEIPT = "00000000-0000-4000-8000-000000021012";
+const ISSUED = new Date(Date.now() - 1_000);
+const EXPIRES = new Date(Date.now() + 5 * 60_000);
 
 const requireUserOrApiKeyWithOrg = mock();
-const getR2StorageAdapter = mock();
+const executeNativeStoragePresign = mock();
 const getServiceMethodCost = mock();
-const deductCredits = mock();
-const presignGet = mock();
-const failureResponse = mock();
-const loggerError = mock();
+const mintStorageReadCapabilityUrl = mock();
 
-mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse,
-}));
+class TestNativeStorageReadError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+class TestStorageReadCapabilityConfigurationError extends Error {
+  readonly code = "CONFIGURATION";
+}
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
-
-mock.module("@/lib/services/storage/r2-storage-adapter", () => ({
-  getR2StorageAdapter,
+mock.module("@/lib/services/storage/native-storage-read", () => ({
+  executeNativeStoragePresign,
+  NativeStorageReadError: TestNativeStorageReadError,
 }));
-
-mock.module("@/lib/services/proxy/pricing", () => ({
-  getServiceMethodCost,
-}));
-
-mock.module("@/lib/services/credits", () => ({
-  creditsService: { deductCredits },
-}));
-
-mock.module("@/lib/utils/logger", () => ({
-  logger: { error: loggerError },
+mock.module("@/lib/services/proxy/pricing", () => ({ getServiceMethodCost }));
+mock.module("@/api-app/storage-read-capability", () => ({
+  mintStorageReadCapabilityUrl,
+  validateStorageReadCapabilityConfiguration: (
+    secrets: string | undefined,
+    value: string,
+  ) => {
+    if (!secrets) throw new TestStorageReadCapabilityConfigurationError();
+    return new URL(value).host;
+  },
+  StorageReadCapabilityConfigurationError:
+    TestStorageReadCapabilityConfigurationError,
 }));
 
 const presignRoute = (await import("../v1/apis/storage/presign/route")).default;
 const app = new Hono();
 app.route(ROUTE_PATH, presignRoute);
 
-function post(body: unknown): Response | Promise<Response> {
-  return app.request(ROUTE_PATH, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
 beforeEach(() => {
-  setSystemTime(FIXED_NOW);
   requireUserOrApiKeyWithOrg.mockReset();
-  getR2StorageAdapter.mockReset();
+  executeNativeStoragePresign.mockReset();
   getServiceMethodCost.mockReset();
-  deductCredits.mockReset();
-  presignGet.mockReset();
-  failureResponse.mockReset();
-  loggerError.mockReset();
-
+  mintStorageReadCapabilityUrl.mockReset();
   requireUserOrApiKeyWithOrg.mockResolvedValue({
-    organization_id: ORGANIZATION_ID,
+    id: USER,
+    organization_id: ORG,
   });
-  getR2StorageAdapter.mockReturnValue({ presignGet });
-  getServiceMethodCost.mockResolvedValue(COST);
-  deductCredits.mockResolvedValue({ success: true });
-  presignGet.mockResolvedValue(SIGNED_URL);
+  getServiceMethodCost.mockResolvedValue(0.0002);
+  executeNativeStoragePresign.mockResolvedValue({
+    operation: {
+      id: RECEIPT,
+      capability_id: CAPABILITY,
+      capability_issued_at: ISSUED,
+      capability_expires_at: EXPIRES,
+    },
+    status: 200,
+    body: { receiptId: RECEIPT, expiresAt: EXPIRES.toISOString() },
+    replay: false,
+  });
+  mintStorageReadCapabilityUrl.mockResolvedValue(
+    `https://blob.example/__eliza_storage_capability/v1/${CAPABILITY}.sig`,
+  );
 });
 
-afterEach(() => {
-  setSystemTime();
-});
-
-describe("POST /api/v1/apis/storage/presign", () => {
-  test("rejects PUT after authentication and before storage or billing side effects", async () => {
-    const response = await post({
-      key: "voice/message.ogg",
-      operation: "put",
-      expiresIn: 600,
-    });
-
-    expect(response.status).toBe(400);
-    const responseBody: unknown = await response.json();
-    expect(responseBody).toMatchObject({
-      error: "Invalid presign request",
-    });
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getR2StorageAdapter).not.toHaveBeenCalled();
-    expect(getServiceMethodCost).not.toHaveBeenCalled();
-    expect(deductCredits).not.toHaveBeenCalled();
-    expect(presignGet).not.toHaveBeenCalled();
-  });
-
-  test("presigns GET with the scoped key, explicit TTL, and exact debit metadata", async () => {
-    const response = await post({
-      key: "/voice/message.ogg/",
-      operation: "get",
-      expiresIn: 600,
-    });
-
-    expect(response.status).toBe(200);
-    const responseBody: unknown = await response.json();
-    expect(responseBody).toEqual({
-      url: SIGNED_URL,
-      expiresAt: "2026-08-17T12:10:00.000Z",
-    });
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getR2StorageAdapter).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "presign");
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(deductCredits).toHaveBeenCalledWith({
-      organizationId: ORGANIZATION_ID,
-      amount: COST,
-      description: "API proxy: storage — presign (get)",
-      metadata: {
-        type: "proxy_storage",
-        service: "storage",
-        method: "presign",
-        operation: "get",
+test("settles the exact server quote before minting an opaque capability", async () => {
+  const bucket = { head: mock() };
+  const response = await app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Idempotency-Key": "presign-1",
+        "X-Storage-Object-Key": "private/voice.ogg",
       },
-    });
-    expect(presignGet).toHaveBeenCalledTimes(1);
-    expect(presignGet).toHaveBeenCalledWith(
-      `org/${ORGANIZATION_ID}/voice/message.ogg`,
-      600,
-    );
+      body: JSON.stringify({
+        operation: "get",
+        expiresIn: 300,
+      }),
+    },
+    {
+      BLOB: bucket,
+      R2_PUBLIC_HOST: "https://blob.example",
+      STORAGE_READ_SIGNING_SECRETS: "active-secret-that-is-long-enough",
+    },
+  );
+
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { url: string; receiptId: string };
+  expect(body.receiptId).toBe(RECEIPT);
+  expect(body.url).not.toContain("private");
+  expect(body.url).not.toContain("voice");
+  expect(executeNativeStoragePresign).toHaveBeenCalledWith({
+    bucket,
+    organizationId: ORG,
+    userId: USER,
+    logicalKey: "private/voice.ogg",
+    rawIdempotencyKey: "presign-1",
+    priceUsd: 0.0002,
+    capabilityHost: "blob.example",
+    ttlSeconds: 300,
   });
+  expect(mintStorageReadCapabilityUrl).toHaveBeenCalledTimes(1);
+});
 
-  test("uses the one-hour default TTL without charging when the catalog cost is zero", async () => {
-    getServiceMethodCost.mockResolvedValueOnce(0);
+test("malformed requests stop before pricing, provider, or receipt authority", async () => {
+  const response = await app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not-json",
+    },
+    { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
+  );
+  expect(response.status).toBe(400);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePresign).not.toHaveBeenCalled();
+  expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
+});
 
-    const response = await post({
-      key: "avatars/profile.png",
-      operation: "get",
-    });
-
-    expect(response.status).toBe(200);
-    const responseBody: unknown = await response.json();
-    expect(responseBody).toEqual({
-      url: SIGNED_URL,
-      expiresAt: "2026-08-17T13:00:00.000Z",
-    });
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "presign");
-    expect(deductCredits).not.toHaveBeenCalled();
-    expect(presignGet).toHaveBeenCalledWith(
-      `org/${ORGANIZATION_ID}/avatars/profile.png`,
-      3600,
-    );
-  });
-
-  test("does not presign when the organization has insufficient credits", async () => {
-    deductCredits.mockResolvedValueOnce({ success: false });
-
-    const response = await post({
-      key: "voice/message.ogg",
-      operation: "get",
-      expiresIn: 300,
-    });
-
-    expect(response.status).toBe(402);
-    const responseBody: unknown = await response.json();
-    expect(responseBody).toEqual({
-      error: "Insufficient credits",
-      topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-    });
-    expect(getR2StorageAdapter).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(presignGet).not.toHaveBeenCalled();
-  });
-
-  test("rejects traversal keys before storage initialization or billing", async () => {
-    const response = await post({
-      key: "voice/../secret.txt",
-      operation: "get",
-    });
-
-    expect(response.status).toBe(400);
-    const responseBody: unknown = await response.json();
-    expect(responseBody).toEqual({ error: "Invalid object key" });
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getR2StorageAdapter).not.toHaveBeenCalled();
-    expect(getServiceMethodCost).not.toHaveBeenCalled();
-    expect(deductCredits).not.toHaveBeenCalled();
-    expect(presignGet).not.toHaveBeenCalled();
-  });
+test("missing signer authority stops before pricing, provider, or settlement", async () => {
+  const response = await app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Idempotency-Key": "presign-no-signer",
+        "X-Storage-Object-Key": "private/voice.ogg",
+      },
+      body: JSON.stringify({ operation: "get" }),
+    },
+    { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
+  );
+  expect(response.status).toBe(503);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePresign).not.toHaveBeenCalled();
+  expect(mintStorageReadCapabilityUrl).not.toHaveBeenCalled();
 });

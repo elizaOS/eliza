@@ -1,9 +1,9 @@
 /**
  * Tool-call cache tests.
  *
- * Covers: cache hit/miss + recompute, TTL expiry, side-effect tool opt-out,
- * cross-session disk persistence, and that the privacy redactor is applied
- * to disk writes.
+ * Covers cache hit/miss behavior, TTL and version invalidation, side-effect
+ * opt-out, mutation isolation at memory and disk boundaries, persistence,
+ * and privacy redaction.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -15,7 +15,11 @@ import { ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
 import { defaultPrivacyRedactor } from "./redact.ts";
 import { CACHEABLE_TOOL_REGISTRY, resolveToolDescriptor } from "./registry.ts";
-import type { CacheableToolDescriptor, PrivacyRedactor } from "./types.ts";
+import type {
+  CacheableToolDescriptor,
+  PrivacyRedactor,
+  ToolOutput,
+} from "./types.ts";
 
 const passthroughRedact: PrivacyRedactor = (v) => v;
 
@@ -79,6 +83,78 @@ describe("ToolCallCache", () => {
     });
     expect(out2).toEqual({ result: "first" });
     expect(calls).toBe(1);
+  });
+
+  it("deduplicates concurrent misses for the same key", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const execute = async () => {
+      calls += 1;
+      await gate;
+      return { result: "shared" };
+    };
+    const first = cache.run(desc, { q: "same" }, execute);
+    const second = cache.run(desc, { q: "same" }, execute);
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { result: "shared" },
+      { result: "shared" },
+    ]);
+    expect(calls).toBe(1);
+  });
+
+  it("does not share in-flight results across tool versions", async () => {
+    const cache = makeCache();
+    const args = { q: "same" };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+
+    const first = cache.run(
+      { name: "web_search", version: "1", ttlMs: 1_000, cacheable: true },
+      args,
+      async () => {
+        calls += 1;
+        await gate;
+        return "v1";
+      },
+    );
+    const second = cache.run(
+      { name: "web_search", version: "2", ttlMs: 1_000, cacheable: true },
+      args,
+      async () => {
+        calls += 1;
+        return "v2";
+      },
+    );
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["v1", "v2"]);
+    expect(calls).toBe(2);
+  });
+
+  it("allows a retry after an in-flight execution rejects", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const args = { q: "retry" };
+
+    await expect(
+      cache.run(desc, args, async () => {
+        throw new Error("temporary failure");
+      }),
+    ).rejects.toThrow("temporary failure");
+    await expect(cache.run(desc, args, async () => "recovered")).resolves.toBe(
+      "recovered",
+    );
   });
 
   it("expires entries after TTL", async () => {
@@ -184,6 +260,74 @@ describe("ToolCallCache", () => {
     });
     expect(callsB).toBe(0);
     expect(out).toEqual({ html: "<h1>hi</h1>" });
+  });
+
+  it("isolates cached output from mutations after set and get", () => {
+    const cache = makeCache();
+    const descriptor = resolveToolDescriptor("web_search");
+    const output = { result: { title: "original" } };
+
+    cache.set(descriptor, { q: "mutation" }, output);
+    output.result.title = "changed after set";
+
+    const first = cache.get(descriptor, { q: "mutation" });
+    expect(first?.output).toEqual({ result: { title: "original" } });
+
+    const returned = first?.output as { result: { title: string } };
+    returned.result.title = "changed after get";
+
+    expect(cache.get(descriptor, { q: "mutation" })?.output).toEqual({
+      result: { title: "original" },
+    });
+  });
+
+  it("does not replay a mutated result returned by run", async () => {
+    const cache = makeCache();
+    const descriptor = resolveToolDescriptor("web_search");
+    let calls = 0;
+
+    const first = (await cache.run(descriptor, { q: "replay" }, async () => {
+      calls += 1;
+      return { result: { title: "original" } };
+    })) as { result: { title: string } };
+    first.result.title = "poisoned";
+
+    const replay = await cache.run(descriptor, { q: "replay" }, async () => {
+      calls += 1;
+      return { result: { title: "unexpected recompute" } };
+    });
+
+    expect(calls).toBe(1);
+    expect(replay).toEqual({ result: { title: "original" } });
+  });
+
+  it("isolates entries promoted from disk into memory", async () => {
+    const descriptor = resolveToolDescriptor("web_fetch");
+    const writer = makeCache();
+    await writer.run(descriptor, { url: "https://x" }, async () => ({
+      response: { body: "original" },
+    }));
+
+    const reader = makeCache();
+    const promoted = reader.get(descriptor, { url: "https://x" });
+    const returned = promoted?.output as { response: { body: string } };
+    returned.response.body = "poisoned";
+
+    expect(reader.get(descriptor, { url: "https://x" })?.output).toEqual({
+      response: { body: "original" },
+    });
+  });
+
+  it("rejects non-cloneable outputs before populating either tier", () => {
+    const cache = makeCache();
+    const descriptor = resolveToolDescriptor("web_search");
+    const args = { q: "invalid output" };
+    const invalidOutput = {
+      callback: () => "not serializable",
+    } as unknown as ToolOutput;
+
+    expect(() => cache.set(descriptor, args, invalidOutput)).toThrow();
+    expect(cache.get(descriptor, args)).toBeUndefined();
   });
 
   it("invalidate(toolName) drops in-memory entries for that tool", async () => {

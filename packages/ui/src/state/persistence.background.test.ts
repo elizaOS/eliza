@@ -6,6 +6,7 @@
  * `localStorage`.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { getShaderPreset } from "../backgrounds/shader-presets";
 import {
   loadBackgroundConfig,
   normalizeBackgroundConfig,
@@ -74,16 +75,15 @@ describe("background config persistence", () => {
     });
   });
 
-  it("keeps a glsl config with a plausible fragment source and clamps its uniforms", () => {
-    const source =
-      "precision highp float; void main(){ gl_FragColor = vec4(1.0); }";
+  it("resolves a stored preset id to canonical source and clamps uniforms", () => {
+    const source = getShaderPreset("lava")?.source;
     expect(
       normalizeBackgroundConfig({
         mode: "glsl",
         color: "#123456",
         shader: {
           presetId: "lava",
-          source,
+          source: "void main(){ for(;;){} gl_FragColor = vec4(1.0); }",
           uniforms: { u_speed: 999, u_scale: 2, u_intensity: 1, u_seed: 5 },
         },
       }),
@@ -99,7 +99,7 @@ describe("background config persistence", () => {
     });
   });
 
-  it("collapses a glsl config with a missing/hostile source to the color field (safety)", () => {
+  it("collapses GLSL records without a known preset id to the color field", () => {
     // no shader payload
     expect(
       normalizeBackgroundConfig({ mode: "glsl", color: "#123456" }),
@@ -107,31 +107,46 @@ describe("background config persistence", () => {
       mode: "shader",
       color: "#123456",
     });
-    // unbounded-loop source is rejected by the static gate → color field
+    // Raw source is never trusted, even when it looks syntactically plausible.
     expect(
       normalizeBackgroundConfig({
         mode: "glsl",
         color: "#123456",
         shader: {
-          source: "void main(){ while(true){} gl_FragColor=vec4(1.0);}",
+          source: "void main(){ gl_FragColor=vec4(1.0);}",
+        },
+      }),
+    ).toEqual({ mode: "shader", color: "#123456" });
+    expect(
+      normalizeBackgroundConfig({
+        mode: "glsl",
+        color: "#123456",
+        shader: {
+          presetId: "unknown",
+          source: getShaderPreset("aurora")?.source,
         },
       }),
     ).toEqual({ mode: "shader", color: "#123456" });
   });
 
   it("round-trips a glsl config through localStorage", () => {
-    const config = {
+    const stored = {
       mode: "glsl" as const,
       color: "#0a0a0a",
       shader: {
         presetId: "aurora",
-        source:
-          "precision highp float; void main(){ gl_FragColor = vec4(1.0); }",
+        source: "attacker-controlled stale source",
         uniforms: { u_speed: 1, u_scale: 1, u_intensity: 1, u_seed: 0 },
       },
     };
-    saveBackgroundConfig(config);
-    expect(loadBackgroundConfig()).toEqual(config);
+    saveBackgroundConfig(stored);
+    expect(loadBackgroundConfig()).toEqual({
+      ...stored,
+      shader: {
+        ...stored.shader,
+        source: getShaderPreset("aurora")?.source,
+      },
+    });
   });
 
   it("round-trips an image config through localStorage", () => {

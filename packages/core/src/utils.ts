@@ -10,7 +10,8 @@
  * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
  * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
  * structured fields from chatty model output, tolerating malformed input by
- * returning null rather than throwing.
+ * returning null rather than throwing. Hostile nested or prefix-extended tags
+ * that used to quadratic-hang `findMatchingXmlClose` fail closed.
  *
  * `stringToUuid` derives a deterministic, RFC-4122-shaped UUID from an arbitrary
  * string via an in-tree pure-JS SHA-1 (with a WebCrypto-backed cache), so the
@@ -733,6 +734,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
 	if (!text) return null;
+	if (!isUtf8WithinByteBudget(text, MAX_XML_INPUT_BYTES)) return null;
 
 	let xmlContent: string | null = null;
 	const responseStart = text.indexOf("<response>");
@@ -740,6 +742,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		const contentStart = responseStart + "<response>".length;
 		const responseEnd = text.indexOf("</response>", contentStart);
 		if (responseEnd !== -1) {
+			if (responseEnd - contentStart > MAX_XML_BODY_BYTES) return null;
 			xmlContent = text.slice(contentStart, responseEnd);
 		}
 	}
@@ -758,9 +761,14 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		}
 		xmlContent = firstBlock.content;
 	}
+	if (!isUtf8WithinByteBudget(xmlContent, MAX_XML_BODY_BYTES)) return null;
 
+	const children = extractDirectXmlChildren(xmlContent);
+	// Fail closed: a visit-cap hit is an incomplete parse, not a short
+	// success. Callers already treat `null` as "no structured XML".
+	if (children === null) return null;
 	const result: Record<string, unknown> = {};
-	for (const { key, value } of extractDirectXmlChildren(xmlContent)) {
+	for (const { key, value } of children) {
 		if (key === "actions" || key === "providers" || key === "evaluators") {
 			const singularTag = key.replace(/s$/, "");
 			const hasXmlTags =
@@ -786,13 +794,24 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	return result as T;
 }
 
+const MAX_XML_INPUT_BYTES = 1024 * 1024;
+const MAX_XML_BODY_BYTES = 256 * 1024;
+
+function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
+	if (value.length > maxBytes) return false;
+	return new TextEncoder().encode(value).byteLength <= maxBytes;
+}
+
 function findFirstXmlBlock(
 	// audit:allowlist - helper for parseKeyValueXml (legacy XML parser, retained for cloud/)
 	input: string,
 ): { tag: string; content: string } | null {
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) return null;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -824,11 +843,14 @@ function findFirstXmlBlock(
 
 function extractDirectXmlChildren(
 	input: string,
-): Array<{ key: string; value: string }> {
+): Array<{ key: string; value: string }> | null {
 	const pairs: Array<{ key: string; value: string }> = [];
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) return null;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -887,6 +909,13 @@ function readXmlStartTag(
 	};
 }
 
+/** Honest key-value XML is a handful of tags. A prefix-extended walk
+ * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. */
+/** Direct-child walk and close-tag matching share this visit budget. Hitting
+ * it is a parse failure (`null`), never a silently truncated object. */
+const MAX_XML_CLOSE_VISITS = 64;
+const MAX_XML_NEST_DEPTH = 32;
+
 function findMatchingXmlClose(
 	input: string,
 	tag: string,
@@ -895,19 +924,19 @@ function findMatchingXmlClose(
 	const closeSeq = `</${tag}>`;
 	let depth = 1;
 	let cursor = start;
+	let visits = 0;
 	while (depth > 0 && cursor < input.length) {
-		const nextOpen = input.indexOf(`<${tag}`, cursor);
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS || depth > MAX_XML_NEST_DEPTH) {
+			return -1;
+		}
+		const nextOpen = findNextExactXmlOpen(input, tag, cursor);
 		const nextClose = input.indexOf(closeSeq, cursor);
 		if (nextClose === -1) return -1;
 		if (nextOpen !== -1 && nextOpen < nextClose) {
 			const nestedTag = readXmlStartTag(input, nextOpen);
 			if (!nestedTag) return -1;
-			// Only a tag whose name EXACTLY matches nests depth. `indexOf(`<${tag}`)`
-			// also matches prefix-extensions (e.g. `<textarea>` while closing
-			// `<text>`), which used to inflate depth so the real close was never
-			// found — the field was dropped and a bogus key promoted. On a mismatch
-			// just skip past this open tag and keep scanning.
-			if (nestedTag.tag === tag && !nestedTag.selfClosing) {
+			if (!nestedTag.selfClosing) {
 				depth += 1;
 			}
 			cursor = nestedTag.end + 1;
@@ -918,6 +947,24 @@ function findMatchingXmlClose(
 		}
 	}
 	return -1;
+}
+
+function findNextExactXmlOpen(
+	input: string,
+	tag: string,
+	start: number,
+): number {
+	const prefix = `<${tag}`;
+	let cursor = start;
+	for (;;) {
+		const found = input.indexOf(prefix, cursor);
+		if (found === -1) return -1;
+		const boundary = input[found + prefix.length];
+		if (boundary === ">" || boundary === "/" || /\s/.test(boundary ?? "")) {
+			return found;
+		}
+		cursor = found + prefix.length;
+	}
 }
 
 function unescapeBasicXmlEntities(value: string): string {

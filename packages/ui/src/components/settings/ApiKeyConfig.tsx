@@ -6,7 +6,7 @@
  * warnings/errors flow in as props and surface inline.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
@@ -19,6 +19,7 @@ import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
+import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { autoLabel } from "../../utils/labels";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { SettingsActionButton } from "./settings-agent-rows";
@@ -49,6 +50,7 @@ export interface ApiKeyConfigProps {
 }
 
 const CREDENTIAL_KEY_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD)/;
+const API_KEY_REVEAL_FETCH_TIMEOUT_MS = 15_000;
 
 /** Splits fields into Credentials (required + sensitive) and Advanced. */
 function partitionParams(params: PluginParamDef[]): {
@@ -135,19 +137,23 @@ function buildSchemaForParams(
 async function revealSecret(
   pluginId: string,
   key: string,
+  signal: AbortSignal,
 ): Promise<string | null> {
   try {
-    const res = await fetch(
+    return await fetchWithDeadline(
       `/api/plugins/${encodeURIComponent(pluginId)}/reveal`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ key }),
       },
+      async (response) => {
+        if (!response.ok) return null;
+        const json = (await response.json()) as { value?: string | null };
+        return typeof json.value === "string" ? json.value : null;
+      },
+      { signal, timeoutMs: API_KEY_REVEAL_FETCH_TIMEOUT_MS },
     );
-    if (!res.ok) return null;
-    const json = (await res.json()) as { value?: string | null };
-    return typeof json.value === "string" ? json.value : null;
   } catch {
     // error-policy:J4 null is the typed "cannot reveal" signal — the masked
     // field stays masked and the user can retry; never fabricate a value.
@@ -204,6 +210,7 @@ function ApiKeyConfigBody({
 }: ApiKeyConfigProps) {
   const { setTimeout } = useTimeout();
   const { configRef, validateAll } = useConfigValidation();
+  const revealControllerRef = useRef<AbortController | null>(null);
 
   const t = useAppSelector((s) => s.t);
   const [pluginFieldValues, setPluginFieldValues] = useState<
@@ -214,6 +221,36 @@ function ApiKeyConfigBody({
     tone: "error" | "success";
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      revealControllerRef.current?.abort(
+        new DOMException(
+          `Credential reveal superseded for ${selectedProvider?.id ?? "provider selection"}`,
+          "AbortError",
+        ),
+      );
+      revealControllerRef.current = null;
+    };
+  }, [selectedProvider?.id]);
+
+  const revealSelectedSecret = useCallback(
+    async (pluginId: string, key: string): Promise<string | null> => {
+      revealControllerRef.current?.abort(
+        new DOMException("Credential reveal superseded", "AbortError"),
+      );
+      const controller = new AbortController();
+      revealControllerRef.current = controller;
+      try {
+        return await revealSecret(pluginId, key, controller.signal);
+      } finally {
+        if (revealControllerRef.current === controller) {
+          revealControllerRef.current = null;
+        }
+      }
+    },
+    [],
+  );
 
   const handlePluginFieldChange = useCallback(
     (pluginId: string, key: string, value: string) => {
@@ -368,7 +405,7 @@ function ApiKeyConfigBody({
                 String(value ?? ""),
               )
             }
-            revealSecret={revealSecret}
+            revealSecret={revealSelectedSecret}
           />
           {partitions.credentials.map((param) => (
             <CredentialFieldAgentBinding
@@ -403,7 +440,7 @@ function ApiKeyConfigBody({
                 String(value ?? ""),
               )
             }
-            revealSecret={revealSecret}
+            revealSecret={revealSelectedSecret}
           />
         </AdvancedSettingsDisclosure>
       ) : null}

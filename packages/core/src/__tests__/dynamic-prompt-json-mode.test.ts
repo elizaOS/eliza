@@ -1,8 +1,9 @@
 /**
  * Exercises AgentRuntime.dynamicPromptExecFromState: structured model calls
- * request JSON-object response format, a validation failure feeds a corrective
- * [REPAIR] context into the reroll, and exhausted retries return null while an
- * explicit caller response format is preserved. Runs against a bare
+ * request JSON-object response format, structured callbacks drain before a
+ * retry, a validation failure feeds corrective [REPAIR] context into the
+ * reroll, and exhausted retries return null while an explicit caller response
+ * format is preserved. Runs against a bare
  * AgentRuntime (no DB adapter, logModelCall stubbed) with a registered vi.fn()
  * model handler — fully deterministic, no live model.
  */
@@ -28,6 +29,77 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("AgentRuntime.dynamicPromptExecFromState", () => {
+	it("drains an older structured callback before starting a retry", async () => {
+		const runtime = makeRuntime();
+		let attempt = 0;
+		const handler = vi.fn(
+			async (
+				_runtime,
+				params: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+			) => {
+				attempt += 1;
+				if (attempt === 1) {
+					await params.onStreamChunk?.("text: old\nother: x\n");
+					return '{"wrong":"retry"}';
+				}
+				await params.onStreamChunk?.("text: new.\n");
+				return '{"text":"new."}';
+			},
+		);
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			handler,
+			"eliza-local-inference",
+			100,
+		);
+		let releaseOld: (() => void) | undefined;
+		const oldGate = new Promise<void>((resolve) => {
+			releaseOld = resolve;
+		});
+		let markOldEntered: (() => void) | undefined;
+		const oldEntered = new Promise<void>((resolve) => {
+			markOldEntered = resolve;
+		});
+		const delivered: Array<{ chunk: string; revision: number | undefined }> =
+			[];
+
+		const resultPromise = runtime.dynamicPromptExecFromState({
+			params: { prompt: "Return text." },
+			schema: [
+				{
+					field: "text",
+					description: "Reply",
+					required: true,
+					streamField: true,
+				},
+				{ field: "other", description: "Non-streamed metadata" },
+			],
+			options: {
+				modelType: ModelType.TEXT_LARGE,
+				maxRetries: 1,
+				contextCheckLevel: 0,
+				onStreamChunk: async (chunk, _messageId, _accumulated, revision) => {
+					delivered.push({ chunk, revision });
+					if (delivered.length === 1) {
+						markOldEntered?.();
+						await oldGate;
+					}
+				},
+			},
+		});
+
+		await oldEntered;
+		await Promise.resolve();
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(delivered.map(({ chunk }) => chunk)).toEqual(["old"]);
+
+		releaseOld?.();
+		expect(await resultPromise).toEqual({ text: "new." });
+		expect(handler).toHaveBeenCalledTimes(2);
+		expect(delivered.map(({ chunk }) => chunk)).toEqual(["old", "new."]);
+		expect(delivered[0]?.revision).not.toBe(delivered[1]?.revision);
+	});
+
 	it("requests JSON-object mode for structured model calls", async () => {
 		const runtime = makeRuntime();
 		let seenParams: unknown;

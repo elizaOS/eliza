@@ -73,6 +73,12 @@ mock.module("./services/steward-tenant-config", () => ({
 }));
 
 mock.module("./services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: {
     addCredits: async () => ({ success: true }),
   },

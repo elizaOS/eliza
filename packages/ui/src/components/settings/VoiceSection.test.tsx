@@ -87,6 +87,21 @@ describe("VoiceSection", () => {
     expect(screen.getByTestId("voice-section-models-empty")).toBeTruthy();
   });
 
+  it("hides the entire models group for a Cloud-managed consumer build", () => {
+    render(
+      <VoiceSection
+        {...baseProps}
+        prefs={DEFAULT_VOICE_SECTION_PREFS}
+        onPrefsChange={() => {}}
+        showModelsPanel={false}
+      />,
+    );
+    expect(screen.queryByTestId("voice-section-models")).toBeNull();
+    expect(
+      screen.queryByText("Voice models appear here when available."),
+    ).toBeNull();
+  });
+
   it("toggles wake word through SettingsSwitchRow", () => {
     const onWakeWordToggle = vi.fn();
     render(

@@ -15,6 +15,7 @@ import {
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -67,7 +68,13 @@ function clientIp(c: AppContext): string | undefined {
 app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const input = clientAuditSchema.parse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const input = clientAuditSchema.parse(rawBody);
     const event = await getAuditDispatcher().emit({
       actor: { type: "user", id: user.id },
       action: input.action,

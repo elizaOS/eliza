@@ -24,15 +24,19 @@ export class PostgresConnectionManager {
     // exhaust the server's max_connections. Defaults preserve the original
     // single-agent behavior (max 20 / min 2). Set POSTGRES_POOL_MIN=0 so idle
     // agents release every connection; a small POSTGRES_POOL_MAX caps bursts.
-    const envInt = (key: string, fallback: number): number => {
+    const envInt = (key: string, fallback: number, min = 0): number => {
       const raw = process.env[key];
       if (raw === undefined || raw === "") return fallback;
       const n = Number(raw);
-      return Number.isFinite(n) && n >= 0 ? n : fallback;
+      return Number.isFinite(n) && n >= min ? n : fallback;
     };
     const poolConfig: PoolConfig = {
       connectionString: normalizePgSslMode(connectionString),
-      max: envInt("POSTGRES_POOL_MAX", 20),
+      // max must stay >= 1: pg-pool's constructor coerces a falsy max via
+      // `max || poolSize || 10`, so a configured 0 silently becomes pg-pool's
+      // own default (10) instead of this plugin's documented default (20).
+      // Rejecting non-positive input keeps the fallback explicit and ours.
+      max: envInt("POSTGRES_POOL_MAX", 20, 1),
       min: envInt("POSTGRES_POOL_MIN", 2),
       idleTimeoutMillis: envInt("POSTGRES_POOL_IDLE_TIMEOUT_MS", 30000),
       connectionTimeoutMillis: 5000,

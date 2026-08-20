@@ -3,7 +3,7 @@
  *
  * It owns the live website-blocking data (`GET {base}/api/website-blocker`
  * returning a `SelfControlStatus`, the early-release mutation, the load/error
- * state machine, and the settle-chained background poll) and renders the one
+ * state machine, and the background poll) and renders the one
  * presentational {@link FocusSpatialView} inside a {@link SpatialSurface}.
  * Omitting the `modality` prop lets `SpatialSurface` render the browser DOM
  * surface today while the retained modality contract stays available for future
@@ -21,19 +21,42 @@ import { type FocusSnapshot, FocusSpatialView } from "./FocusSpatialView.tsx";
 
 interface FocusViewProps {
   /** Test/host injection seam. Defaults to a real `/api/website-blocker` GET. */
-  fetchStatus?: () => Promise<SelfControlStatus>;
+  fetchStatus?: (signal?: AbortSignal) => Promise<SelfControlStatus>;
   /** Test/host injection seam. Defaults to `client.stopWebsiteBlock()`. */
   releaseBlock?: () => Promise<unknown>;
 }
 
-async function defaultFetchStatus(): Promise<SelfControlStatus> {
-  const response = await fetch(`${client.getBaseUrl()}/api/website-blocker`);
+/** Focus JSON GET is a short UI read — same 15s family as InboxView / HealthView. */
+export const FOCUS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getFocusJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = FOCUS_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
     throw new Error(
       `Website blocker status request failed (${response.status}).`,
     );
   }
-  return (await response.json()) as SelfControlStatus;
+  return (await response.json()) as T;
+}
+
+async function defaultFetchStatus(
+  signal?: AbortSignal,
+): Promise<SelfControlStatus> {
+  return getFocusJsonWithFetch<SelfControlStatus>(
+    `${client.getBaseUrl()}/api/website-blocker`,
+    globalThis.fetch,
+    FOCUS_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 function defaultReleaseBlock(): Promise<unknown> {
@@ -96,17 +119,21 @@ export function FocusView({
   fetchRef.current = fetchStatus;
   const releaseRef = useRef(releaseBlock);
   releaseRef.current = releaseBlock;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(() => {
-    let cancelled = false;
-    setState({ kind: "loading" });
+  const load = useCallback((background = false) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
+    if (!background) setState({ kind: "loading" });
     fetchRef
-      .current()
+      .current(controller.signal)
       .then((status) => {
-        if (!cancelled) setState({ kind: "ready", status });
+        if (!controller.signal.aborted) setState({ kind: "ready", status });
       })
+      // error-policy:J4 foreground failures render an error; background failures preserve last-good state.
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
@@ -114,16 +141,17 @@ export function FocusView({
               ? error.message
               : "Could not load website blocking status.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const release = useCallback(() => {
     setReleasing(true);
     releaseRef
       .current()
+      // error-policy:J4 the follow-up status read keeps a failed release visible.
       .catch(() => {
         // The follow-up refetch surfaces whatever state the engine is in; a
         // failed release leaves the active block visible rather than hidden.
@@ -134,36 +162,14 @@ export function FocusView({
       });
   }, [load]);
 
-  // Initial fetch + settle-chained polling. The first load shows the loading
-  // skeleton; thereafter we quietly refresh status in place (no skeleton flash)
-  // ~15s after each settle. Chaining off settle (rather than a fixed interval)
-  // means an in-flight request never stacks a second timer.
+  // The initial load surfaces failures; background refreshes preserve the last
+  // good state and supersede any request still active at the next interval.
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const teardown = load();
-
-    const scheduleQuietRefresh = () => {
-      if (cancelled) return;
-      timer = setTimeout(() => {
-        fetchRef
-          .current()
-          .then((status) => {
-            if (!cancelled) setState({ kind: "ready", status });
-          })
-          .catch(() => {
-            // Keep the last good state on a transient failure; the next tick
-            // re-attempts.
-          })
-          .finally(scheduleQuietRefresh);
-      }, 15000);
-    };
-    scheduleQuietRefresh();
-
+    load();
+    const timer = setInterval(() => load(true), 15_000);
     return () => {
-      cancelled = true;
-      teardown();
-      if (timer) clearTimeout(timer);
+      clearInterval(timer);
+      activeLoadRef.current?.abort();
     };
   }, [load]);
 

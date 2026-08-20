@@ -38,6 +38,8 @@ const execFileAsync = promisify(execFile);
 export const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
 export const DISCORD_LOCAL_ACCOUNT_ID = DEFAULT_ACCOUNT_ID;
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
+
+const DISCORD_OAUTH_TIMEOUT_MS = 15_000;
 const DISCORD_LOCAL_DEFAULT_SCOPES = [
 	"rpc",
 	"identify",
@@ -774,6 +776,7 @@ export class DiscordLocalService extends Service {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
+			signal: AbortSignal.timeout(DISCORD_OAUTH_TIMEOUT_MS),
 		});
 		if (!response.ok) {
 			throw new Error(
@@ -805,6 +808,7 @@ export class DiscordLocalService extends Service {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			body,
+			signal: AbortSignal.timeout(DISCORD_OAUTH_TIMEOUT_MS),
 		});
 		if (!response.ok) {
 			throw new Error(`Discord OAuth refresh failed with ${response.status}`);

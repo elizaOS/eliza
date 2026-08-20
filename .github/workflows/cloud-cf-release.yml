@@ -45,6 +45,13 @@ jobs:
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+      DATABASE_RESILIENCE_GATE_MODE: ${{ vars.DATABASE_RESILIENCE_GATE_MODE || 'off' }}
+      DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS: ${{ vars.DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS || '36' }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+      RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT: ${{ vars.RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT }}
+      RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT: ${{ vars.RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT }}
     outputs:
       # "true" only for the neutral supersession skip; downstream deploy jobs
       # and the caller's certification job gate on it.
@@ -114,10 +121,202 @@ jobs:
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
 
+      - name: Validate Railway PostgreSQL resilience gate configuration
+        id: database_resilience
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          case "$DATABASE_RESILIENCE_GATE_MODE" in
+            off)
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "Railway PostgreSQL resilience gate is disabled; no Railway query performed."
+              exit 0
+              ;;
+            report|enforce)
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::DATABASE_RESILIENCE_GATE_MODE must be off, report, or enforce"
+              exit 1
+              ;;
+          esac
+
+          required=(
+            RAILWAY_PROJECT_ID
+            RAILWAY_ENVIRONMENT_ID
+            RAILWAY_POSTGRES_SERVICE_ID
+          )
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            required+=(
+              RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT
+              RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT
+            )
+          fi
+          missing=()
+          for name in "${required[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "$HAS_RAILWAY_TOKEN" != "true" ]; then
+            missing+=("RAILWAY_TOKEN")
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected PostgreSQL resilience setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_POSTGRES_SERVICE_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              echo "::error::$name must be a lowercase Railway UUID"
+              exit 1
+            fi
+          done
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            for name in RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT; do
+              value="${!name}"
+              if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::$name must be a lowercase SHA-256 receipt"
+                exit 1
+              fi
+            done
+          fi
+          if [[ ! "$DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS must be a positive integer"
+            exit 1
+          fi
+          echo "Protected PostgreSQL resilience setting names and formats are valid; values were not printed."
+
+      - name: Install pinned Railway CLI for resilience proof
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli"
+          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
+          mkdir -p "$cli_root"
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Capture read-only Railway PostgreSQL evidence
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/postgres-resilience"
+          mkdir -m 0700 "$evidence_dir"
+          capture() {
+            local label="$1"
+            local output="$2"
+            shift 2
+            if ! "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
+              echo "::error::Railway $label query failed; raw output was not printed"
+              exit 1
+            fi
+          }
+          common=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+          )
+          postgres=(
+            "${common[@]}"
+            --service "$RAILWAY_POSTGRES_SERVICE_ID"
+            --json
+          )
+          capture status "$evidence_dir/status.json" \
+            railway status "${common[@]}" --json
+          capture services "$evidence_dir/services.json" \
+            railway service list "${common[@]}" --json
+          capture volumes "$evidence_dir/volumes.json" \
+            railway api \
+              'query VolumeEvidence($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id environmentId serviceId volumeId mountPath state deletedAt isPendingDeletion sizeMB } } } } }' \
+              --raw-var "id=$RAILWAY_ENVIRONMENT_ID" \
+              --compact
+          capture pitr "$evidence_dir/pitr.json" \
+            railway postgres pitr status "${postgres[@]}"
+          capture schedules "$evidence_dir/schedules.json" \
+            railway postgres pitr schedule list "${postgres[@]}"
+          capture backups "$evidence_dir/backups.json" \
+            railway postgres pitr backup list "${postgres[@]}"
+          echo "Read-only Railway PostgreSQL evidence captured without printing resource inventory."
+
+      - name: Verify backup, PITR, and physical-isolation evidence
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/postgres-resilience"
+          args=(
+            --mode "$DATABASE_RESILIENCE_GATE_MODE"
+            --environment "$TARGET_ENVIRONMENT"
+            --project-id "$RAILWAY_PROJECT_ID"
+            --environment-id "$RAILWAY_ENVIRONMENT_ID"
+            --service-id "$RAILWAY_POSTGRES_SERVICE_ID"
+            --max-backup-age-hours "$DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS"
+            --status-json "$evidence_dir/status.json"
+            --services-json "$evidence_dir/services.json"
+            --volumes-json "$evidence_dir/volumes.json"
+            --pitr-json "$evidence_dir/pitr.json"
+            --schedules-json "$evidence_dir/schedules.json"
+            --backups-json "$evidence_dir/backups.json"
+          )
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            args+=(
+              --production-service-receipt "$RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT"
+              --production-volume-receipt "$RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT"
+            )
+          fi
+          receipt="$evidence_dir/receipt.json"
+          set +e
+          bun packages/cloud/scripts/admin/preflight-railway-postgres-resilience.ts \
+            "${args[@]}" > "$receipt"
+          gate_status="$?"
+          set -e
+          verdict="$(jq -er '.verdict' "$receipt")"
+          jq -r '.checks | to_entries[] | "- \(.key): \(.value)"' "$receipt" \
+            >> "$GITHUB_STEP_SUMMARY"
+          jq -r \
+            '.receipts | to_entries[] | select(.value != null) | "- \(.key)Receipt: \(.value)"' \
+            "$receipt" >> "$GITHUB_STEP_SUMMARY"
+          echo "- verdict: $verdict" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ] && [ "$verdict" != "pass" ]; then
+            echo "::warning::Railway PostgreSQL resilience report found unmet checks; report mode does not block migrations"
+          fi
+          if [ "$gate_status" -ne 0 ]; then
+            echo "::error::Railway PostgreSQL resilience enforcement failed before migrations"
+            exit "$gate_status"
+          fi
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          # Explicit activation boundary for #21594. `off` performs no query;
+          # `report` emits only SHA-256 receipts and never blocks (malformed
+          # prepared receipts stay unreviewed); `enforce` fails closed against
+          # both protected nonsecret authority digests.
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
         run: |
@@ -127,14 +326,15 @@ jobs:
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
           # Recheck inside the mutation step after all preparation. The branch
-          # can advance between workflow steps; only the preflight is eligible
-          # for a neutral supersession. Once this step is running, any mismatch
-          # must fail immediately before the database mutation.
+          # can advance between workflow steps. Once this step is running, any
+          # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          # The migrator evaluates identity after acquiring its advisory lock,
+          # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------

@@ -99,6 +99,7 @@ import {
   shortId,
   waitForSpawnSlot,
 } from "./common.js";
+import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
@@ -3097,11 +3098,8 @@ async function runHistory(
     text,
     textValue(params.metric) ?? textValue(content.metric),
   );
-  const limitRaw = Number(
-    params.limit ?? content.limit ?? (metric === "detail" ? 1 : 10),
-  );
-  const limit =
-    Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+  const fallbackLimit = metric === "detail" ? 1 : 10;
+  const limit = parseHistoryLimit(params.limit ?? content.limit, fallbackLimit);
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);

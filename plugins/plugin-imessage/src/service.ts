@@ -109,6 +109,25 @@ export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   return intervalMs;
 }
 
+export function resolveBackfillRows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 0;
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new IMessageConfigurationError(
+      "IMESSAGE_BACKFILL must be a non-negative integer",
+      "IMESSAGE_BACKFILL"
+    );
+  }
+  const backfill = Number(normalized);
+  if (!Number.isSafeInteger(backfill)) {
+    throw new IMessageConfigurationError(
+      `IMESSAGE_BACKFILL must be between 0 and ${Number.MAX_SAFE_INTEGER}`,
+      "IMESSAGE_BACKFILL"
+    );
+  }
+  return backfill;
+}
+
 function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefined {
   const rawAppUrl =
     runtime.getSetting?.("ELIZA_APP_URL") || runtime.getSetting?.("ELIZA_CLOUD_URL");
@@ -520,6 +539,17 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Load settings
     service.settings = service.loadSettings();
+    const settingFromRuntime =
+      typeof service.runtime.getSetting === "function"
+        ? service.runtime.getSetting("IMESSAGE_BACKFILL")
+        : undefined;
+    const resolvedBackfillRaw =
+      (typeof settingFromRuntime === "string" && settingFromRuntime) ||
+      process.env.IMESSAGE_BACKFILL ||
+      "";
+    // Parse all operator configuration before validation opens or probes any
+    // external resource. A typo must fail startup, not silently alter replay.
+    const backfill = resolveBackfillRows(resolvedBackfillRaw);
     await service.validateSettings();
 
     // Open chat.db for inbound polling. A null return here is non-fatal —
@@ -531,21 +561,10 @@ export class IMessageService extends Service implements IIMessageService {
     if (service.chatDb) {
       const tip = service.chatDb.getLatestRowId();
 
-      // Resolve IMESSAGE_BACKFILL from every plausible source — character
-      // settings (runtime.getSetting), the raw process env, and the
-      // character's settings object. Whichever arrives first wins.
-      const settingFromRuntime =
-        typeof service.runtime.getSetting === "function"
-          ? service.runtime.getSetting("IMESSAGE_BACKFILL")
-          : undefined;
-      const settingFromEnv = process.env.IMESSAGE_BACKFILL;
-      const resolvedRaw =
-        (typeof settingFromRuntime === "string" && settingFromRuntime) || settingFromEnv || "";
-      const backfill = Math.max(0, Number(resolvedRaw) || 0);
       service.lastRowId = Math.max(0, tip - backfill);
 
       logger.debug(
-        `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
+        `[imessage][boot] dbPath=${service.chatDbPath} tip=${tip} backfillRaw=${JSON.stringify(resolvedBackfillRaw)} backfillResolved=${backfill} lastRowId=${service.lastRowId}`
       );
 
       logger.info(
@@ -1430,17 +1449,24 @@ export class IMessageService extends Service implements IIMessageService {
         continue;
       }
 
-      // Policy gate: DM allowlist, pairing handshake, disabled, etc.
-      const dmAccess = await this.checkDmAccess(row.handle);
-      if (!dmAccess.allowed) {
+      // Policy gate: group rows are gated by IMESSAGE_GROUP_POLICY, DM rows by
+      // the DM/pairing policy. A group chat is never subject to the DM pairing
+      // handshake, so its decision is synchronous and never carries a pairing
+      // reply. Routing group rows through checkDmAccess (the previous behavior)
+      // silently ignored groupPolicy: with the default dmPolicy=pairing every
+      // group message was held, and with dmPolicy=open every group message
+      // leaked through regardless of groupPolicy=disabled/allowlist (#22283).
+      const access: { allowed: boolean; pairingReplyMessage?: string } =
+        row.chatType === "group"
+          ? this.checkGroupAccess(row.handle)
+          : await this.checkDmAccess(row.handle);
+      if (!access.allowed) {
         // A fresh pairing request carries a code for the owner-approval
         // handshake. Delivering it is an autonomous outbound text, so it
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
-        if (dmAccess.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendViaAppleScript(
-            row.handle,
-            dmAccess.pairingReplyMessage
-          );
+        // Only the DM pairing path produces one; group denials never do.
+        if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          const sendResult = await this.sendViaAppleScript(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
@@ -1898,6 +1924,35 @@ export class IMessageService extends Service implements IIMessageService {
       !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
       (autoReplyRaw === true || autoReplyRaw === "true")
     );
+  }
+
+  /**
+   * Evaluates the group access policy (IMESSAGE_GROUP_POLICY) for an inbound
+   * group-chat sender. Group chats have no pairing handshake, so this decision
+   * is synchronous: `open` admits every sender, `disabled` rejects the whole
+   * chat, and `allowlist` requires the sender handle to appear in
+   * IMESSAGE_ALLOW_FROM (the same case-insensitive matching the DM allowlist
+   * uses). This is the live enforcement point the inbound poll path previously
+   * skipped by gating group rows through the DM-only `checkDmAccess` (#22283).
+   */
+  private checkGroupAccess(handle: string): { allowed: boolean } {
+    if (!this.settings) {
+      return { allowed: false };
+    }
+
+    if (this.settings.groupPolicy === "open") {
+      return { allowed: true };
+    }
+
+    if (this.settings.groupPolicy === "disabled") {
+      return { allowed: false };
+    }
+
+    // allowlist — only handles present in IMESSAGE_ALLOW_FROM may participate.
+    const inAllowlist = this.settings.allowFrom.some(
+      (allowed) => allowed.toLowerCase() === handle.toLowerCase()
+    );
+    return { allowed: inAllowlist };
   }
 
   /**

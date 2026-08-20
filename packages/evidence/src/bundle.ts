@@ -1,7 +1,7 @@
 /**
  * Evidence-bundle builder and integrity verifier. One harness run produces one
- * `evidence/runs/<run-id>/` directory; artifacts are hardlinked (same volume)
- * or copied in, hashed as stored, and inventoried in `manifest.json` beside a
+ * `evidence/runs/<run-id>/` directory; artifacts are copied in, hashed as
+ * stored, and inventoried in `manifest.json` beside a
  * provenance `meta.json`. Certification (#14546) signs sha256(manifest bytes),
  * so `finalize()` writes the manifest canonically: artifacts sorted by path
  * (UTF-16 code-unit order), object keys sorted, no whitespace variance, one
@@ -26,7 +26,7 @@
  * external tree) is reported, never silently followed.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { canonicalJsonBytes } from "./canonical.ts";
@@ -60,7 +60,7 @@ export interface CreateBundleOptions {
   now?: () => Date;
   /** Override the derived `<utc stamp>-<shortsha>-<tier>` run id (tests). */
   runId?: string;
-  /** `auto` hardlinks and falls back to copy across volumes; `copy` always copies. */
+  /** Legacy selector retained for source compatibility; materialization is always copy-only. */
   linkMode?: "auto" | "copy";
 }
 
@@ -97,6 +97,7 @@ export interface VerifyIssue {
     | "hash-mismatch"
     | "unlisted"
     | "symlink"
+    | "hardlink"
     | "meta-mismatch";
   expected?: string;
   actual?: string;
@@ -145,27 +146,300 @@ async function sha256File(
   return { sha256: hash.digest("hex"), bytes };
 }
 
+function sameFileIdentity(
+  left: fs.BigIntStats,
+  right: fs.BigIntStats,
+): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.nlink === right.nlink
+  );
+}
+
+function sameInode(left: fs.BigIntStats, right: fs.BigIntStats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+/** Create one bundle-owned envelope leaf without following an existing alias. */
+function writeExclusiveEnvelope(filePath: string, bytes: Uint8Array): void {
+  let descriptor: number | undefined;
+  let createdIdentity: fs.BigIntStats | undefined;
+  let completed = false;
+  try {
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    createdIdentity = fs.fstatSync(descriptor, { bigint: true });
+    fs.writeFileSync(descriptor, bytes);
+    fs.fsyncSync(descriptor);
+    const written = fs.fstatSync(descriptor, { bigint: true });
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      !written.isFile() ||
+      written.nlink !== 1n ||
+      written.size !== BigInt(bytes.byteLength) ||
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(written, published)
+    ) {
+      throw new EvidenceError(`bundle envelope leaf is unsafe: ${filePath}`, {
+        code: "BUNDLE_ENVELOPE_UNSAFE",
+        context: { filePath },
+      });
+    }
+    completed = true;
+  } catch (error) {
+    throw error instanceof EvidenceError
+      ? error
+      : new EvidenceError(`could not create bundle envelope: ${filePath}`, {
+          code: "BUNDLE_ENVELOPE_UNSAFE",
+          cause: error,
+          context: { filePath },
+        });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (!completed && createdIdentity !== undefined) {
+      try {
+        const current = fs.lstatSync(filePath, { bigint: true });
+        if (sameInode(createdIdentity, current) && current.nlink === 1n) {
+          fs.rmSync(filePath);
+        }
+      } catch (cleanupError) {
+        // error-policy:J6 best-effort cleanup after the envelope failure.
+        void cleanupError;
+      }
+    }
+  }
+}
+
+/** Atomically replace one owned output leaf without following its old inode. */
+export function writeOwnedFileAtomic(
+  filePath: string,
+  bytes: string | Uint8Array,
+): void {
+  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    fs.writeFileSync(descriptor, bytes);
+    fs.fsyncSync(descriptor);
+    const staged = fs.fstatSync(descriptor, { bigint: true });
+    if (!staged.isFile() || staged.nlink !== 1n) {
+      throw new EvidenceError(
+        `owned output temporary leaf is unsafe: ${filePath}`,
+        {
+          code: "OWNED_OUTPUT_UNSAFE",
+          context: { filePath },
+        },
+      );
+    }
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, filePath);
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(staged, published)
+    ) {
+      throw new EvidenceError(`owned output leaf changed: ${filePath}`, {
+        code: "OWNED_OUTPUT_UNSAFE",
+        context: { filePath },
+      });
+    }
+  } catch (error) {
+    throw error instanceof EvidenceError
+      ? error
+      : new EvidenceError(`could not publish owned output: ${filePath}`, {
+          code: "OWNED_OUTPUT_UNSAFE",
+          cause: error,
+          context: { filePath },
+        });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+function physicalPath(filePath: string): string {
+  let cursor = path.resolve(filePath);
+  const missing: string[] = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(existing, ...missing.reverse());
+}
+
+/** Allow only the reserved certification envelope leaf inside a bundle. */
+export function assertSafeCertificationOutput(
+  bundleDir: string,
+  outputPath: string,
+): void {
+  const physicalBundle = physicalPath(bundleDir);
+  // Publication replaces the final directory entry rather than following it,
+  // so resolve aliases in its parent while preserving the owned leaf itself.
+  const resolvedOutput = path.resolve(outputPath);
+  const physicalOutput = path.join(
+    physicalPath(path.dirname(resolvedOutput)),
+    path.basename(resolvedOutput),
+  );
+  const relative = path.relative(physicalBundle, physicalOutput);
+  const insideBundle =
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  if (
+    insideBundle &&
+    physicalOutput !== path.join(physicalBundle, "certification.json")
+  ) {
+    throw new EvidenceError(
+      `certification output may not replace bundle contents: ${outputPath}`,
+      {
+        code: "CERTIFICATION_OUTPUT_UNSAFE",
+        context: { bundleDir, outputPath },
+      },
+    );
+  }
+}
+
+/** Keep non-envelope certification outputs outside the finalized bundle. */
+export function assertSafeAuxiliaryOutput(
+  bundleDir: string,
+  outputPath: string,
+): void {
+  const physicalBundle = physicalPath(bundleDir);
+  const resolvedOutput = path.resolve(outputPath);
+  const physicalOutput = path.join(
+    physicalPath(path.dirname(resolvedOutput)),
+    path.basename(resolvedOutput),
+  );
+  const relative = path.relative(physicalBundle, physicalOutput);
+  const insideBundle =
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  if (insideBundle) {
+    throw new EvidenceError(
+      `auxiliary output may not replace bundle contents: ${outputPath}`,
+      {
+        code: "CERTIFICATION_OUTPUT_UNSAFE",
+        context: { bundleDir, outputPath },
+      },
+    );
+  }
+}
+
+/** Copy and hash one single-link file through stable no-follow descriptors. */
 function materialize(
   sourcePath: string,
   destPath: string,
-  linkMode: "auto" | "copy",
-  link: (source: string, dest: string) => void = fs.linkSync,
-): void {
-  if (linkMode === "copy") {
-    fs.copyFileSync(sourcePath, destPath);
-    return;
+): { sha256: string; bytes: number } {
+  const sourceLstat = fs.lstatSync(sourcePath, { bigint: true });
+  if (
+    sourceLstat.isSymbolicLink() ||
+    !sourceLstat.isFile() ||
+    sourceLstat.nlink !== 1n
+  ) {
+    throw new EvidenceError(
+      `artifact source is not a single-link regular file: ${sourcePath}`,
+      {
+        code: "ARTIFACT_SOURCE_UNSAFE",
+        context: { sourcePath, nlink: sourceLstat.nlink.toString() },
+      },
+    );
   }
+  const source = fs.openSync(
+    sourcePath,
+    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+  );
+  let destination: number | undefined;
+  let destinationCreated = false;
   try {
-    link(sourcePath, destPath);
-  } catch (error) {
-    // Not error suppression: EXDEV (silo on a different volume than the
-    // bundle) is an expected condition that selects the copy strategy — the
-    // artifact is still fully materialized and hashed, nothing is lost or
-    // defaulted. Every other failure rethrows untouched.
-    if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
-      throw error;
+    const before = fs.fstatSync(source, { bigint: true });
+    if (
+      !before.isFile() ||
+      before.nlink !== 1n ||
+      !sameFileIdentity(sourceLstat, before)
+    ) {
+      throw new EvidenceError(
+        `artifact source changed before copy: ${sourcePath}`,
+        { code: "ARTIFACT_SOURCE_UNSTABLE", context: { sourcePath } },
+      );
     }
-    fs.copyFileSync(sourcePath, destPath);
+    destination = fs.openSync(
+      destPath,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    destinationCreated = true;
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0n;
+    for (;;) {
+      const bytesRead = fs.readSync(source, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      hash.update(chunk.subarray(0, bytesRead));
+      let offset = 0;
+      while (offset < bytesRead) {
+        const written = fs.writeSync(
+          destination,
+          chunk,
+          offset,
+          bytesRead - offset,
+        );
+        if (written === 0) {
+          throw new EvidenceError(
+            `artifact destination stopped accepting bytes: ${destPath}`,
+            { code: "ARTIFACT_COPY_FAILED", context: { destPath } },
+          );
+        }
+        offset += written;
+      }
+      total += BigInt(bytesRead);
+    }
+    fs.fsyncSync(destination);
+    const after = fs.fstatSync(source, { bigint: true });
+    const stored = fs.fstatSync(destination, { bigint: true });
+    const published = fs.lstatSync(destPath, { bigint: true });
+    if (
+      after.nlink !== 1n ||
+      total !== after.size ||
+      !sameFileIdentity(before, after) ||
+      !stored.isFile() ||
+      stored.nlink !== 1n ||
+      stored.size !== total ||
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(stored, published)
+    ) {
+      throw new EvidenceError(
+        `artifact source or destination changed while being copied: ${sourcePath}`,
+        { code: "ARTIFACT_SOURCE_UNSTABLE", context: { sourcePath } },
+      );
+    }
+    return { sha256: hash.digest("hex"), bytes: Number(total) };
+  } catch (error) {
+    if (destination !== undefined) {
+      fs.closeSync(destination);
+      destination = undefined;
+    }
+    if (destinationCreated) fs.rmSync(destPath, { force: true });
+    throw error;
+  } finally {
+    if (destination !== undefined) fs.closeSync(destination);
+    fs.closeSync(source);
   }
 }
 
@@ -203,37 +477,61 @@ export class EvidenceBundle {
   readonly runId: string;
   readonly dir: string;
   private readonly now: () => Date;
-  private readonly linkMode: "auto" | "copy";
   private readonly provenance: BundleProvenance;
   private readonly startedAt: string;
   private readonly entries: ArtifactEntry[] = [];
   private readonly claimedPaths = new Set<string>();
   private finalized = false;
-  /** Test-only seam for simulating cross-volume link failures (EXDEV). */
-  private readonly link?: (source: string, dest: string) => void;
-
-  constructor(
-    options: CreateBundleOptions & {
-      link?: (source: string, dest: string) => void;
-    },
-  ) {
+  constructor(options: CreateBundleOptions) {
     this.now = options.now ?? (() => new Date());
-    this.linkMode = options.linkMode ?? "auto";
     this.provenance = options.provenance;
-    this.link = options.link;
     const started = this.now();
     this.startedAt = started.toISOString();
     this.runId =
       options.runId ??
       formatRunId(started, options.provenance.commit, options.provenance.tier);
-    this.dir = path.join(options.rootDir, this.runId);
-    if (fs.existsSync(this.dir)) {
-      throw new EvidenceError(`bundle directory already exists: ${this.dir}`, {
-        code: "BUNDLE_DIR_EXISTS",
-        context: { dir: this.dir },
-      });
+    if (
+      this.runId === "." ||
+      this.runId === ".." ||
+      this.runId.includes("/") ||
+      this.runId.includes("\\") ||
+      this.runId.includes("\0") ||
+      this.runId.normalize("NFC") !== this.runId
+    ) {
+      throw new EvidenceError(
+        `bundle run id is not a safe path leaf: ${this.runId}`,
+        {
+          code: "BUNDLE_RUN_ID_INVALID",
+          context: { runId: this.runId },
+        },
+      );
     }
-    fs.mkdirSync(this.dir, { recursive: true });
+    this.dir = path.join(options.rootDir, this.runId);
+    fs.mkdirSync(options.rootDir, { recursive: true });
+    try {
+      // A non-recursive mkdir claims the run leaf atomically. Recursive mkdir
+      // would accept a symlink planted between an existence check and creation.
+      fs.mkdirSync(this.dir, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new EvidenceError(
+          `bundle directory already exists: ${this.dir}`,
+          {
+            code: "BUNDLE_DIR_EXISTS",
+            cause: error,
+            context: { dir: this.dir },
+          },
+        );
+      }
+      throw new EvidenceError(
+        `could not create bundle directory: ${this.dir}`,
+        {
+          code: "BUNDLE_DIR_CREATE_FAILED",
+          cause: error,
+          context: { dir: this.dir },
+        },
+      );
+    }
   }
 
   private assertOpen(operation: string): void {
@@ -257,7 +555,7 @@ export class EvidenceBundle {
   }
 
   /**
-   * Copy/hardlink `filePath` into the bundle and record its manifest entry.
+   * Copy `filePath` into the bundle and record its manifest entry.
    * The hash is computed from the bytes as stored in the bundle, so a corrupt
    * copy is caught at add time rather than at certification time.
    */
@@ -275,9 +573,9 @@ export class EvidenceBundle {
         { code: "ARTIFACT_PLACEMENT_AMBIGUOUS", context: { filePath } },
       );
     }
-    let stat: fs.Stats;
+    let stat: fs.BigIntStats;
     try {
-      stat = fs.statSync(filePath);
+      stat = fs.lstatSync(filePath, { bigint: true });
     } catch (error) {
       // error-policy:J2 context-adding rethrow — a vanished source file must
       // fail the ingest, not silently shrink the bundle.
@@ -287,11 +585,14 @@ export class EvidenceBundle {
         context: { filePath },
       });
     }
-    if (!stat.isFile()) {
-      throw new EvidenceError(`artifact source is not a file: ${filePath}`, {
-        code: "ARTIFACT_MISSING",
-        context: { filePath },
-      });
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n) {
+      throw new EvidenceError(
+        `artifact source is not a single-link regular file: ${filePath}`,
+        {
+          code: "ARTIFACT_SOURCE_UNSAFE",
+          context: { filePath },
+        },
+      );
     }
     const rel = options.relativePath ?? path.basename(filePath);
     // NFC-normalize at ingress: macOS reports NFD filenames, linux NFC; the
@@ -305,6 +606,15 @@ export class EvidenceBundle {
         { code: "ARTIFACT_PATH_INVALID", context: { bundlePath, filePath } },
       );
     }
+    if (ENVELOPE_FILES.has(bundlePath)) {
+      throw new EvidenceError(
+        `artifact bundle path is reserved for bundle metadata: ${bundlePath}`,
+        {
+          code: "ARTIFACT_PATH_RESERVED",
+          context: { bundlePath, filePath },
+        },
+      );
+    }
     if (this.claimedPaths.has(bundlePath)) {
       throw new EvidenceError(
         `artifact bundle path already claimed: ${bundlePath}`,
@@ -313,8 +623,7 @@ export class EvidenceBundle {
     }
     const destPath = path.join(this.dir, ...bundlePath.split("/"));
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    materialize(filePath, destPath, this.linkMode, this.link);
-    const { sha256, bytes } = await sha256File(destPath);
+    const { sha256, bytes } = materialize(filePath, destPath);
     const entry: ArtifactEntry = {
       path: bundlePath,
       sha256,
@@ -359,7 +668,7 @@ export class EvidenceBundle {
     // built, so `metaSha256` binds provenance into the signed envelope.
     const metaBytes = canonicalJsonBytes(meta);
     const metaPath = path.join(this.dir, "meta.json");
-    fs.writeFileSync(metaPath, metaBytes);
+    writeExclusiveEnvelope(metaPath, metaBytes);
     const manifest: BundleManifest = {
       schema: 1,
       runId: this.runId,
@@ -369,7 +678,7 @@ export class EvidenceBundle {
     };
     const manifestBytes = canonicalJsonBytes(manifest);
     const manifestPath = path.join(this.dir, "manifest.json");
-    fs.writeFileSync(manifestPath, manifestBytes);
+    writeExclusiveEnvelope(manifestPath, manifestBytes);
     return {
       manifest,
       meta,
@@ -391,7 +700,7 @@ export function createBundle(options: CreateBundleOptions): EvidenceBundle {
 function* walkEntries(
   root: string,
   relBase = "",
-): Generator<{ rel: string; kind: "file" | "symlink" }> {
+): Generator<{ rel: string; kind: "file" | "symlink"; nlink?: number }> {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {
     const rel = relBase === "" ? entry.name : `${relBase}/${entry.name}`;
@@ -400,7 +709,11 @@ function* walkEntries(
     } else if (entry.isDirectory()) {
       yield* walkEntries(path.join(root, entry.name), rel);
     } else if (entry.isFile()) {
-      yield { rel, kind: "file" };
+      yield {
+        rel,
+        kind: "file",
+        nlink: fs.lstatSync(path.join(root, entry.name)).nlink,
+      };
     }
   }
 }
@@ -443,6 +756,7 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
 
   const issues: VerifyIssue[] = [];
   const symlinkFlagged = new Set<string>();
+  const hardlinkFlagged = new Set<string>();
   let verifiedCount = 0;
   for (const artifact of manifest.artifacts) {
     const artifactPath = path.join(dir, ...artifact.path.split("/"));
@@ -465,6 +779,11 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
     }
     if (!stat.isFile()) {
       issues.push({ path: artifact.path, issue: "missing" });
+      continue;
+    }
+    if (stat.nlink !== 1) {
+      issues.push({ path: artifact.path, issue: "hardlink" });
+      hardlinkFlagged.add(artifact.path);
       continue;
     }
     if (stat.size !== artifact.bytes) {
@@ -523,6 +842,9 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
         issues.push({ path: entry.rel, issue: "symlink" });
       }
       continue;
+    }
+    if (entry.nlink !== 1 && !hardlinkFlagged.has(entry.rel)) {
+      issues.push({ path: entry.rel, issue: "hardlink" });
     }
     if (ENVELOPE_FILES.has(entry.rel)) continue;
     if (!listed.has(entry.rel)) {

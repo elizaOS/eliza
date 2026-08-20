@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getCliVersion } from "./package-info.js";
 import type {
   FullstackTemplateValues,
   PluginTemplateValues,
@@ -165,6 +166,7 @@ const FULLSTACK_TEMPLATE_VALUE_KEYS = [
   "bugReportUrl",
   "bundleId",
   "docsUrl",
+  "elizaVersion",
   "fileExtension",
   "hashtag",
   "orgName",
@@ -224,6 +226,10 @@ export function buildFullstackTemplateValues(
     bugReportUrl: `https://github.com/your-org/${projectSlug}/issues/new`,
     bundleId: `com.example.${packageScope || "app"}`,
     docsUrl: `${appUrl}/docs`,
+    // The scaffold's @elizaos/* dependencies must resolve as one lockstep set.
+    // The npm "latest" tags drift independently (v1 core beside two different
+    // v2 alphas at the time this was fixed), so pin the CLI's own version.
+    elizaVersion: getCliVersion(),
     fileExtension: `.${projectSlug}.agent`,
     hashtag: `#${appName.replace(/\s+/g, "")}`,
     orgName: "your-org",
@@ -269,6 +275,7 @@ function getFullstackReplacementEntries(
     ["__BUG_REPORT_URL__", values.bugReportUrl],
     ["__BUNDLE_ID__", values.bundleId],
     ["__DOCS_URL__", values.docsUrl],
+    ["__ELIZAOS_VERSION__", values.elizaVersion],
     ["__FILE_EXTENSION__", values.fileExtension],
     ["__HASHTAG__", values.hashtag],
     ["__ORG_NAME__", values.orgName],

@@ -11,17 +11,45 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { decode, encode } from "@msgpack/msgpack";
+import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
 // test isolation for cloud-api unit tests). Logic under test is untouched.
 const fakeLogger = {
   logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
 };
+class MockElizaError extends Error {}
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
+  ChannelType: coreTestContract.ChannelType,
+  DatabaseAdapter: coreTestContract.DatabaseAdapter,
+  decryptedCharacter: coreTestContract.decryptedCharacter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
+    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  documentMutationSnapshotMatches:
+    coreTestContract.documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility:
+    coreTestContract.documentRoleHasGlobalVisibility,
+  encryptedCharacter: coreTestContract.encryptedCharacter,
+  ElizaError: MockElizaError,
+  isElizaError: (error: unknown) => error instanceof MockElizaError,
   isSensitiveKeyName: () => false,
+  logger: coreTestContract.logger,
+  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactLogArgs: (args: unknown) => args,
+  redactSensitiveText: (text: string) => text,
+  Service: coreTestContract.Service,
+  validateDocumentFragmentQueryParams:
+    coreTestContract.validateDocumentFragmentQueryParams,
+  validateDocumentListQueryParams:
+    coreTestContract.validateDocumentListQueryParams,
+  validateDocumentRequesterContext:
+    coreTestContract.validateDocumentRequesterContext,
+  validateQueryEntitiesPagination:
+    coreTestContract.validateQueryEntitiesPagination,
+  validateUuid: coreTestContract.validateUuid,
 }));
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
@@ -152,6 +180,9 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
   addEventListener(type: string, listener: (e: never) => void) {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type)!.add(listener as (e: unknown) => void);
+  }
+  removeEventListener(type: string, listener: (e: never) => void) {
+    this.listeners.get(type)?.delete(listener as (e: unknown) => void);
   }
   emitDone() {
     this.fire("message", {
@@ -587,10 +618,50 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_start");
     expect(responseRequests).toBe(0);
+    const greetingLatencyLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) => message === "[voice-session] opening greeting latency",
+    );
+    expect(greetingLatencyLog?.[1]).toMatchObject({
+      greetingChars: "hello? who's this?".length,
+      prewarmStatus: "not_configured",
+      firstAudioMs: expect.any(Number),
+      ttsTransportReadyMs: expect.any(Number),
+      ttsSynthesisAfterReadyMs: expect.any(Number),
+    });
 
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("reuses the opening greeting socket for the first caller response", async () => {
+    const beforeSockets = FakeCartesiaSocket.instances.length;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingGreeting: "hey, what's up?",
+      fetchImpl: makeSseFetch(["Not much. Good to hear from you."]),
+    });
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitDone();
+    await flush();
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "not much");
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances).toHaveLength(beforeSockets + 1);
+    expect(cartesia.sentText()).toContain("hey, what's up?");
+    expect(cartesia.sentText().replaceAll(" ", "")).toContain(
+      "Notmuch.Goodtohearfromyou.",
+    );
+
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
+    expect(cartesia.closed).toBe(true);
   });
 
   test("generates the call opener as a stable canonical system turn", async () => {
@@ -849,6 +920,14 @@ describe("voice-session WS lifecycle", () => {
     });
     expect(client.controlTypes()).toContain("ready");
     expect(prewarmCalls).toBe(1);
+    const prewarmLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) =>
+        message === "[voice-session] Eliza context prewarm completed",
+    );
+    expect(prewarmLog?.[1]).toMatchObject({
+      sessionId: CLAIMS.sessionId,
+      prewarmDurationMs: expect.any(Number),
+    });
   });
 
   test("first response does not wait for latency-only prewarm", async () => {
@@ -1092,11 +1171,14 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     await flush();
 
-    // The socket was opened speculatively at turn start; with no speakable
-    // output it must be cancelled (closed) rather than leaked, and the turn
-    // still closes out with a usage frame.
+    // The context was opened speculatively at turn start; with no speakable
+    // output it must be cancelled without closing the call-scoped transport,
+    // and the turn still closes out with a usage frame.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
+    expect(cartesia.sent.map((frame) => JSON.parse(frame))).toContainEqual(
+      expect.objectContaining({ cancel: true }),
+    );
     expect(client.controlTypes()).toContain("usage");
     expect(client.controlTypes()).not.toContain("speaking_start");
   });
@@ -1514,9 +1596,69 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    const latencyLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) => message === "[voice-session] first-turn latency",
+    );
+    expect(latencyLog?.[1]).toMatchObject({
+      upstreamAttemptCount: 3,
+      prewarmStatus: "not_configured",
+      ttsTransportReadyMs: expect.any(Number),
+      ttsSynthesisAfterReadyMs: expect.any(Number),
+      upstreamAttempts: [
+        { attempt: 1, status: 503 },
+        { attempt: 2, status: 503 },
+        { attempt: 3, status: 200 },
+      ],
+    });
+    const timingFields = latencyLog?.[1] as
+      | { upstreamSuccessfulHeadersOffsetMs?: number }
+      | undefined;
+    expect(
+      timingFields?.upstreamSuccessfulHeadersOffsetMs,
+    ).toBeGreaterThanOrEqual(0);
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("prewarm completion wakes a cold-turn retry before its backoff expires", async () => {
+    const prewarm = Promise.withResolvers<void>();
+    const client = new FakeClientSocket();
+    const successFetch = makeSseFetch(["Warm now."]);
+    let calls = 0;
+    await connectSession({
+      client,
+      prewarmElizaContext: () => prewarm.promise,
+      cacheWarmingRetryDelaysMs: [5_000],
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls += 1;
+        if (calls === 1) {
+          prewarm.resolve();
+          return Response.json(
+            {
+              success: false,
+              error: "Shared runtime cache is warming. Retry shortly.",
+              code: "shared_runtime_cache_warming",
+              retryable: true,
+            },
+            { status: 503 },
+          );
+        }
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer after prewarm");
+    await flush();
+    await flush();
+
+    expect(calls).toBe(2);
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitDone();
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
   });
 
   test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {
@@ -1643,7 +1785,7 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(JSON.stringify({ t: "barge_in" }));
     await flush();
     expect(client.controlTypes()).toContain("interrupted");
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
     // The interrupted turn reports usage (accounting stays accurate on barge-in),
     // emitted BEFORE the interrupted frame.
     const types = client.controlTypes();
@@ -1693,13 +1835,13 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
-    expect(cartesia.closed).toBe(true);
+    expect(cartesia.closed).toBe(false);
     expect(client.audioFrames).toHaveLength(audioBeforeInterruption);
 
     ink.emitTurn("turn.end", "wait");
     await flush();
     await flush();
-    expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(cartesia);
+    expect(FakeCartesiaSocket.instances.at(-1)).toBe(cartesia);
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
@@ -1757,7 +1899,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
-    expect(activeCartesia.closed).toBe(true);
+    expect(activeCartesia.closed).toBe(false);
   });
 
   test("interruption aborts the in-flight Eliza SSE fetch", async () => {

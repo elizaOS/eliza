@@ -85,7 +85,11 @@ describe("OpenAI REST handler request shapes", () => {
     expect(embedding).toHaveLength(384);
     const firstRequest = fetchMock.mock.calls[0];
     expect(firstRequest).toBeDefined();
-    expect((firstRequest?.[1] as RequestInit | undefined)?.signal).toBe(controller.signal);
+    const requestSignal = (firstRequest?.[1] as RequestInit | undefined)?.signal;
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    expect(requestSignal).not.toBe(controller.signal);
+    controller.abort();
+    expect(requestSignal?.aborted).toBe(true);
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<
       string,
       unknown

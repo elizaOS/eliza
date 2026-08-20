@@ -78,8 +78,21 @@ export async function runHelper(
   const exitCode = await new Promise<number | null>(
     (resolvePromise, rejectPromise) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let killEscalation: ReturnType<typeof setTimeout> | undefined;
+      const clearTimers = () => {
+        if (timer) clearTimeout(timer);
+        if (killEscalation) clearTimeout(killEscalation);
+      };
       if (options.timeoutMs && options.timeoutMs > 0) {
         timer = setTimeout(() => {
+          // Abort the hung helper before rejecting so the child process and its
+          // stdin/stdout/stderr pipes are reclaimed instead of being orphaned.
+          // SIGTERM lets the helper exit cleanly; escalate to SIGKILL if it
+          // ignores the request. `proc.on("close")` still fires and clears the
+          // escalation timer, so this never keeps the event loop alive.
+          proc.kill("SIGTERM");
+          killEscalation = setTimeout(() => proc.kill("SIGKILL"), 2000);
+          killEscalation.unref?.();
           rejectPromise(
             new Error(
               `macosalarm helper timed out after ${options.timeoutMs}ms`,
@@ -88,11 +101,11 @@ export async function runHelper(
         }, options.timeoutMs);
       }
       proc.on("error", (err: Error) => {
-        if (timer) clearTimeout(timer);
+        clearTimers();
         rejectPromise(err);
       });
       proc.on("close", (code: number | null) => {
-        if (timer) clearTimeout(timer);
+        clearTimers();
         resolvePromise(code);
       });
     },

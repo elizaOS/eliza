@@ -130,6 +130,19 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("returns a terminal managed agent to the reachable Cloud selection flow", () => {
+    expect(
+      startupReducer(
+        { phase: "starting-runtime", attempts: 0, target: "cloud-managed" },
+        { type: "CLOUD_AGENT_SELECTION_REQUIRED" },
+      ),
+    ).toEqual({
+      phase: "first-run-required",
+      serverReachable: false,
+      target: "cloud-managed",
+    });
+  });
+
   it("resets back to session restoration", () => {
     expect(
       startupReducer(

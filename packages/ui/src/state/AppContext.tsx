@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import { type ChatTurnStatus, client, type FirstRunOptions } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
@@ -781,7 +782,8 @@ function AppProviderInner({
     promptModal,
     agentName: agentStatus?.agentName,
     characterName: characterDraft?.name,
-    hydrateServerConfig: firstRunComplete,
+    hydrateServerConfig:
+      firstRunComplete && supportsFullAppShellRoutes(client.getBaseUrl()),
   });
   const {
     state: {

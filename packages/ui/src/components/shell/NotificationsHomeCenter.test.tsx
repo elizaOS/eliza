@@ -1,8 +1,10 @@
-/** Verifies orderDashboardNotifications through the package's configured test harness. */
+/**
+ * Exercises notification ordering, store-backed dashboard behavior, and
+ * auth/base-URL-gated hydration through the jsdom harness. The notification
+ * store stays real while API transport and navigation boundaries are mocked.
+ */
 // @vitest-environment jsdom
 
-// Dashboard notification center behavior against the real notification store
-// (driven via the test-only ingest; HTTP mutations mocked at the API client).
 // Pins the shade spec: a control-free full inbox, liquid-glass Z-stacked groups
 // with no headers/dividers, DIRECTIONAL pull/wheel expand-collapse (down
 // expands, up collapses — never a toggle, so trailing trackpad momentum can't
@@ -26,6 +28,9 @@ vi.mock("../../api/client", () => ({
       unreadCount: 0,
     })),
     onWsEvent: vi.fn(),
+    // notificationProbesEnabled reads the configured base URL before every
+    // hydration request; empty string = same-origin (probes enabled).
+    getBaseUrl: vi.fn(() => ""),
     markNotificationRead: vi.fn(async () => ({})),
     markAllNotificationsRead: vi.fn(async () => ({})),
     removeNotification: vi.fn(async () => ({})),
@@ -34,12 +39,31 @@ vi.mock("../../api/client", () => ({
 }));
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+
+/** Typed authenticated owner fixture for the auth-gated hydration probes. */
+const AUTHENTICATED_OWNER: AuthStatusState = {
+  phase: "authenticated",
+  identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+  session: { id: "s-1", kind: "browser", expiresAt: null },
+  access: {
+    mode: "session",
+    passwordConfigured: true,
+    ownerConfigured: true,
+    role: "OWNER",
+  },
+};
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
 
 import type { AgentNotification } from "@elizaos/core";
+import { client } from "../../api/client";
+import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+  type AuthStatusState,
+} from "../../hooks/useAuthStatus";
 import {
   __getStateForTests,
   __ingestNotificationForTests,
@@ -240,6 +264,7 @@ function setOverflowingListGeometry(list: HTMLElement): void {
 beforeEach(() => {
   vi.useFakeTimers();
   seq = 0;
+  vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
 });
 
 afterEach(() => {
@@ -248,6 +273,7 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   __resetNotificationStoreForTests();
+  __resetAuthStatusForTests();
   navigateDeepLink.mockClear();
 });
 
@@ -664,6 +690,10 @@ describe("NotificationsHomeCenter", () => {
   });
 
   it("renders terminal hydration failure with a working retry", async () => {
+    // The retry re-runs hydration through notificationProbesEnabled, which
+    // requires an authenticated session before probing the protected inbox
+    // API — provide the typed authenticated fixture.
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
     __setHydrationFailureForTests("private transport detail");
     renderRestedNotifications();
 
@@ -682,13 +712,50 @@ describe("NotificationsHomeCenter", () => {
     );
     expect(retryClass).not.toMatch(/(?:^|\s)!?ring-/);
 
+    vi.mocked(client.getBaseUrl).mockClear();
+    vi.mocked(client.listNotifications).mockClear();
     await act(async () => {
       fireEvent.click(retry);
       await Promise.resolve();
     });
 
+    // Retry passes back through the async hydrating state (which renders
+    // nothing) before the hydrated-empty surface mounts. The suite runs fake
+    // timers, so flush timers + microtasks explicitly rather than waitFor.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
     expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
     expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
+    // The retry actually probed: the base-URL gate ran and exactly one inbox
+    // hydrate request went out (payload-to-effect, not just rendered state).
+    expect(client.getBaseUrl).toHaveBeenCalled();
+    expect(client.listNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not probe the inbox API on retry against the agentless Cloud base", async () => {
+    // The no-probe branch of notificationProbesEnabled: a bare Cloud
+    // control-plane authority has no standalone-agent inbox API, so retry must
+    // not issue a hydrate request even while authenticated.
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    vi.mocked(client.getBaseUrl).mockReturnValue("https://cloud.eliza.app");
+    __setHydrationFailureForTests("private transport detail");
+    renderRestedNotifications();
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    vi.mocked(client.getBaseUrl).mockClear();
+    vi.mocked(client.listNotifications).mockClear();
+    await act(async () => {
+      fireEvent.click(retry);
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    // The base-URL gate ran and refused: no hydrate request left the client,
+    // and the hydrated-empty surface never mounts.
+    expect(client.getBaseUrl).toHaveBeenCalled();
+    expect(client.listNotifications).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
   });
 
   it("applies directional fades only where notification content is hidden", () => {
@@ -1747,6 +1814,143 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.click(chatHandle, { detail: 1, clientY: 240 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
+  it("does not collapse for a portaled chat action control", () => {
+    seedTriage();
+    render(
+      <>
+        <NotificationsHomeCenter />
+        <div data-chat-overlay-control="">
+          <button type="button">Upload file</button>
+        </div>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.click(screen.getByText("Upload file"), { detail: 1 });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
+  it("does not let a mouse drag on chat controls pull the notification shade", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+        <button
+          type="button"
+          data-chat-gesture-surface=""
+          data-testid="chat-pull-handle"
+        >
+          Chat pull handle
+        </button>
+      </div>,
+    );
+    collapseShade();
+    const list = screen.getByTestId("home-notification-list");
+    const chatHandle = screen.getByTestId("chat-pull-handle");
+
+    fireEvent.pointerDown(chatHandle, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 32,
+      clientX: 180,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(chatHandle, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 180,
+      clientY: 500,
+    });
+    fireEvent.pointerUp(chatHandle, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 180,
+      clientY: 500,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
+  it("keeps nested chat controls isolated from touch, wheel, and pen shade gestures", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+        <button type="button" data-chat-gesture-surface="">
+          <span data-testid="nested-chat-control">Chat action icon</span>
+        </button>
+      </div>,
+    );
+    const list = collapseShade();
+    const nestedControl = screen.getByTestId("nested-chat-control");
+
+    fireEvent.touchStart(nestedControl, {
+      touches: [{ identifier: 71, clientX: 180, clientY: 250 }],
+    });
+    fireEvent.touchMove(nestedControl, {
+      touches: [{ identifier: 71, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.touchEnd(nestedControl, {
+      touches: [],
+      changedTouches: [{ identifier: 71, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.wheel(nestedControl, { deltaY: -(PULL_COMMIT_PX + 20) });
+    fireEvent.pointerDown(nestedControl, {
+      pointerType: "pen",
+      isPrimary: true,
+      pointerId: 72,
+      clientX: 180,
+      clientY: 250,
+    });
+    fireEvent.pointerMove(nestedControl, {
+      pointerType: "pen",
+      pointerId: 72,
+      clientX: 180,
+      clientY: 520,
+    });
+    fireEvent.pointerUp(nestedControl, {
+      pointerType: "pen",
+      pointerId: 72,
+      clientX: 180,
+      clientY: 520,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+
+    expandShade();
+    fireEvent.touchStart(nestedControl, {
+      touches: [{ identifier: 73, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.touchMove(nestedControl, {
+      touches: [{ identifier: 73, clientX: 180, clientY: 220 }],
+    });
+    fireEvent.touchEnd(nestedControl, {
+      touches: [],
+      changedTouches: [{ identifier: 73, clientX: 180, clientY: 220 }],
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });
 

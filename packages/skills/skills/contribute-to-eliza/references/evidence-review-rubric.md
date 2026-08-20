@@ -25,6 +25,16 @@ bun run test:matrix:review
 bun run --cwd packages/app audit:app
 ```
 
+The coordinated matrix path must create one named
+`evidence/runs/<run-id>` bundle, verify its manifest and artifact hashes, and
+hand that exact bundle to the reviewer. Inspect the run's `meta.json`,
+`manifest.json`, and copied artifacts yourself; for standalone review, run
+`bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>` before
+`bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>`.
+Raw-directory review is compatibility-only and must name every input with
+`--source`; it must not replace the verified-bundle flow or choose inputs
+implicitly by recency.
+
 Follow package-local capture commands for native platforms. Upload screenshots as JPG where practical, videos as MP4, and long logs in a `<details>` block. Re-run and re-capture after a behavior-changing rebase.
 
 ## Implementation completion rubric

@@ -820,7 +820,11 @@ function PluginListView({
   const handleOpenPluginExternalUrl = useCallback(
     async (url: string) => {
       try {
-        await openExternalUrl(url);
+        // Plugin-declared links are wire values — a rejected target (helper
+        // returns false) surfaces the same error notice as a failed open.
+        if (!(await openExternalUrl(url))) {
+          setActionNotice("Failed to open external link.", "error", 4200);
+        }
       } catch (err) {
         setActionNotice(
           err instanceof Error ? err.message : "Failed to open external link.",

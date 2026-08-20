@@ -21,14 +21,14 @@
 // plan instead of a report. Adjacency keeps denials out: "I have not set"
 // never matches.
 const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
 // verb here whose past tense equals its base form, so offers ("Should I
 // set…?", "Before I set…") collide with reports on the raw pattern — this
 // branch is additionally gated on the word preceding "I" and on the
 // containing sentence not being a question.
 const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // State-of-the-world completion claims that need no first-person subject
 // ("that's all set", "your reminders are set", "is now set up", "Done —").
 // The "now" forms and the bare completion opener ("Saved!", "Done.") were
@@ -38,7 +38,7 @@ const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
 // the start of the (trimmed) reply or of a sentence, so congratulations like
 // "Well done — that's every task cleared." are not misread (#16987).
 const STATE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|saved|scheduled|in\s+place)\b|(?:is|are)\s+now\s+(?:set(?:\s+up)?|saved|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]|^\s*(?:saved|done)\s*[!.…✅🎉]/iu;
+	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|saved|scheduled|in\s+place)\b|(?:is|are)\s+now\s+(?:set(?:\s+up)?|saved|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]|^\s*(?:saved|done)\s*[!.…✅🎉]/giu;
 // A modal, interrogative auxiliary, or subordinator immediately before the
 // matched "I" makes the clause an offer/question/condition ("Should I
 // set…?", "Shall I set…?", "When I set…", "Once I've set…"), not a report of
@@ -50,6 +50,72 @@ const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
 // surfaces own.
 const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
 	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|notes?|check[- ]?ins?|follow[- ]?ups?|set[- ]?up|setup|onboard(?:ing)?|first[- ]?run|settings|defaults|configur(?:ation|ed))\b/i;
+
+function sentenceContaining(text: string, index: number): string {
+	let start = index;
+	while (start > 0 && !/[.!?\n]/u.test(text[start - 1] ?? "")) {
+		start -= 1;
+	}
+	let end = index;
+	while (end < text.length && !/[.!?\n]/u.test(text[end] ?? "")) {
+		end += 1;
+	}
+	return text.slice(start, end);
+}
+
+// A generic "done" sentence is exempt only when its complete grammar is a
+// read/navigation acknowledgement. Keeping this full-sentence match narrow is
+// important: a loose "contains a read verb and no known write verb" test lets
+// an unlisted mutation hide beside the read (for example, "notes are visible
+// and I archived the old ones").
+const READ_NAVIGATION_ONLY_SENTENCE_PATTERN = new RegExp(
+	String.raw`^[\s.!?…–—-]*done\b[\s:;,…–—-]*(?:` +
+		String.raw`(?:showing|displaying|loading|opening|rendering|highlighting|pulled\s+up|brought\s+up)\s+` +
+		String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?` +
+		"|" +
+		String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?\s+` +
+		String.raw`(?:is|are)\s+(?:now\s+)?(?:loaded|visible|shown|displayed|open|rendered|onscreen|on\s+screen|in\s+view|pulled\s+up|brought\s+up|highlighted)` +
+		String.raw`)[\s…✅🎉]*$`,
+	"iu",
+);
+// A bare completion opener ("Done —", "Done!", "Done.") carries no verb of its
+// own — only the rest of its sentence can. Match text that begins with "done"
+// (after the leading sentence-boundary anchor the STATE pattern captures)
+// identifies these generic openers so they are held to the read-verb exclusion
+// below.
+const GENERIC_COMPLETION_OPENER_PATTERN = /^[\s.!?…–—-]*done\b/i;
+
+/**
+ * Bare completion openers must name their tracked subject in the same
+ * sentence. A later question such as "Done. What should we do with your
+ * notes?" mentions notes but does not claim a note was saved; treating the
+ * whole reply as one clause replaces a true UI-navigation acknowledgement
+ * with the unrelated unverified-effect fallback.
+ *
+ * A generic "done" opener is additionally rejected when its sentence's only
+ * predicate is a read/navigation verb: "Done — your notes are loaded/visible"
+ * (and the quantified variants) surfaced tracked state rather than committing a
+ * write, so it is not a mutation report (#22609). A committed-mutation verb in
+ * the same sentence overrides that exclusion, and openers whose own match text
+ * carries the write verb ("reminders are set", "Saved!") are unaffected.
+ */
+function stateSideEffectClaimHasLocalSubject(text: string): boolean {
+	for (const match of text.matchAll(STATE_SIDE_EFFECT_CLAIM_PATTERN)) {
+		const firstWordOffset = match[0].search(/[\p{L}\p{N}]/u);
+		const claimIndex =
+			(match.index ?? 0) + (firstWordOffset >= 0 ? firstWordOffset : 0);
+		const sentence = sentenceContaining(text, claimIndex);
+		if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(sentence)) continue;
+		if (
+			GENERIC_COMPLETION_OPENER_PATTERN.test(match[0]) &&
+			READ_NAVIGATION_ONLY_SENTENCE_PATTERN.test(sentence)
+		) {
+			continue;
+		}
+		return true;
+	}
+	return false;
+}
 
 // True when the sentence containing the match (scanning forward from the
 // match) terminates in "?" — the shape of a consent-seeking offer or a
@@ -101,7 +167,7 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	const text = reply.trim();
 	if (!text) return false;
 	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
-	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
+	if (stateSideEffectClaimHasLocalSubject(text)) return true;
 	for (const match of text.matchAll(
 		SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
 	)) {

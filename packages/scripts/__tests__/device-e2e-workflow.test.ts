@@ -8,8 +8,10 @@
  * (android-e2e.mjs / ios-e2e.mjs) with `--output` inside the uploaded artifact
  * root, that the uploads run `if: always()` so an induced failure still ships
  * a bundle, that the bundle producers emit the required inline/, logs/,
- * summary.json, and junit.xml members, and that the workflow stays
- * credential-free for fork PRs with pinned toolchains and SHA-pinned actions.
+ * summary.json, and junit.xml members, and that the Android-only cadence has a
+ * least-privilege stable-issue failure signal without scheduling iOS. The
+ * workflow stays credential-free for fork PRs with pinned toolchains and
+ * SHA-pinned actions.
  * Parses the real workflow YAML; deterministic, no network or devices.
  */
 import { describe, expect, test } from "bun:test";
@@ -25,6 +27,8 @@ function read(path: string): string {
   return readFileSync(new URL(path, repoRoot), "utf8");
 }
 
+const workflowExpression = (body: string): string => `\${{ ${body} }}`;
+
 interface WorkflowStep {
   if?: string;
   name?: string;
@@ -36,6 +40,8 @@ interface WorkflowStep {
 interface WorkflowJob {
   env?: Record<string, string>;
   if?: string;
+  needs?: string | string[];
+  permissions?: Record<string, string>;
   "runs-on"?: string | string[];
   steps?: WorkflowStep[];
   "timeout-minutes"?: number;
@@ -44,6 +50,7 @@ interface WorkflowJob {
 interface CallerJob {
   if?: string;
   needs?: string[];
+  permissions?: Record<string, string>;
   uses?: string;
 }
 
@@ -79,6 +86,7 @@ const ci = Bun.YAML.parse(read(".github/workflows/ci.yml")) as {
 
 const androidJob = workflow.jobs?.["android-device-bundle"];
 const iosJob = workflow.jobs?.["ios-simulator-bundle"];
+const notifierJob = workflow.jobs?.["reconcile-scheduled-android-status"];
 
 function requireJob(job: WorkflowJob | undefined, name: string): WorkflowJob {
   if (!job) throw new Error(`Missing device-e2e job: ${name}`);
@@ -106,6 +114,29 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     expect(caller.if).toContain("github.event_name == 'pull_request'");
   });
 
+  test("the caller grants every permission a nested producer job requests", () => {
+    // GitHub validates the compiled workflow_call graph before evaluating any
+    // job `if`, so a nested job requesting more than the caller allows fails
+    // the whole CI run at startup — this regressed on develop when the
+    // schedule-only notifier gained actions:read/issues:write (#22527).
+    const caller = ci.jobs?.device;
+    if (!caller) throw new Error("ci.yml is missing the device caller job");
+    const granted = caller.permissions ?? {};
+    const rank = (level: string | undefined): number =>
+      level === "write" ? 2 : level === "read" ? 1 : 0;
+    for (const [name, job] of Object.entries(workflow.jobs ?? {})) {
+      const requested = job.permissions ?? workflow.permissions ?? {};
+      for (const [scope, level] of Object.entries(requested)) {
+        if (rank(granted[scope]) < rank(level)) {
+          throw new Error(
+            `ci.yml device caller grants '${scope}: ${granted[scope] ?? "none"}' ` +
+              `but device-e2e job '${name}' requests '${scope}: ${level}'`,
+          );
+        }
+      }
+    }
+  });
+
   test("an unlabeled PR's skipped device job cannot fail the merge gate", () => {
     const required = ci.jobs?.required;
     if (!required) throw new Error("ci.yml is missing the required job");
@@ -127,6 +158,51 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     expect(workflowReadme).toContain(
       "actions/workflows/device-e2e.yml?query=event%3Aschedule",
     );
+  });
+
+  test("the weekly schedule spends only Android while calls and dispatches retain iOS", () => {
+    expect(androidJob?.if).toBeUndefined();
+    expect(iosJob?.if).toContain("github.event_name != 'schedule'");
+    expect(workflowReadme).toContain(
+      "scheduled runs do not allocate the macOS/iOS job",
+    );
+  });
+
+  test("scheduled Android results reconcile one actionable issue with least privilege", () => {
+    const notifier = requireJob(
+      notifierJob,
+      "reconcile-scheduled-android-status",
+    );
+    expect(notifier.needs).toBe("android-device-bundle");
+    expect(notifier.if).toContain("always()");
+    expect(notifier.if).toContain("github.event_name == 'schedule'");
+    expect(notifier.permissions).toEqual({
+      actions: "read",
+      contents: "read",
+      issues: "write",
+    });
+    const notification = findStep(
+      notifier,
+      (step) => step.uses?.startsWith("actions/github-script@") === true,
+      "scheduled Android status reconciliation",
+    );
+    expect(notification.uses).toBe(
+      "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+    );
+    const script = notification.with?.script ?? "";
+    expect(script).toContain("listWorkflowRunArtifacts");
+    expect(script).toContain("artifact.id");
+    expect(script).toContain("context.runAttempt");
+    expect(script).toContain(
+      "android-device-e2e-bundle-${context.runId}-${context.runAttempt}",
+    );
+    expect(script).toContain("github.rest.search.issuesAndPullRequests");
+    expect(script).toContain("github.rest.issues.update");
+    expect(script).toContain("github.rest.issues.create");
+    expect(script).toContain('if (result === "success")');
+    expect(script).toContain('state: "closed"');
+    expect(script).toContain('state_reason: "completed"');
+    expect(script).not.toContain("createComment");
   });
 
   test("the Android job invokes the bundle-owning runner with --output inside the artifact root", () => {
@@ -165,21 +241,41 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
   });
 
   test("both uploads run if: always() and cover the exact --output roots", () => {
+    const androidBootstrap = findStep(
+      requireJob(androidJob, "android-device-bundle"),
+      (step) => step.name === "Initialize Android artifact root",
+      "Android artifact bootstrap",
+    );
+    expect(androidBootstrap.run).toContain("workflow-bootstrap.txt");
+    expect(androidBootstrap.run).toContain('"$GITHUB_SHA"');
     const android = findStep(
       requireJob(androidJob, "android-device-bundle"),
       (step) => step.uses?.startsWith("actions/upload-artifact@") === true,
       "Android upload",
     );
     expect(android.if).toBe("always()");
+    expect(android.with?.name).toBe(
+      `android-device-e2e-bundle-${workflowExpression("github.run_id")}-${workflowExpression("github.run_attempt")}`,
+    );
     expect(android.with?.path).toContain("device-e2e-artifacts/android/**");
     expect(android.with?.["if-no-files-found"]).toBe("error");
 
+    const iosBootstrap = findStep(
+      requireJob(iosJob, "ios-simulator-bundle"),
+      (step) => step.name === "Initialize iOS artifact root",
+      "iOS artifact bootstrap",
+    );
+    expect(iosBootstrap.run).toContain("workflow-bootstrap.txt");
+    expect(iosBootstrap.run).toContain('"$GITHUB_SHA"');
     const ios = findStep(
       requireJob(iosJob, "ios-simulator-bundle"),
       (step) => step.uses?.startsWith("actions/upload-artifact@") === true,
       "iOS upload",
     );
     expect(ios.if).toBe("always()");
+    expect(ios.with?.name).toBe(
+      `ios-simulator-e2e-bundle-${workflowExpression("github.run_id")}-${workflowExpression("github.run_attempt")}`,
+    );
     expect(ios.with?.path).toContain("device-e2e-artifacts/ios/**");
     expect(ios.with?.["if-no-files-found"]).toBe("error");
   });
@@ -296,6 +392,9 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
     expect(arm64PreflightSource).toContain('"v24.15.0"');
     expect(arm64PreflightSource).toContain('"1.3.14"');
     expect(arm64PreflightSource).toContain("process.arch");
+    expect(arm64PreflightSource).toContain("uname -m");
+    expect(arm64PreflightSource).toContain("java.specification.version");
+    expect(arm64PreflightSource).toContain('"21"');
     expect(arm64PreflightSource).toContain('"arm64-v8a"');
     expect(arm64PreflightSource).toContain("sys.boot_completed");
     expect(arm64PreflightSource).toContain("GITHUB_ENV");
@@ -303,6 +402,13 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
 
   test("runs the explicit local probe set and uploads exact artifacts honestly", () => {
     const job = requireJob(armJob, "android-arm64-local-runtime");
+    const preflight = findStep(
+      job,
+      (step) => step.name === "Fail-closed ARM64 device preflight",
+      "ARM64 preflight",
+    );
+    expect(preflight.run).toContain("arm64-local-preflight.sh 2>&1");
+    expect(preflight.run).toContain("arm64-preflight.log");
     const runner = findStep(
       job,
       (step) => step.run?.includes("--arm64-local-probes") === true,
@@ -319,6 +425,9 @@ describe("ARM64 local-runtime workflow (#13580)", () => {
       "ARM64 upload",
     );
     expect(upload.if).toBe("always()");
+    expect(upload.with?.name).toBe(
+      `android-arm64-local-runtime-bundle-${workflowExpression("github.run_id")}-${workflowExpression("github.run_attempt")}`,
+    );
     expect(upload.with?.path).toContain(
       "device-e2e-artifacts/android-arm64-local/**",
     );

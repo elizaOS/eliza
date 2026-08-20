@@ -9,6 +9,7 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
@@ -264,11 +265,12 @@ function withPathParams(
   });
 }
 
-function getCryptoRandomUuid(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
+function createCliLoginRequestId(): string {
+  const sessionId = globalThis.crypto?.randomUUID?.();
+  if (!isCliLoginSessionId(sessionId)) {
+    throw new Error("A secure UUID generator is required to start Cloud login");
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return sessionId;
 }
 
 export class ElizaCloudClient {
@@ -352,11 +354,10 @@ export class ElizaCloudClient {
   startCliLogin(
     options: CliLoginStartOptions = {},
   ): Promise<CliLoginStartResponse> {
-    // The server mints the session id (client-chosen ids are ignored — they
-    // allowed id squatting and unauthenticated row-spam). A locally generated
-    // id is still sent for backward compatibility with pre-hardening servers,
-    // but the RESPONSE id is authoritative on both old and new servers.
-    const requestedSessionId = options.sessionId ?? getCryptoRandomUuid();
+    // Current servers mint the authoritative id and ignore this proposal. Keep
+    // sending a fresh cryptographic UUID until older deployed servers no longer
+    // require one, but never fall back to it if the response is malformed.
+    const requestSessionId = createCliLoginRequestId();
     const query = options.returnTo
       ? `?returnTo=${encodeURIComponent(options.returnTo)}`
       : "";
@@ -366,10 +367,13 @@ export class ElizaCloudClient {
       status?: string;
       expiresAt?: string;
     }>("POST", "/api/auth/cli-session", {
-      json: { sessionId: requestedSessionId },
+      json: { sessionId: requestSessionId },
       skipAuth: true,
     }).then((response) => {
-      const sessionId = response.sessionId ?? requestedSessionId;
+      if (!isCliLoginSessionId(response.sessionId)) {
+        throw new Error("Eliza Cloud returned an invalid login session ID");
+      }
+      const sessionId = response.sessionId;
       const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
       const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
         sessionId,

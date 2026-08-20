@@ -67,6 +67,12 @@ export interface Bindings {
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;
+  /**
+   * Diagnostic-only override for running agent-sandbox schema convergence in
+   * workerd. Canonical deploys repair the schema before Worker publication;
+   * leave this unset during normal operation.
+   */
+  AGENT_SANDBOX_ENSURE_IN_WORKER?: string;
 
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
@@ -285,6 +291,11 @@ export interface Bindings {
    */
   R2_PUBLIC_HOST?: string;
   /**
+   * Comma-separated HMAC keys for opaque private-storage capabilities. The
+   * first key signs and all keys verify, allowing bounded rotation overlap.
+   */
+  STORAGE_READ_SIGNING_SECRETS?: string;
+  /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
    * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see
@@ -304,6 +315,8 @@ export interface Bindings {
   STEWARD_SESSION_SECRET?: string;
   /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
   OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Dedicated HMAC key for short-lived remote pairing-code verifiers. */
+  REMOTE_PAIRING_HMAC_SECRET?: string;
   /** Required managed Google OAuth application credentials. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -475,6 +488,7 @@ export interface Bindings {
   REDIS_RATE_LIMITING?: string;
   CACHE_ENABLED?: string;
   CACHE_BACKEND?: string;
+  DIRECT_REDIS_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
   // Inference hot path (#9899). The auth+moderation single-read cache is the
@@ -511,8 +525,6 @@ export interface Bindings {
   INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
-  /** Transition gate for the genuine AgentRuntime-backed Shared turn. */
-  SHARED_ELIZA_AGENT_RUNTIME?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;

@@ -7,12 +7,36 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseCanonicalInteger,
   parseClampedFloat,
   parseClampedInteger,
   parseNonNegativeInteger,
   parsePositiveFloat,
   parsePositiveInteger,
 } from "./number-parsing";
+
+describe("parseCanonicalInteger", () => {
+  it("distinguishes omission from malformed and unsafe input", () => {
+    expect(parseCanonicalInteger(null, { min: 1 })).toBeUndefined();
+    expect(parseCanonicalInteger("", { min: 1 })).toBeUndefined();
+    expect(parseCanonicalInteger("1e2", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("007", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("0x10", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("9007199254740992", { min: 1 })).toBe(
+      "invalid",
+    );
+  });
+
+  it("supports explicit bounds and clamping", () => {
+    expect(parseCanonicalInteger("0")).toBe(0);
+    expect(parseCanonicalInteger("3", { min: 1 })).toBe(3);
+    expect(parseCanonicalInteger("0", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("101", { min: 1, max: 100 })).toBe("invalid");
+    expect(
+      parseCanonicalInteger("101", { min: 1, max: 100, clamp: true }),
+    ).toBe(100);
+  });
+});
 
 describe("number parsing utilities", () => {
   it("parses positive integers strictly", () => {

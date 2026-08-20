@@ -8,6 +8,8 @@
  *     subtrees)
  *   - the encoder is deterministic across runs
  *   - the decoder rejects malformed inputs rather than producing garbage
+ *   - a multi-parent complete DAG (origin hang: 26 nodes / 1.5 KiB → 33M paths)
+ *     is rejected immediately instead of exploding `collectLeaves`
  */
 
 import { describe, expect, it } from "vitest";
@@ -100,4 +102,76 @@ describe("token-tree-codec", () => {
     const out = deserializeTokenTree(serializeTokenTree(input));
     expect(out.path).toBe("résumé.fields[0]");
   });
+
+  it("rejects a multi-parent DAG instead of exploding collectLeaves", () => {
+    // Every node points at every later node. Origin collectLeaves on 26
+    // nodes / 1551 bytes expanded 33,554,431 paths (~2.3s). The encoder
+    // never emits a second inbound edge.
+    const bomb = buildCompleteForwardDag(26);
+    expect(bomb.byteLength).toBe(1551);
+    const started = performance.now();
+    expect(() => deserializeTokenTree(bomb)).toThrow(/multiple parents/);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("rejects nodes that are not connected to the root", () => {
+    expect(() => deserializeTokenTree(buildDisconnectedTree())).toThrow(
+      /not connected to root/,
+    );
+  });
 });
+
+/** Hostile RTKT v1 buffer: node i children = i+1..n-1. */
+function buildCompleteForwardDag(n: number): Uint8Array {
+  const MAGIC = 0x544b5452;
+  const ROOT_TOKEN_ID = -1;
+  const pathBytes = new TextEncoder().encode("x");
+  let body = 4;
+  for (let i = 0; i < n; i++) {
+    body += 9 + (n - 1 - i) * 4;
+  }
+  const buf = new ArrayBuffer(12 + pathBytes.length + body);
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  let offset = 0;
+  view.setUint32(offset, MAGIC, true);
+  offset += 4;
+  view.setUint32(offset, 1, true);
+  offset += 4;
+  view.setUint32(offset, pathBytes.length, true);
+  offset += 4;
+  bytes.set(pathBytes, offset);
+  offset += pathBytes.length;
+  view.setUint32(offset, n, true);
+  offset += 4;
+  for (let i = 0; i < n; i++) {
+    view.setInt32(offset, i === 0 ? ROOT_TOKEN_ID : i, true);
+    offset += 4;
+    view.setUint8(offset, 1);
+    offset += 1;
+    const childCount = n - 1 - i;
+    view.setUint32(offset, childCount, true);
+    offset += 4;
+    for (let j = i + 1; j < n; j++) {
+      view.setUint32(offset, j, true);
+      offset += 4;
+    }
+  }
+  return bytes;
+}
+
+function buildDisconnectedTree(): Uint8Array {
+  const bytes = new Uint8Array(12 + 1 + 4 + 9 * 2);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x544b5452, true);
+  view.setUint32(4, 1, true);
+  view.setUint32(8, 1, true);
+  bytes[12] = 0x78;
+  view.setUint32(13, 2, true);
+  view.setInt32(17, -1, true);
+  view.setUint32(22, 0, true);
+  view.setInt32(26, 7, true);
+  view.setUint8(30, 1);
+  view.setUint32(31, 0, true);
+  return bytes;
+}

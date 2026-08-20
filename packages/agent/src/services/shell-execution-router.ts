@@ -12,7 +12,8 @@
  * Plugins, services, and CLI helpers that previously called `child_process.spawn`
  * for one-shot command execution should call `runShell()` instead. This keeps
  * the mode dispatch in one place and lets the privacy/sandbox guarantees of
- * `local-safe` actually hold.
+ * `local-safe` actually hold. Host stdio is byte-capped so a flooding child
+ * cannot retain an unbounded stdout/stderr string during the timeout window.
  */
 
 import { spawn } from "node:child_process";
@@ -32,6 +33,11 @@ import {
 } from "@elizaos/shared/host-execution-env";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
+import {
+  appendShellStdio,
+  createShellStdioState,
+  MAX_SHELL_STDIO_BYTES,
+} from "./shell-stdio-budget.ts";
 import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
@@ -186,9 +192,10 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
       detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    let stdout = "";
-    let stderr = "";
+    const stdio = createShellStdioState();
     let timedOut = false;
+    let overflowed = false;
+    let settled = false;
 
     const killChildTree = () => {
       try {
@@ -197,50 +204,110 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
           return;
         }
       } catch {
-        // Fall back to killing the direct child below.
+        // error-policy:J6 process-group teardown falls back to the direct child.
       }
       try {
         child.kill("SIGKILL");
       } catch {
-        // child may already have exited
+        // error-policy:J6 the child may already have exited.
       }
     };
 
     const timer = setTimeout(() => {
+      if (settled) return;
       timedOut = true;
       killChildTree();
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      stdout += text;
-      req.onStdout?.(text);
+    const overflowMarker = () =>
+      `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`;
+
+    const takeChunk = (target: "stdout" | "stderr", chunk: string): void => {
+      if (settled || overflowed) return;
+      const before = target === "stdout" ? stdio.stdout : stdio.stderr;
+      const verdict = appendShellStdio(stdio, target, chunk);
+      const after = target === "stdout" ? stdio.stdout : stdio.stderr;
+      const appended = after.slice(before.length);
+      if (appended.length > 0) {
+        if (target === "stdout") req.onStdout?.(appended);
+        else req.onStderr?.(appended);
+      }
+      if (verdict === "overflow") {
+        overflowed = true;
+        killChildTree();
+      }
+    };
+
+    // Preserve code points split across OS pipe chunks before accumulating.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      takeChunk("stdout", chunk);
     });
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      stderr += text;
-      req.onStderr?.(text);
+    child.stderr.on("data", (chunk: string) => {
+      takeChunk("stderr", chunk);
     });
-    child.on("error", (err) => {
+
+    const finish = (result: ShellResult): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve({
+      resolve(result);
+    };
+
+    const finishWithError = (err: Error): void => {
+      if (overflowed) {
+        finish({
+          exitCode: -1,
+          stdout: stdio.stdout,
+          stderr: overflowMarker(),
+          durationMs: Date.now() - start,
+          sandbox: "host",
+        });
+        return;
+      }
+      finish({
         exitCode: -1,
-        stdout,
-        stderr: stderr.length > 0 ? `${stderr}\n${err.message}` : err.message,
+        stdout: stdio.stdout,
+        stderr:
+          stdio.stderr.length > 0
+            ? `${stdio.stderr}\n${err.message}`
+            : err.message,
         durationMs: Date.now() - start,
         sandbox: "host",
       });
+    };
+
+    child.stdout.once("error", (err) => {
+      killChildTree();
+      finishWithError(err);
     });
+    child.stderr.once("error", (err) => {
+      killChildTree();
+      finishWithError(err);
+    });
+    child.once("error", finishWithError);
     child.on("close", (code) => {
-      clearTimeout(timer);
+      // Overflow wins over timeout: a flood that also hits the timer still
+      // reports the stdio cap, because that is what killed the child.
+      if (overflowed) {
+        finish({
+          exitCode: -1,
+          stdout: stdio.stdout,
+          stderr: overflowMarker(),
+          durationMs: Date.now() - start,
+          sandbox: "host",
+        });
+        return;
+      }
       const exitCode = timedOut ? 124 : (code ?? -1);
-      resolve({
+      finish({
         exitCode,
-        stdout,
+        stdout: stdio.stdout,
         stderr: timedOut
-          ? `${stderr}${stderr.endsWith("\n") || stderr.length === 0 ? "" : "\n"}[shell-router] command timed out after ${timeoutMs}ms`
-          : stderr,
+          ? `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] command timed out after ${timeoutMs}ms`
+          : stdio.stderr,
         durationMs: Date.now() - start,
         sandbox: "host",
       });

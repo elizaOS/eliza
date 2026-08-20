@@ -132,6 +132,25 @@ describe("PostSkillCreateRequestSchema", () => {
     ).toEqual({ name: "skillz" });
   });
 
+  it("accepts the 1024-character SKILL.md limit after trimming", () => {
+    const description = "x".repeat(1024);
+    expect(
+      PostSkillCreateRequestSchema.parse({
+        name: "skillz",
+        description: `  ${description}  `,
+      }),
+    ).toEqual({ name: "skillz", description });
+  });
+
+  it("rejects descriptions beyond the SKILL.md limit", () => {
+    expect(() =>
+      PostSkillCreateRequestSchema.parse({
+        name: "skillz",
+        description: "x".repeat(1025),
+      }),
+    ).toThrow(/description must be 1024 characters or less/);
+  });
+
   it("rejects whitespace-only name", () => {
     expect(() => PostSkillCreateRequestSchema.parse({ name: " " })).toThrow(
       /name is required/,

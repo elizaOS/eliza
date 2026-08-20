@@ -55,6 +55,7 @@ The agent's Signal account must be linked (registered or device-linked) before t
     "signal": {
       "account": "+15551234567",
       "httpUrl": "http://127.0.0.1:8080",
+      "dm": { "policy": "pairing" },  // DM access gate: open|pairing|allowlist|disabled (default pairing, fail closed)
       "accounts": {
         "work": {
           "account": "+15559876543",
@@ -66,6 +67,8 @@ The agent's Signal account must be linked (registered or device-linked) before t
   }
 }
 ```
+
+The `dm` block (base level or per account) gates one-on-one DMs when `SIGNAL_AUTO_REPLY=true`: `policy` defaults to `pairing`, which routes unknown senders through the core pairing-code handshake; `allowFrom` (E.164 numbers) statically admits senders; `enabled: false` ignores all inbound DMs. Inbound history is ingested regardless — the gate only controls whether the agent turn runs.
 
 ## Enabling the plugin
 

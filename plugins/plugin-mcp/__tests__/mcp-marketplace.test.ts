@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getMcpServerDetails,
+  MAX_MCP_MARKETPLACE_PAGES,
   McpMarketplaceError,
   searchMcpMarketplace,
 } from "../src/mcp-marketplace.js";
@@ -266,6 +267,58 @@ describe("MCP marketplace client", () => {
       "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=50&cursor=next-page",
       expect.any(Object)
     );
+  });
+
+  it("allows a match on the final page in the request budget", async () => {
+    let callIndex = 0;
+    fetchMock.mockImplementation(async () => {
+      callIndex += 1;
+      if (callIndex === MAX_MCP_MARKETPLACE_PAGES) {
+        return jsonResponse(
+          registryPage([
+            {
+              name: "io.example/final-page",
+              title: "Last Page Match",
+              description: "Found at the bounded edge",
+              version: "1.0.0",
+            },
+          ])
+        );
+      }
+      return jsonResponse(registryPage([], `page-cursor-${callIndex}`));
+    });
+
+    await expect(searchMcpMarketplace("last page", 1)).resolves.toEqual({
+      results: [expect.objectContaining({ name: "io.example/final-page" })],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_MCP_MARKETPLACE_PAGES);
+  });
+
+  it("rejects a pagination cursor cycle before refetching it", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse(registryPage([], "repeated-cursor")));
+
+    await expect(searchMcpMarketplace("unmatched-query", 10)).rejects.toMatchObject({
+      code: "invalid_response",
+      message: expect.stringContaining("repeated a pagination cursor"),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects MCP registry pagination exceeding the maximum page limit", async () => {
+    let callIndex = 0;
+    fetchMock.mockImplementation(async () => {
+      callIndex += 1;
+      return jsonResponse(registryPage([], `runaway-cursor-${callIndex}`));
+    });
+
+    await expect(searchMcpMarketplace("unmatched-query", 10)).rejects.toMatchObject({
+      code: "invalid_response",
+      message: expect.stringContaining(
+        `pagination exceeded ${MAX_MCP_MARKETPLACE_PAGES} page limit`
+      ),
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_MCP_MARKETPLACE_PAGES);
   });
 
   it("rejects declared and streamed responses over the configured byte cap", async () => {

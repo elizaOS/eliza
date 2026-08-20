@@ -70,6 +70,16 @@ function parseDatabaseRowsOffset(raw: string | null): number | null {
   return parsed;
 }
 
+/** Decode an untrusted database table-name path segment. */
+function decodeTableName(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed URL encoding is invalid path input.
+    return null;
+  }
+}
+
 function rememberTableIntrospection(
   key: string,
   resolvedSchema: string,
@@ -109,13 +119,23 @@ export async function handleDatabaseRowsCompatRoute(
     return true;
   }
 
+  const decoded = decodeTableName(match[1] ?? "");
+  if (decoded === null) {
+    sendJsonErrorResponse(
+      res,
+      400,
+      "invalid table name: malformed URL encoding",
+    );
+    return true;
+  }
+
   const runtime = state.current;
   if (!runtime) {
     sendJsonErrorResponse(res, 503, DATABASE_UNAVAILABLE_MESSAGE);
     return true;
   }
 
-  const tableName = sanitizeIdentifier(decodeURIComponent(match[1]));
+  const tableName = sanitizeIdentifier(decoded);
   const requestUrl = new URL(req.url ?? "/", "http://localhost");
   const schemaName = sanitizeIdentifier(requestUrl.searchParams.get("schema"));
 

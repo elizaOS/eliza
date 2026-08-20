@@ -12,6 +12,7 @@
 import {
   BaseMessageAdapter,
   type DraftRequest,
+  EventType,
   type IAgentRuntime,
   type ListOptions,
   type ManageOperation,
@@ -163,6 +164,34 @@ function messageAccountId(message: MessageRef | null | undefined): string {
   return message?.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID;
 }
 
+async function emitCommittedGmailMutation(
+  runtime: IAgentRuntime,
+  receipt: {
+    messageId: string;
+    operation: "mark_read" | "replied";
+    domainEventId: string;
+  }
+): Promise<void> {
+  try {
+    await runtime.emitEvent(EventType.MESSAGE_MUTATED, {
+      runtime,
+      messageSource: "gmail",
+      messageId: refId(receipt.messageId),
+      operation: receipt.operation,
+      domainEventId: receipt.domainEventId,
+      committedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    // error-policy:J7 the provider mutation already committed; downstream
+    // diagnostics and learning consumers cannot rewrite its successful result.
+    runtime.reportError("GoogleGmailAdapter.emitMutationReceipt", error, {
+      messageId: receipt.messageId,
+      operation: receipt.operation,
+      domainEventId: receipt.domainEventId,
+    });
+  }
+}
+
 /**
  * Fail-closed recipient extraction for new outbound drafts: every requested
  * recipient must be a literal email address. Throwing on any invalid entry
@@ -306,6 +335,13 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
       references: metadataString(message.metadata ?? {}, "references"),
     });
+    if (sent.messageId) {
+      await emitCommittedGmailMutation(runtime, {
+        messageId: message.externalId,
+        operation: "replied",
+        domainEventId: `gmail_reply:${messageAccountId(message)}:${sent.messageId}`,
+      });
+    }
     return {
       externalId: sent.messageId ?? `gmail-reply:${message.externalId}`,
     };
@@ -348,6 +384,14 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       messageIds: [externalMessageId(messageId)],
       labelIds: mapped.labelIds,
     });
+    if (op.kind === "mark_read" && op.read) {
+      const externalId = externalMessageId(messageId);
+      await emitCommittedGmailMutation(runtime, {
+        messageId: externalId,
+        operation: "mark_read",
+        domainEventId: `gmail_mark_read:${accountId}:${externalId}`,
+      });
+    }
     return { ok: true };
   }
 

@@ -62,8 +62,8 @@ ctx_size) tuples we benchmark. Each row maps to one autotune config.
 Per-GPU expected metrics live in the config JSON files and are flagged
 `"_provenance": "extrapolated"` until a real run replaces them. The
 override mechanism + per-GPU known limits are documented in
-[`plugins/plugin-local-inference/native/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md) and
-[`docs/inference/gpu-tier.md`](../../../docs/inference/gpu-tier.md).
+[`plugins/plugin-local-inference/native/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md)
+(the separate `gpu-tier` doc was never committed to this repository).
 
 Unit tests:
 
@@ -166,8 +166,7 @@ evidence.
 
 ## Known limitations
 
-- **Synthetic audio is not real speech.** Per
-  [`docs/eliza-1-pipeline/06-test-matrix.md`](../../../../docs/eliza-1-pipeline/06-test-matrix.md),
+- **Synthetic audio is not real speech.** Per the pipeline test-matrix note (never committed to this repository),
   release-blocking latency gates still require a real-recorded WAV
   corpus.
 - **GPU utilization is not yet sampled.** The Metal/Vulkan counter hooks

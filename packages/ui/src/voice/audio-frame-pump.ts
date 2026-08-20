@@ -15,10 +15,11 @@
  * final `flush:true` batch on stop so a trailing utterance is not lost.
  *
  * The agent base URL (loopback) is routed through the Android native-agent
- * fetch bridge (`installAndroidNativeAgentFetchBridge`), so a plain `fetch`
- * reaches the on-device agent over IPC without bespoke transport plumbing.
+ * client transport, which selects the Android native-agent bridge for the
+ * loopback URL so requests reach the on-device agent over IPC.
  */
 
+import { ElizaClient } from "../api";
 import type {
   TalkModeAudioFrameEvent,
   TalkModePluginLike,
@@ -53,6 +54,9 @@ interface AgentFramesResponse {
   turnsObserved?: number;
 }
 
+/** Audio-frame batches are short local-agent UI hops. */
+const AUDIO_FRAME_PUMP_TIMEOUT_MS = 15_000;
+
 /**
  * Drives the Android `audioFrame` → batched-POST → agent diarization pipeline.
  * One instance per capture session. Native-only: `start` no-ops cleanly on a
@@ -60,7 +64,7 @@ interface AgentFramesResponse {
  */
 export class AudioFramePump {
   private readonly plugin: TalkModePluginLike;
-  private readonly agentBaseUrl: string;
+  private readonly agentClient: ElizaClient;
   private readonly sampleRate: number;
   private readonly frameMs: number;
 
@@ -76,7 +80,9 @@ export class AudioFramePump {
 
   constructor(plugin: TalkModePluginLike, options: AudioFramePumpOptions = {}) {
     this.plugin = plugin;
-    this.agentBaseUrl = options.agentBaseUrl ?? MOBILE_LOCAL_AGENT_API_BASE;
+    this.agentClient = new ElizaClient(
+      options.agentBaseUrl ?? MOBILE_LOCAL_AGENT_API_BASE,
+    );
     this.sampleRate = options.sampleRate ?? 16_000;
     this.frameMs = options.frameMs ?? 20;
   }
@@ -156,17 +162,14 @@ export class AudioFramePump {
     final: boolean,
   ): Promise<void> {
     if (frames.length === 0 && !final) return;
-    const res = await fetch(`${this.agentBaseUrl}${AUDIO_FRAMES_PATH}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ frames, flush: final }),
-    });
-    if (!res.ok) {
-      throw new Error(
-        `[audio-frame-pump] agent rejected batch: ${res.status} ${res.statusText}`,
-      );
-    }
-    const json = (await res.json()) as AgentFramesResponse;
+    const json = await this.agentClient.fetch<AgentFramesResponse>(
+      AUDIO_FRAMES_PATH,
+      {
+        method: "POST",
+        body: JSON.stringify({ frames, flush: final }),
+      },
+      { timeoutMs: AUDIO_FRAME_PUMP_TIMEOUT_MS },
+    );
     this.framesSent += frames.length;
     if (typeof json.framesReceived === "number") {
       this.framesAcked = json.framesReceived;

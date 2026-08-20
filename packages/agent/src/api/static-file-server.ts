@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
+import {
+  isPathWithinRoot,
+  resolveRealPathSync,
+} from "./realpath-confinement.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
 // One-time warning when an operator opts into embedding the API token in served
@@ -290,19 +294,22 @@ export function serveStaticUi(
 
   const relativePath = decodedPath.replace(/^\/+/, "");
   const candidatePath = path.resolve(root, relativePath);
+  const realCandidate = resolveRealPathSync(candidatePath);
+  const realRoot = resolveRealPathSync(root);
   if (
-    candidatePath !== root &&
-    !candidatePath.startsWith(`${root}${path.sep}`)
+    !realCandidate ||
+    !realRoot ||
+    !isPathWithinRoot(realCandidate, realRoot, { allowRoot: true })
   ) {
     sendJsonError(res, "Forbidden", 403);
     return true;
   }
 
   try {
-    const stat = fs.statSync(candidatePath);
+    const stat = fs.statSync(realCandidate);
     if (stat.isFile()) {
-      const ext = path.extname(candidatePath).toLowerCase();
-      const body = getCachedFile(candidatePath, stat.mtimeMs);
+      const ext = path.extname(realCandidate).toLowerCase();
+      const body = getCachedFile(realCandidate, stat.mtimeMs);
       const isPreviewOrBinaryAsset =
         relativePath.startsWith("vrms/previews/") ||
         relativePath.startsWith("vrms/backgrounds/") ||

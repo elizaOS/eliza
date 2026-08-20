@@ -123,7 +123,10 @@ describe("TranscriptViewerOverlay", () => {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("loads the stored record and shows its text + title", async () => {
     render(
@@ -138,6 +141,37 @@ describe("TranscriptViewerOverlay", () => {
       ),
     );
     expect(screen.getByText("My Recording")).toBeTruthy();
+  });
+
+  it("does not start a stored-record fetch after an inline load is aborted", async () => {
+    let requestSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const attachment = {
+      ...transcriptAttachment(),
+      text: undefined,
+      url: "/api/media/deadbeef.md",
+    };
+    const { unmount } = render(
+      <TranscriptViewerOverlay attachment={attachment} onClose={() => {}} />,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    unmount();
+    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
+    await Promise.resolve();
+
+    expect(getTranscript).not.toHaveBeenCalled();
   });
 
   it("edits, undoes back to the loaded text, and persists on save & exit", async () => {

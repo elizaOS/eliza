@@ -25,6 +25,7 @@ class TestTransport {
     path: string,
     options?: CloudRequestOptions,
   ): Promise<Response> {
+    this.requests.push({ method, path, options });
     return new Response(JSON.stringify({ method, path, options }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -32,39 +33,42 @@ class TestTransport {
 }
 
 describe("ElizaCloudPublicRoutesClient path building", () => {
-  it("preserves meaningful empty middle segments for catch-all string params", async () => {
+  it("keeps storage object identifiers in typed headers", async () => {
     const transport = new TestTransport();
     const client = new ElizaCloudPublicRoutesClient(transport);
 
-    await client.getApiV1ApisStorageObjectsByKey({
-      pathParams: { key: "folder//file name.txt" },
+    await client.getApiV1ApisStorageObjects({
+      headers: {
+        "X-Storage-Object-Key": "folder/file name.txt",
+        "Idempotency-Key": "get-1",
+      },
     });
 
     expect(transport.requests).toEqual([
       {
         method: "GET",
-        path: "/api/v1/apis/storage/objects/folder//file%20name.txt",
-        options: {},
+        path: "/api/v1/apis/storage/objects/_",
+        options: {
+          headers: {
+            "X-Storage-Object-Key": "folder/file name.txt",
+            "Idempotency-Key": "get-1",
+          },
+        },
       },
     ]);
   });
 
-  it("encodes catch-all array params one segment at a time", async () => {
+  it("exposes explicit raw HEAD on the fixed storage endpoint", async () => {
     const transport = new TestTransport();
     const client = new ElizaCloudPublicRoutesClient(transport);
 
-    await client.deleteApiV1ApisStorageObjectsByKey({
-      pathParams: { key: ["folder/slash", "file name.txt"] },
-      query: { hard: true },
-    });
-
-    expect(transport.requests).toEqual([
-      {
-        method: "DELETE",
-        path: "/api/v1/apis/storage/objects/folder%2Fslash/file%20name.txt",
-        options: { query: { hard: true } },
+    const response = await client.headApiV1ApisStorageObjects({
+      headers: {
+        "X-Storage-Object-Key": "folder/file.txt",
+        "Idempotency-Key": "head-1",
       },
-    ]);
+    });
+    expect(response).toBeInstanceOf(Response);
   });
 
   it("rejects unexpected params and arrays for non-catch-all params", async () => {
@@ -81,20 +85,5 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
         pathParams: { id: ["app", "1"] } as never,
       }),
     ).toThrow(/does not accept multiple segments/);
-  });
-
-  it("rejects catch-all values with empty leading or trailing segments", async () => {
-    const client = new ElizaCloudPublicRoutesClient(new TestTransport());
-
-    await expect(() =>
-      client.getApiV1ApisStorageObjectsByKey({
-        pathParams: { key: "/folder/file" },
-      }),
-    ).toThrow(/cannot start or end with an empty segment/);
-    await expect(() =>
-      client.getApiV1ApisStorageObjectsByKey({
-        pathParams: { key: ["folder", ""] },
-      }),
-    ).toThrow(/cannot start or end with an empty segment/);
   });
 });

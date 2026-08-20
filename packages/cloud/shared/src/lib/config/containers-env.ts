@@ -44,6 +44,22 @@ function parsePositiveIntList(value: string | undefined): number[] {
     .filter((item) => Number.isFinite(item) && item > 0);
 }
 
+function parseCanonicalPositiveIntSet(value: string | undefined, name: string): number[] {
+  if (value === undefined) return [];
+  const tokens = value.split(",").map((item) => item.trim());
+  if (
+    tokens.length === 0 ||
+    tokens.some((item) => !/^[1-9]\d*$/.test(item) || !Number.isSafeInteger(Number(item)))
+  ) {
+    throw new Error(`${name} must be a comma-separated set of positive integer IDs`);
+  }
+  const ids = tokens.map(Number);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`${name} must not contain duplicate IDs`);
+  }
+  return ids;
+}
+
 export const containersEnv = {
   /** Base64-encoded SSH private key for connecting to Docker nodes. */
   sshKey(): string | undefined {
@@ -695,6 +711,20 @@ export const containersEnv = {
   defaultHcloudNetworkIds(): number[] {
     const env = getCloudAwareEnv();
     return parsePositiveIntList(pick(env.CONTAINERS_HCLOUD_NETWORK_IDS, env.HCLOUD_NETWORK_IDS));
+  },
+
+  /**
+   * Exact Cloud Firewall set attached atomically to every runtime-created
+   * Hetzner data-plane node. Missing configuration returns an empty set so the
+   * provisioning boundary can emit its typed fail-closed error; malformed or
+   * ambiguous values throw before any provider request is made.
+   */
+  defaultHcloudFirewallIds(): number[] {
+    const env = getCloudAwareEnv();
+    return parseCanonicalPositiveIntSet(
+      pick(env.CONTAINERS_HCLOUD_FIREWALL_IDS, env.HCLOUD_FIREWALL_IDS),
+      "CONTAINERS_HCLOUD_FIREWALL_IDS",
+    );
   },
 
   /**

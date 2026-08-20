@@ -35,6 +35,7 @@ import {
   type OcrWithCoordsResult,
   type OcrWithCoordsService,
   type OcrWithCoordsWord,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 import type { BoundingBox } from "./types.js";
 
@@ -345,22 +346,16 @@ function runTesseract(imagePath: string): Promise<string> {
  * Read width/height from the PNG IHDR chunk so the semantic-position thirds are
  * computed against the real tile dimensions (the TSV carries word boxes but no
  * page size header we can trust across versions). PNG signature is 8 bytes;
- * IHDR width/height are big-endian uint32 at offsets 16 and 20.
+ * IHDR width/height are big-endian uint32 at offsets 16 and 20. Bytes that are
+ * not a well-formed PNG with positive dimensions fail closed to zero-sized dims
+ * (the mapper treats non-positive dims as unknown) instead of feeding garbage
+ * into semantic-position math.
  */
 function readPngDimensions(pngBytes: Uint8Array): {
   width: number;
   height: number;
 } {
-  if (pngBytes.byteLength < 24) return { width: 0, height: 0 };
-  const view = new DataView(
-    pngBytes.buffer,
-    pngBytes.byteOffset,
-    pngBytes.byteLength,
-  );
-  return {
-    width: view.getUint32(16, false),
-    height: view.getUint32(20, false),
-  };
+  return readPngDimensionsOrNull(pngBytes) ?? { width: 0, height: 0 };
 }
 
 export class LinuxTesseractOcrService implements OcrWithCoordsService {

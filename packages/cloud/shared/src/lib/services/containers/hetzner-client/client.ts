@@ -16,6 +16,7 @@ import type { DockerNode } from "../../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../../config/containers-env";
 import { logger } from "../../../utils/logger";
 import { buildAppContainerSecurityFlags } from "../../app-network-utils";
+import { isContainerAbsentMessage } from "../../docker-error-classifier";
 import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
@@ -488,6 +489,61 @@ export class HetznerContainersClient {
   }
 
   /**
+   * Provider-only billing stop under a database-held lifecycle fence.
+   *
+   * The billing dispatcher owns the control-plane transaction and final row
+   * transition, so this method must not update the container row or release its
+   * node slot. It verifies the tenant and lifecycle revision against the
+   * committed row, then proves the Docker runtime absent. The caller performs
+   * the fenced DB confirmation and idempotent slot release afterward.
+   */
+  async stopContainerRuntimeForBilling(
+    containerId: string,
+    organizationId: string,
+    expectedLifecycleRevision: number,
+  ): Promise<{ nodeId: string | null }> {
+    const row = await containersRepository.findById(containerId, organizationId);
+    if (!row) {
+      throw new HetznerClientError("container_not_found", `container ${containerId} not found`);
+    }
+    if (row.lifecycle_revision !== expectedLifecycleRevision) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `container ${containerId} lifecycle generation changed before billing stop`,
+      );
+    }
+    const meta = readMetadata(row);
+    if (!meta) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `container ${containerId} is missing valid Hetzner provider metadata`,
+      );
+    }
+    await this.execOnNode(meta, async (ssh) => {
+      // error-policy:J6 graceful stop is best effort; rm -f is the provider
+      // absence proof and its failure propagates to durable recovery.
+      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000).catch((err) => {
+        logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      try {
+        await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isContainerAbsentMessage(message) || !message.includes(meta.containerName)) {
+          throw error;
+        }
+        logger.info("[hetzner-client] billing stop confirmed runtime already absent", {
+          containerId,
+          containerName: meta.containerName,
+        });
+      }
+    });
+    return { nodeId: meta.nodeId };
+  }
+
+  /**
    * Tear down a container: stop + remove on the host, decrement the
    * node's allocated count, then delete the DB row. Errors during the
    * SSH stage are surfaced — we do NOT silently delete the row if the
@@ -605,15 +661,23 @@ export class HetznerContainersClient {
 
   /** Restart a container in-place (`docker restart`). Status flips to `deploying`; the cron monitor confirms `running`. */
   async restartContainer(containerId: string, organizationId: string): Promise<ContainerSummary> {
+    await containersRepository.prepareFundedRestart(containerId, organizationId, new Date());
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
 
-    await this.execOnNode(meta, (ssh) =>
-      ssh.exec(`docker restart ${shellQuote(meta.containerName)}`, 30_000),
-    );
+    try {
+      await this.execOnNode(meta, (ssh) =>
+        ssh.exec(`docker restart ${shellQuote(meta.containerName)}`, 30_000),
+      );
+    } catch (error) {
+      await containersRepository.update(containerId, organizationId, {
+        status: "failed",
+        error_message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const updated = await containersRepository.update(containerId, organizationId, {
-      status: "deploying",
       deployment_log: "Container restarted; waiting for health check...",
     });
     return rowToSummary(updated ?? row.row);
@@ -631,6 +695,7 @@ export class HetznerContainersClient {
     environmentVars: Record<string, string>,
   ): Promise<ContainerSummary> {
     for (const key of Object.keys(environmentVars)) validateEnvKey(key);
+    await containersRepository.prepareFundedRestart(containerId, organizationId, new Date());
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
 

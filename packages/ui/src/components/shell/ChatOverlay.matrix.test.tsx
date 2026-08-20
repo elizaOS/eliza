@@ -24,6 +24,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../api/client", () => ({
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    getBaseUrl: vi.fn(() => ""),
     createTranscript: vi
       .fn()
       .mockResolvedValue({ transcript: { id: "t1", title: "Transcript" } }),

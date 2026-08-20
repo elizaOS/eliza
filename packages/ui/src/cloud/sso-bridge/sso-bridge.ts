@@ -41,25 +41,17 @@
  * server-side Postgres logout marker. The mint/exchange endpoints refuse to
  * bridge across that marker, the cookie-planting session-sync endpoint
  * refuses pre-logout tokens with `session_ended` (so the paired origin's
- * surviving session cannot re-plant the domain cookies and clears itself on
- * its next sync), and the domain-wide `steward-authed` marker cookie this
- * module pre-checks is cleared, so a logged-out browser never even attempts
- * the bounce.
+ * surviving session cannot re-plant the host cookies and clears itself on its
+ * next sync), and the explicit app-origin logout marker prevents a bounce.
  */
 
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
-  hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { appModeNavigation } from "../app-mode/app-mode";
-import {
-  clearPendingOnboardingSession,
-  peekPendingOnboardingSession,
-  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-} from "../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../lib/jwt";
 import {
   clearStaleStewardSession,
@@ -379,19 +371,13 @@ export function buildBridgeExchangeUrl(
 /**
  * Whether an unauthenticated app-mode visit should leave for the auth origin
  * bridge right now. True only on the real app hosts, when the user has not
- * explicitly signed out here, when the domain-wide `steward-authed` marker
- * says a server session exists to bridge FROM (after any logout that marker
- * is cleared domain-wide, so a logged-out browser skips the bounce entirely),
- * and while the loop guard is clear.
+ * explicitly signed out here, and while the loop guard is clear.
  *
- * ACCEPTED RISK: `steward-authed` is a non-HttpOnly parent-domain cookie, so
- * JS on a user-content sibling subdomain can PLANT it and force this gate
- * open. The cookie is only ever a routing hint — minting still requires the
- * auth origin's localStorage Bearer, exchanging still requires this origin's
- * state + verifier — so the worst case is one wasted bounce to the auth origin
- * and back to /login, bounded to one attempt per tab per 5 minutes by the
- * loop guard. There is no unplantable cross-origin signal available to a
- * first visit, so this hint is used knowingly.
+ * Steward cookies are deliberately host-only, so the app origin cannot use an
+ * auth-origin cookie as a preflight hint. The first bridge visit is therefore
+ * also the signed-out login handoff: the mint route remembers the app-approved
+ * state, sends the user through auth-origin login, then resumes the PKCE mint.
+ * A failed attempt remains bounded to one bounce per tab per five minutes.
  */
 export function shouldAutoBridgeToSso(
   hostname: string = window.location.hostname,
@@ -399,7 +385,6 @@ export function shouldAutoBridgeToSso(
 ): boolean {
   if (ssoBridgeRoleForHostname(hostname) !== "exchange") return false;
   if (isSsoLoggedOut()) return false;
-  if (!hasStewardAuthedCookie()) return false;
   return shouldAttemptSsoBridge(now);
 }
 
@@ -542,42 +527,23 @@ export async function performSsoExchange(
       return { ok: false, error: "Exchange returned no usable session" };
     }
 
-    const telegramContinuation = peekPendingOnboardingSession(
-      TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-    );
-    if (!telegramContinuation) writeStoredStewardToken(token);
+    writeStoredStewardToken(token);
 
     // Same call the login flow makes: sets the HttpOnly steward cookies + the
     // authed marker for this environment. It stays best-effort for an ordinary
-    // bridge because AuthTokenSync retries, but a Telegram account claim must
-    // win before storage hydration or an unhinted background sync could create
-    // a second account.
+    // bridge because AuthTokenSync retries. Account-link authority is never
+    // discovered here: a pending Telegram claim remains inert until the user
+    // returns to /get-started and confirms the preview explicitly.
     try {
-      const sessionResponse = await fetchFn(configuredSessionEndpoint(), {
+      await fetchFn(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          ...(telegramContinuation ? { telegramContinuation } : {}),
-        }),
+        body: JSON.stringify({ token }),
       });
-      if (telegramContinuation && !sessionResponse.ok) {
-        return {
-          ok: false,
-          error: `Telegram account claim failed (HTTP ${sessionResponse.status})`,
-        };
-      }
     } catch {
-      if (telegramContinuation) {
-        return { ok: false, error: "Telegram account claim unavailable" };
-      }
       // error-policy:J6 best-effort cookie sync; the localStorage session is
       // established and AuthTokenSync re-syncs on its own cadence.
-    }
-    if (telegramContinuation) {
-      clearPendingOnboardingSession();
-      writeStoredStewardToken(token);
     }
 
     clearSsoBridgeAttempt();

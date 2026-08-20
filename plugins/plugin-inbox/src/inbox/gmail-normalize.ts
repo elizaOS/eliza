@@ -324,14 +324,22 @@ export function normalizeGmailSearchQueryMatches(
       return true;
     }
     if (tokenBody.startsWith("{") && tokenBody.endsWith("}")) {
-      const groupMembers = tokenBody
+      const rawGroupMembers = tokenBody
         .slice(1, -1)
         .trim()
         .split(/\s+/)
         .map((entry) => entry.trim())
         .filter(Boolean);
+      // Gmail brace groups are already implicit disjunctions. A redundant
+      // uppercase OR inside the group is syntax, not a search term: treating it
+      // as a bare substring makes `{from:alice OR from:bob}` match unrelated
+      // messages containing "or". Preserve lowercase `or` as an ordinary term,
+      // consistent with the top-level uppercase-only operator contract.
+      const groupMembers = rawGroupMembers.filter((entry) => entry !== "OR");
       if (groupMembers.length === 0) {
-        return true;
+        // Preserve the historical empty-brace behavior, but an all-OR group is
+        // analogous to an all-OR top-level query and must match nothing.
+        return rawGroupMembers.length === 0 ? true : isNegated;
       }
       const groupMatched = groupMembers.some((entry) => matchesToken(entry));
       return isNegated ? !groupMatched : groupMatched;
@@ -422,19 +430,35 @@ export function normalizeGmailSearchQueryMatches(
     return isNegated ? !matched : matched;
   };
 
-  return tokens.every((token) => {
+  // Gmail's top-level `OR` keyword (uppercase only, matching Gmail syntax)
+  // splits the query into disjunct runs; tokens within a run remain ANDed.
+  // A flat split means `from:alice invoice OR receipt` is evaluated as
+  // `(from:alice AND invoice) OR receipt`, mirroring Gmail. Empty runs from
+  // leading/trailing/consecutive `OR` tokens are dropped; a query made up of
+  // nothing but `OR` tokens matches nothing, like an empty query.
+  const disjuncts: string[][] = [];
+  let currentRun: string[] = [];
+  for (const token of tokens) {
     const normalizedToken = token.trim();
     if (normalizedToken.length === 0) {
-      return true;
+      continue;
     }
-    const operatorMatch = normalizedToken.match(/^([a-z_]+):(.*)$/i);
-    const operator = operatorMatch?.[1]?.toLowerCase();
-    const operatorValue = operatorMatch?.[2];
-    if (operator === "or" && operatorValue) {
-      return matchesToken(operatorValue);
+    if (normalizedToken === "OR") {
+      if (currentRun.length > 0) {
+        disjuncts.push(currentRun);
+        currentRun = [];
+      }
+      continue;
     }
-    return matchesToken(normalizedToken);
-  });
+    currentRun.push(normalizedToken);
+  }
+  if (currentRun.length > 0) {
+    disjuncts.push(currentRun);
+  }
+  if (disjuncts.length === 0) {
+    return false;
+  }
+  return disjuncts.some((run) => run.every((token) => matchesToken(token)));
 }
 
 export function filterGmailMessagesBySearch(args: {

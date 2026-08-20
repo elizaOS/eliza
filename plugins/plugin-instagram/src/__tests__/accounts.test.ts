@@ -239,7 +239,7 @@ describe("Instagram connector accounts", () => {
     await expect(service.sendDirectMessage("thread-1", "hello")).rejects.toThrow(
       "requires a configured Instagram API client"
     );
-    await expect(service.postComment(123, "hello")).rejects.toThrow(
+    await expect(service.postComment("123", "hello")).rejects.toThrow(
       "requires a configured Instagram API client"
     );
     await expect(service.getUserInfo(456)).rejects.toThrow(
@@ -249,4 +249,66 @@ describe("Instagram connector accounts", () => {
       "requires a configured Instagram API client"
     );
   });
+
+  it("rejects media IDs with trailing junk instead of prefix-parsing them", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => 99);
+    Object.assign(service, {
+      defaultAccountId: "default",
+      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      isRunning: true,
+      postComment,
+    });
+
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+
+    await expect(
+      service.handleSendPost(runtime, {
+        text: "hello",
+        metadata: { mediaId: "123junk" },
+      } as Content)
+    ).rejects.toThrow("requires mediaId, target, or replyTo");
+    expect(postComment).not.toHaveBeenCalled();
+  });
+
+  it("preserves media IDs larger than JavaScript's safe integer range", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => "17900000000000001");
+    Object.assign(service, {
+      defaultAccountId: "default",
+      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      isRunning: true,
+      postComment,
+    });
+
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+    const mediaId = "17895695668004550";
+    const result = await service.handleSendPost(runtime, {
+      text: "hello",
+      metadata: { mediaId },
+    } as Content);
+
+    expect(postComment).toHaveBeenCalledWith(mediaId, "hello");
+    expect(result.content.metadata).toMatchObject({ instagramMediaId: mediaId });
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "0", "000", "1e3", "-1", "1.5"])(
+    "rejects non-positive or non-canonical media ID %p",
+    async (mediaId) => {
+      const service = Object.create(InstagramService.prototype) as InstagramService;
+      const postComment = vi.fn(async () => "99");
+      Object.assign(service, {
+        defaultAccountId: "default",
+        instagramConfig: { accountId: "default", username: "user", password: "password" },
+        isRunning: true,
+        postComment,
+      });
+      const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+
+      await expect(
+        service.handleSendPost(runtime, { text: "hello", metadata: { mediaId } } as Content)
+      ).rejects.toThrow("requires mediaId, target, or replyTo");
+      expect(postComment).not.toHaveBeenCalled();
+    }
+  );
 });

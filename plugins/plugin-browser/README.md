@@ -51,6 +51,23 @@ The plugin uses a pluggable target registry in `BrowserService`. Targets are sel
 
 External plugins can register additional targets by calling `BrowserService.registerTarget(target)`.
 
+### Confirmed uploads
+
+Generic `eval`, `upload`, and `realistic-upload` commands fail closed. Uploads
+must use `BrowserService.executeConfirmedUpload` with the core v2 interaction
+contract: an explicitly granted account profile, a pinned adapter advertising
+the upload action, the exact semantic action digest, and an atomically
+consume-once confirmation. A target must separately opt in through
+`executeAuthorizedUpload` and return an applied effect receipt for the exact
+surface, generation, operation, and action idempotency key. The receipt records
+only opaque session, account-grant, and resource identities; raw owner/profile
+handles and file handles are excluded.
+
+The built-in `workspace`, `bridge`, and `stagehand` targets do not yet expose a
+proof-producing upload hook, so they reject uploads before consuming a
+confirmation. A custom target must not opt in until its underlying browser or
+provider can return authoritative acceptance evidence.
+
 ### Provider
 
 `browser_workspace` — Injects the current dispatch mode (`desktop` / `web`) and a capped list of open tabs into agent context. Active when the `browser` or `web` context is selected.

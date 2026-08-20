@@ -7,6 +7,12 @@ EXTENSION_IDS = (ENV["APP_IDENTIFIER_EXTRA"] || "")
   .reject(&:empty?)
 ALL_IDS = [APP_ID, *EXTENSION_IDS].uniq
 
+def required_connect_value(name)
+  value = ENV[name].to_s.strip
+  UI.user_error!("#{name} is required") if value.empty?
+  value
+end
+
 def match_profile_mapping(type_label)
   ALL_IDS.each_with_object({}) do |bundle_id, mapping|
     mapping[bundle_id] = "match #{type_label} #{bundle_id}"
@@ -15,20 +21,32 @@ end
 
 platform :ios do
 
+  private_lane :connect_api_key do
+    app_store_connect_api_key(
+      key_id: required_connect_value("APP_STORE_API_KEY_ID"),
+      issuer_id: required_connect_value("APP_STORE_API_ISSUER_ID"),
+      key_content: required_connect_value("APP_STORE_API_KEY_P8"),
+      is_key_content_base64: false,
+      in_house: false
+    )
+  end
+
   desc "Sync certificates and provisioning profiles"
-  lane :certs do
+  lane :certs do |options|
     setup_ci if ENV["CI"]
 
     match(
       type: "appstore",
       app_identifier: ALL_IDS,
-      readonly: is_ci
+      readonly: is_ci,
+      api_key: options[:api_key] || connect_api_key
     )
   end
 
   desc "Build the iOS app for App Store submission"
-  lane :build do
-    certs
+  lane :build do |options|
+    api_key = options[:api_key] || connect_api_key
+    certs(api_key: api_key)
 
     build_app(
       workspace: "App/App.xcworkspace",
@@ -46,7 +64,8 @@ platform :ios do
 
   desc "Upload to TestFlight"
   lane :beta do
-    build
+    api_key = connect_api_key
+    build(api_key: api_key)
 
     if ENV["APP_STORE_APP_ID"].to_s.strip.empty?
       UI.important(
@@ -57,6 +76,7 @@ platform :ios do
       )
     else
       upload_to_testflight(
+        api_key: api_key,
         skip_waiting_for_build_processing: true,
         apple_id: ENV["APP_STORE_APP_ID"]
       )
@@ -65,9 +85,11 @@ platform :ios do
 
   desc "Submit to App Store for review"
   lane :release do
-    build
+    api_key = connect_api_key
+    build(api_key: api_key)
 
     upload_to_app_store(
+      api_key: api_key,
       skip_screenshots: true,
       skip_metadata: false,
       force: true,
@@ -84,7 +106,9 @@ platform :ios do
 
   desc "Upload metadata and screenshots only"
   lane :metadata do
+    api_key = connect_api_key
     upload_to_app_store(
+      api_key: api_key,
       skip_binary_upload: true,
       skip_screenshots: false,
       force: true

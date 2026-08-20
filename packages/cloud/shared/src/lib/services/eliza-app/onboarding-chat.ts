@@ -112,6 +112,12 @@ export interface TelegramPersonalAccountContinuation {
   telegramId: string;
   userId: string;
   organizationId: string;
+  /**
+   * Gateway-attested Telegram display name. The claim decision never reads
+   * it; it exists so the browser landing can name the identity it asks the
+   * user to confirm before the claim fires.
+   */
+  platformDisplayName: string;
 }
 
 export interface OnboardingChatCta {
@@ -148,6 +154,12 @@ export interface OnboardingChatResult {
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 const MAX_HISTORY_MESSAGES = 200;
+/**
+ * Claim authority is intentionally a separate session purpose from ordinary
+ * Telegram onboarding. There is no legacy fallback: callers with an older or
+ * generic session must mint a fresh claim through the trusted /connect path.
+ */
+const TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN = /^platform:telegram-claim:[0-9a-f]{64}$/;
 /**
  * Hard byte bound on a stored user message. The public route already caps
  * message length, but gateway services call runOnboardingChat directly with
@@ -451,7 +463,10 @@ export async function inspectTelegramPersonalAccountContinuation(
   continuationToken: string,
 ): Promise<TelegramPersonalAccountContinuation> {
   const sessionId = await resolveContinuationToken(continuationToken);
-  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  const session =
+    sessionId && TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN.test(sessionId)
+      ? await loadOnboardingSessionForValidation(sessionId)
+      : null;
   if (
     !session ||
     session.platform !== "telegram" ||
@@ -467,6 +482,27 @@ export async function inspectTelegramPersonalAccountContinuation(
     telegramId: session.platformUserId,
     userId: session.userId,
     organizationId: session.organizationId,
+    platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+  };
+}
+
+/**
+ * Browser-facing read-only preview of a Telegram personal-account claim
+ * continuation. The generic account-bound preview rejects these sessions by
+ * design — a claim session is bound to the DM-created account the caller may
+ * claim, never to the caller — so the confirmation landing inspects the claim
+ * authority directly. Only the Telegram identity being linked is disclosed;
+ * the bound account ids stay server-side.
+ */
+export async function previewTelegramPersonalAccountClaimContinuation(
+  continuationToken: string,
+): Promise<OnboardingContinuationPreview> {
+  const claim = await inspectTelegramPersonalAccountContinuation(continuationToken);
+  return {
+    platform: "telegram",
+    platformUserId: claim.telegramId,
+    platformDisplayName: claim.platformDisplayName,
+    returnUrl: null,
   };
 }
 

@@ -108,10 +108,12 @@ describe("canonical mobile device bridge headless boot", () => {
 				),
 			).toHaveLength(1);
 
-			await Promise.all([
-				bridge.attachMobileDeviceBridgeToServer(server),
-				bridge.attachMobileDeviceBridgeToServer(server),
-			]);
+			await expect(
+				Promise.all([
+					bridge.attachMobileDeviceBridgeToServer(server),
+					bridge.attachMobileDeviceBridgeToServer(server),
+				]),
+			).resolves.toEqual([true, true]);
 			expect(server.listenerCount("upgrade")).toBe(1);
 			const port = await listen(server);
 			socket = new WebSocket(

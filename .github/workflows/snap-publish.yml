@@ -1,4 +1,4 @@
-# SNAPCRAFT_STORE_CREDENTIALS: generate with: snapcraft export-login --snaps elizaos-app --acls package_upload,package_push,package_register -
+# SNAPCRAFT_STORE_CREDENTIALS: generate with: snapcraft export-login --snaps eliza --channels edge,beta,candidate,stable --acls package_access,package_push,package_release -
 
 name: Publish Snap to Snap Store
 
@@ -18,36 +18,16 @@ on:
         description: Git tag e.g. v2.0.1
         required: true
         type: string
+      source_sha:
+        description: Exact canonical release commit
+        required: true
+        type: string
     secrets:
-      # Marked `required: false` so this reusable workflow's secret contract
-      # validates even when SNAPCRAFT_STORE_CREDENTIALS is unset. GitHub
-      # validates the contract before any job runs, so `required: true` on an
-      # unset secret aborts a reusable caller at startup with no logs. The body's
-      # creds_check guard already skips the Store upload (build still runs) when
-      # the credential is empty.
+      # The callable contract remains optional so GitHub starts the job and the
+      # explicit preflight can report the missing environment credential. The
+      # canonical release still fails closed before any build or upload.
       SNAPCRAFT_STORE_CREDENTIALS:
         required: false
-
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Semver string e.g. 2.0.1
-        required: true
-        type: string
-      channel:
-        description: Snap Store channel (edge | beta | candidate | stable)
-        required: false
-        type: choice
-        options:
-          - stable
-          - candidate
-          - beta
-          - edge
-        default: stable
-      tag:
-        description: Git tag e.g. v2.0.1
-        required: true
-        type: string
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -56,28 +36,45 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-
-    env:
-      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    timeout-minutes: 120
+    environment:
+      name: production-release
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
           submodules: false
+
+      - name: Bind Snap build to the finalized tag
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_TAG: ${{ inputs.tag }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          test "$EXPECTED_TAG" = "v$EXPECTED_VERSION"
+          tag_sha="$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")"
+          if [ "$tag_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::Snap tag $EXPECTED_TAG resolves to $tag_sha, expected $EXPECTED_SHA."
+            exit 1
+          fi
 
       - name: Normalize runner root ownership for snapd
         uses: ./.github/actions/normalize-snapd-root
 
       - name: Check Snap Store credentials
-        id: creds_check
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
           if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
-            echo "::warning::SNAPCRAFT_STORE_CREDENTIALS not configured. Snap build will run but Store upload will be skipped."
-            echo "can_publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+            echo "::error::SNAPCRAFT_STORE_CREDENTIALS is required for the canonical store release."
+            exit 1
           fi
+          echo "can_publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Install snapcraft
         run: sudo snap install snapcraft --classic
@@ -86,9 +83,10 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          case "$VERSION" in
-            *[!0-9.]*|.*|*..*|*.) echo "::error::version must be numeric dotted, got: $VERSION"; exit 1 ;;
-          esac
+          node packages/scripts/store-release-plan.mjs \
+            --version "$VERSION" \
+            --channel "${{ inputs.channel == 'stable' && 'latest' || 'beta' }}" \
+            --source-sha "${{ inputs.source_sha }}" >/dev/null
           # Update the version in snapcraft.yaml to match the release
           sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app-core/packaging/snap/snapcraft.yaml
 
@@ -101,10 +99,15 @@ jobs:
           echo "Built: $SNAP_FILE"
           ls -la "$SNAP_FILE"
 
+      - name: Verify Snap Store credentials
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: snapcraft whoami
+
       - name: Publish to Snap Store
-        if: steps.creds_check.outputs.can_publish == 'true'
         env:
           CHANNEL: ${{ inputs.channel }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
           case "$CHANNEL" in
             stable|candidate|beta|edge) ;;
@@ -117,6 +120,6 @@ jobs:
       - name: Upload snap artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: elizaos-snap-${{ inputs.version }}
+          name: eliza-snap-${{ inputs.version }}
           path: packages/app-core/packaging/snap/*.snap
           retention-days: 30

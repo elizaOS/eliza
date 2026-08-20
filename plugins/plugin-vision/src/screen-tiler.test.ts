@@ -139,6 +139,161 @@ describe("tileScreenshot — ultra-wide 5K case", () => {
   });
 });
 
+describe("tileScreenshot — full source coverage (regression #22125)", () => {
+  // A floored inter-tile stride advanced intermediate tiles too slowly while
+  // the anchored last tile jumped to `width - tileWidth`, leaving a strip of
+  // source columns/rows present in no tile. These sizes each opened such a gap
+  // (e.g. width 5119 dropped source column 3838 entirely). Every source
+  // column and row must land inside at least one tile's cropped rect.
+  const cases: Array<{ width: number; height: number }> = [
+    { width: 5119, height: 1440 },
+    { width: 6399, height: 1440 },
+    { width: 7679, height: 2160 },
+    { width: 5120, height: 2160 },
+  ];
+  for (const { width, height } of cases) {
+    it(`covers every source column and row for ${width}x${height}`, async () => {
+      const png = await makePng(width, height);
+      const tiles = await tileScreenshot(
+        { displayId: "cov", width, height, pngBytes: png },
+        { maxEdge: 1280, overlapFraction: 0.12 },
+      );
+
+      const colCovered = new Uint8Array(width);
+      const rowCovered = new Uint8Array(height);
+      for (const t of tiles) {
+        // No tile may extend past the source bounds.
+        expect(t.sourceX).toBeGreaterThanOrEqual(0);
+        expect(t.sourceY).toBeGreaterThanOrEqual(0);
+        expect(t.sourceX + t.sourceW).toBeLessThanOrEqual(width);
+        expect(t.sourceY + t.sourceH).toBeLessThanOrEqual(height);
+        for (let x = t.sourceX; x < t.sourceX + t.sourceW; x += 1) {
+          colCovered[x] = 1;
+        }
+        for (let y = t.sourceY; y < t.sourceY + t.sourceH; y += 1) {
+          rowCovered[y] = 1;
+        }
+      }
+
+      const firstGapCol = [...colCovered].indexOf(0);
+      const firstGapRow = [...rowCovered].indexOf(0);
+      expect(
+        firstGapCol,
+        `source column ${firstGapCol} covered by no tile for ${width}x${height}`,
+      ).toBe(-1);
+      expect(
+        firstGapRow,
+        `source row ${firstGapRow} covered by no tile for ${width}x${height}`,
+      ).toBe(-1);
+    });
+  }
+
+  it("never leaves a gap between horizontally adjacent tiles", async () => {
+    // At width 5119 four 1280px-max tiles span 5120px of capacity, so only 1px
+    // of total slack is spread across three seams: positive overlap at every
+    // seam is impossible without exceeding maxEdge. The guarantee the ceil
+    // stride restores is that neighbours are contiguous-or-overlapping
+    // (overlap >= 0), which is exactly "no source column falls between tiles".
+    const width = 5119;
+    const png = await makePng(width, 1440);
+    const tiles = await tileScreenshot(
+      { displayId: "cov", width, height: 1440, pngBytes: png },
+      { maxEdge: 1280, overlapFraction: 0.12 },
+    );
+    const row0 = tiles
+      .filter((t) => t.id.startsWith("tile-0-"))
+      .sort((a, b) => a.sourceX - b.sourceX);
+    expect(row0.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < row0.length; i += 1) {
+      const prev = expectPresent(row0[i - 1], `tile-0-${i - 1}`);
+      const cur = expectPresent(row0[i], `tile-0-${i}`);
+      const overlap = prev.sourceX + prev.sourceW - cur.sourceX;
+      expect(overlap).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("never leaves a gap between vertically adjacent tiles", async () => {
+    // Transpose the formerly failing 5119px axis into the vertical direction.
+    // With floor(strideY), the third tile ends at row 3838 while the anchored
+    // last tile starts at row 3839, leaving source row 3838 uncovered.
+    const height = 5119;
+    const png = await makePng(64, height);
+    const tiles = await tileScreenshot(
+      { displayId: "cov-vertical", width: 64, height, pngBytes: png },
+      { maxEdge: 1280, overlapFraction: 0.12 },
+    );
+    const col0 = tiles.sort((a, b) => a.sourceY - b.sourceY);
+    expect(col0).toHaveLength(4);
+
+    const rowCovered = new Uint8Array(height);
+    for (const tile of col0) {
+      rowCovered.fill(1, tile.sourceY, tile.sourceY + tile.sourceH);
+    }
+    expect([...rowCovered].indexOf(0), "every source row is covered").toBe(-1);
+
+    for (let i = 1; i < col0.length; i += 1) {
+      const prev = expectPresent(col0[i - 1], `tile-${i - 1}-0`);
+      const cur = expectPresent(col0[i], `tile-${i}-0`);
+      const overlap = prev.sourceY + prev.sourceH - cur.sourceY;
+      expect(overlap, `vertical seam before tile ${i}`).toBeGreaterThanOrEqual(
+        0,
+      );
+    }
+  });
+});
+
+describe("tileScreenshot — degenerate axes and extraction bounds", () => {
+  const cases = [
+    { width: 1, height: 65, maxEdge: 64, overlapFraction: 0 },
+    { width: 1, height: 65, maxEdge: 64, overlapFraction: 0.99 },
+    { width: 65, height: 1, maxEdge: 64, overlapFraction: 0 },
+    { width: 65, height: 1, maxEdge: 64, overlapFraction: 0.99 },
+    { width: 65, height: 65, maxEdge: 64, overlapFraction: 0 },
+    { width: 127, height: 193, maxEdge: 64, overlapFraction: 0.37 },
+    { width: 130, height: 257, maxEdge: 64, overlapFraction: 0.12 },
+  ];
+
+  it.each(cases)(
+    "covers and extracts $width x $height at overlap $overlapFraction",
+    async ({ width, height, maxEdge, overlapFraction }) => {
+      const png = await makePng(width, height);
+      const tiles = await tileScreenshot(
+        { displayId: "bounds", width, height, pngBytes: png },
+        { maxEdge, overlapFraction },
+      );
+      const expectedCols = Math.ceil(width / maxEdge);
+      const expectedRows = Math.ceil(height / maxEdge);
+      expect(tiles).toHaveLength(expectedCols * expectedRows);
+
+      const colCovered = new Uint8Array(width);
+      const rowCovered = new Uint8Array(height);
+      for (const tile of tiles) {
+        expect(Number.isInteger(tile.sourceX)).toBe(true);
+        expect(Number.isInteger(tile.sourceY)).toBe(true);
+        expect(Number.isInteger(tile.sourceW)).toBe(true);
+        expect(Number.isInteger(tile.sourceH)).toBe(true);
+        expect(tile.sourceX).toBeGreaterThanOrEqual(0);
+        expect(tile.sourceY).toBeGreaterThanOrEqual(0);
+        expect(tile.sourceW).toBeGreaterThan(0);
+        expect(tile.sourceH).toBeGreaterThan(0);
+        expect(tile.sourceX + tile.sourceW).toBeLessThanOrEqual(width);
+        expect(tile.sourceY + tile.sourceH).toBeLessThanOrEqual(height);
+        expect(tile.sourceW).toBeLessThanOrEqual(maxEdge);
+        expect(tile.sourceH).toBeLessThanOrEqual(maxEdge);
+        await expect(dimsOf(tile.pngBytes)).resolves.toEqual({
+          width: tile.sourceW,
+          height: tile.sourceH,
+        });
+        colCovered.fill(1, tile.sourceX, tile.sourceX + tile.sourceW);
+        rowCovered.fill(1, tile.sourceY, tile.sourceY + tile.sourceH);
+      }
+
+      expect([...colCovered]).not.toContain(0);
+      expect([...rowCovered]).not.toContain(0);
+    },
+  );
+});
+
 describe("tileScreenshot — overlap math", () => {
   it("adjacent tiles in the same row overlap by ~overlapFraction*tileW", async () => {
     const png = await makePng(2400, 1000);
@@ -191,6 +346,23 @@ describe("tileScreenshot — overlap math", () => {
         { maxEdge: 16, overlapFraction: 0.1 },
       ),
     ).rejects.toThrow(/maxEdge/);
+  });
+
+  it("rejects an unbounded grid before decoding or extracting tiles", async () => {
+    const pngSignature = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    await expect(
+      tileScreenshot(
+        {
+          displayId: "hostile",
+          width: 20_000,
+          height: 20_000,
+          pngBytes: pngSignature,
+        },
+        { maxEdge: 64, overlapFraction: 0 },
+      ),
+    ).rejects.toMatchObject({ code: "SCREEN_TILE_BUDGET_EXCEEDED" });
   });
 });
 

@@ -238,13 +238,13 @@ export function aiEntryToPrepared(entry: AiPricingEntry): PreparedPricingEntry {
 }
 
 export function parseNumericPrice(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return value;
   }
 
   if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   return null;

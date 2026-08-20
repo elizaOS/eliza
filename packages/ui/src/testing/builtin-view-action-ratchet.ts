@@ -262,7 +262,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/WorkflowCanvas.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
-    maxMutationSites: 68,
+    maxMutationSites: 69,
     notes:
       "Automations feed, workflow canvas, and task/workflow editors write ScheduledTask records through the one scheduler; SCHEDULED_TASKS covers workflow authoring routed through chat, while TRIGGER pairs the trigger steps inside workflow editing.",
   },

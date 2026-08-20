@@ -11,8 +11,10 @@
  * logs, plugin crash diagnostics).
  */
 
+import { formatDiagnosticError } from "./utils/safe-diagnostic-error.js";
+
 export { formatError } from "@elizaos/core/client-public";
 
 export function formatErrorWithStack(err: unknown): string {
-  return err instanceof Error ? (err.stack ?? err.message) : String(err);
+  return formatDiagnosticError(err);
 }

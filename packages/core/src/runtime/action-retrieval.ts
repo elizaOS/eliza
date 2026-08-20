@@ -8,6 +8,7 @@ import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords"
 import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
+import { matchActionWildcardParts } from "./action-wildcard-glob";
 
 export type RetrievalStageName =
 	| "exact"
@@ -190,11 +191,27 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	READ_EMAIL: ["MESSAGE", "INBOX"],
 	CHECK_EMAIL: ["MESSAGE", "INBOX"],
 	CHECK_INBOX: ["MESSAGE", "INBOX"],
+	// Memory-recall candidates bind to the canonical MEMORY umbrella action.
+	RECALL_MEMORY: ["MEMORY"],
+	RECALL_MEMORIES: ["MEMORY"],
+	MEMORY_RECALL: ["MEMORY"],
+	MEMORY_SEARCH: ["MEMORY"],
+	SEARCH_MEMORIES: ["MEMORY"],
+	CHECK_MEMORY: ["MEMORY"],
 	// Terminal-shaped candidates bind to the shell surface (same F21 batch:
 	// TERMINAL_COMMAND resolved to nothing).
 	TERMINAL_COMMAND: ["SHELL", "TERMINAL_SHELL"],
 	TERMINAL: ["SHELL", "TERMINAL_SHELL"],
 	RUN_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	// "write X and run it" asks: stage-1 invents EXEC/EXECUTE spellings the
+	// simile table does not carry; unresolved, the planner ran toolless and
+	// answered with unexecuted code (live 2026-08-17: a "run this python
+	// one-liner" ask returned the code, never the output).
+	EXEC_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXECUTE_COMMAND: ["SHELL", "TERMINAL_SHELL"],
+	EXEC: ["SHELL", "TERMINAL_SHELL"],
+	RUN_SCRIPT: ["SHELL", "TERMINAL_SHELL"],
+	RUN_PYTHON: ["SHELL", "TERMINAL_SHELL"],
 	// Todo-shaped candidates hint BOTH todo owners: the personal-assistant
 	// umbrella and plugin-todos' TODO parent. Deployments load one or the
 	// other; the resolver keeps whichever is registered. Without these the
@@ -245,6 +262,36 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
 	ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
 	WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+	// Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
+	// invents CODE_*/PR spellings for repo asks ("add a one-line description to
+	// the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
+	// tj-79876bf0f950e8): CODE_EDIT resolved to nothing while CODE_PR_CREATE's
+	// CREATE token tripped the view heuristic into VIEWS, so the planner surface
+	// carried no coding tool and the turn ended on a bare re-ack — the promised
+	// PR never started. TASKS owns repo work end-to-end (clone, commits, push,
+	// PR), so the intent hint routes there; admission still passes through
+	// appendIfAllowed's role/context gates.
+	CODE_EDIT: ["TASKS"],
+	CODE_CHANGE: ["TASKS"],
+	CODE_WRITE: ["TASKS"],
+	EDIT_CODE: ["TASKS"],
+	WRITE_CODE: ["TASKS"],
+	CODE_FIX: ["TASKS"],
+	FIX_CODE: ["TASKS"],
+	FIX_BUG: ["TASKS"],
+	CODE_PR_CREATE: ["TASKS"],
+	CREATE_PR: ["TASKS"],
+	OPEN_PR: ["TASKS"],
+	SUBMIT_PR: ["TASKS"],
+	PR_CREATE: ["TASKS"],
+	PULL_REQUEST: ["TASKS"],
+	CREATE_PULL_REQUEST: ["TASKS"],
+	OPEN_PULL_REQUEST: ["TASKS"],
+	GITHUB_PR: ["TASKS"],
+	UPDATE_REPO_README: ["TASKS"],
+	GITHUB_ISSUE_FIX: ["TASKS"],
+	COMMIT_CHANGES: ["TASKS"],
+	CREATE_BRANCH: ["TASKS"],
 	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
 	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
 	FINANCE: ["OWNER_FINANCES"],
@@ -996,13 +1043,16 @@ function scoreEmbeddingTieBreaker(
 	return scores;
 }
 
-function buildCandidatePatterns(candidateActions: string[]): Array<{
-	regex: RegExp;
+type CandidatePattern = {
+	regex: { test: (value: string) => boolean };
 	namespace?: string;
 	score: number;
-}> {
-	const patterns: Array<{ regex: RegExp; namespace?: string; score: number }> =
-		[];
+};
+
+function buildCandidatePatterns(
+	candidateActions: string[],
+): CandidatePattern[] {
+	const patterns: CandidatePattern[] = [];
 
 	for (const candidateAction of candidateActions) {
 		const normalized = normalizeActionName(candidateAction);
@@ -1393,12 +1443,15 @@ function escapeRegex(value: string): string {
  * into a matcher over catalog-normalized action names. normalizeActionName
  * strips the "*" itself, so each literal segment between wildcards is
  * normalized with the real normalizer and only the star-adjacent separators
- * the hint actually wrote are re-attached afterward: "GMAIL_*" compiles to
- * ^GMAIL_.*$ (the children, not bare GMAIL or a GMAILSYNC sibling), while the
- * separator-less "GMAIL_SEND*" compiles to ^GMAIL_SEND.*$ and keeps matching
- * the exact name the glob is anchored to (#20467).
+ * the hint actually wrote are re-attached afterward: "GMAIL_*" still means
+ * GMAIL_ children (not bare GMAIL or a GMAILSYNC sibling), while the
+ * separator-less "GMAIL_SEND*" still matches the exact name the glob is
+ * anchored to (#20467). Matching is a linear scan, not `^lit.*lit.*$` regex —
+ * a model hint of many stars used to hang retrieve-actions.
  */
-function wildcardCandidateRegex(candidateAction: string): RegExp | null {
+function wildcardCandidateRegex(
+	candidateAction: string,
+): { test: (value: string) => boolean } | null {
 	const rawSegments = String(candidateAction)
 		.trim()
 		.replace(/\*+/g, "*")
@@ -1420,7 +1473,9 @@ function wildcardCandidateRegex(candidateAction: string): RegExp | null {
 	if (parts.every((part) => part === "")) {
 		return null;
 	}
-	return new RegExp(`^${parts.map((part) => escapeRegex(part)).join(".*")}$`);
+	return {
+		test: (value: string) => matchActionWildcardParts(parts, value),
+	};
 }
 
 function clampScore(value: number): number {

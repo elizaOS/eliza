@@ -92,14 +92,17 @@ describe("parseContainerBillingNumber", () => {
   });
 });
 
-describe("recordSuccessfulDailyBilling wires every NUMERIC read through the fail-closed parser", () => {
-  test("source pins all three read sites to parseContainerBillingNumber (no bare Number(...) survives)", () => {
+describe("recordSuccessfulDailyBilling wires every NUMERIC read through fail-closed boundaries", () => {
+  test("source pins balance reads to exact parsing (no bare Number(...) survives)", () => {
     // Grep-guard against a regression that reintroduces a bare `Number(<row
     // field>)` read on the billing write path. Reads the actual source (not a
     // transpiled Function.toString(), which can rename/reorder).
     const repoPath = fileURLToPath(new URL("../container-billing.ts", import.meta.url));
     const src = readFileSync(repoPath, "utf8");
-    expect(src).toContain("parseContainerBillingNumber(input.currentTotalBilled");
+    expect(src).toContain('exactBillingDecimal(lockedOrg.credit_balance, "credit_balance")');
+    expect(src).toContain(
+      'exactBillingDecimal(earningsRow.available_balance, "available_balance")',
+    );
     expect(src).toContain('parseContainerBillingNumber(org.credit_balance, "credit_balance")');
     expect(src).toContain(
       'parseContainerBillingNumber(updatedOrg.credit_balance, "credit_balance")',
@@ -107,7 +110,8 @@ describe("recordSuccessfulDailyBilling wires every NUMERIC read through the fail
     // No bare Number(...) read of a corrupt-prone NUMERIC row field survives.
     // `\bNumber\(` anchors on the global Number constructor, NOT the tail of
     // the helper name `parseContainerBillingNumber(` (which contains "Number(").
-    expect(src).not.toMatch(/\bNumber\(\s*input\.currentTotalBilled/);
+    expect(src).not.toMatch(/\bNumber\(\s*lockedOrg\.credit_balance/);
+    expect(src).not.toMatch(/\bNumber\(\s*earningsRow\.available_balance/);
     expect(src).not.toMatch(/\bNumber\(\s*org\.credit_balance/);
     expect(src).not.toMatch(/\bNumber\(\s*updatedOrg\.credit_balance/);
     // exported parser is the module's fail-closed boundary

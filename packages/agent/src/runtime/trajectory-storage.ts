@@ -63,6 +63,7 @@ import {
   type PersistedLlmCall,
   type PersistedProviderAccess,
   type PersistedTrajectory,
+  parsePersistedTrajectoryRow,
   patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
@@ -2568,6 +2569,82 @@ export class DatabaseTrajectoryLogger extends Service {
         diagnosticOnly: true,
       });
     }
+  }
+
+  /** Add an idempotent delayed reward without mutating a settled step. */
+  async applyReward(params: {
+    trajectoryId: string;
+    idempotencyKey: string;
+    reward: number;
+    component: string;
+  }): Promise<boolean> {
+    if (!Number.isFinite(params.reward)) {
+      throw new ElizaError("Trajectory reward is invalid", {
+        code: "TRAJECTORY_REWARD_INVALID",
+        context: { trajectoryId: params.trajectoryId },
+      });
+    }
+    let applied = false;
+    await enqueueStepWrite(this.runtime, params.trajectoryId, async () => {
+      if (!this.enabled) return;
+      await executeRawSqlTransaction(this.runtime, async (execute) => {
+        const result = await execute(
+          `SELECT * FROM trajectories
+            WHERE id = ${sqlQuote(params.trajectoryId)}
+              AND agent_id = ${sqlQuote(this.runtime.agentId)}
+            LIMIT 1 FOR UPDATE`,
+        );
+        const rows = extractRequiredRows(result, {
+          operation: "apply delayed trajectory reward",
+          trajectoryId: params.trajectoryId,
+        });
+        const row = rows[0] ? asRecord(rows[0]) : null;
+        if (!row) return;
+        const trajectory = parsePersistedTrajectoryRow(
+          row,
+          params.trajectoryId,
+        );
+        const keys = Array.isArray(trajectory.metadata.appliedRewardKeys)
+          ? trajectory.metadata.appliedRewardKeys.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+        if (keys.includes(params.idempotencyKey)) {
+          applied = true;
+          return;
+        }
+        trajectory.metadata.appliedRewardKeys = [
+          ...keys,
+          params.idempotencyKey,
+        ];
+        trajectory.totalReward += params.reward;
+        const componentValues = trajectory.rewardComponents.components;
+        const components =
+          componentValues === undefined
+            ? {}
+            : normalizeJsonRecord(componentValues, "rewardComponents");
+        const current = components[params.component];
+        trajectory.rewardComponents = {
+          ...trajectory.rewardComponents,
+          components: {
+            ...components,
+            [params.component]:
+              (typeof current === "number" && Number.isFinite(current)
+                ? current
+                : 0) + params.reward,
+          },
+        };
+        await execute(`UPDATE trajectories SET
+          total_reward = ${trajectory.totalReward},
+          reward_components_json = ${sqlQuote(JSON.stringify(trajectory.rewardComponents))},
+          metadata_json = ${sqlQuote(JSON.stringify(trajectory.metadata))},
+          updated_at = ${sqlQuote(new Date().toISOString())}
+          WHERE id = ${sqlQuote(params.trajectoryId)}
+            AND agent_id = ${sqlQuote(this.runtime.agentId)}`);
+        applied = true;
+      });
+    });
+    return applied;
   }
 
   async flushWriteQueue(trajectoryId?: string): Promise<void> {

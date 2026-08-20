@@ -41,6 +41,72 @@ const responseSkeleton: ResponseSkeleton = {
 };
 
 describe("AgentRuntime structured streaming", () => {
+	it("serializes structured callbacks and drains them before resolving", async () => {
+		const runtime = makeRuntime();
+		const orderedSkeleton: ResponseSkeleton = {
+			spans: [
+				{ kind: "literal", value: '{"messageToUser":' },
+				{ kind: "free-string", key: "messageToUser" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		let releaseFirst: (() => void) | undefined;
+		const firstGate = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let markFirstEntered: (() => void) | undefined;
+		const firstEntered = new Promise<void>((resolve) => {
+			markFirstEntered = resolve;
+		});
+		const received: string[] = [];
+		const raw = '{"messageToUser":"first second"}';
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			await streamingParams.onStreamChunk?.('{"messageToUser":"first ');
+			await streamingParams.onStreamChunk?.('second"}');
+			return raw;
+		});
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			handler,
+			"eliza-local-inference",
+		);
+
+		let resolved = false;
+		const resultPromise = runWithStreamingContext(
+			{
+				messageId: "message-ordered",
+				onStreamChunk: async (chunk) => {
+					received.push(chunk);
+					if (received.length === 1) {
+						markFirstEntered?.();
+						await firstGate;
+					}
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.RESPONSE_HANDLER, {
+					messages: [],
+					streamStructured: true,
+					responseSkeleton: orderedSkeleton,
+				}),
+		).then((result) => {
+			resolved = true;
+			return result;
+		});
+
+		await firstEntered;
+		await Promise.resolve();
+		expect(received).toEqual(["first "]);
+		expect(resolved).toBe(false);
+
+		releaseFirst?.();
+		expect(await resultPromise).toBe(raw);
+		expect(received).toEqual(["first ", "second"]);
+	});
+
 	it("holds local structured envelopes when no response field is approved for streaming", async () => {
 		const runtime = makeRuntime();
 		const streamed: Array<[string, string | undefined]> = [];

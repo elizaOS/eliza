@@ -68,8 +68,8 @@ and the SEV-SNP/TDX hardware-attestation requirement.
 
 | Component | Code | Infra |
 |---|---|---|
-| Control plane VM | [`packages/cloud/scripts/admin/daemons/provisioning-worker.ts`](../../../../../scripts/cloud/admin/daemons/provisioning-worker.ts) | [Terraform: `control-plane/`](./control-plane/) |
-| Agent router | [`packages/cloud/scripts/admin/daemons/agent-router.ts`](../../../../../scripts/cloud/admin/daemons/agent-router.ts) | systemd unit on control-plane VM |
+| Control plane VM | [`packages/cloud/scripts/admin/daemons/provisioning-worker.ts`](../../../../scripts/admin/daemons/provisioning-worker.ts) | [Terraform: `control-plane/`](./control-plane/) |
+| Agent router | [`packages/cloud/scripts/admin/daemons/agent-router.ts`](../../../../scripts/admin/daemons/agent-router.ts) | systemd unit on control-plane VM |
 | Data plane autoscaler | [`packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts`](../../../../shared/src/lib/services/containers/node-autoscaler.ts) | Hetzner Cloud API at runtime |
 | Sandbox provisioning | [`packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts`](../../../../shared/src/lib/services/docker-sandbox-provider.ts) | SSH from control plane to data plane |
 

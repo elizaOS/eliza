@@ -1,5 +1,5 @@
 /**
- * Multi-account prune scoping — real PGlite.
+ * Multi-account prune scoping and Google sync bounds — real PGlite.
  *
  * Every Google account names its default calendar "primary", so two connected
  * accounts produce cached events with identical (agent_id, provider, side,
@@ -26,6 +26,10 @@ import type {
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  MAX_GOOGLE_CALENDAR_EVENTS,
+  MAX_GOOGLE_CALENDAR_PAGES,
+} from "../src/service/CalendarService.js";
 import {
   type CalendarHostGate,
   CalendarRepository,
@@ -441,5 +445,163 @@ describe("CalendarService feed sync — two Google accounts, both named 'primary
     );
     expect(grantsById.get("evt-a-1")).toBe(GRANT_A.id);
     expect(grantsById.get("evt-b-1")).toBe(GRANT_B.id);
+  });
+
+  it("rejects Google Calendar event sync pagination exceeding the maximum page limit", async () => {
+    await clearEvents();
+    let pageCount = 0;
+    const originalGoogleService = runtime.getService?.("google");
+    (runtime as { getService: (name: string) => unknown }).getService = (
+      name: string,
+    ) =>
+      name === "google"
+        ? {
+            listEventPage: async () => {
+              pageCount += 1;
+              return {
+                events: [],
+                nextPageToken: `page-token-${pageCount}`,
+                nextSyncToken: null,
+              };
+            },
+          }
+        : null;
+
+    try {
+      const feed = await calendar.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          grantId: GRANT_A.id,
+          calendarId: "primary",
+          timeMin: WINDOW_MIN,
+          timeMax: WINDOW_MAX,
+          forceSync: true,
+        },
+        new Date("2026-06-02T12:00:00.000Z"),
+      );
+
+      expect(feed.state).toBe("partial");
+      expect(feed.sources[0]?.error).toMatchObject({
+        code: "GOOGLE_CALENDAR_PAGE_LIMIT_EXCEEDED",
+        message:
+          "Google Calendar event pagination exceeded maximum page limit.",
+      });
+      expect(pageCount).toBe(MAX_GOOGLE_CALENDAR_PAGES);
+    } finally {
+      (runtime as { getService: (name: string) => unknown }).getService = (
+        name: string,
+      ) => (name === "google" ? originalGoogleService : null);
+    }
+  });
+
+  it("accepts the final legal Google Calendar page and exact event limit", async () => {
+    expect(MAX_GOOGLE_CALENDAR_PAGES).toBe(1_000);
+    expect(MAX_GOOGLE_CALENDAR_EVENTS).toBe(10_000);
+    let pageCount = 0;
+    const originalGoogleService = runtime.getService?.("google");
+    (runtime as { getService: (name: string) => unknown }).getService = (
+      name: string,
+    ) =>
+      name === "google"
+        ? {
+            listEventPage: async () => {
+              pageCount += 1;
+              const isFinal = pageCount === MAX_GOOGLE_CALENDAR_PAGES;
+              return {
+                events:
+                  pageCount <= 4
+                    ? Array.from({ length: 2_500 }, (_, index) => ({
+                        id: `event-${pageCount}-${index}`,
+                        calendarId: "primary",
+                      }))
+                    : [],
+                nextPageToken: isFinal ? null : `page-token-${pageCount}`,
+                nextSyncToken: isFinal ? "sync-final" : null,
+              };
+            },
+          }
+        : null;
+
+    try {
+      const batch = await (
+        calendar as unknown as {
+          loadGoogleCalendarSyncBatch(args: {
+            accountId: string;
+            calendarId: string;
+            timeMin: string;
+            timeMax: string;
+            timeZone: string;
+          }): Promise<{ events: unknown[]; nextSyncToken: string | null }>;
+        }
+      ).loadGoogleCalendarSyncBatch({
+        accountId: "account-a",
+        calendarId: "primary",
+        timeMin: WINDOW_MIN,
+        timeMax: WINDOW_MAX,
+        timeZone: "UTC",
+      });
+
+      expect(pageCount).toBe(MAX_GOOGLE_CALENDAR_PAGES);
+      expect(batch.events).toHaveLength(MAX_GOOGLE_CALENDAR_EVENTS);
+      expect(batch.nextSyncToken).toBe("sync-final");
+    } finally {
+      (runtime as { getService: (name: string) => unknown }).getService = (
+        name: string,
+      ) => (name === "google" ? originalGoogleService : null);
+    }
+  });
+
+  it("rejects retained Google Calendar events before appending an overflowing page", async () => {
+    let pageCount = 0;
+    const originalGoogleService = runtime.getService?.("google");
+    (runtime as { getService: (name: string) => unknown }).getService = (
+      name: string,
+    ) =>
+      name === "google"
+        ? {
+            listEventPage: async () => {
+              pageCount += 1;
+              return {
+                events: Array.from(
+                  { length: pageCount <= 4 ? 2_500 : 1 },
+                  (_, index) => ({
+                    id: `event-${pageCount}-${index}`,
+                    calendarId: "primary",
+                  }),
+                ),
+                nextPageToken:
+                  pageCount === 5 ? null : `page-token-${pageCount}`,
+                nextSyncToken: null,
+              };
+            },
+          }
+        : null;
+
+    try {
+      await expect(
+        (
+          calendar as unknown as {
+            loadGoogleCalendarSyncBatch(args: {
+              accountId: string;
+              calendarId: string;
+              timeMin: string;
+              timeMax: string;
+              timeZone: string;
+            }): Promise<unknown>;
+          }
+        ).loadGoogleCalendarSyncBatch({
+          accountId: "account-a",
+          calendarId: "primary",
+          timeMin: WINDOW_MIN,
+          timeMax: WINDOW_MAX,
+          timeZone: "UTC",
+        }),
+      ).rejects.toMatchObject({ code: "GOOGLE_CALENDAR_EVENT_LIMIT_EXCEEDED" });
+      expect(pageCount).toBe(5);
+    } finally {
+      (runtime as { getService: (name: string) => unknown }).getService = (
+        name: string,
+      ) => (name === "google" ? originalGoogleService : null);
+    }
   });
 });

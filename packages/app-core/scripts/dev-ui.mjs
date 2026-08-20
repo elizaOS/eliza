@@ -266,6 +266,16 @@ const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_X_BASE",
   "ELIZA_MOCK_CALENDLY_BASE",
 ];
+// These values configure only the Capacitor renderer bundle. Letting them
+// reach the host API child makes a remote-mac iOS UI misclassify that host as
+// a remote runtime too, which suppresses its direct model-provider plugins.
+const VITE_RENDERER_ONLY_MOBILE_ENV_KEYS = [
+  "VITE_ELIZA_IOS_RUNTIME_MODE",
+  "VITE_ELIZA_MOBILE_RUNTIME_MODE",
+  "VITE_ELIZA_IOS_API_BASE",
+  "VITE_ELIZA_MOBILE_API_BASE",
+  "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
+];
 let warnedAboutStrippedDevMocks = false;
 
 function createDevChildEnv(baseEnv) {
@@ -288,6 +298,14 @@ function createDevChildEnv(baseEnv) {
     console.warn(
       `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.${cleanupHint}`,
     );
+  }
+  return nextEnv;
+}
+
+function createApiChildEnv(baseEnv) {
+  const nextEnv = createDevChildEnv(baseEnv);
+  for (const key of VITE_RENDERER_ONLY_MOBILE_ENV_KEYS) {
+    delete nextEnv[key];
   }
   return nextEnv;
 }
@@ -1200,7 +1218,7 @@ if (uiOnly) {
     ? elizaSubmoduleRoot
     : cwd;
 
-  const childEnv = createDevChildEnv(process.env);
+  const childEnv = createApiChildEnv(process.env);
   // V8 bytecode cache when the API runtime resolves to Node. Node 22.8+
   // honors it; older Node versions and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't

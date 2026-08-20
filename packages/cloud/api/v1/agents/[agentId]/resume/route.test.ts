@@ -15,6 +15,9 @@ const provision = mock(async () => ({
   sandboxRecord: { status: "running" },
 }));
 const reactivateSandboxBillingAfterFunding = mock(async () => undefined);
+const settleAccruedBillingBeforeLifecycle = mock(async () => ({
+  status: "already_billed_recently" as const,
+}));
 const checkAgentCreditGate = mock(async () => ({
   allowed: false,
   balance: 0,
@@ -30,6 +33,7 @@ mock.module("@/lib/auth/service-key-hono-worker", () => ({
 mock.module("@/db/repositories/agent-billing", () => ({
   agentBillingRepository: {
     reactivateSandboxBillingAfterFunding,
+    settleAccruedBillingBeforeLifecycle,
   },
 }));
 
@@ -64,6 +68,7 @@ describe("service agent resume route", () => {
     getAgentById.mockClear();
     provision.mockClear();
     reactivateSandboxBillingAfterFunding.mockClear();
+    settleAccruedBillingBeforeLifecycle.mockClear();
     checkAgentCreditGate.mockClear();
     checkAgentCreditGate.mockResolvedValue({
       allowed: false,
@@ -97,7 +102,7 @@ describe("service agent resume route", () => {
     expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 
-  test("reactivates billing after funded service-key resume provisions the agent", async () => {
+  test("settles accrued debt before funded service-key resume provisions the agent", async () => {
     checkAgentCreditGate.mockResolvedValueOnce({
       allowed: true,
       balance: 5,
@@ -121,9 +126,11 @@ describe("service agent resume route", () => {
       status: "running",
     });
     expect(provision).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
-    expect(reactivateSandboxBillingAfterFunding).toHaveBeenCalledWith(
+    expect(settleAccruedBillingBeforeLifecycle).toHaveBeenCalledWith(
       "cloud-agent-1",
+      "agent-org",
       expect.any(Date),
     );
+    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 });

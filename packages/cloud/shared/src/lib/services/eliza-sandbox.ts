@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   resolveRetainableAgentBackupBytes,
@@ -29,6 +30,7 @@ import {
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
@@ -3122,7 +3124,23 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
-    const provisionDockerImage = resolveManagedProvisionDockerImage(rec.docker_image);
+    // Only a port collision retries; any other failure gives up after its first
+    // attempt. `attempt` is scoped to the loop header, so the count that
+    // actually ran is mirrored here for the post-loop markError message —
+    // reporting the constant instead told operators "after 3 attempts" for a
+    // one-attempt failure and misdirected a live outage investigation (#22508).
+    let attemptsMade = 0;
+    // Whether the failure that ended the loop was a port collision (the only
+    // retryable class). Drives the "(not retryable)" marker: keying it off the
+    // attempt count instead mislabels a collision-then-hard-failure run.
+    let lastErrorRetryable = false;
+    const provisionDockerImage =
+      isWarmPoolProvision &&
+      rec.docker_image &&
+      rec.image_digest &&
+      /^sha256:[0-9a-f]{64}$/.test(rec.image_digest)
+        ? digestPinnedImageRef(rec.docker_image, rec.image_digest)
+        : resolveManagedProvisionDockerImage(rec.docker_image);
 
     // Materialize the stored env for the container: BYO secrets are encrypted
     // at rest (#11332); compatibility plaintext values pass through unchanged. A
@@ -3145,6 +3163,7 @@ export class ElizaSandboxService {
     }
 
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
+      attemptsMade = attempt;
       let handle;
 
       try {
@@ -3353,7 +3372,13 @@ export class ElizaSandboxService {
           if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
           if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
           if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-          if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+          if (dockerMeta.dockerImage) {
+            // Warm-pool rows retain the configured logical image reference so
+            // the API's exact-image claim contract can see them. Their actual
+            // immutable runtime generation is recorded by image_digest.
+            updateData.docker_image =
+              isWarmPoolProvision && rec.docker_image ? rec.docker_image : dockerMeta.dockerImage;
+          }
           // Always overwrite the digest (including null) so a re-provision
           // onto a different image clears any stale value. The reconciler
           // treats null as "unknown, wait until probe succeeds before
@@ -3618,6 +3643,7 @@ export class ElizaSandboxService {
           msg.includes("23505") ||
           msg.toLowerCase().includes("unique") ||
           msg.toLowerCase().includes("duplicate");
+        lastErrorRetryable = isUniqueConstraintError;
 
         if (isUniqueConstraintError && attempt < MAX_PROVISION_ATTEMPTS) {
           logger.info("[agent-sandbox] Port collision detected, retrying", {
@@ -3632,10 +3658,13 @@ export class ElizaSandboxService {
       }
     }
 
-    // All attempts exhausted
+    // Exhausted: either the retry budget is spent, or the last failure was not
+    // a port collision and therefore was never eligible for a retry.
+    const attemptsLabel = attemptsMade === 1 ? "1 attempt" : `${attemptsMade} attempts`;
+    const giveUpReason = lastErrorRetryable ? "" : " (not retryable)";
     await this.markError(
       rec,
-      `Provisioning failed after ${MAX_PROVISION_ATTEMPTS} attempts: ${lastError}`,
+      `Provisioning failed after ${attemptsLabel}${giveUpReason}: ${lastError}`,
     );
     return {
       success: false,
@@ -4281,6 +4310,10 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        execution: {
+          agentKey: rec.id,
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+        },
       });
       if (turn.degraded) {
         // A failed/degraded turn isn't persisted or billed — just refund the hold.
@@ -4443,6 +4476,10 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        execution: {
+          agentKey: rec.id,
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+        },
       });
       if (turn.degraded) {
         await settleReservation(0);
@@ -8229,6 +8266,8 @@ export class ElizaSandboxService {
   async executeSuspend(
     agentId: string,
     orgId: string,
+    jobId: string,
+    authorization: "user_request" | "billing_request",
   ): Promise<{ success: boolean; containerStopped: boolean; error?: string }> {
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
@@ -8255,12 +8294,112 @@ export class ElizaSandboxService {
           error: "Agent provisioning is in progress",
         } as const;
       }
-      if (rec.status === "stopped") return { success: true, containerStopped: true } as const;
+      const [stopIntent] =
+        authorization === "billing_request"
+          ? await tx
+              .select()
+              .from(agentComputeStopIntents)
+              .where(
+                and(
+                  eq(agentComputeStopIntents.agent_id, agentId),
+                  eq(agentComputeStopIntents.organization_id, orgId),
+                  inArray(agentComputeStopIntents.status, [
+                    "pending",
+                    "dispatching",
+                    "retry",
+                    "terminal_attention",
+                  ]),
+                ),
+              )
+              .for("update")
+              .limit(1)
+          : [undefined];
+      if (authorization === "billing_request" && (!stopIntent || stopIntent.job_id !== jobId)) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent billing stop intent is missing or bound to a different job",
+        } as const;
+      }
+      if (stopIntent && stopIntent.lifecycle_revision !== rec.lifecycle_revision) {
+        const supersededAt = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ status: "superseded", superseded_at: supersededAt, updated_at: supersededAt })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        return { success: true, containerStopped: false } as const;
+      }
+      if (rec.status === "stopped") {
+        if (stopIntent) {
+          const confirmedAt = new Date();
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: confirmedAt,
+              updated_at: confirmedAt,
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        }
+        return { success: true, containerStopped: true } as const;
+      }
+
+      if (authorization === "billing_request") {
+        const fundedAt = new Date();
+        const settlement =
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            orgId,
+            fundedAt,
+          );
+        if (settlement.status !== "insufficient_credits") {
+          await tx
+            .update(agentComputeStopIntents)
+            .set({ status: "superseded", superseded_at: fundedAt, updated_at: fundedAt })
+            .where(eq(agentComputeStopIntents.id, stopIntent!.id));
+          await tx
+            .update(agentSandboxes)
+            .set({
+              billing_status: "active",
+              shutdown_warning_sent_at: null,
+              scheduled_shutdown_at: null,
+              updated_at: fundedAt,
+            })
+            .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+          return { success: true, containerStopped: false } as const;
+        }
+      }
 
       let containerStopped = false;
+      const attempt = (stopIntent?.attempts ?? 0) + 1;
+      if (stopIntent) {
+        await tx
+          .update(agentComputeStopIntents)
+          .set({
+            status: "dispatching",
+            attempts: attempt,
+            provider_started_at: new Date(),
+            last_error: null,
+            updated_at: new Date(),
+          })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+      }
       if (rec.sandbox_id) {
         const stop = await this.runBoundedSandboxStopForReplacement(rec.sandbox_id);
         if (stop) {
+          if (stopIntent) {
+            const failedAt = new Date();
+            await tx
+              .update(agentComputeStopIntents)
+              .set({
+                status: attempt >= 3 ? "terminal_attention" : "retry",
+                last_error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+                next_attempt_at: new Date(failedAt.getTime() + 5 * 60 * 1000),
+                updated_at: failedAt,
+              })
+              .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          }
           return {
             success: false,
             containerStopped: false,
@@ -8274,9 +8413,22 @@ export class ElizaSandboxService {
 
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
-        SET status = 'stopped', bridge_url = NULL, health_url = NULL, updated_at = NOW()
+        SET status = 'stopped', billing_status = 'suspended',
+            scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
+            bridge_url = NULL, health_url = NULL, updated_at = NOW()
         WHERE id = ${rec.id}
       `);
+      if (stopIntent) {
+        const confirmedAt = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({
+            status: "provider_confirmed",
+            provider_confirmed_at: confirmedAt,
+            updated_at: confirmedAt,
+          })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+      }
       return { success: true, containerStopped } as const;
     });
   }
@@ -8328,6 +8480,20 @@ export class ElizaSandboxService {
       };
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
+
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
 
     const provisionResult = await this.provision(agentId, orgId);
     if (!provisionResult.success) {
@@ -8614,6 +8780,18 @@ export class ElizaSandboxService {
         error: "restoreBackupId and forceFreshBoot are mutually exclusive",
       };
     }
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
 
     if (opts?.forceFreshBoot) {
       logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
@@ -8715,6 +8893,19 @@ export class ElizaSandboxService {
         containerStopped: false,
         containerStarted: false,
         error: "Agent not found",
+      };
+    }
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
       };
     }
     if (rec.claimed_at && rec.warm_claim_credential_state === null) {

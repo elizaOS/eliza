@@ -5,13 +5,18 @@
  * package lifecycle scripts never execute), a structured
  * prerequisite error when installation is impossible, no guaranteed-to-fail
  * reinstall on every OAuth attempt (cooldown-cached failure), and the tools
- * bin dir made visible to the later bare `spawn("codex"|"claude")`.
+ * bin dir made visible to the later CLI launch.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resolveSubscriptionCliNpmInvocation,
+  runSubscriptionCliNpm,
+  subscriptionCliCommandAvailable,
+} from "../internal/subscription-cli-process.ts";
 import {
   __clearSubscriptionCliInstallFailures,
   ensureSubscriptionCli,
@@ -213,5 +218,117 @@ describe("ensureSubscriptionCli (#16518)", () => {
       }),
     ).resolves.toBeUndefined();
     expect(installs).toBe(3);
+  });
+});
+
+describe("subscription CLI Windows process boundary (#21224)", () => {
+  it("finds npm-installed .cmd shims using PATHEXT", () => {
+    const binDir = path.join(stateDir, "windows-cli-bin");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(path.join(binDir, "codex.cmd"), "@echo off\r\n");
+
+    expect(
+      subscriptionCliCommandAvailable("codex", {
+        env: { PATH: binDir, PATHEXT: ".EXE;.CMD" },
+        platform: "win32",
+      }),
+    ).toBe(true);
+    expect(
+      subscriptionCliCommandAvailable("claude", {
+        env: { PATH: binDir, PATHEXT: ".EXE;.CMD" },
+        platform: "win32",
+      }),
+    ).toBe(false);
+  });
+
+  it("uses a complete Node/npm layout and skips incomplete PATH entries", () => {
+    const incomplete = path.join(stateDir, "incomplete node");
+    const complete = path.join(stateDir, "complete node");
+    const npmCli = path.join(
+      complete,
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    mkdirSync(incomplete, { recursive: true });
+    mkdirSync(path.dirname(npmCli), { recursive: true });
+    writeFileSync(path.join(incomplete, "node.exe"), "fixture");
+    writeFileSync(path.join(complete, "node.exe"), "fixture");
+    writeFileSync(npmCli, "fixture");
+
+    const invocation = resolveSubscriptionCliNpmInvocation(
+      ["install", "package-fixture"],
+      {
+        env: {
+          PATH: `"${incomplete}"${path.delimiter}"${complete}"`,
+        },
+        platform: "win32",
+      },
+    );
+
+    expect(invocation).toEqual({
+      command: path.join(complete, "node.exe"),
+      args: [npmCli, "install", "package-fixture"],
+    });
+  });
+
+  it("rejects an incomplete Windows npm layout before starting a child", () => {
+    const incomplete = path.join(stateDir, "npm-without-node");
+    const npmCli = path.join(
+      incomplete,
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    mkdirSync(path.dirname(npmCli), { recursive: true });
+    writeFileSync(npmCli, "fixture");
+
+    expect(() =>
+      resolveSubscriptionCliNpmInvocation(["install"], {
+        env: { PATH: incomplete },
+        platform: "win32",
+      }),
+    ).toThrow("No complete Windows Node.js/npm installation");
+  });
+
+  it("keeps the direct npm command on Unix", () => {
+    expect(
+      resolveSubscriptionCliNpmInvocation(["install", "package-fixture"], {
+        platform: "linux",
+      }),
+    ).toEqual({
+      command: "npm",
+      args: ["install", "package-fixture"],
+    });
+  });
+
+  it("passes the resolved Windows argv and timeout to the executor", async () => {
+    const nodeDir = path.join(stateDir, "executable node");
+    const npmCli = path.join(
+      nodeDir,
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    mkdirSync(path.dirname(npmCli), { recursive: true });
+    writeFileSync(path.join(nodeDir, "node.exe"), "fixture");
+    writeFileSync(npmCli, "fixture");
+    const execute = vi.fn(async () => undefined);
+
+    await runSubscriptionCliNpm(["install", "package-fixture"], {
+      env: { PATH: nodeDir },
+      execute,
+      platform: "win32",
+      timeout: 1234,
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      path.join(nodeDir, "node.exe"),
+      [npmCli, "install", "package-fixture"],
+      { timeout: 1234 },
+    );
   });
 });

@@ -120,15 +120,14 @@ jobs:
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
-    # The three bounded remote phases (5m prerequisites, 40m deploy including
-    # a possible wait for an orphaned prior SSH process, 5m health) can each
-    # use their ceiling without the enclosing job becoming the first timeout;
-    # the remaining five minutes cover action startup and teardown.
-    timeout-minutes: 55
+    # Every pre-SSH step has its own fence (38m worst case total). The three
+    # bounded remote phases (5m prerequisites, 40m deploy including a possible
+    # wait for an orphaned prior SSH process, 5m health) can then each use their
+    # ceiling without the enclosing job becoming the first timeout; the
+    # remaining seven minutes cover action startup and teardown.
+    timeout-minutes: 95
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
-      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
-      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
       DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
       # Headscale wiring for the provisioning worker (the CONSUMER of the
@@ -138,17 +137,14 @@ jobs:
       # the protected environment below and stays loopback-only; it is not an
       # operator variable that can redirect the protected bearer key.
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
-      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
-      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
       # Sandbox-registry Redis (TCP redis:// proxy, sandbox-reachable — never a
       # *.railway.internal host) so provisioned sandboxes self-register and
       # Discord/Telegram inbound routing works (#8621 / #8756). Reconciled into
       # /opt/eliza/cloud/.env.local the same way as HEADSCALE_*. This integration
       # remains optional and skip-empty preserves a hand-set value when absent.
-      SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
       # Cloud database DSN for the provisioning worker + agent router. Same
       # fallback chain as the migrator jobs (cloud-cf-deploy.yml /
       # cloud deployment) so the CP daemon always resolves the exact
@@ -157,14 +153,12 @@ jobs:
       # the CP silently kept polling the abandoned Neon DB for 3 weeks
       # (#15160). The deploy preflight now rejects an absent value before SSH;
       # the host can no longer silently preserve a stale hand-set database.
-      DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
       # Field-encryption root secret used to unwrap per-org DEKs for encrypted
       # agent environment variables. Must match the Cloudflare Worker secret:
       # the Worker writes encrypted env vars, and this provisioning worker
       # decrypts them while creating the agent container (#15385). Cloudflare
       # never reveals an existing value, so an absent GitHub secret preserves the
       # host value; the remote preflight verifies only that the name is populated.
-      SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
       # Operator pin for the canonical managed-agent image
       # (containersEnv.defaultAgentImageOverride; falls back to
       # ghcr.io/elizaos/eliza:stable when unset everywhere). This pin decides
@@ -198,8 +192,13 @@ jobs:
     steps:
       - name: Validate canonical deploy configuration and shared secrets
         id: deploy_config
+        timeout-minutes: 2
         env:
           TARGET_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+          DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
         run: |
           set -euo pipefail
 
@@ -257,13 +256,94 @@ jobs:
           echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
+      # This deploy workflow runs independently of Cloud CF. Bind every worker
+      # activation to the canonical migration runner from the exact immutable
+      # deployment snapshot before the first SSH mutation. A failed install,
+      # missing protected DSN, invalid ledger, or failed migration stops here
+      # while the currently running host checkout and daemons remain untouched.
+      - name: Checkout exact deployment source for migration gate
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.determine-env.outputs.deployment_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact migration source
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 1
+        env:
+          EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          [ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
+            echo "::error::Migration checkout resolved $actual_sha, expected $EXPECTED_DEPLOY_SHA"
+            exit 1
+          }
+          [ -z "$(git status --porcelain)" ] || {
+            echo "::error::Migration checkout is not clean"
+            exit 1
+          }
+
+      - name: Setup Node for migration gate
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun for migration gate
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 5
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install exact migration dependencies
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if [ "$attempt" -eq 3 ]; then
+              bun install --frozen-lockfile --no-save --ignore-scripts --verbose && exit 0
+            else
+              bun install --frozen-lockfile --no-save --ignore-scripts && exit 0
+            fi
+            echo "bun install attempt $attempt failed; retrying in 10s..."
+            sleep 10
+          done
+          exit 1
+
+      - name: Run exact-SHA canonical database migrations
+        if: steps.deploy_config.outputs.configured == 'true'
+        timeout-minutes: 10
+        env:
+          # Resolve only from the already-selected protected environment. The
+          # value is passed directly to the migrator and is never printed.
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          [ -n "${DATABASE_URL//[[:space:]]/}" ] || {
+            echo "::error::Protected DATABASE_URL is required before provisioning-worker deploy"
+            exit 1
+          }
+          node packages/shared/scripts/generate-keywords.mjs
+          bun run db:cloud:migrate
+
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
-          host: ${{ env.DEPLOY_HOST }}
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
-          key: ${{ env.DEPLOY_SSH_KEY }}
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
           script: |
             set -euo pipefail
@@ -302,11 +382,17 @@ jobs:
 
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
+        env:
+          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+          CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
+          SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
-          host: ${{ env.DEPLOY_HOST }}
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
-          key: ${{ env.DEPLOY_SSH_KEY }}
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           # Preserve setup/build headroom plus one prior deploy's bounded lock
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
@@ -606,9 +692,9 @@ jobs:
         if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
-          host: ${{ env.DEPLOY_HOST }}
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
-          key: ${{ env.DEPLOY_SSH_KEY }}
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
           envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
           script: |
@@ -691,15 +777,18 @@ jobs:
                   fi
                   ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
                   : "${ROUTER_PORT:=3458}"
-                  if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
+                  if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1 && \
+                     curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/readyz" >/dev/null 2>&1; then
                     PUBLIC_HEALTH=""
+                    PUBLIC_READINESS=""
                     public_route_ok=false
                     for public_attempt in 1 2 3; do
-                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz"); then
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz") && \
+                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz"); then
                         public_route_ok=true
                         break
                       fi
-                      echo "Canonical /healthz attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
                       sleep 2
                     done
                     if [ "$public_route_ok" != "true" ]; then
@@ -712,10 +801,15 @@ jobs:
                       report_public_route_failure
                       exit 1
                     fi
-                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical /healthz OK) on attempt $attempt."
+                    if ! printf '%s' "$PUBLIC_READINESS" | validate_public_health_payload; then
+                      echo "::error::Canonical agent-router host returned an unexpected readiness payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      report_public_route_failure
+                      exit 1
+                    fi
+                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical health/readiness OK) on attempt $attempt."
                     exit 0
                   fi
-                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but /healthz not ready on port ${ROUTER_PORT}."
+                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
                   sleep 5
                   continue
                 fi

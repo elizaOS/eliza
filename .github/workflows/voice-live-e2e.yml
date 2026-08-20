@@ -1,16 +1,18 @@
 name: Voice Live E2E
 
 # Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
-# (silent-WAV TTS, shimmed STT transcript), so genuinely-real voice coverage —
-# real speech synthesis + real transcription with real models — lives in this
-# self-hosted model-heavy nightly / workflow_dispatch lane.
+# (silent-WAV TTS, shimmed STT transcript), so live service coverage and native
+# component compatibility evidence live in this model-heavy nightly /
+# workflow_dispatch lane. Product-runtime ASR proof additionally requires the
+# Gemma release-authority job below to pass.
 #
 # What it proves (no mocks at any stage):
 #   - Live Railway voice contract: the free-cloud Kokoro TTS + Whisper STT
 #     services (packages/cloud/services/voice-*) satisfy the exact request shapes
 #     the cloud-api voice routes send, so a dead/drifted service is a red run.
-#   - Real fused ASR: the provisioned libelizainference + ASR bundle
-#     transcribes real speech.
+#   - Pre-Gemma fused ASR compatibility: the provisioned libelizainference +
+#     retired compatibility bundle transcribes real speech at the FFI boundary.
+#     This is explicitly not product-runtime ASR evidence.
 #   - Real fused Kokoro TTS: the provisioned libelizainference loads the
 #     published Kokoro GGUF + voice .bin and synthesizes audible PCM.
 #   - Optional mixed round-trip: when cloud voice/LLM keys are present, real
@@ -111,6 +113,29 @@ env:
   BUN_VERSION: "1.3.14"
   NODE_OPTIONS: "--experimental-sqlite"
 jobs:
+  # Product truth boundary (#17477): the native component smokes below still
+  # exercise retired pre-Gemma assets directly through bun:ffi. They remain
+  # useful ABI compatibility evidence, but the workflow must be red until the
+  # active release publishes an immutable Gemma model/projector pair that the
+  # product runtime can accept. This job never falls back to an older release.
+  voice-product-asr-release:
+    name: Product runtime Gemma ASR release authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Require immutable Gemma ASR model and projector
+        run: bun packages/scripts/verify-voice-product-asr-release.mjs --github-annotations
+
   voice-platform-matrix-index:
     name: Canonical voice matrix index
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -233,6 +258,15 @@ jobs:
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
 
+      - name: Install browser system-audio loopback
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils ffmpeg
+          pulseaudio --start
+          pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
+          pactl set-default-sink eliza_voice_evidence
+
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
@@ -251,6 +285,34 @@ jobs:
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
+      - name: Record visible mic, silence, and TTS-drop failure cells
+        env:
+          ELIZA_VOICE_LIVE_RAILWAY: ""
+        run: |
+          set -euo pipefail
+          bun run voice:matrix -- \
+            --run \
+            --require-green \
+            --platform web.failure-paths \
+            --out "$RUNNER_TEMP/voice-web-failures-matrix"
+          cp -R e2e-recordings/app/test-results "$RUNNER_TEMP/voice-web-failure-results"
+
+      - name: Start real browser system-output capture
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/voice-web-live"
+          echo "VOICE_LOOPBACK_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+          ffmpeg -y -v error \
+            -f pulse -i eliza_voice_evidence.monitor \
+            -ac 2 -ar 48000 \
+            "$RUNNER_TEMP/voice-web-live/system-loopback.wav" &
+          echo "VOICE_LOOPBACK_PID=$!" >> "$GITHUB_ENV"
+          sleep 1
+          if ! kill -0 "$!" 2>/dev/null; then
+            echo "::error::Pulse monitor recorder exited before the browser lane started."
+            exit 1
+          fi
+
       - name: Run the provisioned live browser matrix cell
         env:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/backend.log
@@ -262,6 +324,44 @@ jobs:
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-matrix"
 
+      - name: Stop browser system-output capture
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -n "${VOICE_LOOPBACK_PID:-}" ]; then
+            kill -INT "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+            for _ in {1..50}; do
+              kill -0 "$VOICE_LOOPBACK_PID" 2>/dev/null || break
+              sleep 0.1
+            done
+            if kill -0 "$VOICE_LOOPBACK_PID" 2>/dev/null; then
+              kill -KILL "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+              wait "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+              echo "::error::Browser loopback recorder required forced termination."
+              exit 1
+            fi
+            wait "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+          fi
+          jq -n \
+            --argjson startedAtMs "$VOICE_LOOPBACK_STARTED_AT_MS" \
+            --argjson finishedAtMs "$(date +%s%3N)" \
+            '{source:"pulse-monitor",startedAtMs:$startedAtMs,finishedAtMs:$finishedAtMs}' \
+            > "$RUNNER_TEMP/voice-web-live/system-loopback-clock.json"
+
+      - name: Finalize and validate audible browser evidence
+        env:
+          ELIZA_VOICE_EVIDENCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/app voice:evidence -- web \
+            --results e2e-recordings/app/test-results \
+            --failures "$RUNNER_TEMP/voice-web-failure-results" \
+            --loopback "$RUNNER_TEMP/voice-web-live/system-loopback.wav" \
+            --loopback-clock "$RUNNER_TEMP/voice-web-live/system-loopback-clock.json" \
+            --backend "$RUNNER_TEMP/voice-web-live/backend.log" \
+            --matrix "$RUNNER_TEMP/voice-web-live-matrix/voice-matrix.json" \
+            --out "$RUNNER_TEMP/voice-web-final"
+
       - name: Upload web Railway voice evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -271,6 +371,9 @@ jobs:
             ${{ runner.temp }}/voice-web-live-ungated
             ${{ runner.temp }}/voice-web-live-matrix
             ${{ runner.temp }}/voice-web-live
+            ${{ runner.temp }}/voice-web-final
+            ${{ runner.temp }}/voice-web-failures-matrix
+            ${{ runner.temp }}/voice-web-failure-results
             packages/app/playwright-report/
             packages/app/test-results/
             e2e-recordings/app/test-results/
@@ -357,7 +460,7 @@ jobs:
           if-no-files-found: error
 
   voice-roundtrip:
-    name: Real fused ASR + optional mixed round-trip (self-hosted)
+    name: Pre-Gemma ASR compatibility FFI + optional mixed round-trip (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
@@ -365,8 +468,9 @@ jobs:
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-    # Hard live lane: the fused ASR smoke always runs against self-provisioned
-    # assets — a staging or transcription failure is a red job, never a skip.
+    # Hard component lane: the fused ASR smoke always runs against the pinned
+    # pre-Gemma compatibility assets. The independent product-release job keeps
+    # the workflow red until the supported Gemma pair exists.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -401,12 +505,12 @@ jobs:
           name: voice-fused-lib-linux-x64-cpu
           path: ${{ runner.temp }}/fused-lib
 
-      - name: Stage real voice assets (fused lib + pinned bundle)
+      - name: Stage voice compatibility assets (fused lib + pinned bundle)
         uses: ./.github/actions/stage-voice-real-assets
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
 
-      - name: Real fused ASR smoke (bun:ffi)
+      - name: Pre-Gemma ASR compatibility FFI smoke (bun:ffi)
         run: bun run --cwd plugins/plugin-local-inference test:asr:real
 
       # Designed key-gated step: the mixed round-trip crosses two external
@@ -419,10 +523,10 @@ jobs:
       - name: Note skipped mixed round-trip (keys absent)
         if: env.ELEVENLABS_API_KEY == '' || env.CEREBRAS_API_KEY == ''
         run: |
-          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → local-ASR → cloud-LLM round-trip step did not run. The fused ASR smoke above still ran against real models."
+          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → compatibility-ASR → cloud-LLM round-trip step did not run. The pre-Gemma FFI component smoke above is not product-runtime ASR proof."
 
   voice-acoustic-matrix:
-    name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
+    name: Real acoustic components + pre-Gemma ASR compatibility matrix (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
@@ -496,7 +600,7 @@ jobs:
           name: voice-fused-lib-linux-x64-cpu
           path: ${{ runner.temp }}/fused-lib
 
-      - name: Stage real voice assets (fused lib + pinned bundle)
+      - name: Stage voice compatibility assets (fused lib + pinned bundle)
         uses: ./.github/actions/stage-voice-real-assets
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
@@ -548,8 +652,9 @@ jobs:
 
       # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
       # workers make every one of them skip — a green-skip lie this lane bans.
-      # Under `bun test` all 12 tests execute against the staged fused lib.
-      - name: Real fused FFI test lanes (bun:ffi)
+      # Under `bun test` all 12 tests execute against the staged fused lib. The
+      # ASR row is compatibility-only until the product release gate is green.
+      - name: Fused component compatibility FFI test lanes (bun:ffi)
         run: |
           set -euo pipefail
           bun test \
@@ -563,7 +668,7 @@ jobs:
           # a green-skip lie as a full-lane skip, so it fails the same way.
           if grep -Eq "(^| )0 pass" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log" \
             || grep -Eq "(^| )[1-9][0-9]* skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
-            echo "::error title=Fused FFI lanes skipped::one or more real FFI suite cells did not execute — staging or bun:ffi is broken"
+            echo "::error title=Fused FFI lanes skipped::one or more compatibility FFI suite cells did not execute — staging or bun:ffi is broken"
             exit 1
           fi
 
@@ -578,12 +683,22 @@ jobs:
   voice-macos-electrobun-matrix:
     name: macOS Electrobun live-voice matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_macos_electrobun) || vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY == '1' }}
-    runs-on: macos-15
+    # Physical microphone and speaker-loopback acceptance cannot run on a
+    # GitHub-hosted VM. The ready gate is meaningful only on the owner-operated
+    # hardware runner named by this label set. Device variables use ffmpeg's
+    # avfoundation indices (`ffmpeg -f avfoundation -list_devices true -i ""`).
+    runs-on: ${{ fromJSON(vars.ELIZA_VOICE_MACOS_RUNNER_LABELS || '["self-hosted","macOS","ARM64","eliza","voice-hardware"]') }}
     timeout-minutes: 90
     env:
       ELIZA_VOICE_MACOS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY }}
-      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_MACOS_PACKAGED_LAUNCHER_PATH }}
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
+      ELIZA_VOICE_HARDWARE_SCREEN_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SCREEN_DEVICE }}
+      ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_MIC_DEVICE }}
+      ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_SPEAKER_DEVICE_ID }}
+      ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_MACOS_BACKEND_LOG }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -606,28 +721,60 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run macOS Electrobun matrix
+      - name: Run macOS Electrobun matrix inside synchronized hardware capture
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix"
+          bun run --cwd packages/app voice:evidence:desktop:capture -- \
+            --platform darwin \
+            --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
+            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix"
+
+      - name: Finalize real macOS microphone and speaker evidence
+        env:
+          ELIZA_VOICE_EVIDENCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          CELL="$RUNNER_TEMP/voice-macos-electrobun-matrix/macos.electrobun.live-roundtrip"
+          bun run --cwd packages/app voice:evidence -- desktop \
+            --report "$CELL/voice-desktop-selftest-darwin.json" \
+            --trajectory "$CELL/voice-desktop-selftest-darwin-trajectory.json" \
+            --backend "$RUNNER_TEMP/voice-macos-hardware-capture/backend-session.log" \
+            --screen "$RUNNER_TEMP/voice-macos-hardware-capture/screen.mp4" \
+            --mic "$RUNNER_TEMP/voice-macos-hardware-capture/microphone.wav" \
+            --speaker "$RUNNER_TEMP/voice-macos-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-darwin-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-darwin-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-darwin-tts.audio" \
+            --capture-provenance "$RUNNER_TEMP/voice-macos-hardware-capture/capture-provenance.json" \
+            --out "$RUNNER_TEMP/voice-macos-electrobun-final"
 
       - name: Upload macOS Electrobun matrix
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-macos-electrobun-matrix
-          path: ${{ runner.temp }}/voice-macos-electrobun-matrix
+          path: |
+            ${{ runner.temp }}/voice-macos-electrobun-matrix
+            ${{ runner.temp }}/voice-macos-hardware-capture
+            ${{ runner.temp }}/voice-macos-electrobun-final
           if-no-files-found: error
 
   voice-windows-electrobun-matrix:
     name: Windows Electrobun live-voice matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_windows_electrobun) || vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY == '1' }}
-    runs-on: windows-2025
+    # Windows device variables are exact dshow audio names from
+    # `ffmpeg -list_devices true -f dshow -i dummy`.
+    runs-on: ${{ fromJSON(vars.ELIZA_VOICE_WINDOWS_RUNNER_LABELS || '["self-hosted","Windows","X64","eliza","voice-hardware"]') }}
     timeout-minutes: 90
     env:
       ELIZA_VOICE_WINDOWS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY }}
-      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_WINDOWS_PACKAGED_LAUNCHER_PATH }}
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
+      ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_MIC_DEVICE }}
+      ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_SPEAKER_DEVICE_ID }}
+      ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_WINDOWS_BACKEND_LOG }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -650,18 +797,44 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run Windows Electrobun matrix
+      - name: Run Windows Electrobun matrix inside synchronized hardware capture
         shell: bash
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix"
+          bun run --cwd packages/app voice:evidence:desktop:capture -- \
+            --platform win32 \
+            --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
+            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix"
+
+      - name: Finalize real Windows microphone and speaker evidence
+        shell: bash
+        env:
+          ELIZA_VOICE_EVIDENCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          CELL="$RUNNER_TEMP/voice-windows-electrobun-matrix/windows.electrobun.live-roundtrip"
+          bun run --cwd packages/app voice:evidence -- desktop \
+            --report "$CELL/voice-desktop-selftest-win32.json" \
+            --trajectory "$CELL/voice-desktop-selftest-win32-trajectory.json" \
+            --backend "$RUNNER_TEMP/voice-windows-hardware-capture/backend-session.log" \
+            --screen "$RUNNER_TEMP/voice-windows-hardware-capture/screen.mp4" \
+            --mic "$RUNNER_TEMP/voice-windows-hardware-capture/microphone.wav" \
+            --speaker "$RUNNER_TEMP/voice-windows-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-win32-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-win32-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-win32-tts.audio" \
+            --capture-provenance "$RUNNER_TEMP/voice-windows-hardware-capture/capture-provenance.json" \
+            --out "$RUNNER_TEMP/voice-windows-electrobun-final"
 
       - name: Upload Windows Electrobun matrix
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: voice-windows-electrobun-matrix
-          path: ${{ runner.temp }}/voice-windows-electrobun-matrix
+          path: |
+            ${{ runner.temp }}/voice-windows-electrobun-matrix
+            ${{ runner.temp }}/voice-windows-hardware-capture
+            ${{ runner.temp }}/voice-windows-electrobun-final
           if-no-files-found: error
 
   voice-ios-matrix:

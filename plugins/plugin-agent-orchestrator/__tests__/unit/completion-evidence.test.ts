@@ -71,7 +71,7 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
     });
     expect(evidence).toContain("## VERIFIED URLS");
     expect(evidence).toMatch(
-      /http:\/\/localhost:3000\/app \(LOOPBACK — not publicly reachable\)/,
+      /http:\/\/localhost:3000\/app \(loopback probe — local serving confirmed by the orchestrator\)/,
     );
     expect(evidence).toContain("https://app.example.com");
     // The public URL line must NOT carry the loopback flag.
@@ -158,8 +158,12 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
       })),
       artifacts: [{ artifactType: "screenshot", title: "s", ref: "/x.png" }],
     });
-    expect(evidence.length).toBeLessThanOrEqual(8_100);
-    expect(evidence).toContain("[evidence truncated]");
+    // #21240 raised MAX_EVIDENCE_CHARS to 24_000 (plus the truncation marker).
+    // Oversized individual fields are clamped per-section ("[truncated]")
+    // before the global "[evidence truncated]" cap can fire, so assert the
+    // bound plus the per-section marker this fixture actually trips.
+    expect(evidence.length).toBeLessThanOrEqual(24_100);
+    expect(evidence).toContain("[truncated]");
   });
 });
 
@@ -198,7 +202,7 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
     expect(evidence).toContain("0 errors");
     expect(evidence).toContain("## VERIFIED URLS");
     expect(evidence).toContain("https://app.example.com");
-    expect(evidence).toMatch(/http:\/\/localhost:3000 \(LOOPBACK/);
+    expect(evidence).toMatch(/http:\/\/localhost:3000 \(loopback probe/);
     expect(evidence).toContain("## ARTIFACTS");
     expect(evidence).toContain("[screenshot] screenshot — /tmp/shots/home.png");
     expect(evidence).toContain(
@@ -230,10 +234,12 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
   });
 
   it("keeps an oversized appended section inside the evidence cap", () => {
+    // #21240 raised MAX_EVIDENCE_CHARS to 24_000; oversize accordingly so the
+    // clamp is actually exercised.
     const evidence = appendCompletionEvidenceSection(
       "existing",
-      "x".repeat(20_000),
+      "x".repeat(40_000),
     );
-    expect(evidence.length).toBeLessThanOrEqual(8_000);
+    expect(evidence.length).toBeLessThanOrEqual(24_000);
   });
 });

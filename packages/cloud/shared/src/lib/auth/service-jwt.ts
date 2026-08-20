@@ -11,6 +11,7 @@
 import * as jose from "jose";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { validateJwtLifetime } from "./jwt-lifetime";
 import { STAGING_SESSION_TOKEN_TYP } from "./staging-session-binding";
 
 export interface ServiceJwtPayload {
@@ -28,6 +29,7 @@ const AUDIENCE_ENV_KEY = "ELIZA_SERVICE_JWT_AUDIENCE";
  * call; an hour covers the mint→verify round trip with clock-skew headroom.
  */
 const MAX_SERVICE_JWT_TTL_SECONDS = 3600;
+const SERVICE_JWT_CLOCK_TOLERANCE_SECONDS = 5 * 60;
 
 let _secret: Uint8Array | null = null;
 let _secretRaw: string | null = null;
@@ -71,6 +73,7 @@ export async function verifyServiceJwt(
   try {
     const { payload, protectedHeader } = await jose.jwtVerify(token, secret, {
       algorithms: ["HS256"],
+      clockTolerance: SERVICE_JWT_CLOCK_TOLERANCE_SECONDS,
       ...(issuer ? { issuer } : {}),
       ...(audience ? { audience } : {}),
     });
@@ -89,12 +92,12 @@ export async function verifyServiceJwt(
     // one would never expire. Service tokens are short-lived S2S credentials:
     // require an expiry and cap its horizon so a leaked token's usefulness is
     // bounded.
-    if (typeof payload.exp !== "number") {
-      logger.warn("[service-jwt] Rejected token without an exp claim");
-      return null;
-    }
-    if (payload.exp * 1000 - Date.now() > MAX_SERVICE_JWT_TTL_SECONDS * 1000) {
-      logger.warn("[service-jwt] Rejected token whose TTL exceeds the service maximum");
+    const lifetime = validateJwtLifetime(payload, {
+      maxTtlSeconds: MAX_SERVICE_JWT_TTL_SECONDS,
+      clockToleranceSeconds: SERVICE_JWT_CLOCK_TOLERANCE_SECONDS,
+    });
+    if (!lifetime.valid) {
+      logger.warn(`[service-jwt] Rejected token: ${lifetime.reason}`);
       return null;
     }
 

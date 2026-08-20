@@ -183,6 +183,34 @@ export const embedFrameAncestors = (platform: string | null): string =>
     ? EMBED_FRAME_ANCESTORS[platform]
     : EMBED_FRAME_ANCESTORS_DENY;
 
+/**
+ * Replace only the `frame-ancestors` directive inside an existing CSP string,
+ * preserving every other directive. The `/embed` route must relax framing
+ * without dropping the rest of the edge policy (the pinned
+ * `connect-src`/`frame-src`/`img-src` allowlists from `public/_headers`) —
+ * and appending a second CSP header would not work either, because multiple
+ * policies intersect (`'self' ∩ <platform>` denies all framing).
+ */
+export const swapCspFrameAncestors = (
+  csp: string,
+  frameAncestorsDirective: string,
+): string => {
+  const directives = csp
+    .split(";")
+    .map((directive) => directive.trim())
+    .filter((directive) => directive.length > 0);
+  const index = directives.findIndex(
+    (directive) =>
+      directive.split(/\s+/, 1)[0]?.toLowerCase() === "frame-ancestors",
+  );
+  if (index >= 0) {
+    directives[index] = frameAncestorsDirective;
+  } else {
+    directives.push(frameAncestorsDirective);
+  }
+  return directives.join("; ");
+};
+
 const isEmbedPath = (pathname: string): boolean =>
   pathname === "/embed" || pathname.startsWith("/embed/");
 
@@ -215,13 +243,20 @@ export const onRequest = async (
   }
 
   // Serve the same SPA bundle, but override the frame embedding policy so the
-  // page renders inside the matched platform's iframe. The conflicting
-  // `X-Frame-Options` header (which has no allowlist syntax) is dropped so it
-  // cannot veto the CSP `frame-ancestors` directive.
+  // page renders inside the matched platform's iframe. Only the
+  // `frame-ancestors` value inside the inherited `_headers` CSP is swapped —
+  // the rest of the edge policy (connect-src/frame-src/img-src allowlists)
+  // must survive on a surface designed to run inside third-party iframes. The
+  // conflicting `X-Frame-Options` header (which has no allowlist syntax) is
+  // dropped so it cannot veto the CSP `frame-ancestors` directive.
   const headers = new Headers(response.headers);
+  const frameAncestors = embedFrameAncestors(url.searchParams.get("platform"));
+  const inheritedCsp = headers.get("Content-Security-Policy");
   headers.set(
     "Content-Security-Policy",
-    embedFrameAncestors(url.searchParams.get("platform")),
+    inheritedCsp
+      ? swapCspFrameAncestors(inheritedCsp, frameAncestors)
+      : frameAncestors,
   );
   headers.delete("X-Frame-Options");
 

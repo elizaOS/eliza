@@ -4,12 +4,15 @@
  * event, persistence of inbound/outbound conversation memories, multi-page
  * catch-up before the durable cursor advances, explicit-rejection retries,
  * and at-most-once settlement across ambiguous sends and receipt-store loss.
+ * The delivery tests opt into `TWITTER_DM_POLICY=open`; the closing block
+ * covers the default fail-closed pairing gate itself (duck-typed
+ * PairingService, real core `checkPairingAllowed`).
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
-import { TwitterDirectMessageClient } from "./direct-messages";
+import { isGroupDmEvent, TwitterDirectMessageClient } from "./direct-messages";
 import type { TwitterClientState } from "./types";
 
 function authenticatedTwitterClient(
@@ -45,6 +48,24 @@ function deferred<T>() {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("X DM conversation classification", () => {
+  it("recognizes current MessageCreate group IDs without participant_ids", () => {
+    expect(
+      isGroupDmEvent({
+        dm_conversation_id: "1582103724607971328",
+        event_type: "MessageCreate",
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps current one-to-one IDs and unknown shapes behind the DM gate", () => {
+    expect(isGroupDmEvent({ dm_conversation_id: "42-9001" })).toBe(false);
+    expect(isGroupDmEvent({ dm_conversation_id: "unexpected-shape" })).toBe(
+      false,
+    );
+  });
 });
 
 describe("TwitterDirectMessageClient", () => {
@@ -112,6 +133,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
       TWITTER_PERSONAL_DM_ROUTER_URL:
         "https://cloud.eliza.app/api/v1/twitter/personal-message",
@@ -195,6 +217,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
       TWITTER_PERSONAL_DM_ROUTER_URL:
         "https://cloud.eliza.app/api/v1/twitter/personal-message",
@@ -319,6 +342,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState;
     const dmClient = new TwitterDirectMessageClient(client, runtime, state);
@@ -443,6 +467,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState;
     const dmClient = new TwitterDirectMessageClient(client, runtime, state);
@@ -520,6 +545,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState;
     const dmClient = new TwitterDirectMessageClient(client, runtime, state);
@@ -613,6 +639,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -681,6 +708,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -749,6 +777,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -817,6 +846,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -890,6 +920,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -954,6 +985,7 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLICY: "open",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
     } as unknown as TwitterClientState);
 
@@ -969,6 +1001,164 @@ describe("TwitterDirectMessageClient", () => {
     expect(cache.get("twitter/agent/agent-user-id/dm_settled/801")).toBe(
       "delivered:reply-801",
     );
+    await dmClient.stop();
+  });
+});
+
+describe("TwitterDirectMessageClient DM access gate (TWITTER_DM_POLICY)", () => {
+  function gateHarness(options: {
+    policy?: string;
+    pairingAllowed?: boolean;
+    participantIds?: string[];
+  }) {
+    const event = {
+      id: "901",
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: "hello agent",
+      event_type: "MessageCreate",
+      ...(options.participantIds
+        ? { participant_ids: options.participantIds }
+        : {}),
+    };
+    const cache = new Map<string, string>([
+      ["twitter/agent/agent-user-id/dm_cursor", "900"],
+    ]);
+    const sendDmToParticipant = vi.fn(async () => ({
+      data: { dm_event_id: "reply-901" },
+    }));
+    const handleMessage = vi.fn(
+      async (
+        _runtime: IAgentRuntime,
+        memory: Memory,
+        callback: (response: { text: string }) => Promise<Memory[]>,
+      ) => callback({ text: `echo:${memory.content.text}` }),
+    );
+    const createMemory = vi.fn(async () => undefined);
+    const pairingService = {
+      isAllowed: vi.fn(async () => options.pairingAllowed ?? false),
+      upsertRequest: vi.fn(async () => ({ code: "PAIRCODE1", created: true })),
+      claimPairingReply: vi.fn(() => true),
+    };
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory,
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn(() => null),
+      getService: vi.fn(() => pairingService),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
+    } as unknown as ClientBase;
+    const state = {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+      ...(options.policy ? { TWITTER_DM_POLICY: options.policy } : {}),
+    } as unknown as TwitterClientState;
+    return {
+      dmClient: new TwitterDirectMessageClient(client, runtime, state),
+      cache,
+      createMemory,
+      handleMessage,
+      pairingService,
+      sendDmToParticipant,
+    };
+  }
+
+  it("blocks an unpaired sender by default, DMs the pairing code, and still advances the cursor", async () => {
+    vi.useFakeTimers();
+    const {
+      dmClient,
+      cache,
+      createMemory,
+      handleMessage,
+      pairingService,
+      sendDmToParticipant,
+    } = gateHarness({});
+
+    await dmClient.start();
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(pairingService.upsertRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "x", senderId: "person-1" }),
+    );
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    expect(sendDmToParticipant.mock.calls[0][0]).toBe("person-1");
+    expect(sendDmToParticipant.mock.calls[0][1].text).toContain(
+      "Pairing code: PAIRCODE1",
+    );
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("901");
+    await dmClient.stop();
+  });
+
+  it("routes a pairing-approved sender into the agent message loop", async () => {
+    vi.useFakeTimers();
+    const { dmClient, handleMessage, sendDmToParticipant } = gateHarness({
+      pairingAllowed: true,
+    });
+
+    await dmClient.start();
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(sendDmToParticipant).toHaveBeenCalledWith("person-1", {
+      text: "echo:hello agent",
+    });
+    await dmClient.stop();
+  });
+
+  it("fails closed on an unrecognized TWITTER_DM_POLICY value", async () => {
+    vi.useFakeTimers();
+    const { dmClient, handleMessage, pairingService } = gateHarness({
+      policy: "opne",
+    });
+
+    await dmClient.start();
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(pairingService.upsertRequest).toHaveBeenCalled();
+    await dmClient.stop();
+  });
+
+  it("blocks without a pairing reply under TWITTER_DM_POLICY=disabled", async () => {
+    vi.useFakeTimers();
+    const { dmClient, handleMessage, pairingService, sendDmToParticipant } =
+      gateHarness({ policy: "disabled" });
+
+    await dmClient.start();
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(pairingService.isAllowed).not.toHaveBeenCalled();
+    expect(sendDmToParticipant).not.toHaveBeenCalled();
+    await dmClient.stop();
+  });
+
+  it("does not gate senders inside a group conversation", async () => {
+    vi.useFakeTimers();
+    const { dmClient, handleMessage, pairingService } = gateHarness({
+      participantIds: ["agent-user-id", "person-1", "person-2"],
+    });
+
+    await dmClient.start();
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(pairingService.isAllowed).not.toHaveBeenCalled();
     await dmClient.stop();
   });
 });

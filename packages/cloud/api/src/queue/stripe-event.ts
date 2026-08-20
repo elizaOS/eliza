@@ -49,6 +49,7 @@ import { invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
+import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 
@@ -79,6 +80,33 @@ export function parseAndValidateCredits(creditsStr: string): number | null {
     return null;
   }
   return Math.round(credits * 100) / 100;
+}
+
+function parseCreditMicros(value: string | number): bigint | null {
+  const normalized =
+    typeof value === "number" && Number.isFinite(value)
+      ? value.toFixed(6)
+      : String(value);
+  const match = /^(-?)(\d+)(?:\.(\d{1,6}))?$/.exec(normalized);
+  if (!match?.[2]) return null;
+  const micros =
+    BigInt(match[2]) * 1_000_000n + BigInt((match[3] ?? "").padEnd(6, "0"));
+  return match[1] === "-" ? -micros : micros;
+}
+
+function formatCreditMicros(value: bigint): string {
+  const absolute = value < 0n ? -value : value;
+  const whole = absolute / 1_000_000n;
+  const fraction = (absolute % 1_000_000n).toString().padStart(6, "0");
+  return `${value < 0n ? "-" : ""}${whole}.${fraction}`;
+}
+
+function minBigInt(left: bigint, right: bigint): bigint {
+  return left < right ? left : right;
+}
+
+function roundedDivide(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator / 2n) / denominator;
 }
 
 /**
@@ -161,26 +189,23 @@ async function handleCheckoutSessionCompleted(
   const session = event.data.object as Stripe.Checkout.Session;
   if (session.payment_status !== "paid") return;
 
-  const organizationId = session.metadata?.organization_id;
-  const userId = session.metadata?.user_id;
+  let organizationId = session.metadata?.organization_id;
+  let userId = session.metadata?.user_id;
   const creditsStr = session.metadata?.credits || "0";
-  const credits = parseAndValidateCredits(creditsStr);
-  const paymentIntentId = session.payment_intent as string;
-  const purchaseType = session.metadata?.type || "checkout";
+  let credits = parseAndValidateCredits(creditsStr);
+  let purchaseAmountUsd = credits;
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? null);
+  let purchaseType = session.metadata?.type || "checkout";
   const purchaseSource = session.metadata?.source;
   const appId = session.metadata?.app_id;
   const chargeRequestId = session.metadata?.charge_request_id;
   const agentId = session.metadata?.agent_id;
+  const checkoutOrderId = session.metadata?.checkout_order_id;
 
   const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
-
-  if (!organizationId || !credits) {
-    logger.warn(
-      `[Stripe Queue] Permanent failure - Invalid metadata in checkout session ${session.id}`,
-      { hasOrgId: !!organizationId, hasValidCredits: !!credits },
-    );
-    return;
-  }
 
   if (!paymentIntentId) {
     logger.warn(
@@ -189,9 +214,84 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
+  let durableAlreadyApplied = false;
+  let legacyCutoverApplied = false;
+  let legacyAlreadyApplied = false;
+  if (checkoutOrderId) {
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : (session.customer?.id ?? null);
+    const settlement = await stripeCheckoutOrdersService.settle({
+      checkoutOrderId,
+      clientReferenceId: session.client_reference_id,
+      metadataOrderId: session.metadata?.checkout_order_id ?? null,
+      checkoutSessionId: session.id,
+      paymentIntentId,
+      paymentStatus: session.payment_status,
+      amountTotal: session.amount_total,
+      currency: session.currency,
+      customerId,
+    });
+    organizationId = settlement.order.organization_id;
+    userId = settlement.order.initiated_by_user_id;
+    credits = Number(settlement.order.credits_to_grant);
+    purchaseAmountUsd = Number(settlement.order.charge_amount_cents) / 100;
+    purchaseType = settlement.order.purchase_type;
+    durableAlreadyApplied = settlement.alreadyApplied;
+  } else if (
+    !isAppPurchase &&
+    (purchaseType === "custom_amount" || purchaseType === "credit_pack")
+  ) {
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : (session.customer?.id ?? null);
+    const settlement = await stripeCheckoutOrdersService.settleLegacy({
+      checkoutSessionId: session.id,
+      paymentIntentId,
+      paymentStatus: session.payment_status,
+      amountTotal: session.amount_total,
+      currency: session.currency,
+      customerId,
+      organizationId: session.metadata?.organization_id ?? null,
+      initiatedByUserId: session.metadata?.user_id ?? null,
+      purchaseType,
+      creditPackId: session.metadata?.credit_pack_id ?? null,
+      claimedCredits: session.metadata?.credits ?? null,
+    });
+    organizationId = settlement.organizationId;
+    userId = settlement.initiatedByUserId;
+    purchaseType = settlement.purchaseType;
+    credits = Number(settlement.creditsToGrant);
+    purchaseAmountUsd = (session.amount_total ?? 0) / 100;
+    legacyCutoverApplied = true;
+    legacyAlreadyApplied = settlement.alreadyApplied;
+  }
+
+  if (!organizationId || !credits || !purchaseAmountUsd) {
+    logger.warn(
+      `[Stripe Queue] Permanent failure - Invalid checkout authority for session ${session.id}`,
+      {
+        hasOrgId: !!organizationId,
+        hasValidCredits: !!credits,
+        hasCheckoutOrder: !!checkoutOrderId,
+      },
+    );
+    return;
+  }
+
   const existingTransaction =
-    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
-  const isDuplicate = !!existingTransaction;
+    checkoutOrderId || legacyCutoverApplied
+      ? null
+      : await creditsService.getTransactionByStripePaymentIntent(
+          paymentIntentId,
+        );
+  const isDuplicate = checkoutOrderId
+    ? durableAlreadyApplied
+    : legacyCutoverApplied
+      ? legacyAlreadyApplied
+      : !!existingTransaction;
 
   if (isDuplicate) {
     logger.debug(
@@ -215,7 +315,7 @@ async function handleCheckoutSessionCompleted(
 
     const result = await appCreditsService.processPurchase({
       appId,
-      userId,
+      userId: userId!,
       organizationId,
       purchaseAmount: credits,
       stripePaymentIntentId: paymentIntentId,
@@ -239,7 +339,7 @@ async function handleCheckoutSessionCompleted(
         error: err instanceof Error ? err.message : String(err),
       }),
     );
-  } else if (!isDuplicate) {
+  } else if (!checkoutOrderId && !legacyCutoverApplied && !isDuplicate) {
     await creditsService.addCredits({
       organizationId,
       amount: credits,
@@ -268,6 +368,25 @@ async function handleCheckoutSessionCompleted(
       });
     }
 
+    invalidateOrgTierCache(organizationId).catch((err) =>
+      logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  } else if (checkoutOrderId || legacyCutoverApplied) {
+    logger.info(
+      `[Stripe Queue] ${checkoutOrderId ? `Durable Checkout order ${checkoutOrderId}` : `Legacy Checkout session ${session.id}`} ${isDuplicate ? "was already" : "is now"} settled`,
+      { organizationId, paymentIntentId },
+    );
+    if (agentId) {
+      await notifyWaifuCreditsToppedUp({
+        agentId,
+        eventId: `stripe:${event.id}:credits.topped_up:${agentId}:${isDuplicate ? "already_applied" : "settled"}`,
+        credits,
+        paymentIntentId,
+        sessionId: session.id,
+      });
+    }
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
         error: err instanceof Error ? err.message : String(err),
@@ -314,11 +433,11 @@ async function handleCheckoutSessionCompleted(
   if (!isAppPurchase && userId) {
     const { splits } = await referralsService.calculateRevenueSplits(
       userId,
-      credits,
+      purchaseAmountUsd,
     );
     if (splits.length > 0) {
       logger.info(
-        `[Stripe Queue] Processing revenue splits for $${credits.toFixed(2)} purchase by user ${userId}`,
+        `[Stripe Queue] Processing revenue splits for $${purchaseAmountUsd.toFixed(2)} purchase by user ${userId}`,
       );
       for (const split of splits) {
         if (split.amount <= 0) continue;
@@ -335,7 +454,7 @@ async function handleCheckoutSessionCompleted(
             dedupeBySourceId: true,
             description: `${
               split.role === "app_owner" ? "App Owner" : "Creator"
-            } revenue share (${((split.amount / credits) * 100).toFixed(0)}%) for $${credits.toFixed(2)} purchase`,
+            } revenue share (${((split.amount / purchaseAmountUsd) * 100).toFixed(0)}%) for $${purchaseAmountUsd.toFixed(2)} purchase`,
             metadata: {
               buyer_user_id: userId,
               buyer_org_id: organizationId,
@@ -379,7 +498,7 @@ async function handleCheckoutSessionCompleted(
         discordService
           .logPaymentReceived({
             paymentId: paymentIntentId,
-            amount: credits,
+            amount: purchaseAmountUsd,
             currency: session.currency || "usd",
             credits,
             organizationId,
@@ -399,7 +518,7 @@ async function handleCheckoutSessionCompleted(
     });
   }
 
-  if (!isDuplicate) {
+  if (!isDuplicate || checkoutOrderId || legacyCutoverApplied) {
     try {
       const existingInvoice = await invoicesService.getByStripeInvoiceId(
         `cs_${session.id}`,
@@ -442,12 +561,13 @@ async function handleCheckoutSessionCompleted(
         );
       }
     } catch (invoiceError) {
-      // Invoice row failure is non-critical: credits were already added.
-      // Log and continue so we do not retry the whole event for this.
       logger.error(
-        "[Stripe Queue] Non-critical error creating invoice record",
+        "[Stripe Queue] Error creating invoice record",
         invoiceError,
       );
+      // The authoritative Checkout settlement is replay-safe, so retry to
+      // recover a projection failure that happened after the credit commit.
+      if (checkoutOrderId || legacyCutoverApplied) throw invoiceError;
     }
   }
 }
@@ -624,6 +744,16 @@ async function handlePaymentIntentSucceeded(
   // affiliate markup is applied when the PaymentIntent is created, so
   // the only payout here is the auto-top-up affiliate fee.
   const purchaseType = paymentIntent.metadata?.type;
+  if (
+    paymentIntent.metadata?.checkout_order_id ||
+    purchaseType === "custom_amount" ||
+    purchaseType === "credit_pack"
+  ) {
+    logger.debug(
+      `[Stripe Queue] Skipping Checkout-owned payment intent ${paymentIntent.id}; checkout.session.completed owns fulfillment`,
+    );
+    return;
+  }
   const hasDurableAutoTopUpMarker = Object.hasOwn(
     paymentIntent.metadata ?? {},
     "auto_top_up_attempt_id",
@@ -929,7 +1059,7 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   });
 
   if (purchaseSource === "miniapp_app" && appId && chargeRequestId) {
-    await appChargeCallbacksService.dispatch({
+    await appChargeCallbacksService.failChargeAndEnqueue({
       appId,
       chargeRequestId,
       status: "failed",
@@ -959,7 +1089,8 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 
 /**
  * Claw back org credits for the portion of a top-up charge that Stripe reversed.
- * Balance top-ups grant credits 1:1 with USD, so `usdReversed` credits are
+ * Durable pack orders claw back the exact granted credits in proportion to the
+ * reversed provider charge; legacy balance top-ups remain 1:1. Credits are
  * removed up to the original grant and the org's current balance. Any
  * unrecovered portion is recorded on the clawback transaction metadata because
  * the organizations table has a nonnegative balance constraint. Only the DELTA
@@ -980,15 +1111,15 @@ async function clawbackForReversal(params: {
   // Only top-ups that actually granted org credits are clawable.
   const grant =
     await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
-  if (!grant || Number(grant.amount) <= 0) {
+  if (!grant) {
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no credit grant for PI ${paymentIntentId}; nothing to claw back`,
     );
     return;
   }
 
-  const grantAmount = Number(grant.amount);
-  if (!Number.isFinite(grantAmount) || grantAmount <= 0) {
+  const grantAmountMicros = parseCreditMicros(grant.amount);
+  if (!grantAmountMicros || grantAmountMicros <= 0n) {
     logger.warn(
       `[Stripe Queue] ${source} ${reference}: invalid credit grant amount for PI ${paymentIntentId}`,
       { amount: grant.amount },
@@ -996,26 +1127,40 @@ async function clawbackForReversal(params: {
     return;
   }
 
-  const cappedUsdReversed = Math.min(usdReversed, grantAmount);
-  const alreadyClawed =
-    await creditsService.getClawedBackUsdForPaymentIntent(paymentIntentId);
-  const delta = Math.round((cappedUsdReversed - alreadyClawed) * 1e6) / 1e6;
-  if (delta <= 0) {
-    logger.info(
-      `[Stripe Queue] ${source} ${reference}: $${cappedUsdReversed.toFixed(2)} already clawed back for PI ${paymentIntentId}`,
-    );
-    return;
-  }
-
+  const checkoutOrder =
+    await stripeCheckoutOrdersService.getByPaymentIntent(paymentIntentId);
+  const chargeAmountCents = checkoutOrder?.charge_amount_cents ?? null;
+  const reversedCents = BigInt(Math.round(usdReversed * 100));
+  const reversedMicros = reversedCents * 10_000n;
+  const targetMicros =
+    chargeAmountCents && chargeAmountCents > 0n
+      ? minBigInt(
+          grantAmountMicros,
+          roundedDivide(
+            grantAmountMicros * minBigInt(reversedCents, chargeAmountCents),
+            chargeAmountCents,
+          ),
+        )
+      : minBigInt(reversedMicros, grantAmountMicros);
+  const cappedUsdReversed = Number(targetMicros) / 1_000_000;
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
-    amount: delta,
+    amount: cappedUsdReversed,
+    cumulativeTargetAmount: cappedUsdReversed,
+    originalPaymentIntentId: paymentIntentId,
     description: `Stripe ${source} clawback — ${reference}`,
     stripePaymentIntentId: idempotencyKey,
     metadata: {
       payment_intent_id: paymentIntentId,
       reversed_usd: usdReversed,
       capped_reversed_usd: cappedUsdReversed,
+      ...(checkoutOrder
+        ? {
+            checkout_order_id: checkoutOrder.id,
+            original_charge_usd: (Number(chargeAmountCents) / 100).toFixed(2),
+            original_credits_granted: formatCreditMicros(grantAmountMicros),
+          }
+        : {}),
       source,
       reference,
     },
@@ -1023,7 +1168,7 @@ async function clawbackForReversal(params: {
 
   if (result.alreadyProcessed) {
     logger.info(
-      `[Stripe Queue] ${source} ${reference}: clawback key ${idempotencyKey} already processed`,
+      `[Stripe Queue] ${source} ${reference}: cumulative target $${cappedUsdReversed.toFixed(6)} already processed`,
     );
     return;
   }
@@ -1031,7 +1176,7 @@ async function clawbackForReversal(params: {
   logger.warn(
     `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
     {
-      requestedUsd: delta,
+      cumulativeTargetUsd: cappedUsdReversed,
       unrecoveredUsd: result.shortfallAmount,
     },
   );
@@ -1089,10 +1234,12 @@ async function handleChargeDisputeFundsReinstated(
   const clawback =
     await creditsService.getTransactionByStripePaymentIntent(clawbackKey);
   if (clawback?.type !== "clawback") {
-    logger.info(
-      `[Stripe Queue] ${source} ${reference}: no dispute clawback found; nothing to reinstate`,
+    // Stripe does not guarantee event ordering. Retry until the corresponding
+    // funds-withdrawn mutation commits (or the message reaches reconciliation)
+    // instead of acknowledging and permanently dropping a valid reinstatement.
+    throw new Error(
+      `Dispute clawback is not yet available for reinstatement ${reference}`,
     );
-    return;
   }
 
   const appliedClawbackUsd = Math.abs(Number(clawback.amount));

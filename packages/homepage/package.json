@@ -37,15 +37,15 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@types/three": "^0.185.0",
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.0",
-    "playwright": "^1.59.1",
+    "playwright": "^1.62.1",
     "sharp": "^0.35.3",
     "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "^4.3.1",

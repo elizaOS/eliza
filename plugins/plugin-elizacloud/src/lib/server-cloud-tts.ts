@@ -7,7 +7,10 @@
  * resolve cloud TTS configuration without reverse-importing this plugin.
  *
  * The HTTP request handler (`handleCloudTtsPreviewRoute`) stays here because
- * it wires together the runtime route system.
+ * it wires together the runtime route system. Upstream `fetch` calls abort
+ * with the same `resolveCloudTimeoutMs` ceiling as `models/speech.ts` /
+ * `models/transcription.ts`; a stalled cloud hop must not hang the proxy
+ * `for (;;)` warming loop forever.
  */
 import type http from "node:http";
 import { logger, sanitizeSpeechText } from "@elizaos/core";
@@ -22,7 +25,14 @@ import {
   ttsDebug,
   ttsDebugTextPreview,
 } from "@elizaos/shared";
+import { resolveCloudTimeoutMs } from "../utils/config";
 import { warmingRetryWaitSeconds } from "../utils/warming";
+
+/** Abort a proxy hop when set; `0` on the env key opts out (same as the SDK). */
+function cloudProxyAbortSignal(envKey: string): AbortSignal | undefined {
+  const timeoutMs = resolveCloudTimeoutMs(envKey, 60_000);
+  return timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+}
 
 export {
   __resetCloudBaseUrlCache,
@@ -242,6 +252,7 @@ export async function handleCloudTtsPreviewRoute(
       let attempt: Response;
       let warmingRetries = 0;
       for (;;) {
+        const ttsSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_TTS_TIMEOUT_MS");
         attempt = await fetch(cloudUrl, {
           method: "POST",
           headers: {
@@ -258,6 +269,7 @@ export async function handleCloudTtsPreviewRoute(
             voiceId: cloudVoice,
             modelId: cloudModel,
           }),
+          ...(ttsSignal ? { signal: ttsSignal } : {}),
         });
 
         if (attempt.ok || warmingRetries >= 2) break;
@@ -428,6 +440,7 @@ export async function handleCloudSttRoute(
           new Blob([new Uint8Array(rawBody)], { type: mime }),
           filename,
         );
+        const sttSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_STT_TIMEOUT_MS");
         attempt = await fetch(cloudUrl, {
           method: "POST",
           headers: {
@@ -435,6 +448,7 @@ export async function handleCloudSttRoute(
             "x-api-key": cloudApiKey,
           },
           body: form,
+          ...(sttSignal ? { signal: sttSignal } : {}),
         });
         if (attempt.ok || warmingRetries >= 2) break;
         const waitSeconds = await warmingRetryWaitSeconds(attempt);

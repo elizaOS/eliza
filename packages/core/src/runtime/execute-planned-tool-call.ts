@@ -210,6 +210,9 @@ export function projectActionResultForClipboard(
 		...(result.turnComplete !== undefined
 			? { turnComplete: result.turnComplete }
 			: {}),
+		...(result.modelReplyRequired !== undefined
+			? { modelReplyRequired: result.modelReplyRequired }
+			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -246,6 +249,9 @@ function projectSettledResultForObserver(
 		data: controlData,
 		...(projected.turnComplete !== undefined
 			? { turnComplete: projected.turnComplete }
+			: {}),
+		...(projected.modelReplyRequired !== undefined
+			? { modelReplyRequired: projected.modelReplyRequired }
 			: {}),
 		...(projected.continueChain !== undefined
 			? { continueChain: projected.continueChain }
@@ -916,6 +922,7 @@ function actionResultToStreamingResult(
 				? sensitiveActionResultMarker(result.values)
 				: result.values,
 		turnComplete: result.turnComplete,
+		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult);

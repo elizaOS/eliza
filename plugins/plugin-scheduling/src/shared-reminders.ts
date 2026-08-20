@@ -14,6 +14,7 @@ import type {
 } from "@elizaos/core/edge";
 import type {
   ScheduledTask,
+  ScheduledTaskApplyResult,
   ScheduledTaskRunner,
   ScheduledTaskTrigger,
 } from "./scheduled-task/types.js";
@@ -394,6 +395,49 @@ function creationReceipt(args: {
       };
 }
 
+function lifecycleReceipt(
+  operation: "snooze" | "complete" | "dismiss",
+  result: ScheduledTaskApplyResult,
+): EffectReceipt {
+  const base = {
+    receiptId: `shared-reminder:${operation}:${result.commit.logId}`,
+    operation: `shared.reminder.${operation}`,
+    resource: {
+      kind: "shared.reminder",
+      id: result.task.taskId,
+      version: result.commit.logId,
+    },
+    artifacts: [
+      {
+        kind: "shared.reminder.log",
+        id: result.commit.logId,
+        version: result.commit.transition,
+      },
+    ],
+    idempotency: {
+      key: result.idempotencyKey,
+      replayed: result.replayed,
+    },
+    observedAt: result.commit.occurredAtIso,
+  } as const;
+  return result.replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        reason:
+          "The persisted reminder already records this idempotent lifecycle request.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: result.commit.logId,
+          committedAt: result.commit.occurredAtIso,
+        },
+      };
+}
+
 export function createSharedRemindersEdgeAction(
   options: SharedRemindersEdgePluginOptions,
 ): Action {
@@ -619,13 +663,31 @@ export function createSharedRemindersEdgeAction(
             callback,
           );
         }
-        const task = await options.runner.apply(taskId, "snooze", { minutes });
-        const text = `Reminder snoozed for ${formatDuration(snoozeMilliseconds)}: ${reminderText(task)}`;
+        const applied = await options.runner.applyWithResult(
+          taskId,
+          "snooze",
+          { minutes },
+          {
+            idempotencyKey: `shared-reminder:${String(message.id)}:snooze:${taskId}`,
+          },
+        );
+        const text = `Reminder snoozed for ${formatDuration(snoozeMilliseconds)}: ${reminderText(applied.task)}`;
+        const receipt = lifecycleReceipt("snooze", applied);
         await callback?.({ text });
         return {
           success: true,
           text,
-          data: { actionName: "REMINDERS", operation, task },
+          data: {
+            actionName: "REMINDERS",
+            operation,
+            task: applied.task,
+            replayed: applied.replayed,
+          },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          effectReceipts: [receipt],
+          userFacingEffectReceiptIds: [receipt.receiptId],
+          turnComplete: true,
         };
       }
 
@@ -636,13 +698,31 @@ export function createSharedRemindersEdgeAction(
             "A reminder taskId is required.",
             callback,
           );
-        const task = await options.runner.apply(taskId, operation);
-        const text = `Reminder ${operation === "complete" ? "completed" : "dismissed"}: ${reminderText(task)}`;
+        const applied = await options.runner.applyWithResult(
+          taskId,
+          operation,
+          undefined,
+          {
+            idempotencyKey: `shared-reminder:${String(message.id)}:${operation}:${taskId}`,
+          },
+        );
+        const text = `Reminder ${operation === "complete" ? "completed" : "dismissed"}: ${reminderText(applied.task)}`;
+        const receipt = lifecycleReceipt(operation, applied);
         await callback?.({ text });
         return {
           success: true,
           text,
-          data: { actionName: "REMINDERS", operation, task },
+          data: {
+            actionName: "REMINDERS",
+            operation,
+            task: applied.task,
+            replayed: applied.replayed,
+          },
+          verifiedUserFacing: true,
+          userFacingText: text,
+          effectReceipts: [receipt],
+          userFacingEffectReceiptIds: [receipt.receiptId],
+          turnComplete: true,
         };
       }
 

@@ -14,6 +14,7 @@
  * into a failed one.
  */
 
+import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 import { getAuditDispatcher } from "../src/services/audit-dispatcher-singleton";
@@ -43,7 +44,7 @@ export async function emitOidcAudit(
       result: input.result,
       resource: null,
       org_id: input.orgId,
-      ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+      ip: getRequestIp(c),
       user_agent: c.req.header("user-agent") ?? undefined,
       request_id: c.get("requestId"),
       metadata: input.metadata,

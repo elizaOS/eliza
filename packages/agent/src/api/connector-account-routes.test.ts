@@ -446,10 +446,10 @@ describe("connector account routes", () => {
   it("preserves valid encoded provider, account, and action segments", async () => {
     const { ctx, captured, storage } = createConnectorAccountHarness({
       method: "POST",
-      pathname: "/api/connectors/%73lack/accounts/acct%5Fencoded/t%65st",
+      pathname: "/api/connectors/%73lack/accounts/acct%2Fencoded/t%65st",
     });
     await storage.upsertAccount({
-      id: "acct_encoded",
+      id: "acct/encoded",
       provider: "slack",
       role: "OWNER",
       purpose: ["messaging"],
@@ -465,7 +465,7 @@ describe("connector account routes", () => {
     expect(captured.body).toMatchObject({
       ok: true,
       provider: "slack",
-      account: { id: "acct_encoded" },
+      account: { id: "acct/encoded" },
     });
   });
 
@@ -519,6 +519,7 @@ describe("connector account routes", () => {
       redactConfigSecrets: (value) => value,
       isBlockedObjectKey: (key) =>
         key === "__proto__" || key === "constructor" || key === "prototype",
+      hasBlockedObjectKeyDeep: () => false,
       cloneWithoutBlockedObjectKeys: (value) => value,
     });
     expect(configHandled).toBe(false);

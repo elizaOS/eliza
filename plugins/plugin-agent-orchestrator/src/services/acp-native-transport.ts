@@ -89,6 +89,13 @@ export type NativeAcpSession = {
   agentSessionId?: string;
 };
 
+/** Single-use bootstrap material for a session-less warm ACP child. */
+export type NativeAcpSessionClaim = {
+  token: string;
+  env: Record<string, string>;
+  executionPath: string;
+};
+
 export type NativeAcpPromptResult = {
   stopReason: string;
 };
@@ -156,6 +163,24 @@ export class NativeAcpClient {
     this.opts.timeoutMs = timeoutMs;
   }
 
+  configureClaimedSession(opts: {
+    cwd: string;
+    approvalPreset: ApprovalPreset;
+    env: NodeJS.ProcessEnv;
+    mcpServers?: AcpMcpServerConfig[];
+    timeoutMs?: number;
+    onEvent?: NativeAcpEventCallback;
+    onStderr?: (chunk: string) => void;
+  }): void {
+    this.opts.cwd = opts.cwd;
+    this.opts.approvalPreset = opts.approvalPreset;
+    this.opts.env = opts.env;
+    this.opts.mcpServers = opts.mcpServers;
+    this.opts.timeoutMs = opts.timeoutMs;
+    this.opts.onEvent = opts.onEvent;
+    this.opts.onStderr = opts.onStderr;
+  }
+
   async start(): Promise<void> {
     if (this.proc) return;
     const { command, args } = splitCommandLine(this.opts.command);
@@ -167,6 +192,11 @@ export class NativeAcpClient {
     this.proc = proc;
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
+    // A broken child pipe can report EPIPE asynchronously. Treat stdin failure
+    // as terminal because the client can no longer deliver JSON-RPC requests.
+    proc.stdin.on("error", (err: NodeJS.ErrnoException) => {
+      this.failStdin(err);
+    });
     proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       this.stderrBuffer = `${this.stderrBuffer}${text}`.slice(-16_384);
@@ -213,15 +243,43 @@ export class NativeAcpClient {
     );
   }
 
-  async createSession(cwd = this.opts.cwd): Promise<NativeAcpSession> {
+  async createSession(
+    cwd = this.opts.cwd,
+    claim?: NativeAcpSessionClaim,
+  ): Promise<NativeAcpSession> {
+    const params = {
+      cwd,
+      ...(claim
+        ? {
+            _meta: {
+              elizaSessionClaim: claim,
+            },
+          }
+        : {}),
+      // Forward the parent's MCP servers so the sub-agent has the same tools
+      // (Codex / Claude-Code parity). Opt-in via ELIZA_ACP_MCP_SERVERS;
+      // defaults to [] (prior behavior) so spawning never regresses.
+      mcpServers: this.opts.mcpServers ?? parseAcpMcpServersEnv(),
+    };
     const result = asRecord(
-      await this.request("session/new", {
-        cwd,
-        // Forward the parent's MCP servers so the sub-agent has the same tools
-        // (Codex / Claude-Code parity). Opt-in via ELIZA_ACP_MCP_SERVERS;
-        // defaults to [] (prior behavior) so spawning never regresses.
-        mcpServers: this.opts.mcpServers ?? parseAcpMcpServersEnv(),
-      }),
+      await this.request(
+        "session/new",
+        params,
+        DEFAULT_TIMEOUT_MS,
+        undefined,
+        claim
+          ? {
+              ...params,
+              _meta: {
+                elizaSessionClaim: {
+                  token: "[REDACTED]",
+                  envKeys: Object.keys(claim.env).sort(),
+                  executionPath: "[REDACTED]",
+                },
+              },
+            }
+          : params,
+      ),
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
@@ -309,13 +367,12 @@ export class NativeAcpClient {
     params: unknown,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     onTimeout?: () => void,
+    emittedParams: unknown = params,
   ): Promise<unknown> {
     if (this.closed) throw new Error("ACP client is closed");
+    this.requireProcess();
     const id = this.nextId++;
-    const proc = this.requireProcess();
     const payload = { jsonrpc: "2.0", id, method, params };
-    this.emitEvent(payload as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
     return new Promise((resolve, reject) => {
       const timer =
         timeoutMs > 0
@@ -326,14 +383,82 @@ export class NativeAcpClient {
             }, timeoutMs)
           : undefined;
       this.pending.set(id, { resolve, reject, timer });
+      if (!this.writeToAgent(payload)) {
+        const pending = this.pending.get(id);
+        this.pending.delete(id);
+        if (pending?.timer) clearTimeout(pending.timer);
+        pending?.reject(
+          new Error(`ACP transport closed; cannot send ${method}`),
+        );
+        return;
+      }
+      // Only record outbound traffic once the transport accepted the write.
+      // A synchronous stdin error marks the transport closed in writeToAgent.
+      if (!this.closed) {
+        this.emitEvent({
+          ...payload,
+          params: emittedParams,
+        } as AcpJsonRpcMessage);
+      }
     });
   }
 
   private async notify(method: string, params: unknown): Promise<void> {
-    const proc = this.requireProcess();
+    this.requireProcess();
     const payload = { jsonrpc: "2.0", method, params };
-    this.emitEvent(payload as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
+    if (this.writeToAgent(payload)) {
+      this.emitEvent(payload as AcpJsonRpcMessage);
+    }
+  }
+
+  /**
+   * Guarded write to the agent subprocess stdin. Returns false (instead of
+   * throwing / crashing the process) when the pipe is already closed,
+   * destroyed, or errors synchronously — the write-after-close case during
+   * sub-agent teardown, where `closeSession` can race the agent exiting.
+   * Async pipe errors (EPIPE) are converted into terminal transport failures
+   * by the stdin 'error' listener installed in `start()`.
+   */
+  private writeToAgent(payload: unknown): boolean {
+    const stdin = this.proc?.stdin;
+    if (!stdin || stdin.destroyed || stdin.writableEnded || !stdin.writable) {
+      this.failStdin(new Error("agent stdin is not writable"));
+      return false;
+    }
+    try {
+      stdin.write(`${JSON.stringify(payload)}\n`);
+      return true;
+    } catch (err) {
+      // error-policy:J1 transport boundary — convert a synchronous stream
+      // failure into rejected ACP requests rather than a host exception.
+      this.failStdin(err);
+      return false;
+    }
+  }
+
+  /** Mark a failed stdin pipe terminal and settle every outstanding request. */
+  private failStdin(err: unknown): void {
+    const wasClosed = this.closed;
+    this.closed = true;
+    const failure = new Error(
+      `ACP transport stdin failed: ${errorMessage(err)}`,
+      err instanceof Error ? { cause: err } : undefined,
+    );
+    this.rejectAll(failure);
+    if (!wasClosed) {
+      this.emitStderr(
+        `[acp-native-transport] ${failure.message}; closing transport\n`,
+      );
+    }
+  }
+
+  /** Route transport diagnostics through the onStderr observer, best-effort. */
+  private emitStderr(text: string): void {
+    try {
+      this.opts.onStderr?.(text);
+    } catch {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop
+    }
   }
 
   /**
@@ -604,9 +729,8 @@ export class NativeAcpClient {
   }
 
   private respond(id: JsonRpcId, result: unknown): void {
-    this.requireProcess().stdin.write(
-      `${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`,
-    );
+    this.requireProcess();
+    this.writeToAgent({ jsonrpc: "2.0", id, result });
   }
 
   private respondError(
@@ -614,13 +738,12 @@ export class NativeAcpClient {
     err: unknown,
     code = JSONRPC_INTERNAL_ERROR,
   ): void {
-    this.requireProcess().stdin.write(
-      `${JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        error: { code, message: errorMessage(err) },
-      })}\n`,
-    );
+    this.requireProcess();
+    this.writeToAgent({
+      jsonrpc: "2.0",
+      id,
+      error: { code, message: errorMessage(err) },
+    });
   }
 
   private rejectAll(err: unknown): void {

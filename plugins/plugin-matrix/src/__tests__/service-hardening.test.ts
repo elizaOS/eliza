@@ -4,6 +4,7 @@
  * `lifeOpsPassiveConnectorsEnabled` (omitted by the vitest core shim) so the
  * gate is exercised deterministically — no live homeserver.
  */
+import { EventEmitter } from "node:events";
 import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -38,6 +39,7 @@ import {
   MatrixNotConnectedError,
   type MatrixRoom,
   type MatrixSettings,
+  MatrixSyncTimeoutError,
 } from "../types.js";
 
 type TestState = {
@@ -579,5 +581,34 @@ describe("Matrix service hardening", () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining("in-memory rust-crypto"));
     warn.mockRestore();
     info.mockRestore();
+  });
+
+  it("stops the client and resets connection state when initial sync times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = Object.assign(new EventEmitter(), {
+        startClient: vi.fn().mockResolvedValue(undefined),
+        stopClient: vi.fn(),
+      });
+      const { service, state } = createService({ connected: false, syncing: false });
+      Object.assign(state, { client });
+
+      const pending = (
+        service as unknown as {
+          connect: (candidate: typeof state) => Promise<void>;
+        }
+      ).connect(state);
+      const rejection = expect(pending).rejects.toBeInstanceOf(MatrixSyncTimeoutError);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await rejection;
+
+      expect(client.stopClient).toHaveBeenCalledOnce();
+      expect(state.connected).toBe(false);
+      expect(state.syncing).toBe(false);
+      expect(client.listenerCount("sync")).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

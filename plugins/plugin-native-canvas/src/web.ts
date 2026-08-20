@@ -5,7 +5,8 @@
  * `<canvas>` elements (composited as absolute-positioned DOM siblings so
  * z-ordering follows CSS `z-index`) and backs the embedded web view with an
  * iframe (inline/fullscreen) or a `window.open` popup, including the
- * `eliza://` deep-link intercept and the A2UI postMessage bridge.
+ * `eliza://` deep-link intercept and the A2UI postMessage bridge. Eval
+ * replies are accepted only from the web-view window that received the script.
  */
 
 import { WebPlugin } from "@capacitor/core";
@@ -177,6 +178,7 @@ export class CanvasWeb extends WebPlugin {
   }> = [];
   private webViewIframe: HTMLIFrameElement | null = null;
   private webViewPopup: Window | null = null;
+  private webViewOrigin: string | null = null;
   private messageListenerBound = false;
 
   async create(options: {
@@ -660,8 +662,6 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
-
     const img = new Image();
 
     if (typeof options.image === "string") {
@@ -670,10 +670,19 @@ export class CanvasWeb extends WebPlugin {
       img.src = `data:image/${options.image.format};base64,${options.image.base64}`;
     }
 
+    // Resolve the image load BEFORE pushing any save()/draw-option state.
+    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
+    // blendMode, shadow, transform); holding that frame across the await
+    // would leak the mutated state onto every subsequent draw whenever the
+    // load rejects (bad URL/base64, network, CORS — all normal runtime
+    // conditions). Applying draw options only after a successful load keeps
+    // save()/restore() balanced on both the success and failure paths.
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(new Error("Failed to load image"));
     });
+
+    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
 
     if (options.srcRect) {
       ctx.drawImage(
@@ -775,16 +784,23 @@ export class CanvasWeb extends WebPlugin {
     const format = options.format || "png";
     const quality = assertQuality(options.quality, "quality", 1);
 
-    let sourceCanvas = managed.canvas;
+    // Mirror the native iOS/Android composite contract: an explicit
+    // `layerIds` subset composites only those named layers, while the
+    // default (no `layerIds`) exports the base surface plus every visible
+    // layer sorted by z-index with each layer's opacity applied. Returning
+    // `managed.canvas` directly would drop all layer content on web/desktop
+    // and diverge from what the user sees and from the mobile platforms.
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = managed.size.width;
+    tempCanvas.height = managed.size.height;
+    const tempCtx = tempCanvas.getContext("2d");
+
+    if (!tempCtx) throw new Error("Failed to create temp canvas");
 
     if (options.layerIds && options.layerIds.length > 0) {
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = managed.size.width;
-      tempCanvas.height = managed.size.height;
-      const tempCtx = tempCanvas.getContext("2d");
-
-      if (!tempCtx) throw new Error("Failed to create temp canvas");
-
+      // Explicit subsets are composited in caller-provided order, matching the
+      // iOS and Android bridges. z-index ordering applies only to the default
+      // full-canvas export.
       for (const layerId of options.layerIds) {
         const layer = managed.layers.get(layerId);
         if (layer?.visible) {
@@ -792,9 +808,21 @@ export class CanvasWeb extends WebPlugin {
           tempCtx.drawImage(layer.canvas, 0, 0);
         }
       }
+    } else {
+      tempCtx.globalAlpha = 1;
+      tempCtx.drawImage(managed.canvas, 0, 0);
 
-      sourceCanvas = tempCanvas;
+      const visibleLayers = Array.from(managed.layers.values())
+        .filter((layer) => layer.visible)
+        .sort((a, b) => a.zIndex - b.zIndex);
+
+      for (const layer of visibleLayers) {
+        tempCtx.globalAlpha = layer.opacity;
+        tempCtx.drawImage(layer.canvas, 0, 0);
+      }
     }
+
+    const sourceCanvas = tempCanvas;
 
     const mimeType =
       format === "png"
@@ -846,8 +874,6 @@ export class CanvasWeb extends WebPlugin {
   async navigate(options: NavigateOptions): Promise<void> {
     const placement = options.placement || "inline";
 
-    this.destroyWebView();
-
     // Intercept eliza:// deep links immediately
     if (options.url.startsWith("eliza://")) {
       const parsed = new URL(options.url);
@@ -862,6 +888,14 @@ export class CanvasWeb extends WebPlugin {
       });
       return;
     }
+
+    const navigation = this.resolveWebViewNavigation(options.url);
+    if (navigation.protocol === "javascript:") {
+      throw new Error("javascript: web view URLs are not allowed");
+    }
+
+    this.destroyWebView();
+    this.webViewOrigin = navigation.origin;
 
     if (placement === "popup") {
       const popup = window.open(
@@ -1087,7 +1121,7 @@ export class CanvasWeb extends WebPlugin {
           jsonl: options.jsonl || "",
           payload: options.payload || null,
         },
-        "*",
+        this.getWebViewTargetOrigin(),
       );
       return;
     }
@@ -1112,7 +1146,10 @@ export class CanvasWeb extends WebPlugin {
         : null);
 
     if (target) {
-      target.postMessage({ type: "eliza:a2uiReset" }, "*");
+      target.postMessage(
+        { type: "eliza:a2uiReset" },
+        this.getWebViewTargetOrigin(),
+      );
       return;
     }
 
@@ -1130,6 +1167,82 @@ export class CanvasWeb extends WebPlugin {
       this.webViewPopup.close();
     }
     this.webViewPopup = null;
+    this.webViewOrigin = null;
+  }
+
+  private getWebViewTargetOrigin(): string {
+    const origin = this.webViewOrigin;
+    if (
+      origin &&
+      (origin.startsWith("http://") || origin.startsWith("https://"))
+    ) {
+      return origin;
+    }
+    // error-policy:J3 fail closed when origin cannot be proven; never fall back to wildcard "*"
+    throw new Error("Cannot determine web view target origin");
+  }
+
+  private resolveWebViewNavigation(url: string): {
+    origin: string | null;
+    protocol: string | null;
+  } {
+    try {
+      const base =
+        typeof window !== "undefined" && window.location?.href
+          ? window.location.href
+          : undefined;
+      const parsed = new URL(url, base);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return { origin: parsed.origin, protocol: parsed.protocol };
+      }
+
+      // A blob URL created by an HTTP(S) document carries that creator origin
+      // and can therefore be addressed with an exact targetOrigin.
+      if (parsed.protocol === "blob:" && parsed.origin !== "null") {
+        const creator = new URL(parsed.origin);
+        if (creator.protocol === "http:" || creator.protocol === "https:") {
+          return { origin: creator.origin, protocol: parsed.protocol };
+        }
+      }
+
+      // about:blank inherits its creator's origin. Accept every URL that
+      // matches about:blank, including query/fragment variants, but only when
+      // the creator itself has a tuple HTTP(S) origin.
+      if (
+        parsed.protocol === "about:" &&
+        parsed.pathname === "blank" &&
+        !parsed.host &&
+        !parsed.username &&
+        !parsed.password
+      ) {
+        const creatorOrigin = window.location?.origin;
+        if (creatorOrigin && creatorOrigin !== "null") {
+          const creator = new URL(creatorOrigin);
+          if (creator.protocol === "http:" || creator.protocol === "https:") {
+            return { origin: creator.origin, protocol: parsed.protocol };
+          }
+        }
+      }
+
+      return { origin: null, protocol: parsed.protocol };
+    } catch {
+      // error-policy:J3 malformed URLs remain displayable only if the browser
+      // accepts them, but all messaging fails closed because no origin is set.
+      return { origin: null, protocol: null };
+    }
+  }
+
+  private messageOriginMatches(
+    expectedOrigin: string,
+    actualOrigin: string,
+  ): boolean {
+    try {
+      // Normalizing both strings handles default ports and the browser's
+      // currently inconsistent Unicode/punycode serialization for IDN origins.
+      return new URL(actualOrigin).origin === expectedOrigin;
+    } catch {
+      return false;
+    }
   }
 
   private evalViaPostMessage(
@@ -1137,6 +1250,7 @@ export class CanvasWeb extends WebPlugin {
     script: string,
   ): Promise<EvalResult> {
     return new Promise<EvalResult>((resolve, reject) => {
+      const targetOrigin = this.getWebViewTargetOrigin();
       const timeoutMs = 5000;
       const timeout = setTimeout(() => {
         window.removeEventListener("message", handler);
@@ -1144,8 +1258,19 @@ export class CanvasWeb extends WebPlugin {
       }, timeoutMs);
 
       const handler = (event: MessageEvent) => {
-        const msg = event.data as WebViewIncomingMessage;
-        if (msg?.type === "eliza:evalResult" && msg.result !== undefined) {
+        // A WindowProxy keeps its identity when its document navigates. Check
+        // both source and origin so a later cross-origin document cannot
+        // complete an eval intended for the original navigation origin.
+        if (
+          event.source !== target ||
+          !this.messageOriginMatches(targetOrigin, event.origin)
+        ) {
+          return;
+        }
+        const data = event.data;
+        if (!data || typeof data !== "object") return;
+        const msg = data as WebViewIncomingMessage;
+        if (msg.type === "eliza:evalResult" && msg.result !== undefined) {
           clearTimeout(timeout);
           window.removeEventListener("message", handler);
           resolve({ result: String(msg.result) });
@@ -1153,7 +1278,7 @@ export class CanvasWeb extends WebPlugin {
       };
 
       window.addEventListener("message", handler);
-      target.postMessage({ type: "eliza:eval", script }, "*");
+      target.postMessage({ type: "eliza:eval", script }, targetOrigin);
     });
   }
 
@@ -1166,6 +1291,13 @@ export class CanvasWeb extends WebPlugin {
       const iframeSrc = this.webViewIframe?.contentWindow;
       const popupSrc = this.webViewPopup;
       if (event.source !== iframeSrc && event.source !== popupSrc) return;
+      const expectedOrigin = this.webViewOrigin;
+      if (
+        !expectedOrigin ||
+        !this.messageOriginMatches(expectedOrigin, event.origin)
+      ) {
+        return;
+      }
 
       const msg = event.data as WebViewIncomingMessage;
       if (!msg || typeof msg.type !== "string") return;

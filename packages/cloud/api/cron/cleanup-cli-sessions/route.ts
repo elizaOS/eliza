@@ -1,9 +1,12 @@
 /**
- * GET /api/cron/cleanup-cli-sessions
+ * GET|POST /api/cron/cleanup-cli-sessions
  * Cleans up expired CLI auth sessions. Protected by CRON_SECRET.
+ *
+ * Both verbs are registered: the Worker's scheduled() dispatcher fans out with
+ * POST (see `makeCronHandler`), so a GET-only route 404s every cycle.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
@@ -12,7 +15,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.get("/", async (c) => {
+async function handle(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
     await cliAuthSessionsService.cleanupExpiredSessions();
@@ -24,6 +27,9 @@ app.get("/", async (c) => {
     logger.error("Error cleaning up CLI auth sessions:", error);
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handle);
+app.post("/", handle);
 
 export default app;

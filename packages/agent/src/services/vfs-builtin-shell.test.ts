@@ -117,4 +117,37 @@ describe("runVfsBuiltinShell", () => {
     expect(files.stdout).toContain("src/a.ts");
     expect(files.stdout).toContain("src/nested/b.ts");
   });
+
+  it("rejects nested-quantifier grep patterns before testing VFS lines", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "redos" });
+    await vfs.initialize();
+    await vfs.writeFile(
+      "src/bomb.ts",
+      Array.from({ length: 20 }, () => `${"a".repeat(28)}!`).join("\n"),
+    );
+
+    const startedAt = Date.now();
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://redos/src",
+      command: "grep",
+      args: ["(a+)+$", "."],
+    });
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(result).toMatchObject({ exitCode: 2, stdout: "" });
+    expect(result.stderr).toContain("regular expression timed out");
+  });
+
+  it("keeps command separators inside quoted arguments", async () => {
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://quoted/",
+      command: "sh",
+      args: ["-c", `echo "alpha;beta" && echo 'gamma&&delta'`],
+    });
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "alpha;beta\ngamma&&delta\n",
+      stderr: "",
+    });
+  });
 });

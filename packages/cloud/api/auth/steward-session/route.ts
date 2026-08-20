@@ -7,6 +7,7 @@ import {
   type StewardSessionErrorCode,
   type StewardSessionRequest,
   type StewardSessionResponse,
+  type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
@@ -25,6 +26,7 @@ import {
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
+  getRequestIp,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -136,9 +138,9 @@ app.post("/", async (c) => {
 
     const body = (await c.req
       .json()
-      .catch(
-        () => ({}) as Partial<StewardSessionRequest>,
-      )) as Partial<StewardSessionRequest>;
+      .catch(() => ({}) as Partial<StewardSessionRequest>)) as Partial<
+      StewardSessionRequest & StewardTelegramClaimConfirmationRequest
+    >;
     const token = body.token;
     const refreshToken = body.refreshToken;
     const verifiedPhoneHint = body.verifiedPhone;
@@ -169,6 +171,29 @@ app.post("/", async (c) => {
         409,
       );
     }
+    if (telegramContinuation && body.telegramClaimConfirmation !== "explicit") {
+      logStewardAuth("telegram-claim-confirmation-missing", null);
+      return c.json(
+        errorBody(
+          "Telegram account confirmation required",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
+    if (
+      body.telegramClaimConfirmation !== undefined &&
+      (!telegramContinuation || body.telegramClaimConfirmation !== "explicit")
+    ) {
+      logStewardAuth("telegram-claim-confirmation-invalid", null);
+      return c.json(
+        errorBody(
+          "Invalid Telegram account confirmation",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
 
     if (!stewardSecretConfigured(c.env)) {
       // Worker can't verify any token — the deployment is missing
@@ -193,8 +218,7 @@ app.post("/", async (c) => {
           action: "auth.login.failed",
           result: "failure",
           resource: null,
-          ip:
-            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          ip: getRequestIp(c),
           user_agent: c.req.header("user-agent") ?? undefined,
           request_id: c.get("requestId"),
           metadata: { provider: "steward", reason: "invalid_token" },
@@ -417,7 +441,7 @@ app.post("/", async (c) => {
         result: "success",
         resource: null,
         org_id: cloudUser.organization_id ?? undefined,
-        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: getRequestIp(c),
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: { provider: "steward", method: "session_exchange" },

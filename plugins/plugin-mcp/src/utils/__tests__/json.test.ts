@@ -3,8 +3,15 @@
  * They cover fenced/prose-wrapped JSON extraction, JSON5 leniency, and schema checks for tool-call arguments.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { parseJSON, parseStructuredModelOutput, validateJsonSchema } from "../json";
+import {
+  assertMcpJsonSchemaBudget,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  parseJSON,
+  parseStructuredModelOutput,
+  validateJsonSchema,
+} from "../json";
 
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {
@@ -64,5 +71,193 @@ describe("validateJsonSchema", () => {
   it("rejects a wrong-typed field", () => {
     const result = validateJsonSchema({ name: 123 }, schema);
     expect(result.success).toBe(false);
+  });
+
+  it("does not throw when an MCP tool inputSchema is the allOf $ref bomb", () => {
+    const bomb = {
+      $id: "http://evil/mcp-schema-bomb",
+      type: "object",
+      allOf: [{ $ref: "#" }, { $ref: "#" }],
+    };
+    const result = validateJsonSchema({}, bomb);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/schema validation failed:/);
+    }
+  });
+
+  it("does not reject duplicate references to a finite schema", () => {
+    const schemaWithSafeDuplicateRefs = {
+      $defs: { leaf: { type: "string" } },
+      allOf: [{ $ref: "#/$defs/leaf" }, { $ref: "#/$defs/leaf" }],
+    };
+
+    expect(validateJsonSchema("value", schemaWithSafeDuplicateRefs)).toEqual({
+      success: true,
+      data: "value",
+    });
+  });
+
+  it("preserves a recursive tree schema", () => {
+    const recursiveTree = {
+      $defs: {
+        node: {
+          type: "object",
+          properties: { child: { $ref: "#/$defs/node" } },
+        },
+      },
+      $ref: "#/$defs/node",
+    };
+
+    expect(validateJsonSchema({ child: {} }, recursiveTree).success).toBe(true);
+  });
+
+  it("rejects an indirect recursive composition that bypasses duplicate-ref heuristics", () => {
+    const indirectBomb = {
+      $defs: { left: { $ref: "#" }, right: { $ref: "#" } },
+      allOf: [{ $ref: "#/$defs/left" }, { $ref: "#/$defs/right" }],
+    };
+
+    const result = validateJsonSchema({}, indirectBomb);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/schema validation failed:/);
+    }
+  });
+
+  it("rejects asynchronous schemas instead of treating a Promise as valid data", () => {
+    const result = validateJsonSchema("wrong", { $async: true, type: "number" });
+    expect(result).toEqual({
+      success: false,
+      error: "MCP JSON schema uses unsupported asynchronous validation",
+    });
+  });
+
+  it("does not poison a process-wide Ajv cache when two schemas share $id", () => {
+    const first = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { a: { type: "string" } },
+      required: ["a"],
+    };
+    const second = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { b: { type: "number" } },
+      required: ["b"],
+    };
+    expect(validateJsonSchema({ a: "ok" }, first).success).toBe(true);
+    const again = validateJsonSchema({ b: 1 }, second);
+    expect(again.success).toBe(true);
+  });
+
+  it("rejects an oversized schema before compiling it", () => {
+    const huge = { type: "string", description: "x".repeat(256 * 1024) };
+    const result = validateJsonSchema("value", huge);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/serialized size/);
+    }
+  });
+
+  it("rejects an excessively nested schema before compiling it", () => {
+    let deep: Record<string, unknown> = { type: "string" };
+    for (let i = 0; i < 40; i++) {
+      deep = { type: "object", properties: { child: deep } };
+    }
+    const result = validateJsonSchema({}, deep);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/nesting depth/);
+    }
+  });
+});
+
+describe("assertMcpJsonSchemaBudget", () => {
+  it("accepts a small object schema", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({
+        type: "object",
+        properties: { name: { type: "string" } },
+      })
+    ).not.toThrow();
+  });
+
+  it("throws MCP_TOOL_SCHEMA_UNBOUNDED on a cyclic graph", () => {
+    const cyclic: Record<string, unknown> = { type: "array" };
+    cyclic.items = cyclic;
+    expect(() => assertMcpJsonSchemaBudget(cyclic)).toThrowError(ElizaError);
+    try {
+      assertMcpJsonSchemaBudget(cyclic);
+    } catch (error) {
+      expect((error as ElizaError).code).toBe(MCP_TOOL_SCHEMA_UNBOUNDED);
+    }
+  });
+
+  it("rejects a huge sparse array before whole-graph serialization", () => {
+    const sparse: unknown[] = [];
+    sparse.length = 1_000_000_000;
+    expect(() => assertMcpJsonSchemaBudget(sparse)).toThrowError(ElizaError);
+  });
+
+  it("rejects giant primitive text during traversal", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({ type: "string", description: "x".repeat(300_000) })
+    ).toThrowError(/serialized size/);
+  });
+
+  it("rejects a schema accessor without invoking it", () => {
+    const schema = { type: "object" } as Record<string, unknown>;
+    let reads = 0;
+    Object.defineProperty(schema, "properties", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return {};
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/contains an accessor/);
+    expect(reads).toBe(0);
+  });
+
+  it("rejects custom toJSON before it can synthesize an unbounded second graph", () => {
+    let calls = 0;
+    const schema = { type: "object" };
+    Object.defineProperty(schema, "toJSON", {
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(1_000_000) });
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/custom toJSON/);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects an inherited toJSON accessor without invoking it", () => {
+    const original = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+    let calls = 0;
+    let caught: unknown;
+    Object.defineProperty(Object.prototype, "toJSON", {
+      configurable: true,
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(300_000) });
+      },
+    });
+    try {
+      assertMcpJsonSchemaBudget({ type: "object" });
+    } catch (error) {
+      caught = error;
+    } finally {
+      if (original) {
+        Object.defineProperty(Object.prototype, "toJSON", original);
+      } else {
+        delete (Object.prototype as { toJSON?: unknown }).toJSON;
+      }
+    }
+
+    expect(caught).toBeInstanceOf(ElizaError);
+    expect((caught as ElizaError).message).toMatch(/custom toJSON/);
+    expect(calls).toBe(0);
   });
 });

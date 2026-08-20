@@ -96,6 +96,14 @@ export function isValidStoredMediaFileName(fileName: string): boolean {
 const MEDIA_URL_PREFIX = "/api/media/";
 
 /**
+ * Matches served media URLs embedded in free text (e.g. a message body that
+ * re-shares an image by pasting its capability URL). Shared by the export
+ * capture and the orphan-media GC so both agree on what counts as a live
+ * text reference; matches are re-validated through `mediaFileNameFromUrl`.
+ */
+export const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
+
+/**
  * MIME types that are safe to render inline in a browser context. Everything
  * else — notably `image/svg+xml`, `application/pdf`, `text/html`, and
  * unknown/active types — is served with `Content-Disposition: attachment` so it

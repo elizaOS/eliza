@@ -41,6 +41,7 @@ import {
   getBaseUrl,
   isServerReachable,
   memberBearerHeaders,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -77,7 +78,10 @@ function adminHeaders(): Record<string, string> {
       "Admin session cookie missing; ensure the e2e preload exchanged the bootstrapped API key.",
     );
   }
-  return { Cookie: sessionCookie, "Content-Type": "application/json" };
+  return sameOriginBrowserHeaders({
+    Cookie: sessionCookie,
+    "Content-Type": "application/json",
+  });
 }
 
 const FAKE_UUID = "00000000-0000-4000-8000-000000000000";

@@ -37,6 +37,7 @@ import {
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -161,8 +162,29 @@ app.post("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
 
-    const body = await c.req.json().catch(() => null);
-    if (!body) throw ValidationError("Invalid JSON body");
+    const syncValues = c.req.queries("sync") ?? [];
+    const requestedSync = syncValues[0];
+    if (
+      syncValues.length > 1 ||
+      (requestedSync != null &&
+        requestedSync !== "" &&
+        requestedSync !== "true" &&
+        requestedSync !== "false")
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid sync",
+          message: 'sync must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const sync = requestedSync === "true";
+
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) throw ValidationError("Invalid JSON body");
+    const body = decodedBody.value;
 
     const parsed = provisionSchema.safeParse(body);
     if (!parsed.success) {
@@ -172,7 +194,6 @@ app.post("/", async (c) => {
     }
 
     const p = parsed.data;
-    const sync = c.req.query("sync") === "true";
     const agentName = p.character?.name || p.tokenName;
     const characterConfig = recordFromUnknown(p.character?.config);
     const waifuAgentId = stringFromRecord(characterConfig, "waifuAgentId");

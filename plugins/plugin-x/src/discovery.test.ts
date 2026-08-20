@@ -1,5 +1,10 @@
-/** Exercises discovery-cycle session binding and fail-closed read behavior with deterministic provider fakes. */
-import type { IAgentRuntime } from "@elizaos/core";
+/** Exercises discovery-cycle session binding, fail-closed read behavior, and the engagement dedup guard (#22710) with deterministic provider fakes. */
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ClientBase, TwitterAccountSession } from "./base";
 import { TwitterDiscoveryClient } from "./discovery";
@@ -17,6 +22,7 @@ type DiscoveryHarness = {
     tweets: unknown[],
     session: TwitterAccountSession,
   ): Promise<number>;
+  delay(ms: number): Promise<void>;
 };
 
 function makeRuntime(): IAgentRuntime {
@@ -160,5 +166,180 @@ describe("TwitterDiscoveryClient session integrity", () => {
     await expect(discovery.discoverContent()).rejects.toMatchObject({
       code: "X_DISCOVERY_READ_FAILED",
     });
+  });
+});
+
+const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
+
+type EngagementRuntimeHandle = {
+  runtime: IAgentRuntime;
+  memories: Map<string, Memory>;
+};
+
+/**
+ * Map-backed runtime whose `getMemoryById`/`createMemory` share one store, so a
+ * dedup marker written by `saveEngagementMemory` is observable by the
+ * `processTweets` guard on the following cycle — the exact read/write agreement
+ * that #22710 broke.
+ */
+function makeEngagementRuntime(
+  replyText = "a thoughtful reply",
+): EngagementRuntimeHandle {
+  const memories = new Map<string, Memory>();
+  const runtime = {
+    agentId: AGENT_ID,
+    character: { name: "Agent", topics: ["agents"] },
+    getSetting: () => undefined,
+    reportError: vi.fn(),
+    getMemoryById: vi.fn(async (id: UUID) => memories.get(id) ?? null),
+    createMemory: vi.fn(async (memory: Memory) => {
+      if (memory.id && !memories.has(memory.id)) {
+        memories.set(memory.id, memory);
+      }
+      return memory.id as UUID;
+    }),
+    ensureWorldExists: vi.fn(async () => {}),
+    updateWorld: vi.fn(async () => {}),
+    ensureRoomExists: vi.fn(async () => {}),
+    ensureConnection: vi.fn(async () => {}),
+    useModel: vi.fn(async () => replyText),
+  } as unknown as IAgentRuntime;
+  return { runtime, memories };
+}
+
+function makeEngagementClient(): {
+  client: ClientBase;
+  session: TwitterAccountSession;
+  likeTweet: ReturnType<typeof vi.fn>;
+  sendTweet: ReturnType<typeof vi.fn>;
+  sendQuoteTweet: ReturnType<typeof vi.fn>;
+} {
+  const profile = {
+    id: "account-a",
+    username: "account-a",
+    screenName: "Account A",
+    bio: "",
+    nicknames: [],
+  };
+  const likeTweet = vi.fn(async () => {});
+  const sendTweet = vi.fn(async () => {});
+  const sendQuoteTweet = vi.fn(async () => {});
+  const api = { likeTweet, sendTweet, sendQuoteTweet };
+  const session = { client: api as never, profile, revision: 1 };
+  return {
+    client: {
+      accountId: "default",
+      twitterClient: api,
+      withAuthenticatedSession: vi.fn(),
+      isAuthenticatedSessionCurrent: vi.fn(() => true),
+    } as unknown as ClientBase,
+    session,
+    likeTweet,
+    sendTweet,
+    sendQuoteTweet,
+  };
+}
+
+function scoredTweet(
+  engagementType: "like" | "reply" | "quote" | "skip",
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    tweet: {
+      id: "1750000000000000001",
+      userId: "9001",
+      username: "builder",
+      name: "Builder",
+      text: "agents are the future",
+      conversationId: "1750000000000000001",
+      ...overrides,
+    },
+    relevanceScore: 0.6,
+    engagementType,
+  };
+}
+
+describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
+  it("engages a discovered tweet once and short-circuits on the next cycle", async () => {
+    const { runtime, memories } = makeEngagementRuntime();
+    const { client, session, likeTweet } = makeEngagementClient();
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+    vi.spyOn(discovery, "delay").mockResolvedValue(undefined);
+
+    const tweets = [scoredTweet("like")];
+    const first = await discovery.processTweets(tweets, session);
+    // The guard's read key must resolve to the memory the write produced.
+    const guardHit = await runtime.getMemoryById(
+      createUniqueUuid(runtime, "1750000000000000001"),
+    );
+    const second = await discovery.processTweets(tweets, session);
+
+    expect(first).toBe(1);
+    expect(second).toBe(0);
+    expect(guardHit).not.toBeNull();
+    expect(likeTweet).toHaveBeenCalledTimes(1);
+    expect(likeTweet).toHaveBeenCalledWith("1750000000000000001");
+    // Exactly one dedup marker persisted; the engagement type stays in metadata.
+    expect(memories.size).toBe(1);
+    const stored = [...memories.values()][0];
+    expect(
+      (stored.content.metadata as { engagementType?: string }).engagementType,
+    ).toBe("like");
+  });
+
+  it("does not retry a 403-skipped tweet on the following cycle", async () => {
+    const { runtime } = makeEngagementRuntime();
+    const { client, session, likeTweet } = makeEngagementClient();
+    likeTweet.mockRejectedValueOnce(new Error("Request failed with code 403"));
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+    vi.spyOn(discovery, "delay").mockResolvedValue(undefined);
+
+    const tweets = [scoredTweet("like")];
+    // First cycle: the like call is denied (403) and a skip marker is written.
+    await discovery.processTweets(tweets, session);
+    const skipMarker = await runtime.getMemoryById(
+      createUniqueUuid(runtime, "1750000000000000001"),
+    );
+    // Second cycle: the guard must find the skip marker and not retry.
+    await discovery.processTweets(tweets, session);
+
+    expect(skipMarker).not.toBeNull();
+    const skipMeta = skipMarker?.content.metadata as {
+      engagementType?: string;
+    };
+    expect(skipMeta.engagementType).toBe("skip");
+    expect(likeTweet).toHaveBeenCalledTimes(1);
+  });
+
+  it("replies to a discovered tweet once across cycles", async () => {
+    const { runtime } = makeEngagementRuntime("welcome to the timeline");
+    const { client, session, sendTweet, likeTweet } = makeEngagementClient();
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+    vi.spyOn(discovery, "delay").mockResolvedValue(undefined);
+
+    const tweets = [scoredTweet("reply")];
+    const first = await discovery.processTweets(tweets, session);
+    const second = await discovery.processTweets(tweets, session);
+
+    expect(first).toBe(1);
+    expect(second).toBe(0);
+    expect(sendTweet).toHaveBeenCalledTimes(1);
+    expect(sendTweet).toHaveBeenCalledWith(
+      "welcome to the timeline",
+      "1750000000000000001",
+    );
+    expect(likeTweet).not.toHaveBeenCalled();
   });
 });

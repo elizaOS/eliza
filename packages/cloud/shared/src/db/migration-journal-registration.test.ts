@@ -31,6 +31,45 @@ interface JournalEntry {
   breakpoints: boolean;
 }
 
+const BACKUP_CATALOGUE_MIGRATION_TAGS = [
+  "0218_agent_backup_catalog_columns",
+  "0219_agent_backup_catalog_legacy_backfill",
+  "0220_agent_backup_catalog_authority",
+  "0221_agent_backup_catalog_ownership_fks",
+  "0222_agent_backup_catalog_identity_checks",
+  "0223_agent_backup_catalog_runtime_checks",
+  "0224_agent_backup_catalog_manifest_v2_check",
+  "0225_agent_backup_catalog_indexes",
+  "0226_agent_backup_objects",
+  "0227_agent_backup_gc_outbox",
+  "0228_agent_backup_catalog_tenant_authority",
+  "0229_agent_backup_catalog_chain_authority",
+  "0230_agent_backup_activation_authority_foundation",
+  "0231_agent_backup_docker_source_authority",
+  "0232_agent_backup_catalog_source_authority",
+  "0233_agent_backup_catalog_manifest_v3_columns",
+  "0234_agent_backup_catalog_manifest_v3_shape",
+  "0235_agent_backup_rpo_scheduler",
+  "0236_agent_sandbox_activation_quarantine",
+  "0237_agent_restore_authority_prerequisites",
+  "0238_agent_backup_restore_lease_core",
+  "0239_agent_backup_restore_lease_authority",
+  "0240_agent_vault_key_generations",
+  "0241_agent_vault_key_current_authority",
+  "0242_agent_vault_key_backup_bindings",
+  "0243_agent_backup_catalog_authority_guard",
+  "0244_agent_backup_restore_lease_guard",
+  "0245_agent_vault_key_topology_guard",
+  "0246_agent_node_incarnation_histories",
+  "0247_agent_activation_publications",
+  "0248_agent_vault_key_seed_receipts",
+  "0249_agent_backup_restore_receipts",
+  "0250_agent_restore_receipt_guards",
+  "0251_agent_backup_restore_operations",
+  "0252_agent_backup_restore_operation_guard",
+  "0253_job_retryable_requeues",
+] as const;
+
 function journalEntries(): JournalEntry[] {
   const raw = readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8");
   return (JSON.parse(raw) as { entries: JournalEntry[] }).entries;
@@ -68,40 +107,22 @@ describe("migrations/meta/_journal.json registration", () => {
     expect(new Set(entries.map((e) => e.tag)).size).toBe(entries.length);
   });
 
-  test("the catalogue and capture stack is registered in strict deployment order", () => {
-    const tags = [
-      "0218_agent_backup_catalog_columns",
-      "0219_agent_backup_catalog_legacy_backfill",
-      "0220_agent_backup_catalog_authority",
-      "0221_agent_backup_catalog_ownership_fks",
-      "0222_agent_backup_catalog_identity_checks",
-      "0223_agent_backup_catalog_runtime_checks",
-      "0224_agent_backup_catalog_manifest_v2_check",
-      "0225_agent_backup_catalog_indexes",
-      "0226_agent_backup_objects",
-      "0227_agent_backup_gc_outbox",
-      "0228_agent_backup_catalog_tenant_authority",
-      "0229_agent_backup_catalog_chain_authority",
-      "0230_agent_backup_activation_authority_foundation",
-      "0231_agent_backup_docker_source_authority",
-      "0232_agent_backup_catalog_source_authority",
-      "0233_agent_backup_catalog_manifest_v3_columns",
-      "0234_agent_backup_catalog_manifest_v3_shape",
-      "0235_agent_backup_rpo_scheduler",
-    ];
-    const tail = journalEntries().slice(-tags.length);
+  test("the catalogue, capture, and restore stack is registered in strict deployment order", () => {
+    const entries = journalEntries();
+    const firstIndex = entries.findIndex(({ tag }) => tag === BACKUP_CATALOGUE_MIGRATION_TAGS[0]);
+    const stack = entries.slice(firstIndex, firstIndex + BACKUP_CATALOGUE_MIGRATION_TAGS.length);
 
-    expect(tail.map(({ tag }) => tag)).toEqual(tags);
-    expect(tail.map(({ idx }) => idx)).toEqual(tags.map((_, offset) => 217 + offset));
-    expect(tail.map(({ when }) => when)).toEqual(
-      tags.map((_, offset) => 1787947200000 + offset * 86_400_000),
+    expect(stack.map(({ tag }) => tag)).toEqual([...BACKUP_CATALOGUE_MIGRATION_TAGS]);
+    expect(stack.map(({ idx }) => idx)).toEqual(
+      BACKUP_CATALOGUE_MIGRATION_TAGS.map((_, offset) => 217 + offset),
+    );
+    expect(stack.map(({ when }) => when)).toEqual(
+      BACKUP_CATALOGUE_MIGRATION_TAGS.map((_, offset) => 1787947200000 + offset * 86_400_000),
     );
   });
 
-  test("each capture migration remains below the review-size ceiling", () => {
-    const captureTags = journalEntries()
-      .filter(({ idx }) => idx >= 223 && idx <= 228)
-      .map(({ tag }) => tag);
+  test("each capture and restore-foundation migration remains below the review-size ceiling", () => {
+    const captureTags = BACKUP_CATALOGUE_MIGRATION_TAGS.slice(6);
 
     for (const tag of captureTags) {
       const source = readFileSync(join(MIGRATIONS_DIR, `${tag}.sql`), "utf8");

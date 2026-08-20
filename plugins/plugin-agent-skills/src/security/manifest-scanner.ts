@@ -57,6 +57,41 @@ function hasHiddenComponent(filePath: string): boolean {
 		.some((p) => p.startsWith(".") && !ALLOWED_DOTFILES.has(p));
 }
 
+/**
+ * Platform-aware containment test for the symlink-escape gate. POSIX permits a
+ * backslash in a filename, so accepting both slash styles as separators would
+ * let a sibling such as `skill\\outside` masquerade as a child of `skill`.
+ * Windows absolute paths are normalized to their native separator and compared
+ * case-insensitively; POSIX paths preserve backslashes as ordinary characters.
+ * Both inputs must already be absolute and canonical, as they are in the disk
+ * scanner after `realpath` resolution.
+ */
+function isInsideDir(target: string, dir: string): boolean {
+	const isWindowsAbsolute =
+		/^[a-zA-Z]:[/\\]/.test(dir) || dir.startsWith("\\\\");
+	const separator = isWindowsAbsolute ? "\\" : "/";
+	const normalize = (value: string): string => {
+		const withNativeSeparators = isWindowsAbsolute
+			? value.replaceAll("/", "\\")
+			: value;
+		const withoutTrailingSeparators = withNativeSeparators.replace(
+			isWindowsAbsolute ? /\\+$/ : /\/+$/,
+			"",
+		);
+		const normalized = withoutTrailingSeparators || separator;
+		return isWindowsAbsolute ? normalized.toLowerCase() : normalized;
+	};
+
+	const normalizedTarget = normalize(target);
+	const normalizedDir = normalize(dir);
+	return (
+		normalizedTarget === normalizedDir ||
+		normalizedTarget.startsWith(
+			normalizedDir === separator ? separator : `${normalizedDir}${separator}`,
+		)
+	);
+}
+
 export interface ManifestFileEntry {
 	relativePath: string;
 	sizeBytes: number;
@@ -88,10 +123,15 @@ export function scanManifest(
 		}
 
 		if (entry.isSymlink) {
-			if (
-				entry.symlinkTarget &&
-				!entry.symlinkTarget.startsWith(skillDirPath)
-			) {
+			if (!entry.symlinkTarget) {
+				findings.push({
+					ruleId: "symlink-escape",
+					severity: "critical",
+					file: entry.relativePath,
+					message:
+						"Symbolic link target could not be resolved inside the skill directory",
+				});
+			} else if (!isInsideDir(entry.symlinkTarget, skillDirPath)) {
 				findings.push({
 					ruleId: "symlink-escape",
 					severity: "critical",

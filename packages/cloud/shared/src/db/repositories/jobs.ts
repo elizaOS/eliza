@@ -255,6 +255,7 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
     AND ${jobs.execution_interruptions} = ${job.execution_interruptions}
+    AND ${jobs.retryable_requeues} = ${job.retryable_requeues}
     AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
     AND ${msWindowTimestampMatch(jobs.execution_quiesced_at, job.execution_quiesced_at)}
     AND ${msWindowTimestampMatch(jobs.started_at, job.started_at)}
@@ -297,6 +298,7 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.attempts === right.attempts &&
     left.max_attempts === right.max_attempts &&
     left.execution_interruptions === right.execution_interruptions &&
+    left.retryable_requeues === right.retryable_requeues &&
     left.execution_generation === right.execution_generation &&
     sameTimestamp(left.execution_quiesced_at, right.execution_quiesced_at) &&
     sameTimestamp(left.started_at, right.started_at) &&
@@ -1232,6 +1234,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             eq(jobs.execution_interruptions, params.job.execution_interruptions),
+            eq(jobs.retryable_requeues, params.job.retryable_requeues),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
@@ -1273,6 +1276,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             eq(jobs.execution_interruptions, params.job.execution_interruptions),
+            eq(jobs.retryable_requeues, params.job.retryable_requeues),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
@@ -1725,14 +1729,23 @@ export class JobsRepository {
    * Requeues a job after a transient worker-side ambiguity without consuming
    * its finite retry budget. This is for cases where the job left the target
    * resource in a recoverable in-between state and a later worker pass should
-   * re-check/adopt that state instead of counting it as a failed attempt.
+   * re-check/adopt that state instead of counting it as a failed attempt. A
+   * bounded transition atomically advances database-owned requeue authority
+   * and runs its dependent failure writeback in the terminal transaction.
    */
   async retryLaterWithoutIncrementingAttempts(
     claimedJob: Job,
     error: string,
     delayMs: number,
     executionOwnerId?: string,
+    bounded?: {
+      maxRequeues: number;
+      onExhaustedInTx?: JobFailureWriteback;
+    },
   ): Promise<Job | undefined> {
+    if (bounded && (!Number.isSafeInteger(bounded.maxRequeues) || bounded.maxRequeues < 0)) {
+      throw new Error(`Invalid retryable requeue bound for job ${claimedJob.id}`);
+    }
     const requiresExecutionLease = hasDetachedProvisioningExecution(claimedJob.type);
     if (requiresExecutionLease && !executionOwnerId) {
       throw new Error(`Execution owner is required to requeue claimed job ${claimedJob.id}`);
@@ -1754,6 +1767,9 @@ export class JobsRepository {
     );
 
     const generation = requireExecutionGeneration(claimedJob);
+    const nextRequeues = bounded ? claimedJob.retryable_requeues + 1 : undefined;
+    const exhausted =
+      bounded !== undefined && nextRequeues !== undefined && nextRequeues > bounded.maxRequeues;
     const updated = await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
@@ -1786,12 +1802,13 @@ export class JobsRepository {
       const [row] = await tx
         .update(jobs)
         .set({
-          status: "pending",
+          status: exhausted ? "failed" : "pending",
           ...payload,
-          completed_at: null,
+          ...(nextRequeues === undefined ? {} : { retryable_requeues: nextRequeues }),
+          completed_at: exhausted ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
-          scheduled_for: scheduledFor,
+          scheduled_for: exhausted ? claimedJob.scheduled_for : scheduledFor,
         })
         .where(
           and(
@@ -1816,6 +1833,18 @@ export class JobsRepository {
         )
         .returning();
       if (!row) return undefined;
+      if (exhausted && bounded?.onExhaustedInTx) {
+        // The claimed snapshot already owns hydrated payloads. Do not call
+        // hydrateJob while lifecycle locks are held because R2-backed fields
+        // can require provider I/O.
+        await bounded.onExhaustedInTx(tx, {
+          ...claimedJob,
+          ...row,
+          data: claimedJob.data,
+          result: claimedJob.result,
+          error,
+        });
+      }
       if (requiresExecutionLease && executionOwnerId) {
         await tx
           .delete(jobExecutionLeases)

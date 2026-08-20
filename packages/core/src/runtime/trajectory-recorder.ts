@@ -50,20 +50,16 @@ import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 } from "./trajectory-provider-attribution";
+import type { RecordedStageKind } from "./trajectory-stage-kind";
+
+export {
+	RECORDED_STAGE_KINDS,
+	type RecordedStageKind,
+} from "./trajectory-stage-kind";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
 // ---------------------------------------------------------------------------
-
-export type RecordedStageKind =
-	| "messageHandler"
-	| "planner"
-	| "tool"
-	| "toolSearch"
-	| "evaluation"
-	| "subPlanner"
-	| "compaction"
-	| "factsAndRelationships";
 
 export interface RecordedUsage {
 	promptTokens?: number;

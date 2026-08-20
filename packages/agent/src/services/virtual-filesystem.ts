@@ -21,6 +21,7 @@ import { resolveStateDir } from "../config/paths.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
+const writeLocks = new Map<string, Promise<void>>();
 
 export type VirtualFilesystemDiffStatus = "added" | "modified" | "deleted";
 
@@ -136,34 +137,49 @@ export class VirtualFilesystemService {
     virtualPath: string,
     contents: string | Uint8Array,
   ): Promise<VirtualFilesystemEntry> {
-    const data =
-      typeof contents === "string"
-        ? Buffer.from(contents)
-        : Buffer.from(contents);
-    if (data.byteLength > this.maxFileBytes) {
-      throw new VirtualFilesystemError(
-        `File exceeds max file size of ${this.maxFileBytes} bytes`,
-        "QUOTA_EXCEEDED",
-      );
+    const previous = writeLocks.get(this.projectRoot) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queued = previous.then(() => current);
+    writeLocks.set(this.projectRoot, queued);
+    await previous;
+    try {
+      const data =
+        typeof contents === "string"
+          ? Buffer.from(contents)
+          : Buffer.from(contents);
+      if (data.byteLength > this.maxFileBytes) {
+        throw new VirtualFilesystemError(
+          `File exceeds max file size of ${this.maxFileBytes} bytes`,
+          "QUOTA_EXCEEDED",
+        );
+      }
+
+      const target = this.resolvePath(virtualPath);
+      await this.ensureSafeParentDirectory(target);
+      await this.rejectSymlinkIfExists(target);
+
+      const existingSize = await this.fileSizeIfExists(target);
+      const current = await this.measureFiles();
+      const nextBytes = current.bytes - existingSize + data.byteLength;
+      if (nextBytes > this.quotaBytes) {
+        throw new VirtualFilesystemError(
+          `Project quota exceeded: ${nextBytes}/${this.quotaBytes} bytes`,
+          "QUOTA_EXCEEDED",
+        );
+      }
+
+      await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+      await fsp.writeFile(target, data, { mode: 0o600 });
+      return this.entryFor(target);
+    } finally {
+      release();
+      if (writeLocks.get(this.projectRoot) === queued) {
+        writeLocks.delete(this.projectRoot);
+      }
     }
-
-    const target = this.resolvePath(virtualPath);
-    await this.ensureSafeParentDirectory(target);
-    await this.rejectSymlinkIfExists(target);
-
-    const existingSize = await this.fileSizeIfExists(target);
-    const current = await this.measureFiles();
-    const nextBytes = current.bytes - existingSize + data.byteLength;
-    if (nextBytes > this.quotaBytes) {
-      throw new VirtualFilesystemError(
-        `Project quota exceeded: ${nextBytes}/${this.quotaBytes} bytes`,
-        "QUOTA_EXCEEDED",
-      );
-    }
-
-    await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    await fsp.writeFile(target, data, { mode: 0o600 });
-    return this.entryFor(target);
   }
 
   async readFile(

@@ -2,7 +2,8 @@
  * Household coordination policy over the runtime graph, approval queue, and
  * commitment ledger. The service turns mutable scheduling discussions into
  * version-pinned proposals and activates an agreement only after every named
- * adult approves those exact proposal bytes.
+ * adult approves those exact proposal bytes. Audit-record entity scans are
+ * bounded in `household-entity-scan.ts`.
  */
 import crypto from "node:crypto";
 import {
@@ -15,7 +16,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
-  ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import {
   type Entity,
@@ -41,6 +42,7 @@ import {
   ensureHouseholdGrantExpiryWarning,
   type HouseholdGrantExpiryWarningReceipt,
 } from "./grant-expiry-warning.js";
+import { householdExportAuditVisibleToAudience } from "./household-entity-scan.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   DEFAULT_HOUSEHOLD_ID,
@@ -242,20 +244,6 @@ function nonNegativeInteger(value: number, field: string, minimum = 0): number {
     );
   }
   return value;
-}
-
-function recordContainsAnyEntity(
-  value: unknown,
-  entityIds: ReadonlySet<string>,
-): boolean {
-  if (typeof value === "string") return entityIds.has(value);
-  if (Array.isArray(value)) {
-    return value.some((entry) => recordContainsAnyEntity(entry, entityIds));
-  }
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value).some((entry) =>
-    recordContainsAnyEntity(entry, entityIds),
-  );
 }
 
 function latestProposalVersions(
@@ -2966,12 +2954,11 @@ export class HouseholdCoordinationService {
               : DEFAULT_HOUSEHOLD_ID;
         return eventHouseholdId === householdId;
       })
-      .filter(
-        (event) =>
-          isOwner ||
-          recordContainsAnyEntity(event.inputs, audience) ||
-          recordContainsAnyEntity(event.decision, audience) ||
-          event.ownerId === principalEntityId,
+      .filter((event) =>
+        householdExportAuditVisibleToAudience(event, audience, {
+          isOwner,
+          principalEntityId,
+        }),
       )
       .map((event): HouseholdAuditRecord => {
         if (isOwner) return event;
@@ -3048,7 +3035,7 @@ export class HouseholdCoordinationRuntimeService extends Service {
   ): Promise<HouseholdCoordinationRuntimeService> {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
-      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();

@@ -502,6 +502,16 @@ jobs:
   device:
     name: Device bundles
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device')
+    # A workflow_call caller must grant every permission any nested job
+    # requests, even jobs whose `if` can never fire on this event: GitHub
+    # validates the compiled graph before evaluating conditions, and an
+    # uncovered nested request fails the entire CI run at startup. These
+    # mirror the schedule-only reconcile-scheduled-android-status job; the
+    # label gate above keeps the grant off unlabeled PRs entirely.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/device-e2e.yml
 
   secrets:
@@ -520,17 +530,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version=8.30.1
-          # SHA256-pinned like the actionlint installer
-          # (.github/scripts/install-workflow-linters.sh); update both together
-          # on version bumps.
-          sha256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          archive="$RUNNER_TEMP/gitleaks.tar.gz"
-          curl --fail --location --silent --show-error \
-            --output "$archive" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
-          echo "${sha256}  ${archive}" | sha256sum --check -
-          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          # Version and SHA256 are pinned in the shared installer
+          # (.github/scripts/install-gitleaks.sh); bump them there.
+          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Scan changed commits

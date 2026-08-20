@@ -257,18 +257,17 @@ describe("handshake URLs", () => {
 
 describe("shouldAutoBridgeToSso", () => {
   it("requires the exchange role", () => {
-    document.cookie = "steward-authed=1";
     expect(shouldAutoBridgeToSso("eliza.app")).toBe(false);
     expect(shouldAutoBridgeToSso("localhost")).toBe(false);
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
-  it("requires the domain-wide authed marker cookie (post-logout browsers skip the bounce)", () => {
-    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
+  it("starts the auth-origin handoff without a cross-host cookie hint", () => {
+    expect(document.cookie).not.toContain("steward-authed=1");
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
   it("honors the explicit logged-out marker", () => {
-    document.cookie = "steward-authed=1";
     markSsoLoggedOut();
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
     clearSsoLoggedOut();
@@ -276,7 +275,6 @@ describe("shouldAutoBridgeToSso", () => {
   });
 
   it("honors the loop guard", () => {
-    document.cookie = "steward-authed=1";
     markSsoBridgeAttempt();
     expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });
@@ -410,7 +408,7 @@ describe("performSsoExchange", () => {
     expect(isSsoLoggedOut()).toBe(false);
   });
 
-  it("makes Telegram claim convergence authoritative before hydrating bridged storage", async () => {
+  it("establishes bridged auth without sending or consuming a Telegram claim", async () => {
     storePendingOnboardingSession(
       "opaque-telegram-claim-token",
       TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
@@ -428,13 +426,14 @@ describe("performSsoExchange", () => {
 
     expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
       token,
-      telegramContinuation: "opaque-telegram-claim-token",
     });
-    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      "opaque-telegram-claim-token",
+    );
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
   });
 
-  it("keeps Telegram claim authority and storage unhydrated when bridge sync rejects it", async () => {
+  it("keeps Telegram claim authority when best-effort cookie sync is rejected", async () => {
     storePendingOnboardingSession(
       "opaque-telegram-claim-token",
       TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
@@ -452,14 +451,11 @@ describe("performSsoExchange", () => {
       fn,
     );
 
-    expect(result).toEqual({
-      ok: false,
-      error: "Telegram account claim failed (HTTP 409)",
-    });
+    expect(result).toEqual({ ok: true });
     expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
       "opaque-telegram-claim-token",
     );
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeTruthy();
   });
 
   it("refuses a malformed verifier without calling out", async () => {

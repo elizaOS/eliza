@@ -38,6 +38,10 @@ interface ExtendedImageGenerationParams extends ImageGenerationParams {
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Please analyze this image and provide a title and detailed description.";
 
+const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
+
+const IMAGE_DESCRIPTION_TIMEOUT_MS = 45_000;
+
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
@@ -90,6 +94,7 @@ export async function handleImageGeneration(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(IMAGE_GENERATION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -133,7 +138,6 @@ export async function handleImageDescription(
     typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
       ? paramsWithMaxTokens.maxTokens
       : getImageDescriptionMaxTokens(runtime);
-
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
   let imageUrl: string;
@@ -152,6 +156,11 @@ export async function handleImageDescription(
   }
 
   const baseURL = getImageDescriptionBaseURL(runtime);
+  const timeoutSignal = AbortSignal.timeout(IMAGE_DESCRIPTION_TIMEOUT_MS);
+  const signal =
+    typeof params === "object" && params.signal
+      ? AbortSignal.any([params.signal, timeoutSignal])
+      : timeoutSignal;
 
   const requestBody = {
     model: modelName,
@@ -184,6 +193,7 @@ export async function handleImageDescription(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok) {

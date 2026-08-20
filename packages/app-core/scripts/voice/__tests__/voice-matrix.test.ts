@@ -104,4 +104,22 @@ describe("voice matrix CLI", () => {
     );
     expect(provisioned.report.cells[0].probe.available).toBe(true);
   });
+
+  test("registers the three visible browser failure paths as a recordable cell", () => {
+    const { report, result } = runVoiceMatrix([
+      "--platform",
+      "web.failure-paths",
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(report.selection.matched).toBe(1);
+    expect(report.cells[0]).toMatchObject({
+      id: "web.failure-paths",
+      class: "voice-three-state-failures",
+      probe: { available: true },
+    });
+    expect(report.cells[0].command).toEqual(
+      expect.arrayContaining(["--grep", "voice failure paths"]),
+    );
+  });
 });

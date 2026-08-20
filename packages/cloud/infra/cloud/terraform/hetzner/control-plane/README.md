@@ -93,11 +93,15 @@ the record manually via the Cloudflare dashboard (preferred — no NXDOMAIN
 window) or via a one-off `terraform state rm` + re-apply round-trip if you
 want the new content to land back in state.
 
-**Cloud-init changes need `terraform taint`** to land on existing VMs.
-`user_data` is in `lifecycle.ignore_changes` so subsequent applies are
-no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
-VM and re-apply — but that wipes local state (headscale DB, TLS certs,
-/opt/eliza checkout). Plan that out before touching prod.
+**Cloud-init changes require a separately reviewed replacement** to land on
+existing VMs. `user_data` is in `lifecycle.ignore_changes`, and
+`lifecycle.prevent_destroy` deliberately blocks `terraform taint` or
+`-replace` from destroying an existing CP. A replacement maintenance change
+must temporarily remove the server's lifecycle guard, preserve the network
+guard, and prove in its exact plan that only the intended VM is replaced. That
+replacement wipes local state (Headscale DB, TLS certificates, and the
+`/opt/eliza` checkout), so copy and verify state before the apply and restore
+the guard immediately afterward.
 
 **Headscale arm/handoff on a CP.** Cloud-init installs the `headscale` package
 (binary, systemd unit, `/var/lib/headscale` state dir owned by the package user)
@@ -178,6 +182,44 @@ the exact "node registers against the wrong service" failure mode.
 
 These are tracked as follow-ups in
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md#followups).
+
+## Persistent-resource safeguards
+
+Each control-plane VM has Hetzner backups plus delete and rebuild protection,
+and Terraform attaches it to the same protected private network used by its
+runtime-created workers. These provider backups reduce host-loss recovery time;
+they do not replace an application-consistent backup of Headscale state or the
+control-plane daemon configuration.
+
+The persistent server and network also use Terraform
+`lifecycle.prevent_destroy`. Hetzner's provider removes API delete protection
+when Terraform intentionally destroys a resource, so provider protection alone
+does not prevent an accidental replacement from an apply. Removing the
+resource block itself also removes the lifecycle guard; configuration deletion
+therefore requires the same separately reviewed retirement plan.
+
+Always dispatch `Infrastructure` with `operation=plan` from the canonical
+branch for the selected protected environment and review the exact bound plan
+artifact before an apply. The first adoption plan should contain only in-place
+protection/backup updates plus one subnet-specific network attachment per
+control-plane VM; a server replacement, network replacement, or DNS change is
+a stop condition.
+
+Rollback is intentionally ordered and requires a separately reviewed plan:
+
+1. Keep delete/rebuild protection enabled while validating public ingress,
+   Headscale, and daemon health.
+2. Detach the private-network resource only after proving no daemon or worker
+   route depends on it.
+3. Disable backups only after an independent state-backup/recovery path is
+   proven and the recurring-cost change is accepted.
+4. Remove `lifecycle.prevent_destroy`, rebuild protection, and delete
+   protection only through an explicitly reviewed replacement or retirement
+   change; restore every retained resource's lifecycle guard immediately after
+   the operation.
+
+Never use an ad-hoc provider mutation to bypass protection. A protected
+resource that Terraform cannot update cleanly must stop at plan review.
 
 ## Cost
 

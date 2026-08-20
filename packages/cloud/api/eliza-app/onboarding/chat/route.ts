@@ -20,10 +20,13 @@ import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
   inspectOnboardingContinuation,
+  type OnboardingContinuationPreview,
   type OnboardingPlatform,
+  previewTelegramPersonalAccountClaimContinuation,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
 import { publicElizaAppProvisioningPayload } from "@/lib/services/eliza-app/provisioning";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../internal/_auth";
@@ -72,10 +75,26 @@ app.get("/", async (c) => {
     if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
       throw ForbiddenError("Browser authentication required");
     }
-    const preview = await inspectOnboardingContinuation(
-      token,
-      caller.authenticatedUser,
-    );
+    let preview: OnboardingContinuationPreview;
+    try {
+      preview = await inspectOnboardingContinuation(
+        token,
+        caller.authenticatedUser,
+      );
+    } catch (error) {
+      // A Telegram account-claim session is bound to the DM-created account
+      // it lets the caller claim, so the account-bound preview rejects it.
+      // Fall back to the read-only claim preview so the landing can name the
+      // Telegram identity before the user confirms; any other failure — or an
+      // invalid claim continuation — keeps the original fail-closed response.
+      if (
+        !isElizaError(error) ||
+        error.code !== "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+      ) {
+        throw error;
+      }
+      preview = await previewTelegramPersonalAccountClaimContinuation(token);
+    }
     return c.json({ success: true, data: preview });
   } catch (error) {
     if (
@@ -222,9 +241,11 @@ async function resolvePlatformAccount(identity: {
 
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json().catch(() => {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       throw ValidationError("Invalid JSON body");
-    });
+    }
+    const body = decodedBody.value;
     const parsed = chatSchema.safeParse(body);
     if (!parsed.success) {
       throw ValidationError("Invalid request data", {

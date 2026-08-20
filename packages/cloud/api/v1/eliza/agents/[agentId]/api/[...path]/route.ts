@@ -79,15 +79,27 @@ function isWorkflowApiPath(path: string): boolean {
 }
 
 /** `views/<viewId>/navigate` → `<viewId>`; null for any other shape. */
-function viewNavigateTarget(path: string): string | null {
+export function viewNavigateTarget(path: string): string | null {
   const m = /^views\/([^/]+)\/navigate$/.exec(path);
-  return m ? decodeURIComponent(m[1]) : null;
+  if (!m?.[1]) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    // error-policy:J3 malformed percent-escape is not a navigable view id.
+    return null;
+  }
 }
 
 /** `conversations/<id>/greeting` → `<id>`; null for any other shape. */
-function greetingConversationId(path: string): string | null {
+export function greetingConversationId(path: string): string | null {
   const m = /^conversations\/([^/]+)\/greeting$/.exec(path);
-  return m ? decodeURIComponent(m[1]) : null;
+  if (!m?.[1]) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    // error-policy:J3 malformed percent-escape is not a greeting conversation.
+    return null;
+  }
 }
 
 function pushTokenDeleteTarget(path: string): string | null {

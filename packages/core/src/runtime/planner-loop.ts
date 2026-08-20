@@ -482,6 +482,11 @@ async function runPlannerLoopIterations(
 	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
 	// field is absent the gate's other preconditions are honored as before.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// A successful sole action may request one natural, model-authored terminal
+	// reply after its effect completes. This is deliberately narrower than the
+	// evaluator's general CONTINUE path: only an explicit final-scope tool call
+	// can arm it, and any subsequent tool call disarms it.
+	let pendingRequiredModelReply = false;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
@@ -544,6 +549,7 @@ async function runPlannerLoopIterations(
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
+			const synthesizingRequiredModelReply = pendingRequiredModelReply;
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
 				context: trajectory.context,
@@ -551,7 +557,13 @@ async function runPlannerLoopIterations(
 				config,
 				modelType: params.modelType,
 				provider: params.provider,
-				tools: params.tools,
+				// A successful final-scope action may ask for one natural closing
+				// sentence. That round is synthesis, not planning: remove the tool
+				// catalog entirely so callPlanner cannot default an omitted toolChoice
+				// to "required" and re-run the action. The branch below consumes this
+				// output exactly once, including when a non-compliant provider invents
+				// a tool call despite receiving no tools.
+				tools: synthesizingRequiredModelReply ? undefined : params.tools,
 				// Force a tool call ONLY while the turn's "use a real tool" requirement
 				// is still unmet. Once a non-terminal tool has executed, relax to
 				// "auto" so the planner is free to synthesize a terminal REPLY from
@@ -559,11 +571,13 @@ async function runPlannerLoopIterations(
 				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
 				// choice would be a no-op because callPlanner defaults undefined back
 				// to "required".
-				toolChoice: requireNonTerminalToolCall
-					? hasExecutedNonTerminalTool(trajectory)
-						? "auto"
-						: "required"
-					: params.toolChoice,
+				toolChoice: synthesizingRequiredModelReply
+					? undefined
+					: requireNonTerminalToolCall
+						? hasExecutedNonTerminalTool(trajectory)
+							? "auto"
+							: "required"
+						: params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -593,6 +607,176 @@ async function runPlannerLoopIterations(
 			// "not complete" blocks. This keeps backward compat with planner
 			// outputs that don't carry either signal.
 			lastPlannerExplicitCompleted = plannerOutput.completed;
+			if (synthesizingRequiredModelReply) {
+				pendingRequiredModelReply = false;
+				if (plannerOutput.toolCalls.length > 0) {
+					// Fail closed (#22609): the required-reply synthesis is a
+					// tool-free round. When a non-compliant provider returns BOTH
+					// prose and an unsolicited tool call, the response is invalid AS
+					// A WHOLE — its prose must NOT be accepted and the invented tool
+					// must NOT run. Route the already-completed sole action (it ran
+					// exactly once before this round was armed) through the normal
+					// evaluator/fallback path, exactly as if the model-reply request
+					// had never been made. This prevents an unsolicited tool call
+					// from smuggling its co-emitted prose past evaluator review.
+					params.runtime.logger?.warn?.(
+						{
+							iteration,
+							inventedToolCalls: plannerOutput.toolCalls.length,
+						},
+						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
+					);
+					let evaluator: EvaluatorOutput;
+					try {
+						evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					} catch (err) {
+						// error-policy:J4 explicit user-facing degrade - the action has
+						// already succeeded, so an expected provider failure must use the
+						// same truthful post-tool fallback as the normal evaluator path.
+						if (!isModelProviderError(err)) throw err;
+						const relay = deterministicSuccessfulToolRelay(trajectory);
+						if (!relay) throw err;
+						params.runtime.logger?.warn?.(
+							{
+								iteration,
+								err: err instanceof Error ? err.message : String(err),
+								...(modelProviderErrorDetail(err)
+									? { providerErrorDetail: modelProviderErrorDetail(err) }
+									: {}),
+							},
+							"[planner-loop] required-reply evaluator model call failed; relaying the completed tool result instead of discarding the turn",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(trajectory, relay),
+								trajectory,
+							),
+						};
+					}
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							evaluator,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					appendEvaluatorContextEvent(
+						trajectory,
+						evaluator,
+						iteration,
+						redactDiagnosticText,
+					);
+					const protocolFailureRelay =
+						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+					if (protocolFailureRelay) {
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									protocolFailureRelay,
+								),
+								trajectory,
+							),
+						};
+					}
+					if (evaluator.decision === "FINISH") {
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									preferredFinalMessageFromToolOrModel(
+										trajectory,
+										evaluator.messageToUser,
+										evaluator.success === false
+											? failedToolFallbackMessage(trajectory)
+											: undefined,
+									),
+									evaluator.success === false
+										? userSafeFailureReport(evaluator.messageToUser, trajectory)
+										: undefined,
+								),
+								trajectory,
+							),
+						};
+					}
+					// The evaluator declined to FINISH, but this round has no tool
+					// catalog and the invented tool must never execute. Relay the
+					// completed action's own truthful result instead of replaying
+					// work or fabricating a save.
+					const relay = deterministicSuccessfulToolRelay(trajectory);
+					return {
+						status: "finished",
+						trajectory,
+						evaluator,
+						finalMessage: userSafeFinalMessage(
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+							),
+							trajectory,
+						),
+					};
+				}
+				const requiredModelReply = userSafeCapturedAnswerCandidate(
+					plannerOutput.messageToUser,
+				);
+				const finalMessage =
+					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+				trajectory.steps.push({
+					iteration,
+					thought: plannerOutput.thought,
+					terminalMessage: finalMessage,
+					terminalOnly: true,
+				});
+				trajectory.context = appendTerminalPlannerOutputEvent({
+					context: trajectory.context,
+					iteration,
+					message: finalMessage,
+				});
+				const gated: EvaluatorOutput = {
+					success: true,
+					decision: "FINISH",
+					thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
+					messageToUser: finalMessage,
+				};
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						gated,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
+				trajectory.context = appendEvaluationEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator: gated,
+					redactDiagnosticText,
+				});
+				const gateStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					runtime: params.runtime,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: gateStartedAt,
+					endedAt: Date.now(),
+					output: gated,
+					reason: "post_tool_model_reply",
+					logger: params.runtime.logger,
+				});
+				return {
+					status: "finished",
+					trajectory,
+					evaluator: gated,
+					finalMessage,
+				};
+			}
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -1274,6 +1458,19 @@ async function runPlannerLoopIterations(
 		// file write (before the build's SHELL run / verification).
 		if (codingDrainQueue) {
 			trajectory.plannedQueue.length = 0;
+			continue;
+		}
+
+		if (
+			latestResult?.success === true &&
+			latestResult.modelReplyRequired === true &&
+			trajectory.plannedQueue.length === 0 &&
+			failures.length === 0 &&
+			lastPlannerExplicitCompleted === true &&
+			completedToolStepCount(trajectory) === 1 &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
+		) {
+			pendingRequiredModelReply = true;
 			continue;
 		}
 
@@ -5299,7 +5496,8 @@ type GatedEvaluatorDecision = {
 	reason:
 		| "explicit_terminal_reply"
 		| "action_terminal_result"
-		| "action_terminal_failure";
+		| "action_terminal_failure"
+		| "post_tool_model_reply";
 };
 
 function tryGateEvaluator(args: {
@@ -5423,6 +5621,11 @@ function selectGatedEvaluatorReply(
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
+
+const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
@@ -5827,9 +6030,11 @@ export function actionResultToPlannerToolResult(
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
+		promptData: result.promptData,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
+		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

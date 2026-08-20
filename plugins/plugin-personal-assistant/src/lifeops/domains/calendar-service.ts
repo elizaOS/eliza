@@ -32,6 +32,7 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/shared";
+import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { LifeOpsServiceError } from "../service-types.js";
 
@@ -115,7 +116,7 @@ export class CalendarDomain {
     ).getAppleCalendarCreateAccess();
   }
 
-  updateCalendarEvent(
+  async updateCalendarEvent(
     requestUrl: URL,
     request: {
       mode?: LifeOpsConnectorMode | null;
@@ -138,10 +139,47 @@ export class CalendarDomain {
       idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
-    return resolveCalendarService(this.ctx.runtime).updateCalendarEvent(
-      requestUrl,
-      request,
-    );
+    const event = await resolveCalendarService(
+      this.ctx.runtime,
+    ).updateCalendarEvent(requestUrl, request);
+    if (request.startAt !== undefined || request.endAt !== undefined) {
+      try {
+        const eventAt = new Date(event.updatedAt).toISOString();
+        if (!Number.isFinite(Date.parse(eventAt))) {
+          throw new Error(
+            `[CalendarDomain] Updated event ${event.id} has no authoritative mutation timestamp`,
+          );
+        }
+        const engagement =
+          await this.ctx.repository.attributeBriefItemEngagement({
+            agentId: this.ctx.agentId(),
+            source: "calendar",
+            sourceId: event.id,
+            eventType: "rescheduled",
+            eventAt,
+            domainEventId:
+              request.idempotencyKey ??
+              `calendar_rescheduled:${event.id}:${eventAt}`,
+            weight: 1,
+          });
+        if (engagement) {
+          await settleBriefEngagementReward({
+            runtime: this.ctx.runtime,
+            repository: this.ctx.repository,
+            engagement,
+          });
+        }
+      } catch (error) {
+        // error-policy:J7 the provider mutation already committed; delayed
+        // learning telemetry cannot rewrite its successful result.
+        this.ctx.runtime.reportError(
+          "CalendarDomain.attributeBriefReschedule",
+          error,
+          { eventId: event.id },
+        );
+      }
+    }
+    return event;
   }
 
   deleteCalendarEvent(

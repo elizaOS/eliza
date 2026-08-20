@@ -52,5 +52,8 @@ describe("access-token expiry classification", () => {
   it("preserves missing provider detail as an unknown reason", () => {
     expect(isTokenExpiryText(undefined)).toBe(false);
     expect(classifyAuthFailureReason(undefined)).toBe("unknown");
+    expect(classifyAuthFailureReason(null)).toBe("unknown");
+    expect(classifyAuthFailureReason("")).toBe("unknown");
+    expect(classifyAuthFailureReason("   ")).toBe("unknown");
   });
 });

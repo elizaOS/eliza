@@ -24,7 +24,7 @@ export const servicePricing = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     service_id: text("service_id").notNull(),
     method: text("method").notNull(),
-    cost: numeric("cost", { precision: 12, scale: 6 }).notNull(),
+    cost: numeric("cost", { precision: 18, scale: 12 }).notNull(),
     description: text("description"),
     metadata: jsonb("metadata")
       .$type<Record<string, string | number | boolean | null>>()
@@ -62,8 +62,8 @@ export const servicePricingAudit = pgTable(
     }),
     service_id: text("service_id").notNull(),
     method: text("method").notNull(),
-    old_cost: numeric("old_cost", { precision: 12, scale: 6 }),
-    new_cost: numeric("new_cost", { precision: 12, scale: 6 }).notNull(),
+    old_cost: numeric("old_cost", { precision: 18, scale: 12 }),
+    new_cost: numeric("new_cost", { precision: 18, scale: 12 }).notNull(),
     change_type: text("change_type").notNull(),
     changed_by: text("changed_by").notNull(),
     reason: text("reason"),

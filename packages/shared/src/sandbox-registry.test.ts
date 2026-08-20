@@ -10,6 +10,14 @@ import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class extends Error {
+    readonly code: string;
+
+    constructor(message: string, options: { code: string }) {
+      super(message);
+      this.code = options.code;
+    }
+  },
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -271,6 +279,7 @@ interface FakeRedis {
 async function startFakeRedis(opts?: {
   requirePassword?: string;
   fragmentReplies?: boolean;
+  hostileReply?: string | Buffer;
 }): Promise<FakeRedis> {
   const store = new Map<string, string>();
   const authedWith: string[][] = [];
@@ -278,6 +287,19 @@ async function startFakeRedis(opts?: {
   const server = net.createServer((socket) => {
     let buf = Buffer.alloc(0);
     let authed = !opts?.requirePassword;
+
+    socket.on("error", (error) => {
+      // Hostile-reply tests expect the bounded client to destroy the socket
+      // while the fake peer is still writing its deliberately oversized data.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (
+        opts?.hostileReply !== undefined &&
+        (code === "ECONNRESET" || code === "EPIPE")
+      ) {
+        return;
+      }
+      throw error;
+    });
 
     const send = (s: string): void => {
       if (opts?.fragmentReplies) {
@@ -314,6 +336,11 @@ async function startFakeRedis(opts?: {
       buf = Buffer.concat([buf, chunk]);
       let cmd = tryParseCommand();
       while (cmd) {
+        if (opts?.hostileReply !== undefined) {
+          socket.write(opts.hostileReply);
+          cmd = tryParseCommand();
+          continue;
+        }
         const verb = cmd[0]?.toUpperCase();
         if (verb === "AUTH") {
           authedWith.push(cmd.slice(1));
@@ -407,5 +434,32 @@ describe("SandboxRegistry (native TCP transport)", () => {
     const reg = new SandboxRegistry(tcpConfig(fake.port));
     await reg.register();
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("rejects an oversized declared bulk length through the real TCP path", async () => {
+    fake = await startFakeRedis({ hostileReply: "$2000000000\r\n" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+    });
+  });
+
+  it("rejects non-RESP numeric bulk lengths", async () => {
+    fake = await startFakeRedis({ hostileReply: "$1e2\r\n" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toThrow("exceeds TCP budget");
+  });
+
+  it("rejects a payload flood through the real TCP path", async () => {
+    fake = await startFakeRedis({
+      hostileReply: Buffer.alloc(1_048_577, 0x78),
+    });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+    });
   });
 });

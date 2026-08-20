@@ -30,8 +30,8 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import {
   assertProviderQualifiedPluginPackages,
-  loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
+  registerScenarioRequiredPlugins,
 } from "./required-plugins.ts";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
@@ -883,22 +883,15 @@ export async function createScenarioRuntime(
     for (const extra of options?.extraPlugins ?? []) {
       await runtime.registerPlugin(extra);
     }
-  } else {
-    for (const packageName of options?.requiredPlugins ?? []) {
-      if (!pluginPackageIsRegistered(runtime, packageName)) {
-        const plugin = await loadScenarioRequiredPlugin(
-          packageName,
-          executionProfile,
-        );
-        if (!plugin) {
-          throw new Error(
-            `[scenario-runner] provider-qualified required package ${packageName} did not export a production Plugin`,
-          );
-        }
-        await runtime.registerPlugin(plugin);
-      }
-      registeredPluginPackages.add(packageName);
-    }
+  }
+
+  const requiredPluginPackages = await registerScenarioRequiredPlugins(
+    runtime,
+    options?.requiredPlugins ?? [],
+    executionProfile,
+  );
+  for (const packageName of requiredPluginPackages) {
+    registeredPluginPackages.add(packageName);
   }
 
   await runtime.initialize();

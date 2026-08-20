@@ -324,8 +324,10 @@ describe("view switching — VIEWS action resolver", () => {
 
 		expect(navigated).toEqual(["calendar"]);
 		expect(navigation?.transcriptVisibility).toBe("internal");
-		expect(navigation?.userFacingText).toBe(navigation?.text);
-		expect(navigation?.verifiedUserFacing).toBe(true);
+		expect(navigation?.userFacingText).toBeUndefined();
+		expect(navigation?.verifiedUserFacing).toBeUndefined();
+		expect(navigation?.modelReplyRequired).toBe(true);
+		expect(navigation?.turnComplete).toBeUndefined();
 	});
 
 	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
@@ -407,12 +409,28 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("targets app-chat navigation to the client that sent the turn", async () => {
 			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockImplementation(async (_url, init) => {
+				const requestBody = JSON.parse(String(init?.body)) as Record<
+					string,
+					unknown
+				>;
+				return {
+					ok: true,
+					status: 200,
+					text: async () => "",
+					json: async () => ({
+						ok: true,
+						completedActionDelivered: true,
+						completedActionHandoffId: requestBody.completedActionHandoffId,
+					}),
+				} as Response;
+			});
 			const action = createViewsAction({
 				client: clientFor(REGISTRY),
 				hasOwnerAccess: vi.fn(async () => true),
 			});
 
-			await action.handler(
+			const result = await action.handler(
 				{ agentId: "agent-1" } as never,
 				{
 					...message("open calendar"),
@@ -430,10 +448,193 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(lastCall).toBeDefined();
 			if (!lastCall) throw new Error("expected the view navigation request");
 			const [, init] = lastCall;
-			expect(JSON.parse(String(init?.body))).toMatchObject({
+			const requestBody = JSON.parse(String(init?.body)) as Record<
+				string,
+				unknown
+			>;
+			expect(requestBody).toMatchObject({
 				clientId: "seeker-client",
 				delivery: "completed-action",
 			});
+			expect(requestBody.completedActionHandoffId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f-]{27}$/,
+			);
+			expect(result?.values).toMatchObject({
+				completedActionDelivered: true,
+				completedActionHandoffId: requestBody.completedActionHandoffId,
+			});
+		});
+
+		it("keeps terminal fallback enabled when an older server does not echo the handoff id", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockImplementation(async () => {
+				return {
+					ok: true,
+					status: 200,
+					text: async () => "",
+					json: async () => ({
+						ok: true,
+						completedActionDelivered: true,
+					}),
+				} as Response;
+			});
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "older-server-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
+		});
+
+		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response("{", {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "seeker-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+		});
+
+		it("does not misclassify a receipt body transport failure as malformed JSON", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => {
+					throw new Error("receipt body stream failed");
+				},
+			} as Response);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				message("open calendar") as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(false);
+			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+				effect: "view_navigation",
+				status: "unconfirmed",
+				viewId: "calendar",
+			});
+		});
+
+		it("does not accept a prototype-polluted delivery receipt", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response("{}", {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+			const previousDescriptor = Object.getOwnPropertyDescriptor(
+				Object.prototype,
+				"completedActionDelivered",
+			);
+			Object.defineProperty(Object.prototype, "completedActionDelivered", {
+				configurable: true,
+				value: true,
+			});
+
+			try {
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: vi.fn(async () => true),
+				});
+				const result = await action.handler(
+					{ agentId: "agent-1" } as never,
+					{
+						...message("open calendar"),
+						content: {
+							text: "open calendar",
+							metadata: { viewClientId: "seeker-client" },
+						},
+					} as never,
+					undefined,
+					{ action: "show", view: "calendar" },
+					vi.fn(),
+				);
+
+				expect(result?.success).toBe(true);
+				expect(
+					Object.hasOwn(result?.values ?? {}, "completedActionDelivered"),
+				).toBe(false);
+				// The inherited value demonstrates why own-property validation is required
+				// again when the UI consumes this transport result.
+				expect(result?.values?.completedActionDelivered).toBe(true);
+			} finally {
+				if (previousDescriptor) {
+					Object.defineProperty(
+						Object.prototype,
+						"completedActionDelivered",
+						previousDescriptor,
+					);
+				} else {
+					Reflect.deleteProperty(Object.prototype, "completedActionDelivered");
+				}
+			}
+		});
+
+		it("ignores a delivery marker when completed-action delivery was not requested", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response('{"completedActionDelivered":true}', {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				action: "show",
+				view: "calendar",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
 		it("resolves an explicit view option without verb parsing", async () => {
@@ -446,20 +647,16 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual(["settings"]);
 		});
 
-		it("owns one canonical completion after a successful view switch", async () => {
+		it("leaves successful view-switch wording to one post-tool model reply", async () => {
 			installNavigateCapture();
 
 			const { result, callback } = await runShow(REGISTRY, "open the calendar");
 
-			expect(callback).toHaveBeenCalledTimes(1);
-			expect(callback).toHaveBeenCalledWith({ text: "Opened Calendar." });
+			expect(callback).not.toHaveBeenCalled();
 			expect(result).toMatchObject({
 				success: true,
-				text: "Opened Calendar.",
 				transcriptVisibility: "internal",
-				userFacingText: "Opened Calendar.",
-				verifiedUserFacing: true,
-				turnComplete: true,
+				modelReplyRequired: true,
 				values: {
 					mode: "show",
 					viewId: "calendar",
@@ -468,9 +665,44 @@ describe("view switching — VIEWS action resolver", () => {
 					label: "Calendar",
 				},
 			});
+			expect(result).not.toHaveProperty("userFacingText");
+			expect(result).not.toHaveProperty("verifiedUserFacing");
+			expect(result).not.toHaveProperty("turnComplete");
+			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "calendar",
+			});
 		});
 
-		it("acknowledges Home without relabeling an explicit Messages destination", async () => {
+		it.each([404, 501])(
+			"does not acknowledge navigation when the shell returns unsupported status %s",
+			async (status) => {
+				vi.mocked(globalThis.fetch).mockResolvedValue(
+					new Response(null, { status }),
+				);
+
+				const { result, callback } = await runShow(
+					REGISTRY,
+					"open the calendar",
+				);
+
+				expect(callback).not.toHaveBeenCalled();
+				expect(result).toMatchObject({
+					success: false,
+					transcriptVisibility: "internal",
+					turnComplete: false,
+				});
+				expect(result).not.toHaveProperty("modelReplyRequired");
+				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+					effect: "view_navigation",
+					status: "unsupported-route",
+					viewId: "calendar",
+				});
+			},
+		);
+
+		it("preserves Home and Messages labels in internal navigation receipts", async () => {
 			installNavigateCapture();
 			const messagesView = [
 				{
@@ -480,21 +712,25 @@ describe("view switching — VIEWS action resolver", () => {
 			];
 
 			const home = await runShow(messagesView, "go home");
-			expect(home.callback).toHaveBeenCalledWith({ text: "Opened Home." });
+			expect(home.callback).not.toHaveBeenCalled();
 			expect(home.result).toMatchObject({
 				success: true,
-				text: "Opened Home.",
 				values: { viewId: "chat", label: "Home" },
+			});
+			expect(JSON.parse(home.result?.text ?? "{}")).toMatchObject({
+				status: "accepted",
+				label: "Home",
 			});
 
 			const messages = await runShow(messagesView, "open messages");
-			expect(messages.callback).toHaveBeenCalledWith({
-				text: "Opened Messages.",
-			});
+			expect(messages.callback).not.toHaveBeenCalled();
 			expect(messages.result).toMatchObject({
 				success: true,
-				text: "Opened Messages.",
 				values: { viewId: "chat", label: "Messages" },
+			});
+			expect(JSON.parse(messages.result?.text ?? "{}")).toMatchObject({
+				status: "accepted",
+				label: "Messages",
 			});
 		});
 	});
@@ -512,11 +748,15 @@ describe("view switching — VIEWS action resolver", () => {
 
 				expect(result).toMatchObject({
 					success: true,
-					text: "Opened Calendar.",
 					values: {
 						viewId: "simple-calendar",
 						label: "Calendar",
 					},
+				});
+				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+					status: "accepted",
+					viewId: "simple-calendar",
+					label: "Calendar",
 				});
 				expect(navigated).toEqual(["simple-calendar"]);
 			},

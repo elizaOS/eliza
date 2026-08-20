@@ -51,8 +51,20 @@ export function shouldStartBottomBar(
  * its `ChatOverlayShell` (the bar + assistant overlay only) over a transparent
  * background. Preserves any existing query string and hash routing.
  */
-export function appendChatOverlayShellModeParam(rendererUrl: string): string {
-  return appendShellModeParam(rendererUrl, "chat-overlay");
+export function appendChatOverlayShellModeParam(
+  rendererUrl: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const tagged = appendShellModeParam(rendererUrl, "chat-overlay");
+  if (env.ELIZAOS_ALWAYS_ON_VOICE !== "1") return tagged;
+  try {
+    const url = new URL(tagged);
+    url.searchParams.set("elizaOSAlwaysOnVoice", "1");
+    return url.toString();
+  } catch {
+    const separator = tagged.includes("?") ? "&" : "?";
+    return `${tagged}${separator}elizaOSAlwaysOnVoice=1`;
+  }
 }
 
 export interface ScreenWorkArea {
@@ -67,6 +79,27 @@ export interface BottomBarFrame {
   y: number;
   width: number;
   height: number;
+}
+
+export type BottomBarSurfaceState =
+  | "CLOSED"
+  | "INPUT"
+  | "INPUT_MENU"
+  | "OPEN_UNDER_HALF"
+  | "OPEN_HALF_OR_OVER"
+  | "MAXIMIZED";
+
+export function isBottomBarSurfaceState(
+  value: unknown,
+): value is BottomBarSurfaceState {
+  return (
+    value === "CLOSED" ||
+    value === "INPUT" ||
+    value === "INPUT_MENU" ||
+    value === "OPEN_UNDER_HALF" ||
+    value === "OPEN_HALF_OR_OVER" ||
+    value === "MAXIMIZED"
+  );
 }
 
 export type DesktopShellWindowMode = "default" | "kiosk" | "bottom-bar";
@@ -121,6 +154,9 @@ export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 /** Shallow host for the resting pill's composer preview while hovered. */
 export const HOVER_BOTTOM_BAR_WIDTH = 600;
 export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+
+/** Input-width host tall enough for the portaled composer actions menu. */
+export const INPUT_MENU_BOTTOM_BAR_HEIGHT = 320;
 
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
@@ -191,6 +227,55 @@ export function computeBottomBarFrame(
   const y =
     Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
   return { x, y, width, height };
+}
+
+/**
+ * Map the canonical mobile chat state onto a native desktop window. The
+ * resting pill keeps only its compact native hit area; an open thread
+ * becomes a phone-width sheet anchored above the taskbar; MAXIMIZED owns the
+ * complete usable work area so the mobile drag-to-fullscreen contract is not
+ * clipped by the native host window.
+ */
+export function computeBottomBarSurfaceFrame(
+  workArea: ScreenWorkArea,
+  state: BottomBarSurfaceState,
+): BottomBarFrame {
+  if (state === "CLOSED") {
+    return computeBottomBarFrame(workArea);
+  }
+  if (state === "INPUT") {
+    return computeBottomBarFrame(workArea, {
+      width: HOVER_BOTTOM_BAR_WIDTH,
+      height: HOVER_BOTTOM_BAR_HEIGHT,
+    });
+  }
+  if (state === "INPUT_MENU") {
+    return computeBottomBarFrame(workArea, {
+      width: HOVER_BOTTOM_BAR_WIDTH,
+      height: INPUT_MENU_BOTTOM_BAR_HEIGHT,
+    });
+  }
+  if (state === "MAXIMIZED") {
+    return {
+      x: Math.round(workArea.x),
+      y: Math.round(workArea.y),
+      width: Math.max(1, Math.round(workArea.width)),
+      height: Math.max(1, Math.round(workArea.height)),
+    };
+  }
+  const width = Math.min(Math.max(1, Math.round(workArea.width)), 640);
+  const heightRatio = state === "OPEN_UNDER_HALF" ? 0.42 : 0.62;
+  const minimumHeight = state === "OPEN_UNDER_HALF" ? 320 : 420;
+  const height = Math.min(
+    Math.max(minimumHeight, Math.round(workArea.height * heightRatio)),
+    Math.max(1, Math.round(workArea.height)),
+  );
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + workArea.height - height),
+    width,
+    height,
+  };
 }
 
 /**

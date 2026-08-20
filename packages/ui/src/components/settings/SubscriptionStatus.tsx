@@ -543,8 +543,10 @@ export function SubscriptionStatus({
     const popup = preOpenWindow();
     try {
       const { authUrl } = await client.startAnthropicLogin();
-      if (authUrl) {
-        navigatePreOpenedWindow(popup, authUrl);
+      // The authUrl is a wire value navigated into a same-origin pre-opened
+      // popup — a rejected target (helper returns false and closes the popup)
+      // falls through to the visible error state below.
+      if (authUrl && navigatePreOpenedWindow(popup, authUrl)) {
         return;
       }
       popup?.close();
@@ -607,8 +609,9 @@ export function SubscriptionStatus({
     setOpenaiOAuthStarted(true);
     try {
       const { authUrl } = await client.startOpenAILogin();
-      if (authUrl) {
-        await openExternalUrl(authUrl);
+      // The authUrl is a wire value — a rejected target (helper returns
+      // false) falls through to the visible error state below.
+      if (authUrl && (await openExternalUrl(authUrl))) {
         return;
       }
       rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, false);

@@ -49,10 +49,11 @@ import {
   tryClaim,
 } from "./inbound-claim";
 import {
-  buildWhatsAppUserJid,
   chunkWhatsAppText,
   isWhatsAppGroupJid,
   isWhatsAppUserTarget,
+  normalizeBaileysSendTarget,
+  normalizeCloudApiSendTarget,
   normalizeWhatsAppTarget,
   resolveWhatsAppSystemLocation,
 } from "./normalize";
@@ -362,14 +363,6 @@ function registerMessageConnectorIfAvailable(
   if (registration.sendHandler) {
     runtime.registerSendHandler(registration.source, registration.sendHandler);
   }
-}
-
-function normalizeBaileysSendTarget(target: string): string {
-  if (isWhatsAppGroupJid(target) || isWhatsAppUserTarget(target)) {
-    return target;
-  }
-  const normalized = normalizeWhatsAppTarget(target);
-  return normalized ? buildWhatsAppUserJid(normalized) : target;
 }
 
 function normalizeWhatsAppConnectorTarget(value: string): string {
@@ -1549,7 +1542,7 @@ export class WhatsAppConnectorService extends Service {
       to:
         config.transport === "baileys"
           ? normalizeBaileysSendTarget(chatId)
-          : (normalizeWhatsAppTarget(chatId) ?? chatId),
+          : normalizeCloudApiSendTarget(chatId),
       content: text,
       replyToMessageId,
     });
@@ -1753,7 +1746,7 @@ export class WhatsAppConnectorService extends Service {
       to:
         config.transport === "baileys"
           ? normalizeBaileysSendTarget(chatId)
-          : (normalizeWhatsAppTarget(chatId) ?? chatId),
+          : normalizeCloudApiSendTarget(chatId),
       content: {
         messageId: params.messageId,
         emoji: params.remove ? "" : params.emoji || "👍",

@@ -220,17 +220,14 @@ export function RoutingTab(props: RoutingTabProps) {
       setSaving(true);
       setError(null);
       try {
-        const res = await client.rawRequest(
+        const body = await client.fetch<{ config: RoutingConfig }>(
           "/api/secrets/routing",
           {
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ config: next }),
           },
-          { allowNonOk: true },
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { config: RoutingConfig };
         onConfigChange(body.config);
       } catch (err) {
         setError(

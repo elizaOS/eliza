@@ -19,6 +19,7 @@ import {
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -70,7 +71,12 @@ app.put("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validation = UpdateMonetizationSchema.safeParse(body);
     if (!validation.success) {
       throw ValidationError("Invalid request", {

@@ -180,6 +180,165 @@ describe("X connector account OAuth", () => {
   });
 });
 
+function oauthRuntime(): IAgentRuntime {
+  return asRuntime({
+    agentId: "agent-1",
+    getSetting: (key: string) =>
+      ({
+        TWITTER_CLIENT_ID: "x-client",
+        TWITTER_REDIRECT_URI: "http://localhost/oauth/x/callback",
+      })[key],
+    getService: () => null,
+  });
+}
+
+function oauthRequest() {
+  return {
+    provider: "x" as const,
+    code: "oauth-code",
+    query: {},
+    flow: {
+      id: "flow-1",
+      provider: "x" as const,
+      state: "state-1",
+      status: "pending" as const,
+      codeVerifier: "verifier",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      metadata: {},
+    },
+  };
+}
+
+describe("X OAuth request deadlines", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function installShortDeadline(): number[] {
+    const budgets: number[] = [];
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      budgets.push(milliseconds);
+      return nativeTimeout(10);
+    });
+    return budgets;
+  }
+
+  it("applies an independent 15s budget to both completed OAuth hops", async () => {
+    const budgets = installShortDeadline();
+    const signals: AbortSignal[] = [];
+    const vault = new Map<string, string>();
+    const setCredentialRef = vi.fn(async () => undefined);
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal);
+        const href = String(input);
+        if (href.includes("/oauth2/token")) {
+          return Response.json({
+            access_token: "x-access-token",
+            refresh_token: "x-refresh-token",
+            expires_in: 7200,
+            scope: "tweet.read tweet.write users.read offline.access",
+            token_type: "bearer",
+          });
+        }
+        if (href.includes("/users/me")) {
+          return Response.json({
+            data: { id: "x-user-1", username: "ada", name: "Ada" },
+          });
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      },
+    );
+    const runtime = asRuntime({
+      ...oauthRuntime(),
+      getService: (serviceType: string) =>
+        serviceType === "vault"
+          ? {
+              set: async (key: string, value: string) => {
+                vault.set(key, value);
+              },
+            }
+          : null,
+    });
+    const provider = createXConnectorAccountProvider(runtime);
+    const result = await provider.completeOAuth?.(
+      oauthRequest(),
+      createOAuthCallbackManager(
+        "x",
+        "acct_x_success",
+        setCredentialRef,
+      ) as never,
+    );
+    expect(signals).toHaveLength(2);
+    expect(budgets).toEqual([15_000, 15_000]);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(signals[1]?.aborted).toBe(false);
+    expect(result?.account).toMatchObject({
+      id: "acct_x_success",
+      status: "connected",
+    });
+    expect(
+      vault.get("connector.agent-1.x.acct_x_success.oauth_tokens"),
+    ).toContain("x-access-token");
+  });
+
+  it("aborts completeOAuth() when the token response body stalls", async () => {
+    installShortDeadline();
+    vi.stubGlobal("fetch", (async (_input, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected token abort signal");
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal.addEventListener(
+              "abort",
+              () => controller.error(signal.reason),
+              { once: true },
+            );
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch);
+    const provider = createXConnectorAccountProvider(oauthRuntime());
+    await expect(
+      provider.completeOAuth?.(
+        oauthRequest(),
+        createOAuthCallbackManager(
+          "x",
+          "acct_x_timeout",
+          vi.fn(async () => undefined),
+        ) as never,
+      ),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("surfaces the provider status for a completed token error", async () => {
+    installShortDeadline();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: "invalid_code" }, { status: 401 }),
+      ),
+    );
+    const provider = createXConnectorAccountProvider(oauthRuntime());
+    await expect(
+      provider.completeOAuth?.(
+        oauthRequest(),
+        createOAuthCallbackManager(
+          "x",
+          "acct_x_error",
+          vi.fn(async () => undefined),
+        ) as never,
+      ),
+    ).rejects.toThrow("Twitter token exchange failed (401)");
+  });
+});
+
 function createOAuthCallbackManager(
   provider: string,
   durableAccountId: string,

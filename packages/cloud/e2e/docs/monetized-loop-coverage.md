@@ -11,11 +11,9 @@ Two specs cover the loop:
   full loop this issue adds, with an explicit, observable state-transition
   assertion at every step (deploy node, charge, autoscale, payout-readiness).
 
-> **See also (#9300):** [`tests/example-apps-showcase.spec.ts`](../tests/example-apps-showcase.spec.ts)
-> drives the same loop specifically for the two flagship example apps (EDAD,
-> Clone Ur Crush) - including **app-subdomain** wiring (the ingress on-demand-TLS
-> gate) - from a dedicated **infinite-credit showcase account**. Full runbook:
-> [`docs/showcase-apps-coverage.md`](./showcase-apps-coverage.md).
+> **History (#9300):** a dedicated showcase-apps spec and runbook once drove
+> this loop for the two flagship example apps from an infinite-credit showcase
+> account; both were removed in the 003e91177 cleanup.
 
 The mock-stack loop runs through the repository cloud test command, called by
 the consolidated CI workflow when Cloud paths change. Real-infrastructure

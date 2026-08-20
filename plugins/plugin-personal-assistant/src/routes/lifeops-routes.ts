@@ -1030,7 +1030,10 @@ function writeHtml(
           },
         })};
         if (window.opener && typeof window.opener.postMessage === "function") {
-          window.opener.postMessage(payload, "*");
+          // LifeOps google-connector callback is served from the same agent host as the opener (same-origin popup).
+          // Pin to window.location.origin (agent origin) — cross-origin openers will not receive this postMessage
+          // and will rely on BroadcastChannel/localStorage fallback below. This is fail-closed, not a wildcard leak.
+          window.opener.postMessage(payload, window.location.origin);
         }
         if (typeof BroadcastChannel === "function") {
           for (const channelName of [

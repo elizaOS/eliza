@@ -1,0 +1,221 @@
+/** Deterministic coverage for the bounded workflow JSON clone. */
+import { describe, expect, test } from 'bun:test';
+import {
+  cloneJson,
+  MAX_WORKFLOW_JSON_BYTES,
+  MAX_WORKFLOW_JSON_DEPTH,
+  MAX_WORKFLOW_JSON_NODES,
+  WORKFLOW_JSON_UNBOUNDED,
+} from '../../src/services/workflow-json';
+import { WorkflowApiError } from '../../src/types/index';
+
+function nestObject(depth: number): unknown {
+  let value: unknown = 'leaf';
+  for (let i = 0; i < depth; i++) {
+    value = { child: value };
+  }
+  return value;
+}
+
+function expectUnbounded(fn: () => unknown): WorkflowApiError {
+  try {
+    fn();
+  } catch (error) {
+    expect(error).toBeInstanceOf(WorkflowApiError);
+    expect(error).not.toBeInstanceOf(RangeError);
+    const typed = error as WorkflowApiError;
+    expect(typed.statusCode).toBe(400);
+    expect((typed.response as { code?: string } | undefined)?.code).toBe(WORKFLOW_JSON_UNBOUNDED);
+    return typed;
+  }
+  throw new Error('expected WORKFLOW_JSON_UNBOUNDED');
+}
+
+describe('cloneJson', () => {
+  test('clones honest workflow-shaped records', () => {
+    const input = {
+      name: 'Review',
+      language: 'tsx',
+      source: "import { createSmithers } from 'smthrs/create';",
+      steps: [{ id: 'run', label: 'Run' }],
+      inputSchema: { type: 'object', properties: { n: { type: 'number' } } },
+    };
+    expect(cloneJson(input)).toEqual(input);
+    expect(cloneJson(input)).not.toBe(input);
+  });
+
+  test(`accepts a ${MAX_WORKFLOW_JSON_DEPTH}-deep object nest`, () => {
+    expect(cloneJson(nestObject(MAX_WORKFLOW_JSON_DEPTH))).toEqual(
+      nestObject(MAX_WORKFLOW_JSON_DEPTH)
+    );
+  });
+
+  test(`throws ${WORKFLOW_JSON_UNBOUNDED} one past depth ${MAX_WORKFLOW_JSON_DEPTH}`, () => {
+    expectUnbounded(() => cloneJson(nestObject(MAX_WORKFLOW_JSON_DEPTH + 1)));
+  });
+
+  test('throws on cyclic objects instead of TypeError', () => {
+    const cyclic: Record<string, unknown> = { name: 'loop' };
+    cyclic.self = cyclic;
+    expectUnbounded(() => cloneJson(cyclic));
+  });
+
+  test('does not RangeError an 8k object nest', () => {
+    expectUnbounded(() => cloneJson(nestObject(8000)));
+  });
+
+  test('accepts a shared DAG while rejecting a true ancestor cycle', () => {
+    const shared = { value: 1 };
+    const cloned = cloneJson({ left: shared, right: shared });
+    expect(cloned).toEqual({ left: { value: 1 }, right: { value: 1 } });
+    expect(cloned.left).not.toBe(cloned.right);
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.child = { parent: cyclic };
+    expectUnbounded(() => cloneJson(cyclic));
+  });
+
+  test('rejects sparse logical work and accessors before invoking them', () => {
+    const sparse: unknown[] = [];
+    sparse.length = MAX_WORKFLOW_JSON_NODES + 1;
+    expectUnbounded(() => cloneJson(sparse));
+
+    let calls = 0;
+    const accessor = Object.defineProperty({}, 'secret', {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return 'value';
+      },
+    });
+    expectUnbounded(() => cloneJson(accessor));
+    expect(calls).toBe(0);
+  });
+
+  test('charges sparse slots cumulatively across nested arrays', () => {
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+    first.length = Math.floor(MAX_WORKFLOW_JSON_NODES / 2);
+    second.length = Math.floor(MAX_WORKFLOW_JSON_NODES / 2);
+
+    expectUnbounded(() => cloneJson({ first, second }));
+  });
+
+  test(`bounds normalized JSON at ${MAX_WORKFLOW_JSON_BYTES} UTF-8 bytes`, () => {
+    const atLimit = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 2);
+    expect(cloneJson(atLimit)).toBe(atLimit);
+    expectUnbounded(() => cloneJson(`${atLimit}x`));
+
+    const objectValue = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 14);
+    expect(cloneJson({ payload: objectValue })).toEqual({ payload: objectValue });
+    expectUnbounded(() => cloneJson({ payload: `${objectValue}x` }));
+
+    const escapedAtLimit = '\u0000'.repeat((MAX_WORKFLOW_JSON_BYTES - 2) / 6);
+    expect(cloneJson(escapedAtLimit)).toBe(escapedAtLimit);
+    expectUnbounded(() => cloneJson(`${escapedAtLimit}\u0000`));
+  });
+
+  test('never invokes custom serializers or Proxy traps', () => {
+    let calls = 0;
+    const custom = {
+      toJSON() {
+        calls += 1;
+        return { expanded: 'x'.repeat(1_000_000) };
+      },
+    };
+    expectUnbounded(() => cloneJson(custom));
+
+    const proxy = new Proxy(
+      { safe: true },
+      {
+        get() {
+          calls += 1;
+          return undefined;
+        },
+        getOwnPropertyDescriptor() {
+          calls += 1;
+          return undefined;
+        },
+        getPrototypeOf() {
+          calls += 1;
+          return Object.prototype;
+        },
+        ownKeys() {
+          calls += 1;
+          return ['safe'];
+        },
+      }
+    );
+    expectUnbounded(() => cloneJson(proxy));
+    expect(calls).toBe(0);
+  });
+
+  test('contains hostile reflection without inspecting the thrown value', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error('secondary trap');
+        },
+      }
+    );
+    const value = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw hostile;
+        },
+      }
+    );
+    expectUnbounded(() => cloneJson(value));
+  });
+
+  test('does not traverse input prototypes and preserves __proto__ as data', () => {
+    const value = JSON.parse('{"__proto__":{"kept":true},"safe":1}') as Record<string, unknown>;
+    const cloned = cloneJson(value) as Record<string, unknown>;
+
+    expect(Object.hasOwn(cloned, '__proto__')).toBe(true);
+    expect(JSON.parse(JSON.stringify(cloned))).toEqual(
+      JSON.parse('{"__proto__":{"kept":true},"safe":1}')
+    );
+  });
+
+  test('preserves ordinary JSON clone normalization', () => {
+    const input = {
+      omitted: undefined,
+      nonFinite: Number.POSITIVE_INFINITY,
+      date: new Date('2026-08-20T00:00:00.000Z'),
+      array: [undefined, Number.NaN, -0],
+    };
+    expect(cloneJson(input)).toEqual({
+      nonFinite: null,
+      date: '2026-08-20T00:00:00.000Z',
+      array: [null, null, 0],
+    });
+  });
+
+  test('enforces the exact serialized UTF-8 byte ceiling', () => {
+    const exact = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 2);
+    expect(cloneJson(exact)).toBe(exact);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exact))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exact}x`));
+
+    const utf8 = '😀'.repeat(Math.floor(MAX_WORKFLOW_JSON_BYTES / 4));
+    expectUnbounded(() => cloneJson(utf8));
+
+    const exactKey = 'k'.repeat(MAX_WORKFLOW_JSON_BYTES - 9);
+    const exactKeySnapshot = cloneJson({ [exactKey]: null });
+    expect(new TextEncoder().encode(JSON.stringify(exactKeySnapshot)).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson({ [`${exactKey}k`]: null }));
+
+    const exactEscaped = '"'.repeat((MAX_WORKFLOW_JSON_BYTES - 2) / 2);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exactEscaped))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exactEscaped}"`));
+  });
+});

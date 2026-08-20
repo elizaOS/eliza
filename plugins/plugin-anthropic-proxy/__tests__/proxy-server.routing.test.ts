@@ -5,8 +5,10 @@
  */
 
 import { EventEmitter } from "node:events";
+import { get as httpGet } from "node:http";
 import type { ClientRequest, RequestOptions } from "node:https";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProxyServer } from "../src/proxy/server.js";
 
 const httpsMock = vi.hoisted(() => ({
   request: vi.fn(),
@@ -48,6 +50,23 @@ function installUpstream(statusCode = 200, body = "{}") {
   );
 }
 
+async function getJson(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const request = httpGet(url, { headers: { connection: "close" } }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("error", reject);
+  });
+}
+
 afterEach(() => {
   httpsMock.request.mockReset();
   httpsMock.upstreamBodies.length = 0;
@@ -57,7 +76,6 @@ afterEach(() => {
 describe("ProxyServer routing", () => {
   it("does not synthesize JSON for empty-body proxied GET requests", async () => {
     installUpstream(200, '{"ok":true}');
-    const { ProxyServer } = await import("../src/proxy/server.js");
     const server = new ProxyServer({
       port: 0,
       bindHost: "127.0.0.1",
@@ -65,8 +83,9 @@ describe("ProxyServer routing", () => {
     });
     await server.start();
     try {
-      const response = await fetch(`${server.getUrl()}/v1/models`);
-      await expect(response.json()).resolves.toEqual({ ok: true });
+      const response = getJson(`${server.getUrl()}/v1/models`);
+      await vi.waitFor(() => expect(httpsMock.request).toHaveBeenCalledOnce(), { timeout: 5_000 });
+      await expect(response).resolves.toEqual({ ok: true });
 
       expect(httpsMock.upstreamBodies).toHaveLength(1);
       expect(httpsMock.upstreamBodies[0].toString("utf8")).toBe("");

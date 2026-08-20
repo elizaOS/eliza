@@ -1,6 +1,8 @@
-// Handles v1 cloud API v1 apps id promote preview route traffic with route-local auth expectations.
+/** Generates authenticated promotion previews for cloud applications. */
+
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -45,7 +47,12 @@ async function __hono_POST(
   const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
-  const body = await request.json();
+  const decodedBody = await decodeRequestJson(request);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const body = decodedBody.value;
   const parsed = PreviewRequestSchema.safeParse(body);
 
   if (!parsed.success) {

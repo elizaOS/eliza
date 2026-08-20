@@ -148,6 +148,7 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
+| `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
@@ -172,8 +173,9 @@ second credential broker, and child trajectories retain their session join key.
 | `ACPX_PROGRESS_MODE` / `ELIZA_SUB_AGENT_PROGRESS_MODE` | `compact` | Sub-agent progress UX: `compact` delays and edits one status message, `threaded` preserves per-task threads, `silent` disables visible progress. |
 | `ACPX_PROGRESS_DELAY_MS` / `ELIZA_SUB_AGENT_PROGRESS_DELAY_MS` | `15000` | Delay before the first visible progress message, so short tasks only show the final answer. |
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` to add progress reactions in `threaded` mode. |
-| `SMITHERS_DB_PROVIDER` | `sqlite` | Smithers task storage: `sqlite` or `postgres`. `pglite` fails closed with `SMITHERS_PGLITE_INCOMPATIBLE` until the upstream Smithers adapter dependency closure is compatible. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Smithers task storage: `sqlite`, `postgres`, or `pglite`. |
 | `SMITHERS_DB_URL` | unset | Required PostgreSQL connection string when `SMITHERS_DB_PROVIDER=postgres`. |
+| `SMITHERS_DB_DATA_DIR` | unset | Required persistent data root when `SMITHERS_DB_PROVIDER=pglite`; each durable tenant/task/run gets an isolated subdirectory because embedded PGlite directories cannot be shared by concurrent workers. |
 
 ### Native transport status
 

@@ -121,20 +121,34 @@ export async function checkPairingAllowed(
 		metadata,
 	});
 
-	// Build the reply message
 	const idLabel = getPairingIdLabel(channel);
-	const replyMessage = buildPairingReplyMessage({
-		channel,
-		senderId,
-		code,
-		idLabel,
-	});
+
+	// The pending queue is at its cap — hold the sender silently. No "busy"
+	// notice is sent: it would be an unsolicited-message vector of its own,
+	// and the sender can complete pairing once a slot frees.
+	if (!code) {
+		return { allowed: false, idLabel };
+	}
+
+	// Reply at most once per request TTL per sender. Suppression rides on the
+	// PairingService reply claim rather than request-row existence, so
+	// deleting and recreating the request (expiry sweep, churn, moderation)
+	// cannot re-arm the unsolicited reply.
+	const replyMessage =
+		created && pairingService.claimPairingReply(channel, senderId)
+			? buildPairingReplyMessage({
+					channel,
+					senderId,
+					code,
+					idLabel,
+				})
+			: undefined;
 
 	return {
 		allowed: false,
 		pairingCode: code,
 		newRequest: created,
-		replyMessage: created ? replyMessage : undefined,
+		replyMessage,
 		idLabel,
 	};
 }

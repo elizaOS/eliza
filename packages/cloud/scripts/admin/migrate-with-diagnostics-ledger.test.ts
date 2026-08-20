@@ -1,12 +1,26 @@
 /**
  * Proves the migration ledger's forward checkpoint boundary with deterministic
- * synthetic history, including the under-recorded production prefix.
+ * history, including the under-recorded production prefix and immutable
+ * identities already observed in protected-environment ledgers.
  */
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { validateAppliedMigrationLedger } from "./migrate-with-diagnostics";
 
 const CHECKPOINT_TAG = "0194_job_execution_interruptions_catalog_guard";
+const STAGING_RESTORE_OPERATION = {
+  createdAt: 1_790_798_400_000,
+  hash: "a97b5c94bbc55df780c9c7140f293b59893c97ff63863cbf1c356460172244a6",
+  idx: 250,
+  tag: "0251_agent_backup_restore_operations",
+} as const;
+const MIGRATIONS_DIR = path.resolve(
+  import.meta.dir,
+  "../../shared/src/db/migrations",
+);
 
 function migration(idx: number, tag: string) {
   return {
@@ -53,5 +67,38 @@ describe("migration ledger checkpoint completeness", () => {
     expect(() =>
       validateAppliedMigrationLedger(applied(0, 2, 4), migrations),
     ).toThrow(`missing required journal entry ${CHECKPOINT_TAG}`);
+  });
+
+  test("retains the exact migration identity already applied to staging", async () => {
+    const journal = JSON.parse(
+      await readFile(path.join(MIGRATIONS_DIR, "meta/_journal.json"), "utf8"),
+    ) as {
+      entries: Array<{
+        breakpoints: boolean;
+        idx: number;
+        tag: string;
+        version: string;
+        when: number;
+      }>;
+    };
+    const entry = journal.entries.find(
+      (candidate) => candidate.when === STAGING_RESTORE_OPERATION.createdAt,
+    );
+
+    expect(entry).toEqual({
+      breakpoints: true,
+      idx: STAGING_RESTORE_OPERATION.idx,
+      tag: STAGING_RESTORE_OPERATION.tag,
+      version: "7",
+      when: STAGING_RESTORE_OPERATION.createdAt,
+    });
+
+    const sql = await readFile(
+      path.join(MIGRATIONS_DIR, `${STAGING_RESTORE_OPERATION.tag}.sql`),
+      "utf8",
+    );
+    expect(createHash("sha256").update(sql).digest("hex")).toBe(
+      STAGING_RESTORE_OPERATION.hash,
+    );
   });
 });

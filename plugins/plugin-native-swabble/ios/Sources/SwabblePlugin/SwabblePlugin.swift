@@ -240,29 +240,7 @@ private enum WakeGate {
     /// Returns true if two normalized tokens are "close enough" to be considered a match.
     /// Threshold: ceil(maxLen / 3). e.g. "eliza" (7) ↔ "melody" (6) → threshold 3, distance 3 → match.
     static func fuzzyTokenMatch(_ a: String, _ b: String) -> Bool {
-        if a == b { return true }
-        let maxLen = max(a.count, b.count)
-        guard maxLen > 2 else { return false } // Very short words → exact only
-        let threshold = max(1, (maxLen + 1) / 3)
-        return editDistance(a, b) <= threshold
-    }
-
-    private static func editDistance(_ a: String, _ b: String) -> Int {
-        let ac = Array(a), bc = Array(b)
-        let m = ac.count, n = bc.count
-        if m == 0 { return n }
-        if n == 0 { return m }
-        var prev = Array(0...n), curr = Array(repeating: 0, count: n + 1)
-        for i in 1...m {
-            curr[0] = i
-            for j in 1...n {
-                curr[j] = ac[i - 1] == bc[j - 1]
-                    ? prev[j - 1]
-                    : 1 + min(prev[j], curr[j - 1], prev[j - 1])
-            }
-            swap(&prev, &curr)
-        }
-        return prev[n]
+        SwabbleWakeBridgeContract.fuzzyTokenMatch(a, b)
     }
 
     // MARK: Normalization helpers

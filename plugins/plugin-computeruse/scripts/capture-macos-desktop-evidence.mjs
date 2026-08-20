@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +61,50 @@ const approvalConfigPath = path.join(
   ".eliza",
   "computer-use-approval.json",
 );
+
+const BROWSER_EVIDENCE_HTML =
+  "<!doctype html><html><head><title>macOS CUA Evidence</title></head><body><main><h1>macOS CUA Evidence</h1><button id='go'>Ready</button><input id='field' value=''></main></body></html>";
+
+export async function startMacosBrowserEvidenceServer() {
+  const server = createServer((request, response) => {
+    if (request.method !== "GET" || request.url !== "/") {
+      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      response.end("Not found");
+      return;
+    }
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": "text/html; charset=utf-8",
+    });
+    response.end(BROWSER_EVIDENCE_HTML);
+  });
+
+  await new Promise((resolve, reject) => {
+    const onError = (error) => reject(error);
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise((resolve) => server.close(resolve));
+    throw new Error("macOS browser evidence server did not bind a TCP port");
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}/`,
+    async close() {
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    },
+  };
+}
 
 function usage() {
   return [
@@ -120,6 +165,15 @@ function commandText(command, args, fallback = "unknown") {
   } catch {
     return fallback;
   }
+}
+
+/** Resolves the full immutable revision bound into every evidence artifact. */
+export function resolveMacosEvidenceGitHead(runCommand = commandText) {
+  const gitHead = runCommand("git", ["rev-parse", "HEAD"]);
+  if (!/^[0-9a-f]{40,64}$/i.test(gitHead)) {
+    throw new Error("macOS desktop evidence requires a full Git commit SHA");
+  }
+  return gitHead;
 }
 
 function createRuntime(settings = {}) {
@@ -300,7 +354,7 @@ async function runCheck(checks, details, id, fn, options = {}) {
 
 async function runTextEditInputCheck(service, displays) {
   let previousWindow = null;
-  let createdDocument = false;
+  let createdDocumentName = null;
   const token = `macos-cua-${Date.now()}`;
 
   try {
@@ -311,7 +365,7 @@ async function runTextEditInputCheck(service, displays) {
       previousWindow = activeBefore.window;
     }
 
-    runText(
+    createdDocumentName = runText(
       "osascript",
       [
         "-e",
@@ -319,37 +373,51 @@ async function runTextEditInputCheck(service, displays) {
         "-e",
         "activate",
         "-e",
-        'make new document with properties {text:""}',
+        'set evidenceDocument to make new document with properties {text:""}',
+        "-e",
+        "return name of evidenceDocument",
         "-e",
         "end tell",
       ],
       { timeout: 30_000 },
     );
-    createdDocument = true;
-    await new Promise((resolve) => setTimeout(resolve, 700));
-
-    const active = await service.executeWindowAction({
-      action: "get_current_window_id",
-    });
-    if (!active.success || !active.window) {
+    let bounds = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const rawBounds = runText(
+          "osascript",
+          [
+            "-e",
+            `tell application "System Events" to tell process "TextEdit" to tell window ${JSON.stringify(createdDocumentName)}`,
+            "-e",
+            "set windowPosition to position",
+            "-e",
+            "set windowSize to size",
+            "-e",
+            'return ((item 1 of windowPosition) as text) & "," & ((item 2 of windowPosition) as text) & "," & ((item 1 of windowSize) as text) & "," & ((item 2 of windowSize) as text)',
+            "-e",
+            "end tell",
+          ],
+          { timeout: 15_000 },
+        );
+        const [x, y, width, height] = rawBounds
+          .split(",")
+          .map((value) => Number(value));
+        if ([x, y, width, height].every(Number.isFinite)) {
+          bounds = { x, y, width, height };
+          break;
+        }
+      } catch {
+        // TextEdit can create the document before its accessibility window exists.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!bounds) {
       throw new Error(
-        `could not identify active TextEdit window: ${active.error ?? "unknown"}`,
+        `could not read TextEdit bounds for ${createdDocumentName ?? "unknown"}; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry`,
       );
     }
 
-    const boundsResult = await service.executeWindowAction({
-      action: "get_window_position",
-      windowId: active.window.id,
-    });
-    if (!boundsResult.success || !boundsResult.bounds) {
-      const rawReason = boundsResult.error ?? "unknown";
-      const reason = String(rawReason).includes("Window not found")
-        ? `${rawReason}; listWindows could not resolve the TextEdit window. Grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry.`
-        : rawReason;
-      throw new Error(`could not read TextEdit bounds: ${reason}`);
-    }
-
-    const bounds = boundsResult.bounds;
     const globalX = Math.round(bounds.x + bounds.width / 2);
     const globalY = Math.round(bounds.y + Math.max(90, bounds.height / 2));
     const display = displayForPoint(displays, globalX, globalY);
@@ -374,6 +442,7 @@ async function runTextEditInputCheck(service, displays) {
     if (!click.success) {
       throw new Error(`click failed: ${click.error ?? "unknown"}`);
     }
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const selectAll = await service.executeCommand("key_combo", {
       key: "cmd+a",
@@ -381,6 +450,7 @@ async function runTextEditInputCheck(service, displays) {
     if (!selectAll.success) {
       throw new Error(`key_combo failed: ${selectAll.error ?? "unknown"}`);
     }
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const typed = await service.executeCommand("type", {
       text: token,
@@ -431,7 +501,7 @@ async function runTextEditInputCheck(service, displays) {
         "post-action screenshots were requested by service configuration",
       ],
       details: {
-        activeWindow: active.window,
+        activeWindow: { app: "TextEdit", title: createdDocumentName },
         bounds,
         coordinate,
         displayId: display.id,
@@ -439,7 +509,7 @@ async function runTextEditInputCheck(service, displays) {
       },
     };
   } finally {
-    if (createdDocument) {
+    if (createdDocumentName) {
       // The close Apple Event is blocked by the same transient post-input state
       // as the read above; retry with a short delay so the document still closes
       // and runs don't accumulate stale windows (which slow TextEdit further).
@@ -449,7 +519,7 @@ async function runTextEditInputCheck(service, displays) {
             "osascript",
             [
               "-e",
-              'tell application "TextEdit" to close front document saving no',
+              `tell application "TextEdit" to close document ${JSON.stringify(createdDocumentName)} saving no`,
             ],
             { timeout: 20_000 },
           );
@@ -471,64 +541,125 @@ async function runTextEditInputCheck(service, displays) {
   }
 }
 
-async function runBrowserCheck(service, outDir, artifacts) {
-  const pageUrl =
-    "data:text/html,<html><head><title>macOS CUA Evidence</title></head><body><main><h1>macOS CUA Evidence</h1><button id='go'>Ready</button><input id='field' value=''></main></body></html>";
+function combineBrowserCleanupErrors(errors) {
+  if (errors.length === 0) return null;
+  if (errors.length === 1) return errors[0];
+  return new AggregateError(errors, "macOS browser evidence cleanup failed");
+}
 
-  const open = await service.executeCommand("browser_open", { url: pageUrl });
-  if (!open.success) {
-    throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
+/** Attempts every browser-evidence teardown and returns the combined failure. */
+export async function cleanupMacosBrowserEvidence(
+  service,
+  fixture,
+  browserOpened,
+) {
+  const errors = [];
+  if (browserOpened) {
+    try {
+      const close = await service.executeCommand("browser_close");
+      if (!close.success) {
+        errors.push(
+          new Error(`browser_close failed: ${close.error ?? "unknown"}`),
+        );
+      }
+    } catch (error) {
+      errors.push(error);
+    }
   }
-  const dom = await service.executeCommand("browser_get_dom");
-  if (
-    !dom.success ||
-    !String(dom.content ?? "").includes("macOS CUA Evidence")
-  ) {
-    throw new Error(
-      `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
-    );
+  try {
+    await fixture.close();
+  } catch (error) {
+    errors.push(error);
   }
-  const clickables = await service.executeCommand("browser_get_clickables");
-  if (!clickables.success) {
-    throw new Error(
-      `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
-    );
-  }
-  const screenshot = await service.executeCommand("browser_screenshot");
-  if (!screenshot.success) {
-    throw new Error(
-      `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
-    );
-  }
+  return combineBrowserCleanupErrors(errors);
+}
 
-  const browserPng = pngBufferFromBase64(screenshot.screenshot);
-  const browserQuality = describePng(browserPng, "browser screenshot");
-  const browserArtifact = path.join(outDir, "browser-evidence.png");
-  await writeFile(browserArtifact, browserPng);
-  artifacts.push(relativeToRepo(browserArtifact));
+/** Runs the browser evidence check with an injectable fixture for failure tests. */
+export async function runBrowserCheck(
+  service,
+  outDir,
+  artifacts,
+  startFixture = startMacosBrowserEvidenceServer,
+) {
+  const fixture = await startFixture();
+  let browserOpened = false;
+  let primaryError = null;
+  let result = null;
+  let cleanupError = null;
+  try {
+    const open = await service.executeCommand("browser_open", {
+      url: fixture.url,
+    });
+    if (!open.success) {
+      throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
+    }
+    browserOpened = true;
+    const dom = await service.executeCommand("browser_get_dom");
+    if (
+      !dom.success ||
+      !String(dom.content ?? "").includes("macOS CUA Evidence")
+    ) {
+      throw new Error(
+        `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+      );
+    }
+    const clickables = await service.executeCommand("browser_get_clickables");
+    if (!clickables.success) {
+      throw new Error(
+        `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
+      );
+    }
+    const screenshot = await service.executeCommand("browser_screenshot");
+    if (!screenshot.success) {
+      throw new Error(
+        `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
+      );
+    }
 
-  const close = await service.executeCommand("browser_close");
-  if (!close.success) {
-    throw new Error(`browser_close failed: ${close.error ?? "unknown"}`);
-  }
+    const browserPng = pngBufferFromBase64(screenshot.screenshot);
+    const browserQuality = describePng(browserPng, "browser screenshot");
+    const browserArtifact = path.join(outDir, "browser-evidence.png");
+    await writeFile(browserArtifact, browserPng);
+    artifacts.push(relativeToRepo(browserArtifact));
 
-  return {
-    status: "passed",
-    requiredEvidence: [
-      `browser target opened ${open.url ?? "data URL"}`,
-      "browser_get_dom returned the local evidence page",
-      `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
-      `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
-      "browser cleanup closed the test browser",
-    ],
-    details: {
-      open: {
-        url: open.url,
-        title: open.title,
+    result = {
+      status: "passed",
+      requiredEvidence: [
+        `browser target opened ${open.url ?? fixture.url}`,
+        "browser_get_dom returned the local evidence page",
+        `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
+        `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
+        "browser and loopback fixture cleanup completed",
+      ],
+      details: {
+        open: {
+          url: open.url,
+          title: open.title,
+        },
+        browserQuality,
       },
-      browserQuality,
-    },
-  };
+    };
+  } catch (error) {
+    primaryError = error;
+  } finally {
+    cleanupError = await cleanupMacosBrowserEvidence(
+      service,
+      fixture,
+      browserOpened,
+    );
+  }
+  if (primaryError) {
+    if (cleanupError) {
+      // error-policy:J6 Preserve the owning browser failure while reporting a
+      // secondary cleanup problem from the disposable evidence fixture.
+      console.warn(
+        `macOS browser evidence cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+      );
+    }
+    throw primaryError;
+  }
+  if (cleanupError) throw cleanupError;
+  return result;
 }
 
 async function runApprovalCheck(outDir, artifacts) {
@@ -632,7 +763,7 @@ async function main() {
   const machineModel = commandText("sysctl", ["-n", "hw.model"]);
   const macosVersion = commandText("sw_vers", ["-productVersion"]);
   const buildId = commandText("sw_vers", ["-buildVersion"]);
-  const gitHead = commandText("git", ["rev-parse", "--short", "HEAD"]);
+  const gitHead = resolveMacosEvidenceGitHead();
   const artifacts = [];
   const details = {};
   const checks = new Map(CHECK_ORDER.map((id) => [id, newCheck(id)]));

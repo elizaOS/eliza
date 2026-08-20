@@ -2,11 +2,24 @@
  * Loopback-only `/pair` relay for standalone agent servers.
  * Remote managed pairing terminates at the Cloud edge; explicit local Docker
  * retains this handler so the one-time token resolves before the SPA fallback.
+ *
+ * Peer admission when `ELIZA_CLOUD_PAIR_DIRECT_RELAY=1`: loopback peers only,
+ * plus any ranges in the optional `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS`
+ * comma-separated CIDR allowlist (default empty). The supported local-Docker
+ * deployment publishes the port on the host's loopback, so inside the
+ * container the TCP peer is the bridge gateway rather than 127.0.0.1 — set
+ * e.g. `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS=172.17.0.0/16` (default bridge)
+ * to admit exactly that gateway range. Every CIDR entry widens token
+ * redemption to that LAN/VPC segment, so keep the list as narrow as the
+ * deployment allows.
  */
 
 import type http from "node:http";
-import { isPrivateIpAddress, logger } from "@elizaos/core";
-import { isLoopbackRemoteAddress } from "@elizaos/shared";
+import { logger } from "@elizaos/core";
+import {
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+} from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
   parseCloudPairRelaySession,
@@ -63,12 +76,19 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
   // The local-only gate must key on the TCP peer, never on request headers:
   // Host and X-Forwarded-Host are client-controlled, so a remote caller
   // could previously spoof a loopback origin and redeem a held pairing token
-  // through this relay (W1-037). Private-range peers are accepted because
-  // the supported local-Docker deployment publishes the port on the host's
-  // loopback, so inside the container the peer is the bridge gateway rather
-  // than 127.0.0.1.
+  // through this relay (W1-037). Non-loopback peers are admitted only through
+  // the explicit ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS allowlist (W5-016) —
+  // a broad private-range admission would let any LAN/VPC host redeem a
+  // leaked token, far beyond the local-Docker bridge gateway the relay
+  // exists for.
   const peer = req.socket?.remoteAddress;
-  return isLoopbackRemoteAddress(peer) || isPrivateIpAddress(peer ?? "");
+  return (
+    isLoopbackRemoteAddress(peer) ||
+    isRemoteAddressInCidrList(
+      peer,
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS,
+    )
+  );
 }
 
 function escapeHtml(value: string): string {

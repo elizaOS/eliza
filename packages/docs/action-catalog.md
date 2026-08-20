@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 170
+- **Registered runtime actions:** 171
 
 ## Actions
 

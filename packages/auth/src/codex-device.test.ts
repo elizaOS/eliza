@@ -25,7 +25,10 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, rmSync: rmSyncMock };
 });
 
-import { startCodexDeviceLogin } from "./codex-device.ts";
+import {
+  codexDeviceLoginUsesShell,
+  startCodexDeviceLogin,
+} from "./codex-device.ts";
 
 interface FakeChild {
   process: EventEmitter;
@@ -84,6 +87,12 @@ afterEach(() => {
 });
 
 describe("startCodexDeviceLogin", () => {
+  it("uses the command shell only for the Windows npm shim", () => {
+    expect(codexDeviceLoginUsesShell("win32")).toBe(true);
+    expect(codexDeviceLoginUsesShell("linux")).toBe(false);
+    expect(codexDeviceLoginUsesShell("darwin")).toBe(false);
+  });
+
   it("rejects when the CLI closes successfully before emitting the prompt", async () => {
     const child = mockChild();
     const start = startCodexDeviceLogin();
@@ -173,6 +182,14 @@ describe("startCodexDeviceLogin", () => {
     const child = mockChild();
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "codex",
+      ["login", "--device-auth"],
+      expect.objectContaining({
+        shell: process.platform === "win32",
+      }),
+    );
 
     child.process.emit("spawn");
     child.process.emit("exit", 0, null);

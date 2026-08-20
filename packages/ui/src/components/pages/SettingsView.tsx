@@ -264,6 +264,7 @@ export function SettingsView({
   const visibleSections = getAllSettingsSections().filter((section) => {
     if (section.id === "wallet-rpc" && walletEnabled === false) return false;
     if (section.cloudOnly && !managedCloudRuntime) return false;
+    if (section.hideOnManagedCloud && managedCloudRuntime) return false;
     if (!isViewVisible(section, enabledKinds)) return false;
     if (section.hideOnCloud && isAndroidCloudBuild()) return false;
     return true;

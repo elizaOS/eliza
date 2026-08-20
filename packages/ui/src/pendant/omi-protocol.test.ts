@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_OMI_NOTIFICATION_BYTES,
+  MAX_OMI_REASSEMBLED_FRAME_BYTES,
   OMI_CODEC,
   OMI_PACKET_HEADER_SIZE,
   OmiFrameReassembler,
@@ -407,5 +409,94 @@ describe("OmiFrameReassembler", () => {
 
   it("exposes the DK1 Opus codec id as 20", () => {
     expect(OMI_CODEC.OPUS_16K).toBe(20);
+  });
+
+  it("rejects an oversized GATT notification instead of holding megabytes", () => {
+    const r = new OmiFrameReassembler();
+    const bomb = new Uint8Array(MAX_OMI_NOTIFICATION_BYTES + 1);
+    bomb[2] = 0;
+    const result = r.pushDetailed(bomb, 1000);
+    expect(result.frames).toEqual([]);
+    expect(diagnostics([result])).toEqual(["oversized-notification"]);
+    expect(result.metrics.malformedNotifications).toBe(1);
+    expect(result.metrics.emittedFrames).toBe(0);
+    expect(r.push(notif(1, 0, [1, 2, 3]))).toEqual([]);
+    expect(
+      r.push(notif(2, 0, [4, 5, 6])).map((frame) => [...frame.data]),
+    ).toEqual([[1, 2, 3]]);
+  });
+
+  it("drops a continuation that would emit an oversized reassembled frame", () => {
+    const r = new OmiFrameReassembler();
+    const chunk = 2_000;
+    expect(chunk + OMI_PACKET_HEADER_SIZE).toBeLessThanOrEqual(
+      MAX_OMI_NOTIFICATION_BYTES,
+    );
+    r.pushDetailed(notif(0, 0, payload(chunk, 1)), 1000);
+    for (let i = 1; i < 8; i += 1) {
+      r.pushDetailed(notif(i, i, payload(chunk, i + 1)), 1000 + i * 10);
+    }
+    const overflow = r.pushDetailed(notif(8, 8, payload(chunk, 9)), 1080);
+    expect(overflow.frames).toEqual([]);
+    expect(diagnostics([overflow])).toContain("dropped-buffered-frame");
+    expect(overflow.metrics.droppedFrames).toBe(1);
+    expect(overflow.metrics.emittedFrames).toBe(0);
+    expect(8 * chunk).toBeLessThanOrEqual(MAX_OMI_REASSEMBLED_FRAME_BYTES);
+    expect(9 * chunk).toBeGreaterThan(MAX_OMI_REASSEMBLED_FRAME_BYTES);
+
+    const recovery = pushAll(r, [
+      notif(9, 0, [10, 11]),
+      notif(10, 0, [12, 13]),
+    ]);
+    expect(emittedPayloads(recovery)).toEqual([[10, 11]]);
+  });
+
+  it("accepts the exact reassembled-frame byte limit", () => {
+    const r = new OmiFrameReassembler();
+    const fullPayload = MAX_OMI_NOTIFICATION_BYTES - OMI_PACKET_HEADER_SIZE;
+    const remainder = MAX_OMI_REASSEMBLED_FRAME_BYTES - 4 * fullPayload;
+    const results = pushAll(r, [
+      notif(0, 0, payload(fullPayload, 1)),
+      notif(1, 1, payload(fullPayload, 2)),
+      notif(2, 2, payload(fullPayload, 3)),
+      notif(3, 3, payload(fullPayload, 4)),
+      notif(4, 4, payload(remainder, 5)),
+      notif(5, 0, [6]),
+    ]);
+
+    const frames = results.flatMap((result) => result.frames);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.data).toHaveLength(MAX_OMI_REASSEMBLED_FRAME_BYTES);
+    expect(diagnostics(results)).not.toContain("dropped-buffered-frame");
+  });
+
+  it("removes deferred retransmit bytes from the frame budget", () => {
+    const r = new OmiFrameReassembler();
+    const fullPayload = MAX_OMI_NOTIFICATION_BYTES - OMI_PACKET_HEADER_SIZE;
+    const repeated = payload(fullPayload, 1);
+    const results = pushAll(r, [
+      notif(10, 0, repeated),
+      notif(10, 1, repeated),
+      notif(11, 1, payload(fullPayload, 2)),
+      notif(12, 2, payload(fullPayload, 3)),
+      notif(13, 3, payload(100, 4)),
+      notif(14, 0, [5]),
+    ]);
+
+    expect(diagnostics(results)).toContain("duplicate-notification");
+    expect(diagnostics(results)).not.toContain("dropped-buffered-frame");
+    expect(results.flatMap((result) => result.frames)[0]?.data).toHaveLength(
+      3 * fullPayload + 100,
+    );
+  });
+
+  it("still reassembles an honest multi-chunk Opus-sized frame", () => {
+    const r = new OmiFrameReassembler();
+    const body = payload(80, 9);
+    const results = pushAll(r, [
+      ...sequenceFrame(10, chunks(body, 40)),
+      notif(12, 0, [1]),
+    ]);
+    expect(emittedPayloads(results)).toEqual([body]);
   });
 });

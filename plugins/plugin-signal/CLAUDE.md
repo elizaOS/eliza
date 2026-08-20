@@ -44,6 +44,7 @@ src/
   signal-native.d.ts            Type shim for optional @elizaos/signal-native peer dep
   accounts.ts                   Multi-account resolution; merges env + character settings
   config.ts                     SignalConfig / SignalActionConfig / SignalReactionLevel types
+  dm-policy.ts                  dm.policy resolution (fail-closed pairing default) + the one-on-one DM access gate enforced before auto-reply turns
   rpc.ts                        HTTP client to signal-cli REST API (signalSend, signalRpcRequest, SSE stream)
   local-client.ts               SignalLocalClientConfig + low-level HTTP helpers used by SignalService; publicly exported
   pairing-service.ts            SignalPairingSession — QR device linking via signal-cli or @elizaos/signal-native
@@ -105,6 +106,7 @@ Character-level multi-account config lives under `character.settings.signal` (`S
 - **Optional native peer:** `@elizaos/signal-native` is a peer dep for QR device linking without spawning signal-cli. It is optional; pairing falls back to `signal-cli link` subprocess.
 - **Auth directory:** defaults to `~/.local/share/signal-cli` (signal-cli's hardcoded XDG path on all platforms including macOS — it does not use `Library/Application Support`). Override with `SIGNAL_AUTH_DIR`.
 - **Auto-reply is off by default.** Inbound messages are persisted as memories and emit `SIGNAL_MESSAGE_RECEIVED`, but the agent does not respond unless `SIGNAL_AUTO_REPLY=true`. Sends are expected to come from LifeOps or explicit caller actions.
+- **DM access fails closed when auto-reply is on.** One-on-one DMs are gated by the account's `dm` config (`settings.signal.dm`, or `settings.signal.accounts.<id>.dm`; `policy`: `open` / `pairing` / `allowlist` / `disabled`, plus `allowFrom` and `enabled`) before the agent turn runs — see `src/dm-policy.ts`. The default `pairing` routes unknown senders through the core `checkPairingAllowed` handshake and unrecognized values fail closed to it. Ingestion is not gated: blocked senders' messages are still persisted and announced.
 - **Multi-account:** configure multiple phone numbers under `character.settings.signal.accounts`. Each account gets its own `SignalApiClient`, event stream, and connector registration.
 - **Message size:** messages exceeding `MAX_SIGNAL_MESSAGE_LENGTH` (4 000 chars) are split automatically before dispatch.
 - **Account IDs:** always normalized to lowercase via `normalizeAccountId`. The sentinel value `"default"` is used when no explicit ID is configured.

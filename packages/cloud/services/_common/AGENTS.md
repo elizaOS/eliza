@@ -23,6 +23,9 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
   files are absent (e.g. a developer laptop outside a cluster) and cache the
   first result. `__resetServiceAccountCacheForTests()` clears that cache for
   tests only.
+- `src/k8s-deployment-wake.ts` (`./k8s-deployment-wake`) — performs a bounded
+  Kubernetes Deployment scale PATCH and composes an optional caller abort
+  signal with the operation deadline.
 - `src/identity-link-code.ts` (`./identity-link-code`) — canonical connector
   LINK-code recognition and user-facing confirmation results.
 - `src/gateway-auth.ts` (`./gateway-auth`) — strict short-lived gateway token

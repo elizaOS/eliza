@@ -26,6 +26,9 @@ import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
   phase: ShellPhase;
+  /** Whether the chat overlay is actually open. Voice activity can enter
+   *  `responding` while the pill remains closed, so phase cannot own this. */
+  open?: boolean;
   onOpen: () => void;
   onClose: () => void;
   /** Begin hold-to-talk capture (wired to `startRecording("ptt")`). When
@@ -45,10 +48,13 @@ export interface HomePillProps {
   /** Reports the idle pill's shallow composer-preview hover state. Desktop
    *  uses this to widen the transparent native hit area before painting it. */
   onPreviewHoverChange?: (hovered: boolean) => void;
-  /** True once the native host has acknowledged its wider hover frame. The
-   *  preview stays compact until then so WKWebView cannot clip the wide
-   *  composer into the resting 96px window. Web callers leave this unset. */
+  /** True once the native host has acknowledged its wider shallow frame. Hover
+   *  and listening lanes stay compact until then so WKWebView cannot clip them
+   *  into the resting 96px window. Web callers leave this unset. */
   previewHostReady?: boolean;
+  /** Whether hovering may render HomePill's lightweight visual preview. Hosts
+   *  that mount the real ChatOverlay input detent must disable this duplicate. */
+  showComposerPreview?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -113,6 +119,7 @@ const PROCESS_DOTS = [
  */
 export function HomePill({
   phase,
+  open,
   onOpen,
   onClose,
   onHoldStart,
@@ -122,15 +129,16 @@ export function HomePill({
   signingIn = false,
   onPreviewHoverChange,
   previewHostReady = true,
+  showComposerPreview = true,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
-  // The pill reads as "open" (its click will close) only for the overlay
-  // surfaces. `listening` is deliberately NOT included: hold-to-talk runs with
-  // the overlay closed, and treating it as open would flash the label/pressed
-  // state during every hold (#20483).
-  const isOpen = phase === "summoned" || phase === "responding";
-  const previewEligible = phase === "idle" || needsAuth;
+  // Hosts with a controller must pass its real overlay state. The phase-only
+  // fallback preserves standalone stories and consumers, but cannot distinguish
+  // a closed-pill voice response from a response inside an open chat.
+  const isOpen = open ?? (phase === "summoned" || phase === "responding");
+  const previewEligible =
+    showComposerPreview && (phase === "idle" || needsAuth);
   const [previewHovered, setPreviewHovered] = React.useState(false);
 
   const setPreviewHover = React.useCallback(
@@ -251,8 +259,9 @@ export function HomePill({
 
   const signInLabel = `Sign in with ${appName} Cloud`;
   const previewVisible = previewHovered && previewHostReady;
-  const listeningExpanded = phase === "listening";
-  const chipExpanded = listeningExpanded || phase === "processing";
+  const listening = phase === "listening";
+  const listeningExpanded = listening && previewHostReady;
+  const chipExpanded = listening || phase === "processing";
   const composerSized = previewVisible || listeningExpanded;
   const label = needsAuth
     ? signingIn
@@ -283,6 +292,11 @@ export function HomePill({
       onPointerCancel={handlePointerCancel}
       onMouseEnter={() => setPreviewHover(true)}
       onMouseLeave={() => setPreviewHover(false)}
+      // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
+      // the wide hover host on the first scroll gesture so subsequent trackpad
+      // momentum reaches the application underneath instead of being trapped
+      // by a decorative preview.
+      onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",

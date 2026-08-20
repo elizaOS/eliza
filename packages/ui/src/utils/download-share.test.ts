@@ -1,4 +1,4 @@
-/** Verifies extForMime through the package's configured test harness. */
+/** Verifies attachment naming, download fallbacks, cancellation, and platform sharing with mocked browser bridges. */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -30,6 +30,7 @@ function withGlobal<T>(key: string, value: unknown, fn: () => T): T {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -164,7 +165,13 @@ describe("downloadAttachment — <a download> fallback path", () => {
       downloadAttachment("https://example.com/cat.png", "cat.png"),
     );
 
-    expect(fetchMock).toHaveBeenCalledWith("https://example.com/cat.png");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/cat.png",
+      expect.objectContaining({
+        method: "GET",
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(
       (URL as unknown as { createObjectURL: ReturnType<typeof vi.fn> })
         .createObjectURL,
@@ -192,6 +199,147 @@ describe("downloadAttachment — <a download> fallback path", () => {
     expect(anchor.href).toBe("https://example.com/cat.png");
     expect(anchor.download).toBe("cat.png");
     expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back after a stalled fetch reaches the prefetch deadline", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/stalled.png", "stalled.png"),
+    );
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(clickSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await download;
+
+    expect(requestSignal?.reason).toMatchObject({ name: "TimeoutError" });
+    expect(anchor.href).toBe("https://example.com/stalled.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps the deadline active while the response body is being read", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const blob = vi.fn(
+      () =>
+        new Promise<Blob>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return { ok: true, blob } as unknown as Response;
+      }),
+    );
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/stream.png", "stream.png"),
+    );
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(clickSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await download;
+
+    expect(blob).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.reason).toMatchObject({ name: "TimeoutError" });
+    expect(anchor.href).toBe("https://example.com/stream.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("propagates caller cancellation without clicking the fallback anchor", async () => {
+    const caller = new AbortController();
+    const reason = new DOMException("View closed", "AbortError");
+    const removeAbortListener = vi.spyOn(caller.signal, "removeEventListener");
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const download = withGlobal("Capacitor", undefined, () =>
+      downloadAttachment(
+        "https://example.com/cancelled.png",
+        "cancelled.png",
+        caller.signal,
+      ),
+    );
+    caller.abort(reason);
+
+    await expect(download).rejects.toBe(reason);
+    expect(requestSignal?.reason).toBe(reason);
+    expect(removeAbortListener).toHaveBeenCalledWith(
+      "abort",
+      expect.any(Function),
+    );
+    expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back when a prefetch aborts before the picker opens", async () => {
+    const picker = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The request was aborted", "AbortError");
+      }),
+    );
+    vi.stubGlobal("window", { showSaveFilePicker: picker });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    expect(picker).not.toHaveBeenCalled();
+    expect(anchor.href).toBe("https://example.com/cat.png");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start an anchor download when the user cancels the picker", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Blob(["hello"]))),
+    );
+    vi.stubGlobal("window", {
+      showSaveFilePicker: vi.fn(async () => {
+        throw new DOMException("The user aborted a request", "AbortError");
+      }),
+    });
+
+    await withGlobal("Capacitor", undefined, () =>
+      downloadAttachment("https://example.com/cat.png", "cat.png"),
+    );
+
+    expect(clickSpy).not.toHaveBeenCalled();
   });
 });
 

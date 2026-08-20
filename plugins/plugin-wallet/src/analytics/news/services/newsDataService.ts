@@ -20,6 +20,8 @@ interface RSSItem {
   creator?: string;
 }
 
+export const DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS = 10_000;
+
 export class NewsDataService extends Service {
   static serviceType = "NEWS_DATA_SERVICE";
   private rssUrl: string = "https://bravenewcoin.com/rss/insights";
@@ -155,16 +157,24 @@ export class NewsDataService extends Service {
     language?: string;
     category?: string;
     limit?: number;
+    signal?: AbortSignal;
   }): Promise<RealWorldNewsArticle[]> {
     try {
       const limit = options?.limit || 10;
       const query = options?.query?.toLowerCase();
+      const timeoutSignal = AbortSignal.timeout(
+        DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS,
+      );
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, timeoutSignal])
+        : timeoutSignal;
 
       const response = await fetch(this.rssUrl, {
         method: "GET",
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; SpartanBot/1.0)",
         },
+        signal,
       });
 
       if (!response.ok) {
@@ -239,6 +249,7 @@ export class NewsDataService extends Service {
     options?: {
       language?: string;
       limit?: number;
+      signal?: AbortSignal;
     },
   ): Promise<RealWorldNewsArticle[]> {
     const query = tokenSymbol.toLowerCase();
@@ -246,29 +257,34 @@ export class NewsDataService extends Service {
       query,
       language: options?.language,
       limit: options?.limit,
+      signal: options?.signal,
     });
   }
 
   async getDefiNews(options?: {
     language?: string;
     limit?: number;
+    signal?: AbortSignal;
   }): Promise<RealWorldNewsArticle[]> {
     const query = "defi";
     return this.getLatestNews({
       query,
       language: options?.language,
       limit: options?.limit,
+      signal: options?.signal,
     });
   }
 
   async getCryptoMarketNews(options?: {
     language?: string;
     limit?: number;
+    signal?: AbortSignal;
   }): Promise<RealWorldNewsArticle[]> {
     // Return all crypto news from the feed
     return this.getLatestNews({
       language: options?.language,
       limit: options?.limit,
+      signal: options?.signal,
     });
   }
 }

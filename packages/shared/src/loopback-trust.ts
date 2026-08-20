@@ -24,10 +24,15 @@
  * `127.0.0.1.evil.com`), which the strict parser correctly rejects. The change
  * can only ever turn a previously-trusted request into an untrusted one, never
  * the reverse.
+ *
+ * Browser HTTP(S) origins and referrers must match the request Host authority,
+ * including an explicit non-default port. This prevents another loopback web
+ * server from inheriting owner trust merely because it also uses localhost.
+ * Native application schemes remain eligible for the same-machine policy.
  */
 
 import type http from "node:http";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { isCloudProvisionedContainer } from "./elizacloud/cloud-provisioning.js";
 import { isLoopbackBindHost } from "./runtime-env.js";
 import { readAliasedEnv } from "./utils/env.js";
@@ -226,6 +231,81 @@ export function isLoopbackRemoteAddress(
   );
 }
 
+/**
+ * True when the TCP peer address falls inside an operator-supplied CIDR
+ * allowlist: a comma-separated list of `ip[/prefix]` entries (IPv4 or IPv6; a
+ * bare IP means an exact host match). The Cloud-pair relay uses this to admit
+ * the local-Docker bridge gateway without opening the gate to every
+ * private-range LAN/VPC peer (W5-016). Fail-closed by construction: empty
+ * lists, unparseable peers, and malformed entries admit nothing. IPv4-mapped
+ * IPv6 peer spellings (`::ffff:a.b.c.d`, as dual-stack sockets report them)
+ * are matched against the IPv4 entries.
+ */
+export function isRemoteAddressInCidrList(
+  remoteAddress: string | null | undefined,
+  cidrList: string | null | undefined,
+): boolean {
+  if (!remoteAddress || !cidrList) return false;
+  const entries = cidrList
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (entries.length === 0) return false;
+
+  const blockList = new BlockList();
+  let added = 0;
+  for (const entry of entries) {
+    const slash = entry.lastIndexOf("/");
+    const ip = slash === -1 ? entry : entry.slice(0, slash);
+    const family = isIP(ip);
+    if (family === 0) continue;
+    const type = family === 4 ? "ipv4" : "ipv6";
+    if (slash === -1) {
+      // Bare IP = exact host. Expressed as a full-prefix subnet because not
+      // every runtime's BlockList implements `add`.
+      blockList.addSubnet(ip, family === 4 ? 32 : 128, type);
+      added += 1;
+      continue;
+    }
+    // Require a plain decimal prefix: Number("") parses a trailing slash as
+    // 0, which would turn a malformed entry into a /0 admit-all, and Number
+    // also accepts spellings like "0x10" or "+16" that operators did not
+    // mean. Malformed entries must admit nothing.
+    const prefixText = entry.slice(slash + 1);
+    if (!/^\d+$/.test(prefixText)) continue;
+    const prefix = Number(prefixText);
+    const maxPrefix = family === 4 ? 32 : 128;
+    if (prefix > maxPrefix) continue;
+    try {
+      blockList.addSubnet(ip, prefix, type);
+      added += 1;
+    } catch {
+      // error-policy:J3 malformed operator CIDR entries admit nothing.
+    }
+  }
+  if (added === 0) return false;
+
+  let peer = remoteAddress.trim().toLowerCase();
+  if (isIP(peer) === 6) {
+    for (const mappedPrefix of ["::ffff:", "::ffff:0:"]) {
+      const mapped = peer.slice(mappedPrefix.length);
+      if (peer.startsWith(mappedPrefix) && isIP(mapped) === 4) {
+        peer = mapped;
+        break;
+      }
+    }
+  }
+  const peerFamily = isIP(peer);
+  if (peerFamily === 0) return false;
+  try {
+    return blockList.check(peer, peerFamily === 4 ? "ipv4" : "ipv6");
+  } catch {
+    // error-policy:J3 an exotic-but-unmatchable peer spelling (e.g. a zoned
+    // link-local address on a runtime that rejects it) admits nothing.
+    return false;
+  }
+}
+
 const LOCAL_APP_PROTOCOLS = new Set([
   "file:",
   "app:",
@@ -235,7 +315,90 @@ const LOCAL_APP_PROTOCOLS = new Set([
   "electrobun:",
 ]);
 
-function isTrustedLocalOrigin(raw: string): boolean {
+type LocalHttpAuthority = {
+  hostname: string;
+  port: number | null;
+};
+
+function normalizeAuthorityHostname(hostname: string): string {
+  const normalized = hostname.trim().toLowerCase();
+  return normalized.startsWith("[") && normalized.endsWith("]")
+    ? normalized.slice(1, -1)
+    : normalized;
+}
+
+function parseLoopbackHostAuthority(raw: string): LocalHttpAuthority | null {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed || /[/\\?#@]/.test(trimmed)) return null;
+
+  let hostname: string;
+  let portText: string | null = null;
+  if (trimmed.startsWith("[")) {
+    const closingBracket = trimmed.indexOf("]");
+    if (closingBracket < 0) return null;
+    hostname = trimmed.slice(1, closingBracket);
+    const suffix = trimmed.slice(closingBracket + 1);
+    if (suffix) {
+      if (!/^:\d+$/.test(suffix)) return null;
+      portText = suffix.slice(1);
+    }
+  } else {
+    const match = /^([^:]+)(?::(\d+))?$/.exec(trimmed);
+    if (!match?.[1]) return null;
+    hostname = match[1];
+    portText = match[2] ?? null;
+  }
+
+  if (!isLoopbackBindHost(hostname)) return null;
+  if (portText === null) return { hostname, port: null };
+  const port = Number(portText);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return null;
+  return { hostname, port };
+}
+
+function isTrustedLocalBrowserUrl(
+  raw: string,
+  host: string | null,
+  allowPath: boolean,
+): boolean {
+  if (!host) return false;
+  const hostAuthority = parseLoopbackHostAuthority(host);
+  if (!hostAuthority) return false;
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    if (parsed.username || parsed.password) return false;
+    if (
+      !allowPath &&
+      (parsed.pathname !== "/" || parsed.search || parsed.hash)
+    ) {
+      return false;
+    }
+
+    const originHostname = normalizeAuthorityHostname(parsed.hostname);
+    if (
+      !isLoopbackBindHost(originHostname) ||
+      originHostname !== hostAuthority.hostname
+    ) {
+      return false;
+    }
+
+    const explicitOriginPort = parsed.port ? Number(parsed.port) : null;
+    if (hostAuthority.port === null) return explicitOriginPort === null;
+    const effectiveOriginPort =
+      explicitOriginPort ?? (parsed.protocol === "https:" ? 443 : 80);
+    return effectiveOriginPort === hostAuthority.port;
+  } catch {
+    // error-policy:J3 untrusted browser URL metadata is invalid unless its
+    // authority can be parsed and proven to match the request Host.
+    return false;
+  }
+}
+
+function isTrustedLocalOrigin(raw: string, host: string | null): boolean {
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "null") return true;
   try {
@@ -243,10 +406,15 @@ function isTrustedLocalOrigin(raw: string): boolean {
     if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
       return true;
     }
-    return isLoopbackBindHost(parsed.hostname);
+    return isTrustedLocalBrowserUrl(trimmed, host, false);
   } catch {
+    // error-policy:J3 untrusted Origin metadata with an invalid URL is denied.
     return false;
   }
+}
+
+function isTrustedLocalReferer(raw: string, host: string | null): boolean {
+  return isTrustedLocalBrowserUrl(raw.trim(), host, true);
 }
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {
@@ -301,13 +469,19 @@ export function isTrustedLocalRequest(
   const secFetchSite = firstHeaderValue(
     req.headers["sec-fetch-site"],
   )?.toLowerCase();
-  if (secFetchSite === "cross-site") return false;
+  if (
+    secFetchSite &&
+    secFetchSite !== "same-origin" &&
+    secFetchSite !== "none"
+  ) {
+    return false;
+  }
 
   const origin = firstHeaderValue(req.headers.origin);
-  if (origin && !isTrustedLocalOrigin(origin)) return false;
+  if (origin && !isTrustedLocalOrigin(origin, host)) return false;
 
   const referer = firstHeaderValue(req.headers.referer);
-  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+  if (!origin && referer && !isTrustedLocalReferer(referer, host)) return false;
 
   return true;
 }

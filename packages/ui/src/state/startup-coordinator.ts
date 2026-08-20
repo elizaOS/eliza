@@ -138,6 +138,7 @@ export type StartupEvent =
   | { type: "AGENT_ERROR"; message: string }
   | { type: "AGENT_TIMEOUT" }
   | { type: "AGENT_POLL_RETRY" }
+  | { type: "CLOUD_AGENT_SELECTION_REQUIRED" }
 
   // Hydration
   | { type: "HYDRATION_COMPLETE" }
@@ -287,6 +288,12 @@ export function startupReducer(
 
     case "starting-runtime":
       switch (event.type) {
+        case "CLOUD_AGENT_SELECTION_REQUIRED":
+          return {
+            phase: "first-run-required",
+            serverReachable: false,
+            target: "cloud-managed",
+          };
         case "AGENT_RUNNING":
           return { phase: "hydrating" };
         case "AGENT_STARTING":

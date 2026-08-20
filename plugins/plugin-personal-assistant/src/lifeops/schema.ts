@@ -1926,7 +1926,6 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
-    unique().on(t.agentId, t.briefingId, t.itemId, t.eventType, t.eventAt),
     index("idx_life_brief_item_engagements_item").on(
       t.agentId,
       t.itemId,
@@ -1938,6 +1937,24 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
       t.eventAt,
     ),
     index("idx_life_brief_item_engagements_brief").on(t.agentId, t.briefingId),
+    index("idx_life_brief_item_engagements_reward_queue").on(
+      t.agentId,
+      t.eventType,
+      t.eventAt,
+      t.createdAt,
+    ),
+    index("idx_life_brief_item_engagements_reward_receipt")
+      .on(
+        t.agentId,
+        sql`(${t.metadataJson}::jsonb ->> 'engagementEventId')`,
+        t.createdAt,
+      )
+      .where(sql`${t.eventType} = 'rewarded'`),
+    index("idx_life_brief_item_engagements_reward_retry_order").on(
+      t.agentId,
+      t.eventType,
+      t.createdAt,
+    ),
   ],
 );
 

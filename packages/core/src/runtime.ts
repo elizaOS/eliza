@@ -34,6 +34,7 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
+import { validateQueryEntitiesPagination } from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -6733,6 +6734,7 @@ export class AgentRuntime implements IAgentRuntime {
 			// live mutable object, not this placeholder.
 			let recordingStateRef: { recorded: boolean } = { recorded: false };
 			let attemptPreparationFailed = false;
+			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
 			try {
 				const binaryModels: string[] = [
@@ -6879,11 +6881,30 @@ export class AgentRuntime implements IAgentRuntime {
 					shouldStream &&
 					paramsAsStreaming?.streamStructured === true &&
 					structuredStreamFields.length === 0;
-				const downstreamChunk = (chunk: string, accumulated?: string): void => {
-					void (async () => {
-						if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
-						if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
-					})();
+				let downstreamDelivery = Promise.resolve();
+				let downstreamDeliveryError: unknown;
+				let downstreamDeliveryFailed = false;
+				const downstreamChunk = (
+					chunk: string,
+					accumulated?: string,
+					streamRevision?: number,
+				): void => {
+					downstreamDelivery = downstreamDelivery
+						.then(async () => {
+							if (downstreamDeliveryFailed) return;
+							if (paramsChunk)
+								await paramsChunk(chunk, msgId, accumulated, streamRevision);
+							if (ctxChunk)
+								await ctxChunk(chunk, msgId, accumulated, streamRevision);
+						})
+						.then(undefined, (error: unknown) => {
+							downstreamDeliveryFailed = true;
+							downstreamDeliveryError = error;
+						});
+				};
+				drainStructuredStreamCallbacks = async () => {
+					await downstreamDelivery;
+					if (downstreamDeliveryFailed) throw downstreamDeliveryError;
 				};
 				const structuredExtractor =
 					structuredStreamFields.length > 0 &&
@@ -6892,8 +6913,8 @@ export class AgentRuntime implements IAgentRuntime {
 								skeleton: paramsAsStreaming.responseSkeleton,
 								streamFields: structuredStreamFields,
 								unordered: true,
-								onChunk: (chunk, _field, accumulated) =>
-									downstreamChunk(chunk, accumulated),
+								onChunk: (chunk, _field, accumulated, streamRevision) =>
+									downstreamChunk(chunk, accumulated, streamRevision),
 								...(abortSignal ? { abortSignal } : {}),
 							})
 						: undefined;
@@ -7308,6 +7329,7 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 					await flushGuardedStream();
 					structuredExtractor?.flush();
+					await drainStructuredStreamCallbacks();
 
 					const trajStreamEnd = getTrajectoryContext();
 					await this.invokePipelineHooks(
@@ -7455,6 +7477,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (handlerDeliveredStream) {
 					await flushGuardedStream();
 					structuredExtractor?.flush();
+					await drainStructuredStreamCallbacks();
 					const trajStreamEnd = getTrajectoryContext();
 					await this.invokePipelineHooks(
 						"model_stream_end",
@@ -7667,6 +7690,20 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				return resultRef.current as R;
 			} catch (error) {
+				const streamCallbackResult =
+					await drainStructuredStreamCallbacks?.().then(
+						() => ({ failed: false as const }),
+						(deliveryError: unknown) => ({
+							failed: true as const,
+							error: deliveryError,
+						}),
+					);
+				if (
+					streamCallbackResult?.failed === true &&
+					streamCallbackResult.error !== error
+				) {
+					throw streamCallbackResult.error;
+				}
 				if (attemptPreparationFailed) {
 					recordInferenceSpan(
 						`model-preprocess:${String(modelType)}`,
@@ -8364,6 +8401,28 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Extractor is created once and persists across retries
 		let extractor: DynamicPromptStreamExtractor | undefined;
+		let structuredPromptDelivery = Promise.resolve();
+		let structuredPromptDeliveryError: unknown;
+		let structuredPromptDeliveryFailed = false;
+		const enqueueStructuredPromptDelivery = (
+			deliver: () => void | Promise<void>,
+		): void => {
+			structuredPromptDelivery = structuredPromptDelivery
+				.then(async () => {
+					if (structuredPromptDeliveryFailed) return;
+					await deliver();
+				})
+				.then(undefined, (error: unknown) => {
+					structuredPromptDeliveryFailed = true;
+					structuredPromptDeliveryError = error;
+				});
+		};
+		const drainStructuredPromptDelivery = async (): Promise<void> => {
+			await structuredPromptDelivery;
+			if (structuredPromptDeliveryFailed) {
+				throw structuredPromptDeliveryError;
+			}
+		};
 		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
 		const perFieldCodes = new Map<string, string>();
 
@@ -8556,11 +8615,20 @@ export class AgentRuntime implements IAgentRuntime {
 						...(options.abortSignal
 							? { abortSignal: options.abortSignal }
 							: {}),
-						onChunk: (chunk, _field, accumulated) => {
-							void options.onStreamChunk?.(chunk, undefined, accumulated);
+						onChunk: (chunk, _field, accumulated, streamRevision) => {
+							enqueueStructuredPromptDelivery(() =>
+								options.onStreamChunk?.(
+									chunk,
+									undefined,
+									accumulated,
+									streamRevision,
+								),
+							);
 						},
 						onEvent: (event) => {
-							void options.onStreamEvent?.(event, undefined);
+							enqueueStructuredPromptDelivery(() =>
+								options.onStreamEvent?.(event, undefined),
+							);
 						},
 					});
 				}
@@ -8756,6 +8824,7 @@ ${section_end}`;
 			// Check for cancellation before request
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
+				await drainStructuredPromptDelivery();
 				delete (state as Record<string, unknown>)._smartRetryContext;
 				this.clearStructuredOutputFailureState(state);
 				return null;
@@ -8799,6 +8868,7 @@ ${section_end}`;
 
 				if (options.abortSignal?.aborted) {
 					extractor?.signalError("Cancelled by user");
+					await drainStructuredPromptDelivery();
 					delete (state as Record<string, unknown>)._smartRetryContext;
 					this.clearStructuredOutputFailureState(state);
 					return null;
@@ -8822,6 +8892,7 @@ ${section_end}`;
 						);
 						if (aborted) {
 							extractor?.signalError("Cancelled by user");
+							await drainStructuredPromptDelivery();
 							delete (state as Record<string, unknown>)._smartRetryContext;
 							this.clearStructuredOutputFailureState(state);
 							return null;
@@ -8830,6 +8901,7 @@ ${section_end}`;
 
 					// Signal retry to extractor if it exists
 					if (extractor) {
+						await drainStructuredPromptDelivery();
 						extractor.signalRetry(currentRetry);
 						extractor.reset();
 					}
@@ -9004,6 +9076,7 @@ ${section_end}`;
 				if (extractor) {
 					extractor.flush();
 				}
+				await drainStructuredPromptDelivery();
 
 				metric.successfulAttempts++;
 				if (
@@ -9179,6 +9252,7 @@ ${section_end}`;
 
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
+				await drainStructuredPromptDelivery();
 				delete (state as Record<string, unknown>)._smartRetryContext;
 				this.clearStructuredOutputFailureState(state);
 				return null;
@@ -9202,6 +9276,7 @@ ${section_end}`;
 					);
 					if (aborted) {
 						extractor?.signalError("Cancelled by user");
+						await drainStructuredPromptDelivery();
 						delete (state as Record<string, unknown>)._smartRetryContext;
 						this.clearStructuredOutputFailureState(state);
 						return null;
@@ -9211,6 +9286,7 @@ ${section_end}`;
 				// Signal retry to extractor
 				let smartRetryContextNext: string | undefined;
 				if (extractor) {
+					await drainStructuredPromptDelivery();
 					const { validatedFields } = extractor.signalRetry(currentRetry);
 					const diagnosis = extractor.diagnose();
 
@@ -9298,6 +9374,7 @@ ${section_end}`;
 				`Failed after ${maxRetries} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
 			);
 		}
+		await drainStructuredPromptDelivery();
 
 		const finalFailureMessage = `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`;
 		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
@@ -11095,6 +11172,7 @@ ${section_end}`;
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -11144,6 +11222,7 @@ ${section_end}`;
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -11163,6 +11242,7 @@ ${section_end}`;
 			params.worldId !== undefined ||
 			params.unique ||
 			(params.offset !== undefined && params.offset !== 0) ||
+			params.cursor !== undefined ||
 			params.end !== undefined ||
 			params.metadata !== undefined ||
 			params.textContains !== undefined ||
@@ -11236,6 +11316,16 @@ ${section_end}`;
 			// Paginate until a short page: a single 10k-bounded read silently
 			// truncates a larger partition, and the media GC would then delete
 			// files referenced only by rows past the cap as "orphaned".
+			//
+			// Accepted race (wave-5 audit, W5-022): offset pagination is the only
+			// mechanism the IDatabaseAdapter contract guarantees — it has no
+			// unique-key cursor, and `createdAt` is optional and non-unique, so
+			// keyset pagination cannot be expressed through the interface. A
+			// `deleteMemory` racing the sweep shifts later pages up and can skip
+			// a row; media referenced only by that row is then collected after
+			// the grace window. The window is narrow (a delete must race the
+			// daily task) and the grace window protects fresh media, so this is
+			// documented rather than re-architected.
 			for (let offset = 0; ; offset += GET_ALL_MEMORIES_PAGE_SIZE) {
 				const memories = await this.adapter.getMemories({
 					agentId: this.agentId,
@@ -11359,15 +11449,19 @@ ${section_end}`;
 	/**
 	 * Redact secrets from text content.
 	 * This prevents character secrets from appearing in outputs or memories.
+	 *
+	 * The pattern library runs even when the character configures no secrets:
+	 * default/minimal characters are exactly the ones whose reported errors and
+	 * provider texts can still carry credential-shaped values (API keys, Bearer
+	 * tokens, URI userinfo). `redactWithSecrets` treats an empty secrets map as
+	 * a no-op for the literal pass, and its pattern regexps are compiled once at
+	 * module load, so the always-on scrub costs one pattern sweep per call.
 	 */
 	redactSecrets(text: string): string {
 		if (!text) {
 			return text;
 		}
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length === 0) {
-			return text;
-		}
 		return redactWithSecrets(text, { secrets, applyPatterns: true });
 	}
 
@@ -11824,6 +11918,7 @@ ${section_end}`;
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
+		validateQueryEntitiesPagination(params);
 		return this.adapter.queryEntities({
 			...params,
 			agentId: params.agentId ?? this.agentId,

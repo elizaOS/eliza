@@ -52,9 +52,20 @@ if ($buildVariant -eq "store") {
   } else {
     Write-Host "ELIZA_MSIX_STORE_CERT_PATH not set or missing — store MSIX will be built unsigned for Partner Center re-sign."
   }
+
+  $requiredStoreIdentity = @(
+    "ELIZA_MSIX_IDENTITY_NAME",
+    "ELIZA_MSIX_PUBLISHER_ID",
+    "ELIZA_MSIX_PUBLISHER_DISPLAY_NAME"
+  )
+  $missingStoreIdentity = @($requiredStoreIdentity | Where-Object { -not (Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value })
+  if ($missingStoreIdentity.Count -gt 0) {
+    Write-Error "Store MSIX requires Partner Center identity values: $($missingStoreIdentity -join ', ')"
+    exit 1
+  }
 }
 
-if (-not $certBase64 -and -not $azureSigning) {
+if ($buildVariant -ne "store" -and -not $certBase64 -and -not $azureSigning) {
   Write-Host "::warning::WINDOWS_SIGN_CERT_BASE64 not set and no Azure Trusted Signing - skipping MSIX generation"
   exit 0
 }
@@ -147,22 +158,12 @@ if ($buildVariant -eq "store") {
   $identityName = $env:ELIZA_MSIX_IDENTITY_NAME
   $publisherId = $env:ELIZA_MSIX_PUBLISHER_ID
   $publisherDisplayName = $env:ELIZA_MSIX_PUBLISHER_DISPLAY_NAME
-  if ($identityName) {
-    $manifestContent = $manifestContent -replace 'Name="ElizaOS\.App"', "Name=`"$identityName`""
-    Write-Host "Identity.Name set to: $identityName"
-  } else {
-    Write-Host "::warning::ELIZA_MSIX_IDENTITY_NAME not set — store MSIX will use placeholder 'ElizaOS.App' (Partner Center upload will reject)."
-  }
-  if ($publisherId) {
-    $manifestContent = $manifestContent -replace 'Publisher="CN=elizaOS"', "Publisher=`"$publisherId`""
-    Write-Host "Identity.Publisher set to: $publisherId"
-  } else {
-    Write-Host "::warning::ELIZA_MSIX_PUBLISHER_ID not set — store MSIX will use placeholder 'CN=elizaOS' (Partner Center upload will reject)."
-  }
-  if ($publisherDisplayName) {
-    $manifestContent = $manifestContent -replace '<PublisherDisplayName>elizaOS</PublisherDisplayName>', "<PublisherDisplayName>$publisherDisplayName</PublisherDisplayName>"
-    Write-Host "PublisherDisplayName set to: $publisherDisplayName"
-  }
+  $manifestContent = $manifestContent -replace 'Name="ElizaOS\.App"', "Name=`"$identityName`""
+  Write-Host "Identity.Name set to: $identityName"
+  $manifestContent = $manifestContent -replace 'Publisher="CN=elizaOS"', "Publisher=`"$publisherId`""
+  Write-Host "Identity.Publisher set to: $publisherId"
+  $manifestContent = $manifestContent -replace '<PublisherDisplayName>elizaOS</PublisherDisplayName>', "<PublisherDisplayName>$publisherDisplayName</PublisherDisplayName>"
+  Write-Host "PublisherDisplayName set to: $publisherDisplayName"
 }
 
 Set-Content -Path $manifestDest -Value $manifestContent

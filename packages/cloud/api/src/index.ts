@@ -1,9 +1,10 @@
 /**
  * Cloud API — Cloudflare Workers entrypoint (thin bootstrap).
  *
- * The full Hono stack lives in `./bootstrap-app.ts` and is loaded on first
- * `fetch` / `scheduled` invocation so Worker startup stays under Cloudflare's
- * CPU budget (error 10021).
+ * The full Hono stack lives in `./bootstrap-app.ts` and is loaded only for
+ * unmatched `fetch` / `scheduled` invocations. Latency-critical provider,
+ * inference, and internal gateway routes use bounded shells so ordinary turns
+ * do not evaluate the generated application router.
  *
  *   bun run codegen   # regen the router after adding/removing routes
  *   bun run dev       # wrangler dev
@@ -28,13 +29,14 @@ import {
 import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { serveBlobHostRequest } from "./blob-host";
+import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
+export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
@@ -48,6 +50,8 @@ const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy provider-webhook shell that avoids the generated application router. */
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Lazy authenticated Discord shell that avoids the generated application router. */
+let discordGatewayAppPromise: Promise<Hono<AppEnv>> | undefined;
 
 const STAGING_SESSION_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -322,6 +326,72 @@ async function dispatchWebhook(
     );
   } else {
     logger.info("[CloudEntrypoint] webhook dispatch completed", logContext);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
+
+const INTERNAL_DISCORD_GATEWAY_PATH =
+  "/api/internal/discord/eliza-app/messages";
+
+export function isInternalDiscordGatewayPath(pathname: string): boolean {
+  return pathname === INTERNAL_DISCORD_GATEWAY_PATH;
+}
+
+async function getDiscordGatewayApp(): Promise<Hono<AppEnv>> {
+  discordGatewayAppPromise ??= import("./discord-gateway-app").then((module) =>
+    module.createDiscordGatewayApp(),
+  );
+  return discordGatewayAppPromise;
+}
+
+async function dispatchDiscordGateway(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (!isInternalDiscordGatewayPath(pathname)) return null;
+
+  const startedAt = performance.now();
+  const moduleWasInitialized = discordGatewayAppPromise !== undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  const app = await getDiscordGatewayApp();
+  const moduleInitMs = performance.now() - startedAt;
+  const response = await app.fetch(new Request(request, { headers }), env, ctx);
+  const dispatchMs = performance.now() - startedAt;
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    { name: "discord_entry_dispatch", durationMs: dispatchMs },
+    ...(!moduleWasInitialized
+      ? [{ name: "discord_module_init", durationMs: moduleInitMs }]
+      : []),
+  ]);
+  responseHeaders.set("X-Eliza-Discord-Path", "thin");
+
+  const logContext = {
+    traceId,
+    status: response.status,
+    moduleWasInitialized,
+    moduleInitMs: Math.round(moduleInitMs * 100) / 100,
+    durationMs: Math.round(dispatchMs * 100) / 100,
+  };
+  if (response.status >= 500 || dispatchMs >= 1_000 || moduleInitMs >= 250) {
+    logger.warn(
+      "[CloudEntrypoint] Discord gateway dispatch slow or failed",
+      logContext,
+    );
+  } else {
+    logger.info(
+      "[CloudEntrypoint] Discord gateway dispatch completed",
+      logContext,
+    );
   }
 
   return new Response(response.body, {
@@ -755,6 +825,8 @@ function proxyGeneratedAgentRequest(
  * a non-API request to `<app-slug>.<suffix>` is served from the app's active
  * frontend deployment. We rewrite it to the internal public serve route (which
  * has DB + R2 bootstrapped) rather than resolving in this thin entrypoint.
+ * The rewrite preserves the request hostname, which the serve route reads as
+ * the ONLY trusted host source — no `?host=` override is attached or honored.
  * Opt-in: returns null (no-op) when the suffix env is unset. `/api/*` and
  * `/steward/*` on a system host still reach the API (so the page-view beacon and
  * app APIs work), so only non-API paths are rewritten.
@@ -776,7 +848,6 @@ export function getHostedFrontendServeRewrite(
 
   const rewritten = new URL(url);
   rewritten.pathname = `/api/v1/hosted-frontend/serve${url.pathname === "/" ? "" : url.pathname}`;
-  rewritten.searchParams.set("host", hostname);
   return rewritten;
 }
 
@@ -791,6 +862,17 @@ export default {
     ctx: ExecutionContext,
   ) => {
     const url = new URL(request.url);
+    // Capability tokens are bearer credentials. Reserve their opaque namespace
+    // before any host redirect or proxy can forward it to another origin.
+    if (isStorageReadCapabilityPath(url)) {
+      return (
+        (await serveBlobHostRequest(request, url, env)) ??
+        Response.json(
+          { success: false, error: "Not found", code: "resource_not_found" },
+          { status: 404, headers: { "cache-control": "private, no-store" } },
+        )
+      );
+    }
     const frontendAliasApiTarget = getFrontendAliasApiProxyTarget(url);
     if (frontendAliasApiTarget) {
       if (frontendAliasApiTarget.pathname === "/api/health") {
@@ -803,6 +885,12 @@ export default {
       );
       const webhookResponse = await dispatchWebhook(apiRequest, env, ctx);
       if (webhookResponse) return webhookResponse;
+      const discordGatewayResponse = await dispatchDiscordGateway(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (discordGatewayResponse) return discordGatewayResponse;
       const stewardThinResponse = await dispatchThinSteward(
         apiRequest,
         env,
@@ -842,6 +930,13 @@ export default {
 
     const webhookResponse = await dispatchWebhook(request, env, ctx);
     if (webhookResponse) return webhookResponse;
+
+    const discordGatewayResponse = await dispatchDiscordGateway(
+      request,
+      env,
+      ctx,
+    );
+    if (discordGatewayResponse) return discordGatewayResponse;
 
     // Login-critical Steward GETs before full-app bootstrap (#18049).
     const stewardThinResponse = await dispatchThinSteward(request, env, ctx);

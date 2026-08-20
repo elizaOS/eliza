@@ -20,6 +20,7 @@ import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-work
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
 import {
+  isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
@@ -148,6 +149,8 @@ async function validateApiKeyOrServiceUnavailable(
 
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
+    NODE_ENV: typeof env.NODE_ENV === "string" ? env.NODE_ENV : undefined,
+    ENVIRONMENT: typeof env.ENVIRONMENT === "string" ? env.ENVIRONMENT : undefined,
     PLAYWRIGHT_TEST_AUTH:
       typeof env.PLAYWRIGHT_TEST_AUTH === "string" ? env.PLAYWRIGHT_TEST_AUTH : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
@@ -158,7 +161,7 @@ function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
 }
 
 async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> {
-  if (c.env.PLAYWRIGHT_TEST_AUTH !== "true") return null;
+  if (!isPlaywrightTestAuthEnabled(testAuthEnv(c.env))) return null;
 
   const token = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
   if (!token) return null;

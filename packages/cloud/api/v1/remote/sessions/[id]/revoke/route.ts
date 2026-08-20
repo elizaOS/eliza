@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 remote sessions id revoke route traffic with route-local auth expectations.
+/** Handles owner-scoped remote-session revocation at the HTTP boundary. */
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -6,8 +6,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 /**
  * POST /api/v1/remote/sessions/:id/revoke
  *
- * T9a — Revokes an active or pending remote session. Only the owning
- * organization can revoke.
+ * T9a — Revokes an active or pending remote session. Only the current
+ * authenticated agent owner can revoke it.
  */
 
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
@@ -25,11 +25,12 @@ async function __hono_POST(
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const existing = await remoteSessionsRepository.findByIdAndOrg(
+    const result = await remoteSessionsRepository.revoke(
       id,
       user.organization_id,
+      user.id,
     );
-    if (!existing) {
+    if (!result) {
       return applyCorsHeaders(
         Response.json(
           { success: false, error: "Session not found" },
@@ -39,30 +40,18 @@ async function __hono_POST(
       );
     }
 
-    if (existing.status === "revoked" || existing.status === "denied") {
+    const { alreadyEnded, session } = result;
+    if (alreadyEnded) {
       return applyCorsHeaders(
         Response.json({
           success: true,
           data: {
-            id: existing.id,
-            status: existing.status,
-            alreadyEnded: true,
+            id: session.id,
+            status: session.status,
+            alreadyEnded,
+            endedAt: session.ended_at,
           },
         }),
-        CORS_METHODS,
-      );
-    }
-
-    const revoked = await remoteSessionsRepository.revoke(
-      id,
-      user.organization_id,
-    );
-    if (!revoked) {
-      return applyCorsHeaders(
-        Response.json(
-          { success: false, error: "Revoke failed" },
-          { status: 409 },
-        ),
         CORS_METHODS,
       );
     }
@@ -71,14 +60,16 @@ async function __hono_POST(
       Response.json({
         success: true,
         data: {
-          id: revoked.id,
-          status: revoked.status,
-          endedAt: revoked.ended_at,
+          id: session.id,
+          status: session.status,
+          alreadyEnded,
+          endedAt: session.ended_at,
         },
       }),
       CORS_METHODS,
     );
   } catch (error) {
+    // error-policy:J1 the HTTP boundary translates typed/internal failures.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }

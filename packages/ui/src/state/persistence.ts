@@ -7,10 +7,9 @@ import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
-import {
-  isPlausibleFragmentSource,
-  normalizeUniforms,
-} from "../backgrounds/shader-schema";
+import { getShaderPreset } from "../backgrounds/shader-presets";
+import { normalizeUniforms } from "../backgrounds/shader-schema";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
 
 // Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
@@ -32,6 +31,10 @@ import {
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
+import {
+  type ContinuousChatModeValue,
+  resolveContinuousChatMode,
+} from "./continuous-chat-mode";
 import {
   type BackgroundConfig,
   DEFAULT_ACCENT_ID,
@@ -202,23 +205,23 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
   }
-  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
-  // source (or a hostile persisted value) falls back to the color field so a bad
-  // shader can never wedge the background on load.
+  // Persisted records identify repository-owned presets; raw stored shader text
+  // is never an authority. Resolving the id on every load also upgrades records
+  // to the current canonical source when a preset changes.
   if (record.mode === "glsl") {
     const shaderRecord = asRecord(record.shader);
-    const source = shaderRecord?.source;
-    if (isPlausibleFragmentSource(source)) {
-      const presetId =
-        typeof shaderRecord?.presetId === "string"
-          ? shaderRecord.presetId
-          : undefined;
+    const preset = getShaderPreset(
+      typeof shaderRecord?.presetId === "string"
+        ? shaderRecord.presetId
+        : undefined,
+    );
+    if (preset) {
       return {
         mode: "glsl",
         color,
         shader: {
-          presetId,
-          source,
+          presetId: preset.id,
+          source: preset.source,
           uniforms: normalizeUniforms(shaderRecord?.uniforms),
         },
       };
@@ -973,21 +976,13 @@ export function saveWalletEnabled(value: boolean): void {
 
 /* ── Continuous chat mode persistence ───────────────────────────────────── */
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
-type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
-
-function normalizeContinuousChatMode(value: unknown): ContinuousChatModeValue {
-  if (value === "vad-gated" || value === "always-on") return value;
-  return "off";
-}
 
 export function loadContinuousChatMode(): ContinuousChatModeValue {
-  return tryLocalStorage(
-    () =>
-      normalizeContinuousChatMode(
-        localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY),
-      ),
-    "off",
-  );
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
+    const search = typeof window === "undefined" ? "" : window.location.search;
+    return resolveContinuousChatMode(stored, search, isElectrobunRuntime());
+  }, "off");
 }
 
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {

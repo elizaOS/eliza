@@ -122,7 +122,7 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
   // registry already sees fresh values, but subscribers only re-read on a bump.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps drive the version bump
   useEffect(() => {
-    registry?.touch();
+    registry?.touchDeferred();
   }, [
     registry,
     descriptor.label,

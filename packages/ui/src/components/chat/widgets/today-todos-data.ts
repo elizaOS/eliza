@@ -21,6 +21,7 @@ import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities"
 
 /** Home-card poll cadence — matches the TodosView 15s background refresh. */
 export const TODAY_TODOS_REFRESH_INTERVAL_MS = 15_000;
+const TODAY_TODOS_REQUEST_TIMEOUT_MS = 15_000;
 
 /** The item-board status the PA todos route projects each occurrence onto. */
 export type TodayTodoStatus = "pending" | "in_progress" | "completed";
@@ -113,8 +114,14 @@ export function overdueCount(todos: TodayTodo[], now: number): number {
     .length;
 }
 
-export async function fetchTodayTodos(): Promise<TodayTodo[]> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`);
+export async function fetchTodayTodos(
+  callerSignal?: AbortSignal,
+): Promise<TodayTodo[]> {
+  const deadline = AbortSignal.timeout(TODAY_TODOS_REQUEST_TIMEOUT_MS);
+  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
     throw new Error(`Todos request failed (${response.status})`);
   }
@@ -162,12 +169,13 @@ export function todosEqual(a: TodayTodo[] | null, b: TodayTodo[]): boolean {
  */
 export async function loadTodayTodosForGlance(
   authenticated: boolean,
+  signal?: AbortSignal,
 ): Promise<TodayTodo[] | null> {
   if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
     return [];
   }
   try {
-    return await fetchTodayTodos();
+    return await fetchTodayTodos(signal);
   } catch {
     // error-policy:J4 glance surface - signal "keep last good" to the caller.
     return null;

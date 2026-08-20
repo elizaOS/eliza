@@ -1454,7 +1454,17 @@ export class ElizaClient {
         path,
         options?.timeoutMs,
         init,
-      ).catch(() => "");
+      ).catch((error: unknown) => {
+        if (
+          error instanceof ApiError &&
+          (error.kind === "timeout" || error.kind === "network")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 a completed HTTP failure remains authoritative when
+        // its optional diagnostic body cannot be read for a non-abort reason.
+        return "";
+      });
       let body: Record<string, unknown> | null = null;
       if (rawText) {
         try {
@@ -1804,25 +1814,79 @@ export class ElizaClient {
     // (chat 600s, ASR/TTS 180s, reset 60s) would spuriously time out on slow
     // on-device builds that emit headers early then take >10s to finish.
     const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, init);
+    const reader = res.body?.getReader();
+    if (!reader) return res.text();
+
+    const decoder = new TextDecoder();
+    let text = "";
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
+    let terminalReason: "timeout" | "caller-abort" | null = null;
+    const interrupted = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        terminalReason = "timeout";
+        reject(
+          new ApiError({
+            kind: "timeout",
+            path,
+            status: res.status,
+            message: `Response body timed out after ${budgetMs}ms`,
+          }),
+        );
+      }, budgetMs);
+
+      if (init?.signal) {
+        abortListener = () => {
+          terminalReason = "caller-abort";
+          reject(
+            new ApiError({
+              kind: "network",
+              path,
+              status: res.status,
+              message: "Request aborted",
+              cause: init.signal?.reason,
+            }),
+          );
+        };
+        if (init.signal.aborted) abortListener();
+        else
+          init.signal.addEventListener("abort", abortListener, { once: true });
+      }
+    });
+
     try {
-      return await Promise.race([
-        res.text(),
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(
-              new ApiError({
-                kind: "timeout",
-                path,
-                status: res.status,
-                message: `Response body timed out after ${budgetMs}ms`,
-              }),
-            );
-          }, budgetMs);
-        }),
-      ]);
+      while (true) {
+        const { done, value } = await Promise.race([
+          reader.read(),
+          interrupted,
+        ]);
+        if (done) return text + decoder.decode();
+        if (value) text += decoder.decode(value, { stream: true });
+      }
+    } catch (error) {
+      try {
+        await reader.cancel(
+          terminalReason === "timeout"
+            ? "elizaos-json-body-timeout"
+            : terminalReason === "caller-abort"
+              ? init?.signal?.reason
+              : "elizaos-json-body-read-failed",
+        );
+      } catch (cancelError) {
+        // error-policy:J6 a failed or already-closed body may reject teardown;
+        // preserve the primary timeout, caller abort, or read failure.
+        logger.debug(
+          { path, error: cancelError },
+          "[ElizaClient] failed to cancel interrupted JSON response body",
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
+      if (init?.signal && abortListener) {
+        init.signal.removeEventListener("abort", abortListener);
+      }
+      reader.releaseLock();
     }
   }
 

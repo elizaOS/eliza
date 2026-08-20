@@ -7,17 +7,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
-import {
-  authorizeManagedDiscordGuildVoice,
-  runManagedDiscordGuildTextTurn,
-} from "@/lib/services/managed-discord-guild-voice";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
-import personalSharedMessagesApp from "../../../eliza-app/personal-shared/messages/route";
-import { markPreverifiedPersonalSharedRequest } from "../../../eliza-app/personal-shared/preverified-auth";
 
 const messageSchema = z.object({
   guildId: z.string().trim().min(1).optional(),
@@ -43,9 +36,26 @@ app.post("/", async (c) => {
     const authMs = performance.now() - authStartedAt;
 
     const validationStartedAt = performance.now();
-    const body = messageSchema.parse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const body = messageSchema.parse(rawBody);
     const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {
+      const [gatewayRouter, guildText, sharedWorker] = await Promise.all([
+        import("@/lib/services/agent-gateway-router"),
+        import("@/lib/services/managed-discord-guild-voice"),
+        import("@/lib/services/shared-runtime/resolve-shared-agent"),
+      ]);
+      const { agentGatewayRouterService } = gatewayRouter;
+      const {
+        authorizeManagedDiscordGuildVoice,
+        runManagedDiscordGuildTextTurn,
+      } = guildText;
+      const { resolveSharedRuntimeWorkerRequestContext } = sharedWorker;
       const result = await agentGatewayRouterService.routeDiscordMessage({
         guildId: body.guildId,
         channelId: body.channelId,
@@ -97,6 +107,12 @@ app.post("/", async (c) => {
       return c.json({ handled: true, ...shared });
     }
 
+    const [personalSharedRoute, preverifiedAuth] = await Promise.all([
+      import("../../../eliza-app/personal-shared/messages/route"),
+      import("../../../eliza-app/personal-shared/preverified-auth"),
+    ]);
+    const personalSharedMessagesApp = personalSharedRoute.default;
+    const { markPreverifiedPersonalSharedRequest } = preverifiedAuth;
     const personalSharedRequest = new Request(
       "https://personal-shared.internal/",
       {

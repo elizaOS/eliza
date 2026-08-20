@@ -27,7 +27,10 @@ src/
   _router.generated.ts     GENERATED — do not hand-edit. mountRoutes(app) wires every
                            route. Re-run `bun run codegen` after adding/removing a route.
   middleware/              auth.ts (global auth gate + public-path allowlist),
-                           org-membership.ts.
+                           cookie-mutation-guard.ts (CSRF origin+marker gate for
+                           cookie-authenticated mutations, mounted right after
+                           authMiddleware and in the thin inference shell, which
+                           skips global auth), org-membership.ts.
   services/                audit/ (cloud-owned audit contract + dispatcher), audit-events.ts (required auth_events sink).
   queue/                   stripe-event.ts, types.ts (Cloudflare Queue consumers).
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.

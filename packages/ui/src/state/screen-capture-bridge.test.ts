@@ -75,4 +75,28 @@ describe("screen-capture bridge poller — a 404 route is not hammered forever",
     await vi.advanceTimersByTimeAsync(120_000);
     expect(fetchMock.mock.calls.length).toBe(callsAtReset);
   });
+
+  it("aborts an in-flight poll when the bridge is reset", async () => {
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    initScreenCaptureBridge();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(requestSignal?.aborted).toBe(false);
+    __resetScreenCaptureBridgeForTests();
+
+    expect(requestSignal?.aborted).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

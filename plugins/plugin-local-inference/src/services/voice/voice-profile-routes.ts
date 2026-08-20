@@ -241,6 +241,16 @@ function sendError(
 	sendJson(res, status, { error: message });
 }
 
+function decodeProfileId(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 Malformed percent-encoding is invalid path input, not a
+		// voice-preset catalog outage.
+		return null;
+	}
+}
+
 /**
  * Route handler for all `/v1/voice/profiles*` endpoints.
  *
@@ -285,7 +295,11 @@ export async function handleVoiceProfileRoutes(
 		pathname,
 	);
 	if (method === "POST" && activateMatch) {
-		const profileId = decodeURIComponent(activateMatch[1] ?? "");
+		const profileId = decodeProfileId(activateMatch[1] ?? "");
+		if (profileId === null) {
+			sendError(res, 400, "Invalid profile id: malformed URL encoding");
+			return true;
+		}
 		if (!profileId || !/^[A-Za-z0-9._-]+$/.test(profileId)) {
 			sendError(res, 400, `Invalid profile id: ${profileId}`);
 			return true;
@@ -335,7 +349,11 @@ export async function handleVoiceProfileRoutes(
 	// -------------------------------------------------------------------
 	const deleteMatch = /^\/v1\/voice\/profiles\/([^/]+)$/.exec(pathname);
 	if (method === "DELETE" && deleteMatch) {
-		const profileId = decodeURIComponent(deleteMatch[1] ?? "");
+		const profileId = decodeProfileId(deleteMatch[1] ?? "");
+		if (profileId === null) {
+			sendError(res, 400, "Invalid profile id: malformed URL encoding");
+			return true;
+		}
 		if (!profileId || !/^[A-Za-z0-9._-]+$/.test(profileId)) {
 			sendError(res, 400, `Invalid profile id: ${profileId}`);
 			return true;

@@ -25,8 +25,10 @@ import type {
 // names from `hetzner-cloud-api` keep resolving after the seam extraction.
 export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./compute-provider";
 
-const HCLOUD_API_BASE = process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
+const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
+const MAX_LIST_PAGES = 10_000;
 
 export type HetznerCloudErrorCode =
   | "missing_token"
@@ -37,12 +39,18 @@ export type HetznerCloudErrorCode =
   | "server_error"
   | "transport_error";
 
+export interface HetznerRetryMetadata {
+  retryAfterSeconds?: number;
+  resetAtEpochSeconds?: number;
+}
+
 export class HetznerCloudError extends Error {
   constructor(
     public readonly code: HetznerCloudErrorCode,
     message: string,
     public readonly status?: number,
     public readonly cause?: unknown,
+    public readonly retry?: HetznerRetryMetadata,
   ) {
     super(message);
     this.name = "HetznerCloudError";
@@ -93,9 +101,12 @@ export interface HetznerServer {
   public_net: {
     ipv4: { ip: string; blocked: boolean } | null;
     ipv6: { ip: string; blocked: boolean } | null;
+    firewalls?: Array<{ id: number; status: string }>;
   };
   /** Canonical public address mapped from `public_net` (satisfies the seam). */
   publicIpv4?: string | null;
+  /** Canonical firewall attachment state mapped from `public_net`. */
+  firewallAttachments?: Array<{ id: number; status: string }>;
   server_type: { id: number; name: string };
   datacenter: { id: number; name: string; location: HetznerLocation };
   labels: Record<string, string>;
@@ -133,9 +144,17 @@ export interface HetznerVolume {
 
 export class HetznerCloudClient implements ComputeProvider {
   private readonly token: string;
+  private readonly apiBaseUrl: string;
+  private readonly requestTimeoutMs: number;
 
-  private constructor(token: string) {
+  private constructor(
+    token: string,
+    apiBaseUrl = HCLOUD_API_BASE,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS,
+  ) {
     this.token = token;
+    this.apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
   /**
@@ -155,12 +174,36 @@ export class HetznerCloudClient implements ComputeProvider {
     return new HetznerCloudClient(token);
   }
 
-  /** Construct a client with an explicit token (tests, multi-tenant). */
-  static withToken(token: string): HetznerCloudClient {
-    if (!token) {
-      throw new HetznerCloudError("missing_token", "Token must be a non-empty string");
+  /** Construct a client with an explicit token pinned to the configured Hetzner origin. */
+  static withToken(token: string, options: { requestTimeoutMs?: number } = {}): HetznerCloudClient {
+    validateToken(token);
+    validateRequestTimeout(options.requestTimeoutMs);
+    return new HetznerCloudClient(token, HCLOUD_API_BASE, options.requestTimeoutMs);
+  }
+
+  /**
+   * Construct a loopback-only client for protocol contract tests.
+   *
+   * This seam is disabled outside the test runtime and cannot redirect a
+   * production credential to a caller-selected network origin.
+   */
+  static withTestTransport(
+    token: string,
+    options: { apiBaseUrl: string; requestTimeoutMs?: number },
+  ): HetznerCloudClient {
+    validateToken(token);
+    validateRequestTimeout(options.requestTimeoutMs);
+    if (process.env.NODE_ENV !== "test") {
+      throw new HetznerCloudError(
+        "invalid_input",
+        "Hetzner test transport is available only while NODE_ENV=test",
+      );
     }
-    return new HetznerCloudClient(token);
+    return new HetznerCloudClient(
+      token,
+      validateLoopbackTestApiBaseUrl(options.apiBaseUrl),
+      options.requestTimeoutMs,
+    );
   }
 
   // ----------------------------------------------------------------------
@@ -169,14 +212,67 @@ export class HetznerCloudClient implements ComputeProvider {
 
   async listServers(label?: Record<string, string>): Promise<HetznerServer[]> {
     const params = label ? `?label_selector=${encodeLabelSelector(label)}` : "";
-    const data = await this.request<{ servers: HetznerServer[] }>("GET", `/servers${params}`);
-    return data.servers;
+    const basePath = `/servers${params}`;
+    const servers: HetznerServer[] = [];
+    const serverIds = new Set<number>();
+    // Hetzner's unqualified first response is page 1. Seed it so a malformed
+    // `next_page: 1` cannot make us issue the same credential-bearing request
+    // twice before detecting a pagination cycle.
+    const visitedPages = new Set<number>([1]);
+    let path = basePath;
+
+    for (let pageCount = 0; pageCount < MAX_LIST_PAGES; pageCount += 1) {
+      const data = await this.request<{
+        servers: HetznerServer[];
+        meta?: { pagination?: { next_page?: number | null } };
+      }>("GET", path);
+      if (!Array.isArray(data.servers)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response is missing the servers array",
+        );
+      }
+      for (const rawServer of data.servers) {
+        const server = mapHetznerServer(rawServer);
+        if (!Number.isSafeInteger(server.id) || server.id <= 0 || serverIds.has(server.id)) {
+          throw new HetznerCloudError(
+            "server_error",
+            "Hetzner Cloud API list servers response contains an invalid or duplicate server ID",
+          );
+        }
+        serverIds.add(server.id);
+        servers.push(server);
+      }
+
+      const pagination = data.meta?.pagination;
+      if (!pagination || !("next_page" in pagination)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response is missing pagination metadata",
+        );
+      }
+      const nextPage = pagination.next_page;
+      if (nextPage == null) return servers;
+      if (!Number.isSafeInteger(nextPage) || nextPage <= 0 || visitedPages.has(nextPage)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response contains invalid pagination",
+        );
+      }
+      visitedPages.add(nextPage);
+      path = `${basePath}${basePath.includes("?") ? "&" : "?"}page=${nextPage}`;
+    }
+
+    throw new HetznerCloudError(
+      "server_error",
+      `Hetzner Cloud API list servers exceeded ${MAX_LIST_PAGES} pages`,
+    );
   }
 
   async getServer(serverId: number): Promise<HetznerServer | null> {
     try {
       const data = await this.request<{ server: HetznerServer }>("GET", `/servers/${serverId}`);
-      return data.server;
+      return mapHetznerServer(data.server);
     } catch (err) {
       if (err instanceof HetznerCloudError && err.code === "not_found") return null;
       throw err;
@@ -205,6 +301,9 @@ export class HetznerCloudClient implements ComputeProvider {
     if (input.networkIds && input.networkIds.length > 0) {
       body.networks = input.networkIds;
     }
+    if (input.firewallIds && input.firewallIds.length > 0) {
+      body.firewalls = input.firewallIds.map((firewall) => ({ firewall }));
+    }
     if (input.labels && Object.keys(input.labels).length > 0) {
       body.labels = input.labels;
     }
@@ -222,12 +321,7 @@ export class HetznerCloudClient implements ComputeProvider {
     });
 
     return {
-      server: {
-        ...data.server,
-        // Map Hetzner's public_net onto the canonical seam field (ipv4 first,
-        // then ipv6) so consumers don't depend on the provider-specific shape.
-        publicIpv4: data.server.public_net?.ipv4?.ip ?? data.server.public_net?.ipv6?.ip ?? null,
-      },
+      server: mapHetznerServer(data.server),
       rootPassword: data.root_password,
     };
   }
@@ -381,10 +475,10 @@ export class HetznerCloudClient implements ComputeProvider {
     body?: unknown,
   ): Promise<T> {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(`${HCLOUD_API_BASE}${path}`, {
+      response = await fetch(`${this.apiBaseUrl}${path}`, {
         method,
         headers: {
           Authorization: `Bearer ${this.token}`,
@@ -431,6 +525,8 @@ export class HetznerCloudClient implements ComputeProvider {
         errorPayload?.message ??
           `Hetzner Cloud API ${method} ${path} failed with status ${response.status}`,
         response.status,
+        undefined,
+        code === "rate_limited" ? parseRetryMetadata(response.headers) : undefined,
       );
     }
 
@@ -438,9 +534,43 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 }
 
+function mapHetznerServer(server: HetznerServer): HetznerServer {
+  const providerFirewalls = server.public_net?.firewalls;
+  if (providerFirewalls !== undefined && !Array.isArray(providerFirewalls)) {
+    throw new HetznerCloudError(
+      "server_error",
+      "Hetzner Cloud API server response has malformed firewall attachments",
+    );
+  }
+  const firewallAttachments = (providerFirewalls ?? []).map((firewall) => {
+    if (
+      !firewall ||
+      !Number.isSafeInteger(firewall.id) ||
+      firewall.id <= 0 ||
+      typeof firewall.status !== "string" ||
+      firewall.status.length === 0
+    ) {
+      throw new HetznerCloudError(
+        "server_error",
+        "Hetzner Cloud API server response has malformed firewall attachment state",
+      );
+    }
+    return { id: firewall.id, status: firewall.status };
+  });
+  return {
+    ...server,
+    // Map provider-specific network state onto the canonical compute seam so
+    // autoscaler ownership/drift checks do not need a Hetzner-only cast.
+    publicIpv4: server.public_net?.ipv4?.ip ?? server.public_net?.ipv6?.ip ?? null,
+    firewallAttachments,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const HCLOUD_API_BASE = resolveConfiguredApiBaseUrl(process.env.HCLOUD_API_BASE_URL);
 
 function mapStatusToCode(status: number, apiCode?: string): HetznerCloudErrorCode {
   // Explicit quota/limit apiCodes win over auth-status fallback: Hetzner
@@ -457,6 +587,93 @@ function mapStatusToCode(status: number, apiCode?: string): HetznerCloudErrorCod
   if (status === 422 || status === 400) return "invalid_input";
   if (status === 429) return "rate_limited";
   return "server_error";
+}
+
+function parseRetryMetadata(headers: Headers): HetznerRetryMetadata {
+  const retryAfter = headers.get("retry-after");
+  const resetAt = headers.get("ratelimit-reset") ?? headers.get("x-ratelimit-reset");
+  const retryAfterSeconds = parseRetryAfterSeconds(retryAfter);
+  const resetAtEpochSeconds = parseNonNegativeNumber(resetAt);
+  return {
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+    ...(resetAtEpochSeconds === undefined ? {} : { resetAtEpochSeconds }),
+  };
+}
+
+function parseRetryAfterSeconds(value: string | null): number | undefined {
+  const seconds = parseNonNegativeNumber(value);
+  if (seconds !== undefined) return seconds;
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.max(0, Math.ceil((timestamp - Date.now()) / 1_000));
+}
+
+function parseNonNegativeNumber(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function validateToken(token: string): void {
+  if (!token) {
+    throw new HetznerCloudError("missing_token", "Token must be a non-empty string");
+  }
+}
+
+function validateRequestTimeout(value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_REQUEST_TIMEOUT_MS) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      `requestTimeoutMs must be a positive safe integer no greater than ${MAX_REQUEST_TIMEOUT_MS}`,
+    );
+  }
+}
+
+function resolveConfiguredApiBaseUrl(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") return OFFICIAL_HCLOUD_API_BASE;
+  if (process.env.NODE_ENV === "production") {
+    throw new HetznerCloudError(
+      "invalid_input",
+      "HCLOUD_API_BASE_URL cannot override the pinned Hetzner origin in production",
+    );
+  }
+  return validateLoopbackTestApiBaseUrl(value);
+}
+
+function validateLoopbackTestApiBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch (cause) {
+    // error-policy:J3 Reject an untrusted test transport origin explicitly.
+    throw new HetznerCloudError(
+      "invalid_input",
+      "Hetzner test API base must be a valid loopback URL",
+      undefined,
+      cause,
+    );
+  }
+  const isLoopbackHost =
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "[::1]" ||
+    parsed.hostname === "::1";
+  if (
+    !isLoopbackHost ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      "Hetzner test API base must be an uncredentialed HTTP(S) loopback origin without query or fragment",
+    );
+  }
+  return parsed.toString().replace(/\/+$/, "");
 }
 
 function encodeLabelSelector(labels: Record<string, string>): string {

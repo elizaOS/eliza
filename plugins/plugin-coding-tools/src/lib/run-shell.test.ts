@@ -183,6 +183,29 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
 });
 
 describe("plugin-coding-tools host execution authority", () => {
+  it("decodes split multibyte stdout and stderr as UTF-8 streams", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    const script = [
+      'const value = Buffer.from("\u4f60");',
+      "process.stdout.write(value.subarray(0, 1));",
+      "process.stderr.write(value.subarray(0, 2));",
+      "setTimeout(() => {",
+      "  process.stdout.write(value.subarray(1));",
+      "  process.stderr.write(value.subarray(2));",
+      "}, 50);",
+    ].join("");
+
+    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+      command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("\u4f60");
+    expect(result.stderr).toBe("\u4f60");
+  });
+
   it("uses the captured PATH without forwarding mutable PATH, HOME, or SHELL", async () => {
     const bootPath = process.env.PATH;
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";

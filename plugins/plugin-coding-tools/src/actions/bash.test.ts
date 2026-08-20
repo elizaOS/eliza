@@ -702,6 +702,37 @@ describeIfPosix("shellAction", () => {
     );
   });
 
+  it("decodes split multibyte background stdout and stderr as UTF-8 streams", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const script = [
+      'const value = Buffer.from("\u4f60");',
+      "process.stdout.write(value.subarray(0, 1));",
+      "process.stderr.write(value.subarray(0, 2));",
+      "setTimeout(() => {",
+      "  process.stdout.write(value.subarray(1));",
+      "  process.stderr.write(value.subarray(2));",
+      "}, 50);",
+    ].join("");
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+    });
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
+
+    const poll = await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+
+    expect((data.stdout as Record<string, unknown>).text).toBe("\u4f60");
+    expect((data.stderr as Record<string, unknown>).text).toBe("\u4f60");
+  });
+
   it("fences every user-facing background/history relay (#16563)", async () => {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const { runtime } = await makeRuntime();
@@ -3159,6 +3190,30 @@ describe("destructive-bulk confirm gate", () => {
       await fs.rm(target, { recursive: true, force: true });
     }
   });
+
+  it.runIf(process.platform !== "win32")(
+    "blocks GNU long-form recursive delete before shell execution",
+    async () => {
+      const { command, target } = await createRecursiveDeleteCommand();
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "clean up the old projects"),
+          undefined,
+          { command: command.replace("rm -rf", "rm --recursive --force") },
+        );
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(result.data).toMatchObject({
+          destructive_reason: "recursive delete",
+        });
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(target, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("runs the same command when confirm=true", async () => {
     const { command, target } = await createRecursiveDeleteCommand();

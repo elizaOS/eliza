@@ -1,4 +1,5 @@
 /** Exercises bug-report routing with deterministic environment and fetch fixtures. */
+import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -23,9 +24,9 @@ function createContext(
   responseBody?: unknown;
   responseStatus?: number;
 } {
-  const req = {
+  const req = Object.assign(new EventEmitter(), {
     socket: { remoteAddress: ip },
-  } as unknown as http.IncomingMessage;
+  }) as unknown as http.IncomingMessage;
   const res = {} as http.ServerResponse;
   const ctx = {
     req,

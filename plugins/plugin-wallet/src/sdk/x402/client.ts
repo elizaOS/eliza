@@ -29,6 +29,8 @@ import type {
 } from "./types.js";
 import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
 
+export const DEFAULT_X402_FETCH_TIMEOUT_MS = 10_000;
+
 /**
  * [MAX-ADDED] x402 Payment Client for AgentWallet.
  *
@@ -62,7 +64,11 @@ export class X402Client {
    */
   async fetch(url: string | URL, init?: RequestInit): Promise<Response> {
     const urlStr = url.toString();
-    const response = await globalThis.fetch(url, init);
+    const timeoutSignal = AbortSignal.timeout(DEFAULT_X402_FETCH_TIMEOUT_MS);
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
+    const response = await globalThis.fetch(url, { ...init, signal });
 
     if (response.status !== 402) {
       return response;
@@ -106,6 +112,7 @@ export class X402Client {
 
     // Execute payment
     const paymentResult = await this.executePayment(selected);
+    const resolvedToken = paymentResult.token;
 
     // Build payment payload
     const paymentPayload: X402PaymentPayload = {
@@ -124,7 +131,7 @@ export class X402Client {
       service,
       url: urlStr,
       amount,
-      token: selected.asset as Address,
+      token: resolvedToken,
       recipient: selected.payTo as Address,
       txHash: paymentResult.txHash,
       network: selected.network,
@@ -139,9 +146,16 @@ export class X402Client {
     const payloadB64 = btoa(JSON.stringify(paymentPayload));
     retryHeaders.set("X-PAYMENT", payloadB64);
 
+    const retryTimeoutSignal = AbortSignal.timeout(
+      DEFAULT_X402_FETCH_TIMEOUT_MS,
+    );
+    const retrySignal = init?.signal
+      ? AbortSignal.any([init.signal, retryTimeoutSignal])
+      : retryTimeoutSignal;
     const retryResponse = await globalThis.fetch(url, {
       ...init,
       headers: retryHeaders,
+      signal: retrySignal,
     });
 
     return retryResponse;
@@ -163,6 +177,8 @@ export class X402Client {
         const decoded = JSON.parse(atob(headerValue));
         return decoded as X402PaymentRequired;
       } catch {
+        // error-policy:J3 an invalid untrusted payment header falls through to
+        // the response body; it is never treated as an accepted requirement.
         // Fall through to body parsing
       }
     }
@@ -173,8 +189,15 @@ export class X402Client {
       if (body.x402Version && body.accepts) {
         return body as X402PaymentRequired;
       }
-    } catch {
-      // Not parseable
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
+        throw error;
+      }
+      // error-policy:J3 an invalid untrusted payment body is an explicit
+      // unparseable result, distinct from a request cancellation or timeout.
     }
 
     return null;
@@ -224,7 +247,7 @@ export class X402Client {
    */
   private async executePayment(
     req: X402PaymentRequirements,
-  ): Promise<{ txHash: Hash }> {
+  ): Promise<{ txHash: Hash; token: Address }> {
     // Resolve the actual contract address for the requested asset
     const resolvedAddress = resolveAssetAddress(req.asset, req.network);
     if (!resolvedAddress) {
@@ -259,7 +282,7 @@ export class X402Client {
 
     if (feeAmount > 0n) {
       await agentTransferToken(this.wallet, {
-        token: req.asset as Address,
+        token: resolvedAddress,
         to: FEE_COLLECTOR,
         amount: feeAmount,
       });
@@ -272,7 +295,7 @@ export class X402Client {
       amount,
     });
 
-    return { txHash };
+    return { txHash, token: resolvedAddress };
   }
 
   // ─── Budget Access ───

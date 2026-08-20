@@ -381,7 +381,7 @@ Options:
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
   --start-host-agent               Start the deterministic host app-core API when --api-base is omitted
-  --host-agent-port PORT           Port for --start-host-agent (default: 31338, or a free port if busy)
+  --host-agent-port PORT           Explicit port for --start-host-agent (default: kernel-assigned)
   --auth-token TOKEN               Bearer token for protected app-core API routes
   --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app

@@ -2,10 +2,11 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   BUILD_CORE_PREREQUISITE_SCRIPTS,
   buildCoreTurboArgs,
+  isBuildCoreEntrypoint,
 } from "../build-core.mjs";
 import { CORE_BUILD_PACKAGES } from "../build-core-packages.mjs";
 
@@ -129,6 +130,31 @@ describe("build-core package set (issue #10200)", () => {
     expect(body).toBe("node packages/scripts/build-core.mjs");
     // Guard against regressing to the hand-maintained inline flag wall.
     expect(body).not.toContain("--filter=");
+  });
+
+  test("direct execution compares canonical file URLs across platforms", () => {
+    const scriptPath = fileURLToPath(
+      new URL("../build-core.mjs", import.meta.url),
+    );
+
+    expect(
+      isBuildCoreEntrypoint(pathToFileURL(scriptPath).href, scriptPath),
+    ).toBe(true);
+  });
+
+  test("entrypoint detection handles URL-sensitive paths and rejects imports", () => {
+    const scriptPath = path.join(
+      REPO_ROOT,
+      "path with spaces",
+      "build-core #entry.mjs",
+    );
+    const scriptUrl = pathToFileURL(scriptPath).href;
+
+    expect(isBuildCoreEntrypoint(scriptUrl, scriptPath)).toBe(true);
+    expect(
+      isBuildCoreEntrypoint(scriptUrl, path.join(REPO_ROOT, "importer.mjs")),
+    ).toBe(false);
+    expect(isBuildCoreEntrypoint(scriptUrl, undefined)).toBe(false);
   });
 
   test("package-local core build prepares logger before core declarations", () => {

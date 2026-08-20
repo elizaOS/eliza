@@ -1,9 +1,6 @@
 /**
- * `autoLabel` derives the human-readable label shown next to a plugin config
- * field from its env-key + plugin id — strip the plugin prefix, title-case the
- * remaining words, but preserve known acronyms (API/URL/ID/…). Untested, so a
- * regression in prefix stripping or the acronym set would silently mangle every
- * generated settings label. Pure.
+ * Deterministic tests for labels derived from plugin configuration keys.
+ * Coverage locks prefix removal, title casing, and known-acronym preservation.
  */
 import { describe, expect, it } from "vitest";
 import { autoLabel } from "./labels";
@@ -30,5 +27,11 @@ describe("autoLabel", () => {
 
   it("does not strip a prefix-only key (length must strictly exceed the prefix)", () => {
     expect(autoLabel("PLUGIN_", "plugin")).toBe("Plugin");
+  });
+
+  it("handles lowercase and mixed-case keys and plugin ids", () => {
+    expect(autoLabel("plugin_api_key", "plugin")).toBe("API Key");
+    expect(autoLabel("plugin_rpc_url", "plugin")).toBe("RPC URL");
+    expect(autoLabel("custom_client_secret", "custom")).toBe("Client Secret");
   });
 });

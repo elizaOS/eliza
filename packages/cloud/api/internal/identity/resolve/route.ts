@@ -12,6 +12,7 @@ import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../_auth";
 
@@ -42,12 +43,12 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
       return jsonError(c, 400, "Invalid JSON body", "validation_error");
     }
+    const rawBody = decodedBody.value;
 
     const parsed = resolveIdentitySchema.parse(rawBody);
     const identifier = parsed.platformId ?? parsed.identifier;

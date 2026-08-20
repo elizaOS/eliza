@@ -103,17 +103,37 @@ interface CreateBody {
   policy: unknown;
 }
 
+function decodeRequestId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Malformed percent-encoding is invalid path input, not a
+    // vault or submit-token outage.
+    return null;
+  }
+}
+
 function firstPathMatch(
   pathname: string,
-): { id: string; action: "get" | "submit" | "cancel" } | null {
+):
+  | { id: string; action: "get" | "submit" | "cancel" }
+  | { malformed: true }
+  | null {
   const submit = /^\/api\/sensitive-requests\/([^/]+)\/submit$/.exec(pathname);
-  if (submit?.[1])
-    return { id: decodeURIComponent(submit[1]), action: "submit" };
+  if (submit?.[1]) {
+    const id = decodeRequestId(submit[1]);
+    return id === null ? { malformed: true } : { id, action: "submit" };
+  }
   const cancel = /^\/api\/sensitive-requests\/([^/]+)\/cancel$/.exec(pathname);
-  if (cancel?.[1])
-    return { id: decodeURIComponent(cancel[1]), action: "cancel" };
+  if (cancel?.[1]) {
+    const id = decodeRequestId(cancel[1]);
+    return id === null ? { malformed: true } : { id, action: "cancel" };
+  }
   const get = /^\/api\/sensitive-requests\/([^/]+)$/.exec(pathname);
-  if (get?.[1]) return { id: decodeURIComponent(get[1]), action: "get" };
+  if (get?.[1]) {
+    const id = decodeRequestId(get[1]);
+    return id === null ? { malformed: true } : { id, action: "get" };
+  }
   return null;
 }
 
@@ -552,6 +572,10 @@ export async function handleSensitiveRequestRoutes(
   }
 
   const match = firstPathMatch(pathname);
+  if (match && "malformed" in match) {
+    sendJsonError(res, 400, "Invalid request id: malformed URL encoding");
+    return true;
+  }
   if (!match || !SAFE_ID_RE.test(match.id)) {
     sendJsonError(res, 404, "not found");
     return true;

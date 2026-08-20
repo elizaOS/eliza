@@ -158,7 +158,6 @@ plugins/plugin-agent-orchestrator/
     actions/
       tasks.ts                   TASKS parent action + all sub-action runners
       common.ts                  Shared action helpers (getAcpService, labelFor, etc.)
-      elizaos-capability.ts      elizaOS-specific capability action
       sandbox-stub.ts            Stub actions for sandboxed/no-terminal runtimes
     providers/
       available-agents.ts        AVAILABLE_AGENTS provider
@@ -274,6 +273,7 @@ README → "GitHub credentials".
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
 | `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
+| `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to pre-initialize one native `elizaos` ACP child. The child receives no session credentials until an authenticated, single-use claim and exits after that session; stale unclaimed children are recycled. |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |
@@ -300,8 +300,9 @@ README → "GitHub credentials".
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
 | `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
 | `ELIZA_ORCHESTRATOR_RESIDUALS_GATE` | `1` (enabled) | Deterministic completion-residuals gate: before a task may promote to `done`, the reporting session's git workspace must have no uncommitted changes or unpushed commits, and a valid CompletionEnvelope must report no failing tests or residual risks. Fail-closed (a missing/non-git claimed workspace blocks). Set to `0` to disable. |
-| `SMITHERS_DB_PROVIDER` | `sqlite` | Database provider for Smithers task storage (`sqlite` or `postgres`). `pglite` is fail-closed with `SMITHERS_PGLITE_INCOMPATIBLE` until the upstream adapter dependency closure is compatible. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Database provider for Smithers task storage (`sqlite`, `postgres`, or `pglite`). |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
+| `SMITHERS_DB_DATA_DIR` | unset | Required persistent data root when `SMITHERS_DB_PROVIDER=pglite`; each durable tenant/task/run gets an isolated subdirectory because embedded PGlite directories cannot be shared by concurrent workers. |
 | `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for a Smithers durable task run. Values must be exact decimal integers from `1` through `2147483647`; missing/blank uses the default, and invalid environment or `TASKS` request overrides fail before a worker starts. |
 | `ELIZA_SCRATCH_RETENTION` | unset | How long to retain scratch workspace dirs |
 | `ELIZA_SCRATCH_DECISION_TTL_MS` | `86400000` (24h) | TTL for `CodingWorkspaceService.registerScratchWorkspace`'s keep/discard decision window. Values must be safe integers from `1` through `2147483647` (same numeric forms `Number()` accepts, e.g. `"01"`, `"1e3"`); missing/blank uses the default, invalid values throw `INVALID_SCRATCH_DECISION_TTL` before the workspace is registered. A boolean setting (`runtime.getSetting()` can genuinely return one — it even normalizes a decrypted string `"true"`/`"false"` into a real boolean) is rejected explicitly, since `Number(true) === 1` would otherwise silently pass as a valid 1ms TTL. This method currently has no production caller (see #19431). |

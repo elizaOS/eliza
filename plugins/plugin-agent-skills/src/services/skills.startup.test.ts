@@ -58,4 +58,96 @@ describe("Agent Skills startup catalog policy", () => {
 
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
+
+	it("stops when the registry repeats a pagination cursor", async () => {
+		const runtime = createRuntime();
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ items: [{ slug: "known-good" }] }), {
+					status: 200,
+				}),
+			)
+			.mockImplementation(async () =>
+				new Response(
+					JSON.stringify({
+						items: [{ slug: "duplicate-skill" }],
+						nextCursor: "same-cursor",
+					}),
+					{ headers: { "content-type": "application/json" }, status: 200 },
+				),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const service = await AgentSkillsService.start(runtime, {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+		await service.syncCatalog();
+		await expect(service.syncCatalog()).rejects.toThrow(
+			"Catalog pagination repeated cursor same-cursor",
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(service.getCatalogStats().total).toBe(1);
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("repeated cursor same-cursor"),
+		);
+	});
+
+	it("encodes cursors before requesting the next catalog page", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ items: [], nextCursor: " a b&c " }), {
+					status: 200,
+				}),
+			)
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ items: [] }), { status: 200 }),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+		await service.syncCatalog();
+
+		expect(fetchMock.mock.calls[1]?.[0]).toContain(
+			"cursor=%20a%20b%26c%20",
+		);
+	});
+
+	it("bounds unique-cursor pagination without publishing partial data", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ items: [{ slug: "known-good" }] }), {
+					status: 200,
+				}),
+			)
+			.mockImplementation(async () =>
+				new Response(
+					JSON.stringify({
+						items: [{ slug: `skill-${fetchMock.mock.calls.length}` }],
+						nextCursor: `cursor-${fetchMock.mock.calls.length}`,
+					}),
+					{ status: 200 },
+				),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+		await service.syncCatalog();
+		await expect(service.syncCatalog()).rejects.toThrow(
+			"Catalog pagination exceeded 100 pages",
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(101);
+		expect(service.getCatalogStats().total).toBe(1);
+	});
 });

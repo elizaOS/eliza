@@ -19,7 +19,7 @@
 
 import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../db/client";
+import { type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { normalizeLedgerSourceId } from "../utils/ledger-source-id";
 import { logger } from "../utils/logger";
@@ -39,12 +39,14 @@ type EarningsSource =
 
 interface AddEarningsParams {
   userId: string;
-  amount: number;
+  amount: number | string;
   source: EarningsSource;
   sourceId: string;
   description: string;
   metadata?: Record<string, unknown>;
   dedupeBySourceId?: boolean;
+  /** Reuse the caller's settlement transaction when this earning is one leg of a larger unit. */
+  transaction?: DbTransaction;
 }
 
 interface AddEarningsResult {
@@ -264,6 +266,7 @@ class RedeemableEarningsService {
       description,
       metadata,
       dedupeBySourceId = false,
+      transaction,
     } = params;
 
     const inputAmount = new Decimal(amount);
@@ -300,7 +303,7 @@ class RedeemableEarningsService {
       ...(ledgerSourceId !== sourceId ? { original_source_id: sourceId } : {}),
     });
 
-    const result = await dbWrite.transaction(async (tx) => {
+    const apply = async (tx: DbTransaction) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${userId}`}))`,
       );
@@ -444,7 +447,8 @@ class RedeemableEarningsService {
         ledgerEntryId: ledgerEntry.id,
         deduplicated: false,
       };
-    });
+    };
+    const result = transaction ? await apply(transaction) : await dbWrite.transaction(apply);
 
     if (result.deduplicated) {
       logger.info("[RedeemableEarnings] Reused existing earning entry", {
@@ -522,6 +526,8 @@ class RedeemableEarningsService {
      * once. Default false preserves the additive reconciliation behavior.
      */
     dedupeBySourceId?: boolean;
+    /** Reuse an owning settlement transaction so every money leg commits together. */
+    transaction?: DbTransaction;
   }): Promise<{
     success: boolean;
     newBalance: number;
@@ -538,6 +544,7 @@ class RedeemableEarningsService {
       metadata = {},
       requireSufficientBalance = false,
       dedupeBySourceId = false,
+      transaction,
     } = params;
 
     if (amount <= 0) {
@@ -557,7 +564,7 @@ class RedeemableEarningsService {
       type: "reconciliation_reduction",
     });
 
-    const result = await dbWrite.transaction(async (tx) => {
+    const apply = async (tx: DbTransaction) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${userId}`}))`,
       );
@@ -683,7 +690,8 @@ class RedeemableEarningsService {
         deduplicated: false,
         currentBalance: 0,
       };
-    });
+    };
+    const result = transaction ? await apply(transaction) : await dbWrite.transaction(apply);
 
     if (result.deduplicated) {
       logger.info("[RedeemableEarnings] reduceEarnings deduplicated by sourceId (retry)", {

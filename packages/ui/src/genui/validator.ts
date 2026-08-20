@@ -1,6 +1,8 @@
 /**
  * Validates a GenUI spec against the catalog: rejects unknown components and
- * disallowed action names before the renderer runs.
+ * disallowed action names before the renderer runs. Unsafe-field walks are
+ * depth-, work-, and cycle-bounded so a hostile `data`/`metadata` nest cannot
+ * RangeError the validator (which must never throw).
  */
 import {
   ELIZA_GENUI_ALLOWED_ACTION_PREFIXES,
@@ -18,6 +20,10 @@ import type {
 
 const DEFAULT_MAX_COMPONENTS = 200;
 const DEFAULT_MAX_JSON_BYTES = 65_536;
+/** Nesting ceiling for unsafe-field walks. Honest specs are a handful deep. */
+export const MAX_GENUI_UNSAFE_FIELD_DEPTH = 64;
+/** Node ceiling across one unsafe-field walk, including leaves. */
+export const MAX_GENUI_UNSAFE_FIELD_NODES = 2048;
 const UNSAFE_FIELD_NAMES = new Set([
   "script",
   "code",
@@ -81,31 +87,326 @@ function isSafeImageSrc(value: string): boolean {
   }
 }
 
-function validateUnsafeFields(
+type SnapshotContext = {
+  visits: number;
+  ancestors: WeakSet<object>;
+  halted: boolean;
+  bytes: number;
+  maxBytes: number;
+};
+
+function chargeSnapshotBytes(
+  ctx: SnapshotContext,
+  issues: ElizaGenUiValidationIssue[],
+  bytes: number,
+  path: string,
+  componentId?: string,
+): boolean {
+  if (bytes <= ctx.maxBytes - ctx.bytes) {
+    ctx.bytes += bytes;
+    return true;
+  }
+  addIssue(issues, {
+    code: "too_large",
+    message: `Generated UI JSON must be at most ${ctx.maxBytes} bytes.`,
+    componentId,
+    path,
+  });
+  ctx.halted = true;
+  return false;
+}
+
+/** Charge the exact UTF-8 bytes produced by JSON string serialization. */
+function chargeSnapshotString(
+  ctx: SnapshotContext,
+  issues: ElizaGenUiValidationIssue[],
+  value: string,
+  path: string,
+  componentId?: string,
+): boolean {
+  if (!chargeSnapshotBytes(ctx, issues, 2, path, componentId)) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    let bytes: number;
+    if (
+      code === 0x22 ||
+      code === 0x5c ||
+      code === 0x08 ||
+      code === 0x09 ||
+      code === 0x0a ||
+      code === 0x0c ||
+      code === 0x0d
+    ) {
+      bytes = 2;
+    } else if (code <= 0x1f) {
+      bytes = 6;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes = 4;
+        index += 1;
+      } else {
+        bytes = 6;
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      bytes = 6;
+    } else if (code <= 0x7f) {
+      bytes = 1;
+    } else if (code <= 0x7ff) {
+      bytes = 2;
+    } else {
+      bytes = 3;
+    }
+    if (!chargeSnapshotBytes(ctx, issues, bytes, path, componentId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function snapshotUnsafeFields(
   value: unknown,
   issues: ElizaGenUiValidationIssue[],
   path: string,
   componentId?: string,
-): void {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      validateUnsafeFields(item, issues, `${path}/${index}`, componentId);
+  depth = 0,
+  ctx: SnapshotContext = {
+    visits: 0,
+    ancestors: new WeakSet<object>(),
+    halted: false,
+    bytes: 0,
+    maxBytes: DEFAULT_MAX_JSON_BYTES,
+  },
+): unknown {
+  if (ctx.halted) return undefined;
+  if (depth > MAX_GENUI_UNSAFE_FIELD_DEPTH) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_DEPTH} nesting depth.`,
+      componentId,
+      path,
     });
-    return;
+    ctx.halted = true;
+    return undefined;
   }
-  for (const [key, entry] of Object.entries(value)) {
-    if (UNSAFE_FIELD_NAMES.has(key)) {
+  ctx.visits += 1;
+  if (ctx.visits > MAX_GENUI_UNSAFE_FIELD_NODES) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_NODES} nodes.`,
+      componentId,
+      path,
+    });
+    ctx.halted = true;
+    return undefined;
+  }
+  if (value === null) {
+    return chargeSnapshotBytes(ctx, issues, 4, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "string") {
+    return chargeSnapshotString(ctx, issues, value, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "boolean") {
+    return chargeSnapshotBytes(ctx, issues, value ? 4 : 5, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = value === 0 ? 0 : value;
+    return chargeSnapshotBytes(
+      ctx,
+      issues,
+      String(normalized).length,
+      path,
+      componentId,
+    )
+      ? normalized
+      : undefined;
+  }
+  if (
+    value === undefined ||
+    typeof value === "function" ||
+    typeof value === "symbol" ||
+    typeof value === "bigint" ||
+    (typeof value === "number" && !Number.isFinite(value))
+  ) {
+    addIssue(issues, {
+      code: "invalid_spec",
+      message: "Generated UI values must use serializable JSON primitives.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
+    return undefined;
+  }
+  if (typeof value !== "object") return value;
+  if (ctx.ancestors.has(value)) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: "Generated UI value contains a cyclic object.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
+    return undefined;
+  }
+  ctx.ancestors.add(value);
+  try {
+    // JSON.stringify performs an ordinary Get of an own or inherited `toJSON`.
+    // The trusted snapshot below severs the input prototype chain; reject an
+    // own hook explicitly and never perform an ordinary Get on untrusted data.
+    const toJsonDescriptor = Object.getOwnPropertyDescriptor(value, "toJSON");
+    if (
+      toJsonDescriptor &&
+      ("get" in toJsonDescriptor ||
+        "set" in toJsonDescriptor ||
+        typeof toJsonDescriptor.value === "function")
+    ) {
       addIssue(issues, {
-        code: "unsafe_field",
-        message: `Generated UI field "${key}" is not allowed.`,
+        code: "unbounded_nest",
+        message:
+          "Generated UI values may not define custom JSON serialization.",
         componentId,
-        path: `${path}/${key}`,
+        path,
+      });
+      ctx.halted = true;
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      const length = lengthDescriptor?.value;
+      if (
+        !Number.isSafeInteger(length) ||
+        length < 0 ||
+        length > MAX_GENUI_UNSAFE_FIELD_NODES - ctx.visits
+      ) {
+        addIssue(issues, {
+          code: "unbounded_nest",
+          message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_NODES} nodes.`,
+          componentId,
+          path,
+        });
+        ctx.halted = true;
+        return undefined;
+      }
+      if (
+        !chargeSnapshotBytes(
+          ctx,
+          issues,
+          2 + Math.max(0, length - 1),
+          path,
+          componentId,
+        )
+      ) {
+        return undefined;
+      }
+      const snapshot = new Array<unknown>(length);
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          value,
+          String(index),
+        );
+        if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+          addIssue(issues, {
+            code: "unbounded_nest",
+            message: "Generated UI values may not contain accessors.",
+            componentId,
+            path: `${path}/${index}`,
+          });
+          ctx.halted = true;
+          return undefined;
+        }
+        const entry = snapshotUnsafeFields(
+          descriptor?.value,
+          issues,
+          `${path}/${index}`,
+          componentId,
+          depth + 1,
+          ctx,
+        );
+        if (ctx.halted) return undefined;
+        if (descriptor) snapshot[index] = entry;
+      }
+      return snapshot;
+    }
+    if (!chargeSnapshotBytes(ctx, issues, 2, path, componentId)) {
+      return undefined;
+    }
+    const snapshot = Object.create(null) as Record<string, unknown>;
+    let includedProperties = 0;
+    for (const key of Reflect.ownKeys(value)) {
+      if (ctx.halted) return undefined;
+      if (typeof key !== "string") continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable) continue;
+      if ("get" in descriptor || "set" in descriptor) {
+        addIssue(issues, {
+          code: "unbounded_nest",
+          message: "Generated UI values may not contain accessors.",
+          componentId,
+          path: `${path}/${key}`,
+        });
+        ctx.halted = true;
+        return undefined;
+      }
+      if (UNSAFE_FIELD_NAMES.has(key)) {
+        addIssue(issues, {
+          code: "unsafe_field",
+          message: `Generated UI field "${key}" is not allowed.`,
+          componentId,
+          path: `${path}/${key}`,
+        });
+      }
+      if (
+        (includedProperties > 0 &&
+          !chargeSnapshotBytes(ctx, issues, 1, path, componentId)) ||
+        !chargeSnapshotString(
+          ctx,
+          issues,
+          key,
+          `${path}/${key}`,
+          componentId,
+        ) ||
+        !chargeSnapshotBytes(ctx, issues, 1, path, componentId)
+      ) {
+        return undefined;
+      }
+      includedProperties += 1;
+      const entry = snapshotUnsafeFields(
+        descriptor.value,
+        issues,
+        `${path}/${key}`,
+        componentId,
+        depth + 1,
+        ctx,
+      );
+      if (ctx.halted) return undefined;
+      Object.defineProperty(snapshot, key, {
+        value: entry,
+        enumerable: true,
+        configurable: true,
+        writable: true,
       });
     }
-    validateUnsafeFields(entry, issues, `${path}/${key}`, componentId);
+    return snapshot;
+  } catch {
+    // error-policy:J3 proxies and racing descriptors are invalid input; the
+    // public validator never lets reflection failures escape.
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: "Generated UI value could not be inspected safely.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
+    return undefined;
+  } finally {
+    ctx.ancestors.delete(value);
   }
 }
 
@@ -247,7 +548,6 @@ function validateComponent(
   if ("action" in record) {
     validateAction(record.action, issues, id, options);
   }
-  validateUnsafeFields(record, issues, path, id);
   childRefs.push(...collectChildRefs(record));
   return true;
 }
@@ -371,9 +671,21 @@ export function validateElizaGenUiSpec(
 ): ElizaGenUiValidationResult {
   const issues: ElizaGenUiValidationIssue[] = [];
   const options = normalizeValidationOptions(validationOptions);
-  if (!validateJsonSize(value, issues, options))
+  const snapshot = snapshotUnsafeFields(value, issues, "", undefined, 0, {
+    visits: 0,
+    ancestors: new WeakSet<object>(),
+    halted: false,
+    bytes: 0,
+    // Preserve the public option's existing numeric comparison semantics:
+    // fractional limits naturally admit only integral byte counts below them,
+    // and Infinity remains an explicit unbounded override. Negative and NaN
+    // limits already failed the final size check and therefore fail here too.
+    maxBytes: options.maxJsonBytes >= 0 ? options.maxJsonBytes : 0,
+  });
+  if (issues.length > 0) return { ok: false, errors: issues };
+  if (!validateJsonSize(snapshot, issues, options))
     return { ok: false, errors: issues };
-  const record = asRecord(value);
+  const record = asRecord(snapshot);
   if (!record) {
     addIssue(issues, {
       code: "invalid_spec",
@@ -384,14 +696,12 @@ export function validateElizaGenUiSpec(
   validateSpecHeader(record, issues);
   const components = validateComponentsArray(record, issues, options);
   if (components === null) return { ok: false, errors: issues };
-  validateUnsafeFields(record.data, issues, "data");
-  validateUnsafeFields(record.metadata, issues, "metadata");
   const refs = validateComponents(components, issues, options);
   validateReferences(record, refs.ids, refs.childRefs, issues);
   if (issues.length > 0) {
     return { ok: false, errors: issues };
   }
-  return { ok: true, spec: value as ElizaGenUiSpec };
+  return { ok: true, spec: snapshot as ElizaGenUiSpec };
 }
 
 export function assertValidElizaGenUiSpec(

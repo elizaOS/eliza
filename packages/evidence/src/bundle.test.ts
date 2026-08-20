@@ -1,10 +1,8 @@
 /**
  * Real-filesystem tests for the bundle builder and verifier: byte-stable
- * manifests under an injected clock, hardlink vs copy materialization, path
+ * manifests under an injected clock, copy materialization, path
  * collision/traversal refusal, single-use lifecycle, and tamper detection.
- * Everything runs against tmp dirs — no mocks of the code under test; the
- * only injected seam is the link function (the EXDEV condition cannot be
- * created portably inside one tmp volume).
+ * Everything runs against real files in temporary directories.
  */
 
 import { createHash } from "node:crypto";
@@ -14,10 +12,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BundleProvenance } from "./bundle.ts";
 import {
+  assertSafeCertificationOutput,
   createBundle,
-  EvidenceBundle,
   formatRunId,
   verifyBundle,
+  writeOwnedFileAtomic,
 } from "./bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "./errors.ts";
 
@@ -96,6 +95,40 @@ describe("formatRunId", () => {
   it("derives <utc stamp>-<shortsha>-<tier>", () => {
     const id = formatRunId(new Date("2026-07-05T18:32:45.123Z"), COMMIT, "gpu");
     expect(id).toBe("20260705-183245-abcdef0-gpu");
+  });
+});
+
+describe("bundle run directory ownership", () => {
+  it.each(["../escape", "nested/run", "nested\\run", ".", ".."])(
+    "rejects an unsafe custom run id %s before creating outside the root",
+    (runId) => {
+      const parent = tmpDir();
+      const root = path.join(parent, "runs");
+      expect(() =>
+        createBundle({
+          rootDir: root,
+          runId,
+          provenance: PROVENANCE,
+          now: fixedClock(),
+        }),
+      ).toThrow(expect.objectContaining({ code: "BUNDLE_RUN_ID_INVALID" }));
+      expect(fs.existsSync(path.join(parent, "escape"))).toBe(false);
+    },
+  );
+
+  it("does not follow a pre-existing run-directory symlink", () => {
+    const root = tmpDir();
+    const external = tmpDir();
+    fs.symlinkSync(external, path.join(root, "claimed"), "dir");
+    expect(() =>
+      createBundle({
+        rootDir: root,
+        runId: "claimed",
+        provenance: PROVENANCE,
+        now: fixedClock(),
+      }),
+    ).toThrow(expect.objectContaining({ code: "BUNDLE_DIR_EXISTS" }));
+    expect(fs.readdirSync(external)).toEqual([]);
   });
 });
 
@@ -186,6 +219,145 @@ describe("EvidenceBundle", () => {
     expect(manifest.metaSha256).toBe(metaHash);
   });
 
+  it("does not follow pre-positioned bundle envelope aliases", async () => {
+    const externalSymlinkTarget = writeFixture(
+      tmpDir(),
+      "external-meta.json",
+      "protected-meta",
+    );
+    const symlinkBundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    fs.symlinkSync(
+      externalSymlinkTarget,
+      path.join(symlinkBundle.dir, "meta.json"),
+    );
+    await expect(symlinkBundle.finalize()).rejects.toMatchObject({
+      code: "BUNDLE_ENVELOPE_UNSAFE",
+    });
+    expect(fs.readFileSync(externalSymlinkTarget, "utf8")).toBe(
+      "protected-meta",
+    );
+
+    const externalHardlinkTarget = writeFixture(
+      tmpDir(),
+      "external-manifest.json",
+      "protected-manifest",
+    );
+    const hardlinkBundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    fs.linkSync(
+      externalHardlinkTarget,
+      path.join(hardlinkBundle.dir, "manifest.json"),
+    );
+    await expect(hardlinkBundle.finalize()).rejects.toMatchObject({
+      code: "BUNDLE_ENVELOPE_UNSAFE",
+    });
+    expect(fs.readFileSync(externalHardlinkTarget, "utf8")).toBe(
+      "protected-manifest",
+    );
+  });
+
+  it.each(["manifest.json", "meta.json", "certification.json"])(
+    "reserves the bundle envelope path %s",
+    async (bundlePath) => {
+      const bundle = createBundle({
+        rootDir: tmpDir(),
+        provenance: PROVENANCE,
+        now: fixedClock(),
+      });
+      await expect(
+        bundle.addArtifact(writeFixture(tmpDir(), "artifact.json", "{}"), {
+          kind: "report",
+          source: "test",
+          producedBy: "test",
+          bundlePath,
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_PATH_RESERVED" });
+    },
+  );
+
+  it("atomically replaces owned symlink and hardlink leaves", () => {
+    const root = tmpDir();
+    const external = writeFixture(root, "external.json", "protected");
+    const symlinkLeaf = path.join(root, "certification.json");
+    const hardlinkLeaf = path.join(root, "review.json");
+    fs.symlinkSync(external, symlinkLeaf);
+    fs.linkSync(external, hardlinkLeaf);
+
+    writeOwnedFileAtomic(symlinkLeaf, "signed");
+    writeOwnedFileAtomic(hardlinkLeaf, "reviewed");
+
+    expect(fs.readFileSync(external, "utf8")).toBe("protected");
+    expect(fs.readFileSync(symlinkLeaf, "utf8")).toBe("signed");
+    expect(fs.readFileSync(hardlinkLeaf, "utf8")).toBe("reviewed");
+    expect(fs.lstatSync(symlinkLeaf).isSymbolicLink()).toBe(false);
+    expect(fs.statSync(symlinkLeaf).nlink).toBe(1);
+    expect(fs.statSync(hardlinkLeaf).nlink).toBe(1);
+  });
+
+  it("reserves every in-bundle leaf except certification.json for signing", () => {
+    const bundleDir = tmpDir();
+    const alias = path.join(tmpDir(), "bundle-alias");
+    fs.symlinkSync(bundleDir, alias, "dir");
+    const outside = path.join(tmpDir(), "certification.json");
+    const outsideTarget = writeFixture(
+      tmpDir(),
+      "external-manifest.json",
+      "protected",
+    );
+    const reservedLeafSymlink = path.join(bundleDir, "manifest.json");
+    fs.symlinkSync(outsideTarget, reservedLeafSymlink);
+    const externalLeafSymlink = path.join(tmpDir(), "external-output.json");
+    fs.symlinkSync(path.join(bundleDir, "manifest.json"), externalLeafSymlink);
+    expect(() =>
+      assertSafeCertificationOutput(
+        bundleDir,
+        path.join(bundleDir, "certification.json"),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, outside),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, externalLeafSymlink),
+    ).not.toThrow();
+    writeOwnedFileAtomic(externalLeafSymlink, "external certification");
+    expect(fs.readFileSync(externalLeafSymlink, "utf8")).toBe(
+      "external certification",
+    );
+    expect(fs.readFileSync(outsideTarget, "utf8")).toBe("protected");
+    expect(fs.lstatSync(reservedLeafSymlink).isSymbolicLink()).toBe(true);
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, reservedLeafSymlink),
+    ).toThrowError(
+      expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+    );
+    expect(() =>
+      assertSafeCertificationOutput(
+        bundleDir,
+        path.join(alias, "manifest.json"),
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+    );
+    for (const relative of ["manifest.json", "meta.json", "visual/proof.png"]) {
+      expect(() =>
+        assertSafeCertificationOutput(
+          bundleDir,
+          path.join(bundleDir, relative),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+      );
+    }
+  });
+
   it("produces byte-identical manifests across two runs with the same inputs", async () => {
     const sourcesA = tmpDir();
     const sourcesB = tmpDir();
@@ -204,7 +376,7 @@ describe("EvidenceBundle", () => {
     ).toBe(true);
   });
 
-  it("hardlinks on the same volume in auto mode", async () => {
+  it("copies by default so later producer writes cannot mutate the bundle", async () => {
     const sources = tmpDir();
     const bundle = createBundle({
       rootDir: tmpDir(),
@@ -218,7 +390,13 @@ describe("EvidenceBundle", () => {
       producedBy: "run-all.mjs",
     });
     const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).toBe(fs.statSync(sourcePath).ino);
+    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
+    const finalized = await bundle.finalize();
+    fs.writeFileSync(sourcePath, "changed-after-finalize");
+    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+    expect((await verifyBundle(path.dirname(finalized.manifestPath))).ok).toBe(
+      true,
+    );
   });
 
   it("copies when linkMode is copy", async () => {
@@ -240,50 +418,138 @@ describe("EvidenceBundle", () => {
     expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
   });
 
-  it("falls back to copy when the link fails with EXDEV", async () => {
+  it("keeps the legacy auto linkMode source-compatible without creating links", async () => {
     const sources = tmpDir();
-    const exdev = Object.assign(new Error("cross-device link"), {
-      code: "EXDEV",
-    });
-    const bundle = new EvidenceBundle({
+    const bundle = createBundle({
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
-      link: () => {
-        throw exdev;
-      },
+      linkMode: "auto",
     });
-    const sourcePath = writeFixture(sources, "video.mp4", "mp4-bytes");
+    const sourcePath = writeFixture(sources, "legacy-auto.log", "copy-only");
     const entry = await bundle.addArtifact(sourcePath, {
-      kind: "video",
-      source: "e2e-recordings",
-      producedBy: "run-all.mjs",
+      kind: "log",
+      source: "test",
+      producedBy: "test",
     });
     const stored = path.join(bundle.dir, ...entry.path.split("/"));
     expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
-    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+    expect(fs.statSync(stored).nlink).toBe(1);
+    expect(fs.readFileSync(stored, "utf8")).toBe("copy-only");
   });
 
-  it("rethrows non-EXDEV link failures", async () => {
+  it("rejects symlink and hardlink sources instead of copying external bytes", async () => {
     const sources = tmpDir();
-    const eperm = Object.assign(new Error("operation not permitted"), {
-      code: "EPERM",
-    });
-    const bundle = new EvidenceBundle({
+    const external = writeFixture(tmpDir(), "outside.log", "outside");
+    const symlinkPath = path.join(sources, "linked.log");
+    const hardlinkPath = path.join(sources, "hardlinked.log");
+    fs.symlinkSync(external, symlinkPath);
+    fs.linkSync(external, hardlinkPath);
+    const bundle = createBundle({
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
-      link: () => {
-        throw eperm;
-      },
     });
+    for (const sourcePath of [symlinkPath, hardlinkPath]) {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSAFE" });
+    }
+  });
+
+  it("rejects a source changed through the open descriptor during copy", async () => {
+    const sources = tmpDir();
+    const sourcePath = writeFixture(sources, "changing.log", "before");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const originalRead = fs.readSync;
+    let changed = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (!changed && count > 0) {
+        changed = true;
+        fs.writeFileSync(sourcePath, "after!");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSTABLE" });
+      expect(
+        fs.existsSync(path.join(bundle.dir, "misc/test/changing.log")),
+      ).toBe(false);
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("rejects a bundle destination replaced before the copied bytes are bound", async () => {
+    const sources = tmpDir();
+    const sourcePath = writeFixture(sources, "destination-race.log", "source");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const destination = path.join(
+      bundle.dir,
+      "misc",
+      "test",
+      "destination-race.log",
+    );
+    const originalFsync = fs.fsyncSync;
+    let replaced = false;
+    fs.fsyncSync = ((descriptor: number) => {
+      originalFsync(descriptor);
+      if (!replaced && fs.existsSync(destination)) {
+        replaced = true;
+        fs.renameSync(destination, `${destination}.copied`);
+        fs.writeFileSync(destination, "forged");
+      }
+    }) as typeof fs.fsyncSync;
+    try {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSTABLE" });
+      expect(replaced).toBe(true);
+    } finally {
+      fs.fsyncSync = originalFsync;
+    }
+  });
+
+  it("does not delete a pre-existing destination when exclusive copy fails", async () => {
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const destination = path.join(bundle.dir, "misc/test/existing.log");
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, "keep-me");
     await expect(
-      bundle.addArtifact(writeFixture(sources, "x.png", "x"), {
-        kind: "screenshot",
-        source: "s",
-        producedBy: "p",
+      bundle.addArtifact(writeFixture(tmpDir(), "existing.log", "new"), {
+        kind: "log",
+        source: "test",
+        producedBy: "test",
       }),
-    ).rejects.toBe(eperm);
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(fs.readFileSync(destination, "utf8")).toBe("keep-me");
   });
 
   it("throws typed errors for missing sources, collisions, and traversal", async () => {
@@ -519,6 +785,37 @@ describe("verifyBundle", () => {
     expect(
       report.issues.filter((i) => i.path === "lanes/e2e/logs/server.log"),
     ).toHaveLength(1);
+  });
+
+  it("rejects hardlinked artifacts and envelope files", async () => {
+    const sources = tmpDir();
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const entry = await bundle.addArtifact(
+      writeFixture(sources, "proof.log", "proof"),
+      { kind: "log", source: "test", producedBy: "test" },
+    );
+    const finalized = await bundle.finalize();
+    const artifactPath = path.join(bundle.dir, ...entry.path.split("/"));
+    fs.linkSync(artifactPath, path.join(tmpDir(), "artifact-alias.log"));
+    fs.linkSync(
+      finalized.manifestPath,
+      path.join(tmpDir(), "manifest-alias.json"),
+    );
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual({
+      path: entry.path,
+      issue: "hardlink",
+    });
+    expect(report.issues).toContainEqual({
+      path: "manifest.json",
+      issue: "hardlink",
+    });
   });
 
   it("still reports a plain unlisted regular file as unlisted (control)", async () => {

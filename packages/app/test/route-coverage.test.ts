@@ -76,6 +76,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/plugin-blocker/src/plugin.ts",
   "plugins/plugin-calendar/src/plugin.ts",
+  "plugins/plugin-computeruse/src/index.ts",
   "plugins/plugin-documents/src/plugin.ts",
   "plugins/plugin-elizacloud/src/index.ts",
   "plugins/plugin-finances/src/plugin.ts",
@@ -105,6 +106,8 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
   "plugins/plugin-blocker/src/plugin.ts":
     "Focus is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-computeruse/src/index.ts":
+    "Computer Sessions is contributed by the opt-in server plugin when COMPUTER_USE_ENABLED=1; its remote bundle is not compiled into the renderer boot graph.",
   "plugins/plugin-documents/src/plugin.ts":
     "Documents is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-elizacloud/src/index.ts":

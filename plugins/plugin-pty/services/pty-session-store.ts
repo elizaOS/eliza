@@ -1,12 +1,17 @@
 /**
  * PTY session store and console bridge for web-terminal sessions.
- * It confines child process environment/cwd, buffers output for late subscribers, selects Bun or Node PTY backends, and emits the bridge events consumed by the agent server.
+ * It confines child process environment/cwd through symlink parents, buffers
+ * output for late subscribers, selects Bun or Node PTY backends, and emits the
+ * bridge events consumed by the agent server. Lexical `path.resolve` is not
+ * enough: a cwd that is a symlink inside the allowed root must not spawn a
+ * session whose real working directory is outside the jail.
  */
 
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { promises as fs } from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn";
 import type {
   ConsoleBridge,
@@ -92,6 +97,32 @@ function buildPtyEnv(
   env.PWD = cwd;
   env.TERM = specEnv?.TERM ?? process.env.TERM ?? "xterm-256color";
   return env;
+}
+
+/** Resolve an existing directory to the path the PTY backend will receive. */
+async function resolveExistingDirectory(
+  input: string,
+  kind: "allowed root" | "cwd",
+): Promise<string> {
+  const absolute = path.resolve(input);
+  try {
+    const canonical = await fs.realpath(absolute);
+    if (!(await fs.stat(canonical)).isDirectory()) {
+      throw new ElizaError(`PTY ${kind} "${absolute}" is not a directory.`, {
+        code: "PTY_CWD_NOT_DIRECTORY",
+        context: { kind, path: absolute },
+      });
+    }
+    return canonical;
+  } catch (error) {
+    if (error instanceof ElizaError) throw error;
+    // error-policy:J2 confinement must fail closed when canonicalization fails.
+    throw new ElizaError(`Unable to resolve PTY ${kind} "${absolute}".`, {
+      code: "PTY_CWD_RESOLUTION_FAILED",
+      cause: error,
+      context: { kind, path: absolute },
+    });
+  }
 }
 
 /** Resolves the node-pty `spawn` implementation lazily (native, optional dep). */
@@ -221,23 +252,30 @@ export class PtySessionStore {
   /**
    * Reject a cwd that escapes the allowed root (defense in depth — the route
    * and spec builder already resolve a safe cwd, but the store is the last gate
-   * before spawning a real process).
+   * before spawning a real process). Both paths must be existing directories;
+   * a PTY backend cannot spawn in a missing cwd, and admitting one would leave
+   * a symlink-creation race between this check and the native spawn.
    */
-  private confineCwd(cwd: string): string {
+  private async confineCwd(cwd: string): Promise<string> {
     const resolved = path.resolve(cwd);
     const root = this.opts.allowedRoot
       ? path.resolve(this.opts.allowedRoot)
       : null;
-    if (root) {
-      const rel = path.relative(root, resolved);
-      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
-        return resolved;
-      }
-      throw new Error(
-        `PTY cwd "${resolved}" is outside the allowed root "${root}".`,
-      );
+    if (!root) return resolved;
+
+    const realCwd = await resolveExistingDirectory(resolved, "cwd");
+    const realRoot = await resolveExistingDirectory(root, "allowed root");
+    const rel = path.relative(realRoot, realCwd);
+    if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+      return realCwd;
     }
-    return resolved;
+    throw new ElizaError(
+      `PTY cwd "${resolved}" is outside the allowed root "${root}".`,
+      {
+        code: "PTY_CWD_OUTSIDE_ALLOWED_ROOT",
+        context: { cwd: resolved, allowedRoot: root },
+      },
+    );
   }
 
   /** Spawn a new interactive session and start streaming its output. */
@@ -247,9 +285,13 @@ export class PtySessionStore {
         `PTY session limit reached (${this.maxSessions}); stop a session before starting another.`,
       );
     }
-    const cwd = this.confineCwd(spec.cwd);
+    let cwd = await this.confineCwd(spec.cwd);
     if (!this.resolvedSpawn) {
       this.resolvedSpawn = await this.resolveSpawn();
+      // The lazy native-backend load is an async race window. Re-resolve after
+      // it so a directory swapped for an escaping symlink is rejected before
+      // the synchronous spawn call.
+      cwd = await this.confineCwd(spec.cwd);
     }
     const spawn = this.resolvedSpawn;
 

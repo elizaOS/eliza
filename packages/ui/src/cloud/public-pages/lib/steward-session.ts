@@ -1,9 +1,11 @@
 /**
  * Steward session glue for the app-hosted cloud auth/login pages. Handles the
- * JWT → HttpOnly cookie sync, the one-time OAuth `code`/`#token` consumption,
- * the server-side nonce exchange, and the cookie-backed refresh — selecting the
- * correct auth endpoint per browser host (so previews and third-party app
- * integrations call their own API worker, never mixing tenants).
+ * JWT → HttpOnly cookie sync, the one-time OAuth `code` consumption, the
+ * legacy credential-link stripping (`?token=` / `#token=` are never consumed —
+ * a clicked link must never plant a session), the server-side nonce exchange,
+ * and the cookie-backed refresh — selecting the correct auth endpoint per
+ * browser host (so previews and third-party app integrations call their own
+ * API worker, never mixing tenants).
  */
 
 import {
@@ -13,12 +15,13 @@ import {
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
   StewardSessionError,
+  type StewardSessionRequest,
+  type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import {
-  clearPendingOnboardingSession,
-  peekPendingOnboardingSession,
+  clearPendingOnboardingSessionIfMatches,
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../../lib/jwt";
@@ -36,7 +39,7 @@ export function resolveStewardAuthEndpoint(
 
 async function postAuthJson(
   path: string,
-  body?: Record<string, unknown>,
+  body?: object,
   method: "POST" | "DELETE" = "POST",
   signal?: AbortSignal,
 ): Promise<Response> {
@@ -65,30 +68,24 @@ async function readSessionError(response: Response): Promise<{
 /**
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
  * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
+ *
+ * Authentication establishment never discovers account-link authority from
+ * browser storage. A Telegram claim rides this request only when the
+ * /get-started confirmation passes it explicitly after showing the preview.
  */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
-  options?: { verifiedPhone?: string; telegramContinuation?: string },
+  options?: {
+    verifiedPhone?: string;
+  },
 ): Promise<void> {
-  const explicitTelegramContinuation = sanitizeTelegramAccountClaimContinuation(
-    options?.telegramContinuation,
-  );
-  if (
-    options?.telegramContinuation !== undefined &&
-    !explicitTelegramContinuation
-  ) {
-    throw new Error("Invalid Telegram account claim.");
-  }
-  const telegramContinuation =
-    explicitTelegramContinuation ??
-    peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
+  const request: StewardSessionRequest = {
     token,
     ...(refreshToken ? { refreshToken } : {}),
     ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
-    ...(telegramContinuation ? { telegramContinuation } : {}),
-  });
+  };
+  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
 
   if (!response.ok) {
     const body = await readSessionError(response);
@@ -97,12 +94,46 @@ export async function syncStewardSessionCookie(
     );
   }
 
-  if (telegramContinuation) clearPendingOnboardingSession();
-
   if (typeof window !== "undefined") {
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.
+    writeStoredStewardToken(token);
+    window.dispatchEvent(
+      new CustomEvent("steward-token-sync", { detail: { token } }),
+    );
+  }
+}
+
+/**
+ * Confirms the exact Telegram identity previewed by /get-started. This is a
+ * separate API from session establishment so login, recovery, and SSO cannot
+ * acquire claim semantics by discovering browser storage.
+ */
+export async function confirmTelegramAccountClaim(
+  token: string,
+  continuation: string,
+): Promise<void> {
+  const telegramContinuation =
+    sanitizeTelegramAccountClaimContinuation(continuation);
+  if (!telegramContinuation) {
+    throw new Error("Invalid Telegram account claim.");
+  }
+  const request: StewardTelegramClaimConfirmationRequest = {
+    token,
+    telegramContinuation,
+    telegramClaimConfirmation: "explicit",
+  };
+  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
+  if (!response.ok) {
+    const body = await readSessionError(response);
+    throw new Error(body.error || "Could not connect this Telegram account.");
+  }
+  clearPendingOnboardingSessionIfMatches(
+    telegramContinuation,
+    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+  );
+  if (typeof window !== "undefined") {
     writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
@@ -175,34 +206,39 @@ export function consumeStewardCodeFromQuery(): string | null {
 }
 
 /**
- * Parse Steward tokens from the URL hash fragment (legacy rollout fallback). The
- * hash never reaches the server. Strips it after reading. Null when no
- * `#token=` is present so the caller can fall through to `?token=`.
+ * Legacy `#token=` / `#refreshToken=` hash links are never consumed (a clicked
+ * link must never plant a session — the same login-CSRF rule that removed the
+ * `?token=` query path). Strip the credential params from the address bar
+ * immediately so no token lingers in history, copy/paste, or the reach of
+ * third-party scripts booting with the page. Non-credential hash params are
+ * preserved. Returns true when anything was stripped.
  */
-export function consumeStewardTokensFromHash(): {
-  token: string;
-  refreshToken: string | null;
-} | null {
-  if (typeof window === "undefined") return null;
+export function stripLegacyTokenHashFromAddressBar(): boolean {
+  if (typeof window === "undefined") return false;
   const stewardWindow = window as Window & { __stewardOAuthHash?: string };
   const snapshotted = stewardWindow.__stewardOAuthHash;
   const hash = snapshotted || window.location.hash;
+  if (!hash || hash.length < 2) return false;
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  let stripped = false;
+  for (const key of ["token", "refreshToken"] as const) {
+    if (params.has(key)) {
+      params.delete(key);
+      stripped = true;
+    }
+  }
+  if (!stripped) return false;
   if (snapshotted) {
     delete stewardWindow.__stewardOAuthHash;
-  }
-  if (!hash || hash.length < 2) return null;
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const token = params.get("token");
-  if (!token) return null;
-  const refreshToken = params.get("refreshToken");
-  if (!snapshotted) {
+  } else {
+    const nextHash = params.toString();
     window.history.replaceState(
       null,
       "",
-      `${window.location.pathname}${window.location.search}`,
+      `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ""}`,
     );
   }
-  return { token, refreshToken };
+  return true;
 }
 
 /**
@@ -215,15 +251,11 @@ export async function exchangeStewardCodeViaApi(
   code: string,
   opts: { redirectUri?: string; tenantId?: string; codeVerifier?: string } = {},
 ): Promise<StewardNonceExchangeResponse> {
-  const telegramContinuation = peekPendingOnboardingSession(
-    TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
-  );
   const response = await postAuthJson(STEWARD_NONCE_EXCHANGE_ENDPOINT, {
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
     ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
-    ...(telegramContinuation ? { telegramContinuation } : {}),
   });
 
   if (!response.ok) {
@@ -234,7 +266,6 @@ export async function exchangeStewardCodeViaApi(
       body.code ?? null,
     );
   }
-  if (telegramContinuation) clearPendingOnboardingSession();
   return (await response.json()) as StewardNonceExchangeResponse;
 }
 

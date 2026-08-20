@@ -1,9 +1,10 @@
 /**
  * Unit coverage for `GoogleGmailAdapter`: message mapping, manage-operation
- * translation, and reply drafting/sending against a mock runtime whose "google"
- * service is a `vi.fn` stub — deterministic, no live Gmail API.
+ * translation, reply drafting/sending, and post-commit mutation receipts
+ * against a mock runtime whose "google" service is a `vi.fn` stub. The harness
+ * is deterministic and does not call the live Gmail API.
  */
-import type { IAgentRuntime } from "@elizaos/core/node";
+import { EventType, type IAgentRuntime } from "@elizaos/core/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 
@@ -34,6 +35,8 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
   return {
     agentId: "agent-1",
     getService: vi.fn((serviceType: string) => (serviceType === "google" ? googleService : null)),
+    emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -150,6 +153,15 @@ describe("GoogleGmailAdapter", () => {
       references: "<root@example.com>",
     });
     expect(sent.externalId).toBe("sent_1");
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MESSAGE_MUTATED,
+      expect.objectContaining({
+        messageSource: "gmail",
+        messageId: "gmail:msg_1",
+        operation: "replied",
+        domainEventId: "gmail_reply:acct_google_1:sent_1",
+      })
+    );
   });
 
   it("advertises new-email send capability alongside reply", () => {
@@ -248,5 +260,14 @@ describe("GoogleGmailAdapter", () => {
       fromAddress: "guest@example.com",
       trash: true,
     });
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MESSAGE_MUTATED,
+      expect.objectContaining({
+        messageSource: "gmail",
+        messageId: "gmail:msg_1",
+        operation: "mark_read",
+        domainEventId: "gmail_mark_read:acct_google_1:msg_1",
+      })
+    );
   });
 });

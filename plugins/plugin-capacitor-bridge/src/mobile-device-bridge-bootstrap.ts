@@ -11,13 +11,11 @@
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
-	createWriteStream,
 	existsSync,
 	linkSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
-	renameSync,
 	statSync,
 	symlinkSync,
 	unlinkSync,
@@ -26,8 +24,6 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -47,7 +43,13 @@ import {
 	ServiceType,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
+import { imageUrlToBase64 } from "./image-url-to-base64.ts";
+import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
+import {
+	MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
+	MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
+} from "./shared/model-download-deadline.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
@@ -422,13 +424,16 @@ class MobileDeviceBridge {
 		};
 	}
 
-	async attachToHttpServer(server: HttpServer): Promise<void> {
-		if (!SERVICE_ENABLED || this.wss) return;
+	async attachToHttpServer(server: HttpServer): Promise<boolean> {
+		if (!SERVICE_ENABLED) return false;
+		if (this.wss) {
+			return this.attachedServer === server && this.upgradeHandler !== null;
+		}
 		if (!this.expectedPairingToken) {
 			logger.warn(
 				"[mobile-device-bridge] Disabled: ELIZA_DEVICE_PAIRING_TOKEN is required when ELIZA_DEVICE_BRIDGE_ENABLED=1",
 			);
-			return;
+			return false;
 		}
 		// Resolve and validate every device-bridge timeout once, here at the
 		// real activation boundary, before any transport or device state is
@@ -470,7 +475,7 @@ class MobileDeviceBridge {
 		}
 		if (generation !== this.lifecycleGeneration || this.wss) {
 			server.off("close", serverCloseHandler);
-			return;
+			return this.attachedServer === server && this.upgradeHandler !== null;
 		}
 		if (!isWsModule(wsModule)) {
 			server.off("close", serverCloseHandler);
@@ -502,6 +507,7 @@ class MobileDeviceBridge {
 		logger.info(
 			`[mobile-device-bridge] Listening for Capacitor device bridge at ${DEVICE_BRIDGE_PATH}`,
 		);
+		return true;
 	}
 
 	private handleConnection(
@@ -1253,6 +1259,11 @@ const RECOMMENDED_MODELS: Record<
 	},
 };
 
+export {
+	MODEL_DOWNLOAD_IDLE_TIMEOUT_MS as RECOMMENDED_MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
+	MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS as RECOMMENDED_MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
+};
+
 const inflightDownloads = new Map<string, Promise<string>>();
 
 function buildHfResolveUrl(model: RecommendedModel): string {
@@ -1305,38 +1316,16 @@ async function downloadRecommendedModelFor(
 	const promise = (async () => {
 		const url = buildHfResolveUrl(model);
 		const stagingPath = `${finalPath}.part`;
-		try {
-			unlinkSync(stagingPath);
-		} catch {
-			// error-policy:J6 best-effort teardown — clear a leftover `.part` from a
-			// prior interrupted download before staging; absent is fine.
-		}
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
 		);
-		const response = await fetch(url, { redirect: "follow" });
-		if (!response.ok || !response.body) {
-			throw new Error(
-				`[mobile-device-bridge] Recommended-model download failed (${slot}): HTTP ${response.status} ${response.statusText} from ${url}`,
-			);
-		}
-		await pipeline(
-			Readable.fromWeb(response.body as never),
-			createWriteStream(stagingPath),
-		);
-		const stagedSize = statSync(stagingPath).size;
-		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
-			try {
-				unlinkSync(stagingPath);
-			} catch {
-				// error-policy:J6 best-effort teardown — remove the size-mismatched
-				// partial before throwing; the throw below is the real failure.
-			}
-			throw new Error(
-				`[mobile-device-bridge] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}; aborting and removing partial file.`,
-			);
-		}
-		renameSync(stagingPath, finalPath);
+		const stagedSize = await downloadHttpModel({
+			url,
+			stagingPath,
+			finalPath,
+			label: `[mobile-device-bridge] Recommended-model download (${slot})`,
+			expectedSizeBytes: model.expectedSizeBytes,
+		});
 		logger.info(
 			`[mobile-device-bridge] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
 		);
@@ -2174,23 +2163,8 @@ export const mobileDeviceBridgePlugin: Plugin = {
 
 export async function attachMobileDeviceBridgeToServer(
 	server: HttpServer,
-): Promise<void> {
-	await mobileDeviceBridge.attachToHttpServer(server);
-}
-
-/** Resolve a data:/http(s)/file image URL to base64 image bytes for the host. */
-async function imageUrlToBase64(url: string): Promise<string> {
-	if (url.startsWith("data:")) {
-		const comma = url.indexOf(",");
-		return comma >= 0 ? url.slice(comma + 1) : url;
-	}
-	const resp = await fetch(url);
-	if (!resp.ok) {
-		throw new Error(
-			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${resp.status}`,
-		);
-	}
-	return Buffer.from(await resp.arrayBuffer()).toString("base64");
+): Promise<boolean> {
+	return mobileDeviceBridge.attachToHttpServer(server);
 }
 
 /**

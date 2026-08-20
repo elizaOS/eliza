@@ -935,8 +935,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * @param params.agentId Scope query to agent's entities
 	 * @param params.entityIds Explicit list of entity IDs to filter
 	 * @param params.worldId Filter by world context
-	 * @param params.limit Max entities to return (applies to distinct entities, not rows)
-	 * @param params.offset Skip first N entities for pagination
+	 * @param params.limit Non-negative safe-integer maximum (applies to distinct entities, not rows)
+	 * @param params.offset Non-negative safe-integer count to skip for pagination
 	 * @param params.includeAllComponents If false (default): return only matched component type.
 	 *                                     If true: return all components for matched entities.
 	 * @returns Entities with their components (filtered by includeAllComponents)
@@ -1050,6 +1050,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * @param params.metadata Filter by metadata fields (partial object match)
 	 * @param params.limit Max results to return
 	 * @param params.offset Skip first N results for pagination
+	 * @param params.cursor Exclusive keyset cursor in the requested order. When
+	 * provided, results start strictly after `(createdAt, id)` and `offset` must
+	 * not be used. This keeps multi-query scans stable when earlier rows mutate.
 	 * @param params.tableName Memory type/table (required)
 	 */
 	getMemories(params: {
@@ -1058,6 +1061,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;

@@ -12,9 +12,9 @@ export function emitModelUsageEvent(
     completionTokens: number;
     totalTokens: number;
   },
-): void {
+): Promise<void> {
   void _prompt; // Not included in ModelEventPayload
-  runtime.emitEvent(MODEL_USED_EVENT, {
+  return runtime.emitEvent(MODEL_USED_EVENT, {
     runtime,
     source: "plugin-google-genai",
     type,

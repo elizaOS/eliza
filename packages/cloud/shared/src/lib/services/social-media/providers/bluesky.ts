@@ -14,6 +14,7 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import { downloadSocialMediaBytes } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
@@ -237,8 +238,7 @@ export const blueskyProvider: SocialMediaProvider = {
           } else if (media.base64) {
             imageData = Buffer.from(media.base64, "base64");
           } else if (media.url) {
-            const response = await fetch(media.url);
-            imageData = Buffer.from(await response.arrayBuffer());
+            imageData = await downloadSocialMediaBytes(media.url);
           } else {
             continue;
           }
@@ -414,8 +414,7 @@ export const blueskyProvider: SocialMediaProvider = {
     } else if (media.base64) {
       imageData = Buffer.from(media.base64, "base64");
     } else if (media.url) {
-      const response = await fetch(media.url);
-      imageData = Buffer.from(await response.arrayBuffer());
+      imageData = await downloadSocialMediaBytes(media.url);
     } else {
       throw new Error("No media data provided");
     }

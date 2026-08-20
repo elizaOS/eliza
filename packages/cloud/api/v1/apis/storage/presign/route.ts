@@ -1,90 +1,120 @@
 /**
- * Mints a short-lived signed URL for a single attachment object.
- *
- * Routes:
- *   POST /api/v1/apis/storage/presign  { key, operation: "get", expiresIn? }
- *                                      → { url, expiresAt }
- *
- * Auth: requireUserOrApiKeyWithOrg.
- * Pricing: flat per-request charge against the `storage:presign` row.
- *
- * The URL grants direct, temporary GET access through the R2 S3 endpoint;
- * clients hit R2 directly rather than this proxy. Writes continue through
- * `PUT /objects/{key+}` so organization quota enforcement remains authoritative.
+ * Mints opaque, short-lived native R2 read capabilities after a durable
+ * provider-success receipt and exact server-priced settlement.
  */
-
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  mintStorageReadCapabilityUrl,
+  StorageReadCapabilityConfigurationError,
+  validateStorageReadCapabilityConfiguration,
+} from "@/api-app/storage-read-capability";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
-import { getR2StorageAdapter } from "@/lib/services/storage/r2-storage-adapter";
+import {
+  executeNativeStoragePresign,
+  NativeStorageReadError,
+} from "@/lib/services/storage/native-storage-read";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const STORAGE_SERVICE_ID = "storage";
-const MAX_OBJECT_KEY_LENGTH = 1024;
-
-const presignRequestSchema = z.object({
-  key: z.string().min(1).max(MAX_OBJECT_KEY_LENGTH),
+const requestSchema = z.object({
   operation: z.literal("get"),
-  expiresIn: z.number().int().min(60).max(3600).optional(),
+  expiresIn: z.number().int().min(60).max(3600).optional().default(3600),
 });
 
 const app = new Hono<AppEnv>();
 
+function validLogicalKey(value: string): string | undefined {
+  const key = value.replace(/^\/+|\/+$/g, "");
+  if (
+    !key ||
+    new TextEncoder().encode(key).byteLength > 1024 ||
+    /[\0\r\n]/.test(key) ||
+    key
+      .split("/")
+      .some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return undefined;
+  }
+  return key;
+}
+
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const { organization_id } = user;
-
-    const rawBody = await c.req.json().catch(() => {
-      // error-policy:J3 malformed JSON remains an explicit invalid request.
+    const raw = await c.req.json().catch(() => {
+      // error-policy:J3 malformed request JSON remains an explicit invalid result.
       return null;
     });
-    const parsed = presignRequestSchema.safeParse(rawBody);
+    const parsed = requestSchema.safeParse(raw);
     if (!parsed.success) {
       return c.json(
         { error: "Invalid presign request", details: parsed.error.issues },
         400,
       );
     }
-    const { key: userKey, operation, expiresIn } = parsed.data;
-    const trimmedKey = userKey.replace(/^\/+|\/+$/g, "");
-    if (
-      trimmedKey.length === 0 ||
-      trimmedKey.split("/").some((s) => s === "..")
-    ) {
-      return c.json({ error: "Invalid object key" }, 400);
+    const logicalKey = validLogicalKey(
+      c.req.header("X-Storage-Object-Key") ?? "",
+    );
+    if (!logicalKey) return c.json({ error: "Invalid object key" }, 400);
+    if (!c.env.BLOB?.head) {
+      return c.json({ error: "Attachment storage proxy not available" }, 503);
     }
-
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      logger.error("[storage proxy] R2_* env vars not set; presign rejected");
+    if (!c.env.R2_PUBLIC_HOST?.trim()) {
+      logger.error("[storage proxy] Private capability host is not configured");
+      return c.json({ error: "Attachment storage proxy not available" }, 503);
+    }
+    // Validate signer authority before provider access or durable settlement so
+    // a missing secret cannot debit a request that cannot receive a capability.
+    const capabilityHost = validateStorageReadCapabilityConfiguration(
+      c.env.STORAGE_READ_SIGNING_SECRETS,
+      c.env.R2_PUBLIC_HOST,
+    );
+    const result = await executeNativeStoragePresign({
+      bucket: c.env.BLOB,
+      organizationId: user.organization_id,
+      userId: user.id,
+      logicalKey,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd: await getServiceMethodCost("storage", "presign"),
+      capabilityHost,
+      ttlSeconds: parsed.data.expiresIn,
+    });
+    if (result.status === 404) return c.json(result.body, 404);
+    const operation = result.operation;
+    if (
+      !operation.capability_id ||
+      !operation.capability_issued_at ||
+      !operation.capability_expires_at ||
+      operation.capability_expires_at <= new Date()
+    ) {
       return c.json(
         {
           error:
-            "Attachment storage proxy not available — server misconfigured",
+            "Storage capability expired; retry with the same Idempotency-Key",
+          receiptId: operation.id,
         },
-        503,
+        409,
       );
     }
-
-    const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "presign");
-    if (cost > 0) {
-      const deductResult = await creditsService.deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: `API proxy: storage — presign (${operation})`,
-        metadata: {
-          type: "proxy_storage",
-          service: "storage",
-          method: "presign",
-          operation,
-        },
-      });
-      if (!deductResult.success) {
+    const url = await mintStorageReadCapabilityUrl({
+      rawSecrets: c.env.STORAGE_READ_SIGNING_SECRETS,
+      host: capabilityHost,
+      capabilityId: operation.capability_id,
+      issuedAt: Math.floor(operation.capability_issued_at.getTime() / 1000),
+      expiresAt: Math.floor(operation.capability_expires_at.getTime() / 1000),
+    });
+    return c.json({
+      url,
+      expiresAt: operation.capability_expires_at.toISOString(),
+      receiptId: operation.id,
+    });
+  } catch (error) {
+    // error-policy:J1 transport boundary maps receipt and signer failures to HTTP status.
+    if (error instanceof NativeStorageReadError) {
+      if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(
           {
             error: "Insufficient credits",
@@ -93,17 +123,21 @@ app.post("/", async (c) => {
           402,
         );
       }
+      const status =
+        error.code === "IDEMPOTENCY_REQUIRED" ||
+        error.code === "IDEMPOTENCY_INVALID"
+          ? 400
+          : error.code === "IDEMPOTENCY_MISMATCH"
+            ? 409
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
     }
-
-    const ttlSeconds = expiresIn ?? 3600;
-    const scopedKey = `org/${organization_id}/${trimmedKey}`;
-    const url = await adapter.presignGet(scopedKey, ttlSeconds);
-    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-
-    return c.json({ url, expiresAt });
-  } catch (error) {
-    // error-policy:J1 the route boundary translates authentication, pricing,
-    // debit, configuration, and signing failures into the canonical response.
+    if (error instanceof StorageReadCapabilityConfigurationError) {
+      logger.error("[storage proxy] Private capability signer is unavailable", {
+        code: error.code,
+      });
+      return c.json({ error: "Attachment storage proxy not available" }, 503);
+    }
     return failureResponse(c, error);
   }
 });

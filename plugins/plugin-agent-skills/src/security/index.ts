@@ -131,8 +131,12 @@ export async function scanSkillDirectory(
 	const fs = await import("node:fs/promises");
 	const path = await import("node:path");
 
-	const manifestEntries = await buildManifestEntriesFromDisk(dirPath);
-	const manifestFindings = scanManifest(manifestEntries, dirPath);
+	// Resolve the root through the same filesystem canonicalization used for
+	// symlink targets before comparing them. This avoids false escapes through
+	// aliases such as macOS `/tmp` -> `/private/tmp`.
+	const canonicalDirPath = await fs.realpath(dirPath);
+	const manifestEntries = await buildManifestEntriesFromDisk(canonicalDirPath);
+	const manifestFindings = scanManifest(manifestEntries, canonicalDirPath);
 
 	const allFindings: SkillScanFinding[] = [];
 	let scannedCount = 0;
@@ -148,7 +152,7 @@ export async function scanSkillDirectory(
 		let content: string;
 		try {
 			content = await fs.readFile(
-				path.join(dirPath, entry.relativePath),
+				path.join(canonicalDirPath, entry.relativePath),
 				"utf-8",
 			);
 		} catch {
@@ -166,7 +170,12 @@ export async function scanSkillDirectory(
 			allFindings.push(...scanFrontmatterBins(content, entry.relativePath));
 	}
 
-	return buildReport(dirPath, scannedCount, allFindings, manifestFindings);
+	return buildReport(
+		canonicalDirPath,
+		scannedCount,
+		allFindings,
+		manifestFindings,
+	);
 }
 
 export function scanSkillPackage(

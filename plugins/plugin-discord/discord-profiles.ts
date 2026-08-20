@@ -206,12 +206,11 @@ export function isCanonicalDiscordSource(
 }
 
 export async function cacheDiscordAvatarForRuntime(
-	runtime: AgentRuntime,
+	_runtime: AgentRuntime,
 	avatarUrl: string | undefined,
 	userId?: string,
 ): Promise<string | undefined> {
 	return cacheDiscordAvatarUrl(avatarUrl, {
-		fetchImpl: runtime.fetch ?? globalThis.fetch,
 		userId,
 	});
 }

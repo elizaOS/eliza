@@ -112,8 +112,14 @@ function isAuthorized(req: http.IncomingMessage, token: string): boolean {
   return req.headers.authorization === `Bearer ${token}`;
 }
 
-function normalizeTabId(raw: string): string {
-  return decodeURIComponent(raw).trim();
+function normalizeTabId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    // error-policy:J3 untrusted tab-id path segments; malformed
+    // percent-encoding is an invalid request, not a bridge failure.
+    return null;
+  }
 }
 
 function readIntegerSearchParam(url: URL, key: string): number | undefined {
@@ -239,6 +245,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
       }
 
       const tabId = normalizeTabId(match[1]);
+      if (tabId === null) {
+        json(res, 400, { error: "invalid tab id: malformed URL encoding" });
+        return;
+      }
       const action = match[2] ?? null;
 
       if (!action && method === "DELETE") {

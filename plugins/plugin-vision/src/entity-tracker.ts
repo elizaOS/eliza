@@ -247,16 +247,19 @@ export class EntityTracker {
     seenEntityIds: Set<string>,
     timestamp: number,
   ): void {
+    // Snapshot the prior frame's active set before overwriting it; the
+    // departure check below compares this-frame against last-frame presence.
+    // Reading the reassigned field would reduce the guard to `!seen && seen`,
+    // a dead transition that never populates `recentlyLeft`.
+    const previouslyActive = this.worldState.activeEntities;
+
     // Update active entities
     this.worldState.activeEntities = Array.from(seenEntityIds);
     this.worldState.lastUpdate = timestamp;
 
-    // Check for entities that left
+    // Check for entities that were active last frame but are absent now.
     for (const [entityId, entity] of this.worldState.entities) {
-      if (
-        !seenEntityIds.has(entityId) &&
-        this.worldState.activeEntities.includes(entityId)
-      ) {
+      if (!seenEntityIds.has(entityId) && previouslyActive.includes(entityId)) {
         // Entity just left the scene
         this.worldState.recentlyLeft.push({
           entityId,
@@ -266,6 +269,14 @@ export class EntityTracker {
 
         logger.info(`[EntityTracker] Entity left scene: ${entityId}`);
       }
+    }
+
+    // A re-observed entity is present again, not "recently left"; drop any
+    // stale departure record so the two presence windows stay disjoint.
+    if (this.worldState.recentlyLeft.length > 0) {
+      this.worldState.recentlyLeft = this.worldState.recentlyLeft.filter(
+        (entry) => !seenEntityIds.has(entry.entityId),
+      );
     }
 
     // Recently-left entries are short-lived presence signals, not history.

@@ -107,7 +107,7 @@ vi.mock("../../lib/steward-email-login", () => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: vi.fn(),
   recoverStewardEmailSessionViaCookie: sessionSpies.recoverEmail,
   recoverStewardSessionViaCookie: sessionSpies.recover,

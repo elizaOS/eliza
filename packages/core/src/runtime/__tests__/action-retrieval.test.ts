@@ -801,6 +801,36 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	// Observed coding/repo inventions route to the TASKS coding umbrella. Keep
+	// this mapping explicit: generic CODE, PR, COMMIT, and BRANCH tokens are
+	// ambiguous and must not admit the coding surface on their own.
+	it("routes observed coding candidates to TASKS without broad token guessing", () => {
+		for (const candidate of [
+			"CODE_EDIT",
+			"CODE_PR_CREATE",
+			"CREATE_PR",
+			"OPEN_PULL_REQUEST",
+			"FIX_BUG",
+			"UPDATE_REPO_README",
+			"GITHUB_ISSUE_FIX",
+			"COMMIT_CHANGES",
+			"CREATE_BRANCH",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["TASKS"]);
+		}
+		for (const unrelatedCandidate of [
+			"SCAN_QR_CODE",
+			"READ_ERROR_CODE",
+			"BANK_BRANCH",
+			"PUBLIC_RELATIONS_PR",
+			"COMMITMENT_STATUS",
+		]) {
+			expect(parentAliasesForCandidateAction(unrelatedCandidate)).not.toContain(
+				"TASKS",
+			);
+		}
+	});
+
 	// Habit/reminder-shaped invented names must hint the owner-life umbrella AND
 	// the TRIGGER scheduler, so deployments without plugin-personal-assistant
 	// keep the only real scheduled-work capability on the planner surface.
@@ -826,6 +856,27 @@ describe("action catalogue and retrieval", () => {
 		expect(parentAliasesForCandidateAction("setHabit")).toEqual([
 			"OWNER_ROUTINES",
 			"TRIGGER",
+		]);
+	});
+
+	// Stage-1 recall candidates must resolve to the MEMORY umbrella: the
+	// classifier emits RECALL_MEMORY for "who is X" recalls, and when the name
+	// resolved to nothing the turn paid a full extra planner round to
+	// rediscover MEMORY op:search (live sol-dev 2026-08-17/18,
+	// gate=resolved-to-no-runtime-action).
+	it("hints memory-recall candidates at the MEMORY umbrella", () => {
+		for (const candidate of [
+			"RECALL_MEMORY",
+			"RECALL_MEMORIES",
+			"MEMORY_RECALL",
+			"MEMORY_SEARCH",
+			"SEARCH_MEMORIES",
+			"CHECK_MEMORY",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(["MEMORY"]);
+		}
+		expect(parentAliasesForCandidateAction("recall memory")).toEqual([
+			"MEMORY",
 		]);
 	});
 

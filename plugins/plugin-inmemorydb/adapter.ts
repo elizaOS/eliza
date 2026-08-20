@@ -9,7 +9,8 @@
  *
  * Implements the full batch-first interface from `@elizaos/core`'s
  * `DatabaseAdapter`; there are no single-item helpers — call sites use the
- * batch APIs (`createEntities`, `getMemoriesByIds`, etc.).
+ * batch APIs (`createEntities`, `getMemoriesByIds`, etc.). Nested
+ * `componentDataFilter` matching is bounded in `data-contains-filter.ts`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -19,6 +20,7 @@ import {
   type Component,
   type Content,
   canRequesterMutateDocument,
+  compareMemoryIds,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -61,9 +63,11 @@ import {
   rankMessageSearch,
   type Task,
   type UUID,
+  validateQueryEntitiesPagination,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
+import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
 
@@ -102,38 +106,6 @@ interface StoredRelationship {
   tags?: string[];
   metadata?: Metadata;
   createdAt?: string;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function dataContainsFilter(value: unknown, filter: Record<string, unknown> | undefined): boolean {
-  if (!filter) return true;
-  if (!isPlainObject(value)) return false;
-
-  for (const [key, expected] of Object.entries(filter)) {
-    const actual = value[key];
-    if (isPlainObject(expected)) {
-      if (!dataContainsFilter(actual, expected)) return false;
-      continue;
-    }
-    if (Array.isArray(expected)) {
-      if (!Array.isArray(actual)) return false;
-      for (const expectedItem of expected) {
-        const found = actual.some((actualItem) =>
-          isPlainObject(expectedItem)
-            ? dataContainsFilter(actualItem, expectedItem)
-            : actualItem === expectedItem
-        );
-        if (!found) return false;
-      }
-      continue;
-    }
-    if (actual !== expected) return false;
-  }
-
-  return true;
 }
 
 interface StoredCacheEntry<T = unknown> {
@@ -462,6 +434,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeAllComponents?: boolean;
     entityContext?: UUID;
   }): Promise<Entity[]> {
+    validateQueryEntitiesPagination(params);
+
     const hasComponentQuery =
       params.componentType !== undefined ||
       params.componentDataFilter !== undefined ||
@@ -772,6 +746,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -785,6 +760,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    if (params.cursor && params.offset !== undefined) {
+      throw new Error("getMemories cursor and offset are mutually exclusive");
+    }
     const textContains = params.textContains?.trim().toLowerCase();
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -817,8 +795,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
-      return direction === "asc" ? aId.localeCompare(bId) : bId.localeCompare(aId);
+      return direction === "asc" ? compareMemoryIds(aId, bId) : compareMemoryIds(bId, aId);
     });
+
+    if (params.cursor) {
+      const cursor = params.cursor;
+      memories = memories.filter((memory) => {
+        const createdAt = typeof memory.createdAt === "number" ? memory.createdAt : 0;
+        const id = typeof memory.id === "string" ? memory.id : "";
+        if (createdAt !== cursor.createdAt) {
+          return direction === "asc" ? createdAt > cursor.createdAt : createdAt < cursor.createdAt;
+        }
+        const idOrder = compareMemoryIds(id, cursor.id);
+        return direction === "asc" ? idOrder > 0 : idOrder < 0;
+      });
+    }
 
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? params.count;

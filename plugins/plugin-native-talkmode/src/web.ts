@@ -1,3 +1,7 @@
+/**
+ * Implements TalkMode in browsers through the Web Speech and speech-synthesis
+ * APIs while preserving the native plugin's session-state contract.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   SpeechRecognitionCtor,
@@ -64,58 +68,68 @@ export class TalkModeWeb extends WebPlugin {
       console.warn("[TalkMode] Speech synthesis not available on web");
     }
 
-    this.enabled = true;
-    this.setState("listening", "Listening");
+    try {
+      // Build and start the recognizer transactionally. Browser implementations
+      // may throw from construction, property setup, or start(); none of those
+      // paths may publish an enabled/listening session.
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
 
-    // Initialize speech recognition
-    this.recognition = new SpeechRecognitionAPI();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
+      recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+        const result = event.results[event.results.length - 1];
+        const first = result?.[0];
+        if (!first || typeof first.transcript !== "string") return;
+        const transcript = first.transcript;
+        const isFinal = result.isFinal;
+        if (!transcript.trim()) return;
 
-    this.recognition.onresult = (event: SpeechRecognitionResultEvent) => {
-      const result = event.results[event.results.length - 1];
-      const first = result?.[0];
-      if (!first || typeof first.transcript !== "string") return;
-      const transcript = first.transcript;
-      const isFinal = result.isFinal;
-      if (!transcript.trim()) return;
+        this.notifyListeners("transcript", { transcript, isFinal });
 
-      this.notifyListeners("transcript", { transcript, isFinal });
+        if (isFinal && transcript.trim()) {
+          // Note: Full talk mode flow would need Gateway plugin integration
+          // For web, we just emit the transcript
+        }
+      };
 
-      if (isFinal && transcript.trim()) {
-        // Note: Full talk mode flow would need Gateway plugin integration
-        // For web, we just emit the transcript
-      }
-    };
+      recognition.onerror = (event: { error: string; message?: string }) => {
+        this.notifyListeners("error", {
+          code: event.error,
+          message: event.message || event.error,
+          recoverable: event.error !== "not-allowed",
+        });
+      };
 
-    this.recognition.onerror = (event: { error: string; message?: string }) => {
-      this.notifyListeners("error", {
-        code: event.error,
-        message: event.message || event.error,
-        recoverable: event.error !== "not-allowed",
-      });
-    };
-
-    this.recognition.onend = () => {
-      if (this.enabled && this.state === "listening") {
-        // Restart recognition if still enabled
-        try {
-          this.recognition?.start();
-        } catch (err) {
-          // error-policy:J6 best-effort restart of a stopped recognizer; genuine failures are warned
-          const msg = err instanceof Error ? err.message : String(err);
-          if (!msg.includes("already started")) {
-            console.warn("[TalkMode] Failed to restart recognition:", msg);
+      recognition.onend = () => {
+        // Chrome ends a continuous session spontaneously, including mid-
+        // utterance while state is "speaking". Recognition is never paused
+        // during speak (it keeps capturing), so restart whenever the session
+        // is still enabled; gating on state === "listening" would swallow a
+        // mid-TTS onend and leave the recognizer permanently dead (#22369).
+        if (this.enabled) {
+          // Restart recognition if still enabled
+          try {
+            this.recognition?.start();
+          } catch (err) {
+            // error-policy:J6 best-effort restart of a stopped recognizer; genuine failures are warned
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg.includes("already started")) {
+              console.warn("[TalkMode] Failed to restart recognition:", msg);
+            }
           }
         }
-      }
-    };
+      };
 
-    try {
-      this.recognition.start();
+      this.recognition = recognition;
+      recognition.start();
+      this.enabled = true;
+      this.setState("listening", "Listening");
       return { started: true };
     } catch (error) {
-      // error-policy:J1 boundary translates a recognizer start failure into a structured { started:false } result
+      // error-policy:J1 boundary translates recognizer initialization failure into a structured { started:false } result
+      this.enabled = false;
+      this.recognition = null;
+      this.setState("idle", "Off");
       const message =
         error instanceof Error ? error.message : "Failed to start";
       return { started: false, error: message };

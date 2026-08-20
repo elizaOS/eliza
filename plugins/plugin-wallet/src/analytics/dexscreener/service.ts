@@ -100,7 +100,10 @@ export class DexScreenerService extends Service {
     if (params && Object.keys(params).length > 0) {
       url += `?${new URLSearchParams(params).toString()}`;
     }
-    const response = await fetch(url, { headers: this.defaultHeaders });
+    const response = await fetch(url, {
+      headers: this.defaultHeaders,
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
       throw Object.assign(

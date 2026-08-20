@@ -403,6 +403,7 @@ export async function makeApiRequest<T>(
   try {
     const response = await fetch(url, {
       method,
+      signal: AbortSignal.timeout(10_000),
       headers: {
         "X-API-KEY": apiKey,
         "x-chain": chain,

@@ -1,5 +1,7 @@
 /** Routes authenticated connector traffic to cloud identities and agent servers. */
+
 import { readFileSync } from "node:fs";
+import { patchK8sDeploymentScale } from "@elizaos/cloud-services-common/k8s-deployment-wake";
 import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
@@ -308,42 +310,68 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
-async function wakeServer(
+export interface WakeServerDependencies {
+  getToken?: () => string | null;
+  getCaCert?: () => string | null;
+  fetchFn?: typeof fetch;
+  createTimeoutSignal?: (timeoutMs: number) => AbortSignal;
+  logError?: (message: string, context: Record<string, unknown>) => void;
+}
+
+export async function wakeServer(
   serverName: string,
   serverUrl: string,
+  dependencies: WakeServerDependencies = {},
 ): Promise<void> {
-  const token = getK8sToken();
+  const logError = dependencies.logError ?? logger.error.bind(logger);
+  const token = (dependencies.getToken ?? getK8sToken)();
   if (!token) return;
 
   const namespace = parseNamespaceFromUrl(serverUrl);
   if (!namespace) return;
 
-  const apiUrl = `https://kubernetes.default.svc/apis/apps/v1/namespaces/${namespace}/deployments/${serverName}/scale`;
-
   try {
-    const res = await fetch(apiUrl, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/strategic-merge-patch+json",
-      },
-      body: JSON.stringify({ spec: { replicas: 1 } }),
-      tls: { ca: getK8sCaCert() ?? undefined },
-    } as RequestInit);
+    const res = await patchK8sDeploymentScale({
+      serverName,
+      namespace,
+      token,
+      caCert: (dependencies.getCaCert ?? getK8sCaCert)(),
+      fetchFn: dependencies.fetchFn,
+      createTimeoutSignal: dependencies.createTimeoutSignal,
+    });
     if (!res.ok) {
       const text = await res.text();
-      logger.error("wakeServer failed", {
+      logError("wakeServer failed", {
         serverName,
         status: res.status,
         body: text,
       });
     }
   } catch (err) {
-    logger.error("wakeServer error", {
+    // error-policy:J1 Detached wake failures terminate at this logged boundary.
+    logError("wakeServer error", {
       serverName,
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+export function observeWakeServer(
+  promise: Promise<void>,
+  serverName: string,
+  logError: (
+    message: string,
+    context: Record<string, unknown>,
+  ) => void = logger.error.bind(logger),
+): void {
+  // error-policy:J5 wakeServer observes expected failures internally; this
+  // terminal observer records only an unexpected residual rejection.
+  void promise.catch((err) => {
+    logError("wakeServer unhandled error", {
+      serverName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 }
 
 /**
@@ -652,10 +680,7 @@ async function forwardWithRetry(
     if (targets.length === 0) {
       if (!woken) {
         woken = true;
-        // error-policy:J5 fire-and-forget wake; wakeServer catches and logs
-        // every real failure internally (server-router.ts:191-214), so this
-        // only suppresses a residual pre-guard rejection.
-        wakeServer(serverName, serverUrl).catch(() => {});
+        observeWakeServer(wakeServer(serverName, serverUrl), serverName);
       }
       lastError = new Error("No pods available (scaled to zero)");
       continue;
@@ -716,10 +741,7 @@ async function forwardWithRetry(
     lastError = result.error;
     if (!woken && result.isConnectionError) {
       woken = true;
-      // error-policy:J5 fire-and-forget wake; wakeServer catches and logs
-      // every real failure internally (server-router.ts:191-214), so this
-      // only suppresses a residual pre-guard rejection.
-      wakeServer(serverName, serverUrl).catch(() => {});
+      observeWakeServer(wakeServer(serverName, serverUrl), serverName);
     }
   }
 

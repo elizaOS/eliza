@@ -20,6 +20,82 @@ describe("fetchRemoteMedia", () => {
 		await expect(request).rejects.toMatchObject({ code: "max_bytes" });
 	});
 
+	it("cancels a declared-oversize body before clearing the request deadline", async () => {
+		let cancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				controller.enqueue(new Uint8Array([1]));
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/declared-bomb.png",
+				maxBytes: 1,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () =>
+					new Response(body, {
+						headers: { "content-length": "2" },
+					}),
+			}),
+		).rejects.toMatchObject({ code: "max_bytes" });
+		expect(cancelled).toBe(true);
+	});
+
+	it("bounds and cancels diagnostic bodies on HTTP errors", async () => {
+		let cancelled = false;
+		let pulls = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls += 1;
+				controller.enqueue(new Uint8Array(128));
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/error",
+				maxBytes: 1,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () => new Response(body, { status: 500 }),
+			}),
+		).rejects.toMatchObject({ code: "http_error" });
+		expect(cancelled).toBe(true);
+		expect(pulls).toBeLessThanOrEqual(3);
+	});
+
+	it("rejects response metadata before consuming the body", async () => {
+		let cancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/avatar.png",
+				requiredContentTypePrefix: "image/",
+				rejectContentEncoding: true,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () =>
+					new Response(body, {
+						headers: {
+							"content-encoding": "gzip",
+							"content-type": "image/png",
+						},
+					}),
+			}),
+		).rejects.toMatchObject({ code: "invalid_response" });
+		expect(cancelled).toBe(true);
+	});
+
 	it("applies timeout signals to guarded fetches", async () => {
 		let sawAbortSignal = false;
 		const result = await fetchRemoteMedia({

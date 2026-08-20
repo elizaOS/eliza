@@ -1,4 +1,6 @@
 // Handles v1 cloud API v1 cron agent backups route traffic with route-local auth expectations.
+
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -30,15 +32,37 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   if (authError) return authError;
 
   const url = new URL(c.req.url);
-  const intervalMs = Number(url.searchParams.get("intervalMs"));
-  const max = Number(url.searchParams.get("max"));
-  const deletionMinAgeMs = Number(url.searchParams.get("deletionMinAgeMs"));
-  const deletionMax = Number(url.searchParams.get("deletionMax"));
+  const intervalMs = parseCanonicalInteger(url.searchParams.get("intervalMs"), {
+    min: 1,
+  });
+  const max = parseCanonicalInteger(url.searchParams.get("max"), { min: 1 });
+  const deletionMinAgeMs = parseCanonicalInteger(
+    url.searchParams.get("deletionMinAgeMs"),
+    { min: 1 },
+  );
+  const deletionMax = parseCanonicalInteger(
+    url.searchParams.get("deletionMax"),
+    { min: 1 },
+  );
+  if (
+    intervalMs === "invalid" ||
+    max === "invalid" ||
+    deletionMinAgeMs === "invalid" ||
+    deletionMax === "invalid"
+  ) {
+    return c.json(
+      {
+        success: false,
+        error:
+          "intervalMs, max, deletionMinAgeMs, and deletionMax must be canonical positive integers",
+      },
+      400,
+    );
+  }
 
   const result = await provisioningJobService.enqueueScheduledBackups({
-    minIntervalMs:
-      Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : undefined,
-    maxAgents: Number.isFinite(max) && max > 0 ? max : undefined,
+    minIntervalMs: intervalMs,
+    maxAgents: max,
   });
 
   // Recover stuck `deletion_failed` sandboxes on the same tick. Conservative,
@@ -50,14 +74,9 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   > | null = null;
   try {
     deletionRecovery = await provisioningJobService.reEnqueueFailedDeletions({
-      minAgeMs:
-        Number.isFinite(deletionMinAgeMs) && deletionMinAgeMs > 0
-          ? deletionMinAgeMs
-          : undefined,
+      minAgeMs: deletionMinAgeMs,
       maxAgents:
-        Number.isFinite(deletionMax) && deletionMax > 0
-          ? Math.min(deletionMax, 50)
-          : undefined,
+        typeof deletionMax === "number" ? Math.min(deletionMax, 50) : undefined,
     });
   } catch (error) {
     logger.error("[Agent Backups] deletion-recovery sweep failed", {

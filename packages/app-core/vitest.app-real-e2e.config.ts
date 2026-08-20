@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 import appCoreConfig from "./vitest.config";
 
 // Real developer environment (real $HOME, network, disk) for the through-the-UI
-// real e2e suite — same rationale as vitest.e2e.config.ts.
+// real e2e suite.
 process.env.LIVE = "1";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -18,9 +18,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * (`describeIf`/CAN_RUN) unless `ELIZA_LIVE_TEST=1` + a provider is present.
  *
  * The default `vitest.config.ts` explicitly EXCLUDES these files and only scans
- * `src/`, and `vitest.e2e.config.ts` only includes `src/**`, so before this
- * config nothing ran them — they were dark. Invoke via the `test:app-real-e2e`
- * script; wired into the nightly real lane.
+ * `src/`, so before this config existed nothing ran them — they were dark.
+ * Invoke via the `test:app-real-e2e` script. The root `test:e2e:heavy` script
+ * runs this config narrowed to the qa-checklist and memory-relationships files
+ * for the release gate (`.github/workflows/release-electrobun.yml`); the full
+ * suite here has no other scheduled CI caller yet.
  */
 export default defineConfig({
   ...appCoreConfig,

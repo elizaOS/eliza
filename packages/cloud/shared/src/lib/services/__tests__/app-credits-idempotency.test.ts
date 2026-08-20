@@ -30,6 +30,10 @@ import { and, eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { appEarningsRepository } from "../../../db/repositories/app-earnings";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
+import {
+  appReservationSettlementQuarantines,
+  appReservationSettlements,
+} from "../../../db/schemas/app-reservation-settlements";
 import { appUsageProjections } from "../../../db/schemas/app-usage-projections";
 import {
   appDeploymentStatusEnum,
@@ -278,6 +282,8 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       creditTransactions,
+      appReservationSettlements,
+      appReservationSettlementQuarantines,
       appUsageProjections,
       appDeploymentStatusEnum,
       appReviewStatusEnum,
@@ -674,8 +680,8 @@ describe("creator movement retry healing", () => {
       appEarningsRepository.applyCreatorMovement.bind(appEarningsRepository);
     let loseAcknowledgement = true;
     const projectionSpy = spyOn(appEarningsRepository, "applyCreatorMovement").mockImplementation(
-      async (params) => {
-        const result = await originalProjection(params);
+      async (params, transaction) => {
+        const result = await originalProjection(params, transaction);
         if (loseAcknowledgement) {
           loseAcknowledgement = false;
           throw new Error("simulated reservation projection acknowledgement loss");
@@ -843,8 +849,8 @@ describe("creator movement retry healing", () => {
       appEarningsRepository.applyCreatorMovement.bind(appEarningsRepository);
     let loseAcknowledgement = true;
     const projectionSpy = spyOn(appEarningsRepository, "applyCreatorMovement").mockImplementation(
-      async (params) => {
-        const result = await originalProjection(params);
+      async (params, transaction) => {
+        const result = await originalProjection(params, transaction);
         if (loseAcknowledgement) {
           loseAcknowledgement = false;
           throw new Error("simulated projection commit acknowledgement loss");

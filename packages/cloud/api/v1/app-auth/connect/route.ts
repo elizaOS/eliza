@@ -4,6 +4,13 @@
  * Record a user-app connection during authorization. Accepts either a Steward
  * JWT or API key via the Authorization header.
  *
+ * Cookie-authenticated callers must additionally pass the cookie-mutation
+ * guard (first-party Origin + non-simple request marker) so a cross-site
+ * simple request cannot ride an ambient session cookie into a connection —
+ * the same policy the global middleware applies; repeated here so the route
+ * does not depend on middleware ordering for its CSRF posture. Bearer/API-key
+ * callers are unaffected.
+ *
  * CORS is handled globally in src/index.ts — the OPTIONS handler and per-route
  * CORS_HEADERS from the Next version are intentionally dropped.
  */
@@ -17,10 +24,12 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
+import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
 import { appsService } from "@/lib/services/apps";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,9 +42,27 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
+    const guard = checkCookieMutationGuard(
+      c.req,
+      c.env?.ENVIRONMENT,
+      c.env?.NODE_ENV === "production",
+    );
+    if (!guard.ok) {
+      logger.warn("[AppAuthConnect] rejected cookie-authenticated connect", {
+        code: guard.code,
+        detail: guard.reason,
+      });
+      return c.json({ error: "Forbidden", code: guard.code }, 403);
+    }
+
     const user = await requireUserOrApiKey(c);
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const parsed = ConnectSchema.safeParse(body);
 
     if (!parsed.success) {

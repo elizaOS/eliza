@@ -113,7 +113,7 @@ describe("eliza preset failure templates", () => {
       // "Genuinely useful, not cute": every reply must carry a remedy, not
       // just an announcement that something failed.
       expect(text().toLowerCase()).toMatch(
-        /\b(?:try|send|check|add|raise|set|sign in|wait)\b/,
+        /\b(?:try|retry|send|check|fix|add|raise|set|sign in|wait)\b/,
       );
     });
   });
@@ -132,6 +132,19 @@ describe("eliza preset failure templates", () => {
       /throttl|rate|few seconds/,
     );
     expect(templates.rateLimitedReply?.toLowerCase()).not.toMatch(/credits/);
+  });
+
+  it("distinguishes an authorization failure from a temporary rate limit", () => {
+    const templates = elizaDefinition?.templates ?? {};
+    const authFailure = templates.authFailedReply?.toLowerCase() ?? "";
+    const rateLimit = templates.rateLimitedReply?.toLowerCase() ?? "";
+
+    expect(authFailure).toMatch(/account isn't authorized/);
+    expect(authFailure).toMatch(/account owner needs to fix/);
+    expect(authFailure).toMatch(/before you retry/);
+    expect(authFailure).not.toMatch(/right now|in a moment|wait|few seconds/);
+    expect(rateLimit).toMatch(/few seconds/);
+    expect(rateLimit).not.toMatch(/authoriz|account owner/);
   });
 
   it("keeps the no-provider reply actionable with real env var names", () => {

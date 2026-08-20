@@ -6,6 +6,12 @@
 export const AUDIT_ACTIONS = [
   // auth
   "auth.login",
+  // Emitted by the steward-session + logout routes since their inception but
+  // never registered here, so the dispatcher rejected them and the failed-login
+  // / logout trail only existed as an error log. Registered so the auth audit
+  // trail actually records them.
+  "auth.login.failed",
+  "auth.logout",
   "auth.session.revoke",
 
   // OpenID Connect provider (Eliza Cloud issuing identity to relying parties)

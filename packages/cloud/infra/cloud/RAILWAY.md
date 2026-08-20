@@ -37,6 +37,100 @@ The `operator` service (Pepr Kubernetes operator) and the kind cluster under
 [`local/`](./local/) are **local development only** — nothing in production
 runs on Kubernetes.
 
+### Database identity activation boundary
+
+The migration runner evaluates a read-only PostgreSQL identity gate on the
+exact session that performs migrations, after acquiring its database-wide
+advisory lock and before its first schema DDL. This session binding prevents a
+separate preflight connection from approving one resolved database while a
+later connection mutates another. The gate hashes the physical PostgreSQL
+system identifier and the environment/cluster/role/database tuple; raw
+connection strings, hosts, roles, and database names are never written to
+logs. Protected environment variables control activation:
+
+- `DATABASE_IDENTITY_GATE_MODE=off` is the default, performs no query, and
+  does not parse any prepared expected receipts.
+- `report` emits nonsecret SHA-256 cluster and authority receipts without
+  blocking a release. Malformed prepared receipts are ignored as unreviewed,
+  and connection or query failures produce only a sanitized warning. Operators
+  use this mode only to prepare and review a cutover.
+- `enforce` requires both `DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256` and
+  `DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256` and fails before migrations on
+  any mismatch.
+
+The standalone `preflight-database-identity.ts` command remains a read-only
+receipt preparation tool; it is not the release enforcement boundary. Before
+activation, prove that the protected migration role can execute
+`pg_catalog.pg_control_system()` through `pg_monitor` membership or a narrower
+explicit function grant.
+
+Every protected workflow that invokes the remote migrator forwards this same
+environment-scoped gate configuration: the canonical Cloudflare release, the
+manual legacy migration, and the exact-SHA provisioning-worker predeploy. None
+uses the standalone receipt tool as mutation admission.
+
+This gate proves only the GitHub migration authority. Do not enable `enforce`
+until an operator has provisioned an independent staging Railway PostgreSQL
+service, role, volume, backup/PITR policy, and restore drill, and has separately
+proved that the staging Hyperdrive origin produces the same reviewed identity.
+The repository cannot infer Railway service/volume or backup state from a
+PostgreSQL connection, and `report` mode is not evidence that those protected
+resources exist.
+
+### PostgreSQL recovery and staging-isolation gate
+
+The `migrate-db` job in `cloud-cf-release.yml` owns a read-only Railway
+resilience preflight before schema mutation. It is inert by default:
+
+- `DATABASE_RESILIENCE_GATE_MODE=off` performs no Railway query.
+- `report` queries only project/service, immutable volume-instance, PITR,
+  schedule, and backup metadata; unmet checks are recorded without blocking
+  migrations.
+- `enforce` fails before migrations unless the selected Postgres 18 service has
+  exactly one ready data volume, PITR storage is wired, daily and weekly backup
+  schedules exist, and a scheduled backup is within
+  `DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS` (36 by default).
+- Staging enforcement also requires protected SHA-256 receipts for the
+  production Postgres service and immutable volume-instance ID and proves the
+  selected staging service and volume differ. Mutable volume labels are never
+  isolation evidence. A volume receipt is emitted only after that instance is
+  bound to the selected project, environment, service, and Postgres data mount.
+  The gate emits receipts and booleans only; it does
+  not print connection strings, Railway inventory, raw service IDs, or volume
+  names.
+
+The protected environment supplies `RAILWAY_PROJECT_ID`,
+`RAILWAY_ENVIRONMENT_ID`, `RAILWAY_POSTGRES_SERVICE_ID`, and `RAILWAY_TOKEN`.
+Staging additionally supplies `RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT`
+and `RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT`. Generate those receipts from
+a successful production `report` run; never copy a production credential into
+staging.
+
+Activation order is fail-closed:
+
+1. Enable PITR plus daily and weekly schedules on the existing production
+   service through a separately reviewed protected operator change. Capture a
+   successful scheduled backup and restore drill before enforcement.
+2. Run production in `report`, retain its nonsecret service/volume receipts,
+   then set production to `enforce` only after the restore evidence is reviewed.
+3. Provision a separate staging Postgres 18 service, role, and volume. Enable
+   and prove the same recovery policy before copying staging data.
+4. Record the production receipts in the protected staging variables, run
+   staging in `report`, and require every physical-isolation and recovery check
+   to pass before the bounded write quiesce and final sync.
+5. Set staging to `enforce` before changing either the protected migration
+   authority or Hyperdrive origin. Keep both authorities together throughout
+   cutover and rollback; the separate database-identity gate verifies their
+   logical/cluster authority before migrations.
+6. Do not remove the old staging database until the new target passes schema,
+   count/digest, authenticated API, Shared-agent, provisioning, backup restore,
+   and rollback proof. After post-cutover writes, reconcile forward before any
+   repoint instead of blindly switching back.
+
+This gate does not provision, enable PITR, restore, copy, repoint, or delete
+resources. Those mutations remain explicit protected operations with their own
+review and rollback evidence.
+
 Steward (the auth provider) runs **embedded in the Worker**: `bootstrap-app.ts`
 mounts the embedded handler at `/steward*`
 (`packages/cloud/api/src/steward/embedded.ts`); the `STEWARD_*` secrets in

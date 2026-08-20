@@ -16,6 +16,10 @@ import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  initializeBlockingCoreRuntimeForBoot,
+  preregisterCorePluginsInDependencyWaves,
+} from "./blocking-core-boot.ts";
 import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
@@ -74,10 +78,7 @@ import {
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
-import {
-  applyHostActionOwnership,
-  registerFallbackActionIfAbsent,
-} from "./runtime-action-ownership.ts";
+import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
@@ -538,14 +539,14 @@ type CoreStaticPluginRegistration = {
   load: () => Promise<unknown>;
 };
 
-// Blocking-phase loaders. These two plugins each need a bespoke loader (the
-// required SQL adapter with a workspace-source fallback; the local-inference
-// pre-init hook), so they are the only descriptor rows whose `load` is not the
-// generic optional loader. Their membership + required-ness is derived from
-// BLOCKING_CORE_PLUGINS (the single source of truth for the blocking set) rather
-// than re-listed here — buildBlockingStaticRegistrations() below asserts the two
-// stay in lockstep so a change to BLOCKING_CORE_PLUGINS can't silently orphan a
-// loader or register a plugin with no loader.
+// Blocking-phase loaders. These plugins each need an explicit literal loader:
+// SQL has a workspace-source fallback, local-inference installs its pre-init
+// model hooks, and scheduling must be bundled on mobile and register its runner
+// before app-readiness feature services start. Their membership + required-ness
+// is derived from BLOCKING_CORE_PLUGINS (the single source of truth for the
+// blocking set) rather than re-listed here — buildBlockingStaticRegistrations()
+// below asserts the sets stay in lockstep so a change to BLOCKING_CORE_PLUGINS
+// can't silently orphan a loader or register a plugin with no loader.
 const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   Record<string, { required: boolean; load: () => Promise<unknown> }>
 > = {
@@ -553,6 +554,10 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   "@elizaos/plugin-local-inference": {
     required: false,
     load: () => getPluginLocalEmbedding(),
+  },
+  "@elizaos/plugin-scheduling": {
+    required: true,
+    load: () => import("@elizaos/plugin-scheduling"),
   },
 };
 
@@ -3471,88 +3476,11 @@ async function registerSqlPluginWithRecovery(
   await initializeDatabaseAdapter(runtime, config);
 }
 
-const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
-]);
-
-async function preregisterCorePluginsInDependencyWaves(args: {
-  runtime: AgentRuntime;
-  resolvedPlugins: RuntimeResolvedPlugin[];
-  alreadyPreRegistered: Set<string>;
-  label?: string;
-  abortSignal?: AbortSignal;
-}): Promise<void> {
-  const pending = new Map<string, RuntimeResolvedPlugin>();
-  for (const name of CORE_PLUGINS) {
-    if (args.alreadyPreRegistered.has(name)) continue;
-    const resolved = args.resolvedPlugins.find((p) => p.name === name);
-    if (!resolved) {
-      logger.debug(
-        `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
-      );
-      continue;
-    }
-    pending.set(name, resolved);
-  }
-
-  const registered = new Set(args.alreadyPreRegistered);
-  const context = args.label ? `${args.label}: ` : "";
-
-  const registerOne = async (
-    name: string,
-    resolved: RuntimeResolvedPlugin,
-  ): Promise<void> => {
-    try {
-      args.abortSignal?.throwIfAborted();
-      const regStart = Date.now();
-      logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(
-        applyHostActionOwnership(args.runtime, resolved.plugin),
-      );
-      registered.add(name);
-      logger.debug(
-        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-      );
-    } catch (err) {
-      if (args.abortSignal?.aborted) throw err;
-      registered.add(name);
-      logger.warn(
-        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-      );
-    } finally {
-      pending.delete(name);
-    }
-  };
-
-  while (pending.size > 0) {
-    args.abortSignal?.throwIfAborted();
-    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
-    for (const [name, resolved] of pending) {
-      const declaredDependencies = resolved.plugin.dependencies ?? [];
-      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
-      const dependencies = [...declaredDependencies, ...bootDependencies];
-      const hasPendingDependency = dependencies.some(
-        (dependency) => pending.has(dependency) && !registered.has(dependency),
-      );
-      if (!hasPendingDependency) {
-        ready.push([name, resolved]);
-      }
-    }
-
-    const wave = ready.length > 0 ? ready : Array.from(pending);
-    await Promise.all(
-      wave.map(([name, resolved]) => registerOne(name, resolved)),
-    );
-    // Yield to the event loop between waves so the bound HTTP server can serve
-    // /api/health and other I/O between CPU-bound wave registrations, instead
-    // of starving it until every wave finishes. Mirrors the deferred
-    // static-import yield above; pure scheduling, every plugin still registers
-    // in the same wave order.
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
-}
+const REQUIRED_BLOCKING_CORE_PLUGINS = new Set(
+  Object.entries(BLOCKING_STATIC_PLUGIN_LOADERS)
+    .filter(([, loader]) => loader.required)
+    .map(([packageName]) => packageName),
+);
 
 export {
   buildCharacterFromConfig,
@@ -5408,6 +5336,18 @@ export async function startEliza(
   const startEmbeddingWarmup = async (
     abortSignal: AbortSignal,
   ): Promise<void> => {
+    const canonicalEmbeddings = runtime.getSetting(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+    );
+    if (
+      canonicalEmbeddings === false ||
+      String(canonicalEmbeddings).trim().toLowerCase() === "false"
+    ) {
+      logger.info(
+        "[eliza] Skipping local embedding warmup — canonical service routing omits embeddings.",
+      );
+      return;
+    }
     try {
       await warmEmbeddingModel(abortSignal);
       abortSignal.throwIfAborted();
@@ -5506,23 +5446,28 @@ export async function startEliza(
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
-    if (blockDeferredPluginImports) {
-      // In block-deferred mode the Discord/GitHub plugins register here (not in
-      // runDeferredBoot), so join the env-var lookups before this wave.
-      await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
-      await preregisterCorePluginsInDependencyWaves({
-        runtime,
-        resolvedPlugins,
-        alreadyPreRegistered: new Set<string>([
-          "@elizaos/plugin-sql",
-          "@elizaos/plugin-local-inference",
-        ]),
-        label: "blocking",
-      });
-      bootTimer.lap("register-core-plugin-waves");
-    }
-
-    await initializeCoreRuntime();
+    // Every core plugin selected by the blocking resolver must be registered
+    // before runtime.initialize(). Feature plugins selected by an app manifest
+    // are constructor plugins and may resolve a core service in their start
+    // hook. Keeping this wave behind blockDeferredPluginImports caused normal
+    // two-phase app boots to drop a readiness-promoted core dependency between
+    // phases: it was removed from the runtime constructor by PREREGISTER_PLUGINS
+    // but never registered here, while the deferred resolver correctly
+    // excluded it as already owned by the blocking phase.
+    await initializeBlockingCoreRuntimeForBoot({
+      blockDeferredPluginImports,
+      runtime,
+      resolvedPlugins,
+      requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
+      waitForBlockingEnvironment: async () => {
+        // In block-deferred mode the Discord/GitHub plugins register here (not
+        // in runDeferredBoot), so join the env-var lookups before this wave.
+        await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
+      },
+      initializeCoreRuntime,
+      ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+    });
+    bootTimer.lap("register-core-plugin-waves");
     bootTimer.lap("svc:runtime.initialize");
     await ensureConnectorCredentialStoreStarted();
     bootTimer.lap("svc:connector-credential-store-start");

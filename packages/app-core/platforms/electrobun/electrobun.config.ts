@@ -84,10 +84,6 @@ function linuxCefChromiumFlags(): Record<string, string | true> {
   });
 }
 
-const linuxCefEnabled = isTruthyEnv(
-  process.env.ELIZA_ELECTROBUN_ENABLE_LINUX_CEF,
-);
-
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   return (
     fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -667,13 +663,15 @@ export function createElectrobunConfig(): ElectrobunConfig {
               },
       },
       linux: {
-        // Linux CEF remains opt-in until its helper processes are stable
-        // enough for the default desktop shell.
-        bundleCEF: linuxCefEnabled,
+        // The system WebKitGTK renderer can execute the packaged app while
+        // failing to composite any pixels, leaving a solid white client area.
+        // Bundle Chromium so Linux uses the same renderer that paints the
+        // packaged first-run page correctly outside the native GTK webview.
+        bundleCEF: true,
         bundleWGPU: true,
-        defaultRenderer: "native",
+        defaultRenderer: "cef",
         icon: "assets/appIcon.png",
-        chromiumFlags: linuxCefEnabled ? linuxCefChromiumFlags() : {},
+        chromiumFlags: linuxCefChromiumFlags(),
       },
       win: {
         bundleCEF: true,

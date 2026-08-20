@@ -45,7 +45,10 @@ jobs:
           submodules: recursive
 
       - name: Fail-closed ARM64 device preflight
-        run: bash .github/scripts/device-e2e/arm64-local-preflight.sh
+        run: |
+          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs"
+          bash .github/scripts/device-e2e/arm64-local-preflight.sh 2>&1 \
+            | tee "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs/arm64-preflight.log"
 
       - name: Install pinned workspace
         run: bun install --frozen-lockfile
@@ -62,7 +65,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-arm64-local-runtime-bundle
+          name: android-arm64-local-runtime-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           path: device-e2e-artifacts/android-arm64-local/**
           if-no-files-found: error
           retention-days: 14

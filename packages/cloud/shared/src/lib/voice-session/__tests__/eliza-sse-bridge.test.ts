@@ -6,9 +6,18 @@
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
-import { streamElizaConversation, VOICE_TRACE_HEADER } from "../eliza-sse-bridge";
+import {
+  type ElizaServerTimingReceipt,
+  parseElizaServerTiming,
+  streamElizaConversation,
+  VOICE_TRACE_HEADER,
+} from "../eliza-sse-bridge";
 
-function sseResponse(lines: string[], status = 200): Response {
+function sseResponse(
+  lines: string[],
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -18,7 +27,7 @@ function sseResponse(lines: string[], status = 200): Response {
   });
   return new Response(body, {
     status,
-    headers: { "Content-Type": "text/event-stream" },
+    headers: { "Content-Type": "text/event-stream", ...headers },
   });
 }
 
@@ -49,6 +58,63 @@ describe("eliza sse bridge", () => {
     expect(deltas).toEqual(["Hello", " world"]);
     expect(result.completed).toBe(true);
     expect(result.aborted).toBe(false);
+  });
+
+  test("reports canonical route timing as soon as response headers arrive", async () => {
+    const observed: Array<{
+      status: number;
+      elapsedMs: number;
+      serverTiming: ElizaServerTimingReceipt | null;
+    }> = [];
+    const fetchImpl = (async () =>
+      sseResponse(["data: [DONE]\n\n"], 200, {
+        "Server-Timing": "turn_hydrate;dur=12.3, turn_admission;dur=4.5",
+      })) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-timing",
+        signal: new AbortController().signal,
+        fetchImpl,
+        onResponseHeaders: (headers) => observed.push(headers),
+      },
+      () => undefined,
+    );
+
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({ status: 200 });
+    expect(observed[0]?.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(observed[0]?.serverTiming).toEqual({
+      metrics: { turn_hydrate: 12.3, turn_admission: 4.5 },
+    });
+  });
+
+  test("bounds and allowlists Server-Timing without retaining descriptions", () => {
+    expect(
+      parseElizaServerTiming(
+        'turn_claim;dur=4.4;desc="tenant-secret", provider;desc="cerebras", injected;dur=1;desc="raw", turn_hydrate;dur=700001, turn_admission;dur=-2',
+      ),
+    ).toEqual({ metrics: { turn_claim: 4.4 }, provider: "cerebras" });
+    expect(parseElizaServerTiming(`turn_claim;dur=1,${"x".repeat(2_100)}`)).toBeNull();
+    expect(parseElizaServerTiming('provider;desc="attacker-controlled"')).toBeNull();
+  });
+
+  test("rejects non-canonical Server-Timing duration representations", () => {
+    for (const duration of ["0x10", "1e3", "+1", "01", ".5", "1.", "1.25"]) {
+      expect(parseElizaServerTiming(`turn_claim;dur=${duration}`)).toBeNull();
+    }
+    expect(parseElizaServerTiming("turn_claim;dur=0")).toEqual({
+      metrics: { turn_claim: 0 },
+    });
+    expect(parseElizaServerTiming("turn_claim;dur=600000.0")).toEqual({
+      metrics: { turn_claim: 600000 },
+    });
   });
 
   test("decodes local runtime token frames without replaying fullText", async () => {
@@ -516,10 +582,13 @@ describe("eliza sse bridge", () => {
     expect(deltas).toEqual([]);
   });
 
-  test("propagates the voice trace header", async () => {
-    let seenHeader: string | null = null;
+  test("propagates both voice and standard trace headers", async () => {
+    let seenVoiceHeader: string | null = null;
+    let seenStandardHeader: string | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {
-      seenHeader = new Headers(init.headers).get(VOICE_TRACE_HEADER);
+      const headers = new Headers(init.headers);
+      seenVoiceHeader = headers.get(VOICE_TRACE_HEADER);
+      seenStandardHeader = headers.get("X-Eliza-Trace-Id");
       return sseResponse(["data: [DONE]\n\n"]);
     }) as unknown as typeof fetch;
     await streamElizaConversation(
@@ -536,7 +605,29 @@ describe("eliza sse bridge", () => {
       },
       () => {},
     );
-    expect(seenHeader).toBe("trace-XYZ");
+    expect(seenVoiceHeader).toBe("trace-XYZ");
+    expect(seenStandardHeader).toBe("trace-XYZ");
+  });
+
+  test("does not let a timing observer failure break a healthy stream", async () => {
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-observer",
+        signal: new AbortController().signal,
+        fetchImpl: (async () => sseResponse(["data: [DONE]\n\n"])) as unknown as typeof fetch,
+        onResponseHeaders: async () => {
+          throw new Error("diagnostics unavailable");
+        },
+      },
+      () => undefined,
+    );
+    expect(result).toEqual({ completed: true, aborted: false });
   });
 
   test("uses the canonical persisted message route with minted agent + conversation identity", async () => {

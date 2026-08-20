@@ -8,9 +8,11 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import {
   hasCloudBindingsContext,
   runWithCloudBindingsAsync,
@@ -259,7 +261,19 @@ async function dispatchInternalElizaConversationFetch(
 ): Promise<Response> {
   const request = new Request(input, init);
   const url = new URL(request.url);
-  assertCanonicalVoiceStreamPath(url, claims);
+  const pathValidation = validateCanonicalVoiceStreamPath(url, claims);
+  if (!pathValidation.ok) {
+    if (pathValidation.kind === "malformed") {
+      return Response.json(
+        {
+          success: false,
+          error: "invalid conversation path: malformed URL encoding",
+        },
+        { status: 400 },
+      );
+    }
+    throw new TypeError(pathValidation.message);
+  }
   if (request.method !== "POST") {
     return Response.json(
       { success: false, error: "Method not allowed" },
@@ -319,6 +333,7 @@ async function dispatchInternalElizaConversationFetch(
   }
 
   return handleCanonicalScopedAgentStream({
+    traceId: resolveElizaTraceId(headers),
     abortSignal: request.signal,
     agent,
     agentId: claims.agentId,
@@ -332,6 +347,10 @@ async function dispatchInternalElizaConversationFetch(
       (body as { messageRole?: unknown }).messageRole === "system"
         ? "system"
         : undefined,
+    channel: {
+      type: ChannelType.VOICE_DM,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+    },
     body,
     origin: headers.get("origin"),
     namespace: runtime.namespace,
@@ -339,23 +358,53 @@ async function dispatchInternalElizaConversationFetch(
   });
 }
 
-function assertCanonicalVoiceStreamPath(
+function decodeStreamPathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 Internal route segments are untrusted input. A null
+    // result is translated into the explicit malformed-path response below.
+    return null;
+  }
+}
+
+type VoiceStreamPathValidation =
+  | { ok: true }
+  | {
+      ok: false;
+      kind: "unsupported" | "malformed" | "scope_mismatch";
+      message: string;
+    };
+
+function validateCanonicalVoiceStreamPath(
   url: URL,
   claims: InternalElizaConversationFetchClaims,
-): void {
+): VoiceStreamPathValidation {
   const match = url.pathname.match(
     /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/,
   );
   if (!match) {
-    throw new TypeError(
-      `unsupported internal Eliza stream path: ${url.pathname}`,
-    );
+    return {
+      ok: false,
+      kind: "unsupported",
+      message: `unsupported internal Eliza stream path: ${url.pathname}`,
+    };
   }
-  const agentId = decodeURIComponent(match[1]);
-  const conversationId = decodeURIComponent(match[2]);
+  const agentId = decodeStreamPathSegment(match[1]);
+  const conversationId = decodeStreamPathSegment(match[2]);
+  if (agentId === null || conversationId === null) {
+    return {
+      ok: false,
+      kind: "malformed",
+      message: "invalid internal Eliza stream path: malformed URL encoding",
+    };
+  }
   if (agentId !== claims.agentId || conversationId !== claims.conversationId) {
-    throw new TypeError(
-      "internal Eliza stream path does not match session scope",
-    );
+    return {
+      ok: false,
+      kind: "scope_mismatch",
+      message: "internal Eliza stream path does not match session scope",
+    };
   }
+  return { ok: true };
 }

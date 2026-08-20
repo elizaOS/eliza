@@ -195,6 +195,28 @@ describe("collectReferencedMedia", () => {
     expect(referenced.size).toBe(2);
   });
 
+  it("collects a media URL pasted into message text with no attachment", () => {
+    // Re-share path: the pre-auth capability URL renders inline, so users paste
+    // it into chat bodies. The export capture already treats text URLs as live;
+    // the GC must agree or it unlinks the file under the visible reference.
+    const memories = [
+      {
+        content: {
+          text: `here's that diagram again /api/media/${HASH_A}.png — neat`,
+        },
+      },
+      {
+        content: { text: "no media here, just /api/media/not-a-hash.png" },
+      },
+      { content: { text: 42 } },
+      { content: {} },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect([...referenced]).toEqual([`${HASH_A}.png`]);
+  });
+
   it("ignores non-media metadata.mediaUrl values", () => {
     const memories = [
       {

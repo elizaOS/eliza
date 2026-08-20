@@ -262,6 +262,24 @@ export async function openDesktopLauncherWindow(): Promise<{
   });
 }
 
+export type DesktopBottomBarSurfaceState =
+  | "CLOSED"
+  | "INPUT"
+  | "INPUT_MENU"
+  | "OPEN_UNDER_HALF"
+  | "OPEN_HALF_OR_OVER"
+  | "MAXIMIZED";
+
+export async function setDesktopBottomBarSurfaceState(
+  state: DesktopBottomBarSurfaceState,
+): Promise<void> {
+  await invokeDesktopBridgeRequest<undefined>({
+    rpcMethod: "desktopSetBottomBarSurfaceState",
+    ipcChannel: "desktop:setBottomBarSurfaceState",
+    params: { state },
+  });
+}
+
 export async function desktopShowItemInFolder(path: string): Promise<void> {
   await invokeDesktopBridgeRequest<undefined>({
     rpcMethod: "desktopShowItemInFolder",

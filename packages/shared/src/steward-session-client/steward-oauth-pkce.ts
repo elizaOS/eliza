@@ -96,8 +96,10 @@ export function storeStewardPkceVerifier(
 
 export function consumeStewardPkceVerifier(): string | null {
   if (typeof window === "undefined") return null;
-  const sessionVerifier = consumeStoredPkceVerifier(window.sessionStorage);
-  const localVerifier = consumeStoredPkceVerifier(window.localStorage);
+  const sessionVerifier = consumeStoredPkceVerifier(
+    () => window.sessionStorage,
+  );
+  const localVerifier = consumeStoredPkceVerifier(() => window.localStorage);
   return sessionVerifier ?? localVerifier;
 }
 
@@ -109,13 +111,14 @@ export function consumeStewardPkceVerifier(): string | null {
  */
 export function peekStewardOAuthState(): string | null {
   if (typeof window === "undefined") return null;
-  const sessionRecord = readStoredPkceRecord(window.sessionStorage);
-  const localRecord = readStoredPkceRecord(window.localStorage);
+  const sessionRecord = readStoredPkceRecord(() => window.sessionStorage);
+  const localRecord = readStoredPkceRecord(() => window.localStorage);
   return sessionRecord?.state ?? localRecord?.state ?? null;
 }
 
-function consumeStoredPkceVerifier(storage: Storage): string | null {
+function consumeStoredPkceVerifier(getStorage: () => Storage): string | null {
   try {
+    const storage = getStorage();
     const verifier = storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
     storage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
     return parseStoredPkceVerifier(verifier);
@@ -125,8 +128,11 @@ function consumeStoredPkceVerifier(storage: Storage): string | null {
   }
 }
 
-function readStoredPkceRecord(storage: Storage): StoredPkceVerifier | null {
+function readStoredPkceRecord(
+  getStorage: () => Storage,
+): StoredPkceVerifier | null {
   try {
+    const storage = getStorage();
     const value = storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
     if (!value) return null;
     try {

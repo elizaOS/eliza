@@ -22,20 +22,21 @@ a view only has to call `useAgentElement`. `@elizaos/ui` and `react` are
 externalised in the view bundle (see `packages/scripts/view-bundle-vite.config.ts`),
 so the hook resolves to the host singleton and shares the loader's React context.
 
-### Teardown-safe notifications (#20728)
+### Teardown-safe notifications (#20728, #20974)
 
 `AgentElementOverlay` (and the element reporter) subscribe to the registry via
-`useSyncExternalStore`, while descendant `useAgentElement` unmount cleanups
-mutate the same store (`elements.delete` → `bump()`). React runs a deleted
-subtree's passive cleanups **parent-first**, so the `AgentSurfaceProvider`'s
-`retainViewRegistry` disposer runs before those descendant disposers. When the
-last provider retainer is released the registry is **sealed**: `bump()` still
-advances `version` for late introspection reads but stops notifying subscribers,
-so a teardown mutation can never `forceStoreRerender` an overlay committed for
-deletion (which crashed Settings → Models & Providers with React #185). A fresh
-retainer `unseal`s the same instance, so Strict Mode effect replay and
-overlapping providers keep working. This is an ownership/ordering fix, not a
-timeout or swallowed error.
+`useSyncExternalStore`, while descendant `useAgentElement` mount, descriptor,
+and unmount effects mutate the same store. React cannot safely receive a
+sibling-store update while it is committing those passive effects, and
+deleted-tree cleanup order varies across renderer paths, so lifecycle
+notifications wait one microtask and coalesce. If provider teardown runs during
+that flush, sealing the registry invalidates the queued delivery; if the view
+remains mounted, the subscriber receives the new snapshot normally. Explicit
+agent actions remain synchronous. Later teardown mutations remain silent. A
+fresh retainer `unseal`s the same instance, so Strict Mode effect replay and
+overlapping providers keep working. This prevents
+`forceStoreRerender` from reaching an overlay committed for deletion (React
+#185) without a timeout or swallowed error.
 
 ## Capabilities (handled generically for any view)
 

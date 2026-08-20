@@ -7,7 +7,8 @@
  * wildcard subdomain router. Routing requires a persisted headscale_ip by default;
  * legacy bridge-host fallback is opt-in because public host + dynamic port
  * metadata is not a reliable ingress target after the Hetzner/control-plane
- * split.
+ * split. Browser CORS on this hop is first-party + credentials only — an
+ * untrusted Origin is not reflected.
  *
  * Usage:
  *   npx tsx packages/cloud/scripts/admin/daemons/agent-router.ts
@@ -18,11 +19,12 @@
  *   DATABASE_URL            Postgres connection (loaded from .env.local).
  */
 
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { isFirstPartyOrigin } from "../../../shared/src/lib/cors/first-party-origin.ts";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
@@ -34,13 +36,33 @@ interface RouterDeps {
   findAgentSandboxRoutingById: FindAgentSandboxRoutingById;
 }
 
-interface AgentRouterConfig {
+export interface AgentRouterConfig {
   port: number;
   bindHost: string;
 }
 
+export type RouterReadinessStatus = "warming" | "ready" | "failed";
+
+export interface RouterReadinessState {
+  status: RouterReadinessStatus;
+}
+
+export interface StartAgentRouterOptions {
+  config?: AgentRouterConfig;
+  warmRoutingDependencies?: () => Promise<void>;
+  warmupTimeoutMs?: number;
+  onWarmupError?: (error: Error) => void;
+}
+
+export interface StartedAgentRouter {
+  server: Server;
+  readiness: RouterReadinessState;
+  warmupSettled: Promise<void>;
+}
+
 const DEFAULT_PORT = 3458;
 const DEFAULT_BIND_HOST = "127.0.0.1";
+const DEFAULT_WARMUP_TIMEOUT_MS = 15_000;
 const DEFAULT_AGENT_BASE_DOMAIN = "cloud.eliza.app";
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -321,23 +343,41 @@ export function buildProxyHeaders(
 }
 
 /**
+ * True when `origin` may be reflected with `Allow-Credentials: true`.
+ * The shared Cloud policy is authoritative so new production and legacy
+ * origins cannot drift between the edge Worker and its router origin.
+ */
+export function isCredentialedAgentRouterOrigin(origin: string): boolean {
+  return isFirstPartyOrigin(origin);
+}
+
+/**
  * CORS headers for the browser-facing agent-proxy path. nginx forwards the
  * request here verbatim and injects nothing, so an error we return with no
  * `access-control-allow-origin` reaches the browser as an opaque
  * "No 'Access-Control-Allow-Origin'" failure that hides the real status (#15347).
- * The agent's own responses already carry CORS (its `resolveCorsOrigin` reflects
- * any origin when provisioned), so we mirror that by reflecting the caller's
- * Origin — `*` only for a header-less (non-browser) caller, where credentials
- * are moot.
+ *
+ * Credentialed reflection is first-party only. A missing Origin (non-browser)
+ * still gets `*` without credentials. An untrusted Origin gets Vary and the
+ * method/header allow-list but no ACAO — fail closed, no cookie ride.
  */
-function corsHeaders(origin: string | undefined): Record<string, string> {
-  return {
-    "access-control-allow-origin": origin || "*",
+export function corsHeaders(
+  origin: string | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = {
     vary: "origin",
-    "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-api-key",
   };
+  if (!origin) {
+    headers["access-control-allow-origin"] = "*";
+    return headers;
+  }
+  if (isCredentialedAgentRouterOrigin(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["access-control-allow-credentials"] = "true";
+  }
+  return headers;
 }
 
 /**
@@ -443,9 +483,25 @@ async function proxyAgentRequest(
 export async function handleRequest(
   url: URL,
   req?: IncomingMessage,
+  readiness: RouterReadinessState = { status: "ready" },
 ): Promise<Response> {
   if (url.pathname === "/healthz") {
     return Response.json({ ok: true }, { status: 200 });
+  }
+  if (url.pathname === "/readyz") {
+    if (readiness.status === "ready") {
+      return Response.json({ ok: true }, { status: 200 });
+    }
+    return Response.json(
+      {
+        ok: false,
+        code:
+          readiness.status === "warming"
+            ? "router_warming"
+            : "router_dependencies_unavailable",
+      },
+      { status: 503, headers: { "retry-after": "5" } },
+    );
   }
   // /headscale-ip is the path nginx Lua already calls; /routing is the alias
   // for new callers.
@@ -464,6 +520,13 @@ export async function handleRequest(
           headers: corsHeaders(headerValue(req.headers.origin)),
         });
       }
+      if (readiness.status !== "ready") {
+        return buildRouterUnavailableResponse(
+          readiness,
+          headerValue(req.headers.origin),
+          true,
+        );
+      }
       return proxyAgentRequest(agentId, url, req);
     }
     return Response.json({ error: "not found" }, { status: 404 });
@@ -471,6 +534,9 @@ export async function handleRequest(
   const agentId = match[1];
   if (!AGENT_ID_RE.test(agentId)) {
     return Response.json({ error: "invalid agent id" }, { status: 400 });
+  }
+  if (readiness.status !== "ready") {
+    return buildRouterUnavailableResponse(readiness);
   }
   const routing = await resolveAgentRouting(agentId);
   if (!routing) {
@@ -480,6 +546,29 @@ export async function handleRequest(
     );
   }
   return Response.json(routing, { status: 200 });
+}
+
+function buildRouterUnavailableResponse(
+  readiness: RouterReadinessState,
+  origin?: string,
+  includeCors = false,
+): Response {
+  return Response.json(
+    {
+      error: "agent router is not ready",
+      code:
+        readiness.status === "warming"
+          ? "router_warming"
+          : "router_dependencies_unavailable",
+    },
+    {
+      status: 503,
+      headers: {
+        ...(includeCors ? corsHeaders(origin) : {}),
+        "retry-after": "5",
+      },
+    },
+  );
 }
 
 export async function sendResponse(
@@ -502,33 +591,63 @@ export async function sendResponse(
   await pipeline(Readable.from(response.body), res);
 }
 
-let server: import("node:http").Server | null = null;
+let server: Server | null = null;
 let shuttingDown = false;
 
-async function main(): Promise<void> {
-  loadLocalEnv(import.meta.url);
-  const config = readRouterConfig();
-  await resolveAgentRouting("00000000-0000-4000-8000-000000000000");
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+async function reportRouterError(label: string, error: Error): Promise<void> {
+  try {
+    const { logger } = await loadDeps();
+    logger.error(`[agent-router] ${label}`, { error: error.message });
+  } catch {
+    // error-policy:J7 Diagnostics must retain a dependency-free fallback.
+    process.stderr.write(`[agent-router] ${label}: ${error.message}\n`);
+  }
+}
+
+function withTimeout(task: Promise<void>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(`routing dependency warmup timed out after ${timeoutMs}ms`),
+      );
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([task, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+export async function startAgentRouter(
+  options: StartAgentRouterOptions = {},
+): Promise<StartedAgentRouter> {
+  const config = options.config ?? readRouterConfig();
+  const readiness: RouterReadinessState = { status: "warming" };
+  const warmRoutingDependencies =
+    options.warmRoutingDependencies ??
+    (async () => {
+      await resolveAgentRouting("00000000-0000-4000-8000-000000000000");
+    });
+  const warmupTimeoutMs = options.warmupTimeoutMs ?? DEFAULT_WARMUP_TIMEOUT_MS;
 
   const { createServer } = await import("node:http");
-  server = createServer((req, res) => {
+  const startedServer = createServer((req, res) => {
     const url = new URL(
       req.url ?? "/",
       `http://${req.headers.host || "localhost"}`,
     );
-    handleRequest(url, req)
+    handleRequest(url, req, readiness)
       .then((response) => sendResponse(res, response))
       .catch((err) => {
-        const error = err instanceof Error ? err.message : String(err);
-        void loadDeps()
-          .then(({ logger }) => {
-            logger.error("[agent-router] handler error", { error });
-          })
-          .catch(() => {
-            console.error(`[agent-router] handler error: ${error}`);
-          });
+        const error = toError(err);
+        void reportRouterError("handler error", error);
         if (res.headersSent) {
-          res.destroy(err instanceof Error ? err : new Error(error));
+          res.destroy(error);
           return;
         }
         res.statusCode = 500;
@@ -537,24 +656,57 @@ async function main(): Promise<void> {
       });
   });
 
-  server.listen(config.port, config.bindHost, () => {
-    console.log("[agent-router] starting", {
-      port: config.port,
-      bindHost: config.bindHost,
+  await new Promise<void>((resolve, reject) => {
+    startedServer.once("error", reject);
+    startedServer.listen(config.port, config.bindHost, () => {
+      startedServer.off("error", reject);
+      resolve();
     });
   });
 
-  server.on("error", (err) => {
-    const error = err instanceof Error ? err.message : String(err);
-    void loadDeps()
-      .then(({ logger }) => {
-        logger.error("[agent-router] server error", { error });
-      })
-      .catch(() => {
-        console.error(`[agent-router] server error: ${error}`);
-      });
+  console.log("[agent-router] starting", {
+    port: config.port,
+    bindHost: config.bindHost,
+  });
+
+  startedServer.on("error", (error) => {
+    void reportRouterError("server error", toError(error));
     process.exitCode = 1;
   });
+
+  const warmupSettled = withTimeout(
+    Promise.resolve().then(warmRoutingDependencies),
+    warmupTimeoutMs,
+  ).then(
+    () => {
+      readiness.status = "ready";
+    },
+    async (cause) => {
+      readiness.status = "failed";
+      const error = toError(cause);
+      if (options.onWarmupError) {
+        try {
+          options.onWarmupError(error);
+        } catch (reportingError) {
+          // error-policy:J7 A diagnostic callback must not reject warmup observation.
+          await reportRouterError(
+            "warmup error reporter failed",
+            toError(reportingError),
+          );
+        }
+        return;
+      }
+      await reportRouterError("dependency warmup failed", error);
+    },
+  );
+
+  return { server: startedServer, readiness, warmupSettled };
+}
+
+async function main(): Promise<void> {
+  loadLocalEnv(import.meta.url);
+  const started = await startAgentRouter();
+  server = started.server;
 }
 
 function shutdown(signal: NodeJS.Signals): void {
@@ -565,12 +717,7 @@ function shutdown(signal: NodeJS.Signals): void {
   }
   server.close((err) => {
     if (err) {
-      void loadDeps().then(({ logger }) => {
-        logger.error("[agent-router] close error", {
-          signal,
-          error: err.message,
-        });
-      });
+      void reportRouterError(`${signal} close error`, err);
       process.exitCode = 1;
     }
     process.exit(process.exitCode ?? 0);
@@ -581,11 +728,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 process.on("unhandledRejection", (reason) => {
-  void loadDeps().then(({ logger }) => {
-    logger.error("[agent-router] unhandled rejection", {
-      error: reason instanceof Error ? reason.message : String(reason),
-    });
-  });
+  void reportRouterError("unhandled rejection", toError(reason));
 });
 
 function isMainModule(): boolean {

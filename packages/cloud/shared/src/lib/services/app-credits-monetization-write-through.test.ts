@@ -56,6 +56,12 @@ mock.module("../../db/repositories/users", () => ({
 
 mock.module("./credits", () => ({
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app-chat-settlement",
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: {},
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
   MIN_RESERVATION: 0.0001,

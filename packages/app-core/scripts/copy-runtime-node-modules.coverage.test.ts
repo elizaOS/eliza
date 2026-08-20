@@ -40,6 +40,7 @@ import {
   parseArgs,
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
+  recordMissingRuntimeDependency,
   recursiveRemoveErrorDetail,
   selectCopyTargetNodeModules,
   selectResolvedCandidate,
@@ -51,8 +52,56 @@ import {
   visitFiles,
   workspacePackageNeedsRuntimeBuild,
 } from "./copy-runtime-node-modules";
+import {
+  isRuntimePluginPackage,
+  shouldBundleDiscoveredPackage,
+} from "./runtime-package-manifest";
 
 let tmpDir: string;
+
+describe("recordMissingRuntimeDependency", () => {
+  it("routes missing hard and optional queue entries to distinct result sets", () => {
+    const required = new Set<string>();
+    const optional = new Set<string>();
+
+    recordMissingRuntimeDependency(
+      { name: "hard-dependency", required: true },
+      required,
+      optional,
+    );
+    recordMissingRuntimeDependency(
+      { name: "optional-peer", required: false },
+      required,
+      optional,
+    );
+
+    expect([...required]).toEqual(["hard-dependency"]);
+    expect([...optional]).toEqual(["optional-peer"]);
+  });
+
+  it("keeps required classification regardless of queue traversal order", () => {
+    for (const requiredFirst of [true, false]) {
+      const required = new Set<string>();
+      const optional = new Set<string>();
+      const entries = requiredFirst
+        ? [
+            { name: "shared-dependency", required: true },
+            { name: "shared-dependency", required: false },
+          ]
+        : [
+            { name: "shared-dependency", required: false },
+            { name: "shared-dependency", required: true },
+          ];
+
+      for (const entry of entries) {
+        recordMissingRuntimeDependency(entry, required, optional);
+      }
+
+      expect([...required]).toEqual(["shared-dependency"]);
+      expect([...optional]).toEqual([]);
+    }
+  });
+});
 
 function writeManifest(
   name: string,
@@ -252,6 +301,33 @@ describe("shouldKeepPackageRelativePath", () => {
     ).toBe(false);
   });
 
+  it("drops foreign hermes compiler payloads", () => {
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/linux64-bin/hermesc",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/osx-bin/hermesc",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(false);
+    expect(
+      shouldKeepPackageRelativePath(
+        "hermesc/win64-bin/icudt64.dll",
+        "linux",
+        "x64",
+        "hermes-compiler",
+      ),
+    ).toBe(false);
+  });
+
   it("drops dist-mobile output for @elizaos/agent", () => {
     expect(
       shouldKeepPackageRelativePath(
@@ -285,12 +361,15 @@ describe("shouldKeepPackageRelativePath", () => {
 describe("shouldCopyPackageEntry", () => {
   it("drops nested node_modules and pruned dir names", () => {
     const root = mkdtempSync(path.join(tmpDir, "copy-entry-"));
+    const imageSnapshots = path.join(root, "src", "__image_snapshots__");
+    mkdirSync(imageSnapshots, { recursive: true });
     expect(
       shouldCopyPackageEntry(path.join(root, "node_modules"), "pkg", root),
     ).toBe(false);
     expect(shouldCopyPackageEntry(path.join(root, ".git"), "pkg", root)).toBe(
       false,
     );
+    expect(shouldCopyPackageEntry(imageSnapshots, "pkg", root)).toBe(false);
   });
 
   it("drops pruned file extensions and TypeScript declaration files", () => {
@@ -480,6 +559,24 @@ describe("getRuntimeDependencyEntries", () => {
       dependencies: { zeta: "1.0.0", alpha: "2.0.0" },
     });
     expect(getRuntimeDependencies(manifestPath)).toEqual(["alpha", "zeta"]);
+  });
+});
+
+describe("runtime plugin package classification", () => {
+  it("does not filter third-party scoped packages whose basename starts with plugin-", () => {
+    const alwaysBundled = new Set<string>();
+
+    expect(isRuntimePluginPackage("@octokit/plugin-request-log")).toBe(false);
+    expect(
+      shouldBundleDiscoveredPackage(
+        "@octokit/plugin-request-log",
+        alwaysBundled,
+      ),
+    ).toBe(true);
+    expect(isRuntimePluginPackage("@elizaos/plugin-browser")).toBe(true);
+    expect(
+      shouldBundleDiscoveredPackage("@elizaos/plugin-browser", alwaysBundled),
+    ).toBe(false);
   });
 });
 

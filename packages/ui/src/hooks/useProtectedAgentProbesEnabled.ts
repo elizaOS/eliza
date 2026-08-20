@@ -15,6 +15,8 @@
  * `notifications-boot`, `useWeather`, `useRuntimeMode`, `useSlashCommandController`.
  */
 
+import { client } from "../api";
+import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { useIsAuthenticated } from "./useAuthStatus";
 
@@ -26,7 +28,13 @@ import { useIsAuthenticated } from "./useAuthStatus";
 export function protectedAgentProbesEnabled(
   authenticated: boolean,
   origin: string | null | undefined,
+  agentBase?: string | null,
 ): boolean {
+  // Direct/shared Cloud agent adapters intentionally expose chat, status, and
+  // history—not the full app-shell route family. Authentication cannot make
+  // commands, custom actions, runtime mode, weather/location, or notification
+  // routes appear, so probing them only creates 10-second startup contention.
+  if (isLimitedCloudAgentApiBase(agentBase)) return false;
   if (authenticated) return true;
   return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
 }
@@ -36,5 +44,6 @@ export function useProtectedAgentProbesEnabled(): boolean {
   return protectedAgentProbesEnabled(
     authenticated,
     typeof window !== "undefined" ? window.location.origin : null,
+    client.getBaseUrl(),
   );
 }

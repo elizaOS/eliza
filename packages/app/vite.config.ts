@@ -39,7 +39,7 @@ import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
 } from "../shared/src/utils/env.ts";
-import appConfig from "./app.config";
+import appConfig from "./app.config.ts";
 import {
   removeEmittedBuildStamp,
   removePublicBuildStamp,
@@ -3322,7 +3322,11 @@ export const INVALID_TRACER_PROVIDER = {};
         : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
-        changeOrigin: true,
+        // Keep Host aligned with the browser's same-origin Origin. Rewriting
+        // Host to the upstream API port while preserving Origin at the Vite
+        // port makes the loopback trust boundary correctly reject the request
+        // as an authority mismatch, stranding a local browser on Pairing/Login.
+        changeOrigin: false,
         xfwd: true,
         configure: (proxy) => {
           proxy.on("error", (_err, _req, res) => {

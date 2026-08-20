@@ -16,6 +16,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { provisionServerWallet } from "@/lib/services/server-wallets";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -50,7 +51,12 @@ app.post("/", async (c) => {
 
   try {
     user = await requireUserOrApiKey(c);
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     validated = provisionWalletSchema.parse(body);
     const clientAddress = validated.clientAddress.toLowerCase();
 

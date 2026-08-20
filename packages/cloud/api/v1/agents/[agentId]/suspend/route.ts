@@ -65,6 +65,7 @@ app.post("/", async (c) => {
       agentId,
       organizationId: agent.organization_id,
       userId: agent.user_id,
+      authorization: "user_request",
     });
 
     void provisioningJobService.triggerImmediate(c.env).catch(() => {

@@ -32,7 +32,6 @@ const enqueueAgentRestartOnce = mock(
     created: true,
   }),
 );
-const reactivateSandboxBillingAfterFunding = mock(async () => undefined);
 const checkAgentCreditGate = mock(async () => ({
   allowed: false,
   balance: 0,
@@ -44,12 +43,6 @@ class AgentQuotaExceededError extends Error {}
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
   validateServiceKey,
-}));
-
-mock.module("@/db/repositories/agent-billing", () => ({
-  agentBillingRepository: {
-    reactivateSandboxBillingAfterFunding,
-  },
 }));
 
 mock.module("@/lib/services/agent-billing-gate", () => ({
@@ -108,7 +101,6 @@ describe("service agent restart route", () => {
       job: { id: "restart-job-1", data: { agentId: "cloud-agent-1" } },
       created: true,
     });
-    reactivateSandboxBillingAfterFunding.mockClear();
     checkAgentCreditGate.mockClear();
     checkAgentCreditGate.mockResolvedValue({
       allowed: false,
@@ -141,10 +133,9 @@ describe("service agent restart route", () => {
     // The restart job is never enqueued and billing is never reactivated when
     // the credit gate fails — the gate short-circuits before either.
     expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
-    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 
-  test("enqueues a restart job and reactivates billing after a funded service-key restart", async () => {
+  test("enqueues a restart job for daemon-side atomic debt settlement", async () => {
     checkAgentCreditGate.mockResolvedValueOnce({
       allowed: true,
       balance: 5,
@@ -167,17 +158,13 @@ describe("service agent restart route", () => {
       success: true,
     });
     // The restart is delegated to the orchestrator via an enqueued job carrying
-    // the agent owner identity, then sandbox billing is reactivated.
+    // the agent owner identity; its executor settles debt before provider I/O.
     expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
       agentId: "cloud-agent-1",
       organizationId: "agent-org",
       userId: "agent-user",
       stateLossAcknowledged: false,
     });
-    expect(reactivateSandboxBillingAfterFunding).toHaveBeenCalledWith(
-      "cloud-agent-1",
-      expect.any(Date),
-    );
   });
 
   test("threads an explicit state-loss waiver into the restart job (#18228)", async () => {
@@ -277,7 +264,6 @@ describe("service agent restart route", () => {
       success: false,
       jobId: "restart-job-1",
     });
-    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 
   test("accepts a waived request that dedupes onto an in-flight job already carrying the waiver", async () => {
@@ -338,6 +324,5 @@ describe("service agent restart route", () => {
 
     expect(response.status).toBe(409);
     expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
-    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 });

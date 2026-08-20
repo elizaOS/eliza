@@ -1,6 +1,11 @@
 // Exercises cloud API tests e2e helpers local target.test behavior with deterministic Worker route fixtures.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getBaseUrl, isLocalTarget } from "../test/e2e/_helpers/api";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  api,
+  getBaseUrl,
+  isLocalTarget,
+  sameOriginBrowserHeaders,
+} from "../test/e2e/_helpers/api";
 
 /**
  * Pins the shared isLocalTarget() e2e helper (test/e2e/_helpers/api.ts) that
@@ -47,5 +52,42 @@ describe("e2e _helpers isLocalTarget", () => {
   ])("false for deployed/lookalike target %s", (baseUrl) => {
     process.env.TEST_API_BASE_URL = baseUrl;
     expect(isLocalTarget()).toBe(false);
+  });
+
+  test("adds the configured target origin only when explicitly requested", () => {
+    process.env.TEST_API_BASE_URL = "https://staging-api.elizacloud.ai/api";
+
+    expect(sameOriginBrowserHeaders({ Cookie: "session=test" })).toEqual({
+      Origin: "https://staging-api.elizacloud.ai",
+      "x-eliza-csrf": "1",
+      Cookie: "session=test",
+    });
+  });
+
+  test("preserves an explicit cross-origin value for negative coverage", () => {
+    process.env.TEST_API_BASE_URL = "https://staging-api.elizacloud.ai";
+
+    expect(
+      sameOriginBrowserHeaders({ Origin: "https://attacker.example" }),
+    ).toEqual({ Origin: "https://attacker.example", "x-eliza-csrf": "1" });
+    expect(
+      sameOriginBrowserHeaders({ origin: "https://attacker.example" }),
+    ).toEqual({ origin: "https://attacker.example", "x-eliza-csrf": "1" });
+    // The marker itself is also caller-overridable for negative coverage.
+    expect(
+      sameOriginBrowserHeaders({ "x-eliza-csrf": "" }).Origin,
+    ).toBeDefined();
+  });
+
+  test("does not add Origin to ordinary API helper requests", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+
+    await api.post("/api/csrf-negative", { test: true });
+
+    const requestInit = fetchSpy.mock.calls[0]?.[1];
+    expect(new Headers(requestInit?.headers).has("Origin")).toBe(false);
+    fetchSpy.mockRestore();
   });
 });

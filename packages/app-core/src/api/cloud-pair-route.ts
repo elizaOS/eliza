@@ -5,10 +5,24 @@
  * local-Docker mode exchanges its one-time token server-side, validates the
  * returned owner, installs the scoped browser handoff, and fails visibly when
  * storage or the Cloud dependency is unavailable.
+ *
+ * Peer admission when `ELIZA_CLOUD_PAIR_DIRECT_RELAY=1` keys on the TCP peer,
+ * never on request headers: loopback peers only, plus any ranges in the
+ * optional `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS` comma-separated CIDR
+ * allowlist (default empty). The supported local-Docker deployment publishes
+ * the port on the host's loopback, so inside the container the TCP peer is
+ * the bridge gateway rather than 127.0.0.1 — set e.g.
+ * `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS=172.17.0.0/16` to admit exactly that
+ * gateway range. Every CIDR entry widens token redemption to that LAN/VPC
+ * segment, so keep the list as narrow as the deployment allows.
  */
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import {
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+} from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
   parseCloudPairRelaySession,
@@ -40,39 +54,33 @@ function resolveCloudAuthRoot(): string {
   return base.replace(/\/api\/v1\/?$/, "");
 }
 
-function resolveRequestOrigin(req: http.IncomingMessage): string {
-  // Self-hosted and explicit local relays need their proxy-aware request
-  // origin. Remote managed pairing terminates at the Cloud edge instead.
+function resolveDirectRequestOrigin(req: http.IncomingMessage): string {
+  // The origin forwarded to the Cloud exchange is built from direct request
+  // metadata only — X-Forwarded-Host/X-Forwarded-Proto are client-controlled
+  // and must not rewrite the origin the exchange is bound to (W5-014).
   const proto =
-    (req.headers["x-forwarded-proto"] as string | undefined) ||
-    (req.socket && "encrypted" in req.socket && req.socket.encrypted
+    req.socket && "encrypted" in req.socket && req.socket.encrypted
       ? "https"
-      : "http");
-  const host =
-    (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host;
+      : "http";
+  const host = req.headers.host?.split(",", 1)[0]?.trim();
   return host ? `${proto}://${host}` : "";
 }
 
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const hostname = new URL(origin).hostname
-      .toLowerCase()
-      .replace(/^\[|\]$/g, "");
-    return (
-      hostname === "localhost" ||
-      hostname === "::1" ||
-      /^127(?:\.\d{1,3}){3}$/.test(hostname)
-    );
-  } catch {
-    // error-policy:J3 malformed request origins are never trusted as loopback.
-    return false;
-  }
-}
-
 function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
+  if (process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY !== "1") return false;
+  // The local-only gate must key on the TCP peer, never on request headers:
+  // Host and X-Forwarded-Host are client-controlled, so a remote caller
+  // could previously spoof a loopback origin and redeem a held pairing token
+  // through this relay (W5-014). Non-loopback peers are admitted only through
+  // the explicit ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS allowlist (W5-016) —
+  // see the file header for the local-Docker gateway flow.
+  const peer = req.socket?.remoteAddress;
   return (
-    process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY === "1" &&
-    isLoopbackOrigin(resolveRequestOrigin(req))
+    isLoopbackRemoteAddress(peer) ||
+    isRemoteAddressInCidrList(
+      peer,
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS,
+    )
   );
 }
 
@@ -219,7 +227,7 @@ export async function handleCloudPairRoute(
     return true;
   }
 
-  const origin = resolveRequestOrigin(req);
+  const origin = resolveDirectRequestOrigin(req);
   if (!origin) {
     sendHtml(
       res,

@@ -4,7 +4,7 @@
  * routes, while the planner action uses the same registered stateful view.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -186,11 +186,21 @@ afterEach(async () => {
   __resetViewScopedActionRegistryForTests();
   vi.restoreAllMocks();
   if (server) {
-    server.closeIdleConnections?.();
-    server.closeAllConnections?.();
-    await new Promise<void>((resolve, reject) =>
-      server?.close((error) => (error ? reject(error) : resolve())),
-    );
+    const activeServer = server;
+    await new Promise<void>((resolve, reject) => {
+      activeServer.close((error) => {
+        if (
+          error &&
+          (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING"
+        ) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+      activeServer.closeIdleConnections?.();
+      activeServer.closeAllConnections?.();
+    });
     server = null;
   }
   if (pluginRoot) {
@@ -224,6 +234,14 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
       path.join(pluginRoot, "dist", "outside.js"),
       "must not escape the bundle directory\n",
     );
+    if (process.platform !== "win32") {
+      await symlink(
+        path.join(pluginRoot, "dist"),
+        path.join(bundleDir, "escape"),
+      );
+      await symlink("loop-b", path.join(bundleDir, "loop-a"));
+      await symlink("loop-a", path.join(bundleDir, "loop-b"));
+    }
 
     await registerPluginViews(
       {
@@ -274,6 +292,22 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     expect(await safeDotPrefixedAsset.text()).toBe(
       "export const dotPrefixed = true;\n",
     );
+
+    if (process.platform !== "win32") {
+      const symlinkEscape = await getJson(
+        started.baseUrl,
+        `/api/views/${VIEW_ID}/escape%2Foutside.js`,
+        400,
+      );
+      expect(symlinkEscape.error).toBe("Malformed view asset path");
+
+      const symlinkLoop = await getJson(
+        started.baseUrl,
+        `/api/views/${VIEW_ID}/loop-a%2Fasset.js`,
+        400,
+      );
+      expect(symlinkLoop.error).toBe("Malformed view asset path");
+    }
 
     const malformedEncoding = await getJson(
       started.baseUrl,

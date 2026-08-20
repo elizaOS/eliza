@@ -6,15 +6,21 @@
  * Every relative path is sanitised by `normalizeDevicePath()` first; the Node backend
  * additionally resolves symlinks and verifies the real path stays under the workspace
  * root, since a string-prefix check on the unresolved path alone cannot catch a symlink
- * that escapes after normalization.
+ * that escapes after normalization. read() and list() realpath() their full target;
+ * write() materializes and canonicalizes each parent directory before opening
+ * the final component with no-follow semantics, so path replacement cannot
+ * redirect an already-open write outside the workspace.
  */
+import { constants as fsConstants } from "node:fs";
 import {
+	type FileHandle,
+	lstat,
 	mkdir,
+	open,
 	readdir,
 	readFile,
 	realpath,
 	stat,
-	writeFile,
 } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -195,9 +201,15 @@ export class DeviceFilesystemBridge extends Service {
 			return;
 		}
 		const absolute = this.resolveNodePath(relative);
-		await mkdir(path.dirname(absolute), { recursive: true });
-		await this.assertRealPathWithinRoot(path.dirname(absolute));
-		await writeFile(absolute, content, nodeEncodingFor(encoding));
+		const canonicalParent = await this.materializeWritableParent(absolute);
+		const canonicalTarget = path.join(canonicalParent, path.basename(absolute));
+		const handle = await this.openWritableFile(canonicalTarget);
+		try {
+			await handle.truncate(0);
+			await handle.writeFile(content, nodeEncodingFor(encoding));
+		} finally {
+			await handle.close();
+		}
 	}
 
 	async list(relativePath: string): Promise<DirectoryEntry[]> {
@@ -261,6 +273,76 @@ export class DeviceFilesystemBridge extends Service {
 		return absolute;
 	}
 
+	private async materializeWritableParent(absolute: string): Promise<string> {
+		if (!this.nodeRoot) {
+			throw new Error(
+				`${DEVICE_FILESYSTEM_LOG_PREFIX} Node backend root not initialised. Did init() run?`,
+			);
+		}
+		const parent = path.dirname(absolute);
+		const relativeParent = path.relative(this.nodeRoot, parent);
+		const segments =
+			relativeParent === "" || relativeParent === "."
+				? []
+				: relativeParent.split(path.sep).filter(Boolean);
+		let current = this.nodeRoot;
+		for (const segment of segments) {
+			const next = path.join(current, segment);
+			try {
+				const info = await lstat(next);
+				if (info.isSymbolicLink()) {
+					throw new Error(
+						`${DEVICE_FILESYSTEM_LOG_PREFIX} symlinked parent is not permitted: ${next}`,
+					);
+				}
+				if (!info.isDirectory()) {
+					throw new Error(
+						`${DEVICE_FILESYSTEM_LOG_PREFIX} parent is not a directory: ${next}`,
+					);
+				}
+			} catch (error) {
+				// error-policy:J3 only an absent component enters the create path.
+				if (!isEnoent(error)) throw error;
+				try {
+					await mkdir(next);
+				} catch (mkdirError) {
+					// error-policy:J3 a concurrent writer may create this exact
+					// component first; accept only a revalidated ordinary directory.
+					if (!isCode(mkdirError, "EEXIST")) throw mkdirError;
+					const racedInfo = await lstat(next);
+					if (racedInfo.isSymbolicLink() || !racedInfo.isDirectory()) {
+						throw mkdirError;
+					}
+				}
+			}
+			await this.assertRealPathWithinRoot(next);
+			current = await realpath(next);
+		}
+		await this.assertRealPathWithinRoot(current);
+		return realpath(current);
+	}
+
+	private async openWritableFile(target: string): Promise<FileHandle> {
+		const existingFlags = fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW;
+		try {
+			return await open(target, existingFlags);
+		} catch (error) {
+			// error-policy:J3 only an absent leaf enters the atomic create path.
+			if (!isEnoent(error)) throw error;
+		}
+		try {
+			return await open(
+				target,
+				existingFlags | fsConstants.O_CREAT | fsConstants.O_EXCL,
+			);
+		} catch (error) {
+			// error-policy:J3 a concurrent creator is reopened with O_NOFOLLOW;
+			// a raced symlink is rejected by the kernel rather than followed.
+			if (!isCode(error, "EEXIST")) throw error;
+			return open(target, existingFlags);
+		}
+	}
+
 	private async assertRealPathWithinRoot(targetPath: string): Promise<void> {
 		if (!this.nodeRoot) {
 			throw new Error(
@@ -283,6 +365,18 @@ export class DeviceFilesystemBridge extends Service {
 			);
 		}
 	}
+}
+
+function isCode(error: unknown, code: string): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as NodeJS.ErrnoException).code === code
+	);
+}
+
+function isEnoent(error: unknown): boolean {
+	return isCode(error, "ENOENT");
 }
 
 function isCapacitorFilesystemModule(

@@ -42,6 +42,7 @@ import type {
   DatabaseProviderType,
   PostgresCredentials,
 } from "../config/types.eliza.ts";
+import { decodePathComponent } from "./server-helpers.ts";
 
 export {
   stripSqlBlockComments,
@@ -1376,7 +1377,12 @@ export async function handleDatabaseRoute(
   // ── Table row operations: /api/database/tables/:table/rows ────────────
   const rowsMatch = pathname.match(/^\/api\/database\/tables\/([^/]+)\/rows$/);
   if (rowsMatch) {
-    const tableNameDecoded = decodeURIComponent(rowsMatch[1]);
+    const tableNameDecoded = decodePathComponent(
+      rowsMatch[1],
+      res,
+      "database table name",
+    );
+    if (tableNameDecoded === null) return true;
 
     if (method === "GET") {
       await handleGetRows(req, res, runtime, tableNameDecoded);

@@ -13,6 +13,7 @@ import {
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createStewardClient } from "@/lib/services/steward-client";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -218,18 +219,6 @@ function toIsoString(value: unknown): string {
   return new Date().toISOString();
 }
 
-function boundedIntParam(
-  params: URLSearchParams,
-  name: string,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  const raw = Number(params.get(name) ?? fallback);
-  if (!Number.isFinite(raw)) return fallback;
-  return Math.min(Math.max(Math.trunc(raw), min), max);
-}
-
 function isPolicyType(value: unknown): value is PolicyType {
   return typeof value === "string" && POLICY_TYPES.has(value as PolicyType);
 }
@@ -295,7 +284,11 @@ function normalizePolicy(value: JsonValue): StewardPolicyRule | null {
   };
 }
 
-async function readJsonBody(c: Context<AppEnv>): Promise<JsonObject | null> {
+const INVALID_JSON_BODY = Symbol("invalid-json-body");
+
+async function readJsonBody(
+  c: Context<AppEnv>,
+): Promise<JsonObject | null | typeof INVALID_JSON_BODY> {
   const contentType = c.req.header("content-type");
   if (!contentType?.includes("application/json")) {
     return null;
@@ -305,7 +298,13 @@ async function readJsonBody(c: Context<AppEnv>): Promise<JsonObject | null> {
     throw new Error("Request body too large");
   }
   if (!text.trim()) return {};
-  const parsed = JSON.parse(text) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    // error-policy:J3 malformed JSON is an explicit invalid request.
+    return INVALID_JSON_BODY;
+  }
   return isJsonObject(parsed) ? parsed : null;
 }
 
@@ -447,6 +446,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "PUT" && walletPath === "steward-policies") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const policies = body?.policies;
     if (!Array.isArray(policies)) {
       return json({ error: "policies must be an array" }, { status: 400 });
@@ -469,14 +471,8 @@ export async function handleDirectWalletRequest(
   if (method === "GET" && walletPath === "steward-tx-records") {
     const url = new URL(c.req.url);
     const status = url.searchParams.get("status") || "";
-    const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(
-      url.searchParams,
-      "offset",
-      0,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    );
+    const limit = parseClampedLimit(url.searchParams.get("limit"), 50, 100);
+    const offset = parseClampedOffset(url.searchParams.get("offset"), 0);
     const dashboard = await client.getAgentDashboard(stewardAgentId);
     const records = (dashboard.recentTransactions ?? [])
       .filter((tx) => !status || tx.status === status)
@@ -497,14 +493,8 @@ export async function handleDirectWalletRequest(
 
   if (method === "GET" && walletPath === "steward-pending-approvals") {
     const url = new URL(c.req.url);
-    const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(
-      url.searchParams,
-      "offset",
-      0,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    );
+    const limit = parseClampedLimit(url.searchParams.get("limit"), 50, 100);
+    const offset = parseClampedOffset(url.searchParams.get("offset"), 0);
     const [approvals, dashboard] = await Promise.all([
       client.listPendingApprovals(stewardAgentId, { limit, offset }),
       client.getAgentDashboard(stewardAgentId),
@@ -520,6 +510,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "POST" && walletPath === "steward-approve-tx") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const txId = typeof body?.txId === "string" ? body.txId : "";
     if (!txId) return json({ error: "txId is required" }, { status: 400 });
     return json(await client.approveTransaction(txId, { approvedBy: user.id }));
@@ -527,6 +520,9 @@ export async function handleDirectWalletRequest(
 
   if (method === "POST" && walletPath === "steward-deny-tx") {
     const body = await readJsonBody(c);
+    if (body === INVALID_JSON_BODY) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const txId = typeof body?.txId === "string" ? body.txId : "";
     const reason =
       typeof body?.reason === "string"

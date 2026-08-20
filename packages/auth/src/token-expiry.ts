@@ -14,6 +14,19 @@ export type CodingAuthFailureReason =
 
 const REFRESH_TOKEN_EXPIRED_PATTERN =
   /\brefresh[_ ]token[_ ](?:(?:has|is)[_ ])?expired\b/i;
+
+/**
+ * True for explicit REFRESH-token expiry language. A refresh-token expiry is a
+ * genuinely dead credential (the holder can no longer self-refresh), so it is
+ * auth-shaped but must NOT be treated as the benign injected-access-token
+ * "token_expired" recovery — callers use this to keep the failure typed as
+ * needs-reauth instead of dropping it entirely.
+ */
+export function isRefreshTokenExpiryText(
+  text: string | null | undefined,
+): boolean {
+  return !!text && REFRESH_TOKEN_EXPIRED_PATTERN.test(text);
+}
 const TOKEN_EXPIRED_PATTERN =
   /\b(?:token[_ ](?:(?:has|is)[_ ])?expired|expired[_ ]?token|(?:oauth|access)[_ ]token[_ ](?:(?:has|is)[_ ])?expired|jwt[_ ]expired|session[_ ]expired)\b/i;
 
@@ -30,7 +43,7 @@ export function isTokenExpiryText(text: string | null | undefined): boolean {
 export function classifyAuthFailureReason(
   text: string | null | undefined,
 ): CodingAuthFailureReason {
-  if (!text) return "unknown";
+  if (!text || text.trim().length === 0) return "unknown";
   if (isTokenExpiryText(text)) return "token_expired";
   return "needs_reauth";
 }

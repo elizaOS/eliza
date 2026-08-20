@@ -3,22 +3,32 @@
  * migrations) under a database-wide advisory lock with per-statement failure
  * diagnostics instead of drizzle-kit's opaque errors. Ledger validation and
  * bounded lock retries make concurrent deploys serialize without accepting
- * partial, duplicated, or reordered migration history. Invoked as
- * `db:cloud:migrate` at the repo root and `db:migrate` in
- * packages/cloud/shared, including the deploy pipeline's migrate-db gate;
- * enforces TLS for remote databases.
+ * partial, duplicated, or reordered migration history. The protected database
+ * identity gate runs on this same locked session before the first DDL. Invoked
+ * as `db:cloud:migrate` at the repo root and `db:migrate` in packages/cloud/shared,
+ * including the deploy pipeline's migrate-db gate; enforces TLS for remote
+ * databases.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
+import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
+import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
 import pg from "pg";
 import {
   type CleanupFailure,
   runCleanupSteps,
   runWithCleanup,
 } from "./error-preserving-cleanup";
+import {
+  type DatabaseIdentityConfig,
+  type IdentityPreflightResult,
+  publishDatabaseIdentityResult,
+  readDatabaseIdentityConfig,
+  runDatabaseIdentityPreflight,
+} from "./preflight-database-identity";
 
 const { Client } = pg;
 
@@ -90,6 +100,26 @@ interface LockRetryOptions {
 
 interface ValidatedMigrationLedger {
   lastAppliedJournalIndex: number;
+}
+
+type IdentityResultReporter = (
+  config: DatabaseIdentityConfig,
+  result: IdentityPreflightResult,
+) => Promise<void>;
+
+type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
+
+/** Executes the historical agent-sandbox drift repair on the locked migration session. */
+export async function convergeAgentSandboxSchemaOnMigrationClient(
+  migrationClient: MigrationClient,
+): Promise<void> {
+  // The migration-only adapter owns SQL rendering without pulling PgDialect
+  // into the Worker-facing schema guard module.
+  await convergeAgentSandboxSchema(
+    createMigrationClientSandboxExecutor((text, params) =>
+      migrationClient.query(text, params),
+    ),
+  );
 }
 
 // Historical SQL files were edited after deployment, so their stored hashes
@@ -508,6 +538,9 @@ export async function runMigrations(
   client: MigrationClient,
   migrations: Migration[],
   retryOptions: LockRetryOptions,
+  identityConfig?: DatabaseIdentityConfig,
+  reportIdentityResult?: IdentityResultReporter,
+  postMigrationConvergence?: PostMigrationConvergence,
 ): Promise<void> {
   let lockHeld = false;
   await runWithCleanup(
@@ -519,6 +552,13 @@ export async function runMigrations(
         console.log(
           "[db:migrate] PGlite backend uses its single-writer database lock",
         );
+      }
+      if (identityConfig) {
+        const identityResult = await runDatabaseIdentityPreflight(
+          identityConfig,
+          client,
+        );
+        await reportIdentityResult?.(identityConfig, identityResult);
       }
       await ensureMigrationsTable(client);
 
@@ -548,6 +588,8 @@ export async function runMigrations(
         await applyMigration(client, migration, retryOptions);
       }
 
+      await postMigrationConvergence?.(client);
+
       console.log("[db:migrate] migrations complete");
     },
     [
@@ -564,7 +606,8 @@ export async function runMigrations(
 }
 
 async function main(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const environment: Readonly<Record<string, string | undefined>> = process.env;
+  const databaseUrl = environment.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required to run database migrations.");
   }
@@ -574,12 +617,37 @@ async function main(): Promise<void> {
     journal.entries.map((entry) => readMigration(entry)),
   );
   const retryOptions = lockRetryOptions();
+  const configuredIdentityMode =
+    environment.DATABASE_IDENTITY_GATE_MODE?.trim().toLowerCase();
+  const identityConfig =
+    environment.DATABASE_IDENTITY_ENVIRONMENT !== undefined ||
+    (configuredIdentityMode !== undefined && configuredIdentityMode !== "off")
+      ? readDatabaseIdentityConfig(environment)
+      : undefined;
 
   const client: MigrationClient = databaseUrl.startsWith("pglite://")
     ? await createPGliteClient(databaseUrl)
     : await createPgClient(databaseUrl);
 
-  await runMigrations(client, migrations, retryOptions);
+  await runMigrations(
+    client,
+    migrations,
+    retryOptions,
+    identityConfig,
+    async (config, result) => {
+      try {
+        await publishDatabaseIdentityResult(config, result);
+      } catch (error) {
+        // error-policy:J1 report mode must not turn an evidence-output failure
+        // into permission to skip or block the migration identity decision.
+        if (config.mode !== "report") throw error;
+        process.stdout.write(
+          "::warning::database identity report output unavailable; inspect protected operator logs\n",
+        );
+      }
+    },
+    convergeAgentSandboxSchemaOnMigrationClient,
+  );
 }
 
 if (import.meta.main) {

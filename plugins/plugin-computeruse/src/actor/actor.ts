@@ -36,6 +36,8 @@ export interface ActorGroundArgs {
   hint: string;
   /** Optional reference from `BrainProposedAction.ref`. */
   ref?: string;
+  /** Cancels remote grounding when the owning computer-use turn stops. */
+  signal?: AbortSignal;
 }
 
 export interface Actor {
@@ -164,12 +166,21 @@ export interface OsAtlasProActorOptions {
   apiKey?: string;
   /** Model identifier on the server. */
   model?: string;
+  /** Per-request deadline; injectable for deterministic tests. */
+  timeoutMs?: number;
   /** Override the HTTP fetch (mostly for tests). */
   fetcher?: (
     input: string,
-    init: { body: string; headers: Record<string, string> },
+    init: {
+      body: string;
+      headers: Record<string, string>;
+      signal: AbortSignal;
+    },
   ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
 }
+
+/** Maximum time allowed for one remote grounding request. */
+export const OSATLAS_PRO_TIMEOUT_MS = 30_000;
 
 /**
  * Adapter for a server-side OS-Atlas-Pro (or compatible) grounding model.
@@ -200,43 +211,57 @@ export class OsAtlasProActor implements Actor {
       "content-type": "application/json",
     };
     if (this.opts.apiKey) headers.authorization = `Bearer ${this.opts.apiKey}`;
+    const deadline = AbortSignal.timeout(
+      this.opts.timeoutMs ?? OSATLAS_PRO_TIMEOUT_MS,
+    );
+    const signal = args.signal
+      ? AbortSignal.any([args.signal, deadline])
+      : deadline;
     const fetcher =
       this.opts.fetcher ??
-      (async (url, init) => {
-        const resp = await fetch(url, {
+      (async (input, init) => {
+        const response = await globalThis.fetch(input, {
           method: "POST",
-          body: init.body,
-          headers: init.headers,
+          ...init,
         });
-        return { ok: resp.ok, status: resp.status, text: () => resp.text() };
+        return {
+          ok: response.ok,
+          status: response.status,
+          text: () => response.text(),
+        };
       });
-    const resp = await fetcher(this.opts.endpoint, { body, headers });
+    const resp = await fetcher(this.opts.endpoint, { body, headers, signal });
     if (!resp.ok) {
       throw new Error(
         `[computeruse/actor] osatlas-pro returned ${resp.status}: ${await resp.text()}`,
       );
     }
-    const text = await resp.text();
-    let parsed: { x?: number; y?: number; confidence?: number };
-    try {
-      parsed = JSON.parse(text) as typeof parsed;
-    } catch (err) {
-      throw new Error(
-        `[computeruse/actor] osatlas-pro emitted non-JSON: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
-      throw new Error(
-        `[computeruse/actor] osatlas-pro response missing (x, y): ${text}`,
-      );
-    }
-    return {
-      displayId: args.displayId,
-      x: parsed.x,
-      y: parsed.y,
-      confidence:
-        typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-      reason: `osatlas-pro grounded ${args.ref ?? args.hint}`,
-    };
+    return parseOsAtlasProPayload(args, await resp.text());
   }
+}
+
+function parseOsAtlasProPayload(
+  args: ActorGroundArgs,
+  text: string,
+): GroundingResult {
+  let parsed: { x?: number; y?: number; confidence?: number };
+  try {
+    parsed = JSON.parse(text) as typeof parsed;
+  } catch (err) {
+    throw new Error(
+      `[computeruse/actor] osatlas-pro emitted non-JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
+    throw new Error(
+      `[computeruse/actor] osatlas-pro response missing (x, y): ${text}`,
+    );
+  }
+  return {
+    displayId: args.displayId,
+    x: parsed.x,
+    y: parsed.y,
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+    reason: `osatlas-pro grounded ${args.ref ?? args.hint}`,
+  };
 }

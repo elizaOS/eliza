@@ -53,6 +53,61 @@ export const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 export const DEFAULT_OUTPUT_TOKENS = 500;
 
 /**
+ * Reject corrupt settlement inputs before they can turn a negative cost into a
+ * refund larger than its backing reservation. Zero is valid for a completed
+ * request that produced no billable usage.
+ */
+export function assertValidCreditSettlementCosts(params: {
+  reservedAmount: number;
+  actualCost: number;
+  scope: string;
+}): void {
+  const { reservedAmount, actualCost, scope } = params;
+  if (!Number.isFinite(reservedAmount) || reservedAmount < 0) {
+    throw new ElizaError(`${scope} received an invalid reserved cost`, {
+      code: "INVALID_RESERVED_CREDIT_COST",
+      context: { reservedAmount },
+      severity: "fatal",
+    });
+  }
+  if (!Number.isFinite(actualCost) || actualCost < 0) {
+    throw new ElizaError(`${scope} received an invalid actual cost`, {
+      code: "INVALID_ACTUAL_CREDIT_COST",
+      context: { actualCost, reservedAmount },
+      severity: "fatal",
+    });
+  }
+}
+
+/** Fail and emit a structured alert when a refund lacks sufficient backing. */
+export function assertCreditRefundWithinReservation(params: {
+  reservedAmount: number;
+  refundAmount: number;
+  scope: string;
+}): void {
+  const { reservedAmount, refundAmount, scope } = params;
+  if (
+    !Number.isFinite(reservedAmount) ||
+    reservedAmount < 0 ||
+    !Number.isFinite(refundAmount) ||
+    refundAmount < 0 ||
+    refundAmount - reservedAmount > EPSILON
+  ) {
+    const error = new ElizaError(`${scope} refund exceeds its backing reservation`, {
+      code: "CREDIT_REFUND_EXCEEDS_RESERVATION",
+      context: { reservedAmount, refundAmount },
+      severity: "fatal",
+    });
+    logger.error("[Credits] Refusing an unbacked reconciliation refund", {
+      reservedAmount,
+      refundAmount,
+      code: error.code,
+    });
+    throw error;
+  }
+}
+
+/**
  * Grace window for the stale-reservation sweep, derived from the WORST-CASE
  * legitimately-in-flight metered request (#11683). The provider HTTP layer
  * retries each call up to PROVIDER_DEFAULT_MAX_RETRIES times (tries = retries
@@ -107,12 +162,14 @@ export class ReservationNotFoundError extends ElizaError {
 export class InvalidCreditAmountError extends ElizaError {
   override readonly name = "InvalidCreditAmountError";
 
-  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct" | "add_credits") {
     const permitsZero = operation === "reserve";
     super(
       permitsZero
         ? "Credit reservation amount must be a finite, non-negative number"
-        : "Credit deduction amount must be a positive, finite number",
+        : operation === "add_credits"
+          ? "Credit increase amount must be a positive, finite number"
+          : "Credit deduction amount must be a positive, finite number",
       {
         code: "INVALID_CREDIT_AMOUNT",
         context: { amount, operation, permitsZero },
@@ -285,7 +342,8 @@ export interface AffiliateInferenceFallbackParams {
  */
 export interface AddCreditsParams {
   organizationId: string;
-  amount: number;
+  /** Exact USD decimal; strings avoid binary floating-point money conversion. */
+  amount: number | string;
   description: string;
   metadata?: Record<string, unknown>;
   stripePaymentIntentId?: string;
@@ -294,6 +352,12 @@ export interface AddCreditsParams {
    * caller must hold a DB-level lock across the balance mutation.
    */
   db?: SqlExecutor;
+  /**
+   * Internal: the transaction owner will invalidate credit caches only after
+   * its outer transaction commits. Never use this without a post-commit call
+   * to `invalidateCreditCaches`.
+   */
+  deferCacheInvalidation?: boolean;
 }
 
 /**
@@ -325,6 +389,10 @@ export interface DeductCreditsParams {
 export interface ReserveAndDeductParams extends DeductCreditsParams {
   /** Minimum balance required before deduction (prevents race conditions) */
   minimumBalanceRequired?: number;
+  /** Internal: execute this ledger mutation inside an owning transaction. */
+  db?: SqlExecutor;
+  /** Internal: the owner performs post-commit cache and notification work. */
+  deferPostCommitEffects?: boolean;
 }
 
 interface CreditMutationRow {
@@ -442,6 +510,11 @@ export class CreditsService {
       stripePaymentIntentId,
       transactionType,
     } = params;
+    const amountDecimal = new Decimal(amount);
+    if (!amountDecimal.isFinite() || !amountDecimal.gt(0)) {
+      throw new InvalidCreditAmountError(Number(amount), "add_credits");
+    }
+    const amountText = amountDecimal.toDecimalPlaces(6).toFixed(6);
     const executor = params.db ?? dbWrite;
     const metadataJson = JSON.stringify(metadata ?? {});
     const stripeId = stripePaymentIntentId ?? null;
@@ -467,7 +540,7 @@ export class CreditsService {
           )
           SELECT
             org.id,
-            ${String(amount)}::numeric,
+            ${amountText}::numeric,
             ${transactionType},
             ${description},
             ${metadataJson}::jsonb,
@@ -518,7 +591,7 @@ export class CreditsService {
         updated AS (
           UPDATE organizations AS o
           SET
-            credit_balance = org.current_balance + ${String(amount)}::numeric,
+            credit_balance = org.current_balance + ${amountText}::numeric,
             settings = CASE
               WHEN ${transactionType} = 'credit'
                 THEN COALESCE(o.settings, '{}'::jsonb) - 'welcomeBonusWithheld'
@@ -561,6 +634,13 @@ export class CreditsService {
         if (!org) {
           throw new Error("Organization not found");
         }
+        if (
+          existingTransaction.organization_id !== organizationId ||
+          existingTransaction.type !== transactionType ||
+          !new Decimal(existingTransaction.amount).equals(amountText)
+        ) {
+          throw new Error("Credit idempotency replay does not match the original settlement");
+        }
         return {
           transaction: existingTransaction,
           newBalance: Number.parseFloat(String(org.credit_balance)),
@@ -568,8 +648,16 @@ export class CreditsService {
       }
     }
 
+    const transaction = toCreditTransaction(row);
+    if (
+      transaction.organization_id !== organizationId ||
+      transaction.type !== transactionType ||
+      !new Decimal(transaction.amount).equals(amountText)
+    ) {
+      throw new Error("Credit idempotency replay does not match the original settlement");
+    }
     return {
-      transaction: toCreditTransaction(row),
+      transaction,
       newBalance: parseNumeric(row.new_balance, "new_balance"),
     };
   }
@@ -641,31 +729,15 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata, stripePaymentIntentId, db } = params;
-
-    // IDEMPOTENCY: If stripePaymentIntentId is provided, check for existing transaction
-    // This prevents race conditions when both synchronous and webhook calls try to add credits
-    if (stripePaymentIntentId && !db) {
-      const existingTransaction =
-        await this.getTransactionByStripePaymentIntent(stripePaymentIntentId);
-
-      if (existingTransaction) {
-        logger.info(
-          `[CreditsService] Idempotency: Payment intent ${stripePaymentIntentId} already processed (transaction ${existingTransaction.id})`,
-        );
-
-        // Get current balance to return consistent response
-        const org = await organizationsRepository.findById(organizationId);
-        if (!org) {
-          throw new Error("Organization not found");
-        }
-
-        return {
-          transaction: existingTransaction,
-          newBalance: Number.parseFloat(String(org.credit_balance)),
-        };
-      }
-    }
+    const {
+      organizationId,
+      amount,
+      description,
+      metadata,
+      stripePaymentIntentId,
+      db,
+      deferCacheInvalidation = false,
+    } = params;
 
     const result = await this.applyCreditIncrease({
       organizationId,
@@ -675,17 +747,21 @@ export class CreditsService {
       stripePaymentIntentId,
       db,
       transactionType: "credit",
-    }).then(async (result) => {
-      invalidateOrganizationCache(organizationId).catch((error) => {
-        logger.error("[CreditsService] Failed to invalidate org cache:", error);
-      });
-      return result;
     });
 
-    // Invalidate balance cache immediately after transaction
-    await CacheInvalidation.onCreditMutation(organizationId);
+    if (!deferCacheInvalidation) {
+      await this.invalidateCreditCaches(organizationId);
+    }
 
     return result;
+  }
+
+  /** Invalidates organization and balance caches after the owning DB commit. */
+  async invalidateCreditCaches(organizationId: string): Promise<void> {
+    await invalidateOrganizationCache(organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate org cache:", error);
+    });
+    await CacheInvalidation.onCreditMutation(organizationId);
   }
 
   async deductCredits(params: DeductCreditsParams): Promise<{
@@ -720,6 +796,8 @@ export class CreditsService {
       tokens_consumed,
       minimumBalanceRequired = 0,
       stripePaymentIntentId,
+      db,
+      deferPostCommitEffects = false,
     } = params;
 
     // Authoritative money-write guard: `<= 0` alone lets NaN through (the
@@ -758,7 +836,7 @@ export class CreditsService {
     const stripeId = stripePaymentIntentId ?? null;
 
     const metadataJson = JSON.stringify(metadata ?? {});
-    const rows = await writeTransaction(async (tx) => {
+    const applyMutation = async (tx: SqlExecutor) => {
       const mutationRows = await sqlRows<CreditMutationRow>(
         tx,
         sql`
@@ -840,7 +918,8 @@ export class CreditsService {
         throw new Error("[CreditsService] Deduction claim committed without a balance mutation");
       }
       return mutationRows;
-    });
+    };
+    const rows = db ? await applyMutation(db) : await writeTransaction(applyMutation);
 
     const row = rows[0];
     if (!row?.id && stripePaymentIntentId) {
@@ -891,7 +970,7 @@ export class CreditsService {
 
     return await Promise.resolve(result).then(async (result) => {
       // Invalidate organization cache if balance changed
-      if (result.success) {
+      if (result.success && !deferPostCommitEffects) {
         invalidateOrganizationCache(organizationId).catch((error) => {
           logger.error("[CreditsService] Failed to invalidate org cache:", error);
         });
@@ -1037,9 +1116,18 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
+    const {
+      organizationId,
+      amount,
+      description,
+      metadata,
+      stripePaymentIntentId,
+      db,
+      deferCacheInvalidation = false,
+    } = params;
 
-    if (amount <= 0) {
+    const refundAmount = new Decimal(String(amount));
+    if (!refundAmount.isFinite() || !refundAmount.gt(0)) {
       throw new Error("Refund amount must be positive");
     }
 
@@ -1052,11 +1140,13 @@ export class CreditsService {
       // (applyCreditIncrease dedupes on stripe_payment_intent_id via ON
       // CONFLICT DO NOTHING). (#10846)
       stripePaymentIntentId,
+      db,
+      deferCacheInvalidation: true,
       transactionType: "refund",
     }).then(async (result) => {
-      invalidateOrganizationCache(organizationId).catch((error) => {
-        logger.error("[CreditsService] Failed to invalidate org cache:", error);
-      });
+      if (!deferCacheInvalidation) {
+        await this.invalidateCreditCaches(organizationId);
+      }
       return result;
     });
   }
@@ -1072,6 +1162,10 @@ export class CreditsService {
   async clawbackCredits(params: {
     organizationId: string;
     amount: number;
+    /** Cumulative authoritative reversal target; delta is derived under the org lock. */
+    cumulativeTargetAmount?: number;
+    /** Original grant PI whose reversal ledger is serialized. */
+    originalPaymentIntentId?: string;
     description: string;
     stripePaymentIntentId: string;
     metadata?: Record<string, unknown>;
@@ -1085,11 +1179,31 @@ export class CreditsService {
     if (params.amount <= 0) {
       throw new Error("Clawback amount must be positive");
     }
+    if (
+      params.cumulativeTargetAmount !== undefined &&
+      (!Number.isFinite(params.cumulativeTargetAmount) || params.cumulativeTargetAmount <= 0)
+    ) {
+      throw new Error("Cumulative clawback target must be positive");
+    }
 
     const metadataJson = JSON.stringify(params.metadata ?? {});
-    const rows = await sqlRows<ClawbackMutationRow>(
-      dbWrite,
-      sql`
+    const cumulativeTarget =
+      params.cumulativeTargetAmount === undefined ? null : String(params.cumulativeTargetAmount);
+    const originalPaymentIntentId = params.originalPaymentIntentId ?? null;
+    const rows = await writeTransaction(async (tx) => {
+      const lockRows = await sqlRows<{ id: string }>(
+        tx,
+        sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
+      );
+      if (!lockRows[0]) throw new Error("Organization not found");
+
+      // The reversal query runs as a second READ COMMITTED statement after
+      // acquiring the org lock. A contender that waited for this lock now gets
+      // a fresh snapshot containing the winner's committed clawback before it
+      // derives its cumulative delta.
+      return await sqlRows<ClawbackMutationRow>(
+        tx,
+        sql`
         WITH org AS (
           SELECT id, credit_balance::numeric AS current_balance
           FROM organizations
@@ -1111,28 +1225,41 @@ export class CreditsService {
           WHERE stripe_payment_intent_id = ${params.stripePaymentIntentId}
           LIMIT 1
         ),
+        grant_lock AS (
+          SELECT id
+          FROM credit_transactions
+          WHERE stripe_payment_intent_id = ${originalPaymentIntentId}
+          FOR UPDATE
+        ),
+        prior_reversal AS (
+          SELECT COALESCE(SUM(-ct.amount), 0)::numeric AS total
+          FROM org
+          LEFT JOIN credit_transactions AS ct
+            ON ct.metadata->>'payment_intent_id' = ${originalPaymentIntentId}
+            AND (
+              ct.type = 'clawback'
+              OR (ct.type = 'refund' AND ct.metadata->>'source' = 'charge.dispute.funds_reinstated')
+            )
+        ),
         candidate AS (
           SELECT
-            id,
-            current_balance,
-            LEAST(${String(params.amount)}::numeric, GREATEST(current_balance, 0)) AS applied_amount,
-            GREATEST(current_balance - ${String(params.amount)}::numeric, 0) AS new_balance,
-            GREATEST(${String(params.amount)}::numeric - GREATEST(current_balance, 0), 0) AS shortfall_amount
+            org.id,
+            org.current_balance,
+            LEAST(target.requested_amount, GREATEST(org.current_balance, 0)) AS applied_amount,
+            GREATEST(org.current_balance - target.requested_amount, 0) AS new_balance,
+            GREATEST(target.requested_amount - GREATEST(org.current_balance, 0), 0) AS shortfall_amount,
+            target.requested_amount
           FROM org
+          CROSS JOIN prior_reversal
+          CROSS JOIN LATERAL (
+            SELECT CASE
+              WHEN ${cumulativeTarget}::numeric IS NULL THEN ${String(params.amount)}::numeric
+              ELSE GREATEST(${cumulativeTarget}::numeric - prior_reversal.total, 0)
+            END AS requested_amount
+          ) AS target
           WHERE NOT EXISTS (SELECT 1 FROM existing)
-        ),
-        updated AS (
-          UPDATE organizations AS o
-          SET
-            credit_balance = candidate.new_balance,
-            -- A Stripe refund/dispute must never look like fresh usage and
-            -- automatically charge the saved card again. Disable atomically
-            -- with the clawback; an operator/user can explicitly re-enable it.
-            auto_top_up_enabled = false,
-            updated_at = NOW()
-          FROM candidate
-          WHERE o.id = candidate.id
-          RETURNING o.credit_balance AS new_balance
+            AND (${originalPaymentIntentId}::text IS NULL OR EXISTS (SELECT 1 FROM grant_lock))
+            AND target.requested_amount > 0
         ),
         inserted AS (
           INSERT INTO credit_transactions (
@@ -1150,14 +1277,14 @@ export class CreditsService {
             'clawback',
             ${params.description},
             ${metadataJson}::jsonb || jsonb_build_object(
-              'requested_clawback_usd', ${String(params.amount)}::numeric,
+              'requested_clawback_usd', candidate.requested_amount,
+              'cumulative_clawback_target_usd', ${cumulativeTarget}::numeric,
               'applied_clawback_usd', candidate.applied_amount,
               'unrecovered_clawback_usd', candidate.shortfall_amount
             ),
             ${params.stripePaymentIntentId},
             NOW()
           FROM candidate
-          WHERE EXISTS (SELECT 1 FROM updated)
           ON CONFLICT (stripe_payment_intent_id) DO NOTHING
           RETURNING
             id,
@@ -1169,6 +1296,20 @@ export class CreditsService {
             metadata,
             stripe_payment_intent_id,
             created_at
+        ),
+        updated AS (
+          UPDATE organizations AS o
+          SET
+            credit_balance = candidate.new_balance,
+            -- A Stripe refund/dispute must never look like fresh usage and
+            -- automatically charge the saved card again. Disable atomically
+            -- with the clawback; an operator/user can explicitly re-enable it.
+            auto_top_up_enabled = false,
+            updated_at = NOW()
+          FROM candidate
+          WHERE o.id = candidate.id
+            AND EXISTS (SELECT 1 FROM inserted)
+          RETURNING o.credit_balance AS new_balance
         ),
         chosen_transaction AS (
           SELECT * FROM inserted
@@ -1199,14 +1340,54 @@ export class CreditsService {
           EXISTS(SELECT 1 FROM existing) AS already_processed
         FROM (SELECT 1) AS singleton
         LEFT JOIN chosen_transaction ON true
-      `,
-    );
+        `,
+      );
+    });
 
     const row = rows[0];
     if (!row || !isPgTrue(row.org_exists)) {
       throw new Error("Organization not found");
     }
     if (!row.id) {
+      if (cumulativeTarget !== null && originalPaymentIntentId) {
+        const priorRows = await sqlRows<ClawbackMutationRow>(
+          dbWrite,
+          sql`
+            SELECT
+              id,
+              organization_id,
+              user_id,
+              amount,
+              type,
+              description,
+              metadata,
+              stripe_payment_intent_id,
+              created_at,
+              0::numeric AS new_balance,
+              0::numeric AS applied_amount,
+              0::numeric AS shortfall_amount,
+              true AS already_processed,
+              true AS org_exists,
+              0::numeric AS current_balance
+            FROM credit_transactions
+            WHERE metadata->>'payment_intent_id' = ${originalPaymentIntentId}
+              AND type = 'clawback'
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+        );
+        const prior = priorRows[0];
+        const org = await organizationsRepository.findById(params.organizationId);
+        if (prior?.id && org) {
+          return {
+            transaction: toCreditTransaction(prior),
+            newBalance: parseNumeric(org.credit_balance, "credit_balance"),
+            appliedAmount: 0,
+            shortfallAmount: 0,
+            alreadyProcessed: true,
+          };
+        }
+      }
       const existing = await this.getTransactionByStripePaymentIntent(params.stripePaymentIntentId);
       const org = await organizationsRepository.findById(params.organizationId);
       if (existing && org) {
@@ -1339,7 +1520,12 @@ export class CreditsService {
 
       const reservedAmount = Math.abs(parseNumeric(reservation.amount, "reservation_amount"));
       const reservationMetadata = parseMetadata(reservation.metadata);
-      const normalizedActualCost = Math.max(actualCost, 0);
+      const normalizedActualCost = actualCost;
+      assertValidCreditSettlementCosts({
+        reservedAmount,
+        actualCost: normalizedActualCost,
+        scope: "CreditsService.reconcileReservationTransaction",
+      });
       const enqueueAffiliatePayout = async (collectedTotalCost: number): Promise<void> => {
         await enqueueCollectedAffiliatePayout(tx, {
           reservationMetadata,
@@ -1421,6 +1607,9 @@ export class CreditsService {
                 AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
               )
             )
+            -- Native storage reservations are settled only after a strong R2
+            -- HEAD proves the immutable generation present or absent.
+            AND NOT (metadata ? 'storage_operation_id')
             AND settled_at IS NULL
           RETURNING id, amount
         `,
@@ -1471,6 +1660,11 @@ export class CreditsService {
       }
 
       if (difference > 0) {
+        assertCreditRefundWithinReservation({
+          reservedAmount: claimedReservedAmount,
+          refundAmount: difference,
+          scope: "CreditsService.reconcileReservationTransaction",
+        });
         const refundMetadata = JSON.stringify({
           ...baseMetadata,
           type: "reconciliation_refund",
@@ -1928,6 +2122,11 @@ export class CreditsService {
     metadata?: Record<string, unknown>;
   }): Promise<CreditReconciliationResult> {
     const { organizationId, reservedAmount, actualCost, description, metadata } = params;
+    assertValidCreditSettlementCosts({
+      reservedAmount,
+      actualCost,
+      scope: "CreditsService.reconcile",
+    });
     const difference = reservedAmount - actualCost;
     const reservationTxId =
       typeof metadata?.reservation_transaction_id === "string"
@@ -2012,6 +2211,11 @@ export class CreditsService {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (difference > 0) {
+          assertCreditRefundWithinReservation({
+            reservedAmount,
+            refundAmount: difference,
+            scope: "CreditsService.reconcile",
+          });
           const refund = await this.refundCredits({
             organizationId,
             amount: difference,

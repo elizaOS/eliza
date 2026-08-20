@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Enforces develop-only automated branch workflows and rejects pull-request
- * event triggers so contributor branches cannot consume repository CI runners.
+ * event triggers. The credential-free merge-candidate Biome gate is the sole
+ * exception because it checks GitHub's synthesized queue tree before landing.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -11,12 +12,13 @@ import { parseDocument } from "yaml";
 
 const FORBIDDEN_EVENTS = new Set([
   "issue_comment",
-  "merge_group",
   "pull_request",
   "pull_request_review",
   "pull_request_review_comment",
   "pull_request_target",
 ]);
+
+const MERGE_GROUP_WORKFLOW = "merge-candidate-biome.yml";
 
 function triggerEntries(value) {
   if (typeof value === "string") return [[value, null]];
@@ -52,8 +54,15 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     const workflow = document.toJS();
     const entries = triggerEntries(workflow?.on);
     for (const [eventName, config] of entries) {
+      if (eventName === "merge_group" && name !== MERGE_GROUP_WORKFLOW) {
+        failures.push(
+          `${name}: merge_group is reserved for ${MERGE_GROUP_WORKFLOW}`,
+        );
+      }
       if (FORBIDDEN_EVENTS.has(eventName)) {
-        failures.push(`${name}: forbidden pull-request event trigger: ${eventName}`);
+        failures.push(
+          `${name}: forbidden pull-request event trigger: ${eventName}`,
+        );
       }
       if (eventName !== "push") continue;
 
@@ -67,7 +76,8 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       const branches = stringList(config.branches);
       const tags = stringList(config.tags);
       const hasBranchIgnore = stringList(config["branches-ignore"]).length > 0;
-      if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore) continue;
+      if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore)
+        continue;
       if (
         branches.length !== 1 ||
         branches[0] !== "develop" ||
@@ -89,7 +99,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (failures.length > 0) {
     throw new Error(
       [
-        "GitHub workflow triggers must not run for pull requests, and automated branch pushes must target develop only:",
+        "GitHub workflow triggers must not run for pull requests, merge_group is reserved for the candidate Biome gate, and automated branch pushes must target develop only:",
         ...failures,
       ].join("\n"),
     );

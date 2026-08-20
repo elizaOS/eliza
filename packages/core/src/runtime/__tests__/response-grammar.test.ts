@@ -17,6 +17,7 @@ import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
 	clearResponseGrammarCache,
+	MAX_SIMPLE_REGEX_REPEAT,
 	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
 import type { ResponseHandlerFieldEvaluator } from "../response-handler-field-evaluator";
@@ -139,16 +140,20 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		);
 	});
 
-	it("treats one-to-one voice as a direct channel", () => {
+	it("keeps turn-taking on one-to-one voice while omitting sidecar fields", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
+			true,
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "facts")).toBe(false);
+		expect(responseSkeleton.spans.some((s) => s.key === "relationships")).toBe(
 			false,
 		);
-		expect(grammar).not.toContain(
+		expect(grammar).toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
 	});
@@ -262,7 +267,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(c).not.toBe(a);
 	});
 
-	it("shares direct-channel semantics with one-to-one voice", () => {
+	it("separates text-direct and one-to-one voice grammar profiles", () => {
 		clearResponseGrammarCache();
 		const direct = buildResponseGrammar(
 			{ actions: [] },
@@ -272,14 +277,14 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
-		expect(direct).toBe(voice);
-		expect(direct.responseSkeleton.id).toBe(voice.responseSkeleton.id);
+		expect(direct).not.toBe(voice);
+		expect(direct.responseSkeleton.id).not.toBe(voice.responseSkeleton.id);
 		expect(
 			direct.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
 		).toBe(false);
 		expect(
 			voice.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
-		).toBe(false);
+		).toBe(true);
 	});
 });
 
@@ -721,6 +726,123 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
 			/paramsofaction-CODE-p-code ::= "\\"code\\":" \[A-Z\] \[A-Z\] \[0-9\] \[0-9\] \[0-9\] \[0-9\]/,
+		);
+	});
+
+	it("expands a last-fit exact repeat and refuses the first overflowing count", () => {
+		clearResponseGrammarCache();
+		const atoms = Array.from(
+			{ length: MAX_SIMPLE_REGEX_REPEAT },
+			() => "\\[A-Z\\]",
+		).join(" ");
+		const fit = buildPlannerActionGrammarStrict([
+			makeAction("FIT", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: {
+							type: "string",
+							pattern: `^[A-Z]{${MAX_SIMPLE_REGEX_REPEAT}}$`,
+						},
+					},
+				],
+			}),
+		]);
+		if (fit === null) throw new Error("expected grammar");
+		expect(fit.grammar).toMatch(
+			new RegExp(`paramsofaction-FIT-p-code ::= "\\\\"code\\\\":" ${atoms}`),
+		);
+
+		const overflow = buildPlannerActionGrammarStrict([
+			makeAction("OVERFLOW", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: {
+							type: "string",
+							pattern: `^[A-Z]{${MAX_SIMPLE_REGEX_REPEAT + 1}}$`,
+						},
+					},
+				],
+			}),
+		]);
+		if (overflow === null) throw new Error("expected grammar");
+		expect(overflow.grammar).toMatch(
+			/paramsofaction-OVERFLOW-p-code ::= "\\"code\\":" jsonstring/,
+		);
+	});
+
+	it("refuses an unsafe exact-repeat count before allocating GBNF atoms", () => {
+		clearResponseGrammarCache();
+		const started = performance.now();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("BOMB", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: {
+							type: "string",
+							pattern: `^A{${"9".repeat(16)}}$`,
+						},
+					},
+				],
+			}),
+		]);
+		expect(performance.now() - started).toBeLessThan(100);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction-BOMB-p-code ::= "\\"code\\":" jsonstring/,
+		);
+		expect(r.grammar ?? "").not.toContain("A A A A A");
+	});
+
+	it("refuses nested repeats whose compiled grammar exceeds the total budget", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("NESTED_BOMB", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: {
+							type: "string",
+							pattern: "^((A{32}){32}){32}$",
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction-NESTED-BOMB-p-code ::= "\\"code\\":" jsonstring/,
+		);
+		expect(r.grammar.length).toBeLessThan(10_000);
+	});
+
+	it("falls back when a repeat range exceeds the per-term ceiling", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("RANGE_BOMB", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: { type: "string", pattern: "^A{32,64}$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction-RANGE-BOMB-p-code ::= "\\"code\\":" jsonstring/,
 		);
 	});
 

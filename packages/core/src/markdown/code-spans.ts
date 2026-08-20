@@ -1,4 +1,8 @@
-/** Detects backtick-delimited inline code while preserving state across streamed chunks. */
+/**
+ * Detects backtick-delimited inline code while preserving state across streamed
+ * chunks. Parsing sweeps ordered fence spans once, while arbitrary membership
+ * queries use binary search, so hostile fence-heavy input remains bounded.
+ */
 
 import { type FenceSpan, parseFenceSpans } from "./fences.js";
 
@@ -77,10 +81,15 @@ function parseInlineCodeSpans(
 	let openStart = open ? 0 : -1;
 
 	let i = 0;
+	let fenceIndex = 0;
 	while (i < text.length) {
-		const fence = findFenceSpanAtInclusive(fenceSpans, i);
-		if (fence) {
+		while (fenceIndex < fenceSpans.length && fenceSpans[fenceIndex].end <= i) {
+			fenceIndex += 1;
+		}
+		const fence = fenceSpans[fenceIndex];
+		if (fence && i >= fence.start) {
 			i = fence.end;
+			fenceIndex += 1;
 			continue;
 		}
 
@@ -121,20 +130,42 @@ function parseInlineCodeSpans(
 	};
 }
 
+function findOrderedRange<T>(
+	spans: readonly T[],
+	index: number,
+	bounds: (span: T) => readonly [number, number],
+): T | undefined {
+	let lo = 0;
+	let hi = spans.length - 1;
+	while (lo <= hi) {
+		const mid = lo + Math.floor((hi - lo) / 2);
+		const span = spans[mid];
+		const [start, end] = bounds(span);
+		if (index < start) {
+			hi = mid - 1;
+		} else if (index >= end) {
+			lo = mid + 1;
+		} else {
+			return span;
+		}
+	}
+	return undefined;
+}
+
 function findFenceSpanAtInclusive(
 	spans: FenceSpan[],
 	index: number,
 ): FenceSpan | undefined {
-	return spans.find((span) => index >= span.start && index < span.end);
+	return findOrderedRange(spans, index, (span) => [span.start, span.end]);
 }
 
 function isInsideFenceSpan(index: number, spans: FenceSpan[]): boolean {
-	return spans.some((span) => index >= span.start && index < span.end);
+	return findFenceSpanAtInclusive(spans, index) !== undefined;
 }
 
 function isInsideInlineSpan(
 	index: number,
 	spans: Array<[number, number]>,
 ): boolean {
-	return spans.some(([start, end]) => index >= start && index < end);
+	return findOrderedRange(spans, index, (span) => span) !== undefined;
 }

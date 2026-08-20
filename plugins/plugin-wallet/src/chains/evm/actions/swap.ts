@@ -16,6 +16,8 @@ import {
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { buildSendTxParams, createEvmActionValidator } from "./helpers";
 
+export const DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS = 10_000;
+
 const legacySpec = requireActionSpec("EVM_SWAP");
 const spec = { ...legacySpec, name: "WALLET" };
 
@@ -346,6 +348,7 @@ export class SwapAction {
       const response = await fetch(`${url}?${reqParams.toString()}`, {
         method: "GET",
         headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -434,6 +437,7 @@ export class SwapAction {
 
       const res = await fetch(url.toString(), {
         headers: { "X-Client-Id": "elizaos", Accept: "application/json" },
+        signal: AbortSignal.timeout(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS),
       });
 
       if (!res.ok) throw new Error(`KyberSwap API error: ${res.status}`);
@@ -625,6 +629,7 @@ export class SwapAction {
     const buildRes = await fetch(
       `https://aggregator-api.kyberswap.com/${ks.chainSlug}/api/v1/route/build`,
       {
+        signal: AbortSignal.timeout(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS),
         method: "POST",
         headers: {
           "X-Client-Id": "elizaos",

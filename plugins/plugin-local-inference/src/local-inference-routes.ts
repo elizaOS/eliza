@@ -1517,6 +1517,20 @@ function writeSse(res: http.ServerResponse, payload: unknown): void {
 	res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+function decodeLocalInferencePathId(
+	raw: string,
+	res: http.ServerResponse,
+	fieldName: string,
+): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 malformed path encoding is invalid request input.
+		sendJsonError(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
+		return null;
+	}
+}
+
 export async function handleLocalInferenceRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -1820,7 +1834,12 @@ export async function handleLocalInferenceRoutes(
 		pathname,
 	);
 	if (method === "DELETE" && downloadMatch) {
-		const modelId = decodeURIComponent(downloadMatch[1] ?? "");
+		const modelId = decodeLocalInferencePathId(
+			downloadMatch[1] ?? "",
+			res,
+			"model id",
+		);
+		if (modelId === null) return true;
 		activeDownloads.get(modelId)?.abortController.abort();
 		activeDownloads.delete(modelId);
 		sendJson(res, { cancelled: true });
@@ -1944,7 +1963,12 @@ export async function handleLocalInferenceRoutes(
 	const verifyMatch =
 		/^\/api\/local-inference\/installed\/([^/]+)\/verify$/.exec(pathname);
 	if (method === "POST" && verifyMatch) {
-		const id = decodeURIComponent(verifyMatch[1] ?? "");
+		const id = decodeLocalInferencePathId(
+			verifyMatch[1] ?? "",
+			res,
+			"model id",
+		);
+		if (id === null) return true;
 		const installed = (await installedSnapshot()).find(
 			(model) => model.id === id,
 		);
@@ -1965,7 +1989,12 @@ export async function handleLocalInferenceRoutes(
 		pathname,
 	);
 	if (method === "DELETE" && installedMatch) {
-		const id = decodeURIComponent(installedMatch[1] ?? "");
+		const id = decodeLocalInferencePathId(
+			installedMatch[1] ?? "",
+			res,
+			"model id",
+		);
+		if (id === null) return true;
 		sendJson(res, { removed: await removeInstalledModel(id) });
 		return true;
 	}

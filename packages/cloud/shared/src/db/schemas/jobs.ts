@@ -1,7 +1,7 @@
 // Defines the jobs Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { apiKeys } from "./api-keys";
 import { generations } from "./generations";
 import { organizations } from "./organizations";
@@ -35,6 +35,10 @@ export const jobs = pgTable(
     // Column shipped ahead of this entry in 0185/0194 (#17476) so readers only
     // deploy against databases that already have it.
     execution_interruptions: integer("execution_interruptions").notNull().default(0),
+    // Retryable target/provider outcomes requeued without spending an ordinary
+    // execution attempt. This is database-owned execution authority, not job
+    // input, and is bounded atomically by the repository transition.
+    retryable_requeues: integer("retryable_requeues").notNull().default(0),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
@@ -79,6 +83,10 @@ export const jobs = pgTable(
       .where(
         sql`${table.execution_generation} IS NOT NULL AND ${table.execution_quiesced_at} IS NULL AND ${table.agent_id} IS NOT NULL`,
       ),
+    retryable_requeues_nonnegative_check: check(
+      "jobs_retryable_requeues_nonnegative_check",
+      sql`${table.retryable_requeues} >= 0`,
+    ),
   }),
 );
 

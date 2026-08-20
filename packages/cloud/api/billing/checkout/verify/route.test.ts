@@ -1,4 +1,4 @@
-// Exercises cloud API billing checkout verify route.test behavior with deterministic Worker route fixtures.
+/** Exercises billing Checkout verification with deterministic Worker route fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
@@ -23,14 +23,24 @@ const getWithOrganization = mock(async () => ({
     is_active: true,
   },
 }));
-const getTransactionByStripePaymentIntent = mock(
-  async (): Promise<{ id: string } | null> => null,
-);
-const addCredits = mock(async () => ({ newBalance: 8.25 }));
+const settleCheckout = mock(async () => ({
+  order: {
+    id: "30000000-0000-4000-8000-000000000001",
+    organization_id: "agent-org",
+    initiated_by_user_id: "agent-user",
+    purchase_type: "custom_amount",
+    credits_to_grant: "5.000000",
+    charge_amount_cents: 500n,
+    stripe_customer_id: "cus_agent",
+  },
+  newBalance: 8.25,
+  alreadyApplied: false,
+}));
 const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const retrieveSession = mock(async () => ({
   id: "cs_agent_paid",
+  client_reference_id: "30000000-0000-4000-8000-000000000001",
   payment_status: "paid",
   amount_total: 500,
   currency: "usd",
@@ -42,6 +52,7 @@ const retrieveSession = mock(async () => ({
     credits: "5.00",
     type: "custom_amount",
     agent_id: agentId,
+    checkout_order_id: "30000000-0000-4000-8000-000000000001",
   },
 }));
 const webhookFetch = mock(
@@ -104,11 +115,11 @@ mock.module("@/lib/services/users", () => ({
   },
 }));
 
-mock.module("@/lib/services/credits", () => ({
-  creditsService: {
-    getTransactionByStripePaymentIntent,
-    addCredits,
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  StripeCheckoutAuthorityError: class extends Error {
+    code = "test";
   },
+  stripeCheckoutOrdersService: { settle: settleCheckout },
 }));
 
 mock.module("@/lib/services/invoices", () => ({
@@ -154,8 +165,20 @@ describe("billing checkout verify service-key agent bridge", () => {
     validateServiceKey.mockClear();
     requireUserOrApiKeyWithOrg.mockClear();
     getWithOrganization.mockClear();
-    getTransactionByStripePaymentIntent.mockClear();
-    addCredits.mockClear();
+    settleCheckout.mockClear();
+    settleCheckout.mockImplementation(async () => ({
+      order: {
+        id: "30000000-0000-4000-8000-000000000001",
+        organization_id: "agent-org",
+        initiated_by_user_id: "agent-user",
+        purchase_type: "custom_amount",
+        credits_to_grant: "5.000000",
+        charge_amount_cents: 500n,
+        stripe_customer_id: "cus_agent",
+      },
+      newBalance: 8.25,
+      alreadyApplied: false,
+    }));
     getByStripeInvoiceId.mockClear();
     createInvoice.mockClear();
     retrieveSession.mockClear();
@@ -184,16 +207,13 @@ describe("billing checkout verify service-key agent bridge", () => {
     });
     expect(validateServiceKey).toHaveBeenCalledTimes(1);
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
-        organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: paymentIntentId,
-        metadata: expect.objectContaining({
-          agent_id: agentId,
-          source: "success_page_fallback",
-        }),
+        checkoutOrderId: "30000000-0000-4000-8000-000000000001",
+        paymentIntentId,
+        amountTotal: 500,
       }),
+      { callerOrganizationId: "agent-org", callerUserId: "agent-user" },
     );
     expect(webhookFetch).toHaveBeenCalledTimes(1);
     const [url, init] = webhookFetch.mock.calls[0] ?? [];
@@ -224,8 +244,18 @@ describe("billing checkout verify service-key agent bridge", () => {
   });
 
   test("emits topped-up webhook even when credits were already applied", async () => {
-    getTransactionByStripePaymentIntent.mockImplementationOnce(async () => ({
-      id: "credit-tx-existing",
+    settleCheckout.mockImplementationOnce(async () => ({
+      order: {
+        id: "30000000-0000-4000-8000-000000000001",
+        organization_id: "agent-org",
+        initiated_by_user_id: "agent-user",
+        purchase_type: "custom_amount",
+        credits_to_grant: "5.000000",
+        charge_amount_cents: 500n,
+        stripe_customer_id: "cus_agent",
+      },
+      newBalance: 8.25,
+      alreadyApplied: true,
     }));
 
     const response = await app.fetch(
@@ -246,7 +276,7 @@ describe("billing checkout verify service-key agent bridge", () => {
       balance: 8.25,
       alreadyApplied: true,
     });
-    expect(addCredits).not.toHaveBeenCalled();
+    expect(settleCheckout).toHaveBeenCalledTimes(1);
     expect(webhookFetch).toHaveBeenCalledTimes(1);
     const [, init] = webhookFetch.mock.calls[0] ?? [];
     const body = JSON.parse(String((init as RequestInit).body));

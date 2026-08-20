@@ -11,6 +11,7 @@ import {
   COINGECKO_MARKET_PROVIDER,
   POLYMARKET_MARKET_PROVIDER,
   type ProviderStatus,
+  parseCanonicalInteger,
   parseCoinGeckoMarkets,
 } from "@elizaos/shared";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
@@ -643,7 +644,8 @@ async function handleLocalTranscriptsRoute(
   }
 
   if (!pathname.startsWith("/api/transcripts/")) return null;
-  const id = decodeURIComponent(pathname.slice("/api/transcripts/".length));
+  const id = decodePathSegment(pathname.slice("/api/transcripts/".length));
+  if (id === null) return json({ error: "malformed URL encoding" }, 400);
   if (!id || id.includes("/")) return null;
 
   if (method === "GET") {
@@ -706,6 +708,12 @@ const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
 
+function compareLocalMemoryIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function positiveIntegerParam(value: string | null, fallback: number): number {
   const parsed = integerFromUnknown(value);
   return parsed !== null && parsed > 0 ? parsed : fallback;
@@ -743,7 +751,12 @@ function localMemoryFeedItems(): MemoryBrowseItem[] {
       });
     }
   }
-  items.sort((a, b) => b.createdAt - a.createdAt);
+  items.sort((a, b) => {
+    const timestampOrder = b.createdAt - a.createdAt;
+    return timestampOrder !== 0
+      ? timestampOrder
+      : compareLocalMemoryIds(b.id, a.id);
+  });
   return items;
 }
 
@@ -777,13 +790,35 @@ function handleLocalMemoriesRoute(
       ),
       MEMORY_FEED_MAX_LIMIT,
     );
-    const beforeParam = url.searchParams.get("before");
-    const before = beforeParam ? Number(beforeParam) : undefined;
+    const before = parseCanonicalInteger(url.searchParams.get("before"));
+    if (before === "invalid") {
+      return json(
+        { error: "before must be a Unix timestamp in milliseconds" },
+        400,
+      );
+    }
+    const beforeIdParam = url.searchParams.get("beforeId");
+    const beforeId = beforeIdParam?.trim();
+    if (
+      beforeIdParam !== null &&
+      (before === undefined || !beforeId || beforeId.length > 512)
+    ) {
+      return json(
+        { error: "beforeId must be a non-empty ID paired with before" },
+        400,
+      );
+    }
     let items = localMemoryTypeHasRows(url.searchParams.get("type"))
       ? localMemoryFeedItems()
       : [];
     if (before !== undefined) {
-      items = items.filter((item) => item.createdAt < before);
+      items = items.filter(
+        (item) =>
+          item.createdAt < before ||
+          (beforeId !== undefined &&
+            item.createdAt === before &&
+            compareLocalMemoryIds(item.id, beforeId) < 0),
+      );
     }
     const page = items.slice(0, limit);
     return json({
@@ -826,15 +861,19 @@ function handleLocalMemoriesRoute(
     return json({
       memories: items.slice(offset, offset + limit),
       total: items.length,
+      totalIsExact: true,
+      hasMore: offset + limit < items.length,
       limit,
       offset,
     });
   }
 
   if (pathname.startsWith("/api/memories/by-entity/")) {
-    const entityId = decodeURIComponent(
+    const entityId = decodePathSegment(
       pathname.slice("/api/memories/by-entity/".length),
     );
+    if (entityId === null)
+      return json({ error: "malformed URL encoding" }, 400);
     if (!entityId) return json({ error: "Missing entity identifier." }, 400);
     const limit = Math.min(
       Math.max(
@@ -848,7 +887,15 @@ function handleLocalMemoriesRoute(
     );
     const offset = positiveIntegerParam(url.searchParams.get("offset"), 0);
     // No entity graph in iOS local mode — no memory is attributed to an entity.
-    return json({ entityId, memories: [], total: 0, limit, offset });
+    return json({
+      entityId,
+      memories: [],
+      total: 0,
+      totalIsExact: true,
+      hasMore: false,
+      limit,
+      offset,
+    });
   }
 
   return null;
@@ -932,7 +979,11 @@ async function handleBrowserWorkspaceTabRoute(
   );
   if (!match) return null;
 
-  const tabId = decodeURIComponent(match[1]).trim();
+  const decodedTabId = decodePathSegment(match[1] ?? "");
+  if (decodedTabId === null) {
+    return json({ error: "malformed URL encoding" }, 400);
+  }
+  const tabId = decodedTabId.trim();
   const action = match[2] ?? null;
   const store = readBrowserWorkspaceStore();
   const index = store.tabs.findIndex((tab) => tab.id === tabId);
@@ -1486,6 +1537,15 @@ function emptyWalletTradingProfile(url: URL): Record<string, unknown> {
     tokenBreakdown: [],
     recentSwaps: [],
   };
+}
+
+function decodePathSegment(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // error-policy:J3 malformed percent-encoding is invalid client input.
+    return null;
+  }
 }
 
 function json(data: unknown, status = 200): Response {
@@ -3364,9 +3424,12 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "GET" && pathname.startsWith("/api/documents/")) {
     if (pathname.endsWith("/fragments")) {
-      const documentId = decodeURIComponent(
+      const documentId = decodePathSegment(
         pathname.slice("/api/documents/".length, -"/fragments".length),
       );
+      if (documentId === null) {
+        return json({ error: "malformed URL encoding" }, 400);
+      }
       return json({ documentId, fragments: [], count: 0 });
     }
     return json({ error: "Document not found" }, 404);
@@ -3629,7 +3692,8 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/local-inference\/downloads\/([^/]+)$/,
   );
   if (downloadMatch) {
-    const modelId = decodeURIComponent(downloadMatch[1]);
+    const modelId = decodePathSegment(downloadMatch[1] ?? "");
+    if (modelId === null) return json({ error: "malformed URL encoding" }, 400);
     const job = downloads.get(modelId);
     if (method === "GET") {
       return job ? json({ job }) : json({ error: "Download not found" }, 404);
@@ -3746,7 +3810,8 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/local-inference\/installed\/([^/]+)(?:\/verify)?$/,
   );
   if (installedMatch) {
-    const id = decodeURIComponent(installedMatch[1]);
+    const id = decodePathSegment(installedMatch[1] ?? "");
+    if (id === null) return json({ error: "malformed URL encoding" }, 400);
     const installed = await listInstalledModels();
     const model = installed.find((entry) => entry.id === id);
     if (!model) return json({ error: "Model not found" }, 404);
@@ -3802,7 +3867,10 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/conversations\/([^/]+)\/messages(?:\/stream|\/truncate)?$/,
   );
   if (messageMatch) {
-    const conversationId = decodeURIComponent(messageMatch[1]);
+    const conversationId = decodePathSegment(messageMatch[1] ?? "");
+    if (conversationId === null) {
+      return json({ error: "malformed URL encoding" }, 400);
+    }
     const store = readStore();
     const conversation = store.conversations.find(
       (entry) => entry.id === conversationId,
@@ -3885,7 +3953,10 @@ export async function handleIosLocalAgentRequest(
 
   const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
   if (conversationMatch) {
-    const conversationId = decodeURIComponent(conversationMatch[1]);
+    const conversationId = decodePathSegment(conversationMatch[1] ?? "");
+    if (conversationId === null) {
+      return json({ error: "malformed URL encoding" }, 400);
+    }
     const store = readStore();
     const index = store.conversations.findIndex(
       (entry) => entry.id === conversationId,

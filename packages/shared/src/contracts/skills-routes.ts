@@ -56,14 +56,16 @@ export const PostSkillAcknowledgeRequestSchema = z
 export const PostSkillCreateRequestSchema = z
   .object({
     name: z.string().regex(/\S/, "name is required"),
-    description: z.string().optional(),
+    description: z
+      .string()
+      .trim()
+      .max(1024, "description must be 1024 characters or less")
+      .optional(),
   })
   .strict()
   .transform((value) => ({
     name: value.name.trim(),
-    ...(value.description?.trim()
-      ? { description: value.description.trim() }
-      : {}),
+    ...(value.description ? { description: value.description } : {}),
   }));
 
 export const PutSkillSourceRequestSchema = z

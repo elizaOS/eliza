@@ -1,28 +1,34 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "composite": false,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun-types"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
     "paths": {
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../plugin-native-bun-runtime/src/index.ts"
+      ],
       "@elizaos/plugin-whatsapp": ["../plugin-whatsapp/src/index.ts"],
       "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
-    },
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "types": ["node", "bun-types"]
+    }
   },
-  "include": ["src"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [
     "dist",
     "node_modules",

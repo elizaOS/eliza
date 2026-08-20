@@ -49,6 +49,10 @@ import { and, eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
 import {
+  appReservationSettlementQuarantines,
+  appReservationSettlements,
+} from "../../../db/schemas/app-reservation-settlements";
+import {
   appDeploymentStatusEnum,
   appReviewStatusEnum,
   apps,
@@ -183,6 +187,8 @@ beforeAll(async () => {
       redeemableEarningsLedger,
       redeemedEarningsTracking,
       creditTransactions,
+      appReservationSettlements,
+      appReservationSettlementQuarantines,
       appDeploymentStatusEnum,
       appReviewStatusEnum,
       userDatabaseStatusEnum,

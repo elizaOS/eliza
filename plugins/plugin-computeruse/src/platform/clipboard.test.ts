@@ -210,6 +210,23 @@ describe("clipboard — Windows", () => {
     ]);
     expect((options as { input: string }).input).toBe("hello windows");
   });
+
+  it("clears the Windows clipboard when writing empty text", async () => {
+    setPlatform("win32");
+    spawnSyncMock.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+    const { writeClipboard } = await importClipboard();
+
+    await writeClipboard("");
+
+    const [cmd, args, options] = spawnSyncMock.mock.calls[0] ?? [];
+    expect(cmd).toBe("powershell");
+    expect(args).toEqual([
+      "-NoProfile",
+      "-Command",
+      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
+    ]);
+    expect(options).not.toHaveProperty("input");
+  });
 });
 
 describe("clipboard — write error propagation", () => {

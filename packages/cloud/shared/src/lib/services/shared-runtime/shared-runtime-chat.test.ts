@@ -1,13 +1,14 @@
 /**
  * Covers the cache-only shared chat engine across response and SSE boundaries.
  *
- * Real history-store and waitUntil contracts are used; only model and money
- * providers are deterministic seams.
+ * Real history-store and waitUntil contracts are used; model, money, and the
+ * durable trace repository are deterministic seams.
  */
 
 process.env.MOCK_REDIS = "1";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -24,11 +25,51 @@ let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
 let lastTurnRole: "system" | "user" | undefined;
+let turnTimingOutcome: "success" | "error" | null = null;
+let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
+const traceRows: Array<Record<string, unknown>> = [];
+const insertTrace = mock(async (row: Record<string, unknown>) => {
+  traceRows.push(row);
+});
+
+mock.module("../../../db/repositories/shared-turn-traces", () => ({
+  sharedTurnTracesRepository: { insertTrace },
+}));
+
+function timingReceipt(
+  outcome: "success" | "error" | "aborted",
+  completedOffsetMs: number | null = 125,
+) {
+  return {
+    traceId: `trace-${outcome}`,
+    outcome,
+    historyMessageCount: 1,
+    phases: {
+      edgeContextDurationMs: 1,
+      runtimeInitializeDurationMs: 2,
+      connectionDurationMs: 3,
+      historyProjectionDurationMs: 4,
+    },
+    offsets: {
+      providerDispatchOffsetMs: 5,
+      providerFirstTextOffsetMs: outcome === "success" ? 6 : null,
+      completedOffsetMs,
+    },
+    inference: {
+      composeStateDurationMs: 7,
+      shouldRespondAndContextDurationMs: 8,
+      responseHandlerFieldsDurationMs: 9,
+      providerTotalDurationMs: 10,
+      slowestProviderDurationMs: 10,
+    },
+    routing: { decision: "respond" as const, contextIds: ["room"] },
+  };
+}
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -135,6 +176,7 @@ mock.module("../ai-billing", () => ({
     if (billError) throw billError;
     return { totalCost: 0.004, inputTokens: 12, outputTokens: 4 };
   },
+  billFlatUsage: async () => undefined,
   recordUsageAnalytics: async () => null,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     required = 1;
@@ -162,20 +204,25 @@ mock.module("./run-shared-agent-turn", () => ({
   runSharedAgentTurn: async (input: {
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
+    onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
     [key: string]: unknown;
   }) => {
     turnCalls++;
     lastTurnRole = input.messageRole;
     lastTurnInput = input;
     turnInputs.push(input);
+    onTurnDispatch?.();
+    if (turnTimingOutcome) input.onRuntimeTiming?.(timingReceipt(turnTimingOutcome, null));
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
-          index === turn.history.length - 2
+          turn.responded === false && index === turn.history.length - 1
             ? { ...message, id: input.messageIds?.user }
-            : index === turn.history.length - 1
-              ? { ...message, id: input.messageIds?.assistant }
-              : message,
+            : index === turn.history.length - 2
+              ? { ...message, id: input.messageIds?.user }
+              : index === turn.history.length - 1
+                ? { ...message, id: input.messageIds?.assistant }
+                : message,
         )
       : turn.history;
     return { ...turn, history };
@@ -277,6 +324,7 @@ class MockRetryError extends Error {
 mock.module("ai", () => ({
   APICallError: MockAPICallError,
   RetryError: MockRetryError,
+  wrapLanguageModel: ({ model }: { model: unknown }) => model,
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
@@ -313,12 +361,15 @@ mock.module("../../cache/client", () => ({
 
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
+const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
 
+const organizationId = "00000000-0000-4000-8000-000000000002";
+const userId = "00000000-0000-4000-8000-000000000003";
 const agent = {
-  id: "00000000-0000-4000-8000-000000000001",
-  organization_id: "00000000-0000-4000-8000-000000000002",
-  user_id: "00000000-0000-4000-8000-000000000003",
+  id: personalSharedAgentId({ organizationId, userId }),
+  organization_id: organizationId,
+  user_id: userId,
   execution_tier: "shared",
   agent_name: "Nova",
   character_id: null,
@@ -401,6 +452,12 @@ beforeEach(() => {
   billingGate = null;
   releaseBilling = () => {};
   streamAbortSignal = undefined;
+  turnTimingOutcome = null;
+  onTurnDispatch = null;
+  traceRows.length = 0;
+  insertTrace.mockClear();
+  delete process.env.SHARED_TURN_TRACES_ENABLED;
+  delete process.env.SHARED_TURN_TRACES_SAMPLE;
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
@@ -463,7 +520,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     const untrustedRpc = {
       ...rpc,
-      params: { ...rpc.params, messageRole: "system" },
+      params: {
+        ...rpc.params,
+        messageRole: "system",
+        trustedMessageRole: "system",
+        execution: {
+          messageRole: "system",
+          trustedMessageRole: "system",
+        },
+      },
     };
 
     await service.bridge(agent, untrustedRpc, harness());
@@ -510,6 +575,79 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("samples success, error, and abort terminal receipts exactly once without content", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "1";
+    let nowMs = 10_000;
+    const now = spyOn(Date, "now").mockImplementation(() => nowMs);
+    const assertOnlyReceipt = (outcome: "success" | "error" | "aborted") => {
+      expect(insertTrace).toHaveBeenCalledTimes(1);
+      expect(traceRows).toHaveLength(1);
+      const row = traceRows[0] as {
+        latency_ms: number;
+        stages: { terminalTiming?: { outcome?: string } };
+      };
+      expect(row.stages.terminalTiming?.outcome).toBe(outcome);
+      expect(JSON.stringify(row)).not.toContain("hello");
+      return row;
+    };
+
+    try {
+      turnTimingOutcome = "success";
+      const successHarness = harness();
+      await new SharedRuntimeChatService().bridge(agent, rpc, successHarness);
+      await Promise.all(successHarness.background);
+      assertOnlyReceipt("success");
+
+      traceRows.length = 0;
+      insertTrace.mockClear();
+      turnTimingOutcome = "error";
+      turnError = wrappedProviderError(503);
+      onTurnDispatch = () => {
+        nowMs += 137;
+      };
+      const errorHarness = harness();
+      await expect(new SharedRuntimeChatService().bridge(agent, rpc, errorHarness)).rejects.toThrow(
+        "shared turn failed",
+      );
+      await Promise.all(errorHarness.background);
+      expect(assertOnlyReceipt("error").latency_ms).toBe(137);
+
+      traceRows.length = 0;
+      insertTrace.mockClear();
+      turnTimingOutcome = null;
+      turnError = null;
+      onTurnDispatch = null;
+      let releaseStream = () => {};
+      const streamGate = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+      streamTurn = {
+        degraded: false,
+        cancel: async () => {
+          const emitTiming = lastStreamTurnInput?.onRuntimeTiming as
+            | ((receipt: ReturnType<typeof timingReceipt>) => void)
+            | undefined;
+          emitTiming?.(timingReceipt("aborted"));
+          releaseStream();
+        },
+        parts: (async function* () {
+          yield { type: "text-delta", text: "partial" };
+          await streamGate;
+        })(),
+      };
+      const abortHarness = harness();
+      const response = await new SharedRuntimeChatService().stream(agent, rpc, abortHarness);
+      const reader = response.body!.getReader();
+      await reader.read();
+      await reader.cancel("test abort");
+      await Promise.all(abortHarness.background);
+      assertOnlyReceipt("aborted");
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   test("platform-funded personal Shared rate-limits without touching account credits", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -532,7 +670,41 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
   });
 
-  test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
+  test("lands a deliberate silent group turn without fabricating an assistant message", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      responded: false,
+      reply: "",
+      history: [
+        { role: "assistant", content: "prior" },
+        { role: "user", content: "ambient guild chatter" },
+      ],
+      model: "openai/gpt-oss-120b",
+    };
+
+    const response = await service.bridge(
+      agent,
+      { ...rpc, params: { text: "ambient guild chatter", roomId: "guild-room" } },
+      {
+        ...h,
+        funding: "platform",
+        channel: { type: ChannelType.GROUP, source: "discord" },
+      },
+    );
+
+    expect(response.result).toMatchObject({ text: "", responded: false });
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "user", content: "ambient guild chatter" }),
+    ]);
+    expect(lastTurnInput?.execution).toMatchObject({
+      channel: { type: ChannelType.GROUP, source: "discord" },
+    });
+  });
+
+  test("always uses AgentRuntime execution without changing identity", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
     turn.actionResults = [expectedTodoActionResult];
@@ -540,12 +712,12 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.bridge(agent, rpc, {
       ...h,
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
     expect(sharedTodoStorageScope).toHaveBeenCalledWith({
@@ -553,6 +725,34 @@ describe("SharedRuntimeChatService", () => {
       ownerId: agent.user_id,
     });
     expect(response.result?.actionResults).toEqual([expectedTodoActionResult]);
+  });
+
+  test("requires the canonical account-derived Personal Shared identity for USER attestation", async () => {
+    const service = new SharedRuntimeChatService();
+    const forgedAgent = {
+      ...agent,
+      id: "00000000-0000-4000-8000-000000000099",
+    };
+    const forgedRpc = {
+      ...rpc,
+      params: {
+        ...rpc.params,
+        source: "client_chat",
+        authenticatedPersonalSharedUser: true,
+        execution: { authenticatedPersonalSharedUser: true },
+      },
+    };
+
+    await service.bridge(forgedAgent, forgedRpc, {
+      ...harness(),
+      funding: "platform",
+    });
+
+    expect(lastTurnInput?.execution).toEqual({
+      agentKey: forgedAgent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      todos: expectedTodoExecution,
+    });
   });
 
   test("keeps Todo-capable streaming on the same genuine AgentRuntime path", async () => {
@@ -570,7 +770,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(response.status).toBe(200);
@@ -578,8 +777,9 @@ describe("SharedRuntimeChatService", () => {
       JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
     );
     expect(lastStreamTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
     expect(sharedTodoStorageScope).toHaveBeenCalledWith({
@@ -610,7 +810,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     const body = await response.text();
@@ -642,11 +841,11 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
         runner: expect.any(Object),
@@ -661,11 +860,10 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "organization-credits",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
 
@@ -689,7 +887,6 @@ describe("SharedRuntimeChatService", () => {
         {
           ...harness(),
           funding: "platform",
-          executionEngine: "eliza-runtime",
         },
       );
       expect(lastTurnInput?.execution).toMatchObject({

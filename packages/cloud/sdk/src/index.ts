@@ -5,6 +5,7 @@ export {
   type BuildAppAuthorizeUrlOptions,
   buildAppAuthorizeUrl,
 } from "./app-auth.js";
+export { isCliLoginSessionId } from "./cli-login.js";
 export { createElizaCloudClient, ElizaCloudClient } from "./client.js";
 export {
   CloudApiClient,

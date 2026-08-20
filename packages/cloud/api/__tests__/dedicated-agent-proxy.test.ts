@@ -647,6 +647,23 @@ describe("dedicated-agent-proxy — unified auth", () => {
     );
   });
 
+  test("owner of a terminal-error agent receives a machine-readable 503 without a resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "error" };
+    const r = makeRequest("cloud-token", "https://app-staging.elizacloud.ai");
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: "agent_error_state",
+      data: { status: "error" },
+    });
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
+  });
+
   test("owner of a NON-RUNNING agent WITH sufficient credits → 202 and enqueues the resume (#11583)", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = { ...runningDedicated, status: "stopped" };

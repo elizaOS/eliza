@@ -1,7 +1,9 @@
 /**
  * Path predicates and resolution used by the sandbox policy and file handlers.
  * Relative FILE inputs resolve through the conversation's session cwd, while
- * device and `/proc/<pid>/fd` pseudo-paths remain blocked.
+ * device and `/proc/<pid>/fd` pseudo-paths remain blocked. Missing leaves
+ * realpath through the longest existing parent so symlink directories cannot
+ * smuggle a write outside the workspace.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -52,13 +54,28 @@ export function normalizeAbsolute(p: string): string {
 }
 
 export async function resolveRealPath(p: string): Promise<string> {
+  const absolute = path.resolve(p);
   try {
-    return await fs.realpath(p);
+    return await fs.realpath(absolute);
   } catch {
-    // error-policy:J3 realpath requires the path to exist on disk; for a
-    // not-yet-created target the lexical resolve is the designed fallback the
-    // sandbox root check relies on (symlinks simply resolve to themselves).
-    return path.resolve(p);
+    // error-policy:J3 the leaf (or an ancestor) is missing. Walk up to the
+    // longest existing prefix and realpath that, then rejoin the tail so a
+    // workspace symlink-to-elsewhere cannot hide behind a not-yet-created
+    // basename. A fully missing chain falls back to the lexical absolute.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return absolute;
+    }
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(await fs.realpath(parent), ...tail);
+    } catch {
+      current = parent;
+    }
   }
 }
 

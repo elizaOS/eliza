@@ -28,9 +28,10 @@ import {
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
 } from "@elizaos/plugin-google-workspace/calendar";
-import type {
-  DispatchResult,
-  ScheduledTaskDispatchRecord,
+import {
+  type DispatchResult,
+  type ScheduledTaskDispatchRecord,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -213,6 +214,10 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
+// Keep the page cap as a pathological-work backstop; the retained-event bound
+// is the normal product/memory boundary for full and incremental syncs.
+export const MAX_GOOGLE_CALENDAR_PAGES = 1_000;
+export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -1188,7 +1193,7 @@ export class CalendarService extends Service {
 
   private async installGoogleWatchMaintenanceOnBoot(): Promise<void> {
     try {
-      await this.runtime.initPromise;
+      await waitForScheduledTaskRunnerService(this.runtime);
       await this.googleWatch.installMaintenanceTask();
     } catch (error) {
       // error-policy:J5 Service.start launches maintenance installation in the
@@ -2978,8 +2983,24 @@ export class CalendarService extends Service {
     const seenPageTokens = new Set<string>();
     let pageToken: string | undefined;
     let nextSyncToken: string | null = null;
+    let pageCount = 0;
 
     do {
+      pageCount += 1;
+      if (pageCount > MAX_GOOGLE_CALENDAR_PAGES) {
+        throw new ElizaError(
+          "Google Calendar event pagination exceeded maximum page limit.",
+          {
+            code: "GOOGLE_CALENDAR_PAGE_LIMIT_EXCEEDED",
+            context: {
+              accountId: args.accountId,
+              calendarId: args.calendarId,
+              maxPages: MAX_GOOGLE_CALENDAR_PAGES,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       const page = await listEventPage({
         accountId: args.accountId,
         calendarId: args.calendarId,
@@ -2990,6 +3011,20 @@ export class CalendarService extends Service {
           ? { syncToken: args.syncToken }
           : { timeMin: args.timeMin, timeMax: args.timeMax }),
       });
+      if (page.events.length > MAX_GOOGLE_CALENDAR_EVENTS - events.length) {
+        throw new ElizaError(
+          "Google Calendar event sync exceeded the retained event limit.",
+          {
+            code: "GOOGLE_CALENDAR_EVENT_LIMIT_EXCEEDED",
+            context: {
+              accountId: args.accountId,
+              calendarId: args.calendarId,
+              maxEvents: MAX_GOOGLE_CALENDAR_EVENTS,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       events.push(...page.events);
       if (page.nextSyncToken) {
         nextSyncToken = page.nextSyncToken;

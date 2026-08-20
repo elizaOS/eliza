@@ -1,4 +1,10 @@
-// Defines cloud shared blob behavior for backend service consumers.
+/**
+ * Owns cloud blob URL validation, bounded remote ingestion, and R2 persistence
+ * for backend service consumers.
+ */
+import { ElizaError } from "@elizaos/core";
+
+import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
 const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
@@ -158,25 +164,176 @@ export async function uploadBase64Image(
 }
 
 /**
+ * Upper bound on the bytes uploadFromUrl pulls through a caller-controlled
+ * URL. The body is streamed and cancelled as soon as the running total
+ * exceeds the cap, so a missing or lying Content-Length cannot force an
+ * unbounded allocation before the payload lands on the public blob host.
+ */
+const UPLOAD_FROM_URL_MAX_BYTES = 25 * 1024 * 1024;
+const UPLOAD_FROM_URL_TIMEOUT_MS = 15_000;
+
+/**
+ * Reads a response body under a hard byte cap, cancelling the stream as soon
+ * as the running total exceeds maxBytes instead of materializing the payload
+ * first. A declared Content-Length above the cap is rejected before any byte
+ * is read. Falls back to a post-read check only when the response exposes no
+ * stream.
+ */
+async function readResponseBodyWithCap(
+  response: Response,
+  maxBytes: number,
+  sourceUrl: string,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  const contentLength = response.headers.get("content-length");
+  const declaredLength = contentLength === null ? null : Number(contentLength);
+  if (declaredLength !== null && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // error-policy:J6 Cancellation is best-effort teardown after the
+      // byte-limit failure has already been established.
+    }
+    throw new Error(
+      `Failed to fetch URL: content length ${declaredLength} exceeds the ${maxBytes}-byte cap (${sourceUrl})`,
+    );
+  }
+
+  const body = response.body;
+  if (!body) {
+    const fallback = Buffer.from(await response.arrayBuffer());
+    if (fallback.length > maxBytes) {
+      throw new Error(
+        `Failed to fetch URL: payload exceeds the ${maxBytes}-byte cap (${sourceUrl})`,
+      );
+    }
+    return fallback;
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const cancelReaderAfterAbort = async (): Promise<void> => {
+    try {
+      await reader.cancel(signal?.reason);
+    } catch {
+      // error-policy:J6 The deadline failure is already authoritative; stream
+      // cancellation is best-effort teardown for a non-cooperative body.
+    }
+  };
+  const onAbort = (): void => {
+    void cancelReaderAfterAbort();
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) {
+    onAbort();
+  }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value.length) {
+        total += value.length;
+        if (total > maxBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // error-policy:J6 Cancellation is best-effort teardown after the
+            // byte-limit failure has already been established.
+          }
+          throw new Error(
+            `Failed to fetch URL: payload exceeds the ${maxBytes}-byte cap (${sourceUrl})`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 Stream lock release is best-effort teardown.
+    }
+  }
+
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  );
+}
+
+/**
  * Downloads content from a URL and uploads it to R2 storage.
+ *
+ * The fetch goes through the SSRF-hardened safeFetch — every redirect hop is
+ * re-validated against the outbound guard and, on Node, pinned to the
+ * validated IP — and the body streams under UPLOAD_FROM_URL_MAX_BYTES, so a
+ * caller-controlled URL can neither read internal-network targets nor exhaust
+ * memory on its way onto the public blob host.
  *
  * @param sourceUrl - URL to download content from.
  * @param options - Upload options for the downloaded content.
  * @returns Upload result with URL and metadata.
- * @throws Error if the URL cannot be fetched.
+ * @throws Error if the outbound guard rejects the URL, the fetch fails, or the payload exceeds the byte cap.
  */
 export async function uploadFromUrl(
   sourceUrl: string,
   options: BlobUploadOptions,
 ): Promise<BlobUploadResult> {
-  const response = await fetch(sourceUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeoutError = new ElizaError(
+    `Remote blob fetch timed out after ${UPLOAD_FROM_URL_TIMEOUT_MS}ms`,
+    {
+      code: "REMOTE_BLOB_FETCH_TIMEOUT",
+      context: { timeoutMs: UPLOAD_FROM_URL_TIMEOUT_MS },
+      severity: "ephemeral",
+    },
+  );
+  let rejectDeadline: (error: ElizaError) => void = () => undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectDeadline = reject;
+  });
+  const timeout = setTimeout(() => {
+    controller.abort(timeoutError);
+    // Reject independently of AbortSignal cooperation. DNS resolution and
+    // arbitrary response streams are not required to observe the signal.
+    rejectDeadline(timeoutError);
+  }, UPLOAD_FROM_URL_TIMEOUT_MS);
+  timeout.unref?.();
+
+  let response: Response;
+  let buffer: Buffer;
+  try {
+    ({ response, buffer } = await Promise.race([
+      (async () => {
+        const fetchedResponse = await safeFetch(sourceUrl, { signal: controller.signal });
+        if (!fetchedResponse.ok) {
+          try {
+            await fetchedResponse.body?.cancel();
+          } catch {
+            // error-policy:J6 The HTTP status failure is authoritative; body
+            // cancellation is best-effort teardown of the remote connection.
+          }
+          throw new Error(`Failed to fetch URL: ${fetchedResponse.statusText}`);
+        }
+        const fetchedBuffer = await readResponseBodyWithCap(
+          fetchedResponse,
+          UPLOAD_FROM_URL_MAX_BYTES,
+          sourceUrl,
+          controller.signal,
+        );
+        return { response: fetchedResponse, buffer: fetchedBuffer };
+      })(),
+      deadline,
+    ]));
+  } finally {
+    clearTimeout(timeout);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
   const contentType = options.contentType || response.headers.get("content-type") || undefined;
-
   return uploadToBlob(buffer, {
     ...options,
     contentType,

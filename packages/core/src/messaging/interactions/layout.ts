@@ -92,7 +92,20 @@ function firstNonBlankText(
 	return undefined;
 }
 
+function resolveButtonsPerRow(value: number | undefined): number {
+	if (value === undefined) return 3;
+	if (!Number.isInteger(value) || value < 1) {
+		throw new RangeError(
+			"maxButtonsPerRow must be a finite integer of at least 1",
+		);
+	}
+	return value;
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
+	if (!Number.isInteger(size) || size < 1) {
+		throw new RangeError("chunk size must be a finite integer of at least 1");
+	}
 	const rows: T[][] = [];
 	for (let i = 0; i < items.length; i += size)
 		rows.push(items.slice(i, i + size));
@@ -127,7 +140,7 @@ export function toNeutralLayout(
 	block: InteractionBlock,
 	opts: LayoutOptions = {},
 ): NeutralLayout {
-	const perRow = opts.maxButtonsPerRow ?? 3;
+	const perRow = resolveButtonsPerRow(opts.maxButtonsPerRow);
 	const resolveUrl = opts.resolveUrl;
 	const maxCallbackBytes = opts.maxCallbackBytes;
 

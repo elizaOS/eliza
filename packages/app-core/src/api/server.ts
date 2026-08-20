@@ -20,6 +20,7 @@ import {
   type ConversationMeta,
   clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
+  decodePathComponent,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
@@ -867,7 +868,8 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         return false;
       }
       if (!(await ensureRouteAuthorized(req, res, state))) return true;
-      const pluginId = decodeURIComponent(uiSpecMatch[1]);
+      const pluginId = decodePathComponent(uiSpecMatch[1], res, "plugin id");
+      if (pluginId === null) return true;
       const { buildPluginConfigUiSpec } = await import(
         "@elizaos/shared/config/plugin-ui-spec"
       );

@@ -25,6 +25,7 @@ import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
 import type { ElizaCharacter } from "@/lib/types";
 import { getCorsHeaders } from "@/lib/utils/cors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -212,14 +213,13 @@ app.post("/", async (c) => {
   try {
     const apiKey = await authenticateAffiliate(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 untrusted request body; malformed JSON becomes a typed
       // 400 ValidationError, never a silently-accepted empty/default body.
       throw ValidationError("Invalid JSON body");
     }
+    const body = decodedBody.value;
 
     const parsed = CreateCharacterSchema.safeParse(body);
     if (!parsed.success) {

@@ -27,6 +27,10 @@ export const orgStorageQuota = pgTable(
       .notNull()
       .default(5n * 1024n * 1024n * 1024n),
 
+    native_catalog_reconciled_at: timestamp("native_catalog_reconciled_at", {
+      withTimezone: true,
+    }),
+
     created_at: timestamp("created_at").notNull().defaultNow(),
 
     updated_at: timestamp("updated_at").notNull().defaultNow(),

@@ -99,10 +99,9 @@ export interface EndpointCallOptions extends CloudRequestOptions {
 
 export interface CliLoginStartOptions {
   /**
-   * @deprecated The server mints the session id and returns it in the
-   * response (client-chosen ids are ignored there). This value is still sent
-   * for compatibility with pre-hardening servers, but the response id is
-   * always authoritative.
+   * @deprecated The server mints the authoritative session id. This value is
+   * retained for source compatibility but is ignored; the SDK sends its own
+   * fresh compatibility proposal for older deployments.
    */
   sessionId?: string;
   returnTo?: string;

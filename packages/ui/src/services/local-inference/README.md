@@ -8,7 +8,7 @@ conversation registry, metrics scraping). Those server pieces live in
 `@elizaos/app-core` and stay there.
 
 The canonical server-side service is at
-[`packages/app-core/src/services/local-inference/`](../../../../app-core/src/services/local-inference/README.md).
+[`plugins/plugin-local-inference/src/services/`](../../../../../plugins/plugin-local-inference/src/services/README.md).
 
 ## Real consumers in this package
 

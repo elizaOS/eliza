@@ -23,6 +23,7 @@ import {
   type MessageConnectorUserContext,
   Service,
   type TargetInfo,
+  toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
 import { GoogleAuth } from "google-auth-library";
@@ -51,11 +52,15 @@ import {
   isDirectMessage,
   normalizeSpaceTarget,
   normalizeUserTarget,
+  splitMessageForGoogleChat,
 } from "./types.js";
 
 const CHAT_API_BASE = "https://chat.googleapis.com/v1";
 const CHAT_UPLOAD_BASE = "https://chat.googleapis.com/upload/v1";
 const CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot";
+
+/** Maximum time allowed for one Google Chat API or upload request. */
+export const GOOGLE_CHAT_API_TIMEOUT_MS = 30_000;
 
 function normalizeGoogleChatQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -237,6 +242,18 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private states = new Map<string, GoogleChatAccountState>();
   private defaultAccountId = DEFAULT_GOOGLE_CHAT_ACCOUNT_ID;
+  fetchImpl: typeof fetch = globalThis.fetch;
+  chatTimeoutMs = GOOGLE_CHAT_API_TIMEOUT_MS;
+
+  private async chatFetch(input: string, init: RequestInit = {}): Promise<Response> {
+    const fetchImpl = this.fetchImpl ?? globalThis.fetch;
+    const timeoutMs = this.chatTimeoutMs ?? GOOGLE_CHAT_API_TIMEOUT_MS;
+    const deadline = AbortSignal.timeout(timeoutMs);
+    return fetchImpl(input, {
+      ...init,
+      signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+    });
+  }
 
   static async start(runtime: IAgentRuntime): Promise<GoogleChatService> {
     logger.info("Starting Google Chat service...");
@@ -540,7 +557,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     }
 
     const url = `${CHAT_API_BASE}/spaces?pageSize=1`;
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -602,7 +619,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   private async fetchApi<T>(url: string, init: RequestInit = {}, accountId?: string): Promise<T> {
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       ...init,
       headers: {
         ...init.headers,
@@ -631,13 +648,39 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   async sendMessage(options: GoogleChatMessageSendOptions): Promise<GoogleChatSendResult> {
-    const state = this.getState(options.accountId);
     if (!options.space) {
       return {
         success: false,
         error: "Space is required",
       };
     }
+
+    const textChunks = options.text ? splitMessageForGoogleChat(options.text) : [undefined];
+    let lastResult: GoogleChatSendResult | undefined;
+
+    // Sequential sends preserve visible chunk order and stop immediately on a
+    // provider failure. Attachments belong to the logical message, so only the
+    // first chunk carries them rather than duplicating uploads on every chunk.
+    for (let index = 0; index < textChunks.length; index += 1) {
+      lastResult = await this.sendSingleMessage({
+        ...options,
+        text: textChunks[index],
+        attachments: index === 0 ? options.attachments : undefined,
+      });
+    }
+
+    return (
+      lastResult ?? {
+        success: false,
+        error: "Google Chat message has no sendable content",
+      }
+    );
+  }
+
+  private async sendSingleMessage(
+    options: GoogleChatMessageSendOptions
+  ): Promise<GoogleChatSendResult> {
+    const state = this.getState(options.accountId);
 
     const body: Record<string, unknown> = {};
 
@@ -696,7 +739,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       url,
       {
         method: "PATCH",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: toWellFormedUnicode(text) }),
       },
       accountId
     );
@@ -714,7 +757,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/${messageName}`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -772,7 +815,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/${reactionName}`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -840,7 +883,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const token = await this.getAccessToken(accountId);
     const url = `${CHAT_UPLOAD_BASE}/${space}/attachments:upload?uploadType=multipart`;
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -874,7 +917,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const url = `${CHAT_API_BASE}/media/${resourceName}?alt=media`;
     const token = await this.getAccessToken(accountId);
 
-    const response = await fetch(url, {
+    const response = await this.chatFetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

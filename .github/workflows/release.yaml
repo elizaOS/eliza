@@ -168,7 +168,9 @@ jobs:
     name: Build immutable candidate
     needs: authorize
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # The capped turbo fan-out (RUN_TURBO_CONCURRENCY=3, needed to fit the
+    # hosted runner's memory) makes verify+test+build exceed two hours.
+    timeout-minutes: 210
     permissions:
       actions: read
       contents: read
@@ -547,3 +549,45 @@ jobs:
             echo "- Tag: \`$RELEASE_TAG\`"
             echo "- Registry cohort: verified before Git/GitHub finalization"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-snap:
+    name: Publish Snap Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/snap-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel == 'latest' && 'stable' || 'beta' }}
+    secrets: inherit
+
+  publish-mobile-stores:
+    name: Publish Google Play and Apple App Store releases
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store-mobile-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel }}
+    secrets: inherit
+
+  publish-microsoft-store:
+    name: Publish Microsoft Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store-windows-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel }}
+    secrets:
+      MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+      MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+      MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}

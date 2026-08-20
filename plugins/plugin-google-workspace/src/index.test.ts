@@ -634,6 +634,44 @@ describe("google plugin", () => {
     );
   });
 
+  it("preserves nested token precedence and scopes through the resolver boundary", async () => {
+    const storage = createCredentialStorage({
+      records: [
+        {
+          credentialType: "oauth.tokens",
+          value: JSON.stringify({
+            tokens: {
+              access_token: "nested-access",
+              refresh_token: "nested-refresh",
+              scope: "nested.scope",
+            },
+            accessToken: "outer-access",
+            scopes: ["gmail.read", "drive.readonly"],
+          }),
+        },
+      ],
+    });
+    const resolver = new DefaultGoogleCredentialResolver({
+      storage,
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    });
+
+    const client = await resolver.getAuthClient({
+      provider: "google",
+      accountId: "acct_google_1",
+      capabilities: ["gmail.read"],
+      scopes: scopesForGoogleCapabilities(["gmail.read"]),
+      reason: "unit-test",
+    });
+
+    expect(client.credentials).toMatchObject({
+      access_token: "outer-access",
+      refresh_token: "nested-refresh",
+      scope: "gmail.read drive.readonly",
+    });
+  });
+
   it("does not keep unsafe OAuth client cache entries when no credential version is exposed", async () => {
     const storage = createCredentialStorage({
       records: [

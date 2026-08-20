@@ -54,6 +54,7 @@ describe("useVoiceChat local ASR", () => {
       stop,
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
     const onTranscriptPreview = vi.fn();

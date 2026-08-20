@@ -413,6 +413,7 @@ describe("secret redaction", () => {
 
   afterEach(() => {
     redactLogger().clear();
+    vi.restoreAllMocks();
   });
 
   it("masks top-level credential keys", () => {
@@ -533,6 +534,400 @@ describe("secret redaction", () => {
     expect(() => logger.info(cyclic, "ctx")).not.toThrow();
     expect(recentLogs()).toContain("[Circular]");
   });
+
+  it("masks webhook, connection-string, and concatenated key shapes (W5-026)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        webhookUrl: "https://discord.test/api/webhooks/111/hook-token-here",
+        connectionString: "Server=db;User=u;Pwd=hunter2",
+        MASTERKEY: "v-master-concat",
+        SIGNINGKEY: "v-signing-concat",
+        SSHKEY: "v-ssh-concat",
+        ENCRYPTIONKEY: "v-encryption-concat",
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    for (const secret of [
+      "hook-token-here",
+      "hunter2",
+      "v-master-concat",
+      "v-signing-concat",
+      "v-ssh-concat",
+      "v-encryption-concat",
+    ]) {
+      expect(logs).not.toContain(secret);
+    }
+  });
+
+  it("scrubs credential-shaped string values under neutral keys (W5-026)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        url: "postgres://user:supersecretpassword@db.internal:5432/app",
+        payload: '{"apiKey":"sk-neutral-key-value-12345"}',
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).not.toContain("supersecretpassword");
+    expect(logs).not.toContain("sk-neutral-key-value-12345");
+    // The non-secret remainder of the value survives the mask.
+    expect(logs).toContain("postgres://***@db.internal:5432/app");
+  });
+
+  it("scrubs the common JSON credential spellings from string values (W10)", () => {
+    const logger = redactLogger();
+    logger.info(
+      {
+        payload:
+          '{"clientSecret":"client-secret-value-123","client_secret":"client-snake-secret-value-123","sessionKey":"session-secret-value-123","session_key":"session-snake-secret-value-123","authToken":"auth-secret-value-123","auth_token":"auth-snake-secret-value-123","botToken":"123456:bot-secret-value-abc","bot_token":"123456:bot-snake-secret-value-abc","connectionString":"Server=db;Pwd=hunter2w10","connection_string":"Server=db;Pwd=hunter2snake","access_token":"access-secret-value-123","refresh_token":"refresh-secret-value-123","webhookUrl":"https://discord.test/api/webhooks/9/hook-secret-a","webhook_url":"https://discord.test/api/webhooks/9/hook-secret-b"}',
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    for (const secret of [
+      "client-secret-value-123",
+      "client-snake-secret-value-123",
+      "session-secret-value-123",
+      "session-snake-secret-value-123",
+      "auth-secret-value-123",
+      "auth-snake-secret-value-123",
+      "bot-secret-value-abc",
+      "bot-snake-secret-value-abc",
+      "hunter2w10",
+      "hunter2snake",
+      "access-secret-value-123",
+      "refresh-secret-value-123",
+      "hook-secret-a",
+      "hook-secret-b",
+    ]) {
+      expect(logs).not.toContain(secret);
+    }
+  });
+
+  it("scrubs credential patterns from the Error headline message (W5-026)", () => {
+    const logger = redactLogger();
+    logger.error(
+      new Error(
+        "request to https://x.test/?key=AIzaSyD4iE4fZa1234567890abcdef failed",
+      ),
+    );
+    const logs = recentLogs();
+    expect(logs).not.toContain("AIzaSyD4iE4fZa1234567890abcdef");
+    expect(logs).toContain("request to https://x.test/");
+  });
+
+  it("leaves ordinary prose strings untouched (W5-026 false-positive guard)", () => {
+    const logger = redactLogger();
+    logger.info(
+      { status: "connection retried twice", note: "all systems nominal" },
+      "plain headline",
+    );
+    const logs = recentLogs();
+    expect(logs).toContain("connection retried twice");
+    expect(logs).toContain("all systems nominal");
+    expect(logs).toContain("plain headline");
+  });
+
+  it("fails closed per key when a property getter throws (W5-028)", () => {
+    const logger = redactLogger();
+    const booby: Record<string, unknown> = { apiKey: "sk-booby-trap-secret" };
+    Object.defineProperty(booby, "lazy", {
+      enumerable: true,
+      get() {
+        throw new Error("lazy getter exploded");
+      },
+    });
+
+    expect(() => logger.info(booby, "ctx")).not.toThrow();
+    const logs = recentLogs();
+    // The sibling credential is still masked, the throwing key degrades to a
+    // marker, and the raw object never reaches the ring.
+    expect(logs).not.toContain("sk-booby-trap-secret");
+    expect(logs).toContain("[REDACTED: redaction failed]");
+  });
+
+  it("fails closed when the object cannot be walked at all (W5-028)", () => {
+    const logger = redactLogger();
+    const unwalkable = new Proxy(
+      { apiKey: "sk-proxy-hidden-secret" },
+      {
+        ownKeys() {
+          throw new Error("ownKeys exploded");
+        },
+      },
+    );
+
+    expect(() =>
+      logger.info(unwalkable as Record<string, unknown>, "ctx"),
+    ).not.toThrow();
+    const logs = recentLogs();
+    expect(logs).not.toContain("sk-proxy-hidden-secret");
+    expect(logs).toContain("[REDACTED: redaction failed]");
+  });
+
+  it("drops a bare function context without losing the message", () => {
+    const logger = redactLogger();
+    expect(() =>
+      logger.info(
+        (() => "never-invoked") as unknown as Record<string, unknown>,
+        "fn-context-message-survives",
+      ),
+    ).not.toThrow();
+    const logs = recentLogs();
+    expect(logs).toContain("fn-context-message-survives");
+    expect(logs).not.toContain("never-invoked");
+  });
+
+  it("scrubs credential-shaped namespace bindings", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const nsSecret = "sk-namespace-binding-secret-1234";
+    createLogger({ level: "trace", namespace: nsSecret }).info(
+      "namespace-scrub-entry",
+    );
+    const out = `${recentLogs()} ${infoSpy.mock.calls.flat().join(" ")}`;
+    expect(out).not.toContain(nsSecret);
+    // The scrubbed affix form, not the raw value, tags the line.
+    expect(out).toContain("sk-nam…1234");
+    expect(out).toContain("namespace-scrub-entry");
+  });
+});
+
+/**
+ * JSON-mode sink hygiene (W10 logger group): the redacted clone must carry no
+ * executable serializer hooks — a hostile own-property toJSON re-runs when a
+ * sink JSON-stringifies the clone and would reconstitute the very secrets the
+ * walk just masked — and creation/child bindings must be redacted before they
+ * become Adze meta, which Adze emits verbatim on every JSON line.
+ * LOG_JSON_FORMAT is read at module load, so each case boots a fresh module
+ * instance and restores the variable afterwards; observable surfaces are the
+ * ring buffer and Adze's own JSON console lines.
+ */
+describe("JSON mode sink hygiene", () => {
+  const withJsonMode = async (
+    run: (fresh: typeof import("./logger")) => void,
+  ): Promise<void> => {
+    const previous = process.env.LOG_JSON_FORMAT;
+    process.env.LOG_JSON_FORMAT = "true";
+    try {
+      vi.resetModules();
+      run(await import("./logger"));
+    } finally {
+      if (previous === undefined) delete process.env.LOG_JSON_FORMAT;
+      else process.env.LOG_JSON_FORMAT = previous;
+      vi.resetModules();
+      // Re-seat Adze's global setup in the default pretty format so the
+      // JSON-mode module instance cannot contaminate later tests.
+      await import("./logger");
+    }
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("drops a hostile toJSON so serialization cannot reconstitute secrets", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-tojson-resurrected-secret";
+      const hostile = {
+        apiKey: secret,
+        note: "kept",
+        toJSON: () => ({ apiKey: secret, marker: "resurrected" }),
+      };
+      fresh.createLogger({ level: "trace" }).info(hostile, "ctx");
+
+      const logs = fresh.recentLogs();
+      expect(logs).not.toContain(secret);
+      expect(logs).not.toContain("resurrected");
+      // The non-hook remainder of the payload still serializes.
+      expect(logs).toContain('"note":"kept"');
+      // Adze's own JSON console line is clean as well.
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(secret);
+      expect(printed).not.toContain("resurrected");
+    });
+  });
+
+  it("drops serializer hooks in nested objects and array elements", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-nested-hook-secret";
+      const hookedFn = Object.assign(() => {}, { toJSON: () => secret });
+      fresh.createLogger({ level: "trace" }).info(
+        {
+          nested: { hook: { toJSON: () => secret }, ok: 1 },
+          list: [{ toJSON: () => secret }, hookedFn],
+        },
+        "ctx",
+      );
+
+      const logs = fresh.recentLogs();
+      expect(logs).not.toContain(secret);
+      expect(logs).toContain('"ok":1');
+      // Bare function array elements collapse to null, matching JSON.stringify.
+      expect(logs).toContain("null");
+    });
+  });
+
+  it("detaches hostile built-ins, functions, map/set contents, and clone keys", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secrets = {
+        date: "sk-date-hook-secret",
+        map: "sk-map-value-secret",
+        set: "sk-set-hook-secret",
+        promise: "sk-promise-hook-secret",
+        fn: "sk-function-hook-secret",
+        proto: "sk-proto-hook-secret",
+      };
+      const hostileDate = new Date("2026-01-02T03:04:05.000Z");
+      hostileDate.toJSON = () => secrets.date;
+      const hostileSetValue = { toJSON: () => secrets.set };
+      const hostilePromise = Object.assign(Promise.resolve(), {
+        toJSON: () => secrets.promise,
+      });
+      const hostileFunction = Object.assign(() => {}, {
+        toJSON: () => secrets.fn,
+      });
+      const protoValue = { toJSON: () => secrets.proto };
+      const payload: Record<string, unknown> = {
+        when: hostileDate,
+        map: new Map([["apiKey", secrets.map]]),
+        set: new Set([hostileSetValue]),
+        pending: hostilePromise,
+      };
+      Object.defineProperty(payload, "__proto__", {
+        value: protoValue,
+        enumerable: true,
+      });
+
+      fresh
+        .createLogger({ level: "trace" })
+        .info(payload, "ctx", hostileFunction);
+
+      const outputs = `${fresh.recentLogs()} ${infoSpy.mock.calls.flat().join(" ")}`;
+      for (const secret of Object.values(secrets)) {
+        expect(outputs).not.toContain(secret);
+      }
+      expect(outputs).toContain("2026-01-02T03:04:05.000Z");
+      expect(outputs).toContain("[Promise]");
+      expect(outputs).toContain("[REDACTED]");
+    });
+  });
+
+  it("redacts creation and child bindings before they become Adze meta", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const secret = "sk-child-binding-secret";
+      const logger = fresh.createLogger({ level: "trace", token: secret });
+      logger.info("parent-line");
+      logger.child({ apiKey: secret, requestId: "r-1" }).info("child-line");
+
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(secret);
+      expect(printed).toContain("[REDACTED]");
+      // Non-secret bindings survive onto the JSON lines.
+      expect(printed).toContain("r-1");
+    });
+  });
+
+  it("detaches hostile Date hooks in creation and child bindings", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    await withJsonMode((fresh) => {
+      const parentSecret = "sk-parent-date-hook-secret";
+      const childSecret = "sk-child-date-hook-secret";
+      const parentDate = new Date("2026-02-03T04:05:06.000Z");
+      const childDate = new Date("2026-03-04T05:06:07.000Z");
+      parentDate.toJSON = () => parentSecret;
+      childDate.toJSON = () => childSecret;
+
+      const logger = fresh.createLogger({ level: "trace", when: parentDate });
+      logger.child({ when: childDate }).info("child-line");
+
+      const printed = infoSpy.mock.calls.flat().join(" ");
+      expect(printed).not.toContain(parentSecret);
+      expect(printed).not.toContain(childSecret);
+      expect(printed).toContain("2026-03-04T05:06:07.000Z");
+    });
+  });
+});
+
+/**
+ * Binary-payload redaction contract: a Buffer/TypedArray/DataView logged under
+ * a neutral key must collapse to a size-only marker in both the node and
+ * browser log paths — JSON would otherwise serialize the raw bytes verbatim
+ * (`{"type":"Buffer","data":[...]}`) into the ring buffer and every sink.
+ */
+describe("binary payload redaction", () => {
+  afterEach(() => {
+    createLogger({ level: "info" }).clear();
+    vi.restoreAllMocks();
+  });
+
+  it("masks a Buffer under a neutral key in the node path", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info({ payload: Buffer.from("topsecret-bytes") }, "ctx");
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 15 bytes]");
+    expect(logs).not.toContain('"type":"Buffer"');
+    expect(logs).not.toContain("116,111,112");
+  });
+
+  it("masks TypedArray, DataView, and ArrayBuffer values", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info(
+      {
+        u8: new Uint8Array([1, 2, 3]),
+        view: new DataView(new ArrayBuffer(7)),
+        buf: new ArrayBuffer(9),
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 3 bytes]");
+    expect(logs).toContain("[BUFFER REDACTED 7 bytes]");
+    expect(logs).toContain("[BUFFER REDACTED 9 bytes]");
+  });
+
+  it("masks a Buffer passed as a trailing arg", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info("plain message", { file: Buffer.from("trailing-secret") });
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 15 bytes]");
+    expect(logs).not.toContain('"type":"Buffer"');
+  });
+
+  it("masks a Buffer in the browser logger path", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const logger = createLogger({ level: "trace", __forceType: "browser" });
+    logger.info({ payload: Buffer.from("browser-secret") }, "ctx");
+    const out = infoSpy.mock.calls.flat().join(" ");
+    expect(out).toContain("[BUFFER REDACTED 14 bytes]");
+    expect(out).not.toContain('"type":"Buffer"');
+  });
+
+  it("detaches hostile built-ins and functions in the browser path", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const dateSecret = "sk-browser-date-hook-secret";
+    const functionSecret = "sk-browser-function-hook-secret";
+    const date = new Date("2026-04-05T06:07:08.000Z");
+    date.toJSON = () => dateSecret;
+    const fn = Object.assign(() => {}, { toJSON: () => functionSecret });
+
+    createLogger({ level: "trace", __forceType: "browser" }).info(
+      { date, values: new Set([fn]) },
+      "ctx",
+      fn,
+    );
+
+    const out = infoSpy.mock.calls.flat().join(" ");
+    expect(out).not.toContain(dateSecret);
+    expect(out).not.toContain(functionSecret);
+    expect(out).toContain("2026-04-05T06:07:08.000Z");
+  });
 });
 
 /**
@@ -561,6 +956,10 @@ describe("file sink permissions", () => {
         vi.resetModules();
         const fresh = await import("./logger");
         fresh.logger.info("perm-test-entry");
+        const sinkSecret = "sk-file-date-hook-secret";
+        const hostileDate = new Date("2026-05-06T07:08:09.000Z");
+        hostileDate.toJSON = () => sinkSecret;
+        fresh.logger.info({ when: hostileDate }, "file-redaction-entry");
         fresh.logPrompt("text", "prompt-body");
         fresh.logChatIn({
           agentName: "Eliza",
@@ -578,6 +977,9 @@ describe("file sink permissions", () => {
         // The legacy content survives the heal (append-only sink).
         expect(await fs.readFile(logPath, "utf8")).toContain("old line");
         expect(await fs.readFile(logPath, "utf8")).toContain("perm-test-entry");
+        const fileContents = await fs.readFile(logPath, "utf8");
+        expect(fileContents).not.toContain(sinkSecret);
+        expect(fileContents).toContain("2026-05-06T07:08:09.000Z");
       } finally {
         if (previous === undefined) delete process.env.LOG_FILE;
         else process.env.LOG_FILE = previous;

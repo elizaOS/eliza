@@ -1,13 +1,17 @@
 /**
  * Tests for the RECENT_ERRORS provider: renders nothing when clean, dedupes by
  * code (newest wins), caps the list, and ages out stale entries. Uses a fake
- * runtime that returns a controlled reported-error ring.
+ * runtime that returns a controlled reported-error ring — except the W5-025
+ * case, which drives a real AgentRuntime so the redactSecrets scrub under test
+ * is the production one.
  */
 
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
+import { ElizaError } from "../errors";
+import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
-import type { IAgentRuntime, Memory, State } from "../types";
+import type { Character, IAgentRuntime, Memory, State } from "../types";
 import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
@@ -238,5 +242,31 @@ describe("RECENT_ERRORS provider", () => {
 		// so assert the mask shape, not the exact marker format).
 		expect(result.text).toContain("[REDAC…ORD]");
 		expect(result.text).toContain("UPLOAD_FAILED");
+	});
+
+	it("scrubs credential patterns even when the character configures no secrets (W5-025)", async () => {
+		// A default/minimal character has no settings.secrets. The runtime's
+		// redactSecrets used to early-return unchanged text in that case, so the
+		// pattern library never engaged and reported errors carried API keys and
+		// Bearer tokens into the prompt verbatim. This drives the real
+		// AgentRuntime + provider path end to end.
+		const runtime = new AgentRuntime({
+			character: { name: "no-secrets-character" } as Character,
+		});
+		runtime.reportError(
+			"ThirdPartyPlugin",
+			new ElizaError(
+				"GET https://api.example.com/v1/data?key=AIzaSyD4iE4fZa1234567890abcdef failed with Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl",
+				{ code: "FETCH_FAILED" },
+			),
+		);
+
+		const result = await recentErrorsProvider.get(runtime, message, state);
+
+		expect(result.text).not.toContain("AIzaSyD4iE4fZa1234567890abcdef");
+		expect(result.text).not.toContain(
+			"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl",
+		);
+		expect(result.text).toContain("FETCH_FAILED");
 	});
 });

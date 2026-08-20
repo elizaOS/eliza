@@ -584,6 +584,7 @@ async function cancelAgentInfrastructure(
         agentId,
         organizationId,
         userId,
+        authorization: "user_request",
       });
     }
     // The teardown job is already durably enqueued above; triggerImmediate is a

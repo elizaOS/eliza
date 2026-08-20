@@ -11,11 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Auth gate (#11084) — mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
-const { authMock } = vi.hoisted(() => ({
+const { authMock, intervalMock } = vi.hoisted(() => ({
   authMock: { authenticated: true },
+  intervalMock: { callback: null as (() => void) | null },
 }));
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
+}));
+
+vi.mock("../../../hooks", () => ({
+  useIntervalWhenDocumentVisible: (callback: () => void) => {
+    intervalMock.callback = callback;
+  },
 }));
 
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
@@ -79,14 +86,60 @@ function mockGoalsResponse(records: ReturnType<typeof record>[]): void {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 beforeEach(() => {
   authMock.authenticated = true;
+  intervalMock.callback = null;
   publishHomeAttentionSpy.mockClear();
 });
 
 describe("GoalsAttentionWidget (#9143)", () => {
+  it("aborts its goals read when the widget unmounts", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const { unmount } = render(<GoalsAttentionWidget slot="home" />);
+    await waitFor(() => expect(requestSignal).toBeDefined());
+    unmount();
+
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("keeps the last good goal when a background refresh fails", async () => {
+    mockGoalsResponse([
+      record({ id: "g1", title: "Recover churn", reviewState: "at_risk" }),
+    ]);
+    render(<GoalsAttentionWidget slot="home" />);
+    await screen.findByText("Recover churn");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 503 })),
+    );
+    intervalMock.callback?.();
+
+    await waitFor(() => {
+      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    });
+    expect(screen.getByText("Recover churn")).toBeTruthy();
+  });
+
   it("shows ONE high-priority datum — the most-urgent goal title — minimal, icon-first", async () => {
     mockGoalsResponse([
       record({ id: "g1", title: "Ship the redesign", reviewState: "on_track" }),

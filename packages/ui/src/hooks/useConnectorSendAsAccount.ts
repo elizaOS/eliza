@@ -15,7 +15,11 @@ import {
   shouldShowConnectorAccountPicker,
 } from "../components/chat/connector-send-as";
 import type { ActionNoticeFn } from "../state/action-notice";
+import { isSafeNavigationUrl } from "../utils/navigation-url";
 import { useConnectorAccounts } from "./useConnectorAccounts";
+
+const INVALID_AUTH_URL_NOTICE =
+  "The sign-in link returned by the server is not a valid URL.";
 
 export interface UseConnectorSendAsAccountOptions {
   pollMs?: number;
@@ -42,9 +46,16 @@ export interface UseConnectorSendAsAccountResult {
   refresh: () => Promise<void>;
 }
 
-function openAuthUrl(authUrl: string | undefined): void {
-  if (!authUrl || typeof window === "undefined") return;
+/**
+ * Open a connector OAuth URL in a new tab. The authUrl is a wire value, so it
+ * passes the navigation scheme allowlist first; returns `false` when nothing
+ * was opened (rejected or non-browser environment).
+ */
+function openAuthUrl(authUrl: string | undefined): boolean {
+  if (!authUrl || typeof window === "undefined") return false;
+  if (!isSafeNavigationUrl(authUrl)) return false;
   window.open(authUrl, "_blank", "noopener,noreferrer");
+  return true;
 }
 
 export function useConnectorSendAsAccount(
@@ -101,17 +112,21 @@ export function useConnectorSendAsAccount(
         privacy: "owner_only",
       },
     });
-    openAuthUrl(result.authUrl);
+    if (result.authUrl && !openAuthUrl(result.authUrl)) {
+      options.setActionNotice?.(INVALID_AUTH_URL_NOTICE, "error", 4200);
+    }
     return result;
-  }, [startOAuth]);
+  }, [startOAuth, options.setActionNotice]);
 
   const reconnectAccount = useCallback(
     async (accountId: string) => {
       const result = await startOAuth({ accountId });
-      openAuthUrl(result.authUrl);
+      if (result.authUrl && !openAuthUrl(result.authUrl)) {
+        options.setActionNotice?.(INVALID_AUTH_URL_NOTICE, "error", 4200);
+      }
       return result;
     },
-    [startOAuth],
+    [startOAuth, options.setActionNotice],
   );
 
   return {

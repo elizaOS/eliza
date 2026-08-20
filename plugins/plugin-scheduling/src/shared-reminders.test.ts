@@ -52,7 +52,7 @@ function harness(): {
   options: SharedRemindersEdgePluginOptions;
   scheduleWithResult: ReturnType<typeof vi.fn>;
   list: ReturnType<typeof vi.fn>;
-  apply: ReturnType<typeof vi.fn>;
+  applyWithResult: ReturnType<typeof vi.fn>;
 } {
   const scheduleWithResult = vi.fn(async (input: ScheduledTaskInput) => ({
     task: scheduledTask(input),
@@ -70,17 +70,60 @@ function harness(): {
   const apply = vi.fn(async () => {
     throw new Error("not used");
   });
+  const applyWithResult = vi.fn(
+    async (
+      taskId: string,
+      operation: "snooze" | "complete" | "dismiss",
+      _payload: unknown,
+      input: { idempotencyKey: string },
+    ) => ({
+      task: {
+        ...scheduledTask(
+          reminderInput("Stretch", {
+            kind: "once" as const,
+            atIso: "2026-08-14T20:02:00.000Z",
+          }),
+        ),
+        taskId,
+        state: {
+          status:
+            operation === "complete"
+              ? ("completed" as const)
+              : operation === "dismiss"
+                ? ("dismissed" as const)
+                : ("scheduled" as const),
+          followupCount: 0,
+        },
+      },
+      commit: {
+        logId: `${operation}-log-1`,
+        taskId,
+        agentId: "personal:user-1",
+        occurredAtIso: NOW,
+        transition:
+          operation === "snooze"
+            ? ("snoozed" as const)
+            : operation === "complete"
+              ? ("completed" as const)
+              : ("dismissed" as const),
+        rolledUp: false,
+      },
+      idempotencyKey: input.idempotencyKey,
+      replayed: false,
+    }),
+  );
   const runner: ScheduledTaskRunner = {
     scheduleWithResult,
     schedule: vi.fn(async (input: ScheduledTaskInput) => scheduledTask(input)),
     list,
     apply,
+    applyWithResult,
     pipeline: vi.fn(async () => []),
   };
   return {
     scheduleWithResult,
     list,
-    apply,
+    applyWithResult,
     options: {
       runner,
       agentId: "personal:user-1",
@@ -481,17 +524,7 @@ describe("Shared reminders edge plugin", () => {
   });
 
   it("keeps lifecycle acknowledgements user-facing while structured data retains the task id", async () => {
-    const { options, apply } = harness();
-    apply.mockImplementation(async (_taskId: string, operation: string) =>
-      scheduledTask(
-        reminderInput(
-          "Stretch",
-          operation === "snooze"
-            ? { kind: "once", atIso: "2026-08-14T20:10:00.000Z" }
-            : { kind: "once", atIso: "2026-08-14T20:02:00.000Z" },
-        ),
-      ),
-    );
+    const { options, applyWithResult } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
 
     const snoozed = await action?.handler(
@@ -509,6 +542,28 @@ describe("Shared reminders edge plugin", () => {
     expect(snoozed?.text).toBe("Reminder snoozed for 1 minute: Stretch");
     expect(snoozed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(snoozed?.text).not.toContain("reminder-1");
+    expect(snoozed).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText: "Reminder snoozed for 1 minute: Stretch",
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:snooze:snooze-log-1",
+          outcome: "applied",
+          operation: "shared.reminder.snooze",
+        },
+      ],
+      userFacingEffectReceiptIds: ["shared-reminder:snooze:snooze-log-1"],
+      turnComplete: true,
+    });
+    expect(applyWithResult).toHaveBeenNthCalledWith(
+      1,
+      "reminder-1",
+      "snooze",
+      { minutes: 1 },
+      {
+        idempotencyKey: "shared-reminder:message-snooze:snooze:reminder-1",
+      },
+    );
 
     const completed = await action?.handler(
       {} as IAgentRuntime,
@@ -519,6 +574,17 @@ describe("Shared reminders edge plugin", () => {
     expect(completed?.text).toBe("Reminder completed: Stretch");
     expect(completed?.data).toMatchObject({ task: { taskId: "reminder-1" } });
     expect(completed?.text).not.toContain("reminder-1");
+    expect(completed).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText: "Reminder completed: Stretch",
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:complete:complete-log-1",
+          outcome: "applied",
+        },
+      ],
+      turnComplete: true,
+    });
 
     const dismissed = await action?.handler(
       {} as IAgentRuntime,
@@ -527,18 +593,103 @@ describe("Shared reminders edge plugin", () => {
       { parameters: { operation: "dismiss", taskId: "reminder-1" } },
     );
     expect(dismissed?.text).toBe("Reminder dismissed: Stretch");
+    expect(dismissed).toMatchObject({
+      verifiedUserFacing: true,
+      userFacingText: "Reminder dismissed: Stretch",
+      effectReceipts: [
+        {
+          receiptId: "shared-reminder:dismiss:dismiss-log-1",
+          outcome: "applied",
+        },
+      ],
+      turnComplete: true,
+    });
+  });
+
+  it("reuses the durable lifecycle receipt on an idempotent replay", async () => {
+    const { options, applyWithResult } = harness();
+    const replayTask = scheduledTask(
+      reminderInput("Stretch", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+    );
+    const resultFor = (replayed: boolean) => ({
+      task: replayTask,
+      commit: {
+        logId: "complete-log-stable",
+        taskId: replayTask.taskId,
+        agentId: "personal:user-1",
+        occurredAtIso: NOW,
+        transition: "completed" as const,
+        rolledUp: false,
+      },
+      idempotencyKey:
+        "shared-reminder:message-complete-retry:complete:reminder-1",
+      replayed,
+    });
+    applyWithResult
+      .mockResolvedValueOnce(resultFor(false))
+      .mockResolvedValueOnce(resultFor(true));
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+    const invoke = () =>
+      action?.handler(
+        {} as IAgentRuntime,
+        { id: "message-complete-retry" } as Memory,
+        undefined,
+        { parameters: { operation: "complete", taskId: "reminder-1" } },
+      );
+
+    const first = await invoke();
+    const replay = await invoke();
+
+    expect(first?.effectReceipts?.[0]).toMatchObject({
+      receiptId: "shared-reminder:complete:complete-log-stable",
+      outcome: "applied",
+      idempotency: { replayed: false },
+    });
+    expect(replay?.effectReceipts?.[0]).toMatchObject({
+      receiptId: "shared-reminder:complete:complete-log-stable",
+      outcome: "noop",
+      idempotency: { replayed: true },
+    });
+    expect(first?.userFacingEffectReceiptIds).toEqual(
+      replay?.userFacingEffectReceiptIds,
+    );
+    expect(applyWithResult.mock.calls.map((call) => call[3])).toEqual([
+      {
+        idempotencyKey:
+          "shared-reminder:message-complete-retry:complete:reminder-1",
+      },
+      {
+        idempotencyKey:
+          "shared-reminder:message-complete-retry:complete:reminder-1",
+      },
+    ]);
+  });
+
+  it("emits no acknowledgement when the durable lifecycle mutation fails", async () => {
+    const { options, applyWithResult } = harness();
+    applyWithResult.mockRejectedValueOnce(
+      new Error("injected durable apply failure"),
+    );
+    const callback = vi.fn();
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    await expect(
+      action?.handler(
+        {} as IAgentRuntime,
+        { id: "message-dismiss-failure" } as Memory,
+        undefined,
+        { parameters: { operation: "dismiss", taskId: "reminder-1" } },
+        callback,
+      ),
+    ).rejects.toThrow("injected durable apply failure");
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("states exact millisecond delays and rejects sub-millisecond model durations", async () => {
-    const { options, scheduleWithResult, apply } = harness();
-    apply.mockResolvedValueOnce(
-      scheduledTask(
-        reminderInput("Stretch", {
-          kind: "once",
-          atIso: "2026-08-14T20:00:00.006Z",
-        }),
-      ),
-    );
+    const { options, scheduleWithResult } = harness();
     const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
 
     const created = await action?.handler(

@@ -16,6 +16,7 @@
  * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
  * silently leak.
  */
+import { BufferUtils } from "../utils/buffer";
 import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
 
@@ -70,15 +71,10 @@ const PLACEHOLDER_PATTERN = /__ELIZA_SECRET_(?:[0-9a-f]{8,}_)?\d+__/g;
  * the nonce makes placeholders unforgeable and unguessable per turn.
  */
 function generateSessionNonce(): string {
-	const bytes = new Uint8Array(8);
-	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
-	if (typeof cryptoObj?.getRandomValues === "function") {
-		cryptoObj.getRandomValues(bytes);
-	} else {
-		for (let i = 0; i < bytes.length; i += 1) {
-			bytes[i] = Math.floor(Math.random() * 256);
-		}
-	}
+	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): a nonce
+	// from a predictable Math.random() fallback could be recovered from observed
+	// outputs, making placeholders forgeable and re-enabling restore-hijack.
+	const bytes = BufferUtils.randomBytes(8);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

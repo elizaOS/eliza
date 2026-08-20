@@ -10,6 +10,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { blooioAutomationService } from "@/lib/services/blooio-automation";
 import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -24,7 +25,13 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const orgId = user.organization_id;
 
-    const parsed = WebhookSecretBody.safeParse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const parsed = WebhookSecretBody.safeParse(rawBody);
     if (!parsed.success) {
       return c.json({ error: "Webhook secret is required" }, 400);
     }

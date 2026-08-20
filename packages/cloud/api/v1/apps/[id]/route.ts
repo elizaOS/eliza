@@ -18,6 +18,7 @@ import { appCleanupService } from "@/lib/services/app-cleanup";
 import { buildReviewCandidate } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
 import { charactersService } from "@/lib/services/characters/characters";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -94,7 +95,12 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
     return c.json({ success: false, error: "Access denied" }, 403);
   }
 
-  const rawBody = await c.req.json();
+  const decodedRawBody = await decodeRequestJson(c.req);
+  if (!decodedRawBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const rawBody = decodedRawBody.value;
   const validationResult = UpdateAppSchema.safeParse(rawBody);
   if (!validationResult.success) {
     return c.json(

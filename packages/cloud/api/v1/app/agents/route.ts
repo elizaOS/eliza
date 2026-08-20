@@ -20,6 +20,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { charactersService } from "@/lib/services/characters/characters";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -82,7 +83,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validationResult = CreateAgentSchema.safeParse(body);
     if (!validationResult.success) {
       return c.json(

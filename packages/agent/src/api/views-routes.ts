@@ -35,6 +35,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
@@ -64,6 +65,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
@@ -936,13 +938,15 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
+    const realBundleDir = await resolveRealPath(bundleDir);
     const assetPath = path.resolve(bundleDir, decodedSubResource);
-    const relative = path.relative(bundleDir, assetPath);
+    const realAssetPath = await resolveRealPath(assetPath);
+    // Confinement via canonical paths — lexical relative is bypassable through a
+    // directory symlink inside the bundle dir.
     if (
-      relative === ".." ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative) ||
-      relative === ""
+      !realAssetPath ||
+      !realBundleDir ||
+      !isPathWithinRoot(realAssetPath, realBundleDir)
     ) {
       error(res, "Malformed view asset path", 400);
       return true;
@@ -950,7 +954,7 @@ export async function handleViewsRoutes(
 
     let stat: import("node:fs").Stats;
     try {
-      stat = await fs.stat(assetPath);
+      stat = await fs.stat(realAssetPath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         error(res, `View asset "${decodedSubResource}" not found`, 404);
@@ -983,10 +987,11 @@ export async function handleViewsRoutes(
 
     let data: Buffer;
     try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(assetPath);
+      data =
+        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(realAssetPath);
     } catch (err) {
       logger.error(
-        { src: "ViewsRoutes", viewId: id, assetPath, err },
+        { src: "ViewsRoutes", viewId: id, assetPath: realAssetPath, err },
         `[ViewsRoutes] Failed to read asset "${decodedSubResource}" for view "${id}"`,
       );
       error(res, `Failed to read asset for view "${id}"`, 500);
@@ -1001,7 +1006,7 @@ export async function handleViewsRoutes(
       end?: (chunk?: unknown) => void;
     };
     raw.writeHead?.(200, {
-      "Content-Type": contentTypeForViewAsset(assetPath),
+      "Content-Type": contentTypeForViewAsset(realAssetPath),
       "Content-Length": stat.size,
       "Cache-Control": "no-cache",
       ETag: etag,
@@ -1049,8 +1054,9 @@ export async function handleViewsRoutes(
   // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
   // the caller owns a narrower delivery channel. Realtime voice returns the
   // validated VIEWS result through its originating WebSocket session; normal app
-  // chat returns it in the completed stream action result. A global echo from
-  // either path would navigate unrelated browsers and devices.
+  // chat keeps the completed stream action result as its fallback and may also
+  // best-effort target the live originating renderer. A global echo from either
+  // path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -1067,6 +1073,7 @@ export async function handleViewsRoutes(
   //   payload: unknown     — opaque deep-link state consumed by the target view
   //   delivery: "originating-client" — realtime caller navigates its own client
   //   delivery: "completed-action" — app chat navigates from its stream result
+  //   completedActionHandoffId: string — renderer-observed transport dedupe key
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -1207,9 +1214,22 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo when the client already navigated or when the caller owns a
-    // narrower delivery channel such as realtime voice or the app chat stream.
-    if (reportedSource !== "user" && !callerOwnedDelivery) {
+    // Realtime voice returns navigation through its own control channel. App
+    // chat normally has the completed action as a reliable fallback, but when
+    // its originating renderer still has a live WebSocket, deliver there now:
+    // the navigate frame is emitted before the action callback can claim
+    // "Opened …". Supporting renderers deduplicate this frame against the
+    // caller-scoped terminal handoff by id after one path is actually handled.
+    const shouldTargetCompletedAction =
+      body?.delivery === "completed-action" && Boolean(originatingClientId);
+    const completedActionHandoffId = shouldTargetCompletedAction
+      ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
+      : undefined;
+    let completedActionDelivered = false;
+    if (
+      reportedSource !== "user" &&
+      (!callerOwnedDelivery || shouldTargetCompletedAction)
+    ) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1221,14 +1241,34 @@ export async function handleViewsRoutes(
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
         ...deepLinkPayload,
+        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
       if (originatingClientId) {
-        const delivered = ctx.broadcastWsToClientId?.(
-          originatingClientId,
-          frame,
-        );
-        if (delivered === undefined || delivered <= 0) {
+        let delivered: number | undefined;
+        if (shouldTargetCompletedAction) {
+          try {
+            delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+          } catch (err) {
+            // error-policy:J4 the terminal completed-action result remains the
+            // visible, caller-scoped navigation fallback when this optional
+            // early WebSocket optimization fails unexpectedly.
+            logger.warn(
+              { src: "ViewsRoutes", err, viewId: id },
+              "[ViewsRoutes] Early completed-action navigation delivery failed",
+            );
+          }
+        } else {
+          delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+        }
+        completedActionDelivered =
+          shouldTargetCompletedAction &&
+          typeof delivered === "number" &&
+          delivered > 0;
+        if (
+          !shouldTargetCompletedAction &&
+          (delivered === undefined || delivered <= 0)
+        ) {
           error(
             res,
             `No connected view client "${originatingClientId}" is available for "${id}".`,
@@ -1251,6 +1291,8 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
+      ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
     });
     return true;
   }

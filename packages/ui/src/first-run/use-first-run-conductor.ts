@@ -72,12 +72,14 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   claimCloudLoginWindow,
+  prepareDesktopCloudLoginSession,
   releaseClaimedCloudLoginWindow,
 } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
@@ -481,6 +483,11 @@ export function useFirstRunConductor(): void {
   // Generation guard for cloud sign-in attempts (#19255): outcomes of an
   // attempt the deadline abandoned must not mutate newer state.
   const cloudLoginAttemptRef = React.useRef(createAttemptGuard());
+  // The visible waiting turn offers an immediate retry. Its callback abandons
+  // the current owned attempt before launching the replacement, so the old
+  // popup/provision promise can never keep the busy latch or mutate the new
+  // flow when it settles late.
+  const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
   // Latched by the first tutorial pick: the store flip unregisters the handler
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
@@ -829,13 +836,38 @@ export function useFirstRunConductor(): void {
     // A sign-in completed after abandonment lands via the auto-resume effect.
     const abortController = new AbortController();
     let loginDeadline: { cancel(): void } | null = null;
+    const abandonAttempt = () => {
+      if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+      cloudLoginAttemptRef.current.invalidate();
+      abortController.abort();
+      loginDeadline?.cancel();
+      busyRef.current = false;
+      releaseClaimedCloudLoginWindow();
+      if (activeCloudLoginCancelRef.current === abandonAttempt) {
+        activeCloudLoginCancelRef.current = null;
+      }
+    };
+    activeCloudLoginCancelRef.current = abandonAttempt;
     const seedWaitingTurn = () => {
-      seedTurn(
-        makeTurn(
-          "first-run:cloud-login-waiting",
-          "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
-        ),
+      const waitingTurn = makeTurn(
+        "first-run:cloud-login-waiting",
+        [
+          "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          "",
+          `[CHOICE:first-run id=cloud-login-retry-${attempt}]`,
+          `${FIRST_RUN_ACTION_PREFIX}cloud-login:retry=Open sign-in again`,
+          "[/CHOICE]",
+        ].join("\n"),
       );
+      setConversationMessages((prev) => {
+        const index = prev.findIndex(
+          ({ id }) => id === "first-run:cloud-login-waiting",
+        );
+        if (index === -1) return [...prev, waitingTurn];
+        return prev.map((turn, turnIndex) =>
+          turnIndex === index ? waitingTurn : turn,
+        );
+      });
     };
     // Idempotent: armed up front for a visible entry, or at the moment a
     // silent entry (#15133) degrades into interactive OAuth via the finish
@@ -846,13 +878,7 @@ export function useFirstRunConductor(): void {
       loginDeadline = armCloudLoginWaitDeadline({
         onDeadline: () => {
           if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
-          cloudLoginAttemptRef.current.invalidate();
-          abortController.abort();
-          busyRef.current = false;
-          // This attempt still owns the claimed popup here (busy was held
-          // until the line above, so no newer attempt can hold a claim);
-          // release exactly once, at the ownership transfer point.
-          releaseClaimedCloudLoginWindow();
+          abandonAttempt();
           // The notice carries the sign-in choice itself: at this point the
           // original cloud-oauth turn has been consumed, so re-seeding by
           // that id can no-op and "try again below" would have no below.
@@ -932,9 +958,12 @@ export function useFirstRunConductor(): void {
         if (cloudLoginAttemptRef.current.isCurrent(attempt)) {
           busyRef.current = false;
           releaseClaimedCloudLoginWindow();
+          if (activeCloudLoginCancelRef.current === abandonAttempt) {
+            activeCloudLoginCancelRef.current = null;
+          }
         }
       });
-  }, [handleOutcome, seedError, seedTurn, replaceTurn]);
+  }, [handleOutcome, replaceTurn, seedError, setConversationMessages]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
@@ -1045,6 +1074,16 @@ export function useFirstRunConductor(): void {
       const separator = suffix.indexOf(":");
       const group = separator === -1 ? suffix : suffix.slice(0, separator);
       const id = separator === -1 ? "" : suffix.slice(separator + 1);
+
+      // Waiting for an external browser is always recoverable. This action is
+      // intentionally handled before the generic busy guard: it abandons the
+      // current owned attempt, then starts a fresh sign-in from the new user
+      // gesture. Late completion from the old attempt is generation-gated.
+      if (group === "cloud-login" && id === "retry") {
+        activeCloudLoginCancelRef.current?.();
+        startCloudProvisionFlow();
+        return true;
+      }
 
       // One provisioning flow at a time. Stale widgets survive in the
       // transcript (error re-seeds, the cloud-agent picker next to a re-offered
@@ -1504,6 +1543,11 @@ export function useFirstRunConductor(): void {
       // THIS path only — a greeting was genuinely shown, so silently yanking
       // the conversation would read as broken.
       const seedSignInGreetingAndPoll = () => {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase?.trim() || "https://eliza.app";
+        void prepareDesktopCloudLoginSession(cloudApiBase, () =>
+          client.cloudLoginDirect(cloudApiBase),
+        );
         seedTurn(makeTurn("first-run:greeting", CLOUD_SIGN_IN_GREETING));
         seedTurn(makeTurn("first-run:cloud-oauth", CLOUD_SIGN_IN_CHOICE));
         startTokenPoll();

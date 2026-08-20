@@ -6,7 +6,13 @@ export function getRequestCookie(request: Request, name: string): string | null 
   for (const part of cookieHeader.split(";")) {
     const trimmed = part.trim();
     if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
+      try {
+        return decodeURIComponent(trimmed.slice(prefix.length));
+      } catch {
+        // error-policy:J3 untrusted cookie values — a malformed percent-escape
+        // is an absent cookie, not a worker fault.
+        return null;
+      }
     }
   }
   return null;

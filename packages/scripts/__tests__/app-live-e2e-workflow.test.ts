@@ -18,6 +18,8 @@ function read(path: string): string {
 
 interface WorkflowStep {
   env?: Record<string, string>;
+  id?: string;
+  if?: string;
   name?: string;
   uses?: string;
   run?: string;
@@ -149,6 +151,25 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).not.toContain("||");
   });
 
+  test("builds the renderer against the staging Cloud origin, and never retargets production", () => {
+    // The renderer resolves its Cloud base at BUILD time from
+    // VITE_ELIZA_CLOUD_BASE (ui/src/platform/ios-runtime.ts) and otherwise
+    // defaults to production. The job-level ELIZAOS_CLOUD_BASE_URL never
+    // reaches Vite, so without this wiring the staging bundle drives
+    // production while holding a staging bearer (#18076).
+    expect(
+      stagingStep("Build app renderer bundle").env?.VITE_ELIZA_CLOUD_BASE,
+    ).toBe("$" + "{{ env.ELIZAOS_CLOUD_BASE_URL }}");
+
+    // The production lane must stay on its default origin: retargeting it
+    // would point a production key at staging.
+    const productionBuild = workflow.jobs?.["cloud-live"]?.steps?.find(
+      (candidate) => candidate.name === "Build app renderer bundle",
+    );
+    expect(productionBuild).toBeDefined();
+    expect(productionBuild?.env?.VITE_ELIZA_CLOUD_BASE).toBeUndefined();
+  });
+
   test("stays opt-in on schedule until the staging key is provisioned", () => {
     expect(stagingJob?.if).toContain("ELIZA_CLOUD_STAGING_LIVE_READY");
     expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
@@ -225,6 +246,31 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     );
     expect(prodUpload?.with?.name).toBe("app-live-e2e-cloud");
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
+  });
+
+  test("uploads a mandatory exact-SHA, secret-free receipt for every executed smoke", () => {
+    const smoke = stagingStep(
+      "Run real STAGING cloud login + provision + chat",
+    );
+    const receipt = stagingStep("Write secret-free staging receipt");
+    const upload = stagingStep("Upload cloud-live staging artifacts");
+
+    expect(smoke.id).toBe("staging-cloud-smoke");
+    expect(smoke.run).toContain('echo "started_ms=$started_ms"');
+    expect(smoke.run).toContain('echo "completed_ms=$completed_ms"');
+    expect(receipt.if).toContain(
+      "steps.staging-cloud-smoke.outcome != 'skipped'",
+    );
+    expect(receipt.run).toContain("write-staging-cloud-receipt.mjs");
+    expect(receipt.run).toContain('--source-sha "$GITHUB_SHA"');
+    expect(receipt.run).not.toMatch(
+      /ELIZAOS_CLOUD_API_KEY|authorization|bearer/i,
+    );
+    expect(upload.if).toBe(receipt.if);
+    expect(upload.with?.path).toContain(
+      "artifacts/app-live-e2e/cloud-staging-receipt.json",
+    );
+    expect(upload.with?.["if-no-files-found"]).toBe("error");
   });
 });
 

@@ -9,7 +9,7 @@
  * behavior untouched.
  */
 
-import { isTokenExpiryText } from "@elizaos/auth";
+import { isRefreshTokenExpiryText, isTokenExpiryText } from "@elizaos/auth";
 import {
   type CodingAccountStrategy,
   type CodingAccountUsage,
@@ -289,7 +289,7 @@ export function classifyAccountFailure(
   return null;
 }
 
-export { isTokenExpiryText };
+export { isRefreshTokenExpiryText, isTokenExpiryText };
 
 /**
  * Best-effort: tell the pool a spawned account hit a rate-limit / needs reauth

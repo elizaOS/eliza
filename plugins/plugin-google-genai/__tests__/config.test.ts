@@ -3,6 +3,8 @@
  * env precedence, blank trimming, model-alias fallback, and client creation.
  * `@google/genai` and the logger are mocked; no network.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -32,13 +34,24 @@ vi.mock("@google/genai", () => ({
 
 import {
   createGoogleGenAI,
+  DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
   DEFAULT_GOOGLE_EMBEDDING_MODEL,
   getApiKey,
+  getEmbeddingInputTokenLimit,
   getEmbeddingModel,
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
 } from "../utils/config";
+
+const PLUGIN_ROOT = new URL("../", import.meta.url);
+const REPOSITORY_ROOT = new URL("../../../", import.meta.url);
+
+function readPluginJson(relativePath: string): unknown {
+  return JSON.parse(
+    readFileSync(fileURLToPath(new URL(relativePath, PLUGIN_ROOT)), "utf-8"),
+  );
+}
 
 type Settings = Record<string, string | null | undefined>;
 
@@ -130,4 +143,87 @@ describe("Google GenAI config", () => {
       ),
     ).toBe("text-embedding-004");
   });
+
+  it("resolves model-aware embedding input token limits with a safe default", () => {
+    // gemini-embedding-001 documents a 2,048-token input limit; the larger
+    // gemini-embedding-2 window accepts 8,192. Unmapped overrides must fall back
+    // to the safe default (2,048), never the larger window.
+    expect(getEmbeddingInputTokenLimit("gemini-embedding-001")).toBe(2_048);
+    expect(getEmbeddingInputTokenLimit("models/gemini-embedding-001")).toBe(
+      2_048,
+    );
+    expect(getEmbeddingInputTokenLimit("gemini-embedding-2")).toBe(8_192);
+    expect(getEmbeddingInputTokenLimit("models/gemini-embedding-2")).toBe(
+      8_192,
+    );
+    expect(getEmbeddingInputTokenLimit("some-unknown-model")).toBe(
+      DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
+    );
+    expect(getEmbeddingInputTokenLimit("models/some-unknown-model")).toBe(
+      DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
+    );
+    expect(
+      getEmbeddingInputTokenLimit(
+        "publishers/google/models/gemini-embedding-2",
+      ),
+    ).toBe(DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT);
+    expect(DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT).toBe(2_048);
+    // The default model's limit must equal the safe fallback so an unknown id is
+    // never truncated to a window wider than the shipped default supports.
+    expect(getEmbeddingInputTokenLimit(DEFAULT_GOOGLE_EMBEDDING_MODEL)).toBe(
+      DEFAULT_EMBEDDING_INPUT_TOKEN_LIMIT,
+    );
+  });
+
+  it("keeps package.json and registry-entry.json embedding defaults in sync with DEFAULT_GOOGLE_EMBEDDING_MODEL", () => {
+    // Drift guard: both public config sources previously advertised the retired
+    // text-embedding-004 while the runtime default moved to gemini-embedding-001.
+    // Assert they derive from the same source of truth so they cannot drift again.
+    const pkg = readPluginJson("package.json") as {
+      agentConfig: {
+        pluginParameters: { GOOGLE_EMBEDDING_MODEL: { default: string } };
+      };
+    };
+    const registry = readPluginJson("registry-entry.json") as {
+      config: {
+        GOOGLE_EMBEDDING_MODEL: { default: string; placeholder: string };
+      };
+    };
+    const generated = readPluginJsonFromRepository(
+      "packages/registry/src/first-party/generated.json",
+    ) as {
+      entries: Array<{
+        id: string;
+        config: {
+          GOOGLE_EMBEDDING_MODEL?: { default?: string; placeholder?: string };
+        };
+      }>;
+    };
+
+    expect(
+      pkg.agentConfig.pluginParameters.GOOGLE_EMBEDDING_MODEL.default,
+    ).toBe(DEFAULT_GOOGLE_EMBEDDING_MODEL);
+    expect(registry.config.GOOGLE_EMBEDDING_MODEL.default).toBe(
+      DEFAULT_GOOGLE_EMBEDDING_MODEL,
+    );
+    const generatedGoogle = generated.entries.find(
+      (entry) => entry.id === "google-genai",
+    );
+    expect(generatedGoogle?.config.GOOGLE_EMBEDDING_MODEL).toEqual(
+      registry.config.GOOGLE_EMBEDDING_MODEL,
+    );
+    // The placeholder must name valid Google embedding ids, not an OpenAI model.
+    const placeholder = registry.config.GOOGLE_EMBEDDING_MODEL.placeholder;
+    expect(placeholder).toContain("gemini-embedding");
+    expect(placeholder).not.toMatch(/text-embedding-3|gpt-|openai/i);
+  });
 });
+
+function readPluginJsonFromRepository(relativePath: string): unknown {
+  return JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL(relativePath, REPOSITORY_ROOT)),
+      "utf-8",
+    ),
+  );
+}

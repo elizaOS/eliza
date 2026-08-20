@@ -1,14 +1,15 @@
 #!/usr/bin/env node
+
 /**
  * Produces one atomic LifeOps MVP closeout report from a single Project 15
  * snapshot. Board state, readiness policy, and evidence expectations consume
  * identical inputs so rate limits or mid-run board changes cannot create a
  * false parity result.
  */
-
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { buildEvidenceMatrix } from "./audit-mvp-evidence-matrix.mjs";
 import {
   strictViolations,
@@ -324,7 +325,10 @@ async function main() {
   if (!report.integrityOk) process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
     // error-policy:J1 Translate the outer CLI boundary to stderr and a failing exit code.
     process.stderr.write(

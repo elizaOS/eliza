@@ -181,6 +181,13 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   /* biome-ignore lint/complexity/noImportantStyles: cross-asset Tailwind reset */
   translate: none !important;
   transform: translateX(-50%);
+  /* The entry keyframes must not drop the centering transform: CSS animations
+     replace `transform` wholesale, so the utility-picked
+     `shell-overlay-in` (translateY-only) would un-center the panel for the
+     220ms entry. Override only the name — duration/easing still come from the
+     `motion-safe:animate-[shell-overlay-in_220ms_ease-out]` utility (the
+     `-anchored` keyframes are declared in base.css next to the base ones). */
+  animation-name: shell-overlay-in-anchored;
   border-radius: 1.5rem;
   border-color: rgb(255 255 255 / 20%);
 }

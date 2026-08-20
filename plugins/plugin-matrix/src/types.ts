@@ -2,7 +2,7 @@
  * Type definitions for the Matrix plugin.
  */
 
-import type { IAgentRuntime, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, type Service } from "@elizaos/core";
 
 // ============================================================================
 // Constants
@@ -347,5 +347,18 @@ export class MatrixApiError extends MatrixPluginError {
     super(message);
     this.name = "MatrixApiError";
     this.errcode = errcode;
+  }
+}
+
+/** Typed transient failure when the initial `/sync` never reaches PREPARED. */
+export class MatrixSyncTimeoutError extends ElizaError {
+  override readonly name = "MatrixSyncTimeoutError";
+
+  constructor(timeoutMs: number) {
+    super(`Matrix initial sync timed out after ${timeoutMs}ms`, {
+      code: "MATRIX_INITIAL_SYNC_TIMEOUT",
+      context: { timeoutMs },
+      severity: "ephemeral",
+    });
   }
 }

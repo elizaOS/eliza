@@ -6,15 +6,31 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the canonical required pull-request workflow for both `develop` and
-`main`. It classifies changed paths, runs repository quality checks, affected
-tests, deterministic smoke tests, a path-scoped Android release AAB audit, and a
-diff-scoped secret scan. The stable `CI / Required` job is the only status
-intended for branch protection. Individual jobs remain visible for diagnosis
-but are not separately wired into protection rules.
+`merge-candidate-biome.yml` is the pre-merge admission gate. GitHub's merge
+queue synthesizes its checkout SHA from the current `develop` tip and the
+queued pull requests, then the workflow runs the repository-pinned full lint
+and format contracts on that exact tree. Branch rules must require the stable
+`Merge Candidate Biome / Candidate tree` check for the queue to block a bad
+candidate; post-merge workflows remain health checks rather than admission.
+
+`ci.yml` is the canonical post-merge branch-health workflow for `develop`. It
+classifies changed paths, runs repository quality checks, affected tests,
+deterministic smoke tests, a path-scoped Android release AAB audit, and a
+diff-scoped secret scan. Its stable `CI / Required` job diagnoses the integrated
+branch; it does not replace the merge-candidate admission check above.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
+
+## Scheduled security analysis
+
+`codeql.yml` runs JavaScript/TypeScript CodeQL analysis only on its weekly
+schedule or by explicit manual dispatch. It deliberately has no `push` or
+`pull_request` trigger, so CodeQL cannot add work or checks to ordinary pull
+request updates. Seven category-distinct production shards keep the default
+security suite inside hosted-job limits while covering every maintained package,
+plugin, product, cloud, and operational script root. Generated, vendored, test,
+fixture, research, example, and documentation trees are excluded.
 
 ## Specialized pull-request checks
 
@@ -40,20 +56,31 @@ Representative examples:
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
   device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
   carrying the `ci:device` label; `workflow_dispatch` is the on-demand route,
-  and a weekly cadence hard-gates the explicit host-safe Android subset.
+  and a weekly cadence hard-gates only the explicit host-safe Android subset;
+  scheduled runs do not allocate the macOS/iOS job. A scheduled Android
+  non-success opens, updates, or reopens one stable failure issue containing
+  exact run-attempt, attempt-scoped artifact, and revision links; the next
+  successful cadence updates and closes it so the issue never remains stale.
+  The notifier has job-scoped read access to Actions and contents plus issue
+  write access; reusable and manually dispatched runs never write issues.
   [![scheduled device e2e](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule)](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml?query=event%3Aschedule)
-  Both jobs run the bundle-owning runners with `--output` and upload the full
-  bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
-  failure, without reading any repository secret.
+  Artifact names include the run ID and attempt so reruns cannot overwrite or
+  link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
+  root after checkout, then run the bundle-owning runners with `--output`. A
+  started runner finalizes the full bundle (`inline/`, `logs/`, `summary.json`,
+  `junit.xml`) on success and failure; an earlier toolchain or device failure
+  retains the bootstrap record plus the Actions log. No job reads a repository
+  secret.
 - `android-arm64-local-e2e.yml` is the separate weekly, schedule-only
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
   contract: the job stays queued until such a runner is online, then fails
   closed unless both the host and attached Android target pass ARM64 and pinned
-  toolchain preflight. It runs local chat plus local-runtime/route WebView
-  probes; on-device voice remains separately qualified. Manual arbitrary-ref
-  dispatch is intentionally unavailable because this runner persists and owns
-  a physical device.
+  toolchain preflight. Preflight output is uploaded even when a prerequisite
+  fails before the bundle runner starts. It runs local chat plus
+  local-runtime/route WebView probes; on-device voice remains separately
+  qualified. Manual arbitrary-ref dispatch is intentionally unavailable
+  because this runner persists and owns a physical device.
 
 ## Manual operations
 
@@ -73,7 +100,25 @@ Representative examples:
   and gates every signing, release-upload, and OTA-publish job behind the
   reviewer-approved `production-release` environment; a tag protection
   ruleset restricting `v*` creation completes that boundary.
-  `snap-publish.yml` owns Snap Store publication.
+  After finalization, the canonical workflow also calls the reusable,
+  callable-only `snap-publish.yml` and `store-mobile-publish.yml` legs with the
+  exact finalized source SHA, version, channel, and tag. Those legs re-resolve
+  the tag to the supplied commit before using credentials and run behind the
+  `production-release` environment. Snap uploads the registered `eliza` name;
+  Android builds and audits the cloud-only AAB before Google Play upload; iOS
+  embeds the store runtime and uses an App Store Connect API key for signing
+  and delivery. Missing credentials fail the affected store job with the exact
+  secret names instead of silently skipping publication.
+
+  Store credentials are environment-owned. Snap needs
+  `SNAPCRAFT_STORE_CREDENTIALS`. Google Play needs the four
+  `ANDROID_KEYSTORE_*` secrets plus `PLAY_STORE_SERVICE_ACCOUNT_JSON` (raw
+  service-account JSON or its base64 encoding). Apple
+  needs `APPLE_ID`, `APPLE_TEAM_ID`, `ITC_TEAM_ID`, `APP_STORE_APP_ID`, the
+  three `MATCH_*` values, and `APP_STORE_API_KEY_ID`,
+  `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
+  upload still depends on the corresponding organization account, application
+  record, agreements, and roles already existing in each publisher portal.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

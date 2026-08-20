@@ -29,6 +29,7 @@ function makeRuntime(
 			code: "PAIRCODE1",
 			created: options.pairingRequestCreated ?? true,
 		})),
+		claimPairingReply: vi.fn(() => true),
 	};
 	const handleMessage = vi.fn(async () => undefined);
 	const createMemory = vi.fn(async () => undefined);

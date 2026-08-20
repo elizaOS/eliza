@@ -1,15 +1,7 @@
 /**
- * download-share.ts — transport-capability-aware download + share helper.
- *
- * Client-only utility (no server logger here). Designed to work across:
- *  - pure browser tabs (web Share API / `<a download>` / showSaveFilePicker),
- *  - desktop shells (same web paths),
- *  - Capacitor (iOS/Android) shells via the GLOBAL bridge at
- *    `globalThis.Capacitor.Plugins.*` — never an `import('@capacitor/...')`,
- *    because that dependency is intentionally NOT installed yet.
- *
- * Everything is SSR-safe: all `window` / `navigator` / `globalThis.Capacitor`
- * access is guarded with `typeof` checks and never assumes the bridge exists.
+ * Provides SSR-safe attachment naming, download, and sharing across browser,
+ * desktop, and Capacitor transports. Native capabilities are read from the
+ * optional global bridge because the Capacitor SDK is not a package dependency.
  */
 
 /* ── File System Access API (Chromium; not yet in the DOM lib) ─────────── */
@@ -166,14 +158,53 @@ export function canShareFiles(): boolean {
 /* ── Internal helpers ─────────────────────────────────────────────────── */
 
 function isAbortError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { name, message } = err as { name?: unknown; message?: unknown };
+  if (name === "TimeoutError") return false;
   return (
-    err instanceof Error &&
-    (err.name === "AbortError" || /abort|cancel/i.test(err.message))
+    name === "AbortError" ||
+    (typeof message === "string" && /abort|cancel/i.test(message))
   );
 }
 
+const DOWNLOAD_SHARE_FETCH_TIMEOUT_MS = 15_000;
+
+async function fetchDownloadBlob(
+  url: string,
+  callerSignal?: AbortSignal,
+): Promise<Blob> {
+  callerSignal?.throwIfAborted();
+
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new DOMException("Attachment download timed out", "TimeoutError"),
+    );
+  }, DOWNLOAD_SHARE_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Download request failed (${response.status})`);
+    }
+    return await response.blob();
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 /** Web/desktop fallback: object-URL + temporary `<a download>` click. */
-async function downloadViaAnchor(url: string, filename: string): Promise<void> {
+async function downloadViaAnchor(
+  url: string,
+  filename: string,
+  signal?: AbortSignal,
+): Promise<void> {
   if (typeof document === "undefined") {
     throw new Error("downloadAttachment: no document available");
   }
@@ -184,20 +215,20 @@ async function downloadViaAnchor(url: string, filename: string): Promise<void> {
     // Same-origin / fetchable assets: pull to a blob so the download attribute
     // is honored cross-origin and so blob:/data: sources work uniformly.
     if (typeof fetch === "function" && !url.startsWith("data:")) {
-      const res = await fetch(url);
-      if (res.ok) {
-        const blob = await res.blob();
-        if (typeof URL !== "undefined" && URL.createObjectURL) {
-          objectUrl = URL.createObjectURL(blob);
-          href = objectUrl;
-        }
+      const blob = await fetchDownloadBlob(url, signal);
+      if (typeof URL !== "undefined" && URL.createObjectURL) {
+        objectUrl = URL.createObjectURL(blob);
+        href = objectUrl;
       }
     }
   } catch {
+    signal?.throwIfAborted();
     // error-policy:J4 network/CORS failure on the blob prefetch — degrade to
     // linking the raw url directly; the browser surfaces its own failure.
     href = url;
   }
+
+  signal?.throwIfAborted();
 
   const anchor = document.createElement("a");
   anchor.href = href;
@@ -238,13 +269,15 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 async function downloadViaCapacitor(
   url: string,
   filename: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const fs = getCapacitorFilesystem();
   if (!fs || typeof fetch !== "function") return false;
   try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const data = arrayBufferToBase64(await res.arrayBuffer());
+    const data = arrayBufferToBase64(
+      await (await fetchDownloadBlob(url, signal)).arrayBuffer(),
+    );
+    signal?.throwIfAborted();
     const written = await fs.writeFile({
       path: filename,
       data,
@@ -269,6 +302,7 @@ async function downloadViaCapacitor(
     }
     return true;
   } catch {
+    signal?.throwIfAborted();
     // error-policy:J4 `false` signals the caller to fall back to the web
     // download path — the documented chain contract of this helper.
     return false;
@@ -284,15 +318,18 @@ async function downloadViaCapacitor(
  * Web/desktop: try `showSaveFilePicker`, else fetch → blob → `<a download>`.
  *
  * Never throws for the common case — failures degrade to the web `<a download>`
- * fallback. The final fallback may surface an error to the caller's catch.
+ * fallback. An explicit caller abort stops the fallback chain and preserves the
+ * caller's abort reason.
  */
 export async function downloadAttachment(
   url: string,
   filename: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   // Native path first when we're truly on a native platform with a bridge.
   if (isNativePlatform() && getCapacitorFilesystem()) {
-    const ok = await downloadViaCapacitor(url, filename);
+    const ok = await downloadViaCapacitor(url, filename, signal);
     if (ok) return;
     // fall through to the web path on any native failure.
   }
@@ -305,24 +342,26 @@ export async function downloadAttachment(
     typeof fetch === "function" &&
     !url.startsWith("data:")
   ) {
+    let pickerOpened = false;
     try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const blob = await res.blob();
-        const handle = await picker({ suggestedName: filename });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        return;
-      }
+      const blob = await fetchDownloadBlob(url, signal);
+      signal?.throwIfAborted();
+      pickerOpened = true;
+      const handle = await picker({ suggestedName: filename });
+      signal?.throwIfAborted();
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
     } catch (err) {
+      signal?.throwIfAborted();
       // error-policy:J4 user cancelled the picker → done (don't
       // double-download); any other failure falls through to the anchor path.
-      if (isAbortError(err)) return;
+      if (pickerOpened && isAbortError(err)) return;
     }
   }
 
-  await downloadViaAnchor(url, filename);
+  await downloadViaAnchor(url, filename, signal);
 }
 
 /**

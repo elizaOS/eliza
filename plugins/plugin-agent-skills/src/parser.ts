@@ -38,8 +38,8 @@ export function parseFrontmatter(content: string): {
 	body: string;
 	raw: string;
 } {
-	// Match frontmatter block
-	const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
+	// Match frontmatter block regardless of line-ending style.
+	const match = content.match(/^---(?:\r?\n)([\s\S]*?)(?:\r?\n)---(?:\r?\n)?/);
 
 	if (!match) {
 		return { frontmatter: null, body: content, raw: "" };
@@ -277,6 +277,38 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 }
 
 /**
+ * Decode a single-line YAML frontmatter scalar into its exact string value.
+ *
+ * A double-quoted scalar is decoded as a strict JSON string literal so the
+ * standard escapes (`\"`, `\\`, `\n`, `\uXXXX`, ...) round-trip back to the
+ * precise source string; this is what lets a generated `description` survive
+ * embedded quotes, backslashes, Unicode, and control characters without
+ * corruption or YAML type coercion. When the quoted text is not a valid JSON
+ * string literal the function falls back to the historical delimiter strip so
+ * hand-authored frontmatter that only used quotes as plain delimiters keeps its
+ * prior behavior. Single-quoted scalars have their delimiters stripped; a bare
+ * scalar is returned trimmed. Shared by the frontmatter parser and the
+ * filesystem discovery scan so both read a written scalar identically.
+ */
+export function decodeFrontmatterScalarString(raw: string): string {
+	const trimmed = raw.trim();
+	if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+		try {
+			const decoded = JSON.parse(trimmed);
+			if (typeof decoded === "string") return decoded;
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — not a valid JSON string
+			// literal, fall back to the legacy delimiter strip below.
+		}
+		return trimmed.slice(1, -1);
+	}
+	if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+		return trimmed.slice(1, -1);
+	}
+	return trimmed;
+}
+
+/**
  * Parse a YAML scalar value.
  */
 function parseYamlValue(value: string): string | number | boolean | null {
@@ -284,10 +316,10 @@ function parseYamlValue(value: string): string | number | boolean | null {
 
 	// Handle quoted strings
 	if (
-		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+		(trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'"))
 	) {
-		return trimmed.slice(1, -1);
+		return decodeFrontmatterScalarString(trimmed);
 	}
 
 	// Handle booleans

@@ -33,6 +33,7 @@ import {
   HetznerClientError,
 } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client";
 import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { resolveImageDigest } from "@elizaos/cloud-shared/lib/services/containers/registry-probe";
 import { dockerNodeManager } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
 import { reusesExistingElizaCharacter } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
 import {
@@ -826,7 +827,11 @@ app.post(
 function poolReplenishResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const result = await getWarmPoolManager().replenish(image);
+    const targetDigest = await resolveImageDigest(image);
+    const result = await getWarmPoolManager().replenish(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {
@@ -868,7 +873,23 @@ app.post("/api/v1/cron/pool-health-check", poolHealthCheckResponse);
 function poolImageRolloutResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const before = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const before = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
+    if (!targetDigest) {
+      return c.json({
+        success: true,
+        data: {
+          image,
+          skipped: true,
+          reason: "Registry probe did not resolve an immutable target digest",
+          rollout: before,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
     if (before.safeNextAction === "configure_pinned_desired_image") {
       return c.json({
         success: true,
@@ -881,8 +902,8 @@ function poolImageRolloutResponse(c: Context) {
         },
       });
     }
-    const result = await getWarmPoolManager().rollout(image);
-    const after = await getWarmPoolManager().rolloutStatus(image);
+    const result = await getWarmPoolManager().rollout(image, targetDigest);
+    const after = await getWarmPoolManager().rolloutStatus(image, targetDigest);
     return c.json({
       success: true,
       data: {
@@ -900,7 +921,11 @@ app.post("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
 function poolImageRolloutStatusResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {
@@ -946,7 +971,11 @@ function poolImageRollbackResponse(c: Context) {
     }
 
     const image = containersEnv.defaultAgentImage();
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     const currentDigest = rollout.desired.digest;
     if (!currentDigest) {
       return c.json({
@@ -1011,8 +1040,15 @@ app.post("/api/v1/admin/warm-pool/rollback", poolImageRollbackResponse);
 function poolStateResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const state = await getWarmPoolManager().snapshot(image);
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const state = await getWarmPoolManager().snapshot(
+      image,
+      targetDigest ?? undefined,
+    );
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {

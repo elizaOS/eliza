@@ -198,8 +198,12 @@ class Environment {
 		if (value === undefined) {
 			return defaultValue;
 		}
-		const parsed = Number(value);
-		return Number.isNaN(parsed) ? defaultValue : parsed;
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return defaultValue;
+		}
+		const parsed = Number(trimmed);
+		return !Number.isFinite(parsed) ? defaultValue : parsed;
 	}
 
 	/**

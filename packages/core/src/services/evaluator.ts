@@ -29,6 +29,7 @@ import type {
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
+import { formatActionResultsForPrompt } from "../utils/action-results.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 
 type PreparedEntry = {
@@ -272,10 +273,17 @@ function buildPrompt(params: {
 		? state.data.actionResults
 		: undefined;
 	const providerContext = state.text.trim() || "(none)";
+	// The merged evaluator prompt uses bounded model projections while the
+	// complete ActionResults remain available on state for evaluator code.
 	const sharedParts = {
 		latestMessage,
 		responseTexts,
-		actionResults: stringifyForPrompt(actionResults ?? []),
+		actionResults: Array.isArray(actionResults)
+			? formatActionResultsForPrompt(actionResults as ActionResult[], {
+					header: "",
+					includeData: true,
+				})
+			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
 	};
 

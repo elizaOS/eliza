@@ -24,42 +24,17 @@
  * Non-browser callers (servers, SDKs) don't enforce CORS and are unaffected.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 
 import {
-  APP_SCHEME_ORIGIN_RE,
-  CAPACITOR_WEBVIEW_ORIGIN,
   CORS_ALLOW_HEADER_NAMES,
   CORS_ALLOW_METHOD_NAMES,
   CORS_EXPOSE_HEADER_NAMES,
-  isLocalDevLoopbackOrigin,
 } from "../cors-constants";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { isFirstPartyOrigin } from "./first-party-origin";
 
-const STATIC_ALLOWED_ORIGINS = new Set<string>([
-  ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
-    contract.marketingOrigin,
-    contract.cloudAppOrigin,
-    contract.cloudApiOrigin,
-  ]),
-  `https://www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
-  ...Object.values(LEGACY_ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
-    ...contract.marketingHostnames.map((host) => `https://${host}`),
-    ...contract.cloudAppHostnames.map((host) => `https://${host}`),
-    ...contract.cloudApiHostnames.map((host) => `https://${host}`),
-  ]),
-  // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev
-  // wildcard here; session-capable routes must remain first-party-only.
-  "https://develop.eliza-app.pages.dev",
-  "https://elizaos.ai",
-  "https://www.elizaos.ai",
-  "https://os.elizacloud.ai",
-  "https://os.eliza.app",
-  "https://eliza.ai",
-  "https://www.eliza.ai",
-]);
+export { isFirstPartyOrigin } from "./first-party-origin";
 
 /**
  * The Eliza mobile/desktop app's Capacitor/Electrobun WebView document origins.
@@ -93,26 +68,6 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
   "/api/v1/voice-models",
   "/api/v1/voice-models/catalog",
 ]);
-
-/**
- * First-party origins that may use cookie/session credentials. These get
- * `Access-Control-Allow-Credentials: true` with the origin reflected.
- */
-export function isFirstPartyOrigin(origin: string): boolean {
-  if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
-  // The Eliza app WebView (Capacitor `https://localhost`/`capacitor://localhost`,
-  // Electrobun, other native app schemes) — credentialed SSE reads need
-  // origin-reflected CORS, and a browser page cannot mint these origins.
-  if (origin === CAPACITOR_WEBVIEW_ORIGIN || APP_SCHEME_ORIGIN_RE.test(origin)) {
-    return true;
-  }
-  // Any-port loopback origins are a local-dev convenience: any local process
-  // can serve one, so they stay first-party only outside production.
-  if (isLocalDevLoopbackOrigin(origin)) {
-    return getCloudAwareEnv().ENVIRONMENT !== "production";
-  }
-  return false;
-}
 
 export function isPublicTokenApiPath(pathname: string): boolean {
   return (

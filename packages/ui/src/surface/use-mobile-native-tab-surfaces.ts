@@ -30,6 +30,7 @@ import type { SurfaceLifecyclePolicy } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
+import { isNativeSurfaceCapabilityDenial } from "./native-surface-capability";
 import type {
   NativeSurfacePolicy,
   NativeSurfaceShell,
@@ -104,6 +105,16 @@ export interface MobileNativeTabSurfaces {
 export interface MobileNativeSurfaceError {
   readonly key: string;
   readonly message: string;
+  /**
+   * True when the failure is a permanent device-capability denial (the system
+   * WebView cannot honour the surface's isolation policy) rather than a
+   * transient transport fault. Retrying a permanent denial reproduces the same
+   * native rejection, so the renderer should offer an escape hatch (open the
+   * page externally) instead of a Retry that can never succeed. The security
+   * posture stays fail-closed either way: no shared-storage or in-realm
+   * fallback is ever created.
+   */
+  readonly permanent: boolean;
 }
 
 /**
@@ -418,13 +429,19 @@ export function useMobileNativeTabSurfaces(
     ([, command]) =>
       command.status === "failed" || command.status === "recovering",
   );
-  const firstFailedCommand = failedCommands[0];
+  // A permanent capability denial outranks transient faults for display:
+  // when the device cannot host the surface at all, that is the state the
+  // user must see, not whichever transient command happened to fail first.
+  const firstFailedCommand =
+    failedCommands.find(([, command]) => command.permanent) ??
+    failedCommands[0];
   const surfaceError: MobileNativeSurfaceError | null = firstFailedCommand
     ? {
         key: firstFailedCommand[0],
         message:
           firstFailedCommand[1].error ??
           "The native Browser surface is unavailable.",
+        permanent: firstFailedCommand[1].permanent,
       }
     : null;
   const hasFailedCommands = failedCommands.length > 0;
@@ -480,6 +497,7 @@ export function useMobileNativeTabSurfaces(
         invoke,
         isAuthorized,
         error: replacesFailure ? existing.error : null,
+        permanent: replacesFailure ? existing.permanent : false,
         retry: () => run(true),
       };
       observedCommands.current.set(key, command);
@@ -521,6 +539,7 @@ export function useMobileNativeTabSurfaces(
               error instanceof Error
                 ? error.message
                 : "The native Browser surface is unavailable.";
+            command.permanent = isNativeSurfaceCapabilityDenial(error);
             notifyCommandStateChanged();
           },
         );
@@ -1075,5 +1094,7 @@ interface ObservedSurfaceCommand {
   readonly isAuthorized: () => boolean;
   status: "pending" | "recovering" | "succeeded" | "failed";
   error: string | null;
+  /** Whether the recorded failure is a permanent device-capability denial. */
+  permanent: boolean;
   retry(): void;
 }

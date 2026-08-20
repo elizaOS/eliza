@@ -213,6 +213,47 @@ describe("SubscriptionsService — real PGLite", () => {
     ).toBe(true);
   });
 
+  it("annualizes thousands-separated dollar amounts without comma truncation (#22009)", async () => {
+    // Regression: parseUsdAmount() previously used /\$([0-9]+(?:\.[0-9]{1,2})?)/,
+    // which stopped at the first comma, so "$1,234.56" parsed to 1 and the
+    // monthly annualCostEstimateUsd collapsed to $12/yr instead of $14,814.72.
+    const gmail: SubscriptionsGmailGateway = {
+      async searchSubscriptionMessages() {
+        return [
+          gmailMessage({
+            id: "msg-grouped",
+            subject: "Fixture Streaming monthly plan receipt",
+            snippet:
+              "Your plan renews for $1,234.56 monthly from fixture-streaming.example",
+            from: "fixture streaming <billing@fixture-streaming.example>",
+            fromEmail: "billing@fixture-streaming.example",
+          }),
+        ];
+      },
+    };
+    const service = new SubscriptionsService(runtime, {
+      gmailGateway: gmail,
+      browserGateway: noCompanionBrowser,
+    });
+
+    const summary = await service.auditSubscriptions({ queryWindowDays: 90 });
+    const fixture = summary.candidates.find(
+      (c) => c.serviceSlug === "fixture_streaming",
+    );
+    expect(fixture).toBeTruthy();
+    expect(fixture?.cadence).toBe("monthly");
+    // The monthly base amount must be the full $1,234.56, not the truncated $1.
+    expect(fixture?.annualCostEstimateUsd).toBeCloseTo(14814.72, 2);
+    expect(fixture?.annualCostEstimateUsd).not.toBe(12);
+
+    // The DTO round-trips through the real DB with the corrected estimate.
+    const latest = await service.getLatestSubscriptionAudit();
+    const persisted = latest?.candidates.find(
+      (c) => c.serviceSlug === "fixture_streaming",
+    );
+    expect(persisted?.annualCostEstimateUsd).toBeCloseTo(14814.72, 2);
+  });
+
   it("falls back to a manual audit when Gmail throws and a serviceQuery is given", async () => {
     const gmail: SubscriptionsGmailGateway = {
       async searchSubscriptionMessages() {

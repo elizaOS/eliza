@@ -1919,3 +1919,25 @@ export default {
   Semaphore,
   BM25,
 };
+
+/**
+ * Worker-safe port of core's `truncateWellFormed` (utils/well-formed.ts):
+ * `text.slice(0, maxLength)` that never splits a surrogate pair — when the
+ * cut would end on a high surrogate, the boundary backs off one code unit.
+ * Pre-existing lone surrogates pass through unchanged, matching core.
+ */
+export function truncateWellFormed(text: string, maxLength: number): string {
+  if (!Number.isFinite(maxLength) || maxLength <= 0) {
+    return "";
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  const lead = text.charCodeAt(maxLength - 1);
+  const trail = text.charCodeAt(maxLength);
+  const end =
+    lead >= 0xd800 && lead <= 0xdbff && trail >= 0xdc00 && trail <= 0xdfff
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+}

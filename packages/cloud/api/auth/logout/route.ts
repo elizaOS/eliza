@@ -14,6 +14,7 @@ import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import {
+  getRequestIp,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -157,9 +158,7 @@ app.post("/", async (c) => {
             result: "success",
             resource: null,
             org_id: user.organization_id ?? undefined,
-            ip:
-              c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-              undefined,
+            ip: getRequestIp(c),
             user_agent: c.req.header("user-agent") ?? undefined,
             request_id: c.get("requestId"),
             metadata: { method: "steward_cookie" },

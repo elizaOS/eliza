@@ -3,14 +3,27 @@
  * serialized with `JSON.stringify` before being bound as a `$1::jsonb`
  * parameter, so JSON escaping is already handled by the serializer;
  * `sanitizeJsonObject` must therefore only strip NUL characters (PostgreSQL/
- * PGlite jsonb rejects the escape JSON.stringify emits for them) and break
- * circular references — nothing else. A prior implementation also doubled
+ * PGlite jsonb rejects the escape JSON.stringify emits for them), break
+ * circular references, and fail closed past structural or serialized-size
+ * ceilings — nothing else.
+ * A prior implementation also doubled
  * every backslash not followed by an allowlisted escape character and
  * mangled non-hex unicode-escape sequences, so a Windows path like
  * "C:\Users" round-tripped corrupted with doubled backslashes.
  */
+
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { sanitizeJsonObject } from "../../utils";
+import {
+  MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
+  MAX_SQL_JSON_SANITIZE_BYTES,
+  MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_KEY_BYTES,
+  MAX_SQL_JSON_SANITIZE_NODES,
+  MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+  SQL_JSON_SANITIZE_UNBOUNDED,
+  sanitizeJsonObject,
+} from "../../sanitize-json";
 
 describe("sanitizeJsonObject", () => {
   it("preserves backslashes exactly (no double-escaping)", () => {
@@ -75,6 +88,45 @@ describe("sanitizeJsonObject", () => {
     expect(sanitizeJsonObject(Number.NEGATIVE_INFINITY)).toBeNull();
   });
 
+  it("fails closed before copying oversized string, key, and BigInt projections", () => {
+    expect(() =>
+      sanitizeJsonObject("x".repeat(MAX_SQL_JSON_SANITIZE_STRING_BYTES + 1))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+    expect(() =>
+      sanitizeJsonObject({ ["k".repeat(MAX_SQL_JSON_SANITIZE_KEY_BYTES + 1)]: true })
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+    expect(() =>
+      sanitizeJsonObject(10n ** BigInt(MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+  });
+
+  it("accounts for escaped UTF-8 bytes and aggregate JSON syntax", () => {
+    const escapedUnit = "\\";
+    expect(() =>
+      sanitizeJsonObject(escapedUnit.repeat(MAX_SQL_JSON_SANITIZE_STRING_BYTES / 2 + 1))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+
+    const aggregate = Array.from({ length: 5 }, (_, index) => ({
+      index,
+      body: "x".repeat(Math.floor(MAX_SQL_JSON_SANITIZE_BYTES / 5)),
+    }));
+    expect(() => sanitizeJsonObject(aggregate)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("preserves valid Unicode and exact-budget-adjacent values", () => {
+    const value = `before😀${"x".repeat(1_024)}after`;
+    expect(sanitizeJsonObject(value)).toBe(value);
+    expect(JSON.parse(JSON.stringify(sanitizeJsonObject({ value })))).toEqual({ value });
+
+    const exactBudget = "x".repeat(MAX_SQL_JSON_SANITIZE_BYTES - 2);
+    expect(sanitizeJsonObject(exactBudget)).toBe(exactBudget);
+    expect(() => sanitizeJsonObject(`${exactBudget}x`)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
   it("recurses into arrays and objects", () => {
     const input = { list: ["C:\\tmp", { inner: "\\q" }] };
     expect(sanitizeJsonObject(input)).toEqual(input);
@@ -88,5 +140,155 @@ describe("sanitizeJsonObject", () => {
     expect(sanitized.self).toBeNull();
     // Must be serializable after the cycle is broken
     expect(() => JSON.stringify(sanitized)).not.toThrow();
+  });
+
+  function nestArray(depth: number): unknown {
+    let value: unknown = "leaf";
+    for (let i = 0; i < depth; i++) {
+      value = [value];
+    }
+    return value;
+  }
+
+  it(`accepts a ${MAX_SQL_JSON_SANITIZE_DEPTH}-deep array nest`, () => {
+    expect(sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH))).toEqual(
+      nestArray(MAX_SQL_JSON_SANITIZE_DEPTH)
+    );
+  });
+
+  it(`throws ${SQL_JSON_SANITIZE_UNBOUNDED} one past depth ${MAX_SQL_JSON_SANITIZE_DEPTH}`, () => {
+    expect(() => sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH + 1))).toThrowError(
+      ElizaError
+    );
+    try {
+      sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH + 1));
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(SQL_JSON_SANITIZE_UNBOUNDED);
+      expect(error).not.toBeInstanceOf(RangeError);
+    }
+  });
+
+  it("does not RangeError a 20k array nest", () => {
+    expect(() => sanitizeJsonObject(nestArray(20_000))).toThrowError(ElizaError);
+  });
+
+  it("rejects sparse arrays by logical slots", () => {
+    const sparse: unknown[] = [];
+    sparse.length = MAX_SQL_JSON_SANITIZE_NODES + 1;
+    expect(() => sanitizeJsonObject(sparse)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("rejects object accessors without invoking them", () => {
+    let calls = 0;
+    const value = Object.defineProperty({}, "secret", {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return "value";
+      },
+    });
+    expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("contains hostile descriptor traps in a typed error", () => {
+    const value = new Proxy(
+      { value: 1 },
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      }
+    );
+    expect(() => sanitizeJsonObject(value)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("does not inspect a hostile value thrown by a reflection trap", () => {
+    const hostileCause = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("secondary prototype trap");
+        },
+      }
+    );
+    const value = new Proxy(
+      { value: 1 },
+      {
+        ownKeys() {
+          throw hostileCause;
+        },
+      }
+    );
+
+    expect(() => sanitizeJsonObject(value)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("preserves __proto__ as JSON data without mutating the result prototype", () => {
+    const input = JSON.parse('{"__proto__":{"admin":true},"safe":1}') as Record<string, unknown>;
+    const sanitized = sanitizeJsonObject(input) as Record<string, unknown>;
+
+    expect(Object.getPrototypeOf(sanitized)).toBeNull();
+    expect(Object.hasOwn(sanitized, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(sanitized))).toEqual(input);
+
+    const nul = String.fromCharCode(0);
+    const nulKey = sanitizeJsonObject({ [`__proto__${nul}`]: { kept: true } }) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.hasOwn(nulKey, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(nulKey))).toEqual(JSON.parse('{"__proto__":{"kept":true}}'));
+  });
+
+  it("ignores inherited enumerable work instead of walking it", () => {
+    const prototype = Object.create(null) as Record<string, unknown>;
+    for (let index = 0; index < MAX_SQL_JSON_SANITIZE_NODES * 2; index += 1) {
+      prototype[`inherited-${index}`] = index;
+    }
+    const value = Object.create(prototype) as Record<string, unknown>;
+    value.own = "kept";
+
+    const sanitized = sanitizeJsonObject(value);
+    expect(JSON.parse(JSON.stringify(sanitized))).toEqual({ own: "kept" });
+  });
+
+  it("does not traverse a shared input prototype once per graph node", () => {
+    let prototypeReads = 0;
+    const shared = new Proxy(
+      { value: 1 },
+      {
+        getPrototypeOf() {
+          prototypeReads += 1;
+          return Object.prototype;
+        },
+      }
+    );
+    const withinBudget = Array.from({ length: 4_999 }, () => shared);
+
+    const sanitized = sanitizeJsonObject(withinBudget) as Array<{ value: number }>;
+    expect(sanitized).toHaveLength(4_999);
+    expect(sanitized[0]).toEqual({ value: 1 });
+    expect(prototypeReads).toBe(0);
+  });
+
+  it("rejects custom toJSON without invoking it", () => {
+    let calls = 0;
+    const value = {
+      safe: true,
+      toJSON() {
+        calls += 1;
+        return { expanded: "x".repeat(100_000) };
+      },
+    };
+    expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
+    expect(calls).toBe(0);
   });
 });

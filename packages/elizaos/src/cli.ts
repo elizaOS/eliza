@@ -115,7 +115,7 @@ program
   .requiredOption("--from <home>", "OpenClaw agent home, e.g. ~/.moltbot")
   .requiredOption("--agent-id <slug>", "Agent slug, e.g. sol")
   .option("--out <file>", "Write an encrypted .eliza-agent archive")
-  .option("--password <pw>", "Archive encryption password (min 8 chars)")
+  .option("--password <pw>", "Archive encryption password (min 12 chars)")
   .option(
     "--memory-days <n>",
     "Days of daily logs to seed verbatim (default 14)",

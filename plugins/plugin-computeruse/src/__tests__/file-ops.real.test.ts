@@ -3,7 +3,15 @@
  * Uses temp directories — no mocks needed.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  ftruncateSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,6 +50,19 @@ describe("file operations (real)", () => {
       const result = await readFile(join(tempDir, "nope.txt"));
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+    });
+
+    it("returns only the first 10000 characters without slurping a huge file", async () => {
+      const filePath = join(tempDir, "huge.txt");
+      const fd = openSync(filePath, "w");
+      try {
+        ftruncateSync(fd, 8 * 1024 * 1024);
+      } finally {
+        closeSync(fd);
+      }
+      const result = await readFile(filePath);
+      expect(result.success).toBe(true);
+      expect(result.content).toHaveLength(10000);
     });
   });
 

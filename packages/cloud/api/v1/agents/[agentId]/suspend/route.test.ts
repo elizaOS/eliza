@@ -116,6 +116,7 @@ describe("service agent suspend route", () => {
       agentId: "cloud-agent-1",
       organizationId: "agent-wallet-org",
       userId: "agent-wallet-user",
+      authorization: "user_request",
     });
   });
 

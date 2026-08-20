@@ -31,6 +31,8 @@
  * (AGENTS.md §3 + §9).
  */
 
+import { ElizaError } from "@elizaos/core";
+
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -99,6 +101,11 @@ export function readAsrBackendPreferenceFromEnv(
 
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
 const VAD_PREROLL_MAX_FRAMES = 10;
+const MIN_RESAMPLE_RATE_HZ = 1_000;
+const MAX_RESAMPLE_RATE_HZ = 192_000;
+const MAX_RESAMPLE_DURATION_SECONDS = 120;
+const MAX_RESAMPLE_OUTPUT_SAMPLES =
+	ASR_SAMPLE_RATE * MAX_RESAMPLE_DURATION_SECONDS;
 
 function extractWords(text: string): string[] {
 	const out = text.match(WORD_RE);
@@ -116,9 +123,40 @@ export function resampleLinear(
 	fromRate: number,
 	toRate: number,
 ): Float32Array {
+	for (const [label, rate] of [
+		["source", fromRate],
+		["target", toRate],
+	] as const) {
+		if (
+			!Number.isSafeInteger(rate) ||
+			rate < MIN_RESAMPLE_RATE_HZ ||
+			rate > MAX_RESAMPLE_RATE_HZ
+		) {
+			throw new ElizaError(`Invalid ${label} audio sample rate`, {
+				code: "AUDIO_RESAMPLE_RATE_INVALID",
+				context: { label, rate },
+			});
+		}
+	}
+	const durationSeconds = pcm.length / fromRate;
+	if (durationSeconds > MAX_RESAMPLE_DURATION_SECONDS) {
+		throw new ElizaError("Audio frame exceeds the resampling duration budget", {
+			code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+			context: {
+				durationSeconds,
+				maxDurationSeconds: MAX_RESAMPLE_DURATION_SECONDS,
+			},
+		});
+	}
 	if (fromRate === toRate || pcm.length === 0) return pcm;
 	const ratio = toRate / fromRate;
 	const outLen = Math.max(1, Math.round(pcm.length * ratio));
+	if (!Number.isSafeInteger(outLen) || outLen > MAX_RESAMPLE_OUTPUT_SAMPLES) {
+		throw new ElizaError("Audio resample output exceeds the sample budget", {
+			code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
+			context: { outLen, maxOutputSamples: MAX_RESAMPLE_OUTPUT_SAMPLES },
+		});
+	}
 	const out = new Float32Array(outLen);
 	for (let i = 0; i < outLen; i++) {
 		const srcPos = i / ratio;
