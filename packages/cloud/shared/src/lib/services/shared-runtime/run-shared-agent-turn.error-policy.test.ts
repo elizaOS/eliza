@@ -11,6 +11,7 @@ import { ChannelType } from "@elizaos/core/edge";
 let providerConfigured = true;
 let runtimeFailure: Error | null = null;
 let streamFailure: Error | null = null;
+let runtimeActionResults: Array<Record<string, unknown>> | undefined;
 const runtimeInputs: Array<Record<string, unknown>> = [];
 const streamInputs: Array<Record<string, unknown>> = [];
 
@@ -32,6 +33,7 @@ mock.module("./shared-eliza-runtime", () => ({
       ],
       model: String(input.model),
       degraded: false,
+      ...(runtimeActionResults ? { actionResults: runtimeActionResults } : {}),
     };
   },
   runSharedElizaRuntimeTurnStream: async (input: Record<string, unknown>) => {
@@ -54,6 +56,7 @@ beforeEach(() => {
   providerConfigured = true;
   runtimeFailure = null;
   streamFailure = null;
+  runtimeActionResults = undefined;
   runtimeInputs.length = 0;
   streamInputs.length = 0;
 });
@@ -95,6 +98,42 @@ describe("Shared turn AgentRuntime boundary", () => {
       authenticatedPersonalSharedUser: true,
       channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
     });
+  });
+
+  test("requires a grounded reminder action result before accepting an executable reminder reply", async () => {
+    const reminderInput = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Remind me in 2 minutes to stretch",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram" as const,
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    };
+
+    const error = await runSharedAgentTurn(reminderInput).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect((error.cause as Error).message).toContain("without an action result");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Call REMINDERS before any terminal answer");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("never invent success");
+
+    runtimeActionResults = [
+      {
+        success: true,
+        data: { actionName: "REMINDERS", operation: "create" },
+      },
+    ];
+    const result = await runSharedAgentTurn(reminderInput);
+    expect(result.reply).toBe("runtime reply");
   });
 
   test("routes unsupported capabilities through the model with a truthful constraint", async () => {
