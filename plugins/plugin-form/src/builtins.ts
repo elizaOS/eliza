@@ -65,6 +65,7 @@
 import type { JsonValue } from "@elizaos/core";
 import { basicEmailValid } from "./email";
 import type { ControlType, FormControl, ValidationResult } from "./types";
+import { testControlPattern } from "./validation";
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -129,8 +130,8 @@ const textType: ControlType = {
 
     // Check pattern if specified
     if (control.pattern) {
-      const regex = new RegExp(control.pattern);
-      if (!regex.test(str)) {
+      const checked = testControlPattern(control.pattern, str);
+      if (!checked.ok) {
         return { valid: false, error: "Invalid format" };
       }
     }

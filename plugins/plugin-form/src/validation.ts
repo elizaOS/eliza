@@ -195,6 +195,50 @@ export function validateField(
   }
 }
 
+export const MAX_CONTROL_PATTERN_LENGTH = 256;
+export const MAX_CONTROL_PATTERN_INPUT_LENGTH = 4_096;
+
+/**
+ * Compile and test a caller-supplied form control pattern without throwing
+ * or running nested-quantifier JavaScript regexes that hang the event loop.
+ */
+export function testControlPattern(
+  pattern: string,
+  value: string,
+): { ok: true } | { ok: false; reason: "invalid" | "mismatch" | "too-long" } {
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return { ok: false, reason: "invalid" };
+  }
+  if (
+    pattern.length > MAX_CONTROL_PATTERN_LENGTH ||
+    value.length > MAX_CONTROL_PATTERN_INPUT_LENGTH
+  ) {
+    return { ok: false, reason: "too-long" };
+  }
+  if (hasNestedQuantifier(pattern)) {
+    return { ok: false, reason: "invalid" };
+  }
+  try {
+    const regex = new RegExp(pattern);
+    return regex.test(value) ? { ok: true } : { ok: false, reason: "mismatch" };
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+}
+
+function hasNestedQuantifier(pattern: string): boolean {
+  for (let i = 0; i < pattern.length - 1; i += 1) {
+    const ch = pattern[i];
+    if (ch !== "+" && ch !== "*") continue;
+    let j = i + 1;
+    if (pattern[j] === "?") j += 1;
+    if (pattern[j] !== ")") continue;
+    const next = pattern[j + 1];
+    if (next === "+" || next === "*" || next === "{") return true;
+  }
+  return false;
+}
+
 /**
  * Validate text field.
  *
@@ -209,8 +253,8 @@ function validateText(
   // Pattern validation
   // WHY regex: Flexible, powerful, user-defined patterns
   if (control.pattern) {
-    const regex = new RegExp(control.pattern);
-    if (!regex.test(strValue)) {
+    const checked = testControlPattern(control.pattern, strValue);
+    if (!checked.ok) {
       return {
         valid: false,
         error: `${control.label || control.key} has invalid format`,
