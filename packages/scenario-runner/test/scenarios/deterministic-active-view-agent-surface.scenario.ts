@@ -413,7 +413,9 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-app-control", "scenario-active-view-routes"],
+    // The route wrapper is a scenario-local Plugin registered by the seed.
+    // Required plugins are package specifiers loaded before seed execution.
+    plugins: ["@elizaos/plugin-app-control"],
   },
   seed: [
     {
