@@ -122,7 +122,10 @@ async function relayFor(world: {
   } as unknown as Parameters<
     typeof subAgentCompletionResponseEvaluator.evaluate
   >[0]);
-  return typeof result.reply === "string" ? result.reply : "";
+  const params = result.deterministicToolCall?.params as
+    | { text?: unknown }
+    | undefined;
+  return typeof params?.text === "string" ? params.text : "";
 }
 
 describe("sub-agent completion: verification-aware framing", () => {
@@ -187,7 +190,15 @@ describe("sub-agent completion: verification-aware framing", () => {
     } as unknown as Parameters<
       typeof subAgentCompletionResponseEvaluator.evaluate
     >[0]);
-    expect(result.reply).toBe("The answer is 42.");
+    expect(result).toMatchObject({
+      requiresTool: true,
+      setContexts: ["general"],
+      clearReply: true,
+      deterministicToolCall: {
+        name: "REPLY",
+        params: { text: "The answer is 42." },
+      },
+    });
   });
 
   it("preserves current behavior when the orchestrator service is not registered", async () => {
@@ -200,6 +211,9 @@ describe("sub-agent completion: verification-aware framing", () => {
     } as unknown as Parameters<
       typeof subAgentCompletionResponseEvaluator.evaluate
     >[0]);
-    expect(result.reply).toBe("The answer is 42.");
+    expect(result.deterministicToolCall).toEqual({
+      name: "REPLY",
+      params: { text: "The answer is 42." },
+    });
   });
 });
