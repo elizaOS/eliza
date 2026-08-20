@@ -540,7 +540,14 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       if (expanded.size === 0) {
         fail("IDENTITY_ALREADY_CANONICAL", "All requested principals already resolve canonically.");
       }
-      const clusterIds = [canonical, ...expanded];
+      const canonicalAliases = new Set<UUID>();
+      for (const redirect of redirects) {
+        const sourcePrincipalId = redirect.sourcePrincipalId as UUID;
+        if (follow(sourcePrincipalId, redirects).canonical === canonical) {
+          canonicalAliases.add(sourcePrincipalId);
+        }
+      }
+      const clusterIds = [canonical, ...canonicalAliases, ...expanded];
       const claims = await tx
         .select()
         .from(identityClaimTable)
@@ -1041,6 +1048,23 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         .limit(1);
       if (parent?.operation !== "merge" || !["committed", "completed"].includes(parent.status)) {
         fail("IDENTITY_SPLIT_PARENT_INVALID", "Split parent is not a committed merge.");
+      }
+      const [replayed] = await tx
+        .select()
+        .from(identityMergeJournalTable)
+        .where(
+          and(
+            eq(identityMergeJournalTable.agentId, request.agentId),
+            eq(identityMergeJournalTable.operation, "split"),
+            eq(identityMergeJournalTable.idempotencyKey, request.idempotencyKey)
+          )
+        )
+        .limit(1);
+      if (replayed) {
+        if (replayed.requestDigest !== request.requestDigest) {
+          fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Split key was reused.");
+        }
+        return mapJournal(replayed);
       }
       const parentSources = new Set(asUuidArray(parent.sourcePrincipalIds, "parent.sources"));
       if (!principalIds.every((id) => parentSources.has(id))) {

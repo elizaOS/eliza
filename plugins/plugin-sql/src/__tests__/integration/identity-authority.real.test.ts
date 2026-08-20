@@ -138,8 +138,10 @@ describe("SQL identity authority", () => {
       idempotencyKey: splitKey,
     };
     const splitDigest = computeIdentityRequestDigest("split", splitValue);
-    const split = await service.split({ ...splitValue, requestDigest: splitDigest });
-    const splitReplay = await service.split({ ...splitValue, requestDigest: splitDigest });
+    const [split, splitReplay] = await Promise.all([
+      service.split({ ...splitValue, requestDigest: splitDigest }),
+      service.split({ ...splitValue, requestDigest: splitDigest }),
+    ]);
     expect(splitReplay).toEqual(split);
     expect((await service.resolveCanonicalPrincipal(agentId, sourceA)).canonicalPrincipalId).toBe(
       sourceA
@@ -419,6 +421,75 @@ describe("SQL identity authority", () => {
       ownerPrincipalId: configuredOwnerAliasId,
       ownerBindingId: bindingId,
     });
+
+    const conflictingPrincipalId = crypto.randomUUID() as UUID;
+    const conflictingIdentityId = crypto.randomUUID();
+    const conflictingBindingId = crypto.randomUUID();
+    const conflictingAccountId = crypto.randomUUID() as UUID;
+    await db.insert(entityTable).values({
+      id: conflictingPrincipalId,
+      agentId,
+      names: ["Conflicting owner"],
+      metadata: {},
+    });
+    await db.insert(authIdentityTable).values({
+      id: conflictingIdentityId,
+      kind: "owner",
+      displayName: "Conflicting owner",
+      createdAt: Date.now(),
+    });
+    await db.insert(authOwnerBindingTable).values({
+      id: conflictingBindingId,
+      identityId: conflictingIdentityId,
+      connector: "telegram",
+      externalId: "conflicting-owner-subject",
+      displayHandle: "conflicting-owner",
+      instanceId: "identity-authority-test",
+      verifiedAt: Date.now(),
+    });
+    await db.insert(connectorAccountsTable).values({
+      id: conflictingAccountId,
+      agentId,
+      provider: "telegram",
+      accountKey: "conflicting-owner-account",
+      externalId: "conflicting-owner-subject",
+      ownerBindingId: conflictingBindingId,
+      accessGate: "owner_binding",
+      status: "connected",
+    });
+    await db.insert(identityClaimTable).values({
+      agentId,
+      principalEntityId: conflictingPrincipalId,
+      namespace: "connector_subject",
+      connectorId: "telegram",
+      connectorAccountId: conflictingAccountId,
+      externalSubjectId: "conflicting-owner-subject",
+      verification: "owner_bound",
+      ownerBindingId: conflictingBindingId,
+      status: "active",
+      confidence: 1,
+      verifiedAt: new Date(),
+    });
+    const [conflictState] = await db
+      .select()
+      .from(identityAuthorityStateTable)
+      .where(eq(identityAuthorityStateTable.agentId, agentId));
+    const conflictProposalValue = {
+      agentId,
+      canonicalPrincipalId: configuredOwnerAliasId,
+      sourcePrincipalIds: [conflictingPrincipalId],
+      actorPrincipalId: actorId,
+      reason: "must inspect canonical aliases",
+      idempotencyKey: "proposal-owner-alias-conflict",
+    };
+    const conflictPlan = await service.proposeMerge({
+      ...conflictProposalValue,
+      requestDigest: computeIdentityRequestDigest("propose-merge", conflictProposalValue),
+    });
+    expect(conflictPlan.expectedGeneration).toBe(conflictState?.generation);
+    expect(conflictPlan.conflictingClaims).toEqual(
+      expect.arrayContaining([expect.objectContaining({ reason: "owner_binding" })])
+    );
 
     await db
       .update(authOwnerBindingTable)
