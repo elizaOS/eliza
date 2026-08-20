@@ -186,6 +186,62 @@ describe("toToolArguments", () => {
     expect(invoked).toBe(0);
   });
 
+  it("preserves an own __proto__ key without mutating the output prototype", () => {
+    const args = {} as Record<string, unknown>;
+    Object.defineProperty(args, "__proto__", {
+      value: { polluted: true },
+      enumerable: true,
+    });
+
+    const result = toToolArguments(args);
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(Object.hasOwn(result, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(result, "__proto__")?.value).toEqual(
+      { polluted: true },
+    );
+    expect(
+      (Object.prototype as { polluted?: boolean }).polluted,
+    ).toBeUndefined();
+  });
+
+  it("rejects callable Proxies without invoking conversion or reflection traps", () => {
+    let calls = 0;
+    const callable = new Proxy(() => "unsafe", {
+      apply() {
+        calls += 1;
+        throw new Error("call trap escaped");
+      },
+      get() {
+        calls += 1;
+        throw new Error("get trap escaped");
+      },
+      ownKeys() {
+        calls += 1;
+        throw new Error("ownKeys trap escaped");
+      },
+    });
+
+    expect(() => toToolArguments({ payload: callable })).toThrowError(
+      expect.objectContaining({ code: GOOGLE_GENAI_JSON_UNBOUNDED }),
+    );
+    expect(calls).toBe(0);
+  });
+
+  it("does not invoke hostile custom conversion methods", () => {
+    let calls = 0;
+    const hostile = {
+      toString() {
+        calls += 1;
+        throw new Error("toString escaped");
+      },
+    };
+
+    expect(() => toToolArguments({ payload: hostile })).toThrowError(
+      expect.objectContaining({ code: GOOGLE_GENAI_JSON_UNBOUNDED }),
+    );
+    expect(calls).toBe(0);
+  });
+
   it("fails closed on an 8k nest through toToolArguments", () => {
     const started = performance.now();
     try {

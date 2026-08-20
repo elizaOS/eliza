@@ -46,7 +46,7 @@ function inspectRecord<T>(operation: string, inspect: () => T): T {
   try {
     return inspect();
   } catch (cause) {
-    // error-policy:J3 Proxy inspection failures make untrusted tool-call JSON invalid.
+    // error-policy:J2 Preserve the failed inspection as the typed boundary cause.
     failUnbounded({ inspection: operation }, cause);
   }
 }
@@ -112,6 +112,10 @@ function toJsonValueInner(
     if (!visitAlreadyReserved) reserve(ctx, 1);
     return Number.isFinite(value) ? value : null;
   }
+  if (typeof value === "function") {
+    if (!visitAlreadyReserved) reserve(ctx, 1);
+    failUnbounded({ unsupportedType: "function" });
+  }
   if (value === undefined || typeof value !== "object") {
     if (!visitAlreadyReserved) reserve(ctx, 1);
     return String(value);
@@ -155,7 +159,18 @@ function toJsonValueInner(
         failUnbounded({ accessor: true, side: "object", key });
       }
       if (descriptor.value === undefined) continue;
-      record[key] = toJsonValueInner(descriptor.value, depth + 1, ctx, true);
+      const converted = toJsonValueInner(
+        descriptor.value,
+        depth + 1,
+        ctx,
+        true,
+      );
+      Object.defineProperty(record, key, {
+        value: converted,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return record;
   } finally {
