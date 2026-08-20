@@ -1,7 +1,7 @@
-diff --git a/dist/chunks/cli-api.Cjt90eJu.js b/dist/chunks/cli-api.Cjt90eJu.js
-index 9a84a3d60d..db19b1a786 100644
---- a/dist/chunks/cli-api.Cjt90eJu.js
-+++ b/dist/chunks/cli-api.Cjt90eJu.js
+diff --git a/dist/chunks/cli-api.BK8pd4xc.js b/dist/chunks/cli-api.BK8pd4xc.js
+index 1fbd189a39af6fbc5dac2d572ce1e414e52afdfa..da8cb2e9a1438184ab163821db682524535dfa9a 100644
+--- a/dist/chunks/cli-api.BK8pd4xc.js
++++ b/dist/chunks/cli-api.BK8pd4xc.js
 @@ -5,8 +5,8 @@ import path, { resolve as resolve$1 } from 'node:path';
  import { unique, createDefer, slash, withTrailingSlash, cleanUrl, wrapId, isExternalUrl, unwrapId, toArray, noop, deepMerge, nanoid, deepClone, isPrimitive, notNullish } from '@vitest/utils/helpers';
  import { a as any, p as prompt } from './index.og1WyBLx.js';
@@ -23,7 +23,7 @@ index 9a84a3d60d..db19b1a786 100644
  import { g as getDefaultExportFromCjs } from './_commonjsHelpers.D26ty3Ew.js';
  import { g as formatProjectName, w as withLabel, e as errorBanner, d as divider } from './utils.BS4fH3nR.js';
 diff --git a/dist/chunks/coverage.DM_a_rWm.js b/dist/chunks/coverage.DM_a_rWm.js
-index 0e039440d4..746eac62fc 100644
+index 0e039440d46cadf3057f1937c0552670a7ec1b53..746eac62fcd3de3b46347b80622fc574d4caa5b0 100644
 --- a/dist/chunks/coverage.DM_a_rWm.js
 +++ b/dist/chunks/coverage.DM_a_rWm.js
 @@ -10,7 +10,7 @@ import c from 'tinyrainbow';
@@ -36,7 +36,7 @@ index 0e039440d4..746eac62fc 100644
  import './env.D4Lgay0q.js';
  import nodeos__default from 'node:os';
 diff --git a/dist/chunks/evaluatedModules.Dg1zASAC.js b/dist/chunks/evaluatedModules.Dg1zASAC.js
-index e2905f02b1..2ccfd01894 100644
+index e2905f02b18f7aae8bb3cd19dbc715b8dd432c79..2ccfd018941460d5b76aeb547377e2393f778cb9 100644
 --- a/dist/chunks/evaluatedModules.Dg1zASAC.js
 +++ b/dist/chunks/evaluatedModules.Dg1zASAC.js
 @@ -1,5 +1,5 @@
@@ -44,11 +44,10 @@ index e2905f02b1..2ccfd01894 100644
 -import { EvaluatedModules } from 'vite/module-runner';
 +import { EvaluatedModules } from '@elizaos/vitest-vite/module-runner';
  
--// TODO: this is not needed in Vite 7.2+
-+// Remove this compatibility shim after upgrading the bundled Vite baseline to 7.2+.
+ // TODO: this is not needed in Vite 7.2+
  class VitestEvaluatedModules extends EvaluatedModules {
 diff --git a/dist/chunks/globals.Dj1TGiMC.js b/dist/chunks/globals.Dj1TGiMC.js
-index e1ec5427ce..d1e4c4d5a2 100644
+index e1ec5427ce2be6f69741b8191180b2250149be85..d1e4c4d5a2b30dec3cf41ca27933b383188c05d5 100644
 --- a/dist/chunks/globals.Dj1TGiMC.js
 +++ b/dist/chunks/globals.Dj1TGiMC.js
 @@ -18,7 +18,7 @@ import './rpc.MzXet3jl.js';
@@ -61,7 +60,7 @@ index e1ec5427ce..d1e4c4d5a2 100644
  
  function registerApiGlobally() {
 diff --git a/dist/chunks/index.UpGiHP7g.js b/dist/chunks/index.UpGiHP7g.js
-index 7ea2dde4c1..cf55d8e8bf 100644
+index 7ea2dde4c1523c7a52917008b2317e2bfc8a2376..cf55d8e8bf1098480685e5a2ac7cb85d31212d78 100644
 --- a/dist/chunks/index.UpGiHP7g.js
 +++ b/dist/chunks/index.UpGiHP7g.js
 @@ -16,7 +16,7 @@ import { inspect } from '@vitest/utils/display';
@@ -73,23 +72,23 @@ index 7ea2dde4c1..cf55d8e8bf 100644
  import { positionToOffset, lineSplitRE } from '@vitest/utils/offset';
  import { createRequire } from 'node:module';
  
-diff --git a/dist/chunks/init.D98-gwRW.js b/dist/chunks/init.D98-gwRW.js
-index c66380f070..67c9c44e8f 100644
---- a/dist/chunks/init.D98-gwRW.js
-+++ b/dist/chunks/init.D98-gwRW.js
+diff --git a/dist/chunks/init.k9zZ9sLh.js b/dist/chunks/init.k9zZ9sLh.js
+index e7e3cab12561dbd3cce1af69aae0a2c60d870506..0b66bc8e3ed26734dab9ccd5c98b39ee8839fc0d 100644
+--- a/dist/chunks/init.k9zZ9sLh.js
++++ b/dist/chunks/init.k9zZ9sLh.js
 @@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
  import { isBuiltin } from 'node:module';
  import { pathToFileURL } from 'node:url';
  import { resolve } from 'pathe';
 -import { ModuleRunner, EvaluatedModules } from 'vite/module-runner';
 +import { ModuleRunner, EvaluatedModules } from '@elizaos/vitest-vite/module-runner';
- import { b as VitestTransport } from './startVitestModuleRunner.bRl2_oI_.js';
+ import { b as VitestTransport } from './startVitestModuleRunner.DB-7oCpn.js';
  import { e as environments } from './index.DC7d2Pf8.js';
  import { serializeValue } from '@vitest/utils/serialize';
-diff --git a/dist/chunks/nativeModuleMocker.BRN2oBJd.js b/dist/chunks/nativeModuleMocker.BRN2oBJd.js
-index 3d77a7bf72..419d4d145c 100644
---- a/dist/chunks/nativeModuleMocker.BRN2oBJd.js
-+++ b/dist/chunks/nativeModuleMocker.BRN2oBJd.js
+diff --git a/dist/chunks/nativeModuleMocker.BkNfQMkH.js b/dist/chunks/nativeModuleMocker.BkNfQMkH.js
+index d2227a6092b0c1da5cf5a33fed7c6c777f2d7050..1b670b6c4383f778ee7518710a715cd963f363cc 100644
+--- a/dist/chunks/nativeModuleMocker.BkNfQMkH.js
++++ b/dist/chunks/nativeModuleMocker.BkNfQMkH.js
 @@ -13,7 +13,7 @@ import '../path.js';
  import 'node:path';
  import '../module-evaluator.js';
@@ -100,7 +99,7 @@ index 3d77a7bf72..419d4d145c 100644
  import '@vitest/mocker';
  import '@vitest/mocker/redirect';
 diff --git a/dist/chunks/nativeModuleRunner.BIakptoF.js b/dist/chunks/nativeModuleRunner.BIakptoF.js
-index 85c92773a5..4d5b229774 100644
+index 85c92773a5f186b5a49702ac8f4c544df5e249c4..4d5b2297740f9c2f9a0d479f758db4fa4486e3d9 100644
 --- a/dist/chunks/nativeModuleRunner.BIakptoF.js
 +++ b/dist/chunks/nativeModuleRunner.BIakptoF.js
 @@ -1,7 +1,7 @@
@@ -112,10 +111,10 @@ index 85c92773a5..4d5b229774 100644
  
  class NativeModuleRunner extends ModuleRunner {
  	/**
-diff --git a/dist/chunks/startVitestModuleRunner.bRl2_oI_.js b/dist/chunks/startVitestModuleRunner.bRl2_oI_.js
-index 37b4b69028..2be69a2e64 100644
---- a/dist/chunks/startVitestModuleRunner.bRl2_oI_.js
-+++ b/dist/chunks/startVitestModuleRunner.bRl2_oI_.js
+diff --git a/dist/chunks/startVitestModuleRunner.DB-7oCpn.js b/dist/chunks/startVitestModuleRunner.DB-7oCpn.js
+index 51603dba544cbff7ae2e0ecf28b1efa0776e6f43..f56e95ac4442cdd4fc750ebf25628bbc9f5d0441 100644
+--- a/dist/chunks/startVitestModuleRunner.DB-7oCpn.js
++++ b/dist/chunks/startVitestModuleRunner.DB-7oCpn.js
 @@ -10,7 +10,7 @@ import { isAbsolute, resolve } from 'node:path';
  import vm from 'node:vm';
  import { MockerRegistry, mockObject, RedirectedModule, AutomockedModule } from '@vitest/mocker';
@@ -125,8 +124,12 @@ index 37b4b69028..2be69a2e64 100644
  import { T as Traces } from './traces.DT5aQ62U.js';
  
  class BareModuleMocker {
+diff --git a/dist/chunks/vm.CXMd5FHa.js b/dist/chunks/vm.CXMd5FHa.js
+index addad55bb2255919f0d4182ce9c9bb70b8c5659f..9586c79cc7e39bad5360c87d608b12d6bfa63201 100644
+--- a/dist/chunks/vm.CXMd5FHa.js
++++ b/dist/chunks/vm.CXMd5FHa.js
 diff --git a/dist/config.cjs b/dist/config.cjs
-index 1003cbe679..d674a6d764 100644
+index 1003cbe679e99165b343c682e6374e8c91f4330c..d674a6d764d89d5653f1b23089197cc3097a3f4f 100644
 --- a/dist/config.cjs
 +++ b/dist/config.cjs
 @@ -2,7 +2,7 @@
@@ -139,7 +142,7 @@ index 1003cbe679..d674a6d764 100644
  const isNode = typeof process < "u" && typeof process.stdout < "u" && !process.versions?.deno && !globalThis.window;
  const isDeno = typeof process < "u" && typeof process.stdout < "u" && process.versions?.deno !== void 0;
 diff --git a/dist/config.js b/dist/config.js
-index ce87436b68..7b85a454da 100644
+index ce87436b68a7c822e03593f10a21eaa9b0d011ad..7b85a454da9807fde7aaa154dbcc2d194a58c9d5 100644
 --- a/dist/config.js
 +++ b/dist/config.js
 @@ -1,5 +1,5 @@
@@ -150,7 +153,7 @@ index ce87436b68..7b85a454da 100644
  import 'node:os';
  import './chunks/env.D4Lgay0q.js';
 diff --git a/dist/coverage.js b/dist/coverage.js
-index c11a763518..a1631c37bb 100644
+index c11a76351852bd56ea64a75c748228c3ace12dfd..a1631c37bb2ecebef4d42419dd325e5023e7220c 100644
 --- a/dist/coverage.js
 +++ b/dist/coverage.js
 @@ -19,7 +19,7 @@ import 'node:fs/promises';
@@ -163,7 +166,7 @@ index c11a763518..a1631c37bb 100644
  import './chunks/utils.BS4fH3nR.js';
  import './chunks/coverage.CTzCuANN.js';
 diff --git a/dist/index.js b/dist/index.js
-index 1898c584c4..5b25b11fbd 100644
+index 1898c584c4ba86c146e35c2ad5af6fdcb210a61a..5b25b11fbd448e2fdad26ffbe2fa3038a37e8b7a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -18,4 +18,4 @@ import './chunks/_commonjsHelpers.D26ty3Ew.js';
@@ -173,7 +176,7 @@ index 1898c584c4..5b25b11fbd 100644
 -import 'vite/module-runner';
 +import '@elizaos/vitest-vite/module-runner';
 diff --git a/dist/module-evaluator.js b/dist/module-evaluator.js
-index d7703b70ea..d9c66f957d 100644
+index d7703b70eaebe617b39890d0fd4c2f4ab22cdc59..d9c66f957d8295adc2f961c75823201b35eeaaff 100644
 --- a/dist/module-evaluator.js
 +++ b/dist/module-evaluator.js
 @@ -1,7 +1,7 @@
@@ -186,7 +189,7 @@ index d7703b70ea..d9c66f957d 100644
  
  const performanceNow = performance.now.bind(performance);
 diff --git a/dist/node.js b/dist/node.js
-index 4165632997..f3c4c1d93b 100644
+index 94eca058f3a493a451821f6392f322fc64fd397d..b734be5f08f981fcfe07943927a2537ba1abe97e 100644
 --- a/dist/node.js
 +++ b/dist/node.js
 @@ -1,6 +1,6 @@
@@ -196,9 +199,9 @@ index 4165632997..f3c4c1d93b 100644
 +import * as vite from '@elizaos/vitest-vite';
 +import { resolveConfig as resolveConfig$1, mergeConfig } from '@elizaos/vitest-vite';
 +export { esbuildVersion, isCSSRequest, isFileLoadingAllowed, parseAst, parseAstAsync, rollupVersion, version as viteVersion } from '@elizaos/vitest-vite';
- import { V as Vitest, a as VitestPlugin } from './chunks/cli-api.Cjt90eJu.js';
- export { F as ForksPoolWorker, G as GitNotFoundError, b as TestsNotFoundError, T as ThreadsPoolWorker, c as TypecheckPoolWorker, d as VitestPackageInstaller, e as VmForksPoolWorker, f as VmThreadsPoolWorker, g as createDebugger, h as createMethodsRPC, i as createViteLogger, j as createVitest, k as escapeTestName, l as experimental_getRunnerTask, m as getFilePoolName, n as isFileServingAllowed, o as isValidApiRequest, r as registerConsoleShortcuts, p as resolveFsAllow, s as startVitest } from './chunks/cli-api.Cjt90eJu.js';
- export { p as parseCLI } from './chunks/cac.DJJmV0dT.js';
+ import { V as Vitest, a as VitestPlugin } from './chunks/cli-api.BK8pd4xc.js';
+ export { F as ForksPoolWorker, G as GitNotFoundError, b as TestsNotFoundError, T as ThreadsPoolWorker, c as TypecheckPoolWorker, d as VitestPackageInstaller, e as VmForksPoolWorker, f as VmThreadsPoolWorker, g as createDebugger, h as createMethodsRPC, i as createViteLogger, j as createVitest, k as escapeTestName, l as experimental_getRunnerTask, m as getFilePoolName, n as isFileServingAllowed, o as isValidApiRequest, r as registerConsoleShortcuts, p as resolveFsAllow, s as startVitest } from './chunks/cli-api.BK8pd4xc.js';
+ export { p as parseCLI } from './chunks/cac.DdICfEr1.js';
 @@ -28,7 +28,7 @@ import 'node:os';
  import '@vitest/snapshot/manager';
  import '@vitest/utils/serialize';
@@ -209,7 +212,7 @@ index 4165632997..f3c4c1d93b 100644
  import 'obug';
  import 'tinyrainbow';
 diff --git a/dist/reporters.js b/dist/reporters.js
-index 5a960e3ba0..51aeaf88ce 100644
+index 5a960e3ba049afe9460a5ea2849e759fad8a893e..51aeaf88ce503a7e49f2547dfc3a62c7492ba844 100644
 --- a/dist/reporters.js
 +++ b/dist/reporters.js
 @@ -19,7 +19,7 @@ import 'tinyexec';
@@ -222,7 +225,7 @@ index 5a960e3ba0..51aeaf88ce 100644
  import 'node:module';
  
 diff --git a/dist/runtime.js b/dist/runtime.js
-index 269cfc3984..7972aee70a 100644
+index cbb5d03e5eb8d878f7806ab60152d5c5f50980cc..d1c63750edbfb51e52e975352d60bc0842467b8a 100644
 --- a/dist/runtime.js
 +++ b/dist/runtime.js
 @@ -6,7 +6,7 @@ export { VitestNodeSnapshotEnvironment as VitestSnapshotEnvironment } from './ch
@@ -235,7 +238,7 @@ index 269cfc3984..7972aee70a 100644
  import 'node:fs';
  import '@vitest/utils/helpers';
 diff --git a/dist/worker.js b/dist/worker.js
-index 8c9f8f3bc6..672da503d5 100644
+index be1dca6da19ff565e0485322238219d865b0091d..74449321d9f61656d775c3f17c6d9a82c4aef4e9 100644
 --- a/dist/worker.js
 +++ b/dist/worker.js
 @@ -33,7 +33,7 @@ import 'node:fs/promises';
@@ -246,22 +249,22 @@ index 8c9f8f3bc6..672da503d5 100644
 +import '@elizaos/vitest-vite/module-runner';
  import './chunks/traces.DT5aQ62U.js';
  import './chunks/evaluatedModules.Dg1zASAC.js';
- import './chunks/startVitestModuleRunner.bRl2_oI_.js';
+ import './chunks/startVitestModuleRunner.DB-7oCpn.js';
 diff --git a/dist/workers/forks.js b/dist/workers/forks.js
-index 9756bca06b..fd14f27585 100644
+index 738ed35b3fd10db8a5e8b016b0c91879c418196f..b61678d4cdd3b6797d8c1fd350400b6c74600921 100644
 --- a/dist/workers/forks.js
 +++ b/dist/workers/forks.js
-@@ -26,7 +26,7 @@ import '../chunks/init.D98-gwRW.js';
+@@ -26,7 +26,7 @@ import '../chunks/init.k9zZ9sLh.js';
  import 'node:fs';
  import 'node:module';
  import 'node:url';
 -import 'vite/module-runner';
 +import '@elizaos/vitest-vite/module-runner';
- import '../chunks/startVitestModuleRunner.bRl2_oI_.js';
+ import '../chunks/startVitestModuleRunner.DB-7oCpn.js';
  import '../chunks/modules.BJuCwlRJ.js';
  import '../path.js';
 diff --git a/dist/workers/runVmTests.js b/dist/workers/runVmTests.js
-index e3f749a602..7b011f62d0 100644
+index e3f749a602179252bd1351be6e1e037f6f4dcd55..7b011f62d063029ba9445cac4d75a4e287992eff 100644
 --- a/dist/workers/runVmTests.js
 +++ b/dist/workers/runVmTests.js
 @@ -23,7 +23,7 @@ import '@vitest/runner/utils';
@@ -274,20 +277,20 @@ index e3f749a602..7b011f62d0 100644
  import 'node:url';
  import '@vitest/utils/error';
 diff --git a/dist/workers/threads.js b/dist/workers/threads.js
-index 85514d5a68..77e76359f9 100644
+index b5d749b9f88f1bb9e4506555275a022b696df798..a32cc971f793e1888fb24e9d6a777fe8b7eb75f1 100644
 --- a/dist/workers/threads.js
 +++ b/dist/workers/threads.js
-@@ -26,7 +26,7 @@ import '../chunks/init.D98-gwRW.js';
+@@ -26,7 +26,7 @@ import '../chunks/init.k9zZ9sLh.js';
  import 'node:fs';
  import 'node:module';
  import 'node:url';
 -import 'vite/module-runner';
 +import '@elizaos/vitest-vite/module-runner';
- import '../chunks/startVitestModuleRunner.bRl2_oI_.js';
+ import '../chunks/startVitestModuleRunner.DB-7oCpn.js';
  import '../chunks/modules.BJuCwlRJ.js';
  import '../path.js';
 diff --git a/dist/workers/vmForks.js b/dist/workers/vmForks.js
-index 23777b3ad0..bd05860304 100644
+index 7b13afa574718bfd2ddaea0caac407aee1972a05..fe67927a2f801263299ec3bf65e045943cb10645 100644
 --- a/dist/workers/vmForks.js
 +++ b/dist/workers/vmForks.js
 @@ -5,7 +5,7 @@ import 'node:fs';
@@ -296,11 +299,11 @@ index 23777b3ad0..bd05860304 100644
  import 'pathe';
 -import 'vite/module-runner';
 +import '@elizaos/vitest-vite/module-runner';
- import '../chunks/startVitestModuleRunner.bRl2_oI_.js';
+ import '../chunks/startVitestModuleRunner.DB-7oCpn.js';
  import '@vitest/utils/helpers';
  import '../chunks/modules.BJuCwlRJ.js';
 diff --git a/dist/workers/vmThreads.js b/dist/workers/vmThreads.js
-index 1e1320e085..610e670655 100644
+index 23cd94de4628c2226d08cc68114851f51e4b69b5..721c1b11e8dde974f91d1a29a854afcf13d308eb 100644
 --- a/dist/workers/vmThreads.js
 +++ b/dist/workers/vmThreads.js
 @@ -6,7 +6,7 @@ import 'node:fs';
@@ -309,6 +312,6 @@ index 1e1320e085..610e670655 100644
  import 'pathe';
 -import 'vite/module-runner';
 +import '@elizaos/vitest-vite/module-runner';
- import '../chunks/startVitestModuleRunner.bRl2_oI_.js';
+ import '../chunks/startVitestModuleRunner.DB-7oCpn.js';
  import '@vitest/utils/helpers';
  import '../chunks/modules.BJuCwlRJ.js';

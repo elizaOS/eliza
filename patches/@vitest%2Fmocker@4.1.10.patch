@@ -1,5 +1,5 @@
 diff --git a/dist/node.js b/dist/node.js
-index e1fda0aa6c..1fdcaf3005 100644
+index e1fda0aa6c7868171952170a2cb6b1ac04666181..1fdcaf3005f6a7c766b22ab72299c509433c4291 100644
 --- a/dist/node.js
 +++ b/dist/node.js
 @@ -1,7 +1,7 @@
