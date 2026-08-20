@@ -36,6 +36,13 @@ export type {
 	FactCandidateStatus,
 } from "./entity-identity.ts";
 
+import {
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
+} from "./identity-authority.ts";
 import { logSchema } from "./log.ts";
 import { memorySchema } from "./memory.ts";
 import { messageSchema } from "./message.ts";
@@ -62,6 +69,11 @@ export {
 	entityMergeCandidateSchema,
 	entitySchema,
 	factCandidateSchema,
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
 	logSchema,
 	// Advanced memory schemas
 	longTermMemories,
@@ -83,7 +95,7 @@ export {
 
 /**
  * Type for the object returned by buildBaseTables().
- * Represents all 20 core database tables as ORM table objects.
+ * Represents all 25 core database tables as ORM table objects.
  */
 export interface BaseTables {
 	agent: unknown;
@@ -93,6 +105,11 @@ export interface BaseTables {
 	component: unknown;
 	embedding: unknown;
 	entity: unknown;
+	identityAuthorityState: unknown;
+	identityCanonicalRedirect: unknown;
+	identityClaim: unknown;
+	identityMergeConfirmation: unknown;
+	identityMergeJournal: unknown;
 	log: unknown;
 	memory: unknown;
 	message: unknown;
@@ -109,7 +126,7 @@ export interface BaseTables {
 }
 
 /**
- * Factory: build all 20 base tables using the given dialect adapter and buildTable function.
+ * Factory: build all 25 base tables using the given dialect adapter and buildTable function.
  *
  * This is the single source of truth for the elizaOS data model. Plugins
  * import this function and pass their dialect adapter (pgAdapter, mysqlAdapter)
@@ -119,7 +136,7 @@ export interface BaseTables {
  *
  * @param buildTable - The buildTable function from the plugin
  * @param adapter - The dialect-specific adapter (pgAdapter or mysqlAdapter).
- * @returns An object with all 20 tables, keyed by camelCase name.
+ * @returns An object with all 25 tables, keyed by camelCase name.
  */
 export function buildBaseTables(
 	buildTable: BuildTableFn,
@@ -133,6 +150,17 @@ export function buildBaseTables(
 		component: buildTable(componentSchema, adapter),
 		embedding: buildTable(embeddingSchema, adapter),
 		entity: buildTable(entitySchema, adapter),
+		identityAuthorityState: buildTable(identityAuthorityStateSchema, adapter),
+		identityCanonicalRedirect: buildTable(
+			identityCanonicalRedirectSchema,
+			adapter,
+		),
+		identityClaim: buildTable(identityClaimSchema, adapter),
+		identityMergeConfirmation: buildTable(
+			identityMergeConfirmationSchema,
+			adapter,
+		),
+		identityMergeJournal: buildTable(identityMergeJournalSchema, adapter),
 		log: buildTable(logSchema, adapter),
 		memory: buildTable(memorySchema, adapter),
 		message: buildTable(messageSchema, adapter),
