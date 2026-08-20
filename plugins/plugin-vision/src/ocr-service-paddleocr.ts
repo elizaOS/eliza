@@ -43,6 +43,7 @@ import {
   type OcrWithCoordsInput,
   type OcrWithCoordsResult,
   type OcrWithCoordsService,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 import type { BoundingBox } from "./types.js";
 
@@ -220,22 +221,16 @@ export function mapPaddleOcrJsonToResult(
 /**
  * Read width/height from the PNG IHDR chunk (big-endian uint32 at offsets 16/20)
  * so the semantic-position thirds use the real tile dimensions. Mirrors the
- * Tesseract provider's reader.
+ * Tesseract provider's reader and the strict `ocr-with-coords` reader: bytes
+ * that are not a well-formed PNG with positive dimensions fail closed to
+ * zero-sized dims rather than feeding garbage into semantic-position math
+ * (callers already treat non-positive dims as unknown).
  */
 function readPngDimensions(pngBytes: Uint8Array): {
   width: number;
   height: number;
 } {
-  if (pngBytes.byteLength < 24) return { width: 0, height: 0 };
-  const view = new DataView(
-    pngBytes.buffer,
-    pngBytes.byteOffset,
-    pngBytes.byteLength,
-  );
-  return {
-    width: view.getUint32(16, false),
-    height: view.getUint32(20, false),
-  };
+  return readPngDimensionsOrNull(pngBytes) ?? { width: 0, height: 0 };
 }
 
 let availabilityCache: boolean | null = null;
