@@ -93,7 +93,7 @@ function readStringFromRecord(record: object, ...keys: string[]): string | undef
 function readScopeArray(scopes: unknown[], ctx: WalkContext): string {
   const length = dataValue(scopes, "length");
   if (!Number.isSafeInteger(length) || (length as number) < 0) {
-    failUnbounded({ invalidScopesLength: length });
+    failUnbounded({ operation: "readScopes", reason: "invalidLength" });
   }
   reserve(ctx, length as number);
 
@@ -138,10 +138,12 @@ function parseExpiry(value: unknown): number | undefined {
 }
 
 export function mergeCredentialObject(credentials: OauthCredentialFields, value: unknown): void {
-  mergeCredentialObjectInner(credentials, value, 0, {
+  const staged: OauthCredentialFields = {};
+  mergeCredentialObjectInner(staged, value, 0, {
     visits: 0,
     visiting: new WeakSet<object>(),
   });
+  Object.assign(credentials, staged);
 }
 
 function mergeCredentialObjectInner(

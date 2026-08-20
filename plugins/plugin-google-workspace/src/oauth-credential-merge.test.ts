@@ -90,6 +90,58 @@ describe("mergeCredentialObject", () => {
     }
   });
 
+  it("translates a revoked root proxy without changing existing credentials", () => {
+    const credentials: OauthCredentialFields = {
+      access_token: "existing-access",
+      scope: "existing.scope",
+    };
+    const before = { ...credentials };
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    try {
+      mergeCredentialObject(credentials, proxy);
+      expect.unreachable("revoked root proxy should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as Error & { cause?: unknown }).cause).toBeInstanceOf(TypeError);
+    }
+
+    expect(credentials).toEqual(before);
+  });
+
+  it("does not invoke ordinary source get or has traps", () => {
+    let gets = 0;
+    let hasChecks = 0;
+    const source = new Proxy(
+      {
+        access_token: "safe-access",
+        refresh_token: "safe-refresh",
+      },
+      {
+        get() {
+          gets += 1;
+          throw new Error("ordinary get must not run");
+        },
+        has() {
+          hasChecks += 1;
+          throw new Error("ordinary has must not run");
+        },
+      }
+    );
+    const credentials: OauthCredentialFields = {};
+
+    mergeCredentialObject(credentials, source);
+
+    expect(credentials).toMatchObject({
+      access_token: "safe-access",
+      refresh_token: "safe-refresh",
+    });
+    expect(gets).toBe(0);
+    expect(hasChecks).toBe(0);
+  });
+
   it("translates hostile scope descriptor reflection without invoking access", () => {
     const reflectionError = new Error("descriptor reflection denied");
     const scopes = new Proxy(["gmail.read"], {
@@ -105,6 +157,73 @@ describe("mergeCredentialObject", () => {
       expect(error).toBeInstanceOf(ElizaError);
       expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
       expect((error as Error & { cause?: unknown }).cause).toBe(reflectionError);
+    }
+  });
+
+  it("leaves existing credentials unchanged when a late reflection failure aborts the walk", () => {
+    const credentials: OauthCredentialFields = {
+      access_token: "existing-access",
+      refresh_token: "existing-refresh",
+      scope: "existing.scope",
+      expiry_date: 123,
+    };
+    const before = { ...credentials };
+    const reflectionError = new Error("late descriptor reflection denied");
+    const scopes = new Proxy(["gmail.read"], {
+      getOwnPropertyDescriptor() {
+        throw reflectionError;
+      },
+    });
+
+    try {
+      mergeCredentialObject(credentials, {
+        tokens: {
+          access_token: "staged-access",
+          refresh_token: "staged-refresh",
+        },
+        scopes,
+      });
+      expect.unreachable("late reflection failure should abort the whole merge");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as Error & { cause?: unknown }).cause).toBe(reflectionError);
+    }
+
+    expect(credentials).toEqual(before);
+  });
+
+  it("uses fixed serializable context for an invalid reflected scope length", () => {
+    const credentialControlledLength = {
+      access_token: "must-not-enter-error-context",
+    };
+    const scopes = new Proxy([], {
+      getOwnPropertyDescriptor(target, key) {
+        if (key === "length") {
+          return {
+            configurable: false,
+            enumerable: false,
+            value: credentialControlledLength,
+            writable: true,
+          };
+        }
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+
+    try {
+      mergeCredentialObject({}, { scopes });
+      expect.unreachable("invalid reflected length should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as ElizaError).context).toEqual({
+        operation: "readScopes",
+        reason: "invalidLength",
+      });
+      expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+        credentialControlledLength.access_token
+      );
     }
   });
 
