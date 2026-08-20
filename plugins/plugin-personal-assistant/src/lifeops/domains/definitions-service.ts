@@ -493,7 +493,7 @@ export class DefinitionsDomain {
         metadata: cloneRecord(request.metadata),
         previousState: occurrence.state,
       },
-      updatedAt: now.toISOString(),
+      updatedAt: completedAt,
     };
     await this.ctx.repository.updateOccurrence(updatedOccurrence);
     await this.ctx.recordAudit(
@@ -519,7 +519,7 @@ export class DefinitionsDomain {
     await this.deps.resolveReminderEscalation({
       ownerType: "occurrence",
       ownerId: updatedOccurrence.id,
-      resolvedAt: now.toISOString(),
+      resolvedAt: completedAt,
       resolution: "completed",
       note: normalizeOptionalString(request.note) ?? null,
     });
