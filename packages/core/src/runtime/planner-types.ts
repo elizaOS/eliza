@@ -201,6 +201,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Constrained runtime-owned style for a required model-authored reply. */
+	modelReplyStyle?: "brief_ui_acknowledgement";
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget

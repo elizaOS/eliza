@@ -2962,6 +2962,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				let effectiveMode = mode;
+				// The exact conversational "go back" command means return to the
+				// canonical Home surface. A small planner can still emit action=close
+				// for that wording; never let that internal mode guess close the chat
+				// view and race a canned close receipt against the model-owned reply.
+				if (effectiveMode === "close" && matchViewCommand(text) === "chat") {
+					effectiveMode = "show";
+				}
 				let prefetchedViews: ViewSummary[] | null = null;
 				let prefetchedCurrentView:
 					| Awaited<ReturnType<ViewsClient["getCurrentView"]>>

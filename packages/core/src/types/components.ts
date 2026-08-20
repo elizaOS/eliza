@@ -997,6 +997,8 @@ export interface ActionResult {
 	 * navigation). Do not pair it with canned `userFacingText`.
 	 */
 	modelReplyRequired?: boolean;
+	/** Runtime-owned style for the one model-authored reply requested above. */
+	modelReplyStyle?: "brief_ui_acknowledgement";
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue

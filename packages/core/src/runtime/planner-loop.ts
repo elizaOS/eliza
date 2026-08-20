@@ -487,6 +487,10 @@ async function runPlannerLoopIterations(
 	// evaluator's general CONTINUE path: only an explicit final-scope tool call
 	// can arm it, and any subsequent tool call disarms it.
 	let pendingRequiredModelReply = false;
+	let pendingRequiredModelReplyStyle:
+		| PlannerToolResult["modelReplyStyle"]
+		| undefined;
+	let requiredModelReplyRepairAttempts = 0;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
@@ -550,6 +554,7 @@ async function runPlannerLoopIterations(
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
+			const requiredModelReplyStyle = pendingRequiredModelReplyStyle;
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
 				context: trajectory.context,
@@ -584,6 +589,9 @@ async function runPlannerLoopIterations(
 				providerAttributionState: params.providerAttributionState,
 				iteration,
 				onUsage: observePlannerUsage,
+				modelReplyStyle: synthesizingRequiredModelReply
+					? requiredModelReplyStyle
+					: undefined,
 			});
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
@@ -609,6 +617,7 @@ async function runPlannerLoopIterations(
 			lastPlannerExplicitCompleted = plannerOutput.completed;
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
+				pendingRequiredModelReplyStyle = undefined;
 				if (plannerOutput.toolCalls.length > 0) {
 					// Fail closed (#22609): the required-reply synthesis is a
 					// tool-free round. When a non-compliant provider returns BOTH
@@ -723,9 +732,30 @@ async function runPlannerLoopIterations(
 						),
 					};
 				}
-				const requiredModelReply = userSafeCapturedAnswerCandidate(
-					plannerOutput.messageToUser,
-				);
+				const requiredModelReply =
+					requiredModelReplyStyle === "brief_ui_acknowledgement"
+						? userSafeBriefUiAcknowledgementCandidate(
+								plannerOutput.messageToUser,
+							)
+						: userSafeCapturedAnswerCandidate(plannerOutput.messageToUser);
+				if (
+					requiredModelReplyStyle === "brief_ui_acknowledgement" &&
+					requiredModelReply === undefined &&
+					requiredModelReplyRepairAttempts < 2
+				) {
+					requiredModelReplyRepairAttempts++;
+					pendingRequiredModelReply = true;
+					pendingRequiredModelReplyStyle = requiredModelReplyStyle;
+					trajectory.context = appendContextEvent(trajectory.context, {
+						id: `required-model-reply-repair:${iteration}`,
+						type: "instruction",
+						source: "planner-loop",
+						createdAt: Date.now(),
+						content:
+							"The previous acknowledgement draft was rejected because it narrated UI mechanics or named a UI surface. Generate a different acknowledgement that follows the required post-tool reply policy exactly.",
+					});
+					continue;
+				}
 				const finalMessage =
 					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
 				trajectory.steps.push({
@@ -1466,11 +1496,13 @@ async function runPlannerLoopIterations(
 			latestResult.modelReplyRequired === true &&
 			trajectory.plannedQueue.length === 0 &&
 			failures.length === 0 &&
-			lastPlannerExplicitCompleted === true &&
+			(lastPlannerExplicitCompleted === true ||
+				latestResult.modelReplyStyle === "brief_ui_acknowledgement") &&
 			completedToolStepCount(trajectory) === 1 &&
 			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
 		) {
 			pendingRequiredModelReply = true;
+			pendingRequiredModelReplyStyle = latestResult.modelReplyStyle;
 			continue;
 		}
 
@@ -1680,6 +1712,7 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
+	modelReplyStyle?: PlannerToolResult["modelReplyStyle"];
 	/**
 	 * Optional per-tool-result character cap. Forwarded directly to
 	 * `trajectoryStepsToMessages` — caps the rendered tool-result
@@ -1692,8 +1725,33 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 } {
-	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
+	if (params.modelReplyStyle === "brief_ui_acknowledgement") {
+		const instructions = [
+			"You are writing the final chat response after a verified local UI action succeeded.",
+			"Output only one natural acknowledgement of one to eight words.",
+			"Do not mention or describe the UI, action, destination, view, screen, page, or navigation.",
+			"Do not ask a question. Do not output JSON or metadata.",
+		].join("\n");
+		const request =
+			"The verified local UI action succeeded. Write the acknowledgement now.";
+		const promptSegments = normalizePromptSegments([
+			{ content: `planner_stage:\n${instructions}`, stable: true },
+			{ content: request, stable: false },
+		]);
+		return {
+			messages: buildStageChatMessages({
+				contextSegments: [],
+				stageLabel: "planner_stage",
+				instructions,
+				dynamicBlocks: [request],
+				stepMessages: [],
+			}),
+			promptSegments,
+			cacheKeySegments: promptSegments.slice(0, 1),
+		};
+	}
+	const renderedContext = renderContextObject(params.context);
 	const instructions = appendMandatoryPlannerPolicy(
 		template.split("context_object:")[0] ?? template,
 	).trim();
@@ -2241,6 +2299,7 @@ async function callPlanner(params: {
 	 * callback (e.g. `TrajectoryLimitExceeded`) propagate to the loop.
 	 */
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
+	modelReplyStyle?: PlannerToolResult["modelReplyStyle"];
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
@@ -2248,6 +2307,7 @@ async function callPlanner(params: {
 		template: resolveOptimizedPlannerTemplate(params.runtime),
 		runtime: params.runtime,
 		maxToolResultChars: params.config.compactionMaxKeptStepChars,
+		modelReplyStyle: params.modelReplyStyle,
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -2283,6 +2343,7 @@ async function callPlanner(params: {
 				template: resolveOptimizedPlannerTemplate(params.runtime),
 				runtime: params.runtime,
 				maxToolResultChars: params.config.compactionMaxKeptStepChars,
+				modelReplyStyle: params.modelReplyStyle,
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
@@ -5627,6 +5688,41 @@ export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
 
 const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
 
+const UI_NARRATION_WORDS =
+	/\b(?:back|clos(?:e|ed|ing)|home|messages?|navigat(?:e|ed|ing|ion)|notes?|open(?:ed|ing)?|pages?|screens?|settings|switch(?:ed|ing)?|tabs?|views?)\b/i;
+
+/** Enforce the constrained model-owned style without substituting canned copy. */
+export function isBriefUiAcknowledgement(text: string): boolean {
+	const trimmed = text.trim();
+	if (
+		!trimmed ||
+		trimmed.length > 72 ||
+		trimmed.includes("?") ||
+		/[\r\n]/.test(trimmed)
+	) {
+		return false;
+	}
+	if (trimmed.split(/\s+/).length > 8) return false;
+	return !UI_NARRATION_WORDS.test(trimmed);
+}
+
+function userSafeBriefUiAcknowledgementCandidate(
+	message: string | undefined,
+): string | undefined {
+	const raw = sanitizePlannerMessage(message);
+	if (!raw) return undefined;
+	const leadingClause = raw.split(/[,;:—–]/u, 1)[0]?.trim();
+	for (const candidate of [raw, leadingClause]) {
+		if (!candidate || isUnsafeUserVisibleText(candidate)) continue;
+		if (looksLikePreToolThought(candidate)) continue;
+		if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+			continue;
+		}
+		if (isBriefUiAcknowledgement(candidate)) return candidate;
+	}
+	return undefined;
+}
+
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
 
@@ -6035,6 +6131,7 @@ export function actionResultToPlannerToolResult(
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyStyle: result.modelReplyStyle,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

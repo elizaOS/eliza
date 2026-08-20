@@ -721,6 +721,7 @@ describe("view switching — VIEWS action resolver", () => {
 				status: "accepted",
 				label: "Home",
 			});
+			expect(home.result?.modelReplyStyle).toBe("brief_ui_acknowledgement");
 
 			const messages = await runShow(messagesView, "open messages");
 			expect(messages.callback).not.toHaveBeenCalled();
@@ -732,6 +733,15 @@ describe("view switching — VIEWS action resolver", () => {
 				status: "accepted",
 				label: "Messages",
 			});
+			expect(messages.result?.modelReplyStyle).toBe("brief_ui_acknowledgement");
+
+			const multiIntent = await runShow(
+				REGISTRY,
+				"open notes and calendar",
+				{ action: "show", view: "notes" },
+			);
+			expect(multiIntent.result?.modelReplyRequired).toBe(true);
+			expect(multiIntent.result).not.toHaveProperty("modelReplyStyle");
 		});
 	});
 

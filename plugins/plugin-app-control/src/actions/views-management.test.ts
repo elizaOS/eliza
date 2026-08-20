@@ -2420,6 +2420,13 @@ describe("view management actions", () => {
 			{ action: "show", mode: "simple" },
 			callback,
 		);
+		const backHomeResult = await action.handler(
+			runtime as never,
+			message("go back") as never,
+			undefined,
+			{ action: "close", view: "chat" },
+			callback,
+		);
 
 		expect(notesResult?.success).toBe(true);
 		expect(notesResult?.values).toMatchObject({
@@ -2436,6 +2443,12 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "chat",
 		});
+		expect(backHomeResult).toMatchObject({
+			success: true,
+			values: { mode: "show", viewId: "chat", label: "Home" },
+			modelReplyRequired: true,
+			modelReplyStyle: "brief_ui_acknowledgement",
+		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({ method: "POST" }),
@@ -2448,6 +2461,14 @@ describe("view management actions", () => {
 			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
+		expect(
+			vi
+				.mocked(globalThis.fetch)
+				.mock.calls.filter(([url]) =>
+					String(url).includes("/api/views/chat/navigate"),
+				)
+				.some(([, init]) => String(init?.body).includes('"action":"close"')),
+		).toBe(false);
 	});
 
 	it("opens the plugins page from plugin-browser aliases", async () => {
