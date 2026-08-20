@@ -240,23 +240,29 @@ function MobileSystemPermissionsPanel() {
         ...appNameInterpolationVars(branding),
       })}
     >
-      {permissionDefs.map((def) => {
-        const state = states[def.id] ?? registry.get(def.id);
-        return (
-          <PermissionRow
-            key={def.id}
-            def={def}
-            status={state.status}
-            reason={busyId === def.id ? "Updating..." : state.reason}
-            platform={mobilePlatform}
-            canRequest={state.canRequest}
-            onRequest={() => void requestPermission(def.id)}
-            onOpenSettings={() => void openSettings(def.id)}
-            isShell={false}
-            shellEnabled
-          />
-        );
-      })}
+      {permissionDefs
+        .filter(
+          (def) =>
+            (states[def.id] ?? registry.get(def.id)).status !==
+            "not-applicable",
+        )
+        .map((def) => {
+          const state = states[def.id] ?? registry.get(def.id);
+          return (
+            <PermissionRow
+              key={def.id}
+              def={def}
+              status={state.status}
+              reason={busyId === def.id ? "Updating..." : state.reason}
+              platform={mobilePlatform}
+              canRequest={state.canRequest}
+              onRequest={() => void requestPermission(def.id)}
+              onOpenSettings={() => void openSettings(def.id)}
+              isShell={false}
+              shellEnabled
+            />
+          );
+        })}
     </SettingsGroup>
   );
 }

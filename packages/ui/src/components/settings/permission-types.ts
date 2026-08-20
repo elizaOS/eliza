@@ -38,7 +38,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Capture screen content for screenshots and vision",
     descriptionKey: "permissionssection.permission.screenRecording.description",
     icon: "monitor",
-    platforms: ["darwin", "ios", "android", "web"],
+    platforms: ["darwin", "android", "web"],
     requiredForFeatures: ["computeruse", "vision"],
   },
   {
@@ -68,7 +68,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: "Execute terminal commands and scripts",
     descriptionKey: "permissionssection.permission.shell.description",
     icon: "terminal",
-    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
+    platforms: ["darwin", "win32", "linux"],
     requiredForFeatures: ["shell"],
   },
   {
@@ -79,7 +79,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
       "Edit the system hosts file to block distracting websites. This may require admin/root approval each time.",
     descriptionKey: "permissionssection.permission.websiteBlocking.description",
     icon: "shield-ban",
-    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
+    platforms: ["darwin", "win32", "linux"],
     requiredForFeatures: ["website-blocker"],
   },
   {

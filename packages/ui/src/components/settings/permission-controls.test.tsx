@@ -139,5 +139,8 @@ describe("mobile permission catalog", () => {
     expect(iosIds).toContain("microphone");
     expect(iosIds).toContain("notifications");
     expect(iosIds).not.toContain("speech-recognition");
+    expect(iosIds).not.toContain("screen-recording");
+    expect(iosIds).not.toContain("shell");
+    expect(iosIds).not.toContain("website-blocking");
   });
 });
