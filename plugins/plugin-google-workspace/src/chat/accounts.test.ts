@@ -156,7 +156,9 @@ describe("resolveGoogleChatAccountSettings owner-bind fail-closed", () => {
       {
         googleChat: {
           ...ownerCharacter.googleChat,
-          accounts: { partner: { enabled: true, audience: "https://partner.example.com/googlechat" } },
+          accounts: {
+            partner: { enabled: true, audience: "https://partner.example.com/googlechat" },
+          },
         },
       }
     );
@@ -196,6 +198,23 @@ describe("resolveGoogleChatAccountSettings owner-bind fail-closed", () => {
     const def = resolveGoogleChatAccountSettings(rt, "default");
     expect(def.serviceAccount).toBe('{"client_email":"env@example.com"}');
     expect(def.serviceAccountFile).toBe("/env/sa.json");
+  });
+
+  it("binds application-default credentials only to the default account", () => {
+    const previous = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/owner/application-default.json";
+    try {
+      const rt = runtime();
+      expect(resolveGoogleChatAccountSettings(rt, "default").serviceAccountFile).toBe(
+        "/owner/application-default.json"
+      );
+      expect(
+        resolveGoogleChatAccountSettings(rt, "ghost-account").serviceAccountFile
+      ).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    }
   });
 
   it("fails closed when readGoogleChatAccountId supplies a ghost id from request metadata", () => {
