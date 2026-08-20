@@ -78,6 +78,22 @@ export function isSkillDownloadError(error: unknown): error is ElizaError {
 	);
 }
 
+/** Best-effort teardown for a response body the install will not consume. */
+export function cancelUnusedSkillDownloadBody(
+	response: Response,
+	reason?: unknown,
+): void {
+	if (!response.body) return;
+	try {
+		const cancellation = response.body.cancel(reason);
+		void Promise.resolve(cancellation).catch(() => {
+			// error-policy:J6 rejection while discarding an unused response is teardown-only.
+		});
+	} catch {
+		// error-policy:J6 synchronous cancellation of an unused response is teardown-only.
+	}
+}
+
 /**
  * Create the single abort lifecycle used by one catalog, GitHub, or URL install.
  * The caller must dispose it immediately after all network bodies are consumed.
@@ -167,6 +183,7 @@ export async function readCappedSkillPackage(
 			},
 		);
 	if (options.signal?.aborted) {
+		cancelUnusedSkillDownloadBody(response, options.signal.reason);
 		throw skillDownloadAbortError(options.signal);
 	}
 	const body = response.body;
@@ -198,6 +215,11 @@ export async function readCappedSkillPackage(
 			const { done, value } = abortPromise
 				? await Promise.race([read, abortPromise])
 				: await read;
+			// A stream can close and abort its owner in the same pull. Cancellation
+			// remains authoritative until the consumer has observed completion.
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal);
+			}
 			if (done) break;
 			if (!value?.byteLength) continue;
 			total += value.byteLength;
@@ -212,6 +234,7 @@ export async function readCappedSkillPackage(
 			chunks.push(value);
 		}
 	} catch (cause) {
+		// error-policy:J1 translate cancellation at the response-body boundary.
 		if (options.signal?.aborted) {
 			try {
 				const cancellation = reader.cancel(options.signal.reason);

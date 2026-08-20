@@ -74,6 +74,23 @@ function stalledResponse(
 	);
 }
 
+function unusedErrorResponse(
+	status: number,
+	onCancel: () => void | Promise<void>,
+): Response {
+	return new Response(
+		new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("partial error"));
+			},
+			cancel() {
+				return onCancel();
+			},
+		}),
+		{ status },
+	);
+}
+
 function createRuntime(): IAgentRuntime {
 	return {
 		getSetting: vi.fn(() => undefined),
@@ -194,7 +211,7 @@ describe("readCappedSkillPackage", () => {
 		const response = stalledResponse("partial", cancel);
 		const lifecycle = createSkillDownloadLifecycle({
 			signal: caller.signal,
-			downloadTimeoutMs: null,
+			downloadTimeoutMs: 1_000,
 		});
 		const read = readCappedSkillPackage(response, {
 			signal: lifecycle.signal,
@@ -210,6 +227,59 @@ describe("readCappedSkillPackage", () => {
 		} finally {
 			lifecycle.dispose();
 		}
+	});
+
+	it("lets caller cancellation win when the body closes in the same turn", async () => {
+		const caller = new AbortController();
+		let pullCount = 0;
+		const response = new Response(
+			new ReadableStream<Uint8Array>({
+				pull(controller) {
+					if (pullCount++ === 0) {
+						controller.enqueue(new TextEncoder().encode("complete"));
+						return;
+					}
+					controller.close();
+					caller.abort(new Error("caller stopped at completion"));
+				},
+			}),
+		);
+		const lifecycle = createSkillDownloadLifecycle({
+			signal: caller.signal,
+			downloadTimeoutMs: null,
+		});
+
+		try {
+			await expect(
+				readCappedSkillPackage(response, { signal: lifecycle.signal }),
+			).rejects.toMatchObject({
+				code: "SKILL_DOWNLOAD_ABORTED",
+				cause: expect.objectContaining({
+					message: "caller stopped at completion",
+				}),
+			});
+			expect(response.body?.locked).toBe(false);
+		} finally {
+			lifecycle.dispose();
+		}
+	});
+
+	it("cancels an unread body when its signal is already aborted", async () => {
+		const caller = new AbortController();
+		const cancel = vi.fn();
+		const response = stalledResponse("unread", cancel);
+		caller.abort(new Error("caller stopped before consumption"));
+
+		await expect(
+			readCappedSkillPackage(response, { signal: caller.signal }),
+		).rejects.toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+			cause: expect.objectContaining({
+				message: "caller stopped before consumption",
+			}),
+		});
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(response.body?.locked).toBe(false);
 	});
 
 	it("propagates caller cancellation through the direct-URL installer", async () => {
@@ -245,6 +315,32 @@ describe("readCappedSkillPackage", () => {
 		});
 		expect(installSignal?.aborted).toBe(true);
 		expect(storage.getPackage("cancelled")).toBeUndefined();
+	});
+
+	it("keeps caller cancellation boolean-compatible unless typed errors are requested", async () => {
+		const cancel = vi.fn();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => stalledResponse("partial", cancel)),
+		);
+		const caller = new AbortController();
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+		const install = service.installFromUrl(
+			"https://skills.example/boolean-cancelled.md",
+			{
+				signal: caller.signal,
+				downloadTimeoutMs: null,
+			},
+		);
+		caller.abort(new Error("legacy caller stopped waiting"));
+
+		await expect(install).resolves.toBe(false);
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("boolean-cancelled")).toBeUndefined();
 	});
 
 	it("decodes a capped SKILL.md body as UTF-8", async () => {
@@ -305,6 +401,200 @@ describe("readCappedSkillPackage", () => {
 		expect(storage.getPackage("missing")).toBeUndefined();
 	});
 
+	it("cancels an unused non-success body without masking boolean compatibility", async () => {
+		const cancel = vi.fn(async () => {
+			throw new Error("discard failed");
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								controller.enqueue(new TextEncoder().encode("partial error"));
+							},
+							cancel,
+						}),
+						{ status: 502 },
+					),
+			),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.installFromUrl("https://skills.example/unavailable.md", {
+				throwOnDownloadError: true,
+			}),
+		).resolves.toBe(false);
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("unavailable")).toBeUndefined();
+	});
+
+	it.each([200, 502])(
+		"lets caller cancellation win when fetch settles with status %s",
+		async (status) => {
+			const caller = new AbortController();
+			const cancel = vi.fn();
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => {
+					const response = unusedErrorResponse(status, cancel);
+					caller.abort(new Error("caller stopped as headers settled"));
+					return response;
+				}),
+			);
+			const storage = new MemorySkillStore();
+			const service = await AgentSkillsService.start(createRuntime(), {
+				autoLoad: false,
+				storage,
+			});
+
+			await expect(
+				service.installFromUrl("https://skills.example/settled.md", {
+					signal: caller.signal,
+					downloadTimeoutMs: null,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({
+				code: "SKILL_DOWNLOAD_ABORTED",
+				cause: expect.objectContaining({
+					message: "caller stopped as headers settled",
+				}),
+			});
+			expect(cancel).toHaveBeenCalledOnce();
+			expect(storage.getPackage("settled")).toBeUndefined();
+		},
+	);
+
+	it("preserves catalog cancellation over a same-turn non-success status", async () => {
+		const caller = new AbortController();
+		const cancel = vi.fn();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				const response = unusedErrorResponse(502, cancel);
+				caller.abort(new Error("catalog owner stopped as headers settled"));
+				return response;
+			}),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.install("catalog-cancelled", {
+				signal: caller.signal,
+				downloadTimeoutMs: null,
+				throwOnDownloadError: true,
+			}),
+		).rejects.toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+			cause: expect.objectContaining({
+				message: "catalog owner stopped as headers settled",
+			}),
+		});
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("catalog-cancelled")).toBeUndefined();
+	});
+
+	it("does not cache catalog details that complete with caller cancellation", async () => {
+		const caller = new AbortController();
+		let requestCount = 0;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				requestCount += 1;
+				if (requestCount === 1) {
+					return new Response(
+						new ReadableStream<Uint8Array>({
+							pull(controller) {
+								controller.enqueue(
+									new TextEncoder().encode(
+										'{"latestVersion":{"version":"1.0.0"}}',
+									),
+								);
+								controller.close();
+								caller.abort(new Error("catalog owner stopped at completion"));
+							},
+						}),
+						{ headers: { "content-type": "application/json" } },
+					);
+				}
+				return new Response(
+					JSON.stringify({ latestVersion: { version: "2.0.0" } }),
+					{ headers: { "content-type": "application/json" } },
+				);
+			}),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.install("catalog-completion-cancelled", {
+				signal: caller.signal,
+				downloadTimeoutMs: null,
+				throwOnDownloadError: true,
+			}),
+		).rejects.toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+			cause: expect.objectContaining({
+				message: "catalog owner stopped at completion",
+			}),
+		});
+
+		await expect(
+			service.getSkillDetails("catalog-completion-cancelled"),
+		).resolves.toMatchObject({ latestVersion: { version: "2.0.0" } });
+		expect(requestCount).toBe(2);
+		expect(storage.getPackage("catalog-completion-cancelled")).toBeUndefined();
+	});
+
+	it("does not persist GitHub SKILL.md when cancellation settles with a missing README", async () => {
+		const caller = new AbortController();
+		const cancel = vi.fn();
+		const fetchMock = vi.fn(async () => {
+			if (fetchMock.mock.calls.length === 1) {
+				return new Response(
+					"---\nname: github-readme-cancelled\ndescription: test\n---\n# Test\n",
+				);
+			}
+			const response = unusedErrorResponse(404, cancel);
+			caller.abort(new Error("caller stopped as README settled"));
+			return response;
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.installFromGitHub("owner/github-readme-cancelled", {
+				signal: caller.signal,
+				downloadTimeoutMs: null,
+				throwOnDownloadError: true,
+			}),
+		).rejects.toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+			cause: expect.objectContaining({
+				message: "caller stopped as README settled",
+			}),
+		});
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("github-readme-cancelled")).toBeUndefined();
+	});
+
 	it("uses one deadline for catalog resolution and a stalled package body", async () => {
 		const signals: AbortSignal[] = [];
 		const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
@@ -336,6 +626,46 @@ describe("readCappedSkillPackage", () => {
 		expect(signals).toHaveLength(2);
 		expect(signals[0]).toBe(signals[1]);
 		expect(storage.getPackage("catalog-stall")).toBeUndefined();
+	});
+
+	it("bounds a stalled catalog-details body before package fetch or persistence", async () => {
+		let requestCount = 0;
+		const server = createServer((_request, response) => {
+			requestCount += 1;
+			response.writeHead(200, { "content-type": "application/json" });
+			response.write('{"latestVersion":');
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		const { port } = server.address() as AddressInfo;
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			registryUrl: `http://127.0.0.1:${port}`,
+			storage,
+		});
+		const startedAt = Date.now();
+
+		try {
+			await expect(
+				service.install("metadata-stall", {
+					downloadTimeoutMs: 500,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({
+				code: "SKILL_DOWNLOAD_TIMEOUT",
+				context: { timeoutMs: 500 },
+			});
+			expect(Date.now() - startedAt).toBeLessThan(2_500);
+			expect(requestCount).toBe(1);
+			expect(storage.getPackage("metadata-stall")).toBeUndefined();
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
 	});
 
 	it("does not persist GitHub SKILL.md when its README stalls", async () => {
