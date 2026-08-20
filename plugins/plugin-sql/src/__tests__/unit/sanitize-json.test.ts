@@ -4,7 +4,8 @@
  * parameter, so JSON escaping is already handled by the serializer;
  * `sanitizeJsonObject` must therefore only strip NUL characters (PostgreSQL/
  * PGlite jsonb rejects the escape JSON.stringify emits for them), break
- * circular references, and fail closed past a nesting ceiling — nothing else.
+ * circular references, and fail closed past structural or serialized-size
+ * ceilings — nothing else.
  * A prior implementation also doubled
  * every backslash not followed by an allowlisted escape character and
  * mangled non-hex unicode-escape sequences, so a Windows path like
@@ -14,8 +15,12 @@
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
+  MAX_SQL_JSON_SANITIZE_BYTES,
   MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_KEY_BYTES,
   MAX_SQL_JSON_SANITIZE_NODES,
+  MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
   sanitizeJsonObject,
 } from "../../sanitize-json";
@@ -81,6 +86,45 @@ describe("sanitizeJsonObject", () => {
     expect(sanitizeJsonObject(Number.NaN)).toBeNull();
     expect(sanitizeJsonObject(Number.POSITIVE_INFINITY)).toBeNull();
     expect(sanitizeJsonObject(Number.NEGATIVE_INFINITY)).toBeNull();
+  });
+
+  it("fails closed before copying oversized string, key, and BigInt projections", () => {
+    expect(() =>
+      sanitizeJsonObject("x".repeat(MAX_SQL_JSON_SANITIZE_STRING_BYTES + 1))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+    expect(() =>
+      sanitizeJsonObject({ ["k".repeat(MAX_SQL_JSON_SANITIZE_KEY_BYTES + 1)]: true })
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+    expect(() =>
+      sanitizeJsonObject(10n ** BigInt(MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+  });
+
+  it("accounts for escaped UTF-8 bytes and aggregate JSON syntax", () => {
+    const escapedUnit = "\\";
+    expect(() =>
+      sanitizeJsonObject(escapedUnit.repeat(MAX_SQL_JSON_SANITIZE_STRING_BYTES / 2 + 1))
+    ).toThrowError(expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }));
+
+    const aggregate = Array.from({ length: 5 }, (_, index) => ({
+      index,
+      body: "x".repeat(Math.floor(MAX_SQL_JSON_SANITIZE_BYTES / 5)),
+    }));
+    expect(() => sanitizeJsonObject(aggregate)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("preserves valid Unicode and exact-budget-adjacent values", () => {
+    const value = `before😀${"x".repeat(1_024)}after`;
+    expect(sanitizeJsonObject(value)).toBe(value);
+    expect(JSON.parse(JSON.stringify(sanitizeJsonObject({ value })))).toEqual({ value });
+
+    const exactBudget = "x".repeat(MAX_SQL_JSON_SANITIZE_BYTES - 2);
+    expect(sanitizeJsonObject(exactBudget)).toBe(exactBudget);
+    expect(() => sanitizeJsonObject(`${exactBudget}x`)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
   });
 
   it("recurses into arrays and objects", () => {
