@@ -157,7 +157,7 @@ describe("MCP tool compatibility", () => {
     }
   });
 
-  it("skips the budget when the provider does not apply fixup", () => {
+  it("enforces the budget when the provider does not apply fixup", () => {
     const compatibility = new OpenAIMcpCompatibility({
       provider: "openai",
       modelId: "gpt-4o",
@@ -165,6 +165,6 @@ describe("MCP tool compatibility", () => {
     });
     const cyclic = { type: "array", items: undefined as unknown };
     cyclic.items = cyclic;
-    expect(compatibility.transformToolSchema(cyclic as never)).toBe(cyclic);
+    expect(() => compatibility.transformToolSchema(cyclic as never)).toThrowError(ElizaError);
   });
 });

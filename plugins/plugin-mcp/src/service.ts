@@ -15,7 +15,14 @@
  * restartConnection to the action and route layers. Tool input schemas are
  * rewritten per model provider via the tool-compatibility layer.
  */
-import { ElizaError, fetchWithSsrfGuard, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  ElizaError,
+  fetchWithSsrfGuard,
+  type IAgentRuntime,
+  isElizaError,
+  logger,
+  Service,
+} from "@elizaos/core";
 import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -52,6 +59,7 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
+import { assertMcpJsonSchemaBudget, MCP_TOOL_SCHEMA_UNBOUNDED } from "./utils/schema-budget";
 
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
@@ -523,6 +531,9 @@ export class McpService extends Service {
             tool.inputSchema as JSONSchema7
           ) as typeof tool.inputSchema;
         } catch (error) {
+          if (!isElizaError(error) || error.code !== MCP_TOOL_SCHEMA_UNBOUNDED) {
+            throw error;
+          }
           // error-policy:J3 attacker-controlled MCP tool inputSchema; omit the
           // tool rather than RangeError the listing loop or forward the graph.
           logger.warn(
@@ -637,6 +648,9 @@ export class McpService extends Service {
   }
 
   public applyToolCompatibility(toolSchema: JSONSchema7): JSONSchema7 {
+    // This boundary applies even when the current provider needs no rewrite:
+    // selection later JSON-stringifies the retained schema for the model.
+    assertMcpJsonSchemaBudget(toolSchema);
     if (!this.compatibilityInitialized) {
       this.initializeToolCompatibility();
     }

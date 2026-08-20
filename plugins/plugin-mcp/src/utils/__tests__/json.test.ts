@@ -193,4 +193,27 @@ describe("assertMcpJsonSchemaBudget", () => {
       expect((error as ElizaError).code).toBe(MCP_TOOL_SCHEMA_UNBOUNDED);
     }
   });
+
+  it("rejects a huge sparse array before whole-graph serialization", () => {
+    const sparse: unknown[] = [];
+    sparse.length = 1_000_000_000;
+    expect(() => assertMcpJsonSchemaBudget(sparse)).toThrowError(ElizaError);
+  });
+
+  it("rejects giant primitive text during traversal", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({ type: "string", description: "x".repeat(300_000) })
+    ).toThrowError(/serialized size/);
+  });
+
+  it("rejects a throwing schema accessor as unsafe input", () => {
+    const schema = { type: "object" } as Record<string, unknown>;
+    Object.defineProperty(schema, "properties", {
+      enumerable: true,
+      get: () => {
+        throw new Error("getter escaped");
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/not safely traversable/);
+  });
 });

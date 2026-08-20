@@ -14,12 +14,26 @@ export const MAX_MCP_SCHEMA_NODES = 2048;
 /** Stable code when a tool `inputSchema` exceeds the MCP schema budget. */
 export const MCP_TOOL_SCHEMA_UNBOUNDED = "MCP_TOOL_SCHEMA_UNBOUNDED";
 
-function walkSchema(node: unknown, depth: number, acc: { nodes: number }): string | undefined {
+interface SchemaBudgetAccumulator {
+  nodes: number;
+  primitiveBytes: number;
+}
+
+function addPrimitiveBytes(value: string, acc: SchemaBudgetAccumulator): string | undefined {
+  acc.primitiveBytes += Buffer.byteLength(value);
+  if (acc.primitiveBytes > MAX_MCP_SCHEMA_JSON_BYTES) {
+    return `MCP JSON schema serialized size exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`;
+  }
+  return undefined;
+}
+
+function walkSchema(
+  node: unknown,
+  depth: number,
+  acc: SchemaBudgetAccumulator
+): string | undefined {
   if (depth > MAX_MCP_SCHEMA_DEPTH) {
     return `MCP JSON schema nesting depth exceeds ${MAX_MCP_SCHEMA_DEPTH}`;
-  }
-  if (node === null || typeof node !== "object") {
-    return undefined;
   }
 
   acc.nodes += 1;
@@ -27,20 +41,46 @@ function walkSchema(node: unknown, depth: number, acc: { nodes: number }): strin
     return `MCP JSON schema node count exceeds ${MAX_MCP_SCHEMA_NODES}`;
   }
 
+  if (typeof node === "string") {
+    return addPrimitiveBytes(node, acc);
+  }
+  if (node === null || typeof node !== "object") {
+    return undefined;
+  }
+
   if (!Array.isArray(node) && (node as Record<string, unknown>).$async === true) {
     return "MCP JSON schema uses unsupported asynchronous validation";
   }
 
-  for (const value of Array.isArray(node) ? node : Object.values(node)) {
-    const error = walkSchema(value, depth + 1, acc);
-    if (error) {
-      return error;
+  if (Array.isArray(node)) {
+    for (const value of node) {
+      const error = walkSchema(value, depth + 1, acc);
+      if (error) return error;
+    }
+  } else {
+    for (const key in node as Record<string, unknown>) {
+      if (!Object.hasOwn(node, key)) continue;
+      const keyError = addPrimitiveBytes(key, acc);
+      if (keyError) return keyError;
+      const error = walkSchema((node as Record<string, unknown>)[key], depth + 1, acc);
+      if (error) return error;
     }
   }
   return undefined;
 }
 
 export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
+  try {
+    // Bound topology and raw string/key bytes before JSON.stringify. This keeps
+    // deep, cyclic, broad, sparse, and giant-string graphs from making the byte
+    // measurement itself the unbounded operation.
+    const walkError = walkSchema(schema, 0, { nodes: 0, primitiveBytes: 0 });
+    if (walkError) return walkError;
+  } catch {
+    // error-policy:J3 hostile accessors/proxies are not valid JSON Schema.
+    return "MCP JSON schema is not safely traversable";
+  }
+
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(schema);
@@ -57,7 +97,7 @@ export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined
     return `MCP JSON schema serialized size ${bytes} exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`;
   }
 
-  return walkSchema(schema, 0, { nodes: 0 });
+  return undefined;
 }
 
 /**

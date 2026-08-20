@@ -68,11 +68,11 @@ export abstract class McpToolCompatibility {
   abstract shouldApply(): boolean;
 
   public transformToolSchema(toolSchema: JSONSchema7): JSONSchema7 {
+    assertMcpJsonSchemaBudget(toolSchema);
     if (!this.shouldApply()) {
       return toolSchema;
     }
 
-    assertMcpJsonSchemaBudget(toolSchema);
     return this.processSchema(toolSchema);
   }
 
