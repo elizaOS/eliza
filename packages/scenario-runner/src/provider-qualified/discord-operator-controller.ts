@@ -77,10 +77,17 @@ export interface DiscordRawMessageReceipt {
   contentSha256: string;
 }
 
+export interface DiscordObserverIdentityReceipt {
+  userId: string;
+  bot: true;
+  rawResponseSha256: string;
+}
+
 export interface DiscordRawReadback {
   schema: "eliza.discord-provider-canary-raw-readback.v1";
   collectedAtIso: string;
   channelId: string;
+  observerIdentity: DiscordObserverIdentityReceipt;
   humanIngress: DiscordRawMessageReceipt;
   providerEffect: DiscordRawMessageReceipt;
   qualificationClaimed: false;
@@ -380,11 +387,13 @@ function parseDiscordMessages(
   );
 }
 
-async function discordMessagesRequest(input: {
+async function discordJsonRequest(input: {
   preflight: DiscordOperatorPreflight;
   discordBotToken: string;
+  url: URL;
   fetchImpl: DiscordFetch;
-}): Promise<readonly DiscordRawMessageReceipt[]> {
+  label: string;
+}): Promise<{ value: unknown; rawSha256: string }> {
   if (!validatedPreflights.has(input.preflight)) {
     fail(
       "readback requires the exact result of preflightDiscordOperatorCanary",
@@ -393,14 +402,9 @@ async function discordMessagesRequest(input: {
   if (input.discordBotToken.trim().length < 20) {
     fail("discordBotToken is missing or invalid");
   }
-  const url = new URL(
-    `/api/v10/channels/${input.preflight.plan.channelId}/messages`,
-    DISCORD_API_ORIGIN,
-  );
-  url.searchParams.set("limit", "100");
   let response: Response;
   try {
-    response = await input.fetchImpl(url, {
+    response = await input.fetchImpl(input.url, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -412,25 +416,77 @@ async function discordMessagesRequest(input: {
   } catch (error) {
     // error-policy:J2 preserve the Discord transport cause at the operator boundary.
     throw new Error(
-      "discord provider-canary operator Discord REST readback failed",
-      {
-        cause: error,
-      },
+      `discord provider-canary operator Discord ${input.label} failed`,
+      { cause: error },
     );
   }
   if (!response.ok) {
-    fail(`Discord REST readback returned HTTP ${response.status}`);
+    fail(`Discord ${input.label} returned HTTP ${response.status}`);
   }
   const contentLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
-    fail("Discord REST readback response exceeds the byte limit");
+    fail(`Discord ${input.label} response exceeds the byte limit`);
   }
   const text = await response.text();
   if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) {
-    fail("Discord REST readback response exceeds the byte limit");
+    fail(`Discord ${input.label} response exceeds the byte limit`);
   }
   try {
-    return parseDiscordMessages(JSON.parse(text));
+    return {
+      value: JSON.parse(text),
+      rawSha256: createHash("sha256").update(text).digest("hex"),
+    };
+  } catch (error) {
+    // error-policy:J2 retain malformed provider response context without token data.
+    throw new Error(
+      `discord provider-canary operator Discord ${input.label} returned invalid JSON`,
+      { cause: error },
+    );
+  }
+}
+
+async function authenticateDiscordObserver(input: {
+  preflight: DiscordOperatorPreflight;
+  discordBotToken: string;
+  fetchImpl: DiscordFetch;
+}): Promise<DiscordObserverIdentityReceipt> {
+  const response = await discordJsonRequest({
+    ...input,
+    url: new URL("/api/v10/users/@me", DISCORD_API_ORIGIN),
+    label: "observer identity request",
+  });
+  const identity = record(response.value, "observerIdentity");
+  const userId = snowflake(identity.id, "observerIdentity.id");
+  if (identity.bot !== true) {
+    fail("Discord observer credential must authenticate a bot principal");
+  }
+  if (userId !== input.preflight.plan.agentBotUserId) {
+    fail("Discord observer credential does not match the bound agent bot");
+  }
+  return Object.freeze({
+    userId,
+    bot: true,
+    rawResponseSha256: response.rawSha256,
+  });
+}
+
+async function discordMessagesRequest(input: {
+  preflight: DiscordOperatorPreflight;
+  discordBotToken: string;
+  fetchImpl: DiscordFetch;
+}): Promise<readonly DiscordRawMessageReceipt[]> {
+  const url = new URL(
+    `/api/v10/channels/${input.preflight.plan.channelId}/messages`,
+    DISCORD_API_ORIGIN,
+  );
+  url.searchParams.set("limit", "100");
+  const response = await discordJsonRequest({
+    ...input,
+    url,
+    label: "REST readback",
+  });
+  try {
+    return parseDiscordMessages(response.value);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -464,6 +520,11 @@ export async function collectDiscordRawReadback(input: {
     input.wait ??
     ((milliseconds: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const observerIdentity = await authenticateDiscordObserver({
+    preflight: input.preflight,
+    discordBotToken: input.discordBotToken,
+    fetchImpl,
+  });
   const startedAt = now();
   while (now() - startedAt <= input.preflight.plan.poll.timeoutMs) {
     const messages = await discordMessagesRequest({
@@ -501,6 +562,7 @@ export async function collectDiscordRawReadback(input: {
         schema: "eliza.discord-provider-canary-raw-readback.v1",
         collectedAtIso: new Date(now()).toISOString(),
         channelId: input.preflight.plan.channelId,
+        observerIdentity,
         humanIngress,
         providerEffect,
         qualificationClaimed: false,

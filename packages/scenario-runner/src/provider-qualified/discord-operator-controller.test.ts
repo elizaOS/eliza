@@ -276,11 +276,17 @@ describe("Discord provider-canary operator", () => {
   it("collects exact human ingress and later bot effect from Discord REST", async () => {
     const preflight = preflightDiscordOperatorCanary(fixture());
     const fetchImpl = vi.fn(
-      async (_url: string | URL | Request, init?: RequestInit) => {
+      async (request: string | URL | Request, init?: RequestInit) => {
         expect(init?.method).toBe("GET");
         expect(new Headers(init?.headers).get("Authorization")).toBe(
           "Bot secret-discord-token-value",
         );
+        const url = String(request);
+        if (url.endsWith("/api/v10/users/@me")) {
+          return new Response(JSON.stringify({ id: botId, bot: true }), {
+            status: 200,
+          });
+        }
         return new Response(
           JSON.stringify([
             discordMessage({
@@ -309,29 +315,35 @@ describe("Discord provider-canary operator", () => {
       now: () => Date.parse("2026-08-19T18:00:02.000Z"),
     });
     expect(readback.qualificationClaimed).toBe(false);
+    expect(readback.observerIdentity).toMatchObject({
+      userId: botId,
+      bot: true,
+    });
     expect(readback.humanIngress.author).toEqual({ id: humanId, bot: false });
     expect(readback.providerEffect.author).toEqual({ id: botId, bot: true });
     expect(readback.providerEffect.contentSha256).toBe(
       hash(providerEffectContent),
     );
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("does not accept a bot-authored message as human ingress", async () => {
     const preflight = preflightDiscordOperatorCanary(fixture());
     let clock = 0;
     const fetchImpl = vi.fn(
-      async () =>
+      async (request: string | URL | Request) =>
         new Response(
-          JSON.stringify([
-            discordMessage({
-              id: "823456789012345678",
-              authorId: humanId,
-              bot: true,
-              content: humanIngressContent,
-              timestamp: "2026-08-19T18:00:00.000Z",
-            }),
-          ]),
+          String(request).endsWith("/api/v10/users/@me")
+            ? JSON.stringify({ id: botId, bot: true })
+            : JSON.stringify([
+                discordMessage({
+                  id: "823456789012345678",
+                  authorId: humanId,
+                  bot: true,
+                  content: humanIngressContent,
+                  timestamp: "2026-08-19T18:00:00.000Z",
+                }),
+              ]),
           { status: 200 },
         ),
     );
@@ -352,24 +364,26 @@ describe("Discord provider-canary operator", () => {
     const preflight = preflightDiscordOperatorCanary(fixture());
     let clock = 0;
     const fetchImpl = vi.fn(
-      async () =>
+      async (request: string | URL | Request) =>
         new Response(
-          JSON.stringify([
-            discordMessage({
-              id: "923456789012345678",
-              authorId: botId,
-              bot: true,
-              content: providerEffectContent,
-              timestamp: "2026-08-19T18:00:00.000Z",
-            }),
-            discordMessage({
-              id: "623456789012345678",
-              authorId: humanId,
-              bot: false,
-              content: humanIngressContent,
-              timestamp: "2026-08-19T18:00:00.000Z",
-            }),
-          ]),
+          String(request).endsWith("/api/v10/users/@me")
+            ? JSON.stringify({ id: botId, bot: true })
+            : JSON.stringify([
+                discordMessage({
+                  id: "923456789012345678",
+                  authorId: botId,
+                  bot: true,
+                  content: providerEffectContent,
+                  timestamp: "2026-08-19T18:00:00.000Z",
+                }),
+                discordMessage({
+                  id: "623456789012345678",
+                  authorId: humanId,
+                  bot: false,
+                  content: humanIngressContent,
+                  timestamp: "2026-08-19T18:00:00.000Z",
+                }),
+              ]),
           { status: 200 },
         ),
     );
@@ -398,6 +412,23 @@ describe("Discord provider-canary operator", () => {
       }),
     ).rejects.toThrow(/discordBotToken is missing/);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a credential for a different Discord bot before channel readback", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: "993456789012345678", bot: true }), {
+          status: 200,
+        }),
+    );
+    await expect(
+      collectDiscordRawReadback({
+        preflight: preflightDiscordOperatorCanary(fixture()),
+        discordBotToken: "secret-discord-token-value",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/credential does not match the bound agent bot/);
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("rejects a structurally forged preflight before calling Discord", async () => {
