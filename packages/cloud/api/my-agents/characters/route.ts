@@ -197,7 +197,7 @@ app.post("/", async (c) => {
       source: "cloud",
     };
 
-    const character = await charactersService.create(newCharacter);
+    const character = await charactersService.create(newCharacter, "metered");
 
     discordService
       .logCharacterCreated({

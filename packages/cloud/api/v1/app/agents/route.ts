@@ -1,19 +1,15 @@
 /**
  * POST /api/v1/app/agents — create a new AI agent (character) for the
- * authenticated user. Enforces organization agent quotas and role.
+ * authenticated user. Enforces organization agent quotas through the
+ * canonical metered service authority (#23001).
  */
 
-import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { organizations } from "@/db/schemas/organizations";
-import { userCharacters } from "@/db/schemas/user-characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { CloudCharacterQuotaExceededError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getMaxCloudCharactersForOrg } from "@/lib/constants/cloud-character-quota";
 import {
   RateLimitPresets,
   rateLimit,
@@ -107,52 +103,6 @@ app.post("/", async (c) => {
       ? normalizeTokenAddress(validationResult.data.tokenAddress, tokenChain)
       : undefined;
 
-    // Org lookup and agent count are independent — run in parallel.
-    const [org, [{ count }]] = await Promise.all([
-      dbRead.query.organizations.findFirst({
-        where: eq(organizations.id, user.organization_id),
-        columns: {
-          id: true,
-          credit_balance: true,
-          settings: true,
-        },
-      }),
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(userCharacters)
-        .where(
-          and(
-            eq(userCharacters.organization_id, user.organization_id),
-            eq(userCharacters.source, "cloud"),
-          ),
-        ),
-    ]);
-
-    if (!org) {
-      return c.json({ success: false, error: "Organization not found" }, 404);
-    }
-
-    const maxAgents = getMaxCloudCharactersForOrg(
-      Number(org.credit_balance),
-      org.settings as Record<string, unknown> | undefined,
-    );
-
-    if (count >= maxAgents) {
-      return c.json(
-        {
-          success: false,
-          error: `Agent quota exceeded. Your organization has reached the maximum of ${maxAgents} agents.`,
-          details: {
-            current: count,
-            max: maxAgents,
-            upgrade_hint:
-              "Add credits to your account to increase your agent limit.",
-          },
-        },
-        403,
-      );
-    }
-
     if (tokenAddress) {
       const existing = await userCharactersRepository.findByTokenAddress(
         tokenAddress,
@@ -168,18 +118,21 @@ app.post("/", async (c) => {
 
     let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
-      character = await charactersService.create({
-        name,
-        bio: bio ? [bio] : [DEFAULT_AGENT_BIO],
-        user_id: user.id,
-        organization_id: user.organization_id,
-        source: "cloud",
-        character_data: {},
-        ...(tokenAddress && { token_address: tokenAddress }),
-        ...(tokenChain && { token_chain: tokenChain }),
-        ...(tokenName && { token_name: tokenName }),
-        ...(tokenTicker && { token_ticker: tokenTicker }),
-      });
+      character = await charactersService.create(
+        {
+          name,
+          bio: bio ? [bio] : [DEFAULT_AGENT_BIO],
+          user_id: user.id,
+          organization_id: user.organization_id,
+          source: "cloud",
+          character_data: {},
+          ...(tokenAddress && { token_address: tokenAddress }),
+          ...(tokenChain && { token_chain: tokenChain }),
+          ...(tokenName && { token_name: tokenName }),
+          ...(tokenTicker && { token_ticker: tokenTicker }),
+        },
+        "metered",
+      );
     } catch (error) {
       if (tokenAddress && isUniqueConstraintError(error)) {
         const existing = await userCharactersRepository.findByTokenAddress(
@@ -191,6 +144,9 @@ app.post("/", async (c) => {
           409,
         );
       }
+      if (error instanceof CloudCharacterQuotaExceededError) {
+        return c.json(error.toJSON(), error.status as 403);
+      }
       throw error;
     }
 
@@ -199,8 +155,6 @@ app.post("/", async (c) => {
       name: character.name,
       userId: user.id,
       organizationId: user.organization_id,
-      agentCount: count + 1,
-      maxAgents,
     });
 
     return c.json(

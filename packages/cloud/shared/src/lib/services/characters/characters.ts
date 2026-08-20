@@ -16,9 +16,14 @@ import {
 export type { UserCharacter } from "../../../db/repositories";
 
 import { agentsRepository } from "../../../db/repositories/agents/agents";
-import { elizaRoomCharactersTable, userCharacters, users } from "../../../db/schemas";
-import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
-import { ValidationError } from "../../api/cloud-worker-errors";
+import { elizaRoomCharactersTable, organizations, userCharacters, users } from "../../../db/schemas";
+import { agentTable, memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
+import {
+  CloudCharacterQuotaExceededError,
+  NotFoundError,
+  ValidationError,
+} from "../../api/cloud-worker-errors";
+import { getMaxCloudCharactersForOrg } from "../../constants/cloud-character-quota";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
@@ -47,6 +52,15 @@ const characterHydrations = new Map<string, Promise<void>>();
 export type InferenceCharacterCacheResolution =
   | { kind: "ready"; character: UserCharacter | null }
   | { kind: "warming" | "unavailable" };
+
+/**
+ * Creation policy for Cloud-character quota enforcement.
+ *
+ * - `metered`   – atomic quota check + insert under the organization lock (routes).
+ * - `bootstrap` – uncapped, named policy for internal ensure-if-absent paths.
+ * - `trusted`   – uncapped, named policy for affiliate/S2S callers.
+ */
+export type CharacterCreatePolicy = "metered" | "bootstrap" | "trusted";
 
 /**
  * Service for character CRUD operations.
@@ -271,7 +285,10 @@ export class CharactersService {
     return await userCharactersRepository.findByUsername(username);
   }
 
-  async create(data: NewUserCharacter): Promise<UserCharacter> {
+  async create(
+    data: NewUserCharacter,
+    policy: CharacterCreatePolicy = "metered",
+  ): Promise<UserCharacter> {
     // `name` arrives from the same pre-validation request body as `username`
     // (the route casts raw JSON to ElizaCharacter). A non-string name 500s via
     // slugify(name).toLowerCase() in generateUniqueUsername below; and when a
@@ -314,29 +331,119 @@ export class CharactersService {
     }
 
     // Create the character in user_characters table with username
-    const character = await userCharactersRepository.create({
-      ...data,
-      username,
+    if (policy !== "metered") {
+      // bootstrap / trusted / legacy: 直接创建，无配额检查
+      const character = await userCharactersRepository.create({
+        ...data,
+        username,
+      });
+
+      // Also create the agent in the elizaOS agents table
+      const agent: Partial<Agent> = {
+        id: character.id as `${string}-${string}-${string}-${string}-${string}`,
+        name: character.name,
+        username: character.username ?? undefined,
+        bio: character.bio as string[] | undefined,
+        system: character.system ?? undefined,
+        enabled: true,
+        settings: character.settings as Record<
+          string,
+          string | number | boolean | Record<string, string | number | boolean>
+        >,
+      };
+
+      await agentsRepository.create(agent);
+
+      // Invalidate dashboard cache
+      await cache.del(CacheKeys.org.dashboard(data.organization_id));
+
+      return character;
+    }
+
+    // metered: atomic quota enforcement + insert under the org lock (#23001)
+    return await this.createMetered({ ...data, username });
+  }
+
+  /**
+   * Atomic metered Cloud-character creation: lock the org, check quota, insert
+   * character and mirror agent row in a single transaction so concurrent
+   * creates serialize on the same authoritative quota snapshot.
+   *
+   * Throws {@link CloudCharacterQuotaExceededError} when the org is at capacity.
+   * Throws {@link NotFoundError} when the org row does not exist.
+   */
+  private async createMetered(data: NewUserCharacter): Promise<UserCharacter> {
+    const organizationId = data.organization_id;
+
+    const character = await dbWrite.transaction(async (tx) => {
+      // 1. Lock the organization row on the primary database.
+      const [org] = await tx
+        .select({
+          credit_balance: organizations.credit_balance,
+          settings: organizations.settings,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update");
+
+      if (!org) {
+        throw NotFoundError("Organization not found");
+      }
+
+      // 2. Count the exact cloud-character population under the same lock.
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(userCharacters)
+        .where(
+          and(
+            eq(userCharacters.organization_id, organizationId),
+            eq(userCharacters.source, "cloud"),
+          ),
+        );
+
+      // 3. Resolve the published character ceiling.
+      const maxAgents = getMaxCloudCharactersForOrg(
+        Number(org.credit_balance),
+        org.settings as Record<string, unknown> | undefined,
+      );
+
+      // 4. Fail closed when capacity is exhausted.
+      if (count >= maxAgents) {
+        throw new CloudCharacterQuotaExceededError(count, maxAgents);
+      }
+
+      // 5. Insert the character row and mirror the agent atomically.
+      const [created] = await tx
+        .insert(userCharacters)
+        .values(data)
+        .returning();
+
+      if (!created) {
+        throw new Error("Failed to create character");
+      }
+
+      // Mirrored agent rows commit in the same transaction so a crash between
+      // the two inserts cannot leave an uncounted billed character.
+      await tx.insert(agentTable).values({
+        id: created.id,
+        name: created.name,
+        username: created.username ?? undefined,
+        bio: created.bio as string[] | undefined,
+        system: created.system ?? undefined,
+        enabled: true,
+        settings: created.settings as Record<
+          string,
+          string | number | boolean | Record<string, string | number | boolean>
+        >,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as typeof agentTable.$inferInsert);
+
+      return created;
     });
 
-    // Also create the agent in the elizaOS agents table
-    const agent: Partial<Agent> = {
-      id: character.id as `${string}-${string}-${string}-${string}-${string}`,
-      name: character.name,
-      username: character.username ?? undefined,
-      bio: character.bio as string[] | undefined,
-      system: character.system ?? undefined,
-      enabled: true,
-      settings: character.settings as Record<
-        string,
-        string | number | boolean | Record<string, string | number | boolean>
-      >,
-    };
-
-    await agentsRepository.create(agent);
-
-    // Invalidate dashboard cache
-    await cache.del(CacheKeys.org.dashboard(data.organization_id));
+    // 6. Invalidate dashboard cache after the transaction commits.
+    await cache.del(CacheKeys.org.dashboard(organizationId));
 
     return character;
   }

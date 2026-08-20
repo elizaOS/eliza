@@ -92,6 +92,28 @@ export const RateLimitError = (retryAfter?: number) =>
     retryAfter ? { retryAfter } : undefined,
   );
 
+/**
+ * Raised when a metered Cloud-character create exceeds the organization's
+ * published ceiling.  Carries the canonical 403 quota response shape so that
+ * routes and failureResponse map it through a single authoritative quota
+ * contract instead of re-counting on a stale replica (#23001).
+ */
+export class CloudCharacterQuotaExceededError extends ApiError {
+  constructor(current: number, max: number) {
+    super({
+      status: 403,
+      code: "agent_quota_exceeded",
+      message: `Agent quota exceeded. Your organization has reached the maximum of ${max} agents.`,
+      details: {
+        current,
+        max,
+        upgrade_hint: "Add credits to your account to increase your agent limit.",
+      },
+    });
+    this.name = "CloudCharacterQuotaExceededError";
+  }
+}
+
 function inferCodeFromStatus(status: number): ApiErrorCode {
   if (status === 401) return "authentication_required";
   if (status === 402) return "insufficient_credits";

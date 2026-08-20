@@ -7,6 +7,7 @@
  */
 
 import { Hono } from "hono";
+import { CloudCharacterQuotaExceededError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
@@ -54,26 +55,29 @@ app.post("/", async (c) => {
 
     const cloneName = body.name || `${original.name} (Copy)`;
 
-    const clonedCharacter = await charactersService.create({
-      user_id: user.id,
-      organization_id: user.organization_id,
-      name: cloneName,
-      username: body.username,
-      bio: original.bio,
-      system: original.system,
-      topics: original.topics,
-      adjectives: original.adjectives,
-      knowledge: original.knowledge,
-      plugins: original.plugins,
-      style: original.style,
-      settings: original.settings,
-      character_data: original.character_data || {},
-      avatar_url: original.avatar_url,
-      category: original.category,
-      tags: original.tags,
-      is_public: body.makePublic ?? false,
-      is_template: false,
-    });
+    const clonedCharacter = await charactersService.create(
+      {
+        user_id: user.id,
+        organization_id: user.organization_id,
+        name: cloneName,
+        username: body.username,
+        bio: original.bio,
+        system: original.system,
+        topics: original.topics,
+        adjectives: original.adjectives,
+        knowledge: original.knowledge,
+        plugins: original.plugins,
+        style: original.style,
+        settings: original.settings,
+        character_data: original.character_data || {},
+        avatar_url: original.avatar_url,
+        category: original.category,
+        tags: original.tags,
+        is_public: body.makePublic ?? false,
+        is_template: false,
+      },
+      "metered",
+    );
 
     logger.info("[My Agents API] Character cloned successfully:", {
       originalId: id,
@@ -89,6 +93,9 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    if (error instanceof CloudCharacterQuotaExceededError) {
+      return c.json(error.toJSON(), error.status as 400);
+    }
     logger.error("[My Agents API] Error cloning character:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Failed to clone character";
