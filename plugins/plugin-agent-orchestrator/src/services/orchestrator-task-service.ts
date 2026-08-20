@@ -1884,37 +1884,47 @@ export class OrchestratorTaskService extends Service {
         const detachedContext = inheritedTraceId
           ? { traceId: inheritedTraceId }
           : undefined;
-        void runWithTrajectoryContext(detachedContext, () =>
-          withStandaloneTrajectory(
-            this.runtime,
-            {
-              source: "orchestrator-task-verify",
-              metadata: { taskId, sessionId },
-            },
-            () =>
-              this.autoVerifyCompletion(
-                taskId,
-                sessionId,
-                completionEvidence,
-                summary ?? "",
-                completionBundle,
-              ),
-          ),
-        );
         // Auto-submit for provisioned-repo tasks: children run behind the
         // isolated git wrapper and cannot push, BY DESIGN — the orchestrator
         // owns credentials. Without this, every "…and open a PR" repo ask
         // ended with committed-but-unpushed work and a human had to finish
-        // the last leg (live 2026-08-17: two hello-validation runs). Push +
-        // PR fire-and-forget; verification proceeds independently.
-        void runWithTrajectoryContext(detachedContext, () =>
-          withStandaloneTrajectory(
-            this.runtime,
-            {
-              source: "orchestrator-task-submit",
-              metadata: { taskId, sessionId },
-            },
-            () => this.autoSubmitProvisionedWorkspace(taskId, sessionId),
+        // the last leg (live 2026-08-17: two hello-validation runs).
+        //
+        // ORDER IS LOAD-BEARING: verification runs AFTER the submit settles.
+        // Fired independently, the residuals gate snapshotted the workspace
+        // BEFORE the submit's commit+push landed and parked a task whose PR
+        // was already open ("5 uncommitted paths; 1 commit not pushed" beside
+        // a live PR link, live 2026-08-20 FAQ run). A submit failure still
+        // verifies — the gate then reports the genuinely-unpushed state.
+        const submitSettled = Promise.resolve(
+          runWithTrajectoryContext(detachedContext, () =>
+            withStandaloneTrajectory(
+              this.runtime,
+              {
+                source: "orchestrator-task-submit",
+                metadata: { taskId, sessionId },
+              },
+              () => this.autoSubmitProvisionedWorkspace(taskId, sessionId),
+            ),
+          ),
+        ).catch(() => undefined);
+        void submitSettled.then(() =>
+          runWithTrajectoryContext(detachedContext, () =>
+            withStandaloneTrajectory(
+              this.runtime,
+              {
+                source: "orchestrator-task-verify",
+                metadata: { taskId, sessionId },
+              },
+              () =>
+                this.autoVerifyCompletion(
+                  taskId,
+                  sessionId,
+                  completionEvidence,
+                  summary ?? "",
+                  completionBundle,
+                ),
+            ),
           ),
         );
         // Terminalize the durable Smithers link. The original run path never
