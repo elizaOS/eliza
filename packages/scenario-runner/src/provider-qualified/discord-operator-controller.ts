@@ -485,7 +485,7 @@ export async function collectDiscordRawReadback(input: {
     const providerEffect = humanIngress
       ? chronological.find(
           (message) =>
-            Date.parse(message.timestamp) >=
+            Date.parse(message.timestamp) >
               Date.parse(humanIngress.timestamp) &&
             message.messageId !== humanIngress.messageId &&
             message.channelId === input.preflight.plan.channelId &&

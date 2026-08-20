@@ -143,6 +143,18 @@ readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned
 same-process observations cannot satisfy these contracts.
 
+Approval-gated provider effects use signed transition groups. The manifest
+binds exactly one `pending` observation to a proposal stage and the correlated
+`approved` and `done` observations to later approval stages. Qualification
+requires all three durable rows to retain the same hashed approval ID and
+request payload and rejects reordered or stage-substituted evidence. A
+pre-approval `provider-no-effect` contract may use
+`intervalCoverage: "before-referenced-stage"`; its unchanged provider snapshot
+must begin no later than scenario start and end at, never after, its single
+signed approval-stage reference. This proves absence only for that bounded
+phase and does not conflict with the separately evidenced provider effect after
+approval.
+
 The provider-canary catalog under `packages/test/scenarios/provider-qualified/`
 covers Gmail, Google Calendar, Google Drive/Sheets, Discord, Slack, Telegram,
 WhatsApp, X DM, Twilio SMS and voice, BlueBubbles/iMessage, Signal, and Duffel
@@ -273,6 +285,19 @@ hash-only runner-result projection, and the recomputed decision. It contains no
 private target preimages, credentials, private keys, raw trajectory bodies,
 runner transcript, or local run-directory path. This command does not execute
 ingress, collect evidence, access provider credentials, or post to GitHub.
+
+Anyone with the published capsule can replay the complete offline proof without
+the private operator inputs:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  reverify reports/provider-qualification/<run>/<canary>/qualification.json
+```
+
+`reverify` recomputes public-key identities and signatures, the verified
+trajectory-set and runner-result projections, the qualification decision, and
+every verifier-transcript digest. It exits nonzero for an unpublishable or
+internally inconsistent capsule.
 
 Private verifier inputs remain operator material. For repository evidence
 review, use the coordinated matrix producer described in

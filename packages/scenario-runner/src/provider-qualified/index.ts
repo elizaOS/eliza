@@ -2,6 +2,7 @@
 
 export * from "./canary-catalog.ts";
 export * from "./canary-controller.ts";
+export * from "./discord-operator-controller.ts";
 export * from "./manifest.ts";
 export * from "./operation-binding.ts";
 export * from "./operator-authorization.ts";

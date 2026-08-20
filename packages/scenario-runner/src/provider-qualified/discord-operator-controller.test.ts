@@ -348,6 +348,46 @@ describe("Discord provider-canary operator", () => {
     ).rejects.toThrow(/timed out waiting for the exact human-authored ingress/);
   });
 
+  it("requires the provider effect to occur strictly after human ingress", async () => {
+    const preflight = preflightDiscordOperatorCanary(fixture());
+    let clock = 0;
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify([
+            discordMessage({
+              id: "923456789012345678",
+              authorId: botId,
+              bot: true,
+              content: providerEffectContent,
+              timestamp: "2026-08-19T18:00:00.000Z",
+            }),
+            discordMessage({
+              id: "623456789012345678",
+              authorId: humanId,
+              bot: false,
+              content: humanIngressContent,
+              timestamp: "2026-08-19T18:00:00.000Z",
+            }),
+          ]),
+          { status: 200 },
+        ),
+    );
+    await expect(
+      collectDiscordRawReadback({
+        preflight,
+        discordBotToken: "secret-discord-token-value",
+        fetchImpl,
+        now: () => clock,
+        wait: async (milliseconds) => {
+          clock += milliseconds;
+        },
+      }),
+    ).rejects.toThrow(
+      /timed out waiting for the exact human-authored ingress and later bot-authored provider effect/,
+    );
+  });
+
   it("fails closed on missing credentials before calling Discord", async () => {
     const fetchImpl = vi.fn();
     await expect(
