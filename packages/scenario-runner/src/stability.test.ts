@@ -498,6 +498,48 @@ describe("scenario stability report plumbing", () => {
     ).rejects.toMatchObject({ exitCode: 2 });
   });
 
+  it("translates invalid aggregate report sets into usage errors", async () => {
+    const root = tempRoot();
+    const plan = createScenarioStabilityPlan({
+      runId: "invalid-aggregate",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(plan);
+    for (const attempt of plan.attempts) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify(aggregate(attempt.attemptId, []))}\n`,
+      );
+    }
+    const aggregateArgs = plan.attempts.flatMap((attempt) => [
+      "--attempt-report",
+      attempt.reportPath,
+    ]);
+
+    await expect(
+      runCli(["stability", root, "--runId", plan.runId, ...aggregateArgs]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+
+    writeFileSync(
+      plan.attempts[0].reportPath,
+      `${JSON.stringify(
+        aggregate(plan.attempts[0].attemptId, [scenario("alpha", "passed")]),
+      )}\n`,
+    );
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...Array.from({ length: 3 }, () => [
+          "--attempt-report",
+          plan.attempts[0].reportPath,
+        ]).flat(),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
   it("requires and preserves the persisted plan authority", async () => {
     const root = tempRoot();
     const original = createScenarioStabilityPlan({
@@ -588,6 +630,42 @@ describe("scenario stability report plumbing", () => {
         ]),
       ]),
     ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it("refuses to overwrite a symlinked aggregate output", async () => {
+    const root = tempRoot();
+    const externalRoot = tempRoot();
+    const sentinelPath = path.join(externalRoot, "sentinel.json");
+    const sentinel = "outside aggregate sentinel\n";
+    const plan = createScenarioStabilityPlan({
+      runId: "symlinked-output",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(plan);
+    for (const attempt of plan.attempts) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify(
+          aggregate(attempt.attemptId, [scenario("alpha", "passed")]),
+        )}\n`,
+      );
+    }
+    writeFileSync(sentinelPath, sentinel);
+    symlinkSync(sentinelPath, plan.reportPath);
+
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...plan.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+    expect(readFileSync(sentinelPath, "utf8")).toBe(sentinel);
   });
 
   it("translates invalid stability run IDs into usage exit code 2", async () => {
