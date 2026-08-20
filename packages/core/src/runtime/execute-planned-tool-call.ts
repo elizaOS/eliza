@@ -9,10 +9,12 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
+import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
+	TOOL_DIAGNOSTIC_MASK,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import {
@@ -88,40 +90,81 @@ function isContentRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function toContentValue(value: unknown): ContentValue {
+const MAX_CONTENT_VALUE_DEPTH = 8;
+
+function toContentValue(
+	value: unknown,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): ContentValue {
 	if (
 		value === undefined ||
 		value === null ||
-		typeof value === "string" ||
 		typeof value === "number" ||
 		typeof value === "boolean"
 	) {
 		return value as ContentValue;
 	}
-	if (Array.isArray(value)) {
-		return value.map(toContentValue);
+	if (typeof value === "string") {
+		return redactDiagnosticText(value);
 	}
-	if (isContentRecord(value)) {
-		const record: Record<string, ContentValue> = {};
-		for (const [key, entry] of Object.entries(value)) {
-			record[key] = toContentValue(entry);
+	if (typeof value !== "object") {
+		return redactDiagnosticText(String(value));
+	}
+	if (depth >= MAX_CONTENT_VALUE_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		if (Array.isArray(value)) {
+			return value.map((entry) =>
+				toContentValue(entry, redactDiagnosticText, seen, depth + 1),
+			);
 		}
-		return record;
+		if (isContentRecord(value)) {
+			const record: Record<string, ContentValue> = {};
+			for (const [key, entry] of Object.entries(value)) {
+				if (isSensitiveKeyName(key)) {
+					record[key] = TOOL_DIAGNOSTIC_MASK;
+					continue;
+				}
+				record[key] = toContentValue(
+					entry,
+					redactDiagnosticText,
+					seen,
+					depth + 1,
+				);
+			}
+			return record;
+		}
+		return redactDiagnosticText(String(value));
+	} finally {
+		seen.delete(value);
 	}
-	return String(value);
 }
 
 function actionResultToContentRecord(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): Record<string, ContentValue> {
-	const record: Record<string, ContentValue> = {};
+	const diagnosticResult: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(result)) {
 		if (options.suppressData && (key === "data" || key === "values")) {
-			record[key] = sensitiveActionResultMarker(value);
+			diagnosticResult[key] = sensitiveActionResultMarker(value);
 			continue;
 		}
-		record[key] = toContentValue(value);
+		diagnosticResult[key] = value;
+	}
+	const projectedResult = projectToolDiagnosticValue(
+		diagnosticResult,
+		redactDiagnosticText,
+	) as Record<string, unknown>;
+	const record: Record<string, ContentValue> = {};
+	const seen = new WeakSet<object>();
+	for (const [key, value] of Object.entries(projectedResult)) {
+		record[key] = toContentValue(value, redactDiagnosticText, seen, 0);
 	}
 	return record;
 }
@@ -758,12 +801,13 @@ export async function executePlannedToolCall(
 					),
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: projectToolDiagnosticValue(
-						actionResultToContentRecord(resultForEvent, {
-							suppressData: suppressActionResult,
-						}),
+					actionResult: actionResultToContentRecord(
+						resultForEvent,
 						redactDiagnosticText,
-					) as Record<string, ContentValue>,
+						{
+							suppressData: suppressActionResult,
+						},
+					),
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
@@ -819,10 +863,11 @@ async function emitToolResult(
 		status,
 		redactDiagnosticText,
 	);
-	streamingToolCall.result = projectToolDiagnosticValue(
-		actionResultToStreamingResult(result, options),
+	streamingToolCall.result = actionResultToStreamingResult(
+		result,
 		redactDiagnosticText,
-	) as ToolCall["result"];
+		options,
+	);
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -904,6 +949,7 @@ function plannedToolCallToStreamingToolCall(
 
 function actionResultToStreamingResult(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): ToolCall["result"] {
 	const streamingResult: ActionResult = {
@@ -925,7 +971,7 @@ function actionResultToStreamingResult(
 		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
-	return actionResultToContentRecord(streamingResult);
+	return actionResultToContentRecord(streamingResult, redactDiagnosticText);
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;

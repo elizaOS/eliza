@@ -1333,6 +1333,101 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("bounds cyclic and deep handler results before completion diagnostics", async () => {
+		const cyclic: Record<string, unknown> = { label: "loop" };
+		cyclic.self = cyclic;
+		const cyclicDate = new Date("2026-08-20T00:00:00.000Z") as Date & {
+			apiKey?: string;
+			self?: unknown;
+		};
+		Object.defineProperties(cyclicDate, {
+			apiKey: { enumerable: true, value: "short-secret" },
+			self: { enumerable: true, value: cyclicDate },
+		});
+		const fallbackCanary = "sk-0123456789abcdefghij";
+		const fallbackValue = Symbol(fallbackCanary);
+		let deep: Record<string, unknown> = { leaf: "must-be-bounded" };
+		for (let depth = 0; depth < 12; depth += 1) {
+			deep = { child: deep };
+		}
+		const emitted: Array<{ type: EventType; payload: unknown }> = [];
+		const streamed: unknown[] = [];
+		let settledResult: unknown;
+		const action = makeAction({
+			name: "RETURN_DATA",
+			handler: async () => ({
+				success: true,
+				data: {
+					actionName: "RETURN_DATA",
+					cyclic,
+					cyclicDate,
+					deep,
+					fallbackValue,
+				},
+			}),
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent: async (type, payload) => {
+				emitted.push({ type, payload });
+			},
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: () => {},
+				onToolResult: (payload) => {
+					streamed.push(payload);
+				},
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "RETURN_DATA", params: {} },
+					{
+						onSettledResult: (settled) => {
+							settledResult = settled;
+						},
+					},
+				),
+		);
+
+		expect(result.success).toBe(true);
+		const rawCyclic = result.data?.cyclic;
+		expect(rawCyclic).toBe(cyclic);
+		expect((rawCyclic as Record<string, unknown>).self).toBe(cyclic);
+		expect(result.data?.cyclicDate).toBe(cyclicDate);
+		expect(cyclicDate.self).toBe(cyclicDate);
+		expect(result.data?.deep).toBe(deep);
+		expect(result.data?.fallbackValue).toBe(fallbackValue);
+		expect(settledResult).toBe(result);
+		const completedEvents = emitted.filter(
+			(entry) => entry.type === EventType.ACTION_COMPLETED,
+		);
+		expect(completedEvents).toHaveLength(1);
+		expect(streamed).toHaveLength(1);
+		const eventPayload = completedEvents[0]?.payload as
+			| { content?: { actionResult?: unknown } }
+			| undefined;
+		const eventActionResult = eventPayload?.content?.actionResult;
+		const streamedActionResult = (streamed[0] as { result?: unknown }).result;
+		for (const diagnosticSurface of [eventActionResult, streamedActionResult]) {
+			const diagnosticData = (
+				diagnosticSurface as { data?: Record<string, unknown> } | undefined
+			)?.data;
+			expect(diagnosticData?.cyclicDate).toEqual({
+				apiKey: "[REDACTED]",
+				self: "[REDACTED]",
+			});
+			const serialized = JSON.stringify(diagnosticSurface);
+			expect(serialized).toContain('"self":"[REDACTED]"');
+			expect(serialized).toContain('"deep":');
+			expect(serialized).toContain('"fallbackValue":');
+			expect(serialized).not.toContain("must-be-bounded");
+			expect(serialized).not.toContain(fallbackCanary);
+		}
+	});
+
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();
