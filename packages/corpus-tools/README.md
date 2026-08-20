@@ -52,6 +52,53 @@ committed synthetic tree under
 Gmail mock consumes this loader via `ELIZA_CORPUS_DIR` /
 `startMocks({ corpusDir })` (see
 `packages/scenario-runner/test/mocks/scripts/google-gmail-corpus.ts`).
+## Gmail collector
+
+`collectGmail` (`src/collectors/gmail.ts`) collects one Gmail account into
+validated monthly shards through an injected `GmailTransport`. The package
+never holds OAuth material: a live run wraps the existing account-scoped
+plugin-google Gmail client (`gmail.read` scope) in a small adapter that
+implements `getProfile`, `listMessageIds`, `getMessage` (`format: "full"`),
+`getAttachment`, and `listHistory`, translating HTTP failures into
+`GmailTransportError` with the upstream status and any `Retry-After` hint.
+
+```ts
+import { collectGmail, type GmailTransport } from "@elizaos/corpus-tools";
+
+const result = await collectGmail({
+  transport: makePluginGoogleTransport(accountRef), // owner-side adapter
+  accountEmail: "owner@example.com",
+  aliasEmails: ["owner.alias@example.com"],
+  outDir: "data",
+});
+```
+
+Behavior contract:
+
+- The query is the frozen UTC corpus window expressed in epoch seconds
+  (Gmail's `after:yyyy/mm/dd` is local-timezone and would shift the cutoff);
+  chats are excluded and drafts are dropped by label.
+- Pagination runs to exhaustion with a durable checkpoint per page under
+  `data/.state/gmail-<account>.json`; fetched rows append to a private
+  staging JSONL so an interrupted run resumes without refetching.
+- A completed checkpoint is never trusted indefinitely: the next run
+  reconciles through `users.history.list` from the checkpointed history id,
+  applying additions and deletions; an expired/invalid history id (HTTP
+  404/400) triggers a full rescan.
+- 429/5xx transport failures retry with bounded exponential backoff,
+  honoring the server retry hint.
+- Ids are account-namespaced (`gmail:<account>:<messageId>`); direction is
+  alias-aware (`From` versus the account plus `aliasEmails`) or `SENT`
+  label; text prefers `text/plain` and falls back to stripped `text/html`;
+  attachment bytes are fetched only to compute SHA-256 and size, and
+  attachment-only messages are counted, never given fabricated text.
+- Output is private (0600 files, 0700 directories), account-isolated under
+  `gmail/<account>/`, byte-stable on rerun, serialized by a per-account
+  fail-closed lock, and committed by a validated `manifest.json`.
+
+Live-run acceptance evidence (two owner-authorized accounts, refresh-token
+exercise, interruption/resume, quota behavior, manual shard inspection) is
+owner-only and stays local; share only sanitized aggregate counts and digests.
 
 ## Reviewed sensitive deletion
 

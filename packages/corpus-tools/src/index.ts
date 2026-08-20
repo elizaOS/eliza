@@ -2,6 +2,7 @@
  * Public entry for corpus schema consumers, validators, and archive
  * collectors.
  */
+export * from "./collectors/gmail.ts";
 export * from "./collectors/telegram-desktop.ts";
 export * from "./collectors/x-archive.ts";
 export * from "./loader.ts";
