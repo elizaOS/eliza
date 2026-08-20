@@ -79,6 +79,19 @@ describe("parseGmailDateBoundary", () => {
     expect(parseGmailDateBoundary("2025-02-29")).toBeNull();
     expect(parseGmailDateBoundary("2024-02-29")).toBe(Date.UTC(2024, 1, 29));
   });
+
+  it("preserves literal UTC years from 0000 through 0099", () => {
+    const yearZeroLeapDay = parseGmailDateBoundary("0000-02-29");
+    const yearNinetyNineEnd = parseGmailDateBoundary("0099-12-31");
+
+    expect(new Date(yearZeroLeapDay as number).toISOString()).toBe(
+      "0000-02-29T00:00:00.000Z",
+    );
+    expect(new Date(yearNinetyNineEnd as number).toISOString()).toBe(
+      "0099-12-31T00:00:00.000Z",
+    );
+    expect(parseGmailDateBoundary("0000-02-30")).toBeNull();
+  });
 });
 
 describe("normalizeOptionalMessageIdArray", () => {
