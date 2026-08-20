@@ -12,6 +12,8 @@ export const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 
 /** Default wall-clock deadline shared by every request in one install. */
 export const DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS = 30_000;
+/** Largest delay Node schedules faithfully instead of coercing to one millisecond. */
+export const MAX_SKILL_DOWNLOAD_TIMEOUT_MS = 2_147_483_647;
 
 /** Per-install controls for the shared download lifecycle. */
 export interface SkillDownloadLifecycleOptions {
@@ -88,10 +90,12 @@ export function createSkillDownloadLifecycle(
 			: options.downloadTimeoutMs;
 	if (
 		timeoutMs !== null &&
-		(!Number.isFinite(timeoutMs) || timeoutMs <= 0)
+		(!Number.isSafeInteger(timeoutMs) ||
+			timeoutMs <= 0 ||
+			timeoutMs > MAX_SKILL_DOWNLOAD_TIMEOUT_MS)
 	) {
 		throw new ElizaError(
-			"Skill download timeout must be a positive finite number or null",
+			`Skill download timeout must be a positive integer no greater than ${MAX_SKILL_DOWNLOAD_TIMEOUT_MS}ms or null`,
 			{
 				code: "SKILL_DOWNLOAD_INVALID_TIMEOUT",
 				context: { downloadTimeoutMs: timeoutMs },

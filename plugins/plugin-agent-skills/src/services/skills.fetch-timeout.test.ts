@@ -239,7 +239,14 @@ describe("AgentSkillsService fetch timeouts", () => {
 		expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: undefined });
 	});
 
-	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+	it.each([
+		0,
+		-1,
+		0.5,
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		2_147_483_648,
+	])(
 		"rejects invalid service deadline %s",
 		async (fetchTimeoutMs) => {
 			await expect(
@@ -248,9 +255,7 @@ describe("AgentSkillsService fetch timeouts", () => {
 					fetchTimeoutMs,
 					storage: new MemorySkillStore(),
 				}),
-			).rejects.toThrow(
-				"fetchTimeoutMs must be a positive finite number or null",
-			);
+			).rejects.toThrow(/fetchTimeoutMs must be a positive integer/);
 		},
 	);
 
