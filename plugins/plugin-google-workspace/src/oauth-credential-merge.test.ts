@@ -76,6 +76,52 @@ describe("mergeCredentialObject", () => {
     expect(invoked).toBe(0);
   });
 
+  it("translates revoked scope proxies to the typed boundary failure", () => {
+    const { proxy, revoke } = Proxy.revocable([], {});
+    revoke();
+
+    try {
+      mergeCredentialObject({}, { scopes: proxy });
+      expect.unreachable("revoked scope proxy should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as Error & { cause?: unknown }).cause).toBeInstanceOf(TypeError);
+    }
+  });
+
+  it("translates hostile scope descriptor reflection without invoking access", () => {
+    const reflectionError = new Error("descriptor reflection denied");
+    const scopes = new Proxy(["gmail.read"], {
+      getOwnPropertyDescriptor() {
+        throw reflectionError;
+      },
+    });
+
+    try {
+      mergeCredentialObject({}, { scopes });
+      expect.unreachable("hostile scope descriptor should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as Error & { cause?: unknown }).cause).toBe(reflectionError);
+    }
+  });
+
+  it("translates revoked expiry reflection to the typed boundary failure", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    try {
+      mergeCredentialObject({}, { expiry_date: proxy });
+      expect.unreachable("revoked expiry proxy should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
+      expect((error as Error & { cause?: unknown }).cause).toBeInstanceOf(TypeError);
+    }
+  });
+
   it("preserves sparse scopes and nested-then-outer token precedence", () => {
     const scopes: unknown[] = ["gmail.read", 42, "drive.readonly"];
     delete scopes[1];
