@@ -610,7 +610,21 @@ async function main() {
     }
 
     await runCheck(checks, details, "clipboardRoundTrip", async () => {
-      const original = await readClipboard();
+      let original = "";
+      let initialTextTargetAbsent = false;
+      try {
+        original = await readClipboard();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/target (?:STRING|UTF8_STRING) not available/i.test(message)) {
+          throw error;
+        }
+        // error-policy:J4 a fresh X11 selection can truthfully have no text
+        // target. Normalize that text-domain state to an empty baseline before
+        // the round trip so teardown does not leave the test marker behind.
+        initialTextTargetAbsent = true;
+        await writeClipboard("");
+      }
       const token = `linux-clipboard-${Date.now()}`;
       try {
         await writeClipboard(token);
@@ -622,11 +636,18 @@ async function main() {
       }
       return {
         requiredEvidence: [
+          initialTextTargetAbsent
+            ? "fresh X11 selection had no text target and was initialized to an empty text baseline"
+            : "the original text clipboard value was captured",
           `xclip wrote test marker ${token}`,
           "xclip read the same test marker",
-          "the original clipboard value was restored",
+          "the original text clipboard baseline was restored",
         ],
-        details: { marker: token, restoredOriginalClipboard: true },
+        details: {
+          marker: token,
+          initialTextTargetAbsent,
+          restoredOriginalClipboard: true,
+        },
       };
     });
 
