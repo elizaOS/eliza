@@ -131,6 +131,14 @@ export interface CompletionResidualsInput {
    * pre-existing churn was not produced by this run. Tracked modifications
    * only — untracked exemptions come from `baselineUntrackedPaths`. */
   baselineDirtyPaths?: readonly string[];
+  /** The session's ISOLATED git index (the ACP wrapper's GIT_INDEX_FILE).
+   *  Wrapper-managed workspaces commit exclusively through it, so the REAL
+   *  index stays frozen at clone state forever — a plain `git status` then
+   *  reports every wrapper-committed file as staged-deleted + untracked and
+   *  the gate parks finished work on phantom dirt (live 2026-08-20: the same
+   *  "5 uncommitted path(s)" on four consecutive PR tasks whose branches
+   *  were clean). When set, the git legs run against this index. */
+  gitIndexFile?: string;
   /** Untracked paths already present when the reporting session spawned
    * (session metadata `codingBaselineUntracked`, captured by
    * `AcpService.spawnSession` from `git status --porcelain` `??` lines). A
@@ -165,13 +173,20 @@ interface GitProbe {
   stderr: string;
 }
 
-function runGit(workdir: string, args: string[]): GitProbe {
+function runGit(
+  workdir: string,
+  args: string[],
+  gitIndexFile?: string,
+): GitProbe {
   const result = spawnSync("git", args, {
     cwd: workdir,
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: GIT_MAX_BUFFER,
     windowsHide: true,
     encoding: "utf8",
+    ...(gitIndexFile
+      ? { env: { ...process.env, GIT_INDEX_FILE: gitIndexFile } }
+      : {}),
   });
   return {
     ok: result.status === 0,
@@ -406,7 +421,11 @@ export async function collectCompletionResiduals(
     // the persisted snapshot so the skip is visible, never a silent pass.
     gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    const status = runGit(
+      workdir,
+      ["status", "--porcelain"],
+      input.gitIndexFile,
+    );
     if (!status.ok) {
       return unverifiable(
         "git_failed",

@@ -827,7 +827,10 @@ export function residualsSpawnBaseline(
   session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
 ): Pick<
   CompletionResidualsInput,
-  "baselineDirtyPaths" | "baselineUntrackedPaths" | "sharedRouteWorkdir"
+  | "baselineDirtyPaths"
+  | "baselineUntrackedPaths"
+  | "sharedRouteWorkdir"
+  | "gitIndexFile"
 > {
   const meta = session?.metadata;
   if (!isRecord(meta)) return {};
@@ -845,7 +848,12 @@ export function residualsSpawnBaseline(
     typeof meta.workdirRouteId === "string" &&
     meta.workdirRouteId.trim().length > 0 &&
     meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
+  const gitIndexFile =
+    typeof meta.gitIndexFile === "string" && meta.gitIndexFile.trim()
+      ? meta.gitIndexFile
+      : undefined;
   return {
+    ...(gitIndexFile ? { gitIndexFile } : {}),
     ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
     ...(baselineUntrackedPaths.length > 0 ? { baselineUntrackedPaths } : {}),
     ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
