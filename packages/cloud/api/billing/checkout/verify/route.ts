@@ -22,8 +22,8 @@ import {
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { invoicesService } from "@/lib/services/invoices";
@@ -43,7 +43,7 @@ const VerifyBody = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
