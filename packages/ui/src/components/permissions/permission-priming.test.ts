@@ -1,10 +1,9 @@
 /** Verifies resolvePrimingSet through the package's configured test harness. */
 // @vitest-environment jsdom
 //
-// permission-priming policy: the per-platform priming set (voice-first on iOS,
-// etc.), the presence of rationale copy for every primed permission, and the
-// localStorage-backed "already primed" flag. Pure logic + real localStorage — no
-// OS calls.
+// permission-priming policy: the per-platform first-run set, the presence of
+// rationale copy for every primed permission, and the localStorage-backed
+// "already primed" flag. Pure logic + real localStorage — no OS calls.
 import { afterEach, describe, expect, it } from "vitest";
 import {
   hasPrimedPermissions,
@@ -20,12 +19,17 @@ afterEach(() => {
 });
 
 describe("resolvePrimingSet", () => {
-  it("returns the voice-first set on iOS, including speech-recognition", () => {
+  it("keeps Apple speech recognition out of the iOS first-run set", () => {
     expect(resolvePrimingSet({ platform: "ios" })).toEqual([
       "microphone",
-      "speech-recognition",
       "notifications",
       "location",
+    ]);
+  });
+
+  it("keeps native speech recognition available as an explicit Settings opt-in", () => {
+    expect(resolvePrimingSet({ only: ["speech-recognition"] })).toEqual([
+      "speech-recognition",
     ]);
   });
 

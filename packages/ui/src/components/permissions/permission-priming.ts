@@ -86,16 +86,18 @@ export const PRIMING_COPY: Partial<
  *
  * iOS crash guard: every id here MUST have a declared `NS*UsageDescription` in
  * packages/app-core/platforms/ios/App/App/Info.plist — requesting an unentitled
- * permission on iOS aborts the process. Verified present for this set:
- * microphone, speech-recognition, notifications, location (When-In-Use). Never
- * add contacts / reminders / bluetooth here (their usage strings are absent).
+ * permission on iOS aborts the process. The first-run set is microphone,
+ * notifications, and location (When-In-Use). Speech recognition remains an
+ * explicit Settings-only opt-in for the native TalkMode fallback; the primary
+ * realtime voice path does not require an eager Apple speech prompt. Never add
+ * contacts / reminders / bluetooth here (their usage strings are absent).
  *
  * Web is intentionally empty: eager browser permission prompts on load are a
  * dark pattern browsers de-rank, so on web everything stays just-in-time via the
  * agent's in-chat permission-card.
  */
 const PRIMING_SETS: Record<PrimingPlatform, readonly PermissionId[]> = {
-  ios: ["microphone", "speech-recognition", "notifications", "location"],
+  ios: ["microphone", "notifications", "location"],
   android: ["microphone", "notifications", "location"],
   desktop: ["microphone", "notifications", "location"],
   web: [],
