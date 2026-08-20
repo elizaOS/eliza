@@ -2217,6 +2217,27 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   text-wrap: pretty;
 }
 
+.landing-demo-card-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  color: #76767c;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.landing-demo-card-source svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
 .landing-demo-card-status {
   display: inline-flex;
   align-items: center;

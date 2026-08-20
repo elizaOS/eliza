@@ -1,12 +1,14 @@
 /**
- * Verifies the landing animation against the post-rollback capability boundary
- * for a fresh immediate agent rather than snapshotting marketing copy alone.
+ * Verifies that the landing animation declares advanced capability claims and
+ * visibly discloses the connected source or permission state behind them.
  */
 
 import { describe, expect, test } from "bun:test";
 import {
+  findUndeclaredLandingDemoClaims,
   findUnsupportedLandingDemoClaims,
   LANDING_DEMO_CAPABILITIES,
+  LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
   landingDemoStepText,
 } from "../src/lib/landing-demo";
@@ -16,25 +18,79 @@ const LANDING_DEMO = LANDING_DEMO_SCENARIOS.flatMap(
 );
 
 describe("landing Shared-agent capability contract", () => {
-  test("portrays only bounded conversation memory", () => {
+  test("declares every capability portrayed in the five rooms", () => {
     const declaredCapabilities = LANDING_DEMO.flatMap((step) =>
       step.kind === "user" || step.kind === "member" ? [] : [step.capability],
     );
 
-    expect(LANDING_DEMO_CAPABILITIES).toEqual(["conversation-memory"]);
+    expect(LANDING_DEMO_CAPABILITIES).toEqual([
+      "conversation-memory",
+      "connected-calendar",
+      "public-web-search",
+      "room-memory",
+      "scheduled-reminder",
+    ]);
     expect(new Set(declaredCapabilities)).toEqual(
       new Set(LANDING_DEMO_CAPABILITIES),
     );
   });
 
-  test("never scripts an unsupported action or information source", () => {
+  test("never scripts a claim outside its declared capability", () => {
     const violations = LANDING_DEMO.flatMap((step, index) =>
-      findUnsupportedLandingDemoClaims(landingDemoStepText(step)).map(
-        (category) => ({ category, index, text: landingDemoStepText(step) }),
-      ),
+      findUndeclaredLandingDemoClaims(step).map((category) => ({
+        category,
+        index,
+        text: landingDemoStepText(step),
+      })),
     );
 
     expect(violations).toEqual([]);
+  });
+
+  test("does not let a conversation-memory label smuggle in a connected claim", () => {
+    expect(
+      findUndeclaredLandingDemoClaims({
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "I searched the public web.",
+      }),
+    ).toEqual(["web-search"]);
+    expect(
+      findUndeclaredLandingDemoClaims({
+        capability: "public-web-search",
+        kind: "eliza",
+        text: "I searched the public web.",
+      }),
+    ).toEqual([]);
+  });
+
+  test("discloses a source for every connected capability", () => {
+    for (const scenario of LANDING_DEMO_SCENARIOS) {
+      const connectedSteps = scenario.steps.filter(
+        (step) =>
+          step.kind !== "member" &&
+          step.kind !== "user" &&
+          step.capability !== "conversation-memory",
+      );
+      const connectedCards = connectedSteps.filter(
+        (step) => step.kind === "card",
+      );
+
+      expect(connectedCards.length).toBeGreaterThan(0);
+      expect(
+        connectedCards.every(
+          (step) => step.kind === "card" && step.card.source,
+        ),
+      ).toBe(true);
+      for (const step of connectedSteps) {
+        expect(
+          connectedCards.some(
+            (card) =>
+              card.kind === "card" && card.capability === step.capability,
+          ),
+        ).toBe(true);
+      }
+    }
   });
 
   test("does not confuse a conversational seat idiom with seat assignment", () => {
@@ -79,8 +135,24 @@ describe("landing Shared-agent capability contract", () => {
       expect(
         speakers.every((speaker) => scenario.members.includes(speaker)),
       ).toBe(true);
-      expect(new Set(speakers).size).toBeGreaterThanOrEqual(2);
+      expect(new Set(speakers)).toEqual(new Set(scenario.members));
     }
+  });
+
+  test("gives every room its own cast and every cast member a unique photo", () => {
+    const members = LANDING_DEMO_SCENARIOS.flatMap((scenario) =>
+      Array.from(scenario.members),
+    );
+    const avatars = members.map(
+      (member) =>
+        LANDING_DEMO_MEMBER_AVATARS[
+          member as keyof typeof LANDING_DEMO_MEMBER_AVATARS
+        ],
+    );
+
+    expect(new Set(members).size).toBe(members.length);
+    expect(avatars.every(Boolean)).toBe(true);
+    expect(new Set(avatars).size).toBe(avatars.length);
   });
 
   test("keeps every room and scripted beat distinct inside the rotation", () => {
@@ -165,6 +237,7 @@ describe("landing Shared-agent capability contract", () => {
     ["I changed the files in your workspace", "filesystem"],
     ["I opened Gmail in the browser", "browser-or-cloud-app"],
     ["I ran the repository tests", "coding-execution"],
+    ["I saved this preference", "durable-memory"],
   ])("keeps another unsupported policy class blocked: %s", (copy, category) => {
     expect(findUnsupportedLandingDemoClaims(copy)).toContain(category);
   });

@@ -75,8 +75,11 @@ test("reduced motion renders the settled friends room without category labels", 
     .locator(".landing-bubble--eliza")
     .allTextContents();
   expect(assistantMessages).toContain(
-    "Saturday after 7 works so far. Jamie still needs to answer.",
+    "Four shared calendars overlap Saturday after 7. Jamie still needs to answer.",
   );
+  await expect(
+    page.locator('[data-demo-source="calendar"]').first(),
+  ).toHaveText("4 calendars shared");
   const messageAuthors = await page
     .locator(".landing-message-author")
     .allTextContents();
