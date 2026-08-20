@@ -20,6 +20,12 @@ export {
   goalsErrorMessage,
 } from "./goal-normalize.ts";
 export {
+  formatPromptValue,
+  GOAL_PROMPT_VALUE_UNBOUNDED,
+  MAX_GOAL_PROMPT_VALUE_DEPTH,
+  MAX_GOAL_PROMPT_VALUE_NODES,
+} from "./goal-prompt-value.ts";
+export {
   evaluateGoalProgressWithLlm,
   type GoalSemanticEvaluationResult,
 } from "./goal-semantic-evaluator.ts";
