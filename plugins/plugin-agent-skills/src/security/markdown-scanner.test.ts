@@ -77,6 +77,21 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 		);
 	});
 
+	it("keeps safe bare URLs clean before terminal prose punctuation", () => {
+		expect(flagsExternalUrl("See https://github.com, then continue")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com; then continue")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com!")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com...")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com…")).toBe(false);
+		expect(flagsExternalUrl("See {https://github.com}")).toBe(false);
+	});
+
+	it("does not let terminal punctuation hide external or userinfo hosts", () => {
+		expect(flagsExternalUrl("See https://github.com.evil.com,")).toBe(true);
+		expect(flagsExternalUrl("See https://github.com@evil.com!")).toBe(true);
+		expect(flagsExternalUrl("See https://evil.com/path;query,")).toBe(true);
+	});
+
 	it("honors additional safe domains and their subdomains", () => {
 		expect(
 			flagsExternalUrl("Fetch https://cdn.example.org/a", ["example.org"]),
@@ -156,6 +171,43 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 			).resolves.toBe(true);
 			expect(service.getSkillScanStatus("untrusted")).toBe("warning");
 			expect(service.setSkillEnabled("untrusted", true)).toBe(false);
+		} finally {
+			await service.stop();
+		}
+	});
+
+	it("keeps a direct-URL install enabled when a safe bare URL ends a clause", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(
+					"---\nname: trusted\ndescription: install boundary\n---\nVisit https://github.com, then return.",
+					{ headers: { "content-type": "text/markdown" } },
+				),
+		),
+	);
+		const runtime = {
+			getSetting: vi.fn(() => undefined),
+			logger: {
+				debug: vi.fn(),
+				error: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+		const service = await AgentSkillsService.start(runtime, {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+
+		try {
+			await expect(
+				service.installFromUrl("https://skills.example/trusted.md", {
+					slug: "trusted",
+				}),
+			).resolves.toBe(true);
+			expect(service.getSkillScanStatus("trusted")).toBeNull();
+			expect(service.setSkillEnabled("trusted", true)).toBe(true);
 		} finally {
 			await service.stop();
 		}

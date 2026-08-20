@@ -41,6 +41,9 @@ const DEFAULT_SAFE_DOMAINS: ReadonlyArray<string> = [
 /** URL tokens in prose: scheme through the first stopping delimiter. */
 const URL_TOKEN_PATTERN = /https?:\/\/[^\s)\]"'<>]+/gi;
 
+/** Terminal punctuation that commonly follows a bare URL in prose. */
+const TRAILING_PROSE_PUNCTUATION = /(?:[,;!}]|\.{2,}|…)+$/u;
+
 /**
  * A host is safe iff it equals a listed domain or is a subdomain of one
  * (`host === safe` or `host.endsWith("." + safe)`). This deliberately rejects
@@ -65,10 +68,13 @@ function isSafeHost(host: string, safeDomains: ReadonlyArray<string>): boolean {
 function parseUrlToken(
 	token: string,
 ): { host: string; hasUserinfo: boolean } {
-	const authority = token.replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0];
+	const normalizedToken = token.replace(TRAILING_PROSE_PUNCTUATION, "");
+	const authority = normalizedToken
+		.replace(/^https?:\/\//i, "")
+		.split(/[/?#]/, 1)[0];
 	const hasUserinfoDelimiter = authority.lastIndexOf("@") >= 0;
 	try {
-		const url = new URL(token);
+		const url = new URL(normalizedToken);
 		return {
 			host: url.hostname,
 			hasUserinfo:
