@@ -12,41 +12,11 @@ import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
+import {
+  isPathWithinRoot,
+  resolveRealPathSync,
+} from "./realpath-confinement.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
-
-function resolveRealPathSync(p: string): string {
-  const absolute = path.resolve(p);
-  try {
-    return fs.realpathSync(absolute);
-  } catch {
-    // missing leaf — ancestor walk
-  }
-  const tail: string[] = [];
-  let current = absolute;
-  while (true) {
-    const parent = path.dirname(current);
-    if (parent === current) return absolute;
-    tail.unshift(path.basename(current));
-    try {
-      return path.join(fs.realpathSync(parent), ...tail);
-    } catch {
-      current = parent;
-    }
-  }
-}
-
-function isWithin(child: string, parent: string): boolean {
-  const resolvedChild = path.resolve(child);
-  const resolvedParent = path.resolve(parent);
-  if (resolvedChild === resolvedParent) return true;
-  const rel = path.relative(resolvedParent, resolvedChild);
-  return (
-    rel.length > 0 &&
-    rel !== ".." &&
-    !rel.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(rel)
-  );
-}
 
 // One-time warning when an operator opts into embedding the API token in served
 // HTML outside a cloud-provisioned container (see ELIZA_FORCE_INJECT_TOKEN below).
@@ -326,7 +296,11 @@ export function serveStaticUi(
   const candidatePath = path.resolve(root, relativePath);
   const realCandidate = resolveRealPathSync(candidatePath);
   const realRoot = resolveRealPathSync(root);
-  if (realCandidate !== realRoot && !isWithin(realCandidate, realRoot)) {
+  if (
+    !realCandidate ||
+    !realRoot ||
+    !isPathWithinRoot(realCandidate, realRoot, { allowRoot: true })
+  ) {
     sendJsonError(res, "Forbidden", 403);
     return true;
   }
