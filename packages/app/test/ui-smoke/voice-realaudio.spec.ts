@@ -979,17 +979,33 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     // contains the audible input reference followed by the actual product TTS
     // playback; it is not a post-hoc payload concatenation.
     const referenceOutput = await page.evaluate(async (source) => {
-      const audio = new Audio(source);
+      // The app's CSP allows `blob:` media but not `data:` URIs, so decode the
+      // fixture in-page and play an object URL — a raw `new Audio(dataUrl)`
+      // is blocked by media-src and fires the error event before playback.
+      const base64 = source.slice(source.indexOf(",") + 1);
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const objectUrl = URL.createObjectURL(
+        new Blob([bytes], { type: "audio/wav" }),
+      );
+      const audio = new Audio(objectUrl);
       const startedAt = new Date().toISOString();
-      await new Promise<void>((resolve, reject) => {
-        audio.addEventListener("ended", () => resolve(), { once: true });
-        audio.addEventListener(
-          "error",
-          () => reject(new Error("known-phrase output playback failed")),
-          { once: true },
-        );
-        void audio.play().catch(reject);
-      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          audio.addEventListener("ended", () => resolve(), { once: true });
+          audio.addEventListener(
+            "error",
+            () => reject(new Error("known-phrase output playback failed")),
+            { once: true },
+          );
+          void audio.play().catch(reject);
+        });
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
       return { startedAt, endedAt: new Date().toISOString() };
     }, KNOWN_PHRASE_WAV_DATA_URL);
     const ttsProbeBaseline = (await readAudioProbe(page)).starts;
