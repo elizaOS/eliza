@@ -67,6 +67,20 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
     }
   }, RESET_KEYS);
 
+  // Keep the observations in the Playwright process. Opening the real Custom
+  // Tab can destroy the WebView execution context before an in-page probe can
+  // be read back.
+  const probe: PasskeyDegradeProbe = { webauthnCalls: 0, openedUrls: [] };
+  await page.exposeBinding("__ELIZA_RECORD_WEBAUTHN__", () => {
+    probe.webauthnCalls += 1;
+  });
+  await page.exposeBinding(
+    "__ELIZA_RECORD_EXTERNAL_URL__",
+    (_source, url: string) => {
+      probe.openedUrls.push(url);
+    },
+  );
+
   const recording = await startAndroidScreenRecord({
     serial: device.serial(),
     artifactDir: ARTIFACT_DIR,
@@ -88,14 +102,10 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
     // every WebAuthn ceremony and record every external-browser URL, calling
     // through so the real Chrome custom tab still opens on the recording.
     await page.evaluate(() => {
-      const state: { webauthnCalls: number; openedUrls: string[] } = {
-        webauthnCalls: 0,
-        openedUrls: [],
+      const recorder = window as Window & {
+        __ELIZA_RECORD_WEBAUTHN__(): Promise<void>;
+        __ELIZA_RECORD_EXTERNAL_URL__(url: string): Promise<void>;
       };
-      Object.defineProperty(window, "__PASSKEY_DEGRADE_PROBE__", {
-        configurable: true,
-        value: state,
-      });
 
       const credentials = navigator.credentials;
       if (credentials) {
@@ -103,13 +113,13 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
         const originalCreate = credentials.create?.bind(credentials);
         if (originalGet) {
           credentials.get = ((options?: CredentialRequestOptions) => {
-            state.webauthnCalls += 1;
+            void recorder.__ELIZA_RECORD_WEBAUTHN__();
             return originalGet(options);
           }) as typeof credentials.get;
         }
         if (originalCreate) {
           credentials.create = ((options?: CredentialCreationOptions) => {
-            state.webauthnCalls += 1;
+            void recorder.__ELIZA_RECORD_WEBAUTHN__();
             return originalCreate(options);
           }) as typeof credentials.create;
         }
@@ -128,8 +138,8 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
       ).Capacitor?.Plugins?.Browser;
       if (capacitorBrowser?.open) {
         const originalOpen = capacitorBrowser.open.bind(capacitorBrowser);
-        capacitorBrowser.open = (options: { url: string }) => {
-          state.openedUrls.push(options?.url ?? "");
+        capacitorBrowser.open = async (options: { url: string }) => {
+          await recorder.__ELIZA_RECORD_EXTERNAL_URL__(options?.url ?? "");
           return originalOpen(options);
         };
       }
@@ -140,7 +150,7 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
         target?: string,
         features?: string,
       ) => {
-        state.openedUrls.push(String(url ?? ""));
+        void recorder.__ELIZA_RECORD_EXTERNAL_URL__(String(url ?? ""));
         return originalWindowOpen(url, target, features);
       }) as typeof window.open;
     });
@@ -157,33 +167,13 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
     // The device-code flow surfaces as an external cli-login URL handed to the
     // Capacitor Browser plugin (or window.open on engines without it).
     await expect
-      .poll(
-        async () =>
-          page.evaluate(
-            () =>
-              (
-                window as Window & {
-                  __PASSKEY_DEGRADE_PROBE__?: PasskeyDegradeProbe;
-                }
-              ).__PASSKEY_DEGRADE_PROBE__?.openedUrls ?? [],
-          ),
-        { timeout: 90_000 },
-      )
+      .poll(() => probe.openedUrls, { timeout: 90_000 })
       .toEqual(
         expect.arrayContaining([expect.stringContaining("/auth/cli-login")]),
       );
 
     // Leave the custom tab on-screen briefly so the recording captures it.
     await new Promise((resolve) => setTimeout(resolve, 4_000));
-
-    const probe = (await page.evaluate(
-      () =>
-        (
-          window as Window & {
-            __PASSKEY_DEGRADE_PROBE__?: PasskeyDegradeProbe;
-          }
-        ).__PASSKEY_DEGRADE_PROBE__,
-    )) as PasskeyDegradeProbe;
 
     expect(probe.webauthnCalls).toBe(0);
     expect(
