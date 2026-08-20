@@ -494,12 +494,26 @@ async function executeSharedElizaRuntimeTurn(
     input.traceId ?? input.messageIds?.assistant ?? "unattributed",
     input.history.length,
   );
+  let runtimeReporter: IAgentRuntime | undefined;
   const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
     try {
       input.onRuntimeTiming?.(timing.receipt(outcome));
     } catch (error) {
-      // error-policy:J7 diagnostics must not kill the loop — the observer is
-      // outside the authoritative response and persistence path.
+      // error-policy:J7 diagnostics must not kill the loop. Once the genuine
+      // runtime exists, report through its canonical error surface; setup
+      // failures before creation have only this transport-boundary logger.
+      if (runtimeReporter) {
+        try {
+          runtimeReporter.reportError("SharedElizaRuntime.timingObserver", error, {
+            traceId: input.traceId ?? null,
+          });
+        } catch (reportError) {
+          logger.warn("[shared-eliza-runtime] timing observer report failed", {
+            traceId: input.traceId ?? null,
+            error: reportError instanceof Error ? reportError.message : String(reportError),
+          });
+        }
+      }
       logger.warn("[shared-eliza-runtime] timing observer failed", {
         traceId: input.traceId ?? null,
         error: error instanceof Error ? error.message : String(error),
@@ -507,7 +521,14 @@ async function executeSharedElizaRuntimeTurn(
     }
   };
   try {
-    const result = await executeMeasuredSharedElizaRuntimeTurn(input, onStreamChunk, timing);
+    const result = await executeMeasuredSharedElizaRuntimeTurn(
+      input,
+      onStreamChunk,
+      timing,
+      (runtime) => {
+        runtimeReporter = runtime;
+      },
+    );
     emitTiming("success");
     return result;
   } catch (error) {
@@ -520,6 +541,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   input: SharedElizaRuntimeTurnInput,
   onStreamChunk: ((chunk: string) => void | Promise<void>) | undefined,
   timing: SharedRuntimeTimingCollector,
+  exposeRuntime: (runtime: IAgentRuntime) => void,
 ): Promise<RunSharedAgentTurnResult> {
   await ensureEdgeStreamingContext();
   timing.markEdgeContextReady();
@@ -669,6 +691,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     reminderPlugin,
     todoPlugin,
   });
+  exposeRuntime(runtime);
   try {
     timing.markRuntimeInitializeStarted();
     await runtime.initialize({ skipMigrations: true });
@@ -902,8 +925,33 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
     };
   } finally {
-    await runtime.stop();
-    await runtime.close();
+    for (const [operation, cleanup] of [
+      ["stop", () => runtime.stop()],
+      ["close", () => runtime.close()],
+    ] as const) {
+      try {
+        await cleanup();
+      } catch (error) {
+        // error-policy:J6 both teardown operations are best-effort after the
+        // authoritative provider result/error. Neither may mask it, and a stop
+        // failure must not prevent close from being attempted.
+        logger.warn(`[shared-eliza-runtime] runtime ${operation} failed`, {
+          traceId: input.traceId ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        try {
+          runtime.reportError(`SharedElizaRuntime.${operation}`, error, {
+            traceId: input.traceId ?? null,
+          });
+        } catch (reportError) {
+          // error-policy:J7 reporting teardown diagnostics is itself nonfatal.
+          logger.warn(`[shared-eliza-runtime] runtime ${operation} report failed`, {
+            traceId: input.traceId ?? null,
+            error: reportError instanceof Error ? reportError.message : String(reportError),
+          });
+        }
+      }
+    }
   }
 }
 

@@ -6,7 +6,12 @@
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
-import { streamElizaConversation, VOICE_TRACE_HEADER } from "../eliza-sse-bridge";
+import {
+  type ElizaServerTimingReceipt,
+  parseElizaServerTiming,
+  streamElizaConversation,
+  VOICE_TRACE_HEADER,
+} from "../eliza-sse-bridge";
 
 function sseResponse(
   lines: string[],
@@ -56,7 +61,11 @@ describe("eliza sse bridge", () => {
   });
 
   test("reports canonical route timing as soon as response headers arrive", async () => {
-    const observed: Array<{ elapsedMs: number; serverTiming: string | null }> = [];
+    const observed: Array<{
+      status: number;
+      elapsedMs: number;
+      serverTiming: ElizaServerTimingReceipt | null;
+    }> = [];
     const fetchImpl = (async () =>
       sseResponse(["data: [DONE]\n\n"], 200, {
         "Server-Timing": "turn_hydrate;dur=12.3, turn_admission;dur=4.5",
@@ -81,7 +90,19 @@ describe("eliza sse bridge", () => {
     expect(observed).toHaveLength(1);
     expect(observed[0]).toMatchObject({ status: 200 });
     expect(observed[0]?.elapsedMs).toBeGreaterThanOrEqual(0);
-    expect(observed[0]?.serverTiming).toBe("turn_hydrate;dur=12.3, turn_admission;dur=4.5");
+    expect(observed[0]?.serverTiming).toEqual({
+      metrics: { turn_hydrate: 12.3, turn_admission: 4.5 },
+    });
+  });
+
+  test("bounds and allowlists Server-Timing without retaining descriptions", () => {
+    expect(
+      parseElizaServerTiming(
+        'turn_claim;dur=4.44;desc="tenant-secret", provider;desc="cerebras", injected;dur=1;desc="raw", turn_hydrate;dur=700001, turn_admission;dur=-2',
+      ),
+    ).toEqual({ metrics: { turn_claim: 4.4 }, provider: "cerebras" });
+    expect(parseElizaServerTiming(`turn_claim;dur=1,${"x".repeat(2_100)}`)).toBeNull();
+    expect(parseElizaServerTiming('provider;desc="attacker-controlled"')).toBeNull();
   });
 
   test("decodes local runtime token frames without replaying fullText", async () => {
@@ -588,7 +609,7 @@ describe("eliza sse bridge", () => {
         traceId: "trace-observer",
         signal: new AbortController().signal,
         fetchImpl: (async () => sseResponse(["data: [DONE]\n\n"])) as unknown as typeof fetch,
-        onResponseHeaders: () => {
+        onResponseHeaders: async () => {
           throw new Error("diagnostics unavailable");
         },
       },

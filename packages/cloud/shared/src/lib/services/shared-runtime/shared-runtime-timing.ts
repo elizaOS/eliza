@@ -27,13 +27,13 @@ export interface SharedRuntimeTimingReceipt {
   offsets: {
     providerDispatchOffsetMs: number | null;
     providerFirstTextOffsetMs: number | null;
-    completedOffsetMs: number;
+    completedOffsetMs: number | null;
   };
   inference: {
     composeStateDurationMs: number | null;
     shouldRespondAndContextDurationMs: number | null;
     responseHandlerFieldsDurationMs: number | null;
-    providerTotalDurationMs: number;
+    providerTotalDurationMs: number | null;
     slowestProviderDurationMs: number | null;
   };
   routing: {
@@ -48,12 +48,14 @@ function boundedDuration(startedAt: number | null, completedAt: number | null): 
   if (startedAt === null || completedAt === null) return null;
   const value = completedAt - startedAt;
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(Math.min(value, MAX_RUNTIME_TIMING_MS) * 10) / 10;
+  if (value > MAX_RUNTIME_TIMING_MS) return null;
+  return Math.round(value * 10) / 10;
 }
 
 function boundedMeasuredDuration(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(Math.min(value, MAX_RUNTIME_TIMING_MS) * 10) / 10;
+  if (value > MAX_RUNTIME_TIMING_MS) return null;
+  return Math.round(value * 10) / 10;
 }
 
 /** Mutable timestamps are private to one invocation and produce an immutable receipt. */
@@ -72,7 +74,7 @@ export class SharedRuntimeTimingCollector {
   #composeStateDurationMs: number | null = null;
   #shouldRespondAndContextDurationMs: number | null = null;
   #responseHandlerFieldsDurationMs: number | null = null;
-  #providerTotalDurationMs = 0;
+  #providerTotalDurationMs: number | null = 0;
   #slowestProviderDurationMs: number | null = null;
   #routingDecision: SharedRuntimeRoutingDecision = "unknown";
   #contextIds: string[] = [];
@@ -128,13 +130,9 @@ export class SharedRuntimeTimingCollector {
       }
       if (span.name.startsWith("provider:")) providerDurations.push(durationMs);
     }
-    this.#providerTotalDurationMs =
-      Math.round(
-        Math.min(
-          providerDurations.reduce((total, durationMs) => total + durationMs, 0),
-          MAX_RUNTIME_TIMING_MS,
-        ) * 10,
-      ) / 10;
+    this.#providerTotalDurationMs = boundedMeasuredDuration(
+      providerDurations.reduce((total, durationMs) => total + durationMs, 0),
+    );
     this.#slowestProviderDurationMs =
       providerDurations.length > 0 ? Math.max(...providerDurations) : null;
   }
@@ -168,7 +166,7 @@ export class SharedRuntimeTimingCollector {
       offsets: {
         providerDispatchOffsetMs: boundedDuration(this.#startedAt, this.#providerDispatchedAt),
         providerFirstTextOffsetMs: boundedDuration(this.#startedAt, this.#providerFirstTextAt),
-        completedOffsetMs: boundedDuration(this.#startedAt, completedAt) ?? 0,
+        completedOffsetMs: boundedDuration(this.#startedAt, completedAt),
       },
       inference: {
         composeStateDurationMs: this.#composeStateDurationMs,

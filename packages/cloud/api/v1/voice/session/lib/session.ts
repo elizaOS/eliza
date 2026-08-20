@@ -43,6 +43,7 @@ import type {
 } from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
 import {
+  type ElizaServerTimingReceipt,
   ElizaSseBridgeError,
   type ElizaSseBridgeResponseHeaders,
   streamElizaConversation,
@@ -992,7 +993,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let upstreamAttemptCount = 0;
     let activeUpstreamAttempt = 0;
     let upstreamSuccessfulHeadersOffsetMs: number | null = null;
-    let upstreamServerTiming: string | null = null;
+    let upstreamServerTiming: ElizaServerTimingReceipt | null = null;
     let ttsTransportReadyAt: number | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
