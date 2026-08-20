@@ -11,7 +11,10 @@ const workflowText = readFileSync(
   "utf8",
 );
 type WorkflowStep = {
+  env?: Record<string, string>;
   name?: string;
+  run?: string;
+  shell?: string;
   uses?: string;
   with?: Record<string, unknown>;
 };
@@ -24,6 +27,7 @@ type Workflow = {
     {
       "runs-on"?: string | string[];
       "timeout-minutes"?: number;
+      env?: Record<string, string>;
       permissions?: Record<string, string>;
       strategy?: {
         "fail-fast"?: boolean;
@@ -102,18 +106,14 @@ function renderedConfig(shard: { shard: string; paths: string[] }): {
   paths: string[];
   "paths-ignore": string[];
 } {
-  const template = step("Initialize CodeQL").with?.config;
-  if (typeof template !== "string") {
-    throw new Error("Initialize CodeQL must provide an inline config");
+  const ignoresJson = analyze?.env?.CODEQL_PATHS_IGNORE_JSON;
+  if (typeof ignoresJson !== "string") {
+    throw new Error("CodeQL job must provide the shared ignore JSON");
   }
-  return Bun.YAML.parse(
-    template
-      .replaceAll(matrixShardExpression, shard.shard)
-      .replace(matrixPathsExpression, JSON.stringify(shard.paths)),
-  ) as {
-    name: string;
-    paths: string[];
-    "paths-ignore": string[];
+  return {
+    name: `elizaOS CodeQL ${shard.shard}`,
+    paths: shard.paths,
+    "paths-ignore": JSON.parse(ignoresJson) as string[],
   };
 }
 
@@ -144,7 +144,10 @@ describe("scheduled CodeQL workflow", () => {
     expect(analyzeStep.uses).toBe(init.uses?.replace("/init@", "/analyze@"));
     expect(init.with?.languages).toBe("javascript-typescript");
     expect(init.with?.["build-mode"]).toBe("none");
-    expect(init.with?.config).toBeTypeOf("string");
+    expect(init.with?.["config-file"]).toBe(
+      "./.github/codeql-generated-config.yml",
+    );
+    expect(init.with).not.toHaveProperty("config");
     expect(init.with).not.toHaveProperty("ram");
     expect(init.with).not.toHaveProperty("threads");
     expect(analyzeStep.with?.category).toBe(
@@ -188,7 +191,9 @@ describe("scheduled CodeQL workflow", () => {
       new URL("../../../plugins", import.meta.url),
       { withFileTypes: true },
     )
-      .filter((entry) => entry.isDirectory())
+      .filter(
+        (entry) => entry.isDirectory() && entry.name.startsWith("plugin-"),
+      )
       .map(({ name }) => `plugins/${name}/**`)
       .sort();
 
@@ -204,6 +209,21 @@ describe("scheduled CodeQL workflow", () => {
   });
 
   test("renders each shard with only the reviewed non-shipping exclusions", () => {
+    const writer = step("Write shard CodeQL configuration");
+    expect(writer.shell).toBe("bash");
+    expect(writer.env).toEqual({
+      CODEQL_SHARD: matrixShardExpression,
+      CODEQL_PATHS_JSON: matrixPathsExpression,
+    });
+    expect(writer.run).toContain(
+      "paths: JSON.parse(process.env.CODEQL_PATHS_JSON)",
+    );
+    expect(writer.run).toContain(
+      '"paths-ignore": JSON.parse(process.env.CODEQL_PATHS_IGNORE_JSON)',
+    );
+    expect(writer.run).toContain(
+      'writeFileSync(\n  ".github/codeql-generated-config.yml"',
+    );
     for (const shard of shards) {
       const config = renderedConfig(shard);
       expect(config.name).toBe(`elizaOS CodeQL ${shard.shard}`);

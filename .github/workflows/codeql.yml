@@ -187,6 +187,9 @@ jobs:
     permissions:
       contents: read
       security-events: write
+    env:
+      CODEQL_PATHS_IGNORE_JSON: >-
+        ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.next/**", "**/.next-build-*/**", "**/.turbo/**", "**/coverage/**", "**/out/**", "**/.venv/**", "**/venv/**", "**/site-packages/**", "**/storybook-static/**", "**/dist-mobile/**", "**/dist-mobile-ios/**", "**/playwright-report/**", "**/ios/App/App/public/**", "**/android/app/src/main/assets/public/**", "**/platforms/android/app/src/main/assets/public/**", "**/platforms/*/tmp/**", "**/*.min.js", "**/__tests__/**", "**/__e2e__/**", "**/test/**", "**/tests/**", "**/testing/**", "**/test-utils/**", "**/fixture/**", "**/fixtures/**", "**/mocks/**", "**/stories/**", "**/*.test.ts", "**/*.test.tsx", "**/*.test.js", "**/*.test.jsx", "**/*.spec.ts", "**/*.spec.tsx", "**/*.spec.js", "**/*.spec.jsx", "**/*.bench.ts", "**/*.bench.tsx", "**/*.stories.ts", "**/*.stories.tsx", "**/aesthetic-audit-output-*/**", "packages/test/**", "packages/app-core/scripts/bun-riscv64/**", "packages/scripts/test-console/**"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -197,63 +200,34 @@ jobs:
           df -h
           du -sh "$GITHUB_WORKSPACE" 2>/dev/null || true
 
+      - name: Write shard CodeQL configuration
+        shell: bash
+        env:
+          CODEQL_SHARD: ${{ matrix.shard }}
+          CODEQL_PATHS_JSON: ${{ toJson(matrix.paths) }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          const config = {
+            name: `elizaOS CodeQL ${process.env.CODEQL_SHARD}`,
+            paths: JSON.parse(process.env.CODEQL_PATHS_JSON),
+            "paths-ignore": JSON.parse(process.env.CODEQL_PATHS_IGNORE_JSON),
+          };
+          writeFileSync(
+            ".github/codeql-generated-config.yml",
+            `${JSON.stringify(config)}\n`,
+          );
+          NODE
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
         with:
           languages: javascript-typescript
           build-mode: none
-          # The action accepts a YAML string. Matrix paths become an inline JSON
-          # array, which is valid YAML and avoids seven drifting config copies.
-          config: |
-            name: elizaOS CodeQL ${{ matrix.shard }}
-            paths: ${{ toJson(matrix.paths) }}
-            paths-ignore:
-              - '**/node_modules/**'
-              - '**/dist/**'
-              - '**/build/**'
-              - '**/.next/**'
-              - '**/.next-build-*/**'
-              - '**/.turbo/**'
-              - '**/coverage/**'
-              - '**/out/**'
-              - '**/.venv/**'
-              - '**/venv/**'
-              - '**/site-packages/**'
-              - '**/storybook-static/**'
-              - '**/dist-mobile/**'
-              - '**/dist-mobile-ios/**'
-              - '**/playwright-report/**'
-              - '**/ios/App/App/public/**'
-              - '**/android/app/src/main/assets/public/**'
-              - '**/platforms/android/app/src/main/assets/public/**'
-              - '**/platforms/*/tmp/**'
-              - '**/*.min.js'
-              - '**/__tests__/**'
-              - '**/__e2e__/**'
-              - '**/test/**'
-              - '**/tests/**'
-              - '**/testing/**'
-              - '**/test-utils/**'
-              - '**/fixture/**'
-              - '**/fixtures/**'
-              - '**/mocks/**'
-              - '**/stories/**'
-              - '**/*.test.ts'
-              - '**/*.test.tsx'
-              - '**/*.test.js'
-              - '**/*.test.jsx'
-              - '**/*.spec.ts'
-              - '**/*.spec.tsx'
-              - '**/*.spec.js'
-              - '**/*.spec.jsx'
-              - '**/*.bench.ts'
-              - '**/*.bench.tsx'
-              - '**/*.stories.ts'
-              - '**/*.stories.tsx'
-              - '**/aesthetic-audit-output-*/**'
-              - 'packages/test/**'
-              - 'packages/app-core/scripts/bun-riscv64/**'
-              - 'packages/scripts/test-console/**'
+          # Generate one job-local config so multiline matrix JSON cannot become
+          # malformed YAML and the seven shard definitions cannot drift.
+          config-file: ./.github/codeql-generated-config.yml
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
