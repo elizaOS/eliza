@@ -41,7 +41,17 @@ function makeDefinition(
     status: "active",
     priority: 3,
     cadence: { kind: "once", dueAt: "2027-01-05T09:00:00.000Z" },
-    windowPolicy: { timezone: "UTC", windows: [] },
+    windowPolicy: {
+      timezone: "UTC",
+      windows: [
+        {
+          name: "morning",
+          label: "Morning",
+          startMinute: 480,
+          endMinute: 720,
+        },
+      ],
+    },
     progressionRule: { kind: "none" },
     websiteAccess: null,
     reminderPlanId: null,
@@ -190,8 +200,111 @@ describe("LifeOps definition persistence — owner scope and revision predicates
       await expect(service.deleteDefinition(hiddenId)).rejects.toMatchObject({
         status: 404,
       });
+      await expect(
+        service.getReminderPreference(hiddenId),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        service.setReminderPreference({
+          definitionId: hiddenId,
+          intensity: "normal",
+        }),
+      ).rejects.toMatchObject({ status: 404 });
       expect(await repository.getDefinition(agentId, hiddenId)).not.toBeNull();
     }
+  });
+
+  it("moves a caller-owned definition between supported domains atomically", async () => {
+    const movable = makeDefinition(agentId, ownerA, "move between domains");
+    await repository.createDefinition(movable);
+    const moved = await service.updateDefinition(movable.id, {
+      ownership: {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      },
+    });
+    expect(moved.definition).toMatchObject({
+      domain: "agent_ops",
+      subjectType: "agent",
+      subjectId: agentId,
+    });
+    await expect(
+      repository.getDefinition(agentId, movable.id, {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: ownerA,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.getDefinition(agentId, movable.id, {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      }),
+    ).resolves.toMatchObject({ id: movable.id });
+    await repository.deleteDefinition(agentId, movable.id, {
+      scope: {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      },
+      expectedUpdatedAt: moved.definition.updatedAt,
+    });
+  });
+
+  it("denies occurrence mutation and reminder inspection for a hidden definition", async () => {
+    const now = new Date("2027-01-05T08:30:00.000Z");
+    const occurrences = await service.refreshDefinitionOccurrences(
+      crossDomain,
+      now,
+    );
+    expect(occurrences).toHaveLength(1);
+    const occurrence = occurrences[0];
+
+    const callerScope = {
+      domain: "user_lifeops" as const,
+      subjectType: "owner" as const,
+      subjectId: ownerA,
+    };
+    await expect(
+      repository.getOccurrence(agentId, occurrence.id, callerScope),
+    ).resolves.toBeNull();
+    await expect(
+      repository.getOccurrenceView(agentId, occurrence.id, callerScope),
+    ).resolves.toBeNull();
+    await expect(
+      repository.listOccurrenceViewsForOverview(
+        agentId,
+        "2027-01-06T00:00:00.000Z",
+        [callerScope],
+      ),
+    ).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: occurrence.id })]),
+    );
+
+    await expect(
+      service.completeOccurrence(occurrence.id, {}, now),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.inspectReminder("occurrence", occurrence.id),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.acknowledgeReminder({
+        ownerType: "occurrence",
+        ownerId: occurrence.id,
+        note: "must remain private",
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      repository.getOccurrence(agentId, occurrence.id),
+    ).resolves.toMatchObject({ state: "pending", metadata: {} });
+    const overview = await service.getOverview(now);
+    expect(overview.owner.occurrences.map((item) => item.id)).not.toContain(
+      occurrence.id,
+    );
+    expect(overview.agentOps.occurrences.map((item) => item.id)).not.toContain(
+      occurrence.id,
+    );
   });
 
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {

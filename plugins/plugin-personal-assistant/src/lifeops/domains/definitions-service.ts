@@ -46,7 +46,7 @@ import {
   normalizeProgressionRule,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
-import { callerDefinitionScopes } from "./definition-authorization.js";
+import { listCallerDefinitions } from "./definition-authorization.js";
 
 // Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
@@ -117,19 +117,10 @@ export class DefinitionsDomain {
   ) {}
 
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = (
-      await Promise.all(
-        callerDefinitionScopes(this.ctx).map((scope) =>
-          this.ctx.repository.listDefinitions(this.ctx.agentId(), scope),
-        ),
-      )
-    )
-      .flat()
-      .sort(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) ||
-          left.id.localeCompare(right.id),
-      );
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+    );
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -378,6 +369,11 @@ export class DefinitionsDomain {
     // surfaces as a typed LIFEOPS_DEFINITION_CONFLICT for re-resolution.
     await this.ctx.repository.updateDefinition(nextDefinition, {
       expectedUpdatedAt: current.definition.updatedAt,
+      expectedScope: {
+        domain: current.definition.domain,
+        subjectType: current.definition.subjectType,
+        subjectId: current.definition.subjectId,
+      },
     });
     const reminderPlan = await this.deps.syncReminderPlan(
       nextDefinition,
@@ -430,10 +426,6 @@ export class DefinitionsDomain {
     // database side effects. An immutable ID for another domain/owner is
     // indistinguishable from a missing definition.
     const { definition } = await this.deps.getDefinitionRecord(definitionId);
-    await this.deps.syncNativeAppleReminderForDefinition({
-      definition: null,
-      previousDefinition: definition,
-    });
     await this.ctx.repository.deleteDefinition(
       this.ctx.agentId(),
       definitionId,
@@ -446,6 +438,10 @@ export class DefinitionsDomain {
         expectedUpdatedAt: definition.updatedAt,
       },
     );
+    await this.deps.syncNativeAppleReminderForDefinition({
+      definition: null,
+      previousDefinition: definition,
+    });
     await this.ctx.recordAudit(
       "definition_deleted",
       "definition",
