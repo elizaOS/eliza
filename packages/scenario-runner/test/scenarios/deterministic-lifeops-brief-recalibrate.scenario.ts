@@ -15,7 +15,7 @@
  *
  * The turns then exercise the owner-facing loop end to end:
  *   1. "You keep briefing me on things I never act on. Recalibrate." —
- *      the BRIEF `recalibrate` verb summarizes the ledger (surfaced 9,
+ *      the BRIEF `recalibrate` verb summarizes the ledger (surfaced 5,
  *      acted on 0), demotes exactly `inbox:newsletter-digest` via an
  *      explicit reversible `demoted` marker, and leaves the acted-on
  *      calendar class untouched.
@@ -338,8 +338,8 @@ function expectRecalibrateTurn(
     return `expected no previously demoted classes, saw ${JSON.stringify(data.alreadyDemotedItemClasses)}`;
   }
   const text = execution.responseText ?? "";
-  if (!text.includes("surfaced 9 times, acted on 0")) {
-    return `expected the ledger summary "surfaced 9 times, acted on 0" in the reply, saw ${JSON.stringify(text)}`;
+  if (!text.includes("surfaced 5 times, acted on 0")) {
+    return `expected the ledger summary "surfaced 5 times, acted on 0" in the reply, saw ${JSON.stringify(text)}`;
   }
   return undefined;
 }
