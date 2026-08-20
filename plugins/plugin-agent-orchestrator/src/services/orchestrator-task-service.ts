@@ -50,6 +50,7 @@ import {
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
 import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
+import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 import {
   type AdmissionRecord,
   orderQueue,
@@ -1462,6 +1463,13 @@ export class OrchestratorTaskService extends Service {
       await this.syncSmithersRunCopies(acp, completed, prepared.sessionId);
       if (!link.keepAliveAfterComplete) {
         try {
+          // Mark the stop administrative BEFORE stopping so the swarm
+          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+          await markSessionAdministrativelyStopped(
+            acp,
+            prepared.sessionId,
+            "smithers_recovery",
+          );
           await acp.stopSession(prepared.sessionId);
         } catch (err) {
           // error-policy:J6 the graph and both durable links are already
@@ -4597,6 +4605,13 @@ export class OrchestratorTaskService extends Service {
     } finally {
       unsubscribe?.();
       try {
+        // Mark the stop administrative BEFORE stopping so the swarm
+        // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+        await markSessionAdministrativelyStopped(
+          acp,
+          verifierSessionId,
+          "verifier_teardown",
+        );
         await acp.stopSession(verifierSessionId);
       } catch (stopErr) {
         // error-policy:J6 best-effort teardown of the ephemeral verifier session;
@@ -5745,6 +5760,9 @@ export class OrchestratorTaskService extends Service {
       throw new Error("ACP service unavailable; cannot stop active session");
     }
     try {
+      // Mark the stop administrative BEFORE stopping so the swarm
+      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+      await markSessionAdministrativelyStopped(acp, sessionId, "user_stop");
       await acp.stopSession(sessionId);
     } catch (err) {
       // error-policy:J2 mark the session stop_failed for observability, then
@@ -6004,6 +6022,13 @@ export class OrchestratorTaskService extends Service {
     await Promise.all(
       active.map(async (session) => {
         try {
+          // Mark the stop administrative BEFORE stopping so the swarm
+          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+          await markSessionAdministrativelyStopped(
+            acp,
+            session.sessionId,
+            "task_lifecycle",
+          );
           await acp.stopSession(session.sessionId);
         } catch (err) {
           // error-policy:J1 collect per-session stop failures; the loop throws a
@@ -6561,6 +6586,9 @@ export class OrchestratorTaskService extends Service {
     const victim = candidates[0];
     if (!victim) return false;
     try {
+      // Mark the stop administrative BEFORE stopping so the swarm
+      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+      await markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim");
       await acp.stopSession(victim.id);
       this.log("info", "reclaimed idle keepAlive session for queued task", {
         sessionId: victim.id,

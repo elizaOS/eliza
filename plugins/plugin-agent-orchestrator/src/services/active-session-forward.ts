@@ -14,6 +14,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
 import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
@@ -206,6 +207,14 @@ export function createActiveSessionForwardHandler(
             // planner pipeline runs on this same MESSAGE_RECEIVED and routes
             // the user's redirect; we do not re-deliver to the dead session.
             subAgentInbox.clear(active.id);
+            // Stamp FIRST: the coordinator's stopped/cancelled synthesis reads
+            // this so a user-initiated interrupt never narrates as a task
+            // failure ("stopped before completion") or gets auto-retried.
+            await markSessionAdministrativelyStopped(
+              acp,
+              active.id,
+              "user_interrupt",
+            );
             // error-policy:J6 best-effort session cancel on interrupt; warn only
             await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
               runtime.logger?.warn?.(
