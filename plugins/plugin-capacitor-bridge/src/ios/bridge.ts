@@ -1263,6 +1263,7 @@ async function fetchMemoriesFromTables(
 		tables?: readonly string[];
 		target: number;
 		before?: number;
+		beforeId?: UUID;
 		searchQuery?: string;
 	},
 ): Promise<TaggedMemory[]> {
@@ -1280,7 +1281,10 @@ async function fetchMemoriesFromTables(
 	const perTableMemories = await Promise.all(
 		tables.map(async (tableName) => {
 			const eligible: TaggedMemory[] = [];
-			let cursor: { createdAt: number; id: UUID } | undefined;
+			let cursor: { createdAt: number; id: UUID } | undefined =
+				params.before !== undefined && params.beforeId !== undefined
+					? { createdAt: params.before, id: params.beforeId }
+					: undefined;
 			let batchSize = 200;
 			let scannedRows = 0;
 			for (;;) {
@@ -1308,7 +1312,7 @@ async function fetchMemoriesFromTables(
 					tableName,
 					limit: queryLimit,
 					cursor,
-					end: params.before,
+					end: params.beforeId === undefined ? params.before : undefined,
 					textContains,
 					includeEmbedding: false,
 				});
@@ -1360,11 +1364,17 @@ async function fetchMemoriesFromTables(
 					) {
 						continue;
 					}
-					if (
-						params.before !== undefined &&
-						memoryCreatedAt(tagged) >= params.before
-					) {
-						continue;
+					if (params.before !== undefined) {
+						const createdAt = memoryCreatedAt(tagged);
+						if (createdAt > params.before) continue;
+						if (createdAt === params.before) {
+							if (
+								params.beforeId === undefined ||
+								compareMemoryIds(tagged.id ?? "", params.beforeId) >= 0
+							) {
+								continue;
+							}
+						}
 					}
 					if (
 						searchQuery &&
@@ -1417,12 +1427,21 @@ async function handleMemoriesFeedRoute(
 			error: "before must be a Unix timestamp in milliseconds",
 		});
 	}
+	const beforeIdParam = queryParam(query, "beforeId");
+	const beforeId =
+		beforeIdParam === null ? undefined : validateUuid(beforeIdParam);
+	if (beforeIdParam !== null && (before === undefined || beforeId === null)) {
+		return jsonResponse(400, {
+			error: "beforeId must be a UUID paired with before",
+		});
+	}
 	const tables = resolveMemoryTableFilter(queryParam(query, "type"));
 
 	const allMemories = await fetchMemoriesFromTables(runtime, {
 		tables,
 		target: limit + 1,
 		before,
+		beforeId: beforeId ?? undefined,
 	});
 
 	allMemories.sort(byNewestFirst);

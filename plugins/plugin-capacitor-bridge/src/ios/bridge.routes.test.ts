@@ -257,6 +257,43 @@ describe("iOS bridge — memories view routes", () => {
 		}
 	});
 
+	it("pages every tied-timestamp feed row exactly once with the id cursor", async () => {
+		const createdAt = 1_700_000_000_000;
+		for (let i = 0; i < 120; i++) {
+			await seedMemory("messages", `tied ${i}`, createdAt);
+		}
+
+		const seen: string[] = [];
+		let path = "/api/memories/feed?type=messages&limit=50";
+		for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
+			const page = await call(backend, "GET", path);
+			const memories = page.json.memories as Array<{
+				id: string;
+				createdAt: number;
+			}>;
+			seen.push(...memories.map((memory) => memory.id));
+			if (pageNumber < 2) expect(page.json.hasMore).toBe(true);
+			const last = memories.at(-1);
+			if (page.json.hasMore === false || !last) break;
+			path = `/api/memories/feed?type=messages&limit=50&before=${last.createdAt}&beforeId=${last.id}`;
+		}
+
+		expect(seen).toHaveLength(120);
+		expect(new Set(seen).size).toBe(120);
+	});
+
+	it("rejects an id cursor without its timestamp pair", async () => {
+		const result = await call(
+			backend,
+			"GET",
+			`/api/memories/feed?beforeId=${crypto.randomUUID()}`,
+		);
+		expect(result.status).toBe(400);
+		expect(result.json).toEqual({
+			error: "beforeId must be a UUID paired with before",
+		});
+	});
+
 	it("feed type filter scopes to a single table", async () => {
 		await seedMemory("messages", "a message", 1_000);
 		await seedMemory("facts", "a fact", 2_000);

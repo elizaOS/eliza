@@ -311,7 +311,10 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
   }, []);
 
   const loadFeed = useCallback(
-    async (before?: number, options?: { silent?: boolean }) => {
+    async (
+      before?: { createdAt: number; id: string },
+      options?: { silent?: boolean },
+    ) => {
       if (loadingMore.current && before) return;
       if (before) loadingMore.current = true;
       else if (!options?.silent) setLoading(true);
@@ -321,7 +324,8 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
         const result: MemoryFeedResponse = await client.getMemoryFeed({
           type: serverTypeParam(typeFilter),
           limit: FEED_PAGE_SIZE,
-          before,
+          before: before?.createdAt,
+          beforeId: before?.id,
         });
         const memories = filterMemoriesByTypes(result.memories, typeFilter);
         if (before) {
@@ -366,7 +370,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
 
   const loadMore = () => {
     const last = feed[feed.length - 1];
-    if (last) void loadFeed(last.createdAt);
+    if (last) void loadFeed({ createdAt: last.createdAt, id: last.id });
   };
 
   if (loading && feed.length === 0) {

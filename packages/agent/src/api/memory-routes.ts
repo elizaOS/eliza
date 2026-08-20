@@ -831,6 +831,7 @@ async function fetchMemoriesFromTables(
     /** Stop after this many eligible rows per table. */
     target: number;
     before?: number;
+    beforeId?: UUID;
     searchQuery?: string;
   },
 ): Promise<TaggedMemory[]> {
@@ -856,7 +857,10 @@ async function fetchMemoriesFromTables(
   const tableResults = await Promise.all(
     tables.map(async (tableName) => {
       const eligible: TaggedMemory[] = [];
-      let cursor: { createdAt: number; id: UUID } | undefined;
+      let cursor: { createdAt: number; id: UUID } | undefined =
+        params.before !== undefined && params.beforeId !== undefined
+          ? { createdAt: params.before, id: params.beforeId }
+          : undefined;
       let batchSize = 200;
       let scannedRows = 0;
 
@@ -885,7 +889,9 @@ async function fetchMemoriesFromTables(
           tableName,
           limit: queryLimit,
           cursor,
-          end: params.before,
+          // Timestamp-only callers retain the original strict-before filter.
+          // A tuple cursor is already the complete exclusive boundary.
+          end: params.beforeId === undefined ? params.before : undefined,
           textContains,
           includeEmbedding: false, // browse feed discards embeddings
         });
@@ -938,11 +944,17 @@ async function fetchMemoriesFromTables(
           ) {
             continue;
           }
-          if (
-            params.before !== undefined &&
-            memoryCreatedAt(tagged) >= params.before
-          ) {
-            continue;
+          if (params.before !== undefined) {
+            const createdAt = memoryCreatedAt(tagged);
+            if (createdAt > params.before) continue;
+            if (createdAt === params.before) {
+              if (
+                params.beforeId === undefined ||
+                compareMemoryIds(tagged.id ?? "", params.beforeId) >= 0
+              ) {
+                continue;
+              }
+            }
           }
           if (
             searchQuery &&
@@ -1169,6 +1181,14 @@ export async function handleMemoryRoutes(
       error(res, "before must be a Unix timestamp in milliseconds", 400);
       return true;
     }
+    const beforeIdParam = url.searchParams.get("beforeId");
+    if (
+      beforeIdParam !== null &&
+      (before === undefined || !UUID_REGEX.test(beforeIdParam))
+    ) {
+      error(res, "beforeId must be a UUID paired with before", 400);
+      return true;
+    }
     const tableFilter = parseMemoryTableFilter(url.searchParams.get("type"));
     if (!tableFilter.ok) {
       error(res, tableFilter.message, 400);
@@ -1180,6 +1200,7 @@ export async function handleMemoryRoutes(
       tables,
       target: limit + 1,
       before,
+      beforeId: beforeIdParam === null ? undefined : (beforeIdParam as UUID),
     });
 
     allMemories.sort(byNewestFirst);

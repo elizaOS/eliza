@@ -149,6 +149,64 @@ describe("MemoryViewerView interface contract", () => {
     );
   });
 
+  it("loads older tied-timestamp rows with the full tuple cursor", async () => {
+    clientMock.getMemoryFeed
+      .mockResolvedValueOnce({
+        memories: [
+          {
+            id: "feed-newer",
+            type: "messages",
+            text: "newer tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+          {
+            id: "feed-cursor",
+            type: "messages",
+            text: "cursor tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+        ],
+        count: 2,
+        limit: 50,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        memories: [
+          {
+            id: "feed-older-tie",
+            type: "messages",
+            text: "older tied row",
+            source: "client_chat",
+            createdAt: 200,
+            entityId: "entity-1",
+            roomId: "room-1",
+          },
+        ],
+        count: 1,
+        limit: 50,
+        hasMore: false,
+      });
+
+    const user = userEvent.setup();
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByRole("button", { name: "Load older" }));
+
+    await waitFor(() =>
+      expect(clientMock.getMemoryFeed).toHaveBeenCalledTimes(2),
+    );
+    expect(clientMock.getMemoryFeed).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ before: 200, beforeId: "feed-cursor" }),
+    );
+    expect(await screen.findByText("older tied row")).not.toBeNull();
+  });
+
   it("points the empty feed forward with Ask Eliza", async () => {
     clientMock.getMemoryStats.mockResolvedValue({ total: 0, byType: {} });
     clientMock.getMemoryFeed.mockResolvedValue({

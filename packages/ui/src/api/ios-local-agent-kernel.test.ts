@@ -628,6 +628,60 @@ describe("handleIosLocalAgentRequest", () => {
     });
   });
 
+  it("pages tied-timestamp local memories without skips or duplicates", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    localStorage.setItem(
+      "eliza:ios-local-agent:conversations:v1",
+      JSON.stringify({
+        conversations: [
+          {
+            id: "conv-tied",
+            title: "Tied",
+            roomId: "room-tied",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            messages: Array.from({ length: 5 }, (_, index) => ({
+              id: `message-${index}`,
+              role: "assistant",
+              text: `tied ${index}`,
+              timestamp: 200,
+            })),
+          },
+        ],
+      }),
+    );
+
+    const seen: string[] = [];
+    let path = "/api/memories/feed?limit=2";
+    for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
+      const page = (await getJson(path)) as {
+        memories: Array<{ id: string; createdAt: number }>;
+        hasMore: boolean;
+      };
+      seen.push(...page.memories.map((memory) => memory.id));
+      const last = page.memories.at(-1);
+      if (!page.hasMore || !last) break;
+      path = `/api/memories/feed?limit=2&before=${last.createdAt}&beforeId=${last.id}`;
+    }
+
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+    expect(new Set(seen)).toEqual(
+      new Set(Array.from({ length: 5 }, (_, index) => `message-${index}`)),
+    );
+
+    const unpaired = await handleIosLocalAgentRequest(
+      new Request(
+        "http://127.0.0.1:31337/api/memories/feed?beforeId=message-1",
+      ),
+    );
+    expect(unpaired.status).toBe(400);
+    await expect(unpaired.json()).resolves.toEqual({
+      error: "beforeId must be a non-empty ID paired with before",
+    });
+  });
+
   it("resets local iOS agent state and keeps the kernel running", async () => {
     const localStorage = stubLocalStorage();
     vi.stubGlobal("window", { localStorage });

@@ -708,6 +708,12 @@ const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
 
+function compareLocalMemoryIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function positiveIntegerParam(value: string | null, fallback: number): number {
   const parsed = integerFromUnknown(value);
   return parsed !== null && parsed > 0 ? parsed : fallback;
@@ -745,7 +751,12 @@ function localMemoryFeedItems(): MemoryBrowseItem[] {
       });
     }
   }
-  items.sort((a, b) => b.createdAt - a.createdAt);
+  items.sort((a, b) => {
+    const timestampOrder = b.createdAt - a.createdAt;
+    return timestampOrder !== 0
+      ? timestampOrder
+      : compareLocalMemoryIds(b.id, a.id);
+  });
   return items;
 }
 
@@ -786,11 +797,28 @@ function handleLocalMemoriesRoute(
         400,
       );
     }
+    const beforeIdParam = url.searchParams.get("beforeId");
+    const beforeId = beforeIdParam?.trim();
+    if (
+      beforeIdParam !== null &&
+      (before === undefined || !beforeId || beforeId.length > 512)
+    ) {
+      return json(
+        { error: "beforeId must be a non-empty ID paired with before" },
+        400,
+      );
+    }
     let items = localMemoryTypeHasRows(url.searchParams.get("type"))
       ? localMemoryFeedItems()
       : [];
     if (before !== undefined) {
-      items = items.filter((item) => item.createdAt < before);
+      items = items.filter(
+        (item) =>
+          item.createdAt < before ||
+          (beforeId !== undefined &&
+            item.createdAt === before &&
+            compareLocalMemoryIds(item.id, beforeId) < 0),
+      );
     }
     const page = items.slice(0, limit);
     return json({
