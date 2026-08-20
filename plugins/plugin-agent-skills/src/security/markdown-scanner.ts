@@ -42,7 +42,7 @@ const DEFAULT_SAFE_DOMAINS: ReadonlyArray<string> = [
 const URL_TOKEN_PATTERN = /https?:\/\/[^\s)\]"'<>]+/gi;
 
 /** Terminal punctuation that commonly follows a bare URL in prose. */
-const TRAILING_PROSE_PUNCTUATION = /(?:[,;!}]|\.{2,}|…)+$/u;
+const TRAILING_PROSE_PUNCTUATION = /[.,;!:}…]+$/u;
 
 /**
  * A host is safe iff it equals a listed domain or is a subdomain of one

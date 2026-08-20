@@ -78,17 +78,24 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 	});
 
 	it("keeps safe bare URLs clean before terminal prose punctuation", () => {
+		expect(flagsExternalUrl("See https://github.com.")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com., then continue")).toBe(
+			false,
+		);
 		expect(flagsExternalUrl("See https://github.com, then continue")).toBe(false);
 		expect(flagsExternalUrl("See https://github.com; then continue")).toBe(false);
 		expect(flagsExternalUrl("See https://github.com!")).toBe(false);
+		expect(flagsExternalUrl("See https://github.com:")).toBe(false);
 		expect(flagsExternalUrl("See https://github.com...")).toBe(false);
 		expect(flagsExternalUrl("See https://github.com…")).toBe(false);
 		expect(flagsExternalUrl("See {https://github.com}")).toBe(false);
 	});
 
 	it("does not let terminal punctuation hide external or userinfo hosts", () => {
+		expect(flagsExternalUrl("See https://github.com.evil.com.")).toBe(true);
 		expect(flagsExternalUrl("See https://github.com.evil.com,")).toBe(true);
 		expect(flagsExternalUrl("See https://github.com@evil.com!")).toBe(true);
+		expect(flagsExternalUrl("See https://github.com@evil.com:")).toBe(true);
 		expect(flagsExternalUrl("See https://evil.com/path;query,")).toBe(true);
 	});
 
@@ -181,7 +188,7 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 			"fetch",
 			vi.fn(async () =>
 				new Response(
-					"---\nname: trusted\ndescription: install boundary\n---\nVisit https://github.com, then return.",
+					"---\nname: trusted\ndescription: install boundary\n---\nVisit https://github.com. Then https://github.com., and finally https://github.com:",
 					{ headers: { "content-type": "text/markdown" } },
 				),
 		),
