@@ -11,13 +11,11 @@
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
-	createWriteStream,
 	existsSync,
 	linkSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
-	renameSync,
 	statSync,
 	symlinkSync,
 	unlinkSync,
@@ -26,8 +24,6 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -48,7 +44,12 @@ import {
 	type TextEmbeddingParams,
 } from "@elizaos/core";
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
+import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
+import {
+	MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
+	MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
+} from "./shared/model-download-deadline.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
@@ -1258,7 +1259,10 @@ const RECOMMENDED_MODELS: Record<
 	},
 };
 
-export const RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS = 600_000;
+export {
+	MODEL_DOWNLOAD_IDLE_TIMEOUT_MS as RECOMMENDED_MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
+	MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS as RECOMMENDED_MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
+};
 
 const inflightDownloads = new Map<string, Promise<string>>();
 
@@ -1312,51 +1316,16 @@ async function downloadRecommendedModelFor(
 	const promise = (async () => {
 		const url = buildHfResolveUrl(model);
 		const stagingPath = `${finalPath}.part`;
-		try {
-			unlinkSync(stagingPath);
-		} catch {
-			// error-policy:J6 best-effort teardown — clear a leftover `.part` from a
-			// prior interrupted download before staging; absent is fine.
-		}
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
 		);
-		const response = await fetch(url, {
-			redirect: "follow",
-			signal: AbortSignal.timeout(RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS),
+		const stagedSize = await downloadHttpModel({
+			url,
+			stagingPath,
+			finalPath,
+			label: `[mobile-device-bridge] Recommended-model download (${slot})`,
+			expectedSizeBytes: model.expectedSizeBytes,
 		});
-		if (!response.ok || !response.body) {
-			throw new Error(
-				`[mobile-device-bridge] Recommended-model download failed (${slot}): HTTP ${response.status} ${response.statusText} from ${url}`,
-			);
-		}
-		try {
-			await pipeline(
-				Readable.fromWeb(response.body as never),
-				createWriteStream(stagingPath),
-			);
-		} catch (streamError) {
-			try {
-				unlinkSync(stagingPath);
-			} catch {
-				// error-policy:J6 best-effort teardown — clear the partial file
-				// when pipeline streaming fails or times out.
-			}
-			throw streamError;
-		}
-		const stagedSize = statSync(stagingPath).size;
-		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
-			try {
-				unlinkSync(stagingPath);
-			} catch {
-				// error-policy:J6 best-effort teardown — remove the size-mismatched
-				// partial before throwing; the throw below is the real failure.
-			}
-			throw new Error(
-				`[mobile-device-bridge] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}; aborting and removing partial file.`,
-			);
-		}
-		renameSync(stagingPath, finalPath);
 		logger.info(
 			`[mobile-device-bridge] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
 		);

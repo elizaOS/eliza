@@ -60,6 +60,7 @@ import {
 	resolveStoredModelPath,
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
+import { createModelDownloadDeadline } from "../shared/model-download-deadline.ts";
 import {
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
@@ -3176,26 +3177,41 @@ async function runNativeModelDownload(
 		localInferenceDownloadsPath(),
 		`${model.id}.part`,
 	);
-	const response = await fetch(modelDownloadUrl(model), { redirect: "follow" });
-	if (!response.ok) {
-		throw new Error(
-			`Failed to download ${model.id}: HTTP ${response.status} ${response.statusText}`,
-		);
-	}
-	if (!response.body) {
-		throw new Error(`Failed to download ${model.id}: response body is empty`);
-	}
-	const contentLength =
-		positiveInteger(response.headers.get("content-length")) ?? totalEstimate;
-	updateNativeDownloadJob(model.id, { total: contentLength });
-	const writer = createWriteStream(partialPath);
+	const deadline = createModelDownloadDeadline({
+		label: `iOS model download ${model.id}`,
+	});
+	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+	let writer: ReturnType<typeof createWriteStream> | undefined;
 	let received = 0;
 	try {
-		const reader = response.body.getReader();
+		const response = await fetch(modelDownloadUrl(model), {
+			redirect: "follow",
+			signal: deadline.signal,
+		});
+		deadline.noteProgress();
+		if (!response.ok) {
+			try {
+				await response.body?.cancel();
+			} catch {
+				// error-policy:J6 best-effort teardown of a rejected response body.
+			}
+			throw new Error(
+				`Failed to download ${model.id}: HTTP ${response.status} ${response.statusText}`,
+			);
+		}
+		if (!response.body) {
+			throw new Error(`Failed to download ${model.id}: response body is empty`);
+		}
+		const contentLength =
+			positiveInteger(response.headers.get("content-length")) ?? totalEstimate;
+		updateNativeDownloadJob(model.id, { total: contentLength });
+		writer = createWriteStream(partialPath);
+		reader = response.body.getReader();
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			if (!value) continue;
+			deadline.noteProgress();
 			received += value.byteLength;
 			await writeDownloadChunk(writer, value);
 			const elapsedSeconds = Math.max(1, (Date.now() - startedMs) / 1000);
@@ -3230,13 +3246,26 @@ async function runNativeModelDownload(
 			etaMs: 0,
 		});
 	} catch (error) {
+		const failure = deadline.failure(error);
 		updateNativeDownloadJob(model.id, {
 			state: "failed",
-			error: error instanceof Error ? error.message : String(error),
+			error: failure instanceof Error ? failure.message : String(failure),
 		});
-		writer.destroy();
-		rmSync(partialPath, { force: true });
-		throw error;
+		try {
+			await reader?.cancel();
+		} catch {
+			// error-policy:J6 best-effort teardown of the failed response stream.
+		}
+		writer?.destroy();
+		try {
+			rmSync(partialPath, { force: true });
+		} catch {
+			// error-policy:J6 best-effort teardown of the failed partial file.
+		}
+		throw failure;
+	} finally {
+		reader?.releaseLock();
+		deadline.dispose();
 	}
 }
 

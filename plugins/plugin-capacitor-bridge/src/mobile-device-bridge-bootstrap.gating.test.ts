@@ -15,6 +15,7 @@ const ENV_KEYS = [
 	"ELIZA_LOCAL_LLAMA",
 	"ELIZA_BIONIC_HOST_DELEGATED",
 	"ELIZA_BIONIC_INFERENCE_SOCK",
+	"ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD",
 ];
 const saved: Record<string, string | undefined> = {};
 
@@ -39,6 +40,7 @@ describe("ensureMobileDeviceBridgeInferenceHandlers — dead-bridge gating (#112
 			saved[k] = process.env[k];
 			delete process.env[k];
 		}
+		process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD = "1";
 	});
 	afterEach(() => {
 		for (const k of ENV_KEYS) {
@@ -80,10 +82,12 @@ describe("ensureMobileDeviceBridgeInferenceHandlers — dead-bridge gating (#112
 		expect(runtime.registerModel).toHaveBeenCalled();
 	});
 
-	it("exports RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS with 10-minute bound", async () => {
-		const { RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS } = await import(
-			"./mobile-device-bridge-bootstrap"
-		);
-		expect(RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS).toBe(600_000);
+	it("exports progressive and absolute model-download bounds", async () => {
+		const {
+			RECOMMENDED_MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
+			RECOMMENDED_MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
+		} = await import("./mobile-device-bridge-bootstrap");
+		expect(RECOMMENDED_MODEL_DOWNLOAD_IDLE_TIMEOUT_MS).toBe(300_000);
+		expect(RECOMMENDED_MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS).toBe(86_400_000);
 	});
 });
