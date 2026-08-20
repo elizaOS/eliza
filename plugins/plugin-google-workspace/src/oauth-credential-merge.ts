@@ -12,12 +12,12 @@ export const MAX_OAUTH_CREDENTIAL_NODES = 2_048;
 export const GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED = "GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED";
 
 export type OauthCredentialFields = {
-  access_token?: string;
-  refresh_token?: string;
-  id_token?: string;
-  token_type?: string;
-  scope?: string;
-  expiry_date?: number;
+  access_token?: string | null;
+  refresh_token?: string | null;
+  id_token?: string | null;
+  token_type?: string | null;
+  scope?: string | null;
+  expiry_date?: number | null;
 };
 
 type WalkContext = {
