@@ -127,7 +127,7 @@ describe("landing Shared-agent capability contract", () => {
     }
   });
 
-  test("starts every room with four human messages and Eliza's first reply", () => {
+  test("starts every room with four humans, Eliza's reply, and its embed", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
       expect(
         scenario.steps

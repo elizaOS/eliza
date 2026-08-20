@@ -100,7 +100,7 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 };
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
-const PREFILLED_INTRO_ITEMS = 5;
+const PREFILLED_INTRO_ITEMS = 6;
 const USER_KEYSTROKE_MS = 38;
 const HUMAN_REPLY_BASE_MS = 1_100;
 const HUMAN_REPLY_PER_CHARACTER_MS = 18;

@@ -84,14 +84,14 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("prefills through Eliza's first reply, then resumes the flow", async ({
+test("prefills through Eliza's first embed, then resumes the flow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-messages", "5");
+  await expect(phone).toHaveAttribute("data-demo-messages", "6");
   await expect(
     page.getByText("dinner this weekend?", { exact: true }),
   ).toBeVisible();
@@ -106,9 +106,9 @@ test("prefills through Eliza's first reply, then resumes the flow", async ({
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
-  await expect(page.locator(".landing-demo-card")).toHaveCount(1, {
-    timeout: 3_000,
+  await expect(page.locator(".landing-demo-card")).toHaveCount(1);
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
+    timeout: 4_000,
   });
 });
 
