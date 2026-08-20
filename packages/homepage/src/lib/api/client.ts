@@ -32,6 +32,9 @@ function buildUrl(path: string, params?: Record<string, string>): string {
   return url.toString();
 }
 
+/** Fail closed instead of hanging when an Eliza Cloud hop never responds. */
+const ELIZACLOUD_FETCH_TIMEOUT_MS = 15_000;
+
 export async function elizacloudFetch<T = unknown>(
   path: string,
   init?: ApiRequestInit,
@@ -40,6 +43,7 @@ export async function elizacloudFetch<T = unknown>(
   const url = buildUrl(path, params);
   const res = await fetch(url, {
     ...reqInit,
+    signal: reqInit.signal ?? AbortSignal.timeout(ELIZACLOUD_FETCH_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       ...reqInit.headers,
