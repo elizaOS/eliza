@@ -1262,7 +1262,11 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
     });
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
     await options?.afterCopyBeforeAudit?.();
-    await removeEscapingStagedSymlinks(targetPath, targetPath);
+    const canonicalTargetRoot = await fs.realpath(targetPath);
+    await removeEscapingStagedSymlinks(
+      canonicalTargetRoot,
+      canonicalTargetRoot,
+    );
   } catch (error) {
     try {
       await fs.rm(targetPath, { recursive: true, force: true });
@@ -1352,7 +1356,7 @@ async function stageConfinedNodeModulesSymlink(
   const rawTarget = await fs.readlink(sourcePath);
   if (path.isAbsolute(rawTarget)) return;
   const canonicalTarget = await resolveSymlinkTargetIfPresent(sourcePath);
-  if (!canonicalTarget || !pathIsWithinRoot(canonicalTarget, canonicalRoot)) {
+  if (!canonicalTarget || !isPathInsideRoot(canonicalTarget, canonicalRoot)) {
     return;
   }
   await fs.symlink(rawTarget, targetPath);
