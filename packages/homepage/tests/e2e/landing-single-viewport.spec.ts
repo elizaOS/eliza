@@ -84,7 +84,7 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("the loop keeps a tall mobile thread filled after pruning", async ({
+test("the completed follow-up keeps a tall mobile thread filled", async ({
   page,
 }) => {
   test.setTimeout(75_000);
@@ -93,19 +93,10 @@ test("the loop keeps a tall mobile thread filled after pruning", async ({
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-phase", "looping", {
+  await expect(phone).toHaveAttribute("data-demo-phase", "settled", {
     timeout: 60_000,
   });
-  await expect
-    .poll(
-      async () =>
-        Number.parseInt(
-          (await phone.getAttribute("data-demo-messages")) ?? "0",
-          10,
-        ),
-      { timeout: 45_000 },
-    )
-    .toBeGreaterThan(20);
+  await expect(phone).toHaveAttribute("data-demo-messages", "24");
 
   await expect
     .poll(

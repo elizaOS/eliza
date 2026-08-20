@@ -81,6 +81,11 @@ test("reduced motion renders the settled intro conversation", async ({
     new Set(["Maya", "Leo", "Priya", "Jamie", "Eliza"]),
   );
   await expect(page.locator(".landing-group-avatar")).toHaveCount(4);
+  await expect(page.locator(".landing-group-avatar").last()).toHaveAttribute(
+    "src",
+    "/brand/logos/logo_white_orangebg.svg",
+  );
+  await expect(page.locator('img[src="/elizapfp.webp"]')).toHaveCount(0);
   expect(await page.locator(".landing-message-avatar").count()).toBeGreaterThan(
     5,
   );

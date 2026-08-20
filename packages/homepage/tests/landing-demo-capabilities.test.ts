@@ -7,12 +7,12 @@ import { describe, expect, test } from "bun:test";
 import {
   findUnsupportedLandingDemoClaims,
   LANDING_DEMO_CAPABILITIES,
+  LANDING_DEMO_FOLLOWUP,
   LANDING_DEMO_INTRO,
-  LANDING_DEMO_LOOP,
   landingDemoStepText,
 } from "../src/lib/landing-demo";
 
-const LANDING_DEMO = [...LANDING_DEMO_INTRO, ...LANDING_DEMO_LOOP];
+const LANDING_DEMO = [...LANDING_DEMO_INTRO, ...LANDING_DEMO_FOLLOWUP];
 
 describe("landing Shared-agent capability contract", () => {
   test("portrays only bounded conversation memory", () => {
@@ -85,6 +85,15 @@ describe("landing Shared-agent capability contract", () => {
         (step) => step.kind === "eliza" && step.text.includes("Jamie"),
       ),
     ).toBe(true);
+  });
+
+  test("ends with one finite follow-up instead of repeating the neighborhood vote", () => {
+    const followupText = LANDING_DEMO_FOLLOWUP.map(landingDemoStepText);
+    const neighborhoodMentions = followupText.join(" ").match(/Noe Valley/gi);
+
+    expect(LANDING_DEMO_FOLLOWUP).toHaveLength(7);
+    expect(new Set(followupText).size).toBe(followupText.length);
+    expect(neighborhoodMentions).toHaveLength(1);
   });
 
   test.each([

@@ -30,8 +30,8 @@ import {
   openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
+  LANDING_DEMO_FOLLOWUP,
   LANDING_DEMO_INTRO,
-  LANDING_DEMO_LOOP,
   type LandingDemoCard,
   type LandingDemoStep,
 } from "@/lib/landing-demo";
@@ -86,7 +86,10 @@ interface DemoSender {
 }
 
 const DEMO_SENDERS: Record<string, DemoSender> = {
-  Eliza: { avatar: "/elizapfp.webp", name: "Eliza" },
+  Eliza: {
+    avatar: "/brand/logos/logo_white_orangebg.svg",
+    name: "Eliza",
+  },
   Jamie: { avatar: "/brand/people/demo-jamie.webp", name: "Jamie" },
   Leo: { avatar: "/brand/people/demo-leo.webp", name: "Leo" },
   Maya: { avatar: "/brand/people/demo-maya.webp", name: "Maya" },
@@ -94,7 +97,7 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 };
 
 const DEMO_INTRO: readonly DemoStep[] = LANDING_DEMO_INTRO;
-const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
+const DEMO_FOLLOWUP: readonly DemoStep[] = LANDING_DEMO_FOLLOWUP;
 
 // Retain at least the opening conversation, then prune only when the rendered
 // transcript exceeds two real thread viewports. A count cap leaves tall phones
@@ -221,7 +224,7 @@ function PhoneMockup() {
   const [items, setItems] = useState<DemoItem[]>(() =>
     settledIntroItems().slice(0, INITIAL_RENDERED_ITEMS),
   );
-  const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
+  const [phase, setPhase] = useState<"followup" | "intro" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
@@ -273,8 +276,8 @@ function PhoneMockup() {
           });
         } else if (step.kind === "eliza") {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
+          if (cancelled) return;
           if (!step.continuation) {
-            if (cancelled) return;
             setElizaTyping(true);
             await sleep(ELIZA_TYPING_MS);
             if (cancelled) return;
@@ -298,10 +301,10 @@ function PhoneMockup() {
     (async () => {
       await play(DEMO_INTRO.slice(INITIAL_RENDERED_ITEMS));
       if (cancelled) return;
-      setPhase("looping");
-      while (!cancelled) {
-        await play(DEMO_LOOP);
-      }
+      setPhase("followup");
+      await play(DEMO_FOLLOWUP);
+      if (cancelled) return;
+      setPhase("settled");
     })();
 
     return () => {
@@ -309,14 +312,14 @@ function PhoneMockup() {
     };
   }, []);
 
-  // Bound the looping demo by rendered height rather than row count. Keeping
+  // Bound the animated transcript by rendered height rather than row count. Keeping
   // roughly two viewports preserves enough history to fill tall phones while
   // preventing the endless loop from growing the DOM without limit.
   useLayoutEffect(() => {
     const thread = threadRef.current;
     if (
       !thread ||
-      phase !== "looping" ||
+      phase !== "followup" ||
       items.length <= MIN_RENDERED_ITEMS ||
       thread.clientHeight <= 0 ||
       thread.scrollHeight <= thread.clientHeight * MAX_BUFFERED_THREAD_VIEWPORTS

@@ -23,7 +23,6 @@ export const HOMEPAGE_PUBLIC_ASSETS = [
   "brand/people/demo-priya.webp",
   "eliza-logo.webp",
   "eliza-app-profile-image.webp",
-  "elizapfp.webp",
   "elizawallpaper.webp",
   "geist-sans-latin-ext.woff2",
   "geist-sans-latin.woff2",

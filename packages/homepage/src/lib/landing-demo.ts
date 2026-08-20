@@ -212,20 +212,20 @@ export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
   },
 ];
 
-export const LANDING_DEMO_LOOP: readonly LandingDemoStep[] = [
-  { kind: "member", name: "Priya", text: "Noe Valley has my vote" },
-  { kind: "user", text: "same" },
+export const LANDING_DEMO_FOLLOWUP: readonly LandingDemoStep[] = [
+  { kind: "member", name: "Priya", text: "Noe has my vote" },
+  { kind: "user", text: "same here" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Noe Valley is ahead so far. Jamie and Maya haven't picked yet.",
+    text: "That's two votes for Noe. Waiting on Jamie and Maya.",
   },
-  { kind: "member", name: "Jamie", text: "Noe Valley for me too" },
+  { kind: "member", name: "Jamie", text: "I'm good with that" },
   { kind: "member", name: "Maya", text: "works for me" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Noe Valley it is. The restaurant is the last open choice.",
+    text: "Neighborhood settled. The restaurant is the last open choice.",
   },
   {
     capability: "conversation-memory",
@@ -233,12 +233,8 @@ export const LANDING_DEMO_LOOP: readonly LandingDemoStep[] = [
     card: {
       capability: "conversation-memory",
       label: "Current plan",
-      title: "Noe Valley · Saturday 7:30",
-      rows: [
-        "Everyone can make it",
-        "Quiet + outdoor option",
-        "Open: restaurant",
-      ],
+      title: "Saturday · 7:30 PM",
+      rows: ["Noe Valley", "Everyone can make it", "Quiet + outdoor option"],
       status: "Updated from this group",
       statusKind: "open",
     },
