@@ -106,6 +106,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemory,
   persistExactConversationMemoryResult,
+  persistInterruptedAssistantReceipt,
   readChatRequestPayload,
   releaseChatMessageId,
   resolveNoResponseFallback,
@@ -1305,6 +1306,7 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "accountConnect",
   "localInference",
   "noResponseReason",
+  "interrupted",
 ]);
 
 function isChannelType(value: unknown): value is ChannelType {
@@ -1416,7 +1418,9 @@ function parseDurableConversationChatOutcome(
     (outcome.localInference !== undefined &&
       !isRecord(outcome.localInference)) ||
     (outcome.noResponseReason !== undefined &&
-      outcome.noResponseReason !== "ignored")
+      outcome.noResponseReason !== "ignored") ||
+    (outcome.interrupted !== undefined &&
+      typeof outcome.interrupted !== "boolean")
   ) {
     return null;
   }
@@ -1469,6 +1473,7 @@ function parseDurableConversationChatOutcome(
     ...(outcome.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(outcome.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1975,6 +1980,7 @@ function buildConversationJsonOutcome(
     ...(outcome.noResponseReason
       ? { noResponseReason: outcome.noResponseReason }
       : {}),
+    ...(outcome.interrupted ? { interrupted: true } : {}),
   };
 }
 
@@ -2298,6 +2304,14 @@ type ConversationRouteMessageRecord = {
    * the renderer's inline AddAccountDialog entry point survives a reload.
    */
   accountConnect?: AccountConnectRequest;
+  /**
+   * The turn ended by explicit Stop/disconnect abort. Persisted on the
+   * assistant memory as `content.interrupted` by
+   * `persistInterruptedAssistantReceipt`; round-tripped here so reload
+   * recovery renders the interrupted terminal state (zero-token receipts
+   * included) instead of a healthy reply or a missing row.
+   */
+  interrupted?: boolean;
 };
 
 // Greeting lookup and persistence share the room's history-writer boundary.
@@ -2985,6 +2999,7 @@ export async function handleConversationRoutes(
             content.accountConnect,
           );
           const role = m.entityId === agentId ? "assistant" : "user";
+          const interrupted = content.interrupted === true;
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
             actionCallbackHistory,
@@ -3074,6 +3089,7 @@ export async function handleConversationRoutes(
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
             ...(accountConnect ? { accountConnect } : {}),
+            ...(interrupted ? { interrupted: true } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -3081,7 +3097,13 @@ export async function handleConversationRoutes(
         // Without this filter they appear as blank chat bubbles. Image-only
         // turns (uploaded or generated media with no caption) are kept.
         .filter(
-          (m) => m.text.trim().length > 0 || (m.attachments?.length ?? 0) > 0,
+          (m) =>
+            m.text.trim().length > 0 ||
+            (m.attachments?.length ?? 0) > 0 ||
+            // A zero-token interrupted receipt has no text but IS the turn's
+            // terminal state; dropping it would leave the user turn unanswered
+            // on reload and invite regeneration.
+            m.interrupted === true,
         );
       const discordMessages = messages.filter((message) =>
         mayNeedDiscordMessageEnrichment(message.source),
@@ -4426,16 +4448,66 @@ export async function handleConversationRoutes(
             }
           } else if (isTurnAbortError(terminalError)) {
             logger.info(
-              { conversationId: conv.id, roomId: conv.roomId },
-              "[ConversationStream] generation aborted",
+              {
+                conversationId: conv.id,
+                roomId: conv.roomId,
+                streamedTextLength: streamedText.length,
+              },
+              "[ConversationStream] generation aborted; persisting interrupted receipt",
             );
+            // Stop/disconnect is a terminal outcome of the turn, not a
+            // discarded one: persist the interrupted receipt (partial text or
+            // the zero-token case) and settle the idempotency key so reload
+            // recovery and a retried clientMessageId adopt this durable state
+            // instead of regenerating (#17216).
             if (
               !getChatMessageIdOutcome(
                 chatIdempotencyScope,
                 clientMessageId ?? null,
               )
             ) {
-              releaseTurnReservation();
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const receiptId = crypto.randomUUID() as UUID;
+                const persisted = await persistInterruptedAssistantReceipt(
+                  runtime,
+                  conv.roomId,
+                  streamedText,
+                  channelType,
+                  messageToStore.id,
+                  receiptId,
+                  runtimeTurnLease,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const interruptedOutcome: ChatMessageIdOutcome = {
+                  text: streamedText,
+                  agentName: state.agentName,
+                  ...(persisted.id ? { messageId: persisted.id } : {}),
+                  userMessageId: messageToStore.id,
+                  interrupted: true,
+                };
+                await settleTurnReservation(interruptedOutcome);
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, interruptedOutcome);
+                }
+              } catch (persistErr) {
+                // error-policy:J4 the interrupted receipt is best-effort
+                // terminal state for an already-severed transport; on write
+                // failure the key is released so the client's next send owns a
+                // fresh turn rather than replaying a half-settled outcome.
+                logger.warn(
+                  {
+                    err: getErrorMessage(persistErr),
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                  },
+                  "[ConversationStream] failed to persist interrupted receipt",
+                );
+                releaseTurnReservation();
+              }
             }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
