@@ -674,8 +674,25 @@ export async function runCli(
       }
       return report;
     });
-    const report = buildScenarioStabilityReport(plan, reports);
-    writeScenarioStabilityReport(plan, report);
+    let report: ReturnType<typeof buildScenarioStabilityReport>;
+    try {
+      report = buildScenarioStabilityReport(plan, reports);
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates invalid aggregate report sets into usage errors.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    try {
+      writeScenarioStabilityReport(plan, report);
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates unsafe or conflicting output artifacts into usage errors.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return report.status === "passed" ? 0 : 1;
   }
