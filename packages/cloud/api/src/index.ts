@@ -30,11 +30,13 @@ import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-tele
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
+import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { isThinCliSessionPath } from "./cli-session-paths";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
@@ -48,6 +50,8 @@ let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 /** Lazy thin shell for login-critical Steward GETs (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Lazy thin shell for the CLI-session login hot path (#22948). */
+let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy provider-webhook shell that avoids the generated application router. */
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
@@ -201,6 +205,16 @@ export function decorateFullAppDispatchResponse(
   const responseHeaders = new Headers(response.headers);
   setHttpTelemetryHeaders(responseHeaders, traceId, [
     { name: "full_app_dispatch", durationMs: dispatchMs },
+    // Cold/warm marker on every decorated response: `full_app_module_init`
+    // alone cannot distinguish "warm isolate" from "header stripped", and its
+    // duration under-reports cold bootstrap because workerd freezes the clock
+    // across pure CPU — the cost lands in full_app_dispatch at the first I/O
+    // (#22948).
+    {
+      name: "full_app_isolate",
+      durationMs: 0,
+      description: moduleInitMs === null ? "warm" : "cold",
+    },
     ...(moduleInitMs === null
       ? []
       : [{ name: "full_app_module_init", durationMs: moduleInitMs }]),
@@ -269,6 +283,13 @@ async function getStewardThinApp(): Promise<Hono<AppEnv>> {
     m.createStewardThinApp(),
   );
   return stewardThinAppPromise;
+}
+
+async function getCliSessionThinApp(): Promise<Hono<AppEnv>> {
+  cliSessionThinAppPromise ??= import("./cli-session-app").then((m) =>
+    m.createCliSessionThinApp(),
+  );
+  return cliSessionThinAppPromise;
 }
 
 const ELIZA_APP_WEBHOOK_PATH =
@@ -398,6 +419,40 @@ async function dispatchDiscordGateway(
     status: response.status,
     statusText: response.statusText,
     headers: responseHeaders,
+  });
+}
+
+async function dispatchCliSession(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (!isThinCliSessionPath(request.method, pathname)) return null;
+
+  const dispatchStartedAt = performance.now();
+  const moduleWasInitialized = cliSessionThinAppPromise !== undefined;
+  const app = await getCliSessionThinApp();
+  const moduleInitMs = performance.now() - dispatchStartedAt;
+  const response = await app.fetch(request, env, ctx);
+  const dispatchMs = performance.now() - dispatchStartedAt;
+
+  const headers = new Headers(response.headers);
+  headers.set("X-Eliza-Cli-Session-Path", "thin");
+  headers.append(
+    "Server-Timing",
+    `entry_dispatch;dur=${dispatchMs.toFixed(1)}`,
+  );
+  if (!moduleWasInitialized) {
+    headers.append(
+      "Server-Timing",
+      `cli_session_module_init;dur=${moduleInitMs.toFixed(1)}`,
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -891,6 +946,12 @@ export default {
         ctx,
       );
       if (discordGatewayResponse) return discordGatewayResponse;
+      const cliSessionThinResponse = await dispatchCliSession(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (cliSessionThinResponse) return cliSessionThinResponse;
       const stewardThinResponse = await dispatchThinSteward(
         apiRequest,
         env,
@@ -937,6 +998,10 @@ export default {
       ctx,
     );
     if (discordGatewayResponse) return discordGatewayResponse;
+
+    // CLI-session login hot path before full-app bootstrap (#22948).
+    const cliSessionThinResponse = await dispatchCliSession(request, env, ctx);
+    if (cliSessionThinResponse) return cliSessionThinResponse;
 
     // Login-critical Steward GETs before full-app bootstrap (#18049).
     const stewardThinResponse = await dispatchThinSteward(request, env, ctx);

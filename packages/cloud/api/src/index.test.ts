@@ -267,6 +267,9 @@ test("correlates and times dispatch outside full-app middleware", async () => {
   expect(response.headers.get("server-timing")).toMatch(
     /full_app_module_init;dur=\d+(?:\.\d+)?/,
   );
+  expect(response.headers.get("server-timing")).toContain(
+    'full_app_isolate;dur=0;desc="cold"',
+  );
 
   const warmResponse = await cloudApiWorker.fetch(
     makeRequest(),
@@ -278,6 +281,9 @@ test("correlates and times dispatch outside full-app middleware", async () => {
   );
   expect(warmResponse.headers.get("server-timing")).not.toContain(
     "full_app_module_init",
+  );
+  expect(warmResponse.headers.get("server-timing")).toContain(
+    'full_app_isolate;dur=0;desc="warm"',
   );
 });
 
