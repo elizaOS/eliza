@@ -22,7 +22,7 @@
  * @see https://agentskills.io/specification
  */
 
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
 	estimateTokens,
 	extractBody,
@@ -36,10 +36,13 @@ import {
 } from "../security/skill-execution-env";
 import type { SkillScanReport, SkillScanStatus } from "../security/types";
 import {
+	createSkillPackage,
+	createSkillPackageFromZip,
 	createStorage,
 	FileSystemSkillStore,
 	type ISkillStorage,
 	MemorySkillStore,
+	type SkillPackage,
 } from "../storage";
 import type {
 	CacheOptions,
@@ -114,6 +117,54 @@ const ELIGIBILITY_CACHE_TTL = 5 * 60 * 1000;
 interface CacheEntry<T> {
 	data: T;
 	cachedAt: number;
+}
+
+async function waitForMutexTurn(
+	turn: Promise<void>,
+	signal?: AbortSignal,
+): Promise<void> {
+	if (!signal) return turn;
+	signal.throwIfAborted();
+	await new Promise<void>((resolve, reject) => {
+		const onAbort = (): void => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		turn.then(resolve, reject).finally(() => {
+			signal.removeEventListener("abort", onAbort);
+		});
+	});
+	signal.throwIfAborted();
+}
+
+class AbortableMutex {
+	private tail: Promise<void> = Promise.resolve();
+	private users = 0;
+
+	get idle(): boolean {
+		return this.users === 0;
+	}
+
+	async run<T>(signal: AbortSignal | undefined, task: () => Promise<T>): Promise<T> {
+		this.users += 1;
+		const prior = this.tail.catch(() => undefined);
+		let release = (): void => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		this.tail = prior.then(() => gate);
+		try {
+			await waitForMutexTurn(prior, signal);
+			return await task();
+		} finally {
+			release();
+			this.users -= 1;
+		}
+	}
+}
+
+interface PreparedLockfileUpdate {
+	publish(): void;
+	rollback(): void;
+	finalize(): void;
 }
 
 // ============================================================
@@ -269,6 +320,8 @@ export class AgentSkillsService extends Service {
 	// Catalog cache for disk persistence (filesystem mode only)
 	private catalogCachePath: string | null = null;
 	private lockfilePath: string | null = null;
+	private readonly installMutexes = new Map<string, AbortableMutex>();
+	private readonly lockfileMutex = new AbortableMutex();
 
 	// Tracks the last catalog fetch failure timestamp for backoff.
 	private lastFetchErrorAt: number = 0;
@@ -2137,105 +2190,6 @@ export class AgentSkillsService extends Service {
 	// ============================================================
 
 	/**
-	 * Run a security scan on a skill that was just saved to storage.
-	 * Returns the scan report and persists it alongside the skill.
-	 *
-	 * For filesystem storage: scans the directory on disk.
-	 * For memory storage: scans the in-memory package files.
-	 *
-	 * @param slug - Skill slug to scan
-	 * @returns The scan report
-	 */
-	private async scanInstalledSkill(slug: string): Promise<SkillScanReport> {
-		if (this.storage instanceof FileSystemSkillStore) {
-			const { scanSkillDirectory, saveScanReport } = await import(
-				"../security/index"
-			);
-			const skillPath = this.storage.getSkillPath(slug);
-			const report = await scanSkillDirectory(skillPath);
-			await saveScanReport(skillPath, report);
-			return report;
-		}
-
-		// Memory mode
-		const { scanSkillPackage } = await import("../security/index");
-		const memStore = this.storage as MemorySkillStore;
-		const pkg = memStore.getPackage(slug);
-		if (!pkg) {
-			return {
-				scannedAt: new Date().toISOString(),
-				status: "blocked",
-				summary: { scannedFiles: 0, critical: 1, warn: 0, info: 0 },
-				findings: [],
-				manifestFindings: [
-					{
-						ruleId: "missing-skill-md",
-						severity: "critical",
-						file: "SKILL.md",
-						message: "Skill package not found in memory",
-					},
-				],
-				skillPath: memStore.getSkillPath(slug),
-			};
-		}
-		const report = scanSkillPackage(
-			pkg.files as Map<
-				string,
-				{ content: string | Uint8Array; isText: boolean }
-			>,
-			memStore.getSkillPath(slug),
-		);
-
-		// Persist scan report into the memory package
-		pkg.files.set(".scan-results.json", {
-			path: ".scan-results.json",
-			content: JSON.stringify(report, null, 2),
-			isText: true,
-		});
-
-		return report;
-	}
-
-	/**
-	 * Handle the result of a security scan after installation.
-	 *
-	 * - "blocked": Delete the skill and throw an error
-	 * - "critical"/"warning": Track scan status (skill starts disabled when consumed by Eliza API)
-	 * - "clean": No action needed
-	 *
-	 * @returns The scan report
-	 * @throws Error if the skill is blocked
-	 */
-	private async handleScanResult(
-		slug: string,
-		report: SkillScanReport,
-	): Promise<SkillScanReport> {
-		if (report.status === "blocked") {
-			// Remove the skill entirely — it is unsafe to keep on disk
-			await this.storage.deleteSkill(slug);
-			const reasons = [
-				...report.findings.map((f) => f.message),
-				...report.manifestFindings.map((f) => f.message),
-			];
-			throw new Error(
-				`Skill "${slug}" blocked by security scan: ${reasons.join("; ")}`,
-			);
-		}
-
-		if (report.status === "critical" || report.status === "warning") {
-			this.scanStatusMap.set(slug, report.status);
-			this.runtime.logger.warn(
-				`AgentSkills: Security scan for "${slug}": ${report.status} ` +
-					`(${report.summary.critical} critical, ${report.summary.warn} warnings)`,
-			);
-		} else {
-			this.scanStatusMap.delete(slug);
-		}
-
-		return report;
-	}
-
-	/**
 	 * Get the scan status for a skill, or null if it was never scanned
 	 * (e.g. bundled/workspace skills are trusted).
 	 */
@@ -2292,6 +2246,283 @@ export class AgentSkillsService extends Service {
 	// INSTALLATION
 	// ============================================================
 
+	private async withSkillInstallMutex<T>(
+		slug: string,
+		signal: AbortSignal | undefined,
+		task: () => Promise<T>,
+	): Promise<T> {
+		let mutex = this.installMutexes.get(slug);
+		if (!mutex) {
+			mutex = new AbortableMutex();
+			this.installMutexes.set(slug, mutex);
+		}
+		try {
+			return await mutex.run(signal, task);
+		} finally {
+			if (mutex.idle && this.installMutexes.get(slug) === mutex) {
+				this.installMutexes.delete(slug);
+			}
+		}
+	}
+
+	private async prepareLockfileUpdate(
+		slug: string,
+		version: string | undefined,
+		signal?: AbortSignal,
+	): Promise<PreparedLockfileUpdate> {
+		if (!version || !this.lockfilePath || this.storage.type !== "filesystem") {
+			return { publish() {}, rollback() {}, finalize() {} };
+		}
+		signal?.throwIfAborted();
+		const fs = await import("node:fs");
+		const path = await import("node:path");
+		signal?.throwIfAborted();
+		const cacheDir = path.dirname(this.lockfilePath);
+		fs.mkdirSync(cacheDir, { recursive: true });
+
+		let lockfile: Record<string, { version: string; installedAt: string }> = {};
+		if (fs.existsSync(this.lockfilePath)) {
+			try {
+				const parsed: unknown = JSON.parse(
+					fs.readFileSync(this.lockfilePath, "utf-8"),
+				);
+				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+					throw new Error("lockfile root is not an object");
+				}
+				lockfile = parsed as Record<
+					string,
+					{ version: string; installedAt: string }
+				>;
+			} catch (cause) {
+				// error-policy:J2 A corrupt lockfile cannot be silently replaced during
+				// an install because it is part of the authoritative transaction state.
+				throw new ElizaError("Skill lockfile is malformed", {
+					code: "SKILL_LOCKFILE_INVALID",
+					context: { path: this.lockfilePath },
+					cause,
+				});
+			}
+		}
+		lockfile[slug] = { version, installedAt: new Date().toISOString() };
+
+		const stagingDir = fs.mkdtempSync(path.join(cacheDir, ".lock-update-"));
+		const candidatePath = path.join(stagingDir, "next.json");
+		const backupPath = path.join(stagingDir, "previous.json");
+		const descriptor = fs.openSync(candidatePath, "wx");
+		try {
+			fs.writeFileSync(descriptor, JSON.stringify(lockfile, null, 2), "utf-8");
+			fs.fsyncSync(descriptor);
+		} finally {
+			fs.closeSync(descriptor);
+		}
+		signal?.throwIfAborted();
+
+		let movedPrevious = false;
+		let published = false;
+		let finished = false;
+		const rollback = (): void => {
+			if (finished) return;
+			if (published && fs.existsSync(this.lockfilePath as string)) {
+				fs.rmSync(this.lockfilePath as string, { force: true });
+			}
+			if (movedPrevious && fs.existsSync(backupPath)) {
+				fs.renameSync(backupPath, this.lockfilePath as string);
+			}
+			fs.rmSync(stagingDir, { recursive: true, force: true });
+			finished = true;
+		};
+
+		return {
+			publish: () => {
+				if (finished) throw new Error("Lockfile update is already finalized");
+				signal?.throwIfAborted();
+				try {
+					if (fs.existsSync(this.lockfilePath as string)) {
+						fs.renameSync(this.lockfilePath as string, backupPath);
+						movedPrevious = true;
+					}
+					fs.renameSync(candidatePath, this.lockfilePath as string);
+					published = true;
+				} catch (cause) {
+					rollback();
+					throw cause;
+				}
+			},
+			rollback,
+			finalize: () => {
+				if (finished) return;
+				finished = true;
+				try {
+					fs.rmSync(stagingDir, { recursive: true, force: true });
+				} catch (cause) {
+					// error-policy:J6 The lockfile commit is authoritative; backup cleanup
+					// is teardown-only and must not fabricate an install failure.
+					this.runtime.logger.warn(
+						`AgentSkills: Failed to remove lockfile backup: ${cause instanceof Error ? cause.message : String(cause)}`,
+					);
+				}
+			},
+		};
+	}
+
+	private async commitCandidate(
+		pkg: SkillPackage,
+		options: { signal?: AbortSignal; version?: string },
+	): Promise<SkillScanReport> {
+		const signal = options.signal;
+		signal?.throwIfAborted();
+		const candidate = createSkillPackage(
+			pkg.slug,
+			[...pkg.files.values()].map((file) => ({
+				name: file.path,
+				content: file.content,
+			})),
+		);
+		const { scanSkillPackage, SCAN_REPORT_FILENAME } = await import(
+			"../security/index"
+		);
+		signal?.throwIfAborted();
+		const scanReport = scanSkillPackage(
+			candidate.files,
+			this.storage.getSkillPath(candidate.slug),
+		);
+		if (scanReport.status === "blocked") {
+			const reasons = [
+				...scanReport.findings.map((finding) => finding.message),
+				...scanReport.manifestFindings.map((finding) => finding.message),
+			];
+			throw new ElizaError(
+				`Skill "${candidate.slug}" blocked by security scan: ${reasons.join("; ")}`,
+				{
+					code: "SKILL_SECURITY_BLOCKED",
+					context: { slug: candidate.slug },
+				},
+			);
+		}
+		candidate.files.set(SCAN_REPORT_FILENAME, {
+			path: SCAN_REPORT_FILENAME,
+			content: JSON.stringify(scanReport, null, 2),
+			isText: true,
+		});
+
+		const candidateStorage = new MemorySkillStore();
+		await candidateStorage.initialize();
+		await candidateStorage.saveSkill(candidate);
+		const loadedCandidate = await this.loadSkillFromStorageWithSource(
+			candidateStorage,
+			candidate.slug,
+			"managed",
+			this.storage.getSkillPath(candidate.slug),
+		);
+		signal?.throwIfAborted();
+		if (!loadedCandidate) {
+			throw new ElizaError("Installed skill could not be loaded", {
+				code: "SKILL_LOAD_FAILED",
+				context: { slug: candidate.slug },
+			});
+		}
+		loadedCandidate.path = this.storage.getSkillPath(candidate.slug);
+
+		const replacement = await this.storage.prepareReplacement(candidate, {
+			signal,
+		});
+		let committed = false;
+		try {
+			await this.lockfileMutex.run(signal, async () => {
+				const lockfileUpdate = await this.prepareLockfileUpdate(
+					candidate.slug,
+					options.version,
+					signal,
+				);
+				const previousLoaded = this.loadedSkills.get(candidate.slug);
+				const hadLoaded = this.loadedSkills.has(candidate.slug);
+				const previousScanStatus = this.scanStatusMap.get(candidate.slug);
+				const hadScanStatus = this.scanStatusMap.has(candidate.slug);
+				const previousEligibility = this.eligibilityCache.get(candidate.slug);
+				const hadEligibility = this.eligibilityCache.has(candidate.slug);
+				let storagePublished = false;
+				let lockfilePublished = false;
+				try {
+					signal?.throwIfAborted();
+					replacement.publish();
+					storagePublished = true;
+					signal?.throwIfAborted();
+					lockfileUpdate.publish();
+					lockfilePublished = true;
+					signal?.throwIfAborted();
+
+					if (previousLoaded?.source !== "workspace") {
+						if (previousLoaded) {
+							loadedCandidate.overrides = `${previousLoaded.source}:${previousLoaded.sourceDir}`;
+						}
+						this.loadedSkills.set(candidate.slug, loadedCandidate);
+					}
+					if (
+						scanReport.status === "critical" ||
+						scanReport.status === "warning"
+					) {
+						this.scanStatusMap.set(candidate.slug, scanReport.status);
+					} else {
+						this.scanStatusMap.delete(candidate.slug);
+					}
+					this.eligibilityCache.delete(candidate.slug);
+					signal?.throwIfAborted();
+					committed = true;
+					replacement.finalize();
+					lockfileUpdate.finalize();
+				} catch (cause) {
+					const rollbackFailures: unknown[] = [];
+					if (hadLoaded && previousLoaded) {
+						this.loadedSkills.set(candidate.slug, previousLoaded);
+					} else {
+						this.loadedSkills.delete(candidate.slug);
+					}
+					if (hadScanStatus && previousScanStatus) {
+						this.scanStatusMap.set(candidate.slug, previousScanStatus);
+					} else {
+						this.scanStatusMap.delete(candidate.slug);
+					}
+					if (hadEligibility && previousEligibility) {
+						this.eligibilityCache.set(candidate.slug, previousEligibility);
+					} else {
+						this.eligibilityCache.delete(candidate.slug);
+					}
+					if (lockfilePublished) {
+						try {
+							lockfileUpdate.rollback();
+						} catch (rollbackCause) {
+							rollbackFailures.push(rollbackCause);
+						}
+					} else {
+						lockfileUpdate.rollback();
+					}
+					if (storagePublished) {
+						try {
+							replacement.rollback();
+						} catch (rollbackCause) {
+							rollbackFailures.push(rollbackCause);
+						}
+					}
+					if (rollbackFailures.length > 0) {
+						throw new ElizaError("Skill install rollback failed", {
+							code: "SKILL_INSTALL_ROLLBACK_FAILED",
+							context: { slug: candidate.slug },
+							severity: "fatal",
+							cause: new AggregateError(
+								[cause, ...rollbackFailures],
+								"Install and rollback both failed",
+							),
+						});
+					}
+					throw cause;
+				}
+			});
+		} finally {
+			if (!committed) replacement.rollback();
+		}
+		return scanReport;
+	}
+
 	/**
 	 * Install a skill from ClawHub.
 	 *
@@ -2304,88 +2535,74 @@ export class AgentSkillsService extends Service {
 	): Promise<boolean> {
 		try {
 			const safeSlug = sanitizeSlug(slug);
-			const version = options.version || "latest";
+			return await this.withSkillInstallMutex(
+				safeSlug,
+				options.signal,
+				async () => {
+					options.signal?.throwIfAborted();
+					const version = options.version || "latest";
+					if (!options.force && (await this.isInstalled(safeSlug))) {
+						options.signal?.throwIfAborted();
+						this.runtime.logger.info(
+							`AgentSkills: ${safeSlug} already installed`,
+						);
+						return true;
+					}
+					this.runtime.logger.info(
+						`AgentSkills: Installing ${safeSlug}@${version}...`,
+					);
 
-			// Check if already installed (unless force)
-			if (!options.force && (await this.isInstalled(safeSlug))) {
-				this.runtime.logger.info(`AgentSkills: ${safeSlug} already installed`);
-				return true;
-			}
-
-			this.runtime.logger.info(
-				`AgentSkills: Installing ${safeSlug}@${version}...`,
+					const lifecycle = createSkillDownloadLifecycle({
+						signal: options.signal,
+						downloadTimeoutMs:
+							options.downloadTimeoutMs === undefined
+								? this.fetchTimeoutMs
+								: options.downloadTimeoutMs,
+					});
+					let resolvedVersion: string;
+					let zipBuffer: Uint8Array;
+					try {
+						const details = await this.getSkillDetailsWithDeadline(safeSlug, {
+							signal: lifecycle.signal,
+						}, true);
+						if (!details) throw new Error(`Skill "${safeSlug}" not found`);
+						resolvedVersion =
+							version === "latest" ? details.latestVersion.version : version;
+						const response = await fetchInstallResource(
+							`${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`,
+							lifecycle,
+						);
+						if (!response.ok) {
+							cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+							lifecycle.throwIfAborted();
+							throw new Error(`Download failed: ${response.status}`);
+						}
+						zipBuffer = await readCappedSkillPackage(response, {
+							signal: lifecycle.signal,
+						});
+					} finally {
+						lifecycle.dispose();
+					}
+					options.signal?.throwIfAborted();
+					const scanReport = await this.commitCandidate(
+						createSkillPackageFromZip(safeSlug, zipBuffer),
+						{ signal: options.signal, version: resolvedVersion },
+					);
+					this.runtime.logger.info(
+						`AgentSkills: Installed ${safeSlug}@${resolvedVersion} (scan: ${scanReport.status})`,
+					);
+					return true;
+				},
 			);
-
-			const lifecycle = createSkillDownloadLifecycle({
-				signal: options.signal,
-				downloadTimeoutMs:
-					options.downloadTimeoutMs === undefined
-						? this.fetchTimeoutMs
-						: options.downloadTimeoutMs,
-			});
-			let resolvedVersion: string;
-			let zipBuffer: Uint8Array;
-			try {
-				// Catalog resolution and package bytes share one wall-clock deadline.
-				const details = await this.getSkillDetailsWithDeadline(safeSlug, {
-					signal: lifecycle.signal,
-				}, true);
-				if (!details) {
-					throw new Error(`Skill "${safeSlug}" not found`);
-				}
-
-				resolvedVersion =
-					version === "latest" ? details.latestVersion.version : version;
-
-				const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
-				const response = await fetchInstallResource(downloadUrl, lifecycle);
-
-				if (!response.ok) {
-					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
-					lifecycle.throwIfAborted();
-					throw new Error(`Download failed: ${response.status}`);
-				}
-
-				zipBuffer = await readCappedSkillPackage(response, {
-					signal: lifecycle.signal,
-				});
-			} finally {
-				lifecycle.dispose();
-			}
-
-			// Extract and save based on storage type
-			if (this.storage instanceof MemorySkillStore) {
-				await (this.storage as MemorySkillStore).loadFromZip(
-					safeSlug,
-					zipBuffer,
-				);
-			} else if (this.storage instanceof FileSystemSkillStore) {
-				await (this.storage as FileSystemSkillStore).saveFromZip(
-					safeSlug,
-					new Uint8Array(zipBuffer),
-				);
-				// Update lockfile
-				await this.updateLockfile(safeSlug, resolvedVersion);
-			}
-
-			// Security scan — runs after save, before load
-			// Blocked skills are deleted and an error is thrown
-			const scanReport = await this.scanInstalledSkill(safeSlug);
-			await this.handleScanResult(safeSlug, scanReport);
-
-			// Load the skill
-			await this.loadSkill(safeSlug);
-
-			this.runtime.logger.info(
-				`AgentSkills: Installed ${safeSlug}@${resolvedVersion} (scan: ${scanReport.status})`,
-			);
-			return true;
 		} catch (error) {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
-			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
-				throw error;
+			if (options.throwOnDownloadError) {
+				if (options.signal?.aborted) {
+					throw skillDownloadAbortError(options.signal, error);
+				}
+				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
@@ -2451,114 +2668,99 @@ export class AgentSkillsService extends Service {
 				: repoName;
 			const safeSlug = sanitizeSlug(slug);
 
-			// Check if already installed (unless force)
-			if (!options.force && (await this.isInstalled(safeSlug))) {
-				this.runtime.logger.info(
-					`AgentSkills: ${safeSlug} already installed from GitHub`,
-				);
-				return true;
-			}
-
-			this.runtime.logger.info(
-				`AgentSkills: Installing from GitHub ${owner}/${repoName}/${skillPath}...`,
-			);
-
-			// Construct raw GitHub URLs
-			const basePath = skillPath ? `${skillPath}/` : "";
-			const rawBase = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${basePath}`;
-
-			const lifecycle = createSkillDownloadLifecycle({
-				signal: options.signal,
-				downloadTimeoutMs:
-					options.downloadTimeoutMs === undefined
-						? this.fetchTimeoutMs
-						: options.downloadTimeoutMs,
-			});
-			let files: Array<{ name: string; content: string | Uint8Array }>;
-			try {
-				// Required and optional GitHub resources consume the same deadline.
-				const skillMdUrl = `${rawBase}SKILL.md`;
-				const response = await fetchInstallResource(skillMdUrl, lifecycle);
-
-				if (!response.ok) {
-					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
-					lifecycle.throwIfAborted();
-					throw new Error(
-						`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
-					);
-				}
-
-				const skillMdContent = await readCappedSkillText(response, {
-					signal: lifecycle.signal,
-				});
-				files = [{ name: "SKILL.md", content: skillMdContent }];
-
-				try {
-					const readmeUrl = `${rawBase}README.md`;
-					const readmeResponse = await fetchInstallResource(readmeUrl, lifecycle);
-					if (readmeResponse.ok) {
-						const readmeContent = await readCappedSkillText(readmeResponse, {
-							signal: lifecycle.signal,
-						});
-						files.push({ name: "README.md", content: readmeContent });
-					} else {
-						cancelUnusedSkillDownloadBody(
-							readmeResponse,
-							lifecycle.signal.reason,
+			return await this.withSkillInstallMutex(
+				safeSlug,
+				options.signal,
+				async () => {
+					options.signal?.throwIfAborted();
+					if (!options.force && (await this.isInstalled(safeSlug))) {
+						options.signal?.throwIfAborted();
+						this.runtime.logger.info(
+							`AgentSkills: ${safeSlug} already installed from GitHub`,
 						);
-						lifecycle.throwIfAborted();
+						return true;
 					}
-				} catch (cause) {
-					lifecycle.throwIfAborted(cause);
-					if (isSkillDownloadError(cause) || !(cause instanceof TypeError)) {
-						throw cause;
+					this.runtime.logger.info(
+						`AgentSkills: Installing from GitHub ${owner}/${repoName}/${skillPath}...`,
+					);
+					const basePath = skillPath ? `${skillPath}/` : "";
+					const rawBase = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${basePath}`;
+					const lifecycle = createSkillDownloadLifecycle({
+						signal: options.signal,
+						downloadTimeoutMs:
+							options.downloadTimeoutMs === undefined
+								? this.fetchTimeoutMs
+								: options.downloadTimeoutMs,
+					});
+					let files: Array<{ name: string; content: string | Uint8Array }>;
+					try {
+						const skillMdUrl = `${rawBase}SKILL.md`;
+						const response = await fetchInstallResource(skillMdUrl, lifecycle);
+						if (!response.ok) {
+							cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+							lifecycle.throwIfAborted();
+							throw new Error(
+								`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
+							);
+						}
+						files = [
+							{
+								name: "SKILL.md",
+								content: await readCappedSkillText(response, {
+									signal: lifecycle.signal,
+								}),
+							},
+						];
+						try {
+							const readmeResponse = await fetchInstallResource(
+								`${rawBase}README.md`,
+								lifecycle,
+							);
+							if (readmeResponse.ok) {
+								files.push({
+									name: "README.md",
+									content: await readCappedSkillText(readmeResponse, {
+										signal: lifecycle.signal,
+									}),
+								});
+							} else {
+								cancelUnusedSkillDownloadBody(
+									readmeResponse,
+									lifecycle.signal.reason,
+								);
+								lifecycle.throwIfAborted();
+							}
+						} catch (cause) {
+							lifecycle.throwIfAborted(cause);
+							if (isSkillDownloadError(cause) || !(cause instanceof TypeError)) {
+								throw cause;
+							}
+							// error-policy:J4 Optional README transport failure leaves the
+							// candidate visibly without README.md; required SKILL.md is intact.
+						}
+					} finally {
+						lifecycle.dispose();
 					}
-					// error-policy:J4 an optional README transport failure leaves the
-					// installed package visibly without README.md; required SKILL.md is intact.
-				}
-			} finally {
-				lifecycle.dispose();
-			}
-
-			// Save to storage
-			if (this.storage instanceof MemorySkillStore) {
-				await (this.storage as MemorySkillStore).savePackage({
-					slug: safeSlug,
-					files,
-					loadedAt: Date.now(),
-				});
-			} else if (this.storage instanceof FileSystemSkillStore) {
-				// For filesystem, save files to disk
-				const fs = await import("node:fs/promises");
-				const path = await import("node:path");
-				const skillDir = path.join(
-					(this.storage as FileSystemSkillStore).basePath,
-					safeSlug,
-				);
-
-				await fs.mkdir(skillDir, { recursive: true });
-				for (const file of files) {
-					await fs.writeFile(path.join(skillDir, file.name), file.content);
-				}
-			}
-
-			// Security scan — runs after save, before load
-			const scanReport = await this.scanInstalledSkill(safeSlug);
-			await this.handleScanResult(safeSlug, scanReport);
-
-			// Load the skill
-			await this.loadSkill(safeSlug);
-
-			this.runtime.logger.info(
-				`AgentSkills: Installed ${safeSlug} from GitHub (scan: ${scanReport.status})`,
+					options.signal?.throwIfAborted();
+					const scanReport = await this.commitCandidate(
+						createSkillPackage(safeSlug, files),
+						{ signal: options.signal },
+					);
+					this.runtime.logger.info(
+						`AgentSkills: Installed ${safeSlug} from GitHub (scan: ${scanReport.status})`,
+					);
+					return true;
+				},
 			);
-			return true;
 		} catch (error) {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
-			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
-				throw error;
+			if (options.throwOnDownloadError) {
+				if (options.signal?.aborted) {
+					throw skillDownloadAbortError(options.signal, error);
+				}
+				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
@@ -2583,99 +2785,69 @@ export class AgentSkillsService extends Service {
 					?.replace(/\.(md|zip)$/i, "") ||
 				"skill";
 			const safeSlug = sanitizeSlug(derivedSlug);
-			const lifecycle = createSkillDownloadLifecycle({
-				signal: options.signal,
-				downloadTimeoutMs:
-					options.downloadTimeoutMs === undefined
-						? this.fetchTimeoutMs
-						: options.downloadTimeoutMs,
-			});
-			let zipBuffer: Uint8Array | undefined;
-			let skillMdContent: string | undefined;
-			try {
-				const response = await fetchInstallResource(url, lifecycle);
-
-				if (!response.ok) {
-					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
-					lifecycle.throwIfAborted();
-					throw new Error(`Failed to fetch: ${response.status}`);
-				}
-
-				const contentType = response.headers.get("content-type") || "";
-				if (contentType.includes("application/zip") || url.endsWith(".zip")) {
-					zipBuffer = await readCappedSkillPackage(response, {
-						signal: lifecycle.signal,
-					});
-				} else {
-					skillMdContent = await readCappedSkillText(response, {
-						signal: lifecycle.signal,
-					});
-				}
-			} finally {
-				lifecycle.dispose();
-			}
-
-			if (zipBuffer) {
-				// Handle zip package
-				if (this.storage instanceof MemorySkillStore) {
-					await (this.storage as MemorySkillStore).loadFromZip(
-						safeSlug,
-						zipBuffer,
-					);
-				} else if (this.storage instanceof FileSystemSkillStore) {
-					await (this.storage as FileSystemSkillStore).saveFromZip(
-						safeSlug,
-						zipBuffer,
-					);
-				}
-			} else {
-				// Assume it's a SKILL.md file
-				if (skillMdContent === undefined) {
-					throw new Error("Skill download did not produce package content");
-				}
-
-				const files: Array<{ name: string; content: string | Uint8Array }> = [
-					{ name: "SKILL.md", content: skillMdContent },
-				];
-
-				if (this.storage instanceof MemorySkillStore) {
-					await (this.storage as MemorySkillStore).savePackage({
-						slug: safeSlug,
-						files,
-						loadedAt: Date.now(),
-					});
-				} else if (this.storage instanceof FileSystemSkillStore) {
-					const fs = await import("node:fs/promises");
-					const path = await import("node:path");
-					const skillDir = path.join(
-						(this.storage as FileSystemSkillStore).basePath,
-						safeSlug,
-					);
-
-					await fs.mkdir(skillDir, { recursive: true });
-					for (const file of files) {
-						await fs.writeFile(path.join(skillDir, file.name), file.content);
+			return await this.withSkillInstallMutex(
+				safeSlug,
+				options.signal,
+				async () => {
+					options.signal?.throwIfAborted();
+					if (!options.force && (await this.isInstalled(safeSlug))) {
+						options.signal?.throwIfAborted();
+						return true;
 					}
-				}
-			}
-
-			// Security scan — runs after save, before load
-			const scanReport = await this.scanInstalledSkill(safeSlug);
-			await this.handleScanResult(safeSlug, scanReport);
-
-			// Load the skill
-			await this.loadSkill(safeSlug);
-
-			this.runtime.logger.info(
-				`AgentSkills: Installed ${safeSlug} from URL (scan: ${scanReport.status})`,
+					const lifecycle = createSkillDownloadLifecycle({
+						signal: options.signal,
+						downloadTimeoutMs:
+							options.downloadTimeoutMs === undefined
+								? this.fetchTimeoutMs
+								: options.downloadTimeoutMs,
+					});
+					let candidate: SkillPackage;
+					try {
+						const response = await fetchInstallResource(url, lifecycle);
+						if (!response.ok) {
+							cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+							lifecycle.throwIfAborted();
+							throw new Error(`Failed to fetch: ${response.status}`);
+						}
+						const contentType = response.headers.get("content-type") || "";
+						candidate =
+							contentType.includes("application/zip") || url.endsWith(".zip")
+								? createSkillPackageFromZip(
+										safeSlug,
+										await readCappedSkillPackage(response, {
+											signal: lifecycle.signal,
+										}),
+									)
+								: createSkillPackage(safeSlug, [
+										{
+											name: "SKILL.md",
+											content: await readCappedSkillText(response, {
+												signal: lifecycle.signal,
+											}),
+										},
+									]);
+					} finally {
+						lifecycle.dispose();
+					}
+					options.signal?.throwIfAborted();
+					const scanReport = await this.commitCandidate(candidate, {
+						signal: options.signal,
+					});
+					this.runtime.logger.info(
+						`AgentSkills: Installed ${safeSlug} from URL (scan: ${scanReport.status})`,
+					);
+					return true;
+				},
 			);
-			return true;
 		} catch (error) {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
-			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
-				throw error;
+			if (options.throwOnDownloadError) {
+				if (options.signal?.aborted) {
+					throw skillDownloadAbortError(options.signal, error);
+				}
+				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
@@ -2757,35 +2929,6 @@ export class AgentSkillsService extends Service {
 			storageType: this.storage.type,
 			categories: Array.from(categories).slice(0, 20),
 		};
-	}
-
-	private async updateLockfile(slug: string, version: string): Promise<void> {
-		if (!this.lockfilePath || this.storage.type !== "filesystem") return;
-
-		try {
-			const fs = await import("node:fs");
-			const path = await import("node:path");
-
-			const cacheDir = path.dirname(this.lockfilePath);
-			if (!fs.existsSync(cacheDir)) {
-				fs.mkdirSync(cacheDir, { recursive: true });
-			}
-
-			let lockfile: Record<string, { version: string; installedAt: string }> =
-				{};
-			if (fs.existsSync(this.lockfilePath)) {
-				try {
-					lockfile = JSON.parse(fs.readFileSync(this.lockfilePath, "utf-8"));
-				} catch {
-					// Reset corrupt lockfile
-				}
-			}
-
-			lockfile[slug] = { version, installedAt: new Date().toISOString() };
-			fs.writeFileSync(this.lockfilePath, JSON.stringify(lockfile, null, 2));
-		} catch {
-			// Non-critical error
-		}
 	}
 
 	private async loadCatalogFromDisk(): Promise<void> {
