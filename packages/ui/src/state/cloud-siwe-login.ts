@@ -195,6 +195,7 @@ async function fetchSiweNonce(
     try {
       nonceRes = await fetch(nonceUrl, {
         headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
       // Transport failure (offline, DNS, TLS, aborted): transient, retry.
@@ -352,6 +353,7 @@ export async function siweLoginWithInjectedWallet(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ message, signature }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!verifyRes.ok) {
     throw new Error(
