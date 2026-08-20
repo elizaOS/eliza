@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * E2E coverage matrix report CLI (issue #8802).
  *
@@ -17,6 +18,7 @@
  *       [--fail-on-missing]
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -24,6 +26,7 @@ import {
   type CoverageMatrix,
   REPO_ROOT,
 } from "./inventory.ts";
+import { buildRuntimeSurfaceInventory } from "./runtime-surface-inventory.ts";
 
 interface CliOptions {
   reportDir: string;
@@ -191,10 +194,70 @@ function renderMarkdown(matrix: CoverageMatrix): string {
   return lines.join("\n");
 }
 
+function renderRuntimeMarkdown(
+  inventory: ReturnType<typeof buildRuntimeSurfaceInventory>,
+): string {
+  const lines = [
+    "# synthetic-world runtime-surface inventory",
+    "",
+    `Schema: \`${inventory.schema}\``,
+    `Generated: ${inventory.generatedAt}`,
+    `Source revision: \`${inventory.sourceRevision}\``,
+    "",
+    `- Registered surfaces: ${inventory.summary.total}`,
+    `- Maintained plugin/host packages: ${inventory.packages.length}`,
+    `- Packages with no runtime registration: ${inventory.packages.filter((entry) => entry.registrationState === "no-runtime-registration").length}`,
+    `- Covered: ${inventory.summary.byStatus.covered ?? 0}`,
+    `- Explicitly classified: ${
+      inventory.summary.total - (inventory.summary.byStatus.covered ?? 0)
+    }`,
+    "",
+    "## Counts by kind",
+    "",
+    ...Object.entries(inventory.summary.byKind)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([kind, count]) => `- ${kind}: ${count}`),
+    "",
+    "## Gaps by workstream",
+    "",
+    ...Object.entries(inventory.gaps.byWorkstream)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([workstream, ids]) => `- ${workstream}: ${ids.length}`),
+    "",
+    "The JSON artifact carries ownership, dependencies, scenarios, Cloud cells, mock/reset fidelity, boundary signals, and the written disposition for every row.",
+    "",
+  ];
+  return lines.join("\n");
+}
+
+function renderRuntimeHtml(
+  inventory: ReturnType<typeof buildRuntimeSurfaceInventory>,
+): string {
+  const rows = inventory.rows
+    .map(
+      (row) =>
+        `<tr><td><code>${escapeHtml(row.surfaceName)}</code></td><td>${escapeHtml(row.kind)}</td><td>${escapeHtml(row.owner)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.workstream)}</td><td>${escapeHtml(row.reason)}</td></tr>`,
+    )
+    .join("");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" />
+<title>elizaOS synthetic-world runtime surfaces</title>
+<style>body{font:14px/1.45 system-ui,sans-serif;margin:24px;background:#111;color:#eee}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #333;padding:7px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#111}code{color:#ff9b51}</style></head>
+<body><h1>Synthetic-world runtime surfaces</h1><p>${inventory.summary.total} registered surfaces · schema ${escapeHtml(inventory.schema)}</p>
+<table><thead><tr><th>Surface</th><th>Kind</th><th>Owner</th><th>Status</th><th>Workstream</th><th>Reason</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+}
+
 function main(): number {
   const options = parseArgs(process.argv.slice(2));
   const matrix = buildCoverageMatrix({
     generatedAt: new Date().toISOString(),
+  });
+  const runtimeInventory = buildRuntimeSurfaceInventory({
+    generatedAt: matrix.generatedAt,
+    sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    }).trim(),
   });
 
   mkdirSync(options.reportDir, { recursive: true });
@@ -212,6 +275,18 @@ function main(): number {
   writeFileSync(
     path.join(options.reportDir, "README.md"),
     renderMarkdown(matrix),
+  );
+  writeFileSync(
+    path.join(options.reportDir, "runtime-surfaces.json"),
+    `${JSON.stringify(runtimeInventory, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(options.reportDir, "runtime-surfaces.md"),
+    renderRuntimeMarkdown(runtimeInventory),
+  );
+  writeFileSync(
+    path.join(options.reportDir, "runtime-surfaces.html"),
+    renderRuntimeHtml(runtimeInventory),
   );
 
   const s = matrix.summary;
