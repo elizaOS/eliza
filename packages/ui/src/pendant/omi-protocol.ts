@@ -38,6 +38,11 @@
  * The uint16 notification sequence wraps at 65536; we track wraps to detect dropped
  * packets (BLE notifications are lossy) so we can log gaps without corrupting
  * the decoder (Opus tolerates whole-frame loss — a gap just drops audio).
+ *
+ * Notifications and reassembled frames are untrusted device bytes. GATT MTU is
+ * typically 185–517 bytes; a 10 ms Opus frame is ~40–80 bytes. Caps below fail
+ * closed so a hostile notify cannot hold tens of megabytes in the reassembler
+ * (the cloud voice session already rejects uplink audio frames above 64 KiB).
  */
 
 /** omi audio GATT service. Also the Web Bluetooth `filters`/`optionalServices` id. */
@@ -86,6 +91,20 @@ export const OMI_OPUS_FRAME_SAMPLES = 160 as const;
 /** `NET_BUFFER_HEADER_SIZE` — the 3-byte packet/frame index prefix. */
 export const OMI_PACKET_HEADER_SIZE = 3 as const;
 
+/**
+ * Defensive ceiling on one GATT notification, header included. It leaves
+ * compatibility room above the 517-byte ATT MTU used by current Android while
+ * containing malformed native-bridge or test-transport payloads.
+ */
+export const MAX_OMI_NOTIFICATION_BYTES = 4096 as const;
+
+/**
+ * Hard ceiling on one reassembled audio frame (header stripped). 16 KiB is
+ * ~256 ms of 16 kHz PCM16 or hundreds of 10 ms Opus frames; honest firmware
+ * emits one ~40–80 byte Opus packet per notify.
+ */
+export const MAX_OMI_REASSEMBLED_FRAME_BYTES = 16_384 as const;
+
 /** Device advertising name prefixes we accept (currently "Friend", soon "eliza"). */
 export const OMI_NAME_PREFIXES = ["Friend", "Omi", "eliza"] as const;
 
@@ -103,6 +122,7 @@ export type OmiWireMode = "unknown" | "notification-sequence" | "frame-id";
 export type OmiFrameDiagnosticCode =
   | "duplicate-notification"
   | "malformed-notification"
+  | "oversized-notification"
   | "missing-notification"
   | "missing-chunk"
   | "out-of-order"
@@ -145,6 +165,7 @@ interface BufferedFrame {
   readonly startUnwrappedIndex: number;
   readonly droppedBefore: number;
   readonly chunks: Uint8Array[];
+  byteLength: number;
   expectedChunkIndex: number;
   lastRawIndex: number;
   lastUnwrappedIndex: number;
@@ -249,6 +270,35 @@ export class OmiFrameReassembler {
     const diagnostics: OmiFrameDiagnostic[] = [];
     const frames: ReassembledFrame[] = [];
     this.recordNotification(notification, receivedAtMs);
+
+    if (notification.length > MAX_OMI_NOTIFICATION_BYTES) {
+      const packetIndex =
+        notification.length >= 2
+          ? notification[0] | (notification[1] << 8)
+          : null;
+      const chunkIndex = notification.length >= 3 ? notification[2] : null;
+      this.metrics.malformedNotifications += 1;
+      if (this.buffer) {
+        this.dropBuffered(
+          diagnostics,
+          packetIndex,
+          chunkIndex,
+          "dropped-buffered-frame",
+          "Buffered frame dropped because an oversized notification interrupted it.",
+        );
+      }
+      diagnostics.push({
+        code: "oversized-notification",
+        packetIndex,
+        chunkIndex,
+        detail: `Notification of ${notification.length} bytes exceeds the ${MAX_OMI_NOTIFICATION_BYTES}-byte BLE payload budget.`,
+      });
+      this.lastNotification = notification.slice(
+        0,
+        Math.min(notification.length, OMI_PACKET_HEADER_SIZE),
+      );
+      return this.result(frames, diagnostics);
+    }
 
     if (this.isExactDuplicate(notification)) {
       this.metrics.duplicates += 1;
@@ -476,6 +526,7 @@ export class OmiFrameReassembler {
       const previous = this.buffer.chunks[this.buffer.chunks.length - 2];
       if (last && previous && payloadsEqual(last, previous)) {
         this.buffer.chunks.pop();
+        this.buffer.byteLength -= last.length;
         this.buffer.expectedChunkIndex -= 1;
         this.metrics.duplicates += 1;
         diagnostics.push({
@@ -541,13 +592,13 @@ export class OmiFrameReassembler {
           this.mode = "frame-id";
         }
       }
-      this.appendChunk(rawIndex, unwrappedIndex, payload);
+      this.appendChunk(rawIndex, unwrappedIndex, payload, diagnostics);
       return;
     }
 
     if (nextNotification) {
       if (this.mode === "unknown") this.mode = "notification-sequence";
-      this.appendChunk(rawIndex, unwrappedIndex, payload);
+      this.appendChunk(rawIndex, unwrappedIndex, payload, diagnostics);
       return;
     }
 
@@ -577,6 +628,7 @@ export class OmiFrameReassembler {
       startUnwrappedIndex: unwrappedIndex,
       droppedBefore,
       chunks: [payload],
+      byteLength: payload.length,
       expectedChunkIndex: 1,
       lastRawIndex: rawIndex,
       lastUnwrappedIndex: unwrappedIndex,
@@ -587,9 +639,24 @@ export class OmiFrameReassembler {
     rawIndex: number,
     unwrappedIndex: number,
     payload: Uint8Array,
+    diagnostics: OmiFrameDiagnostic[],
   ): void {
     if (!this.buffer) return;
+    if (
+      this.buffer.byteLength + payload.length >
+      MAX_OMI_REASSEMBLED_FRAME_BYTES
+    ) {
+      this.dropBuffered(
+        diagnostics,
+        rawIndex,
+        this.buffer.expectedChunkIndex,
+        "dropped-buffered-frame",
+        `Reassembled frame would exceed the ${MAX_OMI_REASSEMBLED_FRAME_BYTES}-byte audio budget.`,
+      );
+      return;
+    }
     this.buffer.chunks.push(payload);
+    this.buffer.byteLength += payload.length;
     this.buffer.expectedChunkIndex += 1;
     this.buffer.lastRawIndex = rawIndex;
     this.buffer.lastUnwrappedIndex = unwrappedIndex;
