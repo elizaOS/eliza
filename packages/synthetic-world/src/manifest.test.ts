@@ -34,6 +34,14 @@ describe("synthetic-world manifest", () => {
     );
   });
 
+  it("rejects a memory owned by an unknown identity", () => {
+    const manifest = testManifest();
+    manifest.data.memories[0].ownerIdentityId = "missing-owner";
+    expect(() => parseWorldManifest(manifest)).toThrow(
+      /memories\[0\]\.ownerIdentityId: unknown reference missing-owner/,
+    );
+  });
+
   it("rejects unsafe PII, URLs, and credential-like values", () => {
     const manifest = testManifest();
     manifest.data.identities[0].email = "person@production.example.org";
