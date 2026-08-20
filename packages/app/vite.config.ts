@@ -1042,6 +1042,11 @@ function androidCloudRendererPolicyPlugin(): Plugin {
       const scrubbed = scrubAndroidCloudLocalRouting(code);
       return scrubbed === code ? null : { code: scrubbed, map: null };
     },
+    renderChunk(code) {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return null;
+      const scrubbed = scrubAndroidCloudLocalRouting(code);
+      return scrubbed === code ? null : { code: scrubbed, map: null };
+    },
     generateBundle(_options, bundle) {
       if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
       const findings: string[] = [];
