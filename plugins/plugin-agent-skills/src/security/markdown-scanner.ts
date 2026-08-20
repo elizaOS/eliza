@@ -38,12 +38,70 @@ const DEFAULT_SAFE_DOMAINS: ReadonlyArray<string> = [
 	"stackoverflow.com",
 ];
 
-function buildExternalUrlPattern(extra: ReadonlyArray<string> = []): RegExp {
-	const all = [...DEFAULT_SAFE_DOMAINS, ...extra];
-	const lookahead = all.map((d) => d.replace(/\./g, "\\.")).join("|");
-	return new RegExp(
-		`https?:\\/\\/(?!(${lookahead})\\b)[a-zA-Z0-9][^\\s)\\]"'<>]*`,
+/** URL tokens in prose: scheme through the first stopping delimiter. */
+const URL_TOKEN_PATTERN = /https?:\/\/[^\s)\]"'<>]+/gi;
+
+/**
+ * A host is safe iff it equals a listed domain or is a subdomain of one
+ * (`host === safe` or `host.endsWith("." + safe)`). This deliberately rejects
+ * suffix spoofs like `github.com.evil.com`, which is a distinct registrable
+ * host, not a subdomain of `github.com`.
+ */
+function isSafeHost(host: string, safeDomains: ReadonlyArray<string>): boolean {
+	const normalized = host.toLowerCase().replace(/\.$/, "");
+	if (normalized.length === 0) return false;
+	return safeDomains.some(
+		(safe) => normalized === safe || normalized.endsWith(`.${safe}`),
 	);
+}
+
+/**
+ * Parse the effective host and userinfo presence from a URL token. Uses the
+ * WHATWG URL parser so that userinfo phishing forms
+ * (`raw.githubusercontent.com@evil.com`) resolve to their real host (`evil.com`)
+ * instead of the spoofed prefix. A token the parser rejects falls back to a
+ * conservative manual split so an evasive string is never silently allowed.
+ */
+function parseUrlToken(
+	token: string,
+): { host: string; hasUserinfo: boolean } {
+	try {
+		const url = new URL(token);
+		return { host: url.hostname, hasUserinfo: url.username.length > 0 };
+	} catch {
+		// error-policy:J3 malformed URL token: derive a best-effort host from the
+		// authority component so a parser-evading spoof is treated as external.
+		const authority = token.replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0];
+		const atIndex = authority.lastIndexOf("@");
+		const hasUserinfo = atIndex >= 0;
+		const hostPort = hasUserinfo ? authority.slice(atIndex + 1) : authority;
+		const host = hostPort.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+		return { host, hasUserinfo };
+	}
+}
+
+/**
+ * True when a line carries an external URL that is not on the safe-domain
+ * allowlist. Flags suffix spoofs (`github.com.evil.com`), userinfo spoofs
+ * whose real host is external (`raw.githubusercontent.com@evil.com`), and any
+ * URL that embeds userinfo at all: a documented safe-domain link never carries
+ * credentials, and userinfo is the canonical phishing form the scanner exists
+ * to surface.
+ */
+function buildExternalUrlMatcher(
+	extra: ReadonlyArray<string> = [],
+): (line: string) => boolean {
+	const safeDomains = [...DEFAULT_SAFE_DOMAINS, ...extra];
+	return (line: string): boolean => {
+		const tokens = line.match(URL_TOKEN_PATTERN);
+		if (!tokens) return false;
+		for (const token of tokens) {
+			const { host, hasUserinfo } = parseUrlToken(token);
+			if (hasUserinfo) return true;
+			if (!isSafeHost(host, safeDomains)) return true;
+		}
+		return false;
+	};
 }
 
 export function buildMarkdownRules(
@@ -109,7 +167,8 @@ export function buildMarkdownRules(
 			ruleId: "md-external-url",
 			severity: "warn",
 			message: "External URL detected (not on safe domain list)",
-			pattern: buildExternalUrlPattern(additionalSafeDomains),
+			pattern: /https?:\/\//i,
+			match: buildExternalUrlMatcher(additionalSafeDomains),
 		},
 		{
 			ruleId: "md-env-credential",
@@ -166,7 +225,10 @@ export function scanMarkdownSource(
 		if (rule.requiresContext && !rule.requiresContext.test(source)) continue;
 
 		for (let i = 0; i < lines.length; i++) {
-			if (!rule.pattern.test(lines[i])) continue;
+			const matched = rule.match
+				? rule.match(lines[i])
+				: rule.pattern.test(lines[i]);
+			if (!matched) continue;
 
 			findings.push({
 				ruleId: rule.ruleId,

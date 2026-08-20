@@ -63,6 +63,13 @@ export interface LineRule {
 	pattern: RegExp;
 	/** Only fires when the full source also matches this pattern. */
 	requiresContext?: RegExp;
+	/**
+	 * Optional predicate that overrides `pattern` for the per-line decision.
+	 * Used when a correct verdict needs structured parsing (for example URL
+	 * host extraction) that a single regex cannot express safely. `pattern`
+	 * remains as a cheap pre-filter and documentation of intent.
+	 */
+	match?: (line: string) => boolean;
 }
 
 /** Source-level rule: matches against the full file content. */
