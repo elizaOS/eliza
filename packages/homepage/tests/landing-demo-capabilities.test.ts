@@ -271,7 +271,9 @@ describe("landing Shared-agent capability contract", () => {
     expect(copy).toContain("I matched the travel calendars");
     expect(copy).toContain("4 travel calendars shared");
     expect(copy).toContain("covered route");
-    expect(copy).toContain("vegetarian-friendly lunch options");
+    expect(copy).toContain("real vegetarian options for Emi");
+    expect(copy).toContain("plenty of meat for Theo");
+    expect(copy).not.toContain("we haven't picked anywhere");
   });
 
   test.each([

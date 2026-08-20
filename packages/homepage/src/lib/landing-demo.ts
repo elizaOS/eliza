@@ -729,11 +729,11 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         name: "Emi",
         text: "and food pls I need veggie options",
       },
-      { kind: "member", name: "Samira", text: "we haven't picked anywhere" },
+      { kind: "member", name: "Samira", text: "I'm starving lol" },
       {
         capability: "public-web-search",
         kind: "eliza",
-        text: "I found three vegetarian-friendly lunch options within a five-minute covered walk. The meetup, delay cutoff, keys, bag stop, weather, and lunch filter are handled.",
+        text: "I found three full-menu lunch spots within a five-minute covered walk. All have real vegetarian options for Emi and plenty of meat for Theo. The rest of the arrival plan still holds.",
       },
       {
         capability: "public-web-search",
@@ -746,7 +746,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
             "10:45 · Airport cutoff",
             "Bags · Staffed desk nearby",
             "Transit · Covered route before rain",
-            "Lunch · 3 vegetarian-friendly options",
+            "Lunch · Veg for Emi + meat for Theo",
             "3 PM · Apartment ready",
           ],
           source: { kind: "web", label: "Public web · checked now" },
