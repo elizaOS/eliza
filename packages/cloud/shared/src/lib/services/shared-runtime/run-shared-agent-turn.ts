@@ -291,6 +291,7 @@ function buildSharedRuntimeSystem(
   capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
+  requiredAction?: "REMINDERS" | "TODO",
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -325,8 +326,32 @@ function buildSharedRuntimeSystem(
         "Never imply that an unavailable action succeeded.",
     );
   }
+  if (requiredAction) {
+    parts.push(
+      "Current-turn execution requirement:\n" +
+        `- The user's current message is an executable ${requiredAction === "REMINDERS" ? "reminder" : "todo"} request, and ${requiredAction} is available for this verified account.\n` +
+        `- Call ${requiredAction} before any terminal answer. A plain-text acknowledgement such as "done", "saved", or "scheduled" is not an execution result.\n` +
+        `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
+    );
+  }
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
+}
+
+function requiredActionForResolution(
+  resolution: SharedCapabilityResolution | null,
+): "REMINDERS" | "TODO" | undefined {
+  if (resolution?.kind !== "enabled-primary") return undefined;
+  if (resolution.primary.capability === "reminders") return "REMINDERS";
+  if (resolution.primary.capability === "todos") return "TODO";
+  return undefined;
+}
+
+function hasRequiredActionResult(
+  turn: RunSharedAgentTurnResult,
+  actionName: "REMINDERS" | "TODO",
+): boolean {
+  return Boolean(turn.actionResults?.some((result) => result.data?.actionName === actionName));
 }
 
 export function appendSharedTurn(
@@ -440,6 +465,7 @@ export async function runSharedAgentTurn(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
+  const requiredAction = requiredActionForResolution(resolution);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -474,6 +500,7 @@ export async function runSharedAgentTurn(
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
+            requiredAction,
           ),
         },
         execution,
@@ -483,6 +510,11 @@ export async function runSharedAgentTurn(
       capabilityWall,
       blockedSecondary,
     );
+    if (requiredAction && !hasRequiredActionResult(turn, requiredAction)) {
+      throw new Error(
+        `Eliza Shared runtime completed an executable ${requiredAction} request without an action result`,
+      );
+    }
   } catch (error) {
     // error-policy:J2 the runtime is the sole inference engine; preserve its
     // cause while adding the agent/model identity used by billing boundaries.
@@ -517,6 +549,7 @@ export async function runSharedAgentTurnStream(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
+  const requiredAction = requiredActionForResolution(resolution);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -550,6 +583,7 @@ export async function runSharedAgentTurnStream(
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
+            requiredAction,
           ),
         },
         execution,
