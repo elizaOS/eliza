@@ -1,240 +1,280 @@
 [
-  {
-    "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
-    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
-    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
-  },
-  {
-    "file": "packages/scripts/audit-build-typecheck.mjs",
-    "tokens": [
-      "plugins/plugin-app-manager",
-      "plugins/plugin-build",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-elizacloud",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-sql",
-      "plugins/plugin-video",
-      "plugins/plugin-vision",
-      "plugins/plugin-wallet"
-    ],
-    "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
-  },
-  {
-    "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
-  },
-  {
-    "file": "packages/scripts/ci-path-gate.mjs",
-    "tokens": [
-      "plugins/plugin-app-control",
-      "plugins/plugin-capacitor-bridge",
-      "plugins/plugin-commands",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-github",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-native-filesystem",
-      "plugins/plugin-sql",
-      "plugins/plugin-vision",
-      "plugins/plugin-wallet"
-    ],
-    "reason": "systemic coupling: the CI path-gate lane configs enumerate the plugin surfaces whose diffs trigger specific lanes; lane membership is workflow routing policy decided centrally, not discoverable per-package metadata"
-  },
-  {
-    "file": "packages/scripts/e2e-coverage/inventory.ts",
-    "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
-    "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
-  },
-  {
-    "file": "packages/scripts/e2e-coverage/manifest.ts",
-    "tokens": [
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-bluebubbles",
-      "plugins/plugin-browser",
-      "plugins/plugin-calendar",
-      "plugins/plugin-commands",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-documents",
-      "plugins/plugin-elizacloud",
-      "plugins/plugin-github",
-      "plugins/plugin-imessage",
-      "plugins/plugin-inbox",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-meetings",
-      "plugins/plugin-scheduling",
-      "plugins/plugin-signal",
-      "plugins/plugin-notes",
-      "plugins/plugin-telegram",
-      "plugins/plugin-wallet",
-      "plugins/plugin-whatsapp",
-      "plugins/plugin-workflow"
-    ],
-    "reason": "maps each route-wiring plugin to its e2e coverage artifacts; every routed plugin needs an entry or exemption"
-  },
-  {
-    "file": "packages/scripts/ensure-native-plugins-linked.mjs",
-    "tokens": ["plugins/plugin-native-"],
-    "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
-  },
-  {
-    "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
-    "tokens": ["plugins/plugin-workflow"],
-    "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root"
-  },
-  {
-    "file": "packages/scripts/ensure-workspace-symlinks.mjs",
-    "tokens": ["@elizaos/plugin-pdf"],
-    "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
-  },
-  {
-    "file": "packages/scripts/launch-qa/run.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
-  },
-  {
-    "file": "packages/scripts/lib/real-live-suites.mjs",
-    "tokens": [
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-anthropic",
-      "plugins/plugin-calendar",
-      "plugins/plugin-coding-tools",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-elizacloud",
-      "plugins/plugin-form",
-      "plugins/plugin-google-genai",
-      "plugins/plugin-health",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-openai",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-pty",
-      "plugins/plugin-sql",
-      "plugins/plugin-vision",
-      "plugins/plugin-wallet",
-      "plugins/plugin-web-search"
-    ],
-    "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
-  },
-  {
-    "file": "packages/scripts/run-scenario-benchmark.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
-    "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
-  },
-  {
-    "file": "packages/scripts/vitest/default.config.ts",
-    "tokens": [
-      "@elizaos/plugin-telegram",
-      "plugins/plugin-browser",
-      "plugins/plugin-finances",
-      "plugins/plugin-health",
-      "plugins/plugin-inbox",
-      "plugins/plugin-sql"
-    ],
-    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
-  },
-  {
-    "file": "packages/scripts/vitest/e2e.config.ts",
-    "tokens": [
-      "plugins/plugin-documents",
-      "plugins/plugin-form",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-task-coordinator",
-      "plugins/plugin-workflow"
-    ],
-    "reason": "e2e-lane vitest config enumerates the plugin suites that ship browser-driven e2e specs"
-  },
-  {
-    "file": "packages/scripts/vitest/integration.config.ts",
-    "tokens": [
-      "@elizaos/plugin-personal-assistant",
-      "@elizaos/plugin-signal",
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-whatsapp",
-      "plugins/plugin-personal-assistant"
-    ],
-    "reason": "integration-lane vitest config aliases connector plugins whose integration suites resolve source-condition subpaths"
-  },
-  {
-    "file": "packages/scripts/vitest/real.config.ts",
-    "tokens": [
-      "@elizaos/plugin-agent-orchestrator",
-      "@elizaos/plugin-agent-skills",
-      "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-commands",
-      "@elizaos/plugin-discord",
-      "@elizaos/plugin-elizacloud",
-      "@elizaos/plugin-form",
-      "@elizaos/plugin-google-genai",
-      "@elizaos/plugin-local-inference",
-      "@elizaos/plugin-openai",
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-telegram",
-      "@elizaos/plugin-wallet",
-      "plugins/plugin-coding-tools",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-form",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-wallet"
-    ],
-    "reason": "shared real-lane vitest config must alias each live-capable plugin package to its source entry so real suites resolve workspace plugins without a build step"
-  },
-  {
-    "file": "packages/scripts/vitest/source-aliases.ts",
-    "tokens": ["@elizaos/plugin-sql", "plugins/plugin-sql"],
-    "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
-  },
-  {
-    "file": "packages/scripts/vitest/unit.config.ts",
-    "tokens": ["@elizaos/plugin-anthropic", "@elizaos/plugin-cli"],
-    "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
-  },
-  {
-    "file": "scripts/check-markdown-links.mjs",
-    "tokens": [
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-wallet"
-    ],
-    "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
-  },
-  {
-    "file": "scripts/generate-view-heroes.mjs",
-    "tokens": [
-      "plugins/plugin-app-control",
-      "plugins/plugin-blocker",
-      "plugins/plugin-calendar",
-      "plugins/plugin-documents",
-      "plugins/plugin-finances",
-      "plugins/plugin-form",
-      "plugins/plugin-goals",
-      "plugins/plugin-health",
-      "plugins/plugin-inbox",
-      "plugins/plugin-messages",
-      "plugins/plugin-native-settings",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-relationships",
-      "plugins/plugin-todos"
-    ],
-    "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
-  },
-  {
-    "file": "scripts/lifeops/connector-paths.mjs",
-    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
-    "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
-  },
-  {
-    "file": "scripts/lifeops/credential-probes.mjs",
-    "tokens": ["plugins/plugin-github"],
-    "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
-  },
-  {
-    "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
-    "tokens": ["plugins/plugin-github"],
-    "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
-  },
-  {
-    "file": "scripts/training-harvest/build-manifest.mjs",
-    "tokens": ["@elizaos/plugin-cli-inference"],
-    "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
-  }
+ {
+  "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
+  "tokens": [
+   "@elizaos/plugin-elizacloud",
+   "@elizaos/plugin-sql"
+  ],
+  "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
+ },
+ {
+  "file": "packages/scripts/audit-build-typecheck.mjs",
+  "tokens": [
+   "plugins/plugin-app-manager",
+   "plugins/plugin-build",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-elizacloud",
+   "plugins/plugin-local-inference",
+   "plugins/plugin-sql",
+   "plugins/plugin-video",
+   "plugins/plugin-vision",
+   "plugins/plugin-wallet"
+  ],
+  "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
+ },
+ {
+  "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
+  "tokens": [
+   "plugins/plugin-personal-assistant"
+  ],
+  "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
+ },
+ {
+  "file": "packages/scripts/ci-path-gate.mjs",
+  "tokens": [
+   "plugins/plugin-app-control",
+   "plugins/plugin-capacitor-bridge",
+   "plugins/plugin-commands",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-github",
+   "plugins/plugin-local-inference",
+   "plugins/plugin-native-filesystem",
+   "plugins/plugin-sql",
+   "plugins/plugin-vision",
+   "plugins/plugin-wallet"
+  ],
+  "reason": "systemic coupling: the CI path-gate lane configs enumerate the plugin surfaces whose diffs trigger specific lanes; lane membership is workflow routing policy decided centrally, not discoverable per-package metadata"
+ },
+ {
+  "file": "packages/scripts/e2e-coverage/inventory.ts",
+  "tokens": [
+   "@elizaos/plugin-discord",
+   "plugins/plugin-commands"
+  ],
+  "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
+ },
+ {
+  "file": "packages/scripts/e2e-coverage/manifest.ts",
+  "tokens": [
+   "plugins/plugin-agent-orchestrator",
+   "plugins/plugin-bluebubbles",
+   "plugins/plugin-browser",
+   "plugins/plugin-calendar",
+   "plugins/plugin-commands",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-documents",
+   "plugins/plugin-elizacloud",
+   "plugins/plugin-github",
+   "plugins/plugin-imessage",
+   "plugins/plugin-inbox",
+   "plugins/plugin-local-inference",
+   "plugins/plugin-meetings",
+   "plugins/plugin-scheduling",
+   "plugins/plugin-signal",
+   "plugins/plugin-notes",
+   "plugins/plugin-telegram",
+   "plugins/plugin-wallet",
+   "plugins/plugin-whatsapp",
+   "plugins/plugin-workflow"
+  ],
+  "reason": "maps each route-wiring plugin to its e2e coverage artifacts; every routed plugin needs an entry or exemption"
+ },
+ {
+  "file": "packages/scripts/ensure-native-plugins-linked.mjs",
+  "tokens": [
+   "plugins/plugin-native-"
+  ],
+  "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
+ },
+ {
+  "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
+  "tokens": [
+   "plugins/plugin-workflow"
+  ],
+  "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root"
+ },
+ {
+  "file": "packages/scripts/ensure-workspace-symlinks.mjs",
+  "tokens": [
+   "@elizaos/plugin-pdf"
+  ],
+  "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
+ },
+ {
+  "file": "packages/scripts/launch-qa/run.mjs",
+  "tokens": [
+   "plugins/plugin-personal-assistant"
+  ],
+  "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
+ },
+ {
+  "file": "packages/scripts/lib/real-live-suites.mjs",
+  "tokens": [
+   "plugins/plugin-agent-orchestrator",
+   "plugins/plugin-anthropic",
+   "plugins/plugin-calendar",
+   "plugins/plugin-coding-tools",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-elizacloud",
+   "plugins/plugin-form",
+   "plugins/plugin-google-genai",
+   "plugins/plugin-health",
+   "plugins/plugin-local-inference",
+   "plugins/plugin-openai",
+   "plugins/plugin-personal-assistant",
+   "plugins/plugin-pty",
+   "plugins/plugin-sql",
+   "plugins/plugin-vision",
+   "plugins/plugin-wallet",
+   "plugins/plugin-web-search"
+  ],
+  "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
+ },
+ {
+  "file": "packages/scripts/run-scenario-benchmark.mjs",
+  "tokens": [
+   "plugins/plugin-personal-assistant"
+  ],
+  "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
+ },
+ {
+  "file": "packages/scripts/vitest/default.config.ts",
+  "tokens": [
+   "@elizaos/plugin-telegram",
+   "plugins/plugin-browser",
+   "plugins/plugin-finances",
+   "plugins/plugin-health",
+   "plugins/plugin-inbox",
+   "plugins/plugin-sql"
+  ],
+  "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
+ },
+ {
+  "file": "packages/scripts/vitest/e2e.config.ts",
+  "tokens": [
+   "plugins/plugin-documents",
+   "plugins/plugin-form",
+   "plugins/plugin-personal-assistant",
+   "plugins/plugin-task-coordinator",
+   "plugins/plugin-workflow"
+  ],
+  "reason": "e2e-lane vitest config enumerates the plugin suites that ship browser-driven e2e specs"
+ },
+ {
+  "file": "packages/scripts/vitest/integration.config.ts",
+  "tokens": [
+   "@elizaos/plugin-personal-assistant",
+   "@elizaos/plugin-signal",
+   "@elizaos/plugin-sql",
+   "@elizaos/plugin-whatsapp",
+   "plugins/plugin-personal-assistant"
+  ],
+  "reason": "integration-lane vitest config aliases connector plugins whose integration suites resolve source-condition subpaths"
+ },
+ {
+  "file": "packages/scripts/vitest/real.config.ts",
+  "tokens": [
+   "@elizaos/plugin-agent-orchestrator",
+   "@elizaos/plugin-agent-skills",
+   "@elizaos/plugin-anthropic",
+   "@elizaos/plugin-commands",
+   "@elizaos/plugin-discord",
+   "@elizaos/plugin-elizacloud",
+   "@elizaos/plugin-form",
+   "@elizaos/plugin-google-genai",
+   "@elizaos/plugin-local-inference",
+   "@elizaos/plugin-openai",
+   "@elizaos/plugin-sql",
+   "@elizaos/plugin-telegram",
+   "@elizaos/plugin-wallet",
+   "plugins/plugin-coding-tools",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-form",
+   "plugins/plugin-personal-assistant",
+   "plugins/plugin-wallet"
+  ],
+  "reason": "shared real-lane vitest config must alias each live-capable plugin package to its source entry so real suites resolve workspace plugins without a build step"
+ },
+ {
+  "file": "packages/scripts/vitest/source-aliases.ts",
+  "tokens": [
+   "@elizaos/plugin-sql",
+   "plugins/plugin-sql"
+  ],
+  "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
+ },
+ {
+  "file": "packages/scripts/vitest/unit.config.ts",
+  "tokens": [
+   "@elizaos/plugin-anthropic",
+   "@elizaos/plugin-cli"
+  ],
+  "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
+ },
+ {
+  "file": "scripts/check-markdown-links.mjs",
+  "tokens": [
+   "plugins/plugin-agent-orchestrator",
+   "plugins/plugin-computeruse",
+   "plugins/plugin-local-inference",
+   "plugins/plugin-wallet"
+  ],
+  "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
+ },
+ {
+  "file": "scripts/generate-view-heroes.mjs",
+  "tokens": [
+   "plugins/plugin-app-control",
+   "plugins/plugin-blocker",
+   "plugins/plugin-calendar",
+   "plugins/plugin-documents",
+   "plugins/plugin-finances",
+   "plugins/plugin-form",
+   "plugins/plugin-goals",
+   "plugins/plugin-health",
+   "plugins/plugin-inbox",
+   "plugins/plugin-messages",
+   "plugins/plugin-native-settings",
+   "plugins/plugin-personal-assistant",
+   "plugins/plugin-relationships",
+   "plugins/plugin-todos"
+  ],
+  "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
+ },
+ {
+  "file": "scripts/lifeops/connector-paths.mjs",
+  "tokens": [
+   "plugins/plugin-github",
+   "plugins/plugin-personal-assistant"
+  ],
+  "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
+ },
+ {
+  "file": "scripts/lifeops/credential-probes.mjs",
+  "tokens": [
+   "plugins/plugin-github"
+  ],
+  "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
+ },
+ {
+  "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
+  "tokens": [
+   "plugins/plugin-github"
+  ],
+  "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
+ },
+ {
+  "file": "scripts/training-harvest/build-manifest.mjs",
+  "tokens": [
+   "@elizaos/plugin-cli-inference"
+  ],
+  "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
+ },
+ {
+  "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
+  "tokens": [
+   "plugins/plugin-local-inference"
+  ],
+  "reason": "2026-08-20: triaged ORPHANED_PLUGIN_TEST_EXCEPTIONS entries for the vendored upstream llama.cpp webui test tree; the exception list is definitionally per-path"
+ }
 ]
