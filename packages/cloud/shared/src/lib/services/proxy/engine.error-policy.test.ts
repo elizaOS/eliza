@@ -39,8 +39,8 @@ mock.module("../../auth", () => ({
 
 mock.module("../credits", () => ({
   ...realCredits,
-  assertCreditRefundWithinReservation: realCredits.assertCreditRefundWithinReservation,
-  assertValidCreditSettlementCosts: realCredits.assertValidCreditSettlementCosts,
+  assertCreditRefundWithinReservation: creditsActual.assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts: creditsActual.assertValidCreditSettlementCosts,
   creditsService: { ...realCredits.creditsService, reserve },
 }));
 

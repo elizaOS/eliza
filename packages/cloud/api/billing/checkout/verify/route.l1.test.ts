@@ -14,6 +14,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../../test-utils/credit-settlement-mocks";
 
 const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const createInvoice = mock(async () => undefined);
@@ -52,12 +56,8 @@ mock.module("@/lib/services/users", () => ({
   usersService: { getWithOrganization: mock(async () => null) },
 }));
 mock.module("@/lib/services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: {
     addCredits,
     getTransactionByStripePaymentIntent: mock(async () => null),

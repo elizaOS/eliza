@@ -1,6 +1,10 @@
 /** Proves Steward account creation starts at $0 without touching the credit ledger. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../test-utils/credit-settlement-mocks";
 
 // ── Mock state captured per test ─────────────────────────────────────────
 const addCreditsCalls: unknown[] = [];
@@ -27,12 +31,8 @@ const finalUserWithOrg = {
 };
 
 mock.module("./services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: {
     addCredits: (params: unknown) => addCreditsImpl(params),
   },

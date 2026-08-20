@@ -10,6 +10,10 @@ process.env.CACHE_BACKEND = "memory";
 process.env.CACHE_ENABLED = "true";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../../test-utils/credit-settlement-mocks";
 import type { App } from "../../db/repositories/apps";
 
 let appRows = new Map<string, App>();
@@ -56,12 +60,8 @@ mock.module("../../db/repositories/users", () => ({
 
 mock.module("./credits", () => ({
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app-chat-settlement",
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: {},
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
   MIN_RESERVATION: 0.0001,

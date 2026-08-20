@@ -13,6 +13,10 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../test-utils/credit-settlement-mocks";
 
 const existingUser = {
   id: "user-1",
@@ -96,12 +100,8 @@ mock.module("./services/characters/characters", () => ({
 }));
 // Remaining steward-sync imports (auth.ts pulls the real module); inert stubs.
 mock.module("./services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: { addCredits: async () => ({ success: true }) },
 }));
 mock.module("./services/organizations", () => ({

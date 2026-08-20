@@ -14,6 +14,10 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../../test-utils/credit-settlement-mocks";
 
 const requireAuthOrApiKeyWithOrg = mock<() => Promise<unknown>>();
 
@@ -90,12 +94,8 @@ class MockInsufficientCreditsError extends Error {
   }
 }
 mock.module("@/lib/services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   InsufficientCreditsError: MockInsufficientCreditsError,
 }));
 const speechToText = mock(

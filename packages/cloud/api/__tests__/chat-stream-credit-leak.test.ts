@@ -10,6 +10,10 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APICallError } from "ai";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../test-utils/credit-settlement-mocks";
 
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
@@ -119,12 +123,8 @@ let ledger = makeLedgerReservation(100, 0.015);
 const admissionCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: {
     createAnonymousReservation: mock(
       () => makeLedgerReservation(0, 0).reservation,
