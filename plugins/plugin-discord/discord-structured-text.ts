@@ -48,7 +48,11 @@ function reserve(ctx: WalkContext, count: number): void {
 	ctx.visits += count;
 }
 
-function dataValue(value: object, key: string): unknown {
+function dataValue(
+	value: object,
+	key: string,
+	rejectAccessor = false,
+): unknown {
 	let descriptor: PropertyDescriptor | undefined;
 	try {
 		descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -63,7 +67,13 @@ function dataValue(value: object, key: string): unknown {
 			},
 		);
 	}
-	if (!descriptor || !("value" in descriptor)) return undefined;
+	if (!descriptor) return undefined;
+	if (!("value" in descriptor)) {
+		if (rejectAccessor) {
+			failUnbounded({ operation: "arrayAccessor", key });
+		}
+		return undefined;
+	}
 	return descriptor.value;
 }
 
@@ -113,14 +123,14 @@ function collectStructuredText(
 	}
 	ctx.seen.add(value);
 	if (isArray(value)) {
-		const length = dataValue(value, "length");
+		const length = dataValue(value, "length", true);
 		if (!Number.isSafeInteger(length) || (length as number) < 0) {
 			failUnbounded({ operation: "arrayLength", length });
 		}
 		reserve(ctx, length as number);
 		const fragments: string[] = [];
 		for (let index = 0; index < (length as number); index += 1) {
-			const child = dataValue(value, String(index));
+			const child = dataValue(value, String(index), true);
 			if (child === undefined) continue;
 			fragments.push(...collectStructuredText(child, depth + 1, ctx, true));
 		}
