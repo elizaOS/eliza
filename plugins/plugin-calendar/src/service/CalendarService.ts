@@ -214,7 +214,10 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
-export const MAX_GOOGLE_CALENDAR_PAGES = 100;
+// Keep the page cap as a pathological-work backstop; the retained-event bound
+// is the normal product/memory boundary for full and incremental syncs.
+export const MAX_GOOGLE_CALENDAR_PAGES = 1_000;
+export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -3008,6 +3011,20 @@ export class CalendarService extends Service {
           ? { syncToken: args.syncToken }
           : { timeMin: args.timeMin, timeMax: args.timeMax }),
       });
+      if (page.events.length > MAX_GOOGLE_CALENDAR_EVENTS - events.length) {
+        throw new ElizaError(
+          "Google Calendar event sync exceeded the retained event limit.",
+          {
+            code: "GOOGLE_CALENDAR_EVENT_LIMIT_EXCEEDED",
+            context: {
+              accountId: args.accountId,
+              calendarId: args.calendarId,
+              maxEvents: MAX_GOOGLE_CALENDAR_EVENTS,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       events.push(...page.events);
       if (page.nextSyncToken) {
         nextSyncToken = page.nextSyncToken;
