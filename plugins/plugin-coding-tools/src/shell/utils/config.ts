@@ -101,8 +101,22 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   ":(){:|:&};:",
 ] as const;
 
+function resolveDefaultAllowedDirectory(): string {
+  const explicitWorkspace = process.env.ELIZA_WORKSPACE_DIR?.trim();
+  if (explicitWorkspace) return explicitWorkspace;
+
+  const configuredRoots = process.env.CODING_TOOLS_WORKSPACE_ROOTS?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (configuredRoots?.length === 1) return configuredRoots[0] ?? process.cwd();
+
+  return process.cwd();
+}
+
 export function loadShellConfig(): ShellConfig {
-  const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
+  const allowedDirectory =
+    process.env.SHELL_ALLOWED_DIRECTORY?.trim() ||
+    resolveDefaultAllowedDirectory();
   const timeout = parsePositiveIntegerEnv(
     "SHELL_TIMEOUT",
     30000,

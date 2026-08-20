@@ -352,6 +352,14 @@ async function runPlannerLoopIterations(
 	// Raise the ceiling for coding builds (still bounded). Overridable via
 	// ELIZA_CODING_MAX_TOOL_CALLS.
 	const codingMode = isCodingFullSurfaceMode();
+	// Ordinary chat turns can be narrowed by direct routing to the first-party
+	// workspace pair (FILE + SHELL) without enabling the sub-agent's expensive
+	// full action surface. That focused pair is still a coding loop: read/edit/run
+	// requests must return to the planner after each receipt so a malformed chat
+	// evaluator cannot strand the turn after the edit and skip verification.
+	const focusedWorkspaceCodingMode = hasFocusedWorkspaceCodingSurface(
+		params.tools,
+	);
 	const codingMaxToolCalls = resolveCodingMaxToolCalls();
 	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
 	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
@@ -393,7 +401,9 @@ async function runPlannerLoopIterations(
 	// into actually acting instead of being accepted as the final answer. A
 	// genuinely blocking question still surfaces after the miss budget.
 	const requireNonTerminalToolCall =
-		(params.requireNonTerminalToolCall === true || codingMode) &&
+		(params.requireNonTerminalToolCall === true ||
+			codingMode ||
+			focusedWorkspaceCodingMode) &&
 		hasExposedNonTerminalTool(params.tools);
 	// A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
 	// means every stage-1 candidate failed to resolve to a runnable action —
@@ -545,7 +555,7 @@ async function runPlannerLoopIterations(
 	// FILE/SHELL calls to run; a dedicated coding agent drains the whole batch and
 	// feeds the results back together. Chat mode keeps its
 	// re-evaluate-after-each-action cadence (one action, then evaluate).
-	const codingDrainQueue = codingMode;
+	const codingDrainQueue = codingMode || focusedWorkspaceCodingMode;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -3776,6 +3786,31 @@ function hasExposedNonTerminalTool(
 			const name = getToolDefinitionName(tool);
 			return Boolean(name && !isTerminalToolCall({ name }));
 		})
+	);
+}
+
+/**
+ * True only for the direct-routed workspace execution surface. Terminal
+ * controls are ignored, while every exposed non-terminal tool must be FILE or
+ * SHELL and both must be present. Broader chat/tool surfaces retain the normal
+ * evaluator cadence; the dedicated ACP coding runtime continues to use
+ * ELIZA_PLANNER_FULL_ACTION_SURFACE.
+ */
+function hasFocusedWorkspaceCodingSurface(
+	tools: ToolDefinition[] | undefined,
+): boolean {
+	if (!Array.isArray(tools)) return false;
+	const names = new Set(
+		tools
+			.map(getToolDefinitionName)
+			.filter((name): name is string => Boolean(name))
+			.map((name) => name.toUpperCase())
+			.filter((name) => !isTerminalPlannerToolName(name)),
+	);
+	return (
+		names.has("FILE") &&
+		names.has("SHELL") &&
+		[...names].every((name) => name === "FILE" || name === "SHELL")
 	);
 }
 

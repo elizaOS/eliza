@@ -297,6 +297,7 @@ async function deviceFileHandler(
 
 export const fileAction: Action = {
   name: "FILE",
+  tags: ["coding-tool", "workspace-file"],
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
@@ -316,9 +317,9 @@ export const fileAction: Action = {
     "LIST_FILES",
   ],
   description:
-    "Read, write, edit, grep, glob, or list files. Workspace is the default: omit target (or use target=workspace) for every code/project file and every absolute path. Use target=device only when the user explicitly asks for a phone/mobile Documents file, and then use a relative device path.",
+    "Read, write, edit, grep, glob, or list files. Before editing an existing file, read that file successfully in the same session, then call edit. Workspace is the default: omit target (or use target=workspace) for every code/project file and every absolute path. Use target=device only when the user explicitly asks for a phone/mobile Documents file, and then use a relative device path.",
   descriptionCompressed:
-    "File operations: default workspace for code/project and absolute paths; target=device only for explicitly requested mobile files with relative paths.",
+    "File operations: read an existing file before edit; default workspace for code/project and absolute paths; target=device only for explicitly requested mobile files with relative paths.",
   parameters: [
     {
       name: "action",
@@ -355,7 +356,8 @@ export const fileAction: Action = {
     },
     {
       name: "old_string",
-      description: "Exact substring to replace for action=edit.",
+      description:
+        "Exact substring to replace for action=edit. Read file_path successfully in this session before editing it.",
       required: false,
       schema: { type: "string" },
     },

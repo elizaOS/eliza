@@ -8,14 +8,13 @@ Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
-Correctness is release-ready after both the normal-person browser regression and
-the exact-head parent/orchestrator matrix below. The pushed handoff identifies
-the final exact commit and its retained clean-start/clean-end report. The
-earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is not
-the intended ship configuration. Current acceptance targets direct Cerebras
-with `gemma-4-31b`. Do not call the provider migration accepted until an
-exact-head Cerebras browser turn and parent/orchestrator matrix retain their
-model/provider identities and end-to-end timings.
+Correctness is release-ready only after both the normal-person browser
+regression and the exact-head parent/orchestrator matrix below. The pushed
+handoff identifies the final exact commit and its retained clean-start/clean-end
+report. The earlier OpenRouter/Qwen diagnostic remains historical evidence
+only; it is not the ship configuration. Current acceptance uses direct Cerebras
+with `gemma-4-31b`, through Eliza's protected provider-account store rather than
+a long-lived plaintext environment variable.
 
 The tested production chain is:
 
@@ -46,6 +45,37 @@ explicitly requires an existing workdir, the parent can mark it authoritative so
 project-route and convention inference cannot silently move the coding child to
 another directory. The child coding prompt also requires absolute FILE paths and
 requires a corrected retry of the same failed operation.
+
+Normal chat and delegated coding now share one explicit workspace contract.
+`ELIZA_WORKSPACE_DIR`, `ELIZA_CODING_WORKSPACE`, and
+`ELIZA_CODING_DIRECTORY` identify a concrete user workspace and are used
+verbatim. `ELIZA_ACP_WORKSPACE_ROOT` and `ACPX_DEFAULT_CWD` identify shared ACP
+scratch roots and remain isolated per session. This distinction matters at
+shutdown: ACP may safely remove a scratch child directory, but must never remove
+a requested deliverable from the user's real workspace.
+
+The coding-tools session cwd and shell default follow the same precedence. When
+no explicit workspace is supplied, a sole `CODING_TOOLS_WORKSPACE_ROOTS` entry
+is the deterministic fallback. Relative FILE list/search/glob operations resolve
+against that session cwd, so ordinary requests such as "fix temperature.py"
+behave the same as absolute-path requests without a prompt-specific special
+case.
+
+### Requested mutations and completion cleanup
+
+The completion residual gate now distinguishes a requested workspace mutation
+from accidental leftover dirt. A coding goal with create/write/edit/fix-style
+intent records `workspaceMutationExpected: true`; its newly requested file is
+delivery evidence, not an `uncommitted_changes` failure. Read-only tasks retain
+the strict clean-workspace gate. Explicit negative clauses such as "do not
+create files", "never edit or write files", and "make no changes" do not count
+as mutation intent; a real edit in a separate clause still does.
+
+Automatic validation keeps a completed ACP child alive until evidence is
+checked. The only retried delivery race is the explicit transient
+`ACP session is already busy` response, with a small bounded retry; unrelated
+errors still fail immediately. After validation, the child is stopped while the
+concrete workspace and its deliverables remain intact.
 
 ### Detached child trajectory ownership
 
@@ -118,12 +148,15 @@ read/edit calls only and produced a clean final response.
 
 ### Deterministic suites
 
-- `plugin-agent-orchestrator`: 252 test files passed, 7 skipped; 2,941 tests
-  passed, 11 skipped.
-- `plugin-coding-tools`: 38 test files and 622 tests passed after the FILE
-  routing regression was added; package typecheck and build passed.
-- `packages/examples/code`: 89 tests passed across 28 files; typecheck and
+- `plugin-agent-orchestrator`: 252 test files passed, 7 skipped; 2,954 tests
+  passed, 11 skipped. Package typecheck, build, and Biome checks passed.
+- `plugin-coding-tools`: 39 test files and 644 tests passed; package typecheck,
+  build, and Biome checks passed.
+- `packages/examples/code`: 95 tests passed across 29 files; typecheck and
   packaged `index.js`/`acp.js` build passed.
+- `packages/core`: the 140 focused message-routing and planner-loop regressions
+  passed; package typecheck and Node build passed. The package Biome gate passed
+  with seven pre-existing warnings outside this change.
 - Focused regression coverage proves planner-visible exact-workdir locking,
   top-level pre-task trace reservation, trace/session correlation, detached
   trajectory ingestion, immediate deterministic durable ownership, secret
@@ -161,6 +194,12 @@ read-only workspace was unchanged, and all three lifecycle sequences reached
 `done`, `archived`, then `active` after reopen. Its sanitized local report is
 `work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
 
+The final post-fix exact-head rerun for this handoff is retained under
+`work/qa-artifacts/owned-parent-cerebras-final-20260820/`. Its `report.json`
+records the exact source head, clean-start/clean-end checks, parent-selected
+delegation, concurrent child overlap, lifecycle transitions, independent test
+results, and sanitized provider/model/tool evidence.
+
 An exact-head repetition then caught the `taskRoomId` ownership bug above and is
 recorded as a failed acceptance, despite the child itself completing the fixture
 work. The pushed handoff names the later post-fix report that counts as the
@@ -182,6 +221,35 @@ The tool trajectory recorded three successful stages, the command reported
 three passing tests and zero failures, the durable task moved through validation
 to `done` on the first attempt, and the asynchronous result appeared in the UI.
 No native desktop bundle was launched or tested by this coding-runtime lane.
+
+The final isolated browser acceptance used UI `2638`, API `32637`, the real
+Eliza parent runtime, native ACP transport, the packaged `dist/acp.js` child,
+and the protected `cerebras-api` account. No raw Cerebras/OpenAI/OpenRouter key
+was present in the restarted parent process. The account metadata reported
+`hasCredential: true`, `health: ok`, selection reason `only-eligible`, and a
+fresh provider test returned HTTP 200 in 147 ms.
+
+Two ordinary user requests form the release-facing proof:
+
+| User request | Observed runtime path | Independent proof | Trajectory | Verdict |
+| --- | --- | --- | --- | --- |
+| `temperature.py gives the wrong answer. Fix it so 212 F becomes 100 C, then run it to check.` | Parent FILE/SHELL coding loop | `python3 temperature.py` printed `100.0`; one formula change | `tj-4e03e12b512d9f`, 4.816 s, 2 planner iterations, 1 successful SHELL, 0 failures | Pass |
+| `Use a coding sub-agent to create hello_agent_persisted.py, make it print Hello from coding agent, run it, and tell me the exact output.` | Parent `spawn_agent` -> durable orchestrator task -> native packaged eliza-code child -> FILE/SHELL -> LLM verifier -> stop | File remained in the base workspace after child stop; independent Python run printed `Hello from coding agent` | `tj-569474eaf34364`, 5.584 s, 2 planner iterations, 2 successful tools, 0 failures | Pass |
+
+The delegated proof is task `5b8ac18d-bf1f-4951-80e0-4dd366d131eb`, session
+`9ddf38df-b2ca-4396-9b5d-7182b8949a42`. The durable task reached `done`; the
+session then reached `stopped`; `spawnPath` is `spawn_agent`;
+`workspaceMutationExpected` is true; completion residuals are clean; all three
+script-specific acceptance criteria passed; and the child trajectory records
+`provider=cerebras`, `modelName=gemma-4-31b` for every model stage. The visible
+notification included the exact output, and the chat contained no provisional
+failure note.
+
+Two failed runs are intentionally retained as regression evidence. The first
+used a stale source-checkout cwd. The second produced a correct child result in
+an isolated `task-*` directory that ACP deleted at stop; it therefore did not
+count as delivery. That failure directly motivated the active-workspace versus
+scratch-root contract above.
 
 ### Historical normal-person browser coding diagnostic
 
@@ -249,14 +317,10 @@ The current delta fixes those causes without branching on greeting text:
   generic text retrieval cannot re-add an action that the evaluator explicitly
   cleared.
 
-Focused verification for this delta currently covers 362 passing tests: 276
-agent/core routing, prompt, embedding, and trajectory tests; 17 `eliza-code`
-provider/CLI/status/harness tests; 12 thread-operation evaluator tests; and 57
-first-party Cerebras transport/configuration tests. Core's Node/browser/edge
-build, agent build, `eliza-code` packaged `index.js`/`acp.js` build, personal
-assistant build, and the four relevant package typechecks pass. Exact-head live
-Cerebras browser and parent/orchestrator results must replace this paragraph's
-pending status before release acceptance.
+The provider and prompt work remains covered by the focused transport,
+configuration, status, evaluator, and trajectory tests described above. The
+fresh browser proof confirms that the protected account resolves at runtime and
+that both parent and child model stages are Cerebras Gemma, not Qwen/OpenRouter.
 
 ## Reproduce
 
@@ -321,6 +385,31 @@ for a normal handoff, and it should still be reviewed before publication.
   successful UI-delivery claim; the separate browser captures are that proof.
 - The root macOS SourceKitten/native-gateway verifier remains a host toolchain
   concern and is not evidence against this JavaScript/ACP coding path.
+
+## AgentNet rendering review and deferred plan
+
+AgentNet was reviewed as a UI reference only; no AgentNet code was copied and it
+is not a runtime dependency. Its strongest reusable design ideas are small,
+role-specific message components and a normalized tool-event presentation:
+
+- a compact tool card with tool glyph/name, command or file, bounded output,
+  and an explicit success/exit-code badge;
+- inline diffs with added/removed color bands, line numbers, per-file tabs, and
+  a collapsed `+adds/-deletes across N files` summary;
+- assistant footer metadata for model and duration;
+- separate visual states for pending user messages, thinking, compacted-context
+  summaries, approvals, and completed tool events;
+- memoized immutable message rows so streaming updates replace only the tail
+  message instead of re-rendering the entire transcript.
+
+The recommended later Eliza UI project is to map existing trajectory/action
+receipts into one first-party `ToolEventViewModel`, render FILE/SHELL/sub-agent
+events as collapsible cards inside the existing canonical chat overlay, and add
+diff/exit-code/duration details behind disclosure. Keep the normal assistant
+answer concise and human-readable; do not paste raw trajectory JSON into chat.
+This should be implemented and browser-tested as a separate UI change after the
+runtime checkpoint, rather than mixing borrowed presentation code into the
+runtime correctness patch.
 
 ## VPS handoff
 

@@ -27,7 +27,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 | `ExecApprovalService` | `"exec_approval"` | Command approval gating: file-backed allowlist, routes unapproved commands through the elizaOS `ApprovalService` UI. Lives in `src/shell/approvals/`. |
 | `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy. Validates every path before read/write. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
-| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
+| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `ELIZA_WORKSPACE_DIR`, then `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
 | `BackgroundShellService` | `CODING_TOOLS_BACKGROUND_SHELL` | Per-conversation background shell process manager. Owns stable handles, stdin writes, bounded stdout/stderr rings, SIGTERM→SIGKILL termination, and teardown reaping. |
 | `RipgrepService` | `CODING_TOOLS_RIPGREP` | Wraps `@vscode/ripgrep` binary. Used by `grep` operation. Always excludes VCS dirs. 30 s hard cap. |
 

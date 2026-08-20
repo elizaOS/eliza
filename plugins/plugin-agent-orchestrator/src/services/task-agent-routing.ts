@@ -169,19 +169,20 @@ export function resolveSpawnWorkdir(
  * runtime setting, then — at lower priority — from the config file's env
  * section / process env via `readConfigEnvKey`):
  *
- *   1. `ELIZA_ACP_WORKSPACE_ROOT`  — ACP-specific scratch root
- *                                     (the one `AcpService.spawnSession` consults)
- *   2. `ACPX_DEFAULT_CWD`          — ACP default cwd
- *   3. `ELIZA_WORKSPACE_DIR`       — general workspace dir (set by store builds)
- *   4. `ELIZA_CODING_WORKSPACE`    — coding-workspace dir
- *   5. `ELIZA_CODING_DIRECTORY`    — user coding directory (the same key
+ *   1. `ELIZA_WORKSPACE_DIR`       — active user workspace, used verbatim
+ *   2. `ELIZA_CODING_WORKSPACE`    — active coding workspace, used verbatim
+ *   3. `ELIZA_CODING_DIRECTORY`    — active user coding directory
+ *   4. `ELIZA_ACP_WORKSPACE_ROOT`  — ACP scratch root (isolated per session)
+ *   5. `ACPX_DEFAULT_CWD`          — ACP scratch/default root
  *                                     `WorkspaceService` honors for scratch dirs)
  *   …falling back to `process.cwd()` only when none is configured, preserving
  *   the run-in-place default for self-checkout workflows.
  *
- * A configured value is treated as a SHARED scratch root → `isolate=true` so
- * each concurrent spawned session gets its own subdir; the `process.cwd()`
- * fallback is never isolated.
+ * Active workspace settings name a concrete user directory and are never
+ * isolated: deleting a per-session child after completion would delete the
+ * requested deliverable. ACP-specific root settings are shared scratch roots
+ * and remain isolated per session. The `process.cwd()` fallback is not
+ * isolated.
  */
 function resolveDefaultSpawnWorkdir(runtime: IAgentRuntime | undefined): {
   workdir: string;
@@ -191,32 +192,26 @@ function resolveDefaultSpawnWorkdir(runtime: IAgentRuntime | undefined): {
     typeof runtime?.getSetting === "function"
       ? (runtime.getSetting(key) as string | undefined)
       : undefined;
-  // Prefer the ACP-specific scratch root, then the general coding-workspace dirs.
-  // Falling through to ELIZA_WORKSPACE_DIR / ELIZA_CODING_WORKSPACE /
-  // ELIZA_CODING_DIRECTORY means an operator who points the runtime at a coding
-  // workspace (the common case) gets spawns landing THERE instead of in the eliza
-  // runtime root (process.cwd(), e.g. /app) — which otherwise causes "build me X"
-  // tasks to grep the eliza repo in place instead of scaffolding fresh.
-  // ELIZA_CODING_DIRECTORY is included for parity with WorkspaceService, which
-  // honors it for scratch-dir placement (workspace-service.ts).
-  const configured =
-    getSetting("ELIZA_ACP_WORKSPACE_ROOT") ??
-    getSetting("ACPX_DEFAULT_CWD") ??
+  const activeWorkspace =
     getSetting("ELIZA_WORKSPACE_DIR") ??
     getSetting("ELIZA_CODING_WORKSPACE") ??
     getSetting("ELIZA_CODING_DIRECTORY") ??
-    readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
-    readConfigEnvKey("ACPX_DEFAULT_CWD") ??
     readConfigEnvKey("ELIZA_WORKSPACE_DIR") ??
     readConfigEnvKey("ELIZA_CODING_WORKSPACE") ??
     readConfigEnvKey("ELIZA_CODING_DIRECTORY");
-  const trimmed = configured?.trim();
-  // A configured workspace ROOT is a shared scratch area for ad-hoc spawned
-  // tasks → isolate=true so each concurrent session gets its own subdir.
-  // With nothing configured we keep process.cwd() WITHOUT isolation, preserving
-  // the run-in-place self-checkout workflow (the agent edits the repo in place).
-  return trimmed
-    ? { workdir: expandHomePath(trimmed), isolate: true }
+  const active = activeWorkspace?.trim();
+  if (active) {
+    return { workdir: expandHomePath(active), isolate: false };
+  }
+
+  const scratchRoot =
+    getSetting("ELIZA_ACP_WORKSPACE_ROOT") ??
+    getSetting("ACPX_DEFAULT_CWD") ??
+    readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
+    readConfigEnvKey("ACPX_DEFAULT_CWD");
+  const scratch = scratchRoot?.trim();
+  return scratch
+    ? { workdir: expandHomePath(scratch), isolate: true }
     : { workdir: process.cwd(), isolate: false };
 }
 

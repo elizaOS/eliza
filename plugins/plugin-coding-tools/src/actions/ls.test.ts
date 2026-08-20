@@ -240,6 +240,18 @@ describe("LS", () => {
     expect(names).toContain("beta.md");
   });
 
+  it("resolves an explicit dot path against the session cwd", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { path: "." },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(`Directory: ${tmpRoot}`);
+    expect(result.text).not.toContain("temperature.py");
+    expect(result.text).toContain("alpha.ts");
+  });
+
   it.each(["pattern", "glob"] as const)(
     "rejects unsupported %s filters without returning an unfiltered listing",
     async (filter) => {

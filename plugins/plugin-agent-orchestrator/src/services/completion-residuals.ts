@@ -149,6 +149,10 @@ export interface CompletionResidualsInput {
    * session; the git legs are skipped (envelope legs still apply). Ignored
    * when `repoExpected` — an explicit repo claim keeps full strictness. */
   sharedRouteWorkdir?: boolean;
+  /** True when changing workspace contents is the requested deliverable. New
+   * dirty paths are retained as output evidence instead of misclassified as
+   * leftovers. Read-only tasks leave this false and still require cleanliness. */
+  workspaceMutationExpected?: boolean;
   testResults?: ReadonlyArray<{
     command: string;
     exitCode: number;
@@ -441,7 +445,7 @@ export async function collectCompletionResiduals(
       )
       .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths))
       .filter((line) => !isBaselineUntrackedLine(line, baselineUntrackedPaths));
-    if (dirty.length > 0) {
+    if (dirty.length > 0 && input.workspaceMutationExpected !== true) {
       residuals.push({
         kind: "uncommitted_changes",
         detail: `${dirty.length} uncommitted path(s) in the workspace`,

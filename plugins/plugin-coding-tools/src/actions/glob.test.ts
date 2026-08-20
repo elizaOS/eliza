@@ -108,13 +108,17 @@ describe("GLOB", () => {
     expect(result.text).toMatch(/3 files \(truncated=false\)/);
   });
 
-  it("rejects a relative path", async () => {
+  it("resolves a relative path against the session cwd", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    const files = (result.data as { files?: string[] } | undefined)?.files;
+    expect(files).toHaveLength(3);
+    expect(files?.some((entry) => entry.endsWith("a.ts"))).toBe(true);
+    expect(files?.some((entry) => entry.endsWith("b.ts"))).toBe(true);
+    expect(files?.some((entry) => entry.endsWith("c.ts"))).toBe(true);
   });
 
   it("rejects a path under the blocklist", async () => {

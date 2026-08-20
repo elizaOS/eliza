@@ -255,7 +255,7 @@ describe("Stage-1 prompt tiering", () => {
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
 		// Compact context catalog: compressed hint instead of the full description.
 		expect(systemContent).toContain(
-			"- helpdesk [label=Helpdesk]: Support tickets: open, escalate, check status",
+			"- helpdesk: Support tickets: open, escalate, check status",
 		);
 		expect(systemContent).not.toContain(LONG_CONTEXT_DESCRIPTION);
 		// Compressed field docs replace the full slices.
@@ -340,6 +340,9 @@ describe("Stage-1 prompt tiering", () => {
 		);
 		expect(systemContent).toContain(
 			'Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]',
+		);
+		expect(systemContent).toContain(
+			"Workspace files use code + FILE (+ SHELL to run/test); FILES means stored uploads/media.",
 		);
 		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
 		expect(systemContent).toContain(

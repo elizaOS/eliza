@@ -4489,7 +4489,7 @@ available_contexts:
 direct/private rules:
 - Chat, static knowledge, writing, rewriting, translation, brainstorming, and explanations: contexts=["simple"]; answer in replyText.
 - Simple replyText must be natural and complete, not a placeholder, unless terse was requested.
-- Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
+- Non-simple means tools, live/private state, or side effects. Workspace files use code + FILE (+ SHELL to run/test); FILES means stored uploads/media.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
 - Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.

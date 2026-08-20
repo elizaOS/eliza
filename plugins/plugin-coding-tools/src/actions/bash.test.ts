@@ -120,6 +120,7 @@ async function withShellTimeoutEnv<T>(
 
 interface RuntimeOptions {
   blockedPaths?: string;
+  workspaceRoots?: string;
   shellTimeoutMs?: unknown;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
@@ -150,6 +151,8 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
+  if (opts.workspaceRoots)
+    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
   if (opts.backgroundBufferChars !== undefined) {
@@ -918,6 +921,50 @@ describeIfPosix("shellAction", () => {
       expect(result.text).toContain("path_blocked");
     } finally {
       await fs.rm(blocked, { recursive: true, force: true });
+    }
+  });
+
+  it("uses session cwd when the planner supplies an unmentioned cwd outside workspace roots", async () => {
+    const roomId = "11111111-aaaa-bbbb-cccc-292929292929";
+    const sessionRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-session-root-"),
+    );
+    const staleRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-stale-root-"),
+    );
+    try {
+      await fs.writeFile(
+        path.join(sessionRoot, "prime_checker.py"),
+        "print('29 is prime')\n",
+      );
+      const { runtime, session } = await makeRuntime({
+        workspaceRoots: sessionRoot,
+      });
+      session.setCwd(roomId, sessionRoot);
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          roomId,
+          "Run the script and tell me whether 29 and 30 are prime.",
+        ),
+        undefined,
+        {
+          command: "python3 prime_checker.py",
+          cwd: staleRoot,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("29 is prime");
+      expect(result.text).toContain(`(cwd=${sessionRoot}`);
+      expect(result.text).not.toContain(staleRoot);
+      expect((result.data as Record<string, unknown> | undefined)?.cwd).toBe(
+        sessionRoot,
+      );
+    } finally {
+      await fs.rm(sessionRoot, { recursive: true, force: true });
+      await fs.rm(staleRoot, { recursive: true, force: true });
     }
   });
 

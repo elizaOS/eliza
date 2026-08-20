@@ -111,6 +111,7 @@ describe("TASKS top-level child trajectory bridge", () => {
         }),
         metadata: expect.objectContaining({
           orchestratorChildTrajectoryDir: "/state/child-trajectories/pending-1",
+          keepAliveAfterComplete: true,
         }),
       }),
     );

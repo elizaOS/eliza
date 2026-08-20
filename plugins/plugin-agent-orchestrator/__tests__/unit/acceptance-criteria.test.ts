@@ -13,6 +13,7 @@ import {
   isNonTrivialGoal,
   shouldRequireGoalContract,
   staticAcceptanceCriteria,
+  workspaceMutationExpected,
 } from "../../src/services/acceptance-criteria.js";
 
 /** A runtime whose `useModel` returns the given raw string (or throws). */
@@ -78,9 +79,60 @@ describe("detectTaskType", () => {
     );
   });
 
+  it("classifies self-contained scripts separately from repository coding", () => {
+    expect(detectTaskType("Write prime_checker.py, run it for 29 and 30")).toBe(
+      "script",
+    );
+    expect(detectTaskType("make a small shell script and execute it")).toBe(
+      "script",
+    );
+  });
+
   it("is empty-safe", () => {
     expect(detectTaskType("")).toBe("coding");
     expect(detectTaskType("   ")).toBe("coding");
+  });
+});
+
+describe("workspaceMutationExpected", () => {
+  it("distinguishes requested edits from read-only coding checks", () => {
+    expect(workspaceMutationExpected("create hello.py and run it")).toBe(true);
+    expect(workspaceMutationExpected("fix the parser bug")).toBe(true);
+    expect(
+      workspaceMutationExpected("run the parser tests and report output"),
+    ).toBe(false);
+    expect(
+      workspaceMutationExpected("review the diff without changing files"),
+    ).toBe(false);
+  });
+
+  it("does not mistake explicit negative instructions for mutation intent", () => {
+    expect(
+      workspaceMutationExpected(
+        "Read README.md, run the tests, and make no changes of any kind.",
+      ),
+    ).toBe(false);
+    expect(
+      workspaceMutationExpected(
+        "Do not create files. Never edit or write files; just run bun test.",
+      ),
+    ).toBe(false);
+    expect(
+      workspaceMutationExpected(
+        "Use FILE to read two files. Do not list directories or make changes. Do not commit, push, or create a PR.",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps real edits positive when a separate clause protects other files", () => {
+    expect(
+      workspaceMutationExpected("Fix the parser, but do not edit the tests."),
+    ).toBe(true);
+    expect(
+      workspaceMutationExpected(
+        "Do not modify package.json; create hello.py and run it.",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -88,6 +140,7 @@ describe("staticAcceptanceCriteria", () => {
   it("returns ≥3 criteria for every task type", () => {
     for (const type of [
       "coding",
+      "script",
       "app-build",
       "view-create",
       "deploy",
@@ -97,6 +150,18 @@ describe("staticAcceptanceCriteria", () => {
     expect(staticAcceptanceCriteria("fix bug").length).toBeGreaterThanOrEqual(
       3,
     );
+  });
+
+  it("uses run-shaped evidence for a standalone script", () => {
+    expect(
+      staticAcceptanceCriteria(
+        "Write prime_checker.py and run it for 29 and 30",
+      ),
+    ).toEqual([
+      "the requested script file exists in the workdir",
+      "the script exits successfully when run",
+      "the run output matches the requested examples",
+    ]);
   });
 
   it("produces DIFFERENT sets for coding vs app-build vs view-create", () => {

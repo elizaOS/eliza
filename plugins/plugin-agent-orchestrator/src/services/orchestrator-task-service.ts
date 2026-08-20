@@ -724,6 +724,12 @@ function residualsRepoExpected(
   );
 }
 
+function residualsWorkspaceMutationExpected(
+  doc: OrchestratorTaskDocument,
+): boolean {
+  return doc.task.metadata?.workspaceMutationExpected === true;
+}
+
 /** Owned-artifact fingerprints the residuals gate may exempt: the live ACP
  * session ledger wins when non-empty; otherwise fall back to the records
  * persisted on session metadata (a service restart loses the in-memory
@@ -3325,11 +3331,14 @@ export class OrchestratorTaskService extends Service {
     input: CreateTaskInput,
   ): OrchestratorTaskType | undefined {
     switch (input.kind) {
-      case "coding":
       case "view-create":
       case "app-build":
       case "deploy":
         return input.kind;
+      // `coding` is the broad storage kind. Let goal detection specialize a
+      // self-contained script while all other code still defaults to coding.
+      case "coding":
+        return undefined;
       default:
         return undefined;
     }
@@ -3658,6 +3667,7 @@ export class OrchestratorTaskService extends Service {
       ? await collectCompletionResiduals({
           workdir: workspaceSession?.workdir,
           repoExpected: residualsRepoExpected(doc, workspaceSession),
+          workspaceMutationExpected: residualsWorkspaceMutationExpected(doc),
           orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
             acp,
             workspaceSession,
@@ -4003,6 +4013,7 @@ export class OrchestratorTaskService extends Service {
         const residuals = await collectCompletionResiduals({
           workdir: reportingSession?.workdir,
           repoExpected: residualsRepoExpected(doc, reportingSession),
+          workspaceMutationExpected: residualsWorkspaceMutationExpected(doc),
           orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
             acp,
             reportingSession,
@@ -4320,6 +4331,7 @@ export class OrchestratorTaskService extends Service {
             evidence: renderDeterministicVerdict(detVerdict),
             verifier: DETERMINISTIC_LEDGER_VERIFIER_NAME,
           });
+          await this.closeValidatedDetachedSpawn(taskId, sessionId);
           this.emitChange(taskId);
           return;
         }
@@ -4436,6 +4448,7 @@ export class OrchestratorTaskService extends Service {
           evidence: verdict.rawResponse || evidence,
           verifier: LLM_GOAL_VERIFIER_NAME,
         });
+        await this.closeValidatedDetachedSpawn(taskId, sessionId);
         // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
         // no HTTP response to refresh the client, so emitChange is the only
         // signal that the task left `validating`. Every other branch emits too.
@@ -4459,6 +4472,40 @@ export class OrchestratorTaskService extends Service {
         missing: verdict.missing,
         attempt: attempts,
       });
+    }
+  }
+
+  /**
+   * A chat-created one-shot coding session is retained only so automatic
+   * verification can deliver a corrective turn. Once its durable task passes,
+   * close that transport and release its worker slot. Service/API-created task
+   * agents keep their existing lifecycle because they may intentionally accept
+   * later follow-ups after a completed turn.
+   */
+  private async closeValidatedDetachedSpawn(
+    taskId: string,
+    sessionId: string,
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    const spawnPath = doc?.task.metadata?.spawnPath;
+    if (spawnPath !== "spawn_agent" && spawnPath !== "create") return;
+    const acp = this.acp();
+    if (!acp) return;
+    try {
+      await acp.stopSession(sessionId);
+      await this.store.updateSession(
+        sessionId,
+        { status: "stopped", stoppedAt: Date.now() },
+        taskId,
+      );
+    } catch (err) {
+      // error-policy:J7 validation is already committed. A teardown failure is
+      // observable, but cannot roll a verified task back to failed.
+      this.runtime.reportError?.(
+        "OrchestratorTask.closeValidatedDetachedSpawn",
+        err,
+        { taskId, sessionId },
+      );
     }
   }
 
@@ -5842,7 +5889,27 @@ export class OrchestratorTaskService extends Service {
     });
     await this.store.updateSession(sessionId, { lastInputSentAt: Date.now() });
     try {
-      await acp.sendToSession(sessionId, followUp);
+      // A native ACP completion event is emitted just before the prompt turn's
+      // finally block releases its busy marker. Automatic validation runs from
+      // that event, so a corrective follow-up can legitimately arrive during
+      // this tiny teardown window. Retry only that explicit transient; every
+      // other send failure remains immediate and observable.
+      const maxBusyRetries = reason === "validation_failed" ? 40 : 0;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await acp.sendToSession(sessionId, followUp);
+          break;
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          if (
+            attempt >= maxBusyRetries ||
+            !detail.includes("ACP session is already busy:")
+          ) {
+            throw err;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        }
+      }
     } catch (err) {
       // error-policy:J2 mark the session send_failed for observability, then
       // rethrow the original failure so the caller sees it.

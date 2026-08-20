@@ -11,7 +11,11 @@
  * store build variant and iOS; Android only in local-yolo mode). Also re-exports
  * the services and types for external consumers.
  */
-import type { Plugin } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Plugin,
+  registerDirectActionRoutingRule,
+} from "@elizaos/core";
 import {
   fileAction,
   shellAction,
@@ -20,6 +24,10 @@ import {
   worktreeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
+import {
+  createWorkspaceFileDirectRoutingRule,
+  createWorkspaceFileExecutionDirectRoutingRule,
+} from "./routing/workspace-file-direct-routing.js";
 import {
   BackgroundShellService,
   FileStateService,
@@ -76,6 +84,16 @@ export const codingToolsPlugin: Plugin = {
     webFetchAction,
     webSearchAction,
   ],
+  init: async (_config: Record<string, unknown>, runtime: IAgentRuntime) => {
+    registerDirectActionRoutingRule(
+      runtime,
+      createWorkspaceFileDirectRoutingRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createWorkspaceFileExecutionDirectRoutingRule(),
+    );
+  },
   async dispose(runtime) {
     await runtime.getService<ShellService>(ShellService.serviceType)?.stop();
     await runtime

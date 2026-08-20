@@ -1146,6 +1146,7 @@ function formatStreams(
 
 export const shellAction: Action = {
   name: "SHELL",
+  tags: ["coding-tool", "workspace-execution"],
   contexts: [...CODING_TOOLS_CONTEXTS],
   roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
@@ -1519,78 +1520,99 @@ export const shellAction: Action = {
 
     let cwd = "";
     if (cwdParam) {
+      const sessionCwd = await session.getExistingCwd(conversationId);
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (v.ok === false) {
-        return failureToActionResult({
-          reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
-          message: redactShellText(runtime, v.message),
-        });
-      }
-      try {
-        const stat = await fs.stat(v.resolved);
-        if (!stat.isDirectory()) {
-          return failureToActionResult({
-            reason: "invalid_param",
-            message: `cwd is not a directory: ${redactShellText(runtime, cwdParam)}`,
-          });
-        }
-      } catch (err) {
-        // error-policy:J3 cwd existence probe distinguished from breakage; a
-        // genuine stat failure (EACCES, etc.) becomes a success:false
-        // ActionResult, while the expected-miss (ENOENT) degrades to the
-        // session cwd with a warning rather than masking a real error.
-        if (!isMissingPathError(err)) {
-          return failureToActionResult({
-            reason: "io_error",
-            message: `cwd stat failed: ${redactShellText(runtime, (err as Error).message)}`,
-          });
-        }
-        const fallback = await session.getExistingCwd(conversationId);
-        cwd = fallback.cwd;
-        coreLogger.warn(
-          {
-            requestedCwd: redactShellText(runtime, cwdParam),
-            fallbackCwd: redactShellText(runtime, cwd),
-          },
-          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd`,
-        );
-        if (fallback.reset && fallback.previousCwd) {
+        // A planner can inherit the runtime process cwd from ambient context
+        // even when this conversation is intentionally rooted in a different
+        // workspace. If that unmentioned cwd is merely outside the configured
+        // allow-roots, use the authoritative session cwd. Explicit user paths
+        // and sensitive/blocklisted paths must still fail closed.
+        if (
+          v.reason === "outside_allowed_roots" &&
+          !textMentionsPath(messageText(message), cwdParam) &&
+          path.resolve(cwdParam) !== path.resolve(sessionCwd.cwd)
+        ) {
+          cwd = sessionCwd.cwd;
           coreLogger.warn(
             {
-              previousCwd: redactShellText(runtime, fallback.previousCwd),
+              requestedCwd: redactShellText(runtime, cwdParam),
               fallbackCwd: redactShellText(runtime, cwd),
             },
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
+            `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded cwd outside workspace roots; using session cwd`,
           );
+        } else {
+          return failureToActionResult({
+            reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
+            message: redactShellText(runtime, v.message),
+          });
         }
       }
-      const sessionCwd = await session.getExistingCwd(conversationId);
-      if (
-        shouldIgnoreUngroundedRuntimeCwd({
-          message,
-          requestedCwd: v.resolved,
-          sessionCwd: sessionCwd.cwd,
-        })
-      ) {
-        cwd = sessionCwd.cwd;
-        coreLogger.warn(
-          {
-            requestedCwd: redactShellText(runtime, v.resolved),
-            fallbackCwd: redactShellText(runtime, cwd),
-          },
-          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd`,
-        );
-        if (sessionCwd.reset && sessionCwd.previousCwd) {
+      if (v.ok === true) {
+        try {
+          const stat = await fs.stat(v.resolved);
+          if (!stat.isDirectory()) {
+            return failureToActionResult({
+              reason: "invalid_param",
+              message: `cwd is not a directory: ${redactShellText(runtime, cwdParam)}`,
+            });
+          }
+        } catch (err) {
+          // error-policy:J3 cwd existence probe distinguished from breakage; a
+          // genuine stat failure (EACCES, etc.) becomes a success:false
+          // ActionResult, while the expected-miss (ENOENT) degrades to the
+          // session cwd with a warning rather than masking a real error.
+          if (!isMissingPathError(err)) {
+            return failureToActionResult({
+              reason: "io_error",
+              message: `cwd stat failed: ${redactShellText(runtime, (err as Error).message)}`,
+            });
+          }
+          cwd = sessionCwd.cwd;
           coreLogger.warn(
             {
-              previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
+              requestedCwd: redactShellText(runtime, cwdParam),
               fallbackCwd: redactShellText(runtime, cwd),
             },
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
+            `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd`,
           );
+          if (sessionCwd.reset && sessionCwd.previousCwd) {
+            coreLogger.warn(
+              {
+                previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
+                fallbackCwd: redactShellText(runtime, cwd),
+              },
+              `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
+            );
+          }
         }
+        if (
+          shouldIgnoreUngroundedRuntimeCwd({
+            message,
+            requestedCwd: v.resolved,
+            sessionCwd: sessionCwd.cwd,
+          })
+        ) {
+          cwd = sessionCwd.cwd;
+          coreLogger.warn(
+            {
+              requestedCwd: redactShellText(runtime, v.resolved),
+              fallbackCwd: redactShellText(runtime, cwd),
+            },
+            `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd`,
+          );
+          if (sessionCwd.reset && sessionCwd.previousCwd) {
+            coreLogger.warn(
+              {
+                previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
+                fallbackCwd: redactShellText(runtime, cwd),
+              },
+              `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
+            );
+          }
+        }
+        if (!cwd) cwd = v.resolved;
       }
-      if (!cwd) cwd = v.resolved;
     } else {
       const sessionCwd = await session.getExistingCwd(conversationId);
       cwd = sessionCwd.cwd;

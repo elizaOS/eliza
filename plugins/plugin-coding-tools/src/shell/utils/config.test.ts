@@ -47,6 +47,29 @@ describe("loadShellConfig", () => {
     );
   });
 
+  it("uses the sole coding workspace root when no shell directory is explicit", () => {
+    vi.stubEnv("SHELL_ALLOWED_DIRECTORY", "");
+    vi.stubEnv("ELIZA_WORKSPACE_DIR", "");
+    vi.stubEnv("CODING_TOOLS_WORKSPACE_ROOTS", process.cwd());
+
+    expect(loadShellConfig().allowedDirectory).toBe(
+      path.resolve(process.cwd()),
+    );
+  });
+
+  it("prefers the explicit Eliza workspace over coding roots", () => {
+    vi.stubEnv("SHELL_ALLOWED_DIRECTORY", "");
+    vi.stubEnv("ELIZA_WORKSPACE_DIR", process.cwd());
+    vi.stubEnv(
+      "CODING_TOOLS_WORKSPACE_ROOTS",
+      path.join(process.cwd(), "not-the-active-workspace"),
+    );
+
+    expect(loadShellConfig().allowedDirectory).toBe(
+      path.resolve(process.cwd()),
+    );
+  });
+
   it("still throws an explicit error for a missing allowed directory", () => {
     const missingDirectory = path.join(
       process.cwd(),

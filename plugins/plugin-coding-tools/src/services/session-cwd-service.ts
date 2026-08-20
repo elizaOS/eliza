@@ -1,14 +1,17 @@
 /**
  * `SessionCwdService` (serviceType `CODING_TOOLS_SESSION_CWD`): the per-conversation
- * working directory, defaulting to `process.cwd()`. Glob/grep/ls/shell use it when
- * no explicit path is given; the worktree actions push/pop it as a stack when
- * entering and leaving worktrees.
+ * working directory, defaulting to the runtime's configured
+ * `ELIZA_WORKSPACE_DIR`, then its sole `CODING_TOOLS_WORKSPACE_ROOTS` entry,
+ * and finally `process.cwd()`. Glob/grep/ls/shell use it when no explicit path
+ * is given; the worktree actions push/pop it as a stack when entering and
+ * leaving worktrees.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   logger as coreLogger,
   type IAgentRuntime,
+  resolveSetting,
   Service,
 } from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, SESSION_CWD_SERVICE } from "../types.js";
@@ -18,7 +21,8 @@ import { CODING_TOOLS_LOG_PREFIX, SESSION_CWD_SERVICE } from "../types.js";
  * starting point for tools that take an optional `path` (Glob/Grep/LS) or
  * `cwd` (Bash) parameter.
  *
- * - Default for a fresh conversation = `process.cwd()`.
+ * - Default for a fresh conversation = `ELIZA_WORKSPACE_DIR`, then a sole
+ *   configured coding workspace root, then `process.cwd()`.
  * - EnterWorktree sets it to the new worktree root.
  * - ExitWorktree restores it.
  * - Bash invocations inherit it but cannot mutate it (changes inside the
@@ -50,6 +54,19 @@ export class SessionCwdService extends Service {
   }
 
   defaultCwd(): string {
+    const configured = resolveSetting(this.runtime, "ELIZA_WORKSPACE_DIR");
+    if (configured) return path.resolve(configured);
+    const allowedRoots = resolveSetting(
+      this.runtime,
+      "CODING_TOOLS_WORKSPACE_ROOTS",
+    );
+    if (allowedRoots) {
+      const roots = allowedRoots
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      if (roots.length === 1) return path.resolve(roots[0]);
+    }
     return path.resolve(process.cwd());
   }
 

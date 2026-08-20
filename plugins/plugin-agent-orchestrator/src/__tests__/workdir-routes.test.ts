@@ -22,6 +22,8 @@ let originalDefaultAgent: string | undefined;
 let originalAcpDefaultAgent: string | undefined;
 let originalBenchmarkAgent: string | undefined;
 let originalSelectionStrategy: string | undefined;
+let originalWorkspaceDir: string | undefined;
+let originalAcpWorkspaceRoot: string | undefined;
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workdir-routes-"));
@@ -32,6 +34,10 @@ beforeEach(() => {
   originalAcpDefaultAgent = process.env.ELIZA_ACP_DEFAULT_AGENT;
   originalBenchmarkAgent = process.env.BENCHMARK_TASK_AGENT;
   originalSelectionStrategy = process.env.ELIZA_AGENT_SELECTION_STRATEGY;
+  originalWorkspaceDir = process.env.ELIZA_WORKSPACE_DIR;
+  originalAcpWorkspaceRoot = process.env.ELIZA_ACP_WORKSPACE_ROOT;
+  delete process.env.ELIZA_WORKSPACE_DIR;
+  delete process.env.ELIZA_ACP_WORKSPACE_ROOT;
 });
 
 afterEach(() => {
@@ -49,6 +55,12 @@ afterEach(() => {
   if (originalSelectionStrategy === undefined)
     delete process.env.ELIZA_AGENT_SELECTION_STRATEGY;
   else process.env.ELIZA_AGENT_SELECTION_STRATEGY = originalSelectionStrategy;
+  if (originalWorkspaceDir === undefined)
+    delete process.env.ELIZA_WORKSPACE_DIR;
+  else process.env.ELIZA_WORKSPACE_DIR = originalWorkspaceDir;
+  if (originalAcpWorkspaceRoot === undefined)
+    delete process.env.ELIZA_ACP_WORKSPACE_ROOT;
+  else process.env.ELIZA_ACP_WORKSPACE_ROOT = originalAcpWorkspaceRoot;
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -341,6 +353,36 @@ describe("resolveSpawnWorkdir", () => {
     );
     expect(result.workdir).toBe(process.cwd());
     expect(result.route).toBeUndefined();
+  });
+
+  it("uses an active Eliza workspace verbatim instead of disposable isolation", () => {
+    delete process.env[ENV_KEY];
+    process.env.ELIZA_WORKSPACE_DIR = appsDir;
+    process.env.ELIZA_ACP_WORKSPACE_ROOT = tmpRoot;
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "create hello.py",
+      "create hello.py",
+      undefined,
+    );
+
+    expect(result).toEqual({ workdir: appsDir });
+  });
+
+  it("keeps ACP-specific roots isolated when no active workspace is configured", () => {
+    delete process.env[ENV_KEY];
+    delete process.env.ELIZA_WORKSPACE_DIR;
+    process.env.ELIZA_ACP_WORKSPACE_ROOT = appsDir;
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "create hello.py",
+      "create hello.py",
+      undefined,
+    );
+
+    expect(result).toEqual({ workdir: appsDir, isolate: true });
   });
 });
 

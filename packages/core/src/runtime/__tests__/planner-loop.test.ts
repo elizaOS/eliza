@@ -687,6 +687,80 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it("keeps focused FILE + SHELL chat work in the coding loop through verification", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "read-1",
+							name: "FILE",
+							arguments: { action: "read", path: "temperature.py" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "edit-1",
+							name: "FILE",
+							arguments: {
+								action: "edit",
+								path: "temperature.py",
+								old_string: "/ 8",
+								new_string: "/ 9",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "run-1",
+							name: "SHELL",
+							arguments: { command: "python3 temperature.py" },
+						},
+					],
+				})
+				.mockResolvedValueOnce(
+					codingReply("reply-1", "Fixed it. 212 F now returns 100 C."),
+				),
+		};
+		const executeToolCall = vi.fn(async (call: { name: string }) => ({
+			success: true,
+			text: call.name === "SHELL" ? "100.0" : "ok",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "CONTINUE" as const,
+			thought: "This evaluator must not run between focused coding steps.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: codingPlannerContext,
+			tools: [
+				{ name: "FILE", description: "Read or edit a workspace file." },
+				{ name: "SHELL", description: "Run a workspace command." },
+				{ name: "REPLY", description: "Reply to the user." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
+			"FILE",
+			"FILE",
+			"SHELL",
+		]);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.finalMessage).toBe("Fixed it. 212 F now returns 100 C.");
+	});
+
 	it("lifts the required-tool miss budget in coding mode (#10132)", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const terminalReply = codingReply("reply-1", "Creating the app now.");

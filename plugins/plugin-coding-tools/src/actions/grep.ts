@@ -20,6 +20,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type {
   RipgrepMode,
   RipgrepOptions,
@@ -90,8 +91,16 @@ export async function grepHandler(
 
   try {
     const requestedPath = readStringParam(options, "path");
-    const targetPath =
-      requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+    const targetPathResult = requestedPath
+      ? resolveInputPath(runtime, conversationId, requestedPath)
+      : {
+          ok: true as const,
+          value: (await session.getExistingCwd(conversationId)).cwd,
+        };
+    if (!targetPathResult.ok) {
+      return failureToActionResult(targetPathResult.failure);
+    }
+    const targetPath = targetPathResult.value;
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
     if (validation.ok === false) {

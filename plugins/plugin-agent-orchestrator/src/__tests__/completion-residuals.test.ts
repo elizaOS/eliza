@@ -103,6 +103,20 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.items?.join("\n")).toContain("untracked.ts");
   });
 
+  it("treats requested workspace mutations as deliverables, not leftovers", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    writeFileSync(join(workdir, "hello.py"), 'print("hello")\n');
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      workspaceMutationExpected: true,
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
   it("caps the reported dirty-path list", async () => {
     const { workdir } = makeRepo();
     for (let i = 0; i < MAX_RESIDUAL_PATHS + 5; i += 1) {

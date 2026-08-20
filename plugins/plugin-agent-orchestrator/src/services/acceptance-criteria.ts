@@ -12,6 +12,7 @@ import { stripInventedArtifactCriteria } from "./producible-evidence.js";
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
   | "coding"
+  | "script"
   | "view-create"
   | "app-build"
   | "deploy";
@@ -47,6 +48,15 @@ export const DEFAULT_CRITERIA_TEMPLATES: Readonly<
   Record<OrchestratorTaskType, readonly string[]>
 > = {
   coding: CODING_CRITERIA,
+  // A self-contained script is executable evidence, not a repository release.
+  // Requiring a package typecheck/lint/PR for a single .py/.sh file created in
+  // an isolated workspace manufactured impossible criteria and converted a
+  // successful child run into a failed task card.
+  script: [
+    "the requested script file exists in the workdir",
+    "the script exits successfully when run",
+    "the run output matches the requested examples",
+  ],
   // Serve-focused on purpose (#20794 live residual): a quick one-file app has
   // no test/typecheck surface, so inheriting the coding checks manufactured
   // criteria NO static deliverable could ever satisfy and burned every verify
@@ -96,6 +106,53 @@ const DEPLOY_RE =
 // matches grammatical English and silently regressed those to coding).
 const APP_BUILD_RE =
   /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;
+const SCRIPT_RE =
+  /(?:\b(?:script|standalone program|command-line program|cli script)\b|\.(?:py|rb|sh|bash|ps1)\b)/i;
+const WORKSPACE_MUTATION_RE =
+  /\b(?:add|build|change|create|delete|edit|fix|implement|make|modify|move|refactor|remove|rename|replace|update|write)\b/gi;
+const MUTATION_NEGATION_RE =
+  /\b(?:avoid|do\s+not|don't|must\s+not|never|should\s+not|without)\b/gi;
+const NO_CHANGES_SUFFIX_RE = /^\s+no\s+(?:workspace\s+)?changes?\b/i;
+
+function hasNearbyMutationNegation(prefix: string): boolean {
+  const matches = [...prefix.matchAll(MUTATION_NEGATION_RE)];
+  const latest = matches.at(-1);
+  if (!latest) return false;
+  const after = prefix.slice((latest.index ?? 0) + latest[0].length);
+  // Covers coordinated negative lists ("do not commit, push, or create")
+  // without letting a distant negative sentence suppress a later edit.
+  return (after.match(/[\p{L}\p{N}_'-]+/gu) ?? []).length <= 6;
+}
+
+/** Whether the task explicitly asks the worker to change workspace contents.
+ * Those changes are the deliverable, not completion residuals. Read-only asks
+ * such as inspect/review/run/test stay false and retain the clean-worktree
+ * completion gate. */
+export function workspaceMutationExpected(goal: string): boolean {
+  const text = (goal ?? "").trim();
+  for (const match of text.matchAll(WORKSPACE_MUTATION_RE)) {
+    const index = match.index ?? 0;
+    // Limit negation to the current clause. This keeps "fix the parser, but do
+    // not edit tests" mutation-positive while correctly classifying "never
+    // edit or write files" as read-only for both verbs.
+    const clausePrefix =
+      text
+        .slice(0, index)
+        .split(/[.!?\n;]|,\s*(?:and\s+then|but|then)\b/i)
+        .at(-1) ?? "";
+    if (hasNearbyMutationNegation(clausePrefix)) continue;
+    // "Make no changes" is the inverse of "make changes" even though the
+    // mutation-shaped verb comes before the negation token.
+    if (
+      match[0].toLowerCase() === "make" &&
+      NO_CHANGES_SUFFIX_RE.test(text.slice(index + match[0].length))
+    ) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 
 /**
  * Classify a task from its goal text. Defaults to `coding` — the safest
@@ -109,6 +166,7 @@ export function detectTaskType(goal: string): OrchestratorTaskType {
   if (VIEW_RE.test(text)) return "view-create";
   if (DEPLOY_RE.test(text)) return "deploy";
   if (APP_BUILD_RE.test(text)) return "app-build";
+  if (SCRIPT_RE.test(text)) return "script";
   return "coding";
 }
 

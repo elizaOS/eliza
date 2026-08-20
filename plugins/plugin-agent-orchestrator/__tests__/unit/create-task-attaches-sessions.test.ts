@@ -51,9 +51,11 @@ const THREAD_ID = "aaaabbbb-1111-2222-3333-444455556666";
 // so the stale-status bug is identical on either runner.
 const PREV_SMITHERS = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
 const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+const PREV_AUTO_GOAL_VERIFY = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
 beforeAll(() => {
   process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
   process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "0";
+  process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "0";
 });
 afterAll(() => {
   if (PREV_SMITHERS === undefined)
@@ -62,6 +64,9 @@ afterAll(() => {
   if (PREV_GOAL_CONTRACT === undefined)
     delete process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
   else process.env.ELIZA_REQUIRE_GOAL_CONTRACT = PREV_GOAL_CONTRACT;
+  if (PREV_AUTO_GOAL_VERIFY === undefined)
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = PREV_AUTO_GOAL_VERIFY;
 });
 
 /**
@@ -163,6 +168,10 @@ function runtimeWithServices(opts: {
           taskId: string,
           input: Record<string, unknown>,
         ) => Promise<boolean>;
+        prepareDetachedChildTrace?: () => {
+          env: Record<string, string>;
+          metadata: Record<string, unknown>;
+        };
       }
     | OrchestratorTaskService;
 }): IAgentRuntime {
@@ -239,6 +248,79 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     // The per-part label the create action assigned rides through.
     expect(typeof input.label).toBe("string");
     expect((input.label as string).length).toBeGreaterThan(0);
+  });
+
+  it("keeps a durable script worker alive through validation and attaches its trace", async () => {
+    process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
+    const acp = statefulAcp();
+    const createTask = vi.fn(async () => ({
+      id: THREAD_ID,
+      title: "Hello agent",
+    }));
+    const attachSession = vi.fn(async () => true);
+    const prepareDetachedChildTrace = vi.fn(() => ({
+      env: {
+        ELIZA_TRACE_ID: "child-trace",
+        ELIZA_PARENT_TRAJECTORY_STEP_ID: "parent-step",
+      },
+      metadata: {
+        orchestratorChildTrajectoryDir: "/tmp/child-trace",
+      },
+    }));
+    const runtime = runtimeWithServices({
+      acp,
+      taskService: {
+        createTask,
+        attachSession,
+        prepareDetachedChildTrace,
+      },
+    });
+
+    const result = await createTaskAction.handler(
+      runtime,
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          title: "Hello Agent V2",
+          task: "Create hello_agent_v2.py that prints Hello from agent and run it",
+          agentType: "elizaos",
+          workdir: os.tmpdir(),
+        },
+      },
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acceptanceCriteria: [
+          "the requested script file exists in the workdir",
+          "the script exits successfully when run",
+          "the run output matches the requested examples",
+        ],
+        metadata: expect.objectContaining({ spawnPath: "create" }),
+      }),
+    );
+    expect(acp.spawnSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: expect.objectContaining({ ELIZA_TRACE_ID: "child-trace" }),
+        metadata: expect.objectContaining({
+          keepAliveAfterComplete: true,
+          orchestratorChildTrajectoryDir: "/tmp/child-trace",
+        }),
+      }),
+    );
+    expect(acp.stopSession).not.toHaveBeenCalled();
+    expect(attachSession).toHaveBeenCalledWith(
+      THREAD_ID,
+      expect.objectContaining({
+        traceId: "child-trace",
+        parentTrajectoryStepId: "parent-step",
+      }),
+    );
+    process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "0";
   });
 
   it("still returns success (with the widget) when attachSession throws", async () => {

@@ -91,6 +91,7 @@ class FakeAcp {
   readonly stopped: string[] = [];
   readonly liveSessions = new Map<string, Record<string, unknown>>();
   failSend = false;
+  busySendFailures = 0;
   failStop = false;
   failSpawn = false;
 
@@ -178,6 +179,12 @@ class FakeAcp {
 
   sendToSession(sessionId: string, message: string): Promise<void> {
     if (this.failSend) return Promise.reject(new Error("send failed"));
+    if (this.busySendFailures > 0) {
+      this.busySendFailures -= 1;
+      return Promise.reject(
+        new Error(`ACP session is already busy: ${sessionId}`),
+      );
+    }
     this.sent.push({ sessionId, message });
     return Promise.resolve();
   }
@@ -1089,6 +1096,26 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(must(detail.sessions[0], "session").status).toBe("send_failed");
     expect(detail.messages.map((message) => message.content)).toContain(
       "please continue",
+    );
+  });
+
+  it("retries a validation follow-up across native ACP prompt teardown", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    acp.busySendFailures = 2;
+
+    await expect(
+      service.sendToTaskAgent(
+        taskId,
+        sessionId,
+        "fix the verification gap",
+        "validation_failed",
+      ),
+    ).resolves.toBe(true);
+
+    expect(acp.sent).toHaveLength(1);
+    expect(acp.sent[0]?.message).toContain("fix the verification gap");
+    expect((await service.getTask(taskId))?.sessions[0]?.status).not.toBe(
+      "send_failed",
     );
   });
 

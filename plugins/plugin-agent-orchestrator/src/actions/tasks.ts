@@ -35,9 +35,11 @@ import {
   detectTaskType,
   type OrchestratorTaskType,
   staticAcceptanceCriteria,
+  workspaceMutationExpected,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import { shouldAutoVerifyGoal } from "../services/goal-llm-verifier.js";
 import {
   collisionProviderFromWorkspaceService,
   LanePlannerService,
@@ -900,7 +902,7 @@ async function runCreateLegacy(
     ? userReferenceLogView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
-  const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
+  const explicitKeepAliveAfterComplete = hasVerifiedRetryLifecycle(
     params,
     content,
     extraMetadata,
@@ -952,11 +954,20 @@ async function runCreateLegacy(
     | "normal"
     | "high"
     | "urgent";
-  const acceptanceCriteria = pickStringArrayFromInputs(
+  const requestedAcceptanceCriteria = pickStringArrayFromInputs(
     params,
     content,
     "acceptanceCriteria",
   );
+  // Planner-generated TASKS_CREATE calls usually omit an explicit contract.
+  // Seed the durable task with the actual worker instructions instead of the
+  // display title/goal, which may be as terse as "Hello Agent V2". This keeps
+  // a one-file script task from inheriting the broad coding fallback
+  // (typecheck/lint/tests/diff) that can never be proven in a bare workspace.
+  const acceptanceCriteria =
+    requestedAcceptanceCriteria.length > 0
+      ? requestedAcceptanceCriteria
+      : staticAcceptanceCriteria(tasks.join("\n"));
   const taskRoomId =
     typeof swarmRoomMetadata.taskRoomId === "string"
       ? swarmRoomMetadata.taskRoomId
@@ -968,6 +979,16 @@ async function runCreateLegacy(
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;
+  const hasAutoValidationOwner =
+    shouldAutoVerifyGoal() &&
+    typeof taskService?.createTask === "function" &&
+    typeof taskService?.attachSession === "function" &&
+    typeof taskService?.prepareDetachedChildTrace === "function";
+  // The durable owner may need to send a corrective turn after the first
+  // completion. Keep that ACP transport writable until validation passes;
+  // OrchestratorTaskService closes it immediately after the green verdict.
+  const keepAliveAfterComplete =
+    explicitKeepAliveAfterComplete || hasAutoValidationOwner;
   {
     // Same skip as the spawn path: router-driven synthetic inbounds restate
     // in-flight goals by design; only fresh user-originated creates screen.
@@ -1038,6 +1059,8 @@ async function runCreateLegacy(
           ...(objectValue(extraMetadata.lane)
             ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
             : {}),
+          spawnPath: "create",
+          workspaceMutationExpected: workspaceMutationExpected(taskGoal),
         },
       });
       threadId = detail?.id ?? null;
@@ -1124,7 +1147,11 @@ async function runCreateLegacy(
                 ? {}
                 : { maxTurns: maxSmithersTurns }),
             };
+      const detachedTrace = hasAutoValidationOwner
+        ? taskService.prepareDetachedChildTrace()
+        : undefined;
       const session = await service.spawnSession({
+        ...(detachedTrace ? { env: detachedTrace.env } : {}),
         agentType,
         workdir: sessionWorkdir,
         isolateWorkdir,
@@ -1134,6 +1161,7 @@ async function runCreateLegacy(
         timeoutMs,
         metadata: {
           ...extraMetadata,
+          ...(detachedTrace?.metadata ?? {}),
           ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
           requestedType: baseAgentType,
           messageId: message.id,
@@ -1176,6 +1204,15 @@ async function runCreateLegacy(
             ...(session.metadata ? { metadata: session.metadata } : {}),
             label,
             originalTask: taskWithRouteHints,
+            ...(detachedTrace?.env[TRACE_ENV.TRACE_ID]
+              ? { traceId: detachedTrace.env[TRACE_ENV.TRACE_ID] }
+              : {}),
+            ...(detachedTrace?.env[TRACE_ENV.PARENT_STEP_ID]
+              ? {
+                  parentTrajectoryStepId:
+                    detachedTrace.env[TRACE_ENV.PARENT_STEP_ID],
+                }
+              : {}),
             ...(model ? { model } : {}),
             ...(durableRun ? { durableRun } : {}),
           });
@@ -1876,11 +1913,6 @@ async function runSpawnAgent(
       pickString(params, content, "approvalPreset"),
     );
     const extraMetadata = additionalSessionMetadata(params, content);
-    const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
-      params,
-      content,
-      extraMetadata,
-    );
     // Structural only: the planner emits deferUserReply when the user asked for
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
@@ -2041,12 +2073,21 @@ async function runSpawnAgent(
           | null
           | undefined)
       : undefined;
+    const hasDurableOwner =
+      typeof spawnDurableService?.createTask === "function" &&
+      typeof spawnDurableService?.attachSession === "function";
+    // A durable top-level task owns automatic validation. Keep its one-shot ACP
+    // child writable until that verdict either passes or sends a corrective
+    // turn; the task service closes it immediately after a passing verdict.
+    const keepAliveAfterComplete =
+      hasVerifiedRetryLifecycle(params, content, extraMetadata) ||
+      hasDurableOwner;
     // A top-level spawn only receives its durable task id after spawnSession
     // returns. Give the child a unique managed trajectory directory now and
     // persist that directory on the session so the later task attachment can
     // ingest its real FILE/SHELL trace instead of falsely verifying from prose.
     const detachedTrace =
-      spawnDurableService &&
+      hasDurableOwner &&
       typeof spawnDurableService.prepareDetachedChildTrace === "function"
         ? spawnDurableService.prepareDetachedChildTrace()
         : undefined;
@@ -2113,11 +2154,7 @@ async function runSpawnAgent(
     // a silent-loss bug for a loud-loss one) but is reported loudly.
     let durableTaskId: string | null = null;
     if (userOriginatedSpawn) {
-      if (
-        spawnDurableService &&
-        typeof spawnDurableService.createTask === "function" &&
-        typeof spawnDurableService.attachSession === "function"
-      ) {
+      if (spawnDurableService && hasDurableOwner) {
         try {
           const detail = await spawnDurableService.createTask({
             title: label,
@@ -2127,7 +2164,7 @@ async function runSpawnAgent(
             // The child is already live at this point. Supply the deterministic
             // contract so createTask cannot block durable ownership on an
             // optional model refinement before attachSession runs.
-            acceptanceCriteria: staticAcceptanceCriteria(task, "coding"),
+            acceptanceCriteria: staticAcceptanceCriteria(task),
             originalRequest: requestText(message),
             ...(session.workdir ? { workdir: session.workdir } : {}),
             ...(message.roomId ? { roomId: message.roomId } : {}),
@@ -2135,6 +2172,7 @@ async function runSpawnAgent(
             metadata: {
               ...(resolvedSpawnSource ? { source: resolvedSpawnSource } : {}),
               spawnPath: "spawn_agent",
+              workspaceMutationExpected: workspaceMutationExpected(task),
             },
           });
           durableTaskId = detail?.id ?? null;
