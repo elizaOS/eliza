@@ -144,6 +144,7 @@ class AbortableMutex {
 	}
 
 	async run<T>(signal: AbortSignal | undefined, task: () => Promise<T>): Promise<T> {
+		const uncontended = this.users === 0;
 		this.users += 1;
 		const prior = this.tail.catch(() => undefined);
 		let release = (): void => {};
@@ -152,7 +153,11 @@ class AbortableMutex {
 		});
 		this.tail = prior.then(() => gate);
 		try {
-			await waitForMutexTurn(prior, signal);
+			if (uncontended) {
+				signal?.throwIfAborted();
+			} else {
+				await waitForMutexTurn(prior, signal);
+			}
 			return await task();
 		} finally {
 			release();
@@ -2599,10 +2604,10 @@ export class AgentSkillsService extends Service {
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
 			if (options.throwOnDownloadError) {
+				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
 					throw skillDownloadAbortError(options.signal, error);
 				}
-				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
@@ -2757,10 +2762,10 @@ export class AgentSkillsService extends Service {
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
 			if (options.throwOnDownloadError) {
+				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
 					throw skillDownloadAbortError(options.signal, error);
 				}
-				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
@@ -2790,10 +2795,6 @@ export class AgentSkillsService extends Service {
 				options.signal,
 				async () => {
 					options.signal?.throwIfAborted();
-					if (!options.force && (await this.isInstalled(safeSlug))) {
-						options.signal?.throwIfAborted();
-						return true;
-					}
 					const lifecycle = createSkillDownloadLifecycle({
 						signal: options.signal,
 						downloadTimeoutMs:
@@ -2844,10 +2845,10 @@ export class AgentSkillsService extends Service {
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
 			if (options.throwOnDownloadError) {
+				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
 					throw skillDownloadAbortError(options.signal, error);
 				}
-				if (isSkillDownloadError(error)) throw error;
 			}
 			return false;
 		}
