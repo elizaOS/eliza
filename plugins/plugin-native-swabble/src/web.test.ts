@@ -267,6 +267,82 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it("wakes when the trigger and command finalize in separate results", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // The user says the wake word, pauses (so it finalizes alone at index 0),
+    // then speaks the command, which finalizes as a separate result at index 1.
+    // The changed window for the second event carries only "open calendar", so
+    // a window-only match would never see the trigger — this is the regression
+    // guarded here: the carry-over buffer bridges the two final results.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza" }], 0),
+    );
+    expect(wakeWords).not.toHaveBeenCalled();
+
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [{ transcript: "eliza" }, { transcript: "open calendar" }],
+        1,
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "eliza", command: "open calendar" }),
+    );
+  });
+
+  it("does not re-fire the pause-split command on a later unrelated utterance", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // Trigger then command across two finals fires exactly once.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza" }], 0),
+    );
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [{ transcript: "eliza" }, { transcript: "open calendar" }],
+        1,
+      ),
+    );
+    // A later triggerless final (idle chatter) must neither re-fire the
+    // consumed command nor accumulate unbounded carry-over.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [
+          { transcript: "eliza" },
+          { transcript: "open calendar" },
+          { transcript: "just talking" },
+        ],
+        2,
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar" }),
+    );
+  });
+
   it.each([
     {
       lang: "ru-RU",
