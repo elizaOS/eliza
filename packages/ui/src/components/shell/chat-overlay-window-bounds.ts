@@ -109,12 +109,17 @@ function normalizeMaterialSize(
   };
 }
 
-/** Converts the transformed panel rect into the exact native hit-test size. */
+/**
+ * Converts the transformed panel rect into the exact native material size.
+ * A pill-mode commit precedes its closing spring, so the final 48x6 geometry
+ * cannot take over until that still-visible panel has actually reached rest.
+ */
 export function resolveChatOverlayMaterialSize(
   rect: ChatOverlayMaterialSize,
   pilled = false,
+  openProgress = pilled ? 0 : 1,
 ): ChatOverlayMaterialSize {
-  if (pilled) {
+  if (pilled && openProgress <= 0.001) {
     return {
       width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
       height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,

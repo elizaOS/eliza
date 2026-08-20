@@ -10,6 +10,7 @@ import {
   createChatOverlayWindowBoundsCoordinator,
   createChatOverlayWindowSizeCoordinator,
   resolveChatOverlayCompactWindowSize,
+  resolveChatOverlayMaterialSize,
   shouldHideRestingChatOverlay,
 } from "./chat-overlay-window-bounds";
 
@@ -67,6 +68,17 @@ describe("resolveChatOverlayCompactWindowSize", () => {
         width: 600,
         height: 820,
       }),
+    ).toEqual({ width: 48, height: 6 });
+  });
+});
+
+describe("resolveChatOverlayMaterialSize", () => {
+  it("keeps the visible panel bounds until the pill collapse reaches rest", () => {
+    expect(
+      resolveChatOverlayMaterialSize({ width: 312, height: 48 }, true, 0.4),
+    ).toEqual({ width: 312, height: 48 });
+    expect(
+      resolveChatOverlayMaterialSize({ width: 312, height: 48 }, true, 0),
     ).toEqual({ width: 48, height: 6 });
   });
 });
