@@ -13,7 +13,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
-import { skillDownloadAbortError } from "./skill-package-bytes";
+import { saveScanReport, scanSkillDirectory } from "../security";
+import { MAX_SKILL_PACKAGE_BYTES, skillDownloadAbortError } from "./skill-package-bytes";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,16 @@ const VALID_GIT_REF = /^[a-zA-Z0-9][\w./-]*$/;
 const GIT_TIMEOUT_MS = 15_000;
 /** Timeout for marketplace API fetch calls. */
 const FETCH_TIMEOUT_MS = 30_000;
+const MAX_MARKETPLACE_FILES = 500;
+
+function marketplaceError(
+  code: string,
+  message: string,
+  context: Record<string, unknown> = {},
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(message, { code, context, cause });
+}
 
 function throwIfMarketplaceAborted(
   signal: AbortSignal | undefined,
@@ -193,139 +204,15 @@ interface MarketplaceScanReport {
   skillPath: string;
 }
 
-/**
- * Run a security scan on a skill directory.
- *
- * Checks for binary files, symlink escapes, and missing SKILL.md.
- * This is a self-contained manifest check — the full content-level scan
- * (code + markdown patterns) is handled by the AgentSkillsService when
- * it loads the skill. This layer catches the most dangerous structural
- * attacks at the marketplace install boundary.
- */
 async function runSkillSecurityScan(
   skillDir: string,
   signal?: AbortSignal,
 ): Promise<MarketplaceScanReport> {
   throwIfMarketplaceAborted(signal);
-  const fsPromises = await import("node:fs/promises");
-  const pathMod = await import("node:path");
+  const report = await scanSkillDirectory(skillDir, { signal });
   throwIfMarketplaceAborted(signal);
-
-  const findings: MarketplaceScanReport["findings"] = [];
-  const manifestFindings: MarketplaceScanReport["manifestFindings"] = [];
-  let scannedFiles = 0;
-
-  const BINARY_EXTENSIONS = new Set([
-    ".exe",
-    ".dll",
-    ".so",
-    ".dylib",
-    ".wasm",
-    ".bin",
-    ".com",
-    ".bat",
-    ".cmd",
-  ]);
-
-  // Walk and check
-  async function walk(dir: string): Promise<void> {
-    throwIfMarketplaceAborted(signal);
-    const entries = await fsPromises.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      throwIfMarketplaceAborted(signal);
-      if (entry.name === "node_modules") continue;
-      const fullPath = pathMod.join(dir, entry.name);
-      const relPath = pathMod.relative(skillDir, fullPath);
-      const stats = await fsPromises.lstat(fullPath);
-      throwIfMarketplaceAborted(signal);
-
-      if (stats.isDirectory()) {
-        await walk(fullPath);
-      } else if (stats.isFile()) {
-        scannedFiles++;
-        const ext = pathMod.extname(entry.name).toLowerCase();
-        if (BINARY_EXTENSIONS.has(ext)) {
-          manifestFindings.push({
-            ruleId: "binary-file",
-            severity: "critical",
-            file: relPath,
-            message: `Binary executable file detected (${ext})`,
-          });
-        }
-      } else if (stats.isSymbolicLink()) {
-        const resolved = await fsPromises.realpath(fullPath).catch(() => {
-          // error-policy:J3 An unresolvable untrusted symlink is explicitly unsafe.
-          return null;
-        });
-        if (!resolved?.startsWith(skillDir + pathMod.sep)) {
-          manifestFindings.push({
-            ruleId: "symlink-escape",
-            severity: "critical",
-            file: relPath,
-            message: resolved
-              ? "Symbolic link points outside skill directory"
-              : "Symbolic link could not be resolved safely",
-          });
-        }
-      }
-    }
-  }
-
-  await walk(skillDir);
+  await saveScanReport(skillDir, report);
   throwIfMarketplaceAborted(signal);
-
-  // Check SKILL.md exists
-  const skillMdPath = pathMod.join(skillDir, "SKILL.md");
-  const hasSkillMd = await fsPromises
-    .stat(skillMdPath)
-    .then((s) => s.isFile())
-    .catch(() => {
-      // error-policy:J3 Missing or unreadable required input is explicitly invalid.
-      return false;
-    });
-  throwIfMarketplaceAborted(signal);
-  if (!hasSkillMd) {
-    manifestFindings.push({
-      ruleId: "missing-skill-md",
-      severity: "critical",
-      file: "SKILL.md",
-      message: "No SKILL.md file found — invalid skill package",
-    });
-  }
-
-  const hasBlocking = manifestFindings.some(
-    (f) =>
-      f.ruleId === "binary-file" ||
-      f.ruleId === "symlink-escape" ||
-      f.ruleId === "missing-skill-md",
-  );
-  const critical = manifestFindings.filter(
-    (f) => f.severity === "critical",
-  ).length;
-  const warn = manifestFindings.filter((f) => f.severity === "warn").length;
-
-  let status: MarketplaceScanReport["status"] = "clean";
-  if (hasBlocking) status = "blocked";
-  else if (critical > 0) status = "critical";
-  else if (warn > 0) status = "warning";
-
-  const report: MarketplaceScanReport = {
-    scannedAt: new Date().toISOString(),
-    status,
-    summary: { scannedFiles, critical, warn, info: 0 },
-    findings,
-    manifestFindings,
-    skillPath: skillDir,
-  };
-
-  // Persist the report
-  await fsPromises.writeFile(
-    pathMod.join(skillDir, ".scan-results.json"),
-    JSON.stringify(report, null, 2),
-    "utf-8",
-  );
-  throwIfMarketplaceAborted(signal);
-
   return report;
 }
 
@@ -377,35 +264,45 @@ function safeName(raw: string): string {
     .replace(/[^a-zA-Z0-9._-]/g, "-")
     .replace(/-{1,1024}/g, "-")
     .replace(/^-{1,1024}|-{1,1024}$/g, "");
-  if (!slug) throw new Error("Invalid skill name");
-  if (!VALID_NAME.test(slug)) throw new Error(`Invalid skill name: ${raw}`);
+  if (!slug || !VALID_NAME.test(slug)) {
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Invalid marketplace skill name",
+    );
+  }
   return slug;
 }
 
 function validateGitRef(ref: string): void {
   if (!ref || !VALID_GIT_REF.test(ref)) {
-    throw new Error("Invalid git ref");
+    throw marketplaceError("SKILL_MARKETPLACE_INVALID_INPUT", "Invalid git ref");
   }
 }
 
 function sanitizeSkillPath(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) throw new Error("Invalid skill path");
-  if (trimmed.startsWith("~")) throw new Error("Invalid skill path");
+  const invalidPath = (): never => {
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Invalid marketplace skill path",
+    );
+  };
+  if (!trimmed) invalidPath();
+  if (trimmed.startsWith("~")) invalidPath();
   if (path.posix.isAbsolute(trimmed) || path.win32.isAbsolute(trimmed)) {
-    throw new Error("Invalid skill path");
+    invalidPath();
   }
-  if (trimmed.includes("\\")) throw new Error("Invalid skill path");
+  if (trimmed.includes("\\")) invalidPath();
   const cleaned = trimmed.replace(/^\/+/, "");
-  if (!cleaned) throw new Error("Invalid skill path");
+  if (!cleaned) invalidPath();
   if (path.posix.isAbsolute(cleaned) || path.win32.isAbsolute(cleaned)) {
-    throw new Error("Invalid skill path");
+    invalidPath();
   }
   if (cleaned === ".") return ".";
   const parts = cleaned.split("/").filter(Boolean);
-  if (parts.length === 0) throw new Error("Invalid skill path");
+  if (parts.length === 0) invalidPath();
   if (parts.some((p) => p === "." || p === "..")) {
-    throw new Error("Invalid skill path");
+    invalidPath();
   }
   return parts.join("/");
 }
@@ -415,7 +312,10 @@ function assertPathWithinRoot(rootDir: string, targetPath: string): void {
   const target = path.resolve(targetPath);
   if (target === root) return;
   if (!target.startsWith(`${root}${path.sep}`)) {
-    throw new Error("Skill path escapes repository root");
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+      "Marketplace skill path failed the safety policy",
+    );
   }
 }
 
@@ -426,7 +326,10 @@ function normalizeRepo(raw: string): string {
     .replace(/^github:/i, "")
     .trim();
   if (!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(repo)) {
-    throw new Error(`Invalid repository: ${raw}`);
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Invalid marketplace repository",
+    );
   }
   return repo;
 }
@@ -441,11 +344,19 @@ function parseGithubUrl(rawUrl: string): {
     url = new URL(rawUrl);
   } catch (err) {
     // error-policy:J3 An invalid external URL is rejected at the input boundary.
-    throw new Error(`Invalid GitHub URL: ${String(err)}`);
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Invalid GitHub URL",
+      {},
+      err,
+    );
   }
 
   if (url.hostname !== "github.com") {
-    throw new Error("Only github.com URLs are supported for skill install");
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Only github.com URLs are supported for skill install",
+    );
   }
 
   const treeMarker = "/tree/";
@@ -461,13 +372,19 @@ function parseGithubUrl(rawUrl: string): {
       // Keep raw path if decode fails; still scan for traversal tokens.
     }
     if (/(^|\/)\.\.(\/|$)/.test(decoded)) {
-      throw new Error("Invalid skill path");
+      throw marketplaceError(
+        "SKILL_MARKETPLACE_INVALID_INPUT",
+        "Invalid marketplace skill path",
+      );
     }
   }
 
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts.length < 2) {
-    throw new Error("GitHub URL must include owner/repo");
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "GitHub URL must include owner/repo",
+    );
   }
 
   const repository = normalizeRepo(`${parts[0]}/${parts[1]}`);
@@ -847,10 +764,17 @@ async function runGitCloneSubset(
         return null;
       });
       if (!stat?.isDirectory()) {
-        throw new Error(`Skill path not found in repository: ${skillPath}`);
+        throw marketplaceError(
+          "SKILL_MARKETPLACE_INVALID_INPUT",
+          "Skill path was not found in the repository",
+          { repository, skillPath },
+        );
       }
 
-      await copyDirectoryWithSignal(sourceDir, targetDir, signal);
+      await copyDirectoryWithSignal(sourceDir, targetDir, signal, {
+        bytes: 0,
+        files: 0,
+      });
     },
     signal,
   );
@@ -860,6 +784,7 @@ async function copyDirectoryWithSignal(
   sourceDir: string,
   targetDir: string,
   signal?: AbortSignal,
+  budget: { bytes: number; files: number } = { bytes: 0, files: 0 },
 ): Promise<void> {
   throwIfMarketplaceAborted(signal);
   await fs.mkdir(targetDir, { recursive: false });
@@ -868,13 +793,36 @@ async function copyDirectoryWithSignal(
     const sourcePath = path.join(sourceDir, entry.name);
     const targetPath = path.join(targetDir, entry.name);
     if (entry.isDirectory()) {
-      await copyDirectoryWithSignal(sourcePath, targetPath, signal);
+      await copyDirectoryWithSignal(sourcePath, targetPath, signal, budget);
     } else if (entry.isSymbolicLink()) {
+      budget.files += 1;
       await fs.symlink(await fs.readlink(sourcePath), targetPath);
     } else if (entry.isFile()) {
+      const sourceStat = await fs.stat(sourcePath);
+      budget.files += 1;
+      budget.bytes += sourceStat.size;
+      if (
+        budget.bytes > MAX_SKILL_PACKAGE_BYTES ||
+        budget.files > MAX_MARKETPLACE_FILES
+      ) {
+        throw marketplaceError(
+          "SKILL_PACKAGE_TOO_LARGE",
+          "Skill repository package exceeds the supported resource limit",
+          {
+            bytes: budget.bytes,
+            maxBytes: MAX_SKILL_PACKAGE_BYTES,
+            files: budget.files,
+            maxFiles: MAX_MARKETPLACE_FILES,
+          },
+        );
+      }
       await fs.copyFile(sourcePath, targetPath, fsSync.constants.COPYFILE_EXCL);
     } else {
-      throw new Error(`Unsupported repository entry: ${entry.name}`);
+      throw marketplaceError(
+        "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+        "Skill repository contains an unsupported entry",
+        { entryName: entry.name },
+      );
     }
     throwIfMarketplaceAborted(signal);
   }
@@ -933,7 +881,7 @@ async function resolveSkillPathInRepo(
       }
     }
 
-    throw new Error(
+    throw marketplaceError("SKILL_MARKETPLACE_INVALID_INPUT",
       "Could not determine skill path automatically. Provide an explicit GitHub tree URL or path.",
     );
   } finally {
@@ -1002,7 +950,10 @@ export async function installMarketplaceSkill(
   }
 
   if (!repository) {
-    throw new Error("Install requires a repository or GitHub URL");
+    throw marketplaceError(
+      "SKILL_MARKETPLACE_INVALID_INPUT",
+      "Install requires a repository or GitHub URL",
+    );
   }
 
   const skillPath = await resolveSkillPathInRepo(
@@ -1025,7 +976,13 @@ export async function installMarketplaceSkill(
     async () => {
       const exists = fsSync.existsSync(targetDir);
       throwIfMarketplaceAborted(signal);
-      if (exists) throw new Error(`Skill "${id}" is already installed`);
+      if (exists) {
+        throw marketplaceError(
+          "SKILL_MARKETPLACE_ALREADY_INSTALLED",
+          "Marketplace skill is already installed",
+          { skillId: id },
+        );
+      }
 
       const stagingRoot = await fs.mkdtemp(
         path.join(installationRoot(workspaceDir), ".install-"),
@@ -1044,7 +1001,13 @@ export async function installMarketplaceSkill(
         const validSkill =
           fsSync.existsSync(skillDocumentPath) && fsSync.statSync(skillDocumentPath).isFile();
         throwIfMarketplaceAborted(signal);
-        if (!validSkill) throw new Error("Installed path does not contain SKILL.md");
+        if (!validSkill) {
+          throw marketplaceError(
+            "SKILL_MARKETPLACE_INVALID_INPUT",
+            "Installed path does not contain SKILL.md",
+            { skillId: id },
+          );
+        }
 
         const scanReport = await runSkillSecurityScan(stagedSkillDir, signal);
         if (scanReport.status === "blocked") {
@@ -1052,8 +1015,10 @@ export async function installMarketplaceSkill(
             ...scanReport.findings.map((finding) => finding.message),
             ...scanReport.manifestFindings.map((finding) => finding.message),
           ];
-          throw new Error(
-            `Skill "${id}" blocked by security scan: ${reasons.join("; ")}`,
+          throw marketplaceError(
+            "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+            "Marketplace skill was blocked by the security policy",
+            { skillId: id, findingCount: reasons.length },
           );
         }
         scanReport.skillPath = targetDir;
@@ -1085,10 +1050,18 @@ export async function installMarketplaceSkill(
             const records = await readInstallRecords(workspaceDir);
             throwIfMarketplaceAborted(signal);
             if (records[id]) {
-              throw new Error(`Skill "${id}" is already recorded as installed`);
+              throw marketplaceError(
+                "SKILL_MARKETPLACE_ALREADY_INSTALLED",
+                "Marketplace skill is already installed",
+                { skillId: id },
+              );
             }
             if (fsSync.existsSync(targetDir)) {
-              throw new Error(`Skill "${id}" is already installed`);
+              throw marketplaceError(
+                "SKILL_MARKETPLACE_ALREADY_INSTALLED",
+                "Marketplace skill is already installed",
+                { skillId: id },
+              );
             }
             records[id] = record;
 
@@ -1202,30 +1175,43 @@ export async function listInstalledMarketplaceSkills(
 export async function uninstallMarketplaceSkill(
   workspaceDir: string,
   skillId: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<InstalledMarketplaceSkill> {
+  const signal = options.signal;
+  throwIfMarketplaceAborted(signal);
   const id = safeName(skillId);
   await ensureInstallDirs(workspaceDir);
+  throwIfMarketplaceAborted(signal);
   const existing = await withMarketplaceMutex(
     marketplaceInstallMutexes,
     `${path.resolve(workspaceDir)}:${id}`,
-    undefined,
+    signal,
     () =>
       withMarketplaceMutex(
         marketplaceRecordsMutexes,
         path.resolve(workspaceDir),
-        undefined,
+        signal,
         async () => {
           const records = await readInstallRecords(workspaceDir);
+          throwIfMarketplaceAborted(signal);
           const record = records[id];
           if (!record) {
-            throw new Error(`Installed marketplace skill "${id}" not found`);
+            throw marketplaceError(
+              "SKILL_MARKETPLACE_NOT_FOUND",
+              "Installed marketplace skill was not found",
+              { skillId: id },
+            );
           }
 
           const expectedRoot = path.resolve(installationRoot(workspaceDir));
           const resolvedPath = path.resolve(record.installPath);
           const canonicalInstallPath = path.join(expectedRoot, id);
           if (resolvedPath !== canonicalInstallPath) {
-            throw new Error(`Refusing to remove skill outside ${expectedRoot}`);
+            throw marketplaceError(
+              "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+              "Marketplace uninstall failed the safety policy",
+              { skillId: id },
+            );
           }
           const workspaceRoot = path.resolve(workspaceDir);
           for (const parentPath of [
@@ -1234,20 +1220,28 @@ export async function uninstallMarketplaceSkill(
             expectedRoot,
           ]) {
             const parentStat = await fs.lstat(parentPath);
+            throwIfMarketplaceAborted(signal);
             if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) {
-              throw new Error(
-                `Refusing to remove skill through unsafe parent ${parentPath}`,
+              throw marketplaceError(
+                "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+                "Marketplace uninstall failed the safety policy",
+                { skillId: id },
               );
             }
           }
           const installStat = await fs.lstat(canonicalInstallPath);
+          throwIfMarketplaceAborted(signal);
           if (
             installStat.isSymbolicLink() ||
             !installStat.isDirectory() ||
             (await fs.realpath(path.dirname(canonicalInstallPath))) !==
               (await fs.realpath(expectedRoot))
           ) {
-            throw new Error(`Refusing to remove unsafe marketplace skill ${id}`);
+            throw marketplaceError(
+              "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+              "Marketplace uninstall failed the safety policy",
+              { skillId: id },
+            );
           }
 
           const directoryStage = await fs.mkdtemp(
@@ -1264,23 +1258,28 @@ export async function uninstallMarketplaceSkill(
           let preserveDirectoryStage = false;
           let preserveRecordStage = false;
           try {
+            throwIfMarketplaceAborted(signal);
             await fs.writeFile(
               nextRecordPath,
               JSON.stringify(records, null, 2),
               "utf-8",
             );
+            throwIfMarketplaceAborted(signal);
             let skillMoved = false;
             let recordPublished = false;
             let priorRecordMoved = false;
             try {
+              throwIfMarketplaceAborted(signal);
               fsSync.renameSync(resolvedPath, retainedSkillPath);
               skillMoved = true;
+              throwIfMarketplaceAborted(signal);
               if (fsSync.existsSync(recordPath)) {
                 fsSync.renameSync(recordPath, previousRecordPath);
                 priorRecordMoved = true;
               }
               fsSync.renameSync(nextRecordPath, recordPath);
               recordPublished = true;
+              throwIfMarketplaceAborted(signal);
             } catch (cause) {
               const rollbackFailures: unknown[] = [];
               try {

@@ -34,6 +34,7 @@ import {
 	buildSkillExecutionEnv,
 	isInheritableSkillEnvKey,
 } from "../security/skill-execution-env";
+import { loadScanReport } from "../security";
 import type { SkillScanReport, SkillScanStatus } from "../security/types";
 import {
 	createSkillPackage,
@@ -2458,14 +2459,16 @@ export class AgentSkillsService extends Service {
 		if (!this.storage.prepareReplacement) {
 			// Legacy custom stores predate prepared mutations. Preserve their
 			// established save behavior while built-in stores use the strong path.
-			signal?.throwIfAborted();
-			await this.storage.saveSkill(candidate);
+			// Once saveSkill succeeds it is the compatibility path's irreversible
+			// commit point, so cancellation is intentionally not observed afterward.
 			await this.lockfileMutex.run(signal, async () => {
 				const update = await this.prepareLockfileUpdate(
 					candidate.slug,
 					options.version,
 					signal,
 				);
+				signal?.throwIfAborted();
+				await this.storage.saveSkill(candidate);
 				update.publish();
 				update.finalize();
 			});
@@ -2594,6 +2597,50 @@ export class AgentSkillsService extends Service {
 		return scanReport;
 	}
 
+	private async loadManagedRemovalFallback(
+		slug: string,
+	): Promise<{
+		skill: LoadedSkillWithSource;
+		scanStatus?: "warning" | "critical";
+	} | null> {
+		if (!this.isSkillAllowed(slug)) return null;
+		for (const [source, storages] of [
+			["bundled", this.bundledStorages],
+			["plugin", this.pluginStorages],
+			["extra", this.extraStorages],
+		] as const) {
+			for (const [sourceDir, storage] of storages) {
+				if (!(await storage.hasSkill(slug))) continue;
+				const fallback = await this.loadSkillFromStorageWithSource(
+					storage,
+					slug,
+					source,
+					sourceDir,
+				);
+				if (fallback) {
+					const report = await loadScanReport(storage.getSkillPath(slug));
+					return {
+						skill: fallback,
+						scanStatus:
+							report?.status === "warning" || report?.status === "critical"
+								? report.status
+								: undefined,
+					};
+				}
+			}
+		}
+		return null;
+	}
+
+	private isFatalSkillMutationError(error: unknown): error is ElizaError {
+		return (
+			error instanceof ElizaError &&
+			(error.code === "SKILL_INSTALL_ROLLBACK_FAILED" ||
+				error.code === "SKILL_STORAGE_ROLLBACK_FAILED" ||
+				error.code === "SKILL_UNINSTALL_ROLLBACK_FAILED")
+		);
+	}
+
 	/**
 	 * Install a skill from ClawHub.
 	 *
@@ -2669,6 +2716,7 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
+			if (this.isFatalSkillMutationError(error)) throw error;
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2827,6 +2875,7 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
+			if (this.isFatalSkillMutationError(error)) throw error;
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2910,6 +2959,7 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
+			if (this.isFatalSkillMutationError(error)) throw error;
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2924,29 +2974,49 @@ export class AgentSkillsService extends Service {
 	 * Uninstall a skill (remove from storage and memory).
 	 * Cannot uninstall bundled skills - they are read-only.
 	 */
-	async uninstall(slug: string): Promise<boolean> {
+	async uninstall(
+		slug: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<boolean> {
 		const safeSlug = sanitizeSlug(slug);
-		return this.withSkillInstallMutex(safeSlug, undefined, async () => {
+		return this.withSkillInstallMutex(safeSlug, options.signal, async () => {
+			options.signal?.throwIfAborted();
 			const active = this.loadedSkills.get(safeSlug);
+			const fallback =
+				!active || active.source === "managed"
+					? await this.loadManagedRemovalFallback(safeSlug)
+					: null;
+			options.signal?.throwIfAborted();
 			if (!this.storage.prepareRemoval) {
+				// A legacy store has no rollback primitive. Its successful delete is
+				// therefore the irreversible commit point; do not observe abort later.
 				const deleted = await this.storage.deleteSkill(safeSlug);
 				if (deleted && (!active || active.source === "managed")) {
-					this.loadedSkills.delete(safeSlug);
-					this.scanStatusMap.delete(safeSlug);
+					if (fallback) this.loadedSkills.set(safeSlug, fallback.skill);
+					else this.loadedSkills.delete(safeSlug);
+					if (fallback?.scanStatus) {
+						this.scanStatusMap.set(safeSlug, fallback.scanStatus);
+					} else this.scanStatusMap.delete(safeSlug);
 					this.eligibilityCache.delete(safeSlug);
 				}
 				return deleted;
 			}
 
-			const removal = await this.storage.prepareRemoval(safeSlug);
+			const removal = await this.storage.prepareRemoval(safeSlug, {
+				signal: options.signal,
+			});
 			if (!removal.existed) {
 				removal.rollback();
 				return false;
 			}
 			let committed = false;
 			try {
-				await this.lockfileMutex.run(undefined, async () => {
-					const lockUpdate = await this.prepareLockfileUpdate(safeSlug, null);
+				await this.lockfileMutex.run(options.signal, async () => {
+					const lockUpdate = await this.prepareLockfileUpdate(
+						safeSlug,
+						null,
+						options.signal,
+					);
 					const previousLoaded = this.loadedSkills.get(safeSlug);
 					const previousScan = this.scanStatusMap.get(safeSlug);
 					const previousEligibility = this.eligibilityCache.get(safeSlug);
@@ -2955,14 +3025,21 @@ export class AgentSkillsService extends Service {
 					const hadEligibility = this.eligibilityCache.has(safeSlug);
 					let storagePublished = false;
 					try {
+						options.signal?.throwIfAborted();
 						removal.publish();
 						storagePublished = true;
+						options.signal?.throwIfAborted();
 						lockUpdate.publish();
+						options.signal?.throwIfAborted();
 						if (!previousLoaded || previousLoaded.source === "managed") {
-							this.loadedSkills.delete(safeSlug);
-							this.scanStatusMap.delete(safeSlug);
+							if (fallback) this.loadedSkills.set(safeSlug, fallback.skill);
+							else this.loadedSkills.delete(safeSlug);
+							if (fallback?.scanStatus) {
+								this.scanStatusMap.set(safeSlug, fallback.scanStatus);
+							} else this.scanStatusMap.delete(safeSlug);
 							this.eligibilityCache.delete(safeSlug);
 						}
+						options.signal?.throwIfAborted();
 						committed = true;
 						removal.finalize();
 						lockUpdate.finalize();
@@ -2980,7 +3057,7 @@ export class AgentSkillsService extends Service {
 						}
 						if (failures.length > 0) {
 							throw new ElizaError("Skill uninstall rollback failed", {
-								code: "SKILL_INSTALL_ROLLBACK_FAILED",
+								code: "SKILL_UNINSTALL_ROLLBACK_FAILED",
 								context: { slug: safeSlug, operation: "uninstall" },
 								severity: "fatal",
 								cause: new AggregateError([cause, ...failures]),
@@ -2990,7 +3067,18 @@ export class AgentSkillsService extends Service {
 					}
 				});
 			} catch (cause) {
-				if (!committed) removal.rollback();
+				if (!committed) {
+					try {
+						removal.rollback();
+					} catch (rollbackCause) {
+						throw new ElizaError("Skill uninstall rollback failed", {
+							code: "SKILL_UNINSTALL_ROLLBACK_FAILED",
+							context: { slug: safeSlug, operation: "uninstall" },
+							severity: "fatal",
+							cause: new AggregateError([cause, rollbackCause]),
+						});
+					}
+				}
 				throw cause;
 			}
 			this.runtime.logger.info(`AgentSkills: Uninstalled ${safeSlug}`);
