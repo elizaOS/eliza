@@ -9,7 +9,8 @@
  *
  * Implements the full batch-first interface from `@elizaos/core`'s
  * `DatabaseAdapter`; there are no single-item helpers — call sites use the
- * batch APIs (`createEntities`, `getMemoriesByIds`, etc.).
+ * batch APIs (`createEntities`, `getMemoriesByIds`, etc.). Nested
+ * `componentDataFilter` matching is bounded in `data-contains-filter.ts`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -66,6 +67,7 @@ import {
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
+import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
 
@@ -104,38 +106,6 @@ interface StoredRelationship {
   tags?: string[];
   metadata?: Metadata;
   createdAt?: string;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function dataContainsFilter(value: unknown, filter: Record<string, unknown> | undefined): boolean {
-  if (!filter) return true;
-  if (!isPlainObject(value)) return false;
-
-  for (const [key, expected] of Object.entries(filter)) {
-    const actual = value[key];
-    if (isPlainObject(expected)) {
-      if (!dataContainsFilter(actual, expected)) return false;
-      continue;
-    }
-    if (Array.isArray(expected)) {
-      if (!Array.isArray(actual)) return false;
-      for (const expectedItem of expected) {
-        const found = actual.some((actualItem) =>
-          isPlainObject(expectedItem)
-            ? dataContainsFilter(actualItem, expectedItem)
-            : actualItem === expectedItem
-        );
-        if (!found) return false;
-      }
-      continue;
-    }
-    if (actual !== expected) return false;
-  }
-
-  return true;
 }
 
 interface StoredCacheEntry<T = unknown> {
