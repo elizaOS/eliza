@@ -2005,22 +2005,33 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-demo-card {
   display: grid;
-  gap: 0.18rem;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid rgb(0 0 0 / 10%);
+  gap: 0.22rem;
+  padding: 0.76rem 0.9rem;
+  border: 0;
   border-radius: 1rem;
-  background: #ffffff;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 6%);
+  background: linear-gradient(150deg, #ffffff 34%, #fff5ef 100%);
+  box-shadow: 0 7px 18px rgb(178 54 0 / 11%);
   font-size: 0.88rem;
   line-height: 1.3;
 }
 
 .landing-demo-card-label {
-  color: #8e8e93;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #8a3a1e;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.landing-demo-card-label::before {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: #ff4f00;
+  content: "";
 }
 
 .landing-demo-card strong {
@@ -2038,8 +2049,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  margin-top: 0.25rem;
-  color: #5b5b60;
+  margin-top: 0.32rem;
+  color: #7c432c;
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -2048,7 +2059,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   width: 0.82rem;
   height: 0.82rem;
   flex: 0 0 auto;
-  color: #6e6e73;
+  color: #ff4f00;
 }
 
 /* The keyboard moves as one opaque iOS surface. Fading it independently from
@@ -2388,14 +2399,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-thread {
+    --scroll-fade-mask: none;
+
     flex: 1;
     min-height: 0;
     padding: 0.25rem 0.9rem 0.5rem;
-  }
-
-  .landing-phone-thread::before {
-    content: "";
-    margin-top: auto;
   }
 
   .landing-bubble {

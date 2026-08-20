@@ -79,9 +79,9 @@ async function expectCleanRoute(page: Page, route: (typeof ROUTES)[number]) {
   expect(response, `no response for ${route.path}`).not.toBeNull();
   expect(response?.status(), `bad status for ${route.path}`).toBeLessThan(400);
   if (route.path === "/" || route.path === "/leaderboard") {
-    await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(
+      page.getByRole("button", { name: "Text Eliza" }),
+    ).toBeVisible({ timeout: 30_000 });
   } else {
     await page.waitForTimeout(1_000);
   }

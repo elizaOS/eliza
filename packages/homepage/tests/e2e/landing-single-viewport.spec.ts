@@ -10,6 +10,7 @@ import { waitForLandingIntro } from "./landing-readiness";
 const VIEWPORTS = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
+  { width: 390, height: 1275 },
   { width: 1024, height: 768 },
   { width: 1440, height: 900 },
 ] as const;
@@ -32,6 +33,9 @@ for (const viewport of VIEWPORTS) {
       );
       if (!phone) throw new Error("Landing phone missing");
       const phoneStyle = getComputedStyle(phone);
+      const thread = document.querySelector<HTMLElement>(
+        ".landing-phone-thread",
+      );
       return {
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
@@ -42,6 +46,7 @@ for (const viewport of VIEWPORTS) {
           borderRadius: phoneStyle.borderRadius,
           paddingTop: phoneStyle.paddingTop,
         },
+        threadMaskImage: thread ? getComputedStyle(thread).maskImage : null,
         mobileThreadGap:
           phoneHeader && firstThreadItem
             ? firstThreadItem.getBoundingClientRect().top -
@@ -59,9 +64,15 @@ for (const viewport of VIEWPORTS) {
       expect(Number.parseFloat(layout.phoneFrame.paddingTop)).toBe(0);
       expect(Number.parseFloat(layout.phoneFrame.borderRadius)).toBe(0);
       expect(layout.mobileThreadGap).not.toBeNull();
+      expect(layout.threadMaskImage).toBe("none");
       expect(
         layout.mobileThreadGap ?? Number.POSITIVE_INFINITY,
       ).toBeLessThanOrEqual(64);
+      if (viewport.height >= 1000) {
+        expect(layout.mobileThreadGap ?? Number.POSITIVE_INFINITY).toBeLessThan(
+          16,
+        );
+      }
     } else {
       expect(Number.parseFloat(layout.phoneFrame.paddingTop)).toBeGreaterThan(
         0,

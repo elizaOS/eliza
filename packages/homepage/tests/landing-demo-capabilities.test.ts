@@ -61,7 +61,9 @@ describe("landing Shared-agent capability contract", () => {
 
     expect(cardIndexes).toEqual([6, 9, 13]);
     expect(new Set(cards.map((card) => card.label)).size).toBe(cards.length);
-    expect(cards.every((card) => card.status === undefined)).toBe(true);
+    expect(
+      cards.every((card) => card.status === "Kept in this conversation"),
+    ).toBe(true);
   });
 
   test.each([
