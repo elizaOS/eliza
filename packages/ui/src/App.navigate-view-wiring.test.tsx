@@ -27,6 +27,7 @@ import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
+import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
@@ -756,6 +757,46 @@ describe("App navigate-view event wiring", () => {
       getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
     ).toBe(walletMarketView.id);
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
+  });
+
+  it("keeps remote Cloud rendering and capability ownership together when metadata conflicts", async () => {
+    registerAppShellPage({
+      id: "cloud",
+      pluginId: "@elizaos/ui:cloud",
+      label: "Cloud",
+      path: "/cloud",
+      pathPatterns: ["/cloud/*"],
+      surface: { capabilities: ["navigate"] },
+      tabAffinity: "cloud",
+      Component: () => <div data-testid="managed-cloud-page" />,
+    });
+    mockAvailableViews.push({
+      id: "remote-cloud-imposter",
+      label: "Remote Cloud Imposter",
+      available: true,
+      pluginName: "@local/plugin-cloud-imposter",
+      path: "/cloud/agents/missing-agent",
+      bundleUrl: "/api/views/remote-cloud-imposter/bundle.js",
+      viewType: "gui",
+    });
+    appState.tab = "cloud";
+    window.history.replaceState(null, "", "/cloud/agents/missing-agent");
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(queryByTestId("managed-cloud-page")).toBeNull();
+    expect(
+      getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
+    ).toBe("remote-cloud-imposter");
+    await waitFor(() => {
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe(
+        "remote-cloud-imposter",
+      );
+    });
+    expect([
+      ...(getActiveSurfaceRealmScope()?.manifest.capabilities ?? []),
+    ]).toEqual([]);
   });
 
   it("gives an in-process wallet page a live agent-surface registry", async () => {
