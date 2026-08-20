@@ -135,8 +135,21 @@ async function fetchInstallResource(
 	try {
 		return await fetch(url, { ...init, signal: lifecycle.signal });
 	} catch (cause) {
+		// error-policy:J1 translate lifecycle ownership at the fetch boundary.
 		lifecycle.throwIfAborted(cause);
 		throw cause;
+	}
+}
+
+function cancelUnusedInstallBody(response: Response): void {
+	if (!response.body) return;
+	try {
+		const cancellation = response.body.cancel();
+		void Promise.resolve(cancellation).catch(() => {
+			// error-policy:J6 rejection while discarding an unused response is teardown-only.
+		});
+	} catch {
+		// error-policy:J6 synchronous cancellation of an unused response is teardown-only.
 	}
 }
 
@@ -2072,6 +2085,7 @@ export class AgentSkillsService extends Service {
 			}, deadlineManaged);
 
 			if (!response.ok) {
+				cancelUnusedInstallBody(response);
 				if (response.status === 404) return null;
 				throw new Error(`Details fetch failed: ${response.status}`);
 			}
@@ -2298,6 +2312,7 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(downloadUrl, lifecycle);
 
 				if (!response.ok) {
+					cancelUnusedInstallBody(response);
 					throw new Error(`Download failed: ${response.status}`);
 				}
 
@@ -2336,6 +2351,8 @@ export class AgentSkillsService extends Service {
 			);
 			return true;
 		} catch (error) {
+			// error-policy:J1 preserve the legacy boolean install boundary while
+			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
 			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
 				throw error;
@@ -2434,6 +2451,7 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(skillMdUrl, lifecycle);
 
 				if (!response.ok) {
+					cancelUnusedInstallBody(response);
 					throw new Error(
 						`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
 					);
@@ -2452,6 +2470,8 @@ export class AgentSkillsService extends Service {
 							signal: lifecycle.signal,
 						});
 						files.push({ name: "README.md", content: readmeContent });
+					} else {
+						cancelUnusedInstallBody(readmeResponse);
 					}
 				} catch (cause) {
 					lifecycle.throwIfAborted(cause);
@@ -2499,6 +2519,8 @@ export class AgentSkillsService extends Service {
 			);
 			return true;
 		} catch (error) {
+			// error-policy:J1 preserve the legacy boolean install boundary while
+			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
 			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
 				throw error;
@@ -2539,6 +2561,7 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(url, lifecycle);
 
 				if (!response.ok) {
+					cancelUnusedInstallBody(response);
 					throw new Error(`Failed to fetch: ${response.status}`);
 				}
 
@@ -2612,6 +2635,8 @@ export class AgentSkillsService extends Service {
 			);
 			return true;
 		} catch (error) {
+			// error-policy:J1 preserve the legacy boolean install boundary while
+			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
 			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
 				throw error;

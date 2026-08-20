@@ -198,6 +198,11 @@ export async function readCappedSkillPackage(
 			const { done, value } = abortPromise
 				? await Promise.race([read, abortPromise])
 				: await read;
+			// A stream can close and abort its owner in the same pull. Cancellation
+			// remains authoritative until the consumer has observed completion.
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal);
+			}
 			if (done) break;
 			if (!value?.byteLength) continue;
 			total += value.byteLength;
@@ -212,6 +217,7 @@ export async function readCappedSkillPackage(
 			chunks.push(value);
 		}
 	} catch (cause) {
+		// error-policy:J1 translate cancellation at the response-body boundary.
 		if (options.signal?.aborted) {
 			try {
 				const cancellation = reader.cancel(options.signal.reason);

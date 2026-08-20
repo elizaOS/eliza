@@ -194,7 +194,7 @@ describe("readCappedSkillPackage", () => {
 		const response = stalledResponse("partial", cancel);
 		const lifecycle = createSkillDownloadLifecycle({
 			signal: caller.signal,
-			downloadTimeoutMs: null,
+			downloadTimeoutMs: 1_000,
 		});
 		const read = readCappedSkillPackage(response, {
 			signal: lifecycle.signal,
@@ -207,6 +207,41 @@ describe("readCappedSkillPackage", () => {
 				cause: expect.objectContaining({ message: "caller stopped waiting" }),
 			});
 			expect(cancel).toHaveBeenCalledOnce();
+		} finally {
+			lifecycle.dispose();
+		}
+	});
+
+	it("lets caller cancellation win when the body closes in the same turn", async () => {
+		const caller = new AbortController();
+		let pullCount = 0;
+		const response = new Response(
+			new ReadableStream<Uint8Array>({
+				pull(controller) {
+					if (pullCount++ === 0) {
+						controller.enqueue(new TextEncoder().encode("complete"));
+						return;
+					}
+					controller.close();
+					caller.abort(new Error("caller stopped at completion"));
+				},
+			}),
+		);
+		const lifecycle = createSkillDownloadLifecycle({
+			signal: caller.signal,
+			downloadTimeoutMs: null,
+		});
+
+		try {
+			await expect(
+				readCappedSkillPackage(response, { signal: lifecycle.signal }),
+			).rejects.toMatchObject({
+				code: "SKILL_DOWNLOAD_ABORTED",
+				cause: expect.objectContaining({
+					message: "caller stopped at completion",
+				}),
+			});
+			expect(response.body?.locked).toBe(false);
 		} finally {
 			lifecycle.dispose();
 		}
@@ -305,6 +340,38 @@ describe("readCappedSkillPackage", () => {
 		expect(storage.getPackage("missing")).toBeUndefined();
 	});
 
+	it("cancels an unused non-success body without masking boolean compatibility", async () => {
+		const cancel = vi.fn(async () => {
+			throw new Error("discard failed");
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								controller.enqueue(new TextEncoder().encode("partial error"));
+							},
+							cancel,
+						}),
+						{ status: 502 },
+					),
+			),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.installFromUrl("https://skills.example/unavailable.md"),
+		).resolves.toBe(false);
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("unavailable")).toBeUndefined();
+	});
+
 	it("uses one deadline for catalog resolution and a stalled package body", async () => {
 		const signals: AbortSignal[] = [];
 		const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
@@ -336,6 +403,46 @@ describe("readCappedSkillPackage", () => {
 		expect(signals).toHaveLength(2);
 		expect(signals[0]).toBe(signals[1]);
 		expect(storage.getPackage("catalog-stall")).toBeUndefined();
+	});
+
+	it("bounds a stalled catalog-details body before package fetch or persistence", async () => {
+		let requestCount = 0;
+		const server = createServer((_request, response) => {
+			requestCount += 1;
+			response.writeHead(200, { "content-type": "application/json" });
+			response.write('{"latestVersion":');
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		const { port } = server.address() as AddressInfo;
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			registryUrl: `http://127.0.0.1:${port}`,
+			storage,
+		});
+		const startedAt = Date.now();
+
+		try {
+			await expect(
+				service.install("metadata-stall", {
+					downloadTimeoutMs: 75,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({
+				code: "SKILL_DOWNLOAD_TIMEOUT",
+				context: { timeoutMs: 75 },
+			});
+			expect(Date.now() - startedAt).toBeLessThan(1_500);
+			expect(requestCount).toBe(1);
+			expect(storage.getPackage("metadata-stall")).toBeUndefined();
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
 	});
 
 	it("does not persist GitHub SKILL.md when its README stalls", async () => {
