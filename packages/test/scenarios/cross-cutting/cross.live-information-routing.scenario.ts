@@ -389,7 +389,7 @@ export function assertUnavailableFetch(
     const rawUrl = actionParameters(candidate).url;
     if (typeof rawUrl !== "string") return false;
     try {
-      return new URL(rawUrl).hostname === "httpstat.us";
+      return new URL(rawUrl).hostname === "httpbin.org";
     } catch {
       return false;
     }
@@ -532,7 +532,7 @@ export default scenario({
     {
       kind: "message",
       name: "upstream-endpoint-failure",
-      text: "Fetch https://httpstat.us/503 and summarize it. If the endpoint is unavailable, clearly report that failure instead of claiming success.",
+      text: "Fetch https://httpbin.org/status/503 and summarize it. If the endpoint is unavailable, clearly report that failure instead of claiming success.",
       expectedActions: ["WEB_FETCH"],
       assertTurn: assertUnavailableFetch,
       responseJudge: {

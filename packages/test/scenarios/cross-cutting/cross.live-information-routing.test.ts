@@ -325,10 +325,10 @@ describe("live-information scenario assertions", () => {
       assertUnavailableFetch(
         turn(
           "WEB_FETCH",
-          { url: "https://httpstat.us/503" },
+          { url: "https://httpbin.org/status/503" },
           false,
           "Visible grounded response",
-          "Fetch failed for https://httpstat.us/503: HTTP 503.",
+          "Fetch failed for https://httpbin.org/status/503: HTTP 503.",
           { status: 503 },
         ),
       ),
@@ -337,7 +337,7 @@ describe("live-information scenario assertions", () => {
       assertUnavailableFetch(
         turn(
           "WEB_FETCH",
-          { url: "https://httpstat.us/503" },
+          { url: "https://httpbin.org/status/503" },
           false,
           "Visible failure response",
           "Fetch failed: TLS handshake failed",
@@ -348,10 +348,10 @@ describe("live-information scenario assertions", () => {
       assertUnavailableFetch(
         turn(
           "WEB_FETCH",
-          { url: "https://httpstat.us/503" },
+          { url: "https://httpbin.org/status/503" },
           false,
           "",
-          "Fetch failed for https://httpstat.us/503: HTTP 503.",
+          "Fetch failed for https://httpbin.org/status/503: HTTP 503.",
           { status: 503 },
         ),
       ),
