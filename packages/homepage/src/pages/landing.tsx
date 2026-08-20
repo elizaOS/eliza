@@ -129,37 +129,41 @@ function playLandingAura(): void {
 
   try {
     const audioContext = new AudioContextConstructor();
-    const startedAt = audioContext.currentTime;
-    const master = audioContext.createGain();
-    master.gain.setValueAtTime(0.0001, startedAt);
-    master.gain.exponentialRampToValueAtTime(0.038, startedAt + 0.06);
-    master.gain.exponentialRampToValueAtTime(0.0001, startedAt + 1.35);
-    master.connect(audioContext.destination);
+    void audioContext
+      .resume()
+      .then(() => {
+        const startedAt = audioContext.currentTime + 0.015;
+        const master = audioContext.createGain();
+        master.gain.setValueAtTime(0.0001, startedAt);
+        master.gain.exponentialRampToValueAtTime(0.16, startedAt + 0.06);
+        master.gain.exponentialRampToValueAtTime(0.0001, startedAt + 1.55);
+        master.connect(audioContext.destination);
 
-    const notes = [
-      { delay: 0, frequency: 293.66, type: "sine" },
-      { delay: 0.07, frequency: 440, type: "sine" },
-      { delay: 0.15, frequency: 554.37, type: "triangle" },
-      { delay: 0.24, frequency: 659.25, type: "sine" },
-    ] as const;
+        const notes = [
+          { delay: 0, frequency: 293.66, type: "sine" },
+          { delay: 0.08, frequency: 440, type: "sine" },
+          { delay: 0.17, frequency: 554.37, type: "triangle" },
+          { delay: 0.27, frequency: 659.25, type: "sine" },
+        ] as const;
 
-    for (const note of notes) {
-      const oscillator = audioContext.createOscillator();
-      const envelope = audioContext.createGain();
-      const noteStart = startedAt + note.delay;
-      oscillator.type = note.type;
-      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
-      envelope.gain.setValueAtTime(0.0001, noteStart);
-      envelope.gain.exponentialRampToValueAtTime(0.22, noteStart + 0.04);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.9);
-      oscillator.connect(envelope);
-      envelope.connect(master);
-      oscillator.start(noteStart);
-      oscillator.stop(noteStart + 0.95);
-    }
+        for (const note of notes) {
+          const oscillator = audioContext.createOscillator();
+          const envelope = audioContext.createGain();
+          const noteStart = startedAt + note.delay;
+          oscillator.type = note.type;
+          oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+          envelope.gain.setValueAtTime(0.0001, noteStart);
+          envelope.gain.exponentialRampToValueAtTime(0.32, noteStart + 0.05);
+          envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + 1.05);
+          oscillator.connect(envelope);
+          envelope.connect(master);
+          oscillator.start(noteStart);
+          oscillator.stop(noteStart + 1.1);
+        }
 
-    void audioContext.resume().catch(() => undefined);
-    window.setTimeout(() => void audioContext.close(), 1_500);
+        window.setTimeout(() => void audioContext.close(), 1_750);
+      })
+      .catch(() => void audioContext.close());
   } catch {
     // Audio is decorative. Unsupported or blocked audio must never affect UX.
   }
@@ -1002,7 +1006,6 @@ export default function LandingPage() {
     "idle" | "handoff" | "copied" | "error"
   >("idle");
   const phoneCopyOperation = useRef(0);
-  const landingAuraPlayed = useRef(false);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -1060,8 +1063,6 @@ export default function LandingPage() {
 
   const handleOpenContactSheet = () => {
     setContactSheetOpen(true);
-    if (landingAuraPlayed.current) return;
-    landingAuraPlayed.current = true;
     playLandingAura();
   };
 

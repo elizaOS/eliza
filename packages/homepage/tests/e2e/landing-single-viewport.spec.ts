@@ -114,7 +114,9 @@ test("prefills through Eliza's first embed, then resumes the flow", async ({
   });
 });
 
-test("plays one original welcome aura per page load", async ({ page }) => {
+test("plays the original welcome aura each time the contact menu opens", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     let contextCount = 0;
@@ -191,7 +193,7 @@ test("plays one original welcome aura per page load", async ({ page }) => {
           }
         ).__landingAuraContextCount,
     ),
-  ).toBe(1);
+  ).toBe(2);
 });
 
 test("human replies show the participant's iOS typing indicator", async ({
