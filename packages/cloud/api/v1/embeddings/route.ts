@@ -403,6 +403,9 @@ app.post("/", async (c) => {
           ...request,
           model: passthroughUpstream.modelId,
         }),
+        // Bound the billed upstream hop so a stalled provider cannot strand
+        // the credit-settle chain.
+        signal: AbortSignal.timeout(30_000),
       });
       if (!upstreamResponse.ok) {
         // Throw the same error shape the SDK path produces so the route catch

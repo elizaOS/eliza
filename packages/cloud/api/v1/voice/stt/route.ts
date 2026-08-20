@@ -700,6 +700,8 @@ async function __hono_POST(c: AppContext) {
       let deepgramResponse: Response;
       try {
         await deepgramReservation.markProviderDispatched?.();
+        // Bound the upstream STT hop so a stalled Deepgram API cannot hang
+        // the request path while the credit reservation is held.
         deepgramResponse = await fetch(deepgramUrl, {
           method: "POST",
           headers: {
@@ -707,6 +709,7 @@ async function __hono_POST(c: AppContext) {
             "Content-Type": finalMimeType,
           },
           body: buffer,
+          signal: AbortSignal.timeout(30_000),
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
@@ -1082,7 +1085,13 @@ async function __hono_POST(c: AppContext) {
       form.append("timestamp_granularities[]", "segment");
       const whisperResponse = await fetch(
         `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
-        { method: "POST", body: form },
+        {
+          method: "POST",
+          body: form,
+          // Bound the upstream STT hop so a stalled Whisper server cannot
+          // hang the request path.
+          signal: AbortSignal.timeout(30_000),
+        },
       );
       if (!whisperResponse.ok) {
         await whisperResponse.body?.cancel().catch((cancelError) => {
