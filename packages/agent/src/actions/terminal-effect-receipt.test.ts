@@ -1,11 +1,16 @@
 /**
  * Exercises the terminal action against its real HTTP response contract while
  * stubbing only the loopback transport. Success and failure must remain
- * distinguishable, and missing execution proof must fail rather than become an
- * invented zero exit code.
+ * distinguishable, missing execution proof must fail rather than become an
+ * invented zero exit code, and a hung loopback fetch must fail closed.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  ElizaError,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { terminalAction } from "./terminal.ts";
 
@@ -403,5 +408,42 @@ describe("terminal secret hygiene", () => {
     expect(surfaces).toContain("api.example.com");
     expect(surfaces).toContain("db.example.com");
     expect(surfaces).toContain("[REDACTED:CONFIGURED_SECRET]");
+  });
+
+  it("fails closed on a hung loopback terminal run instead of waiting forever", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: { signal?: AbortSignal }) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) return;
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            signal.addEventListener("abort", () => reject(signal.reason));
+          }),
+      ),
+    );
+    const started = Date.now();
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).rejects.toMatchObject({
+      name: ElizaError.name,
+      code: "TERMINAL_REQUEST_FAILED",
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 });
