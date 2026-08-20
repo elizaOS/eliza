@@ -9,8 +9,11 @@
  * base URL is restricted to chatgpt.com or localhost to prevent token
  * exfiltration, and temperature/max_output_tokens are never sent because the
  * gpt-5.x reasoning models reject them with a 400.
+ * Function-call `arguments` JSON is type-checked by the bounded walker in
+ * `codex-json-value.ts`.
  */
-import { logger, type ChatMessage, type JsonValue, type ToolCall, type ToolDefinition } from "@elizaos/core";
+import { ElizaError, logger, type ChatMessage, type JsonValue, type ToolCall, type ToolDefinition } from "@elizaos/core";
+import { CODEX_JSON_UNBOUNDED, isJsonRecord } from "./codex-json-value";
 import { parseSSE } from "./sse-parser";
 import { toOpenAITool, type OpenAITool } from "./tool-format-openai";
 import {
@@ -391,18 +394,6 @@ function recordProperty(record: Record<string, unknown>, key: string): Record<st
   return isRecord(value) ? value : undefined;
 }
 
-function isJsonRecord(value: unknown): value is Record<string, JsonValue> {
-  if (!isRecord(value)) return false;
-  return Object.values(value).every(isJsonValue);
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isJsonRecord(value);
-}
-
 async function consumeResponseStream(
   body: ReadableStream<Uint8Array>,
   abortSignal?: AbortSignal,
@@ -487,8 +478,14 @@ async function consumeResponseStream(
                 } else {
                   parsed = {};
                 }
-              } catch {
-                // keep raw string
+              } catch (cause) {
+                if (
+                  cause instanceof ElizaError &&
+                  cause.code === CODEX_JSON_UNBOUNDED
+                ) {
+                  throw cause;
+                }
+                // error-policy:J3 malformed function-call JSON stays the raw string.
               }
               toolCalls.push({ id: call.id, name: call.name, arguments: parsed, type: "function" });
               if (itemId) activeByItemId.delete(itemId);

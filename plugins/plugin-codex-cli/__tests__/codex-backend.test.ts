@@ -3,6 +3,7 @@
  * SSE parser, tool-schema translation, and CodexBackend request/stream handling
  * driven by a fake fetch (no live model or network).
  */
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
 import {
@@ -12,6 +13,7 @@ import {
   isExpired,
 } from "../src/codex-auth";
 import { CodexBackend, translateMessagesToCodexInput } from "../src/codex-backend";
+import { CODEX_JSON_UNBOUNDED } from "../src/codex-json-value";
 import { parseSSE } from "../src/sse-parser";
 import { toOpenAITool } from "../src/tool-format-openai";
 
@@ -271,6 +273,35 @@ describe("CodexBackend", () => {
       tools: [{ type: "function", name: "lookup" }],
       tool_choice: { type: "function", name: "lookup" },
     });
+  });
+
+  it("fails closed on an 8k nested function-call arguments JSON", async () => {
+    let nested = '"x"';
+    for (let index = 0; index < 8_000; index += 1) {
+      nested = `[${nested}]`;
+    }
+    const encoded = JSON.stringify(nested);
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async () =>
+        sseResponse([
+          'event: response.output_item.added\ndata: {"item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"lookup"}}\n\n',
+          `event: response.output_item.done\ndata: {"item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"lookup","arguments":${encoded}}}\n\n`,
+          'event: response.completed\ndata: {"response":{"stop_reason":"tool_calls"}}\n\n',
+        ])) as typeof fetch,
+    });
+    const started = performance.now();
+    try {
+      await backend.generate({ prompt: "hello" });
+      expect.unreachable("generate should fail closed on an 8k tool-arg nest");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CODEX_JSON_UNBOUNDED);
+      expect((error as Error).name).not.toBe("RangeError");
+    }
+    expect(performance.now() - started).toBeLessThan(200);
   });
 
   it("never forwards temperature or max_output_tokens (the codex backend 400s on them)", async () => {
