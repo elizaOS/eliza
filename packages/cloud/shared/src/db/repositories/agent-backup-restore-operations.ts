@@ -646,9 +646,11 @@ export async function reserveAgentBackupRestoreTarget(params: {
 }
 
 /**
- * Advance one phase under a live claim, optionally recording the side effect's
- * identity in the same statement that moves the phase — so the record and the
- * transition cannot disagree.
+ * Advance one generic phase under a live claim. First container binding is
+ * excluded: its dedicated quarantine writer must update the sandbox ledger and
+ * operation in one transaction. A retry may re-enter an already-bound
+ * `container_created` phase without rewriting that identity. Finalization still
+ * records its receipt in the same statement as the phase transition.
  */
 export async function advanceAgentBackupRestoreOperation(params: {
   operationId: string;
@@ -656,9 +658,6 @@ export async function advanceAgentBackupRestoreOperation(params: {
   claimGeneration: string;
   fromPhase: AgentBackupRestorePhase;
   toPhase: AgentBackupRestorePhase;
-  recordedIdentity?: {
-    containerId?: string;
-  };
   receiptDigest?: string;
 }): Promise<Readonly<AgentBackupRestoreOperation>> {
   const operationId = requireUuid(params.operationId, "operationId");
@@ -678,8 +677,20 @@ export async function advanceAgentBackupRestoreOperation(params: {
   } else if (toRank < 0) {
     throw new AgentBackupCatalogConflictError(`${params.toPhase} is not a resumable phase`);
   }
-  const identity = params.recordedIdentity ?? {};
-  if (identity.containerId !== undefined) requireSha256(identity.containerId, "containerId");
+  const resumingRecordedContainer = resuming && params.toPhase === "container_created";
+  if (params.toPhase === "container_created" && !resumingRecordedContainer) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore container creation must be recorded through quarantine authority",
+    );
+  }
+  // Fail closed for structurally typed or JavaScript callers still sending the
+  // retired generic identity bag. The quarantine writer is the only API allowed
+  // to bind a container id and advance the matching phase atomically.
+  if ("recordedIdentity" in params) {
+    throw new AgentBackupCatalogConflictError(
+      "Generic restore advance cannot record a container identity",
+    );
+  }
   if (params.receiptDigest !== undefined) requireSha256(params.receiptDigest, "receiptDigest");
   if ((params.toPhase === "finalized") !== (params.receiptDigest !== undefined)) {
     throw new AgentBackupCatalogConflictError(
@@ -744,6 +755,11 @@ export async function advanceAgentBackupRestoreOperation(params: {
         `Restore operation must resume ${operation.resume_phase}, not ${params.toPhase}`,
       );
     }
+    if (resumingRecordedContainer && operation.expected_container_id === null) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot resume container_created without a recorded container identity",
+      );
+    }
 
     const [advanced] = await tx
       .update(agentBackupRestoreOperations)
@@ -753,9 +769,6 @@ export async function advanceAgentBackupRestoreOperation(params: {
         claim_owner: null,
         claim_generation: null,
         claim_expires_at: null,
-        ...(identity.containerId !== undefined
-          ? { expected_container_id: identity.containerId }
-          : {}),
         ...(params.receiptDigest !== undefined
           ? { receipt_digest: params.receiptDigest, completed_at: databaseNow }
           : {}),
@@ -771,6 +784,9 @@ export async function advanceAgentBackupRestoreOperation(params: {
                 isNotNull(agentBackupRestoreOperations.expected_node_incarnation),
                 isNotNull(agentBackupRestoreOperations.expected_image_digest),
               )
+            : undefined,
+          resumingRecordedContainer
+            ? isNotNull(agentBackupRestoreOperations.expected_container_id)
             : undefined,
         ),
       )
