@@ -168,7 +168,6 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "どんなグループチャットにもいてほしい、もう一人のメンバー。",
   "homepage_eliza.landing.heroLede": "Elizaは会話の流れを追い、グループの決定を覚え、計画をわかりやすく保ちます。",
-  "homepage_eliza.landing.useCases": "友人 · 共同子育て · 家庭 · 旅行 · コミュニティ",
   "homepage_eliza.landing.ctaText": "メッセージ",
   "homepage_eliza.landing.copyPhone": "Elizaの電話番号をコピー",
   "homepage_eliza.landing.phoneCopied": "コピーしました！",

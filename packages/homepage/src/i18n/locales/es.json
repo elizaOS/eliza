@@ -168,7 +168,6 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "La integrante que todo chat grupal necesita.",
   "homepage_eliza.landing.heroLede": "Eliza sigue la conversación, recuerda lo que decide el grupo y mantiene el plan claro.",
-  "homepage_eliza.landing.useCases": "Amigos · Crianza compartida · Hogares · Viajes · Comunidades",
   "homepage_eliza.landing.ctaText": "Mensaje",
   "homepage_eliza.landing.copyPhone": "Copiar el número de Eliza",
   "homepage_eliza.landing.phoneCopied": "¡Copiado!",

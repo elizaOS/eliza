@@ -98,15 +98,15 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
 const INITIAL_RENDERED_ITEMS = 4;
-const USER_KEYSTROKE_MS = 24;
-const ELIZA_TYPING_MS = 640;
-const BEAT_PAUSE_MS = 360;
-const PRE_USER_MS = 220;
-const PRE_ELIZA_MS = 300;
-const PRE_CARD_MS = 420;
-const SEND_HOLD_MS = 220;
-const SCENARIO_SETTLE_MS = 1_150;
-const SCENARIO_SWITCH_MS = 320;
+const USER_KEYSTROKE_MS = 12;
+const ELIZA_TYPING_MS = 400;
+const BEAT_PAUSE_MS = 180;
+const PRE_USER_MS = 140;
+const PRE_ELIZA_MS = 170;
+const PRE_CARD_MS = 240;
+const SEND_HOLD_MS = 140;
+const SCENARIO_SETTLE_MS = 700;
+const SCENARIO_SWITCH_MS = 240;
 
 const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -231,6 +231,7 @@ function PhoneMockup() {
   const [visitedScenarioIds, setVisitedScenarioIds] = useState<
     LandingDemoScenarioId[]
   >([DEMO_SCENARIOS[0].id]);
+  const [cycle, setCycle] = useState(0);
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
@@ -317,31 +318,38 @@ function PhoneMockup() {
     };
 
     (async () => {
-      for (const [index, nextScenario] of DEMO_SCENARIOS.entries()) {
-        if (index > 0) {
-          setPhase("switching");
-          setElizaTyping(false);
-          setComposerText("");
-          await sleep(SCENARIO_SWITCH_MS);
+      let completedCycles = 0;
+      while (!cancelled) {
+        for (const [index, nextScenario] of DEMO_SCENARIOS.entries()) {
+          const firstRoom = completedCycles === 0 && index === 0;
+          if (!firstRoom) {
+            setPhase("switching");
+            setElizaTyping(false);
+            setComposerText("");
+            await sleep(SCENARIO_SWITCH_MS);
+            if (cancelled) return;
+            setScenarioIndex(index);
+            setItems(
+              scenarioItems(nextScenario, index).slice(
+                0,
+                INITIAL_RENDERED_ITEMS,
+              ),
+            );
+            setVisitedScenarioIds((previous) =>
+              previous.includes(nextScenario.id)
+                ? previous
+                : [...previous, nextScenario.id],
+            );
+            setPhase("playing");
+          }
+          await play(nextScenario.steps.slice(INITIAL_RENDERED_ITEMS), index);
           if (cancelled) return;
-          setScenarioIndex(index);
-          setItems(
-            scenarioItems(nextScenario, index).slice(0, INITIAL_RENDERED_ITEMS),
-          );
-          setVisitedScenarioIds((previous) =>
-            previous.includes(nextScenario.id)
-              ? previous
-              : [...previous, nextScenario.id],
-          );
-          setPhase("playing");
-        }
-        await play(nextScenario.steps.slice(INITIAL_RENDERED_ITEMS), index);
-        if (cancelled) return;
-        if (index < DEMO_SCENARIOS.length - 1) {
           await sleep(SCENARIO_SETTLE_MS);
+          if (cancelled) return;
         }
+        completedCycles += 1;
+        setCycle(completedCycles);
       }
-      setPhase("settled");
     })();
 
     return () => {
@@ -368,6 +376,7 @@ function PhoneMockup() {
       data-demo-scenario-index={scenarioIndex + 1}
       data-demo-scenarios={DEMO_SCENARIOS.length}
       data-demo-visited={visitedScenarioIds.join(",")}
+      data-demo-cycle={cycle}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
@@ -471,20 +480,6 @@ function PhoneMockup() {
               </svg>
             </span>
           </div>
-          <ul
-            className="landing-scenario-strip"
-            aria-label={`Demo rooms: ${DEMO_SCENARIOS.map(({ label }) => label).join(", ")}`}
-          >
-            {DEMO_SCENARIOS.map((item, index) => (
-              <li
-                key={item.id}
-                data-active={index === scenarioIndex}
-                data-visited={visitedScenarioIds.includes(item.id)}
-              >
-                {item.label}
-              </li>
-            ))}
-          </ul>
         </div>
         <div
           className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:96px]"
@@ -976,12 +971,6 @@ export default function LandingPage() {
             {t("homepage_eliza.landing.heroLede", {
               defaultValue:
                 "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
-            })}
-          </p>
-          <p className="landing-use-cases">
-            {t("homepage_eliza.landing.useCases", {
-              defaultValue:
-                "Friends · Co-parenting · Households · Trips · Communities",
             })}
           </p>
           <div className="landing-hero-actions">

@@ -11,8 +11,9 @@ what still needs connector-by-connector runtime proof.
 - Eliza recapping decisions and open questions found in the current room.
 - A visual plan card whose rows are derived only from messages already shown.
 - Plain-language positioning around shared clarity and keeping a plan together.
-- A finite pass through friends, co-parenting, household, trip, and community
-  rooms, provided each room uses only its own visible conversation context.
+- A continuous rotation through friends, co-parenting, household, trip, and
+  community rooms, provided each room resets cleanly and uses only its own
+  visible conversation context.
 - An intermediate and final recap in each room so the demo shows how Eliza
   tracks a plan as the conversation changes, not only the terminal answer.
 

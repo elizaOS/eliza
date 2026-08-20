@@ -168,7 +168,6 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Thành viên mà nhóm chat nào cũng cần.",
   "homepage_eliza.landing.heroLede": "Eliza theo dõi cuộc trò chuyện, ghi nhớ quyết định của nhóm và giữ kế hoạch rõ ràng.",
-  "homepage_eliza.landing.useCases": "Bạn bè · Đồng nuôi dạy con · Gia đình · Chuyến đi · Cộng đồng",
   "homepage_eliza.landing.ctaText": "Nhắn tin",
   "homepage_eliza.landing.copyPhone": "Sao chép số của Eliza",
   "homepage_eliza.landing.phoneCopied": "Đã sao chép!",

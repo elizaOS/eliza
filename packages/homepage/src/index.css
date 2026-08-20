@@ -1460,17 +1460,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   text-wrap: pretty;
 }
 
-.landing-use-cases {
-  margin: 0.9rem 0 0;
-  max-width: 36rem;
-  color: rgb(17 17 17 / 58%);
-  font-size: 0.82rem;
-  font-weight: 620;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  text-wrap: balance;
-}
-
 .landing-hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1876,52 +1865,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   white-space: nowrap;
 }
 
-.landing-scenario-strip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.16rem;
-  margin: 0;
-  padding: 0.05rem 0.7rem 0.22rem;
-  background: #ffffff;
-  color: #9a9aa0;
-  font-size: 0.54rem;
-  font-weight: 560;
-  line-height: 1;
-  list-style: none;
-  white-space: nowrap;
-}
-
-.landing-scenario-strip li {
-  position: relative;
-  padding: 0.18rem 0.2rem 0.32rem;
-  transition: color 180ms ease;
-}
-
-.landing-scenario-strip li::after {
-  position: absolute;
-  right: 0.2rem;
-  bottom: 0;
-  left: 0.2rem;
-  height: 1.5px;
-  border-radius: 999px;
-  background: transparent;
-  content: "";
-}
-
-.landing-scenario-strip li[data-visited="true"] {
-  color: #69696f;
-}
-
-.landing-scenario-strip li[data-active="true"] {
-  color: #007aff;
-  font-weight: 680;
-}
-
-.landing-scenario-strip li[data-active="true"]::after {
-  background: currentColor;
-}
-
 .landing-thread-preamble {
   display: grid;
   justify-items: center;
@@ -1943,7 +1886,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   gap: 0.5rem;
   /* Top padding clears the floating status bar + contact header so the
      conversation starts below it and scrolls underneath the frosted chrome. */
-  padding: 10rem 0.9rem 2.15rem;
+  padding: 8.6rem 0.9rem 2.15rem;
   overflow-y: auto;
   scrollbar-width: none;
   transition:
@@ -2521,8 +2464,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   .landing-hero-actions,
   .landing-secondary-channels,
   .landing-phone-number,
-  .landing-hero-lede,
-  .landing-use-cases {
+  .landing-hero-lede {
     display: none;
   }
 

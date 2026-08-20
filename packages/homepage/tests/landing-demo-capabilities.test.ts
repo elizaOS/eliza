@@ -58,16 +58,16 @@ describe("landing Shared-agent capability contract", () => {
     ).toBe(LANDING_DEMO_SCENARIOS.length);
   });
 
-  test("gives every room a full mini-story with working and final recaps", () => {
+  test("gives every room a longer mini-story with evolving recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      expect(scenario.steps).toHaveLength(12);
+      expect(scenario.steps).toHaveLength(16);
       expect(scenario.steps.at(-1)?.kind).toBe("card");
       expect(
         scenario.steps.filter((step) => step.kind === "card"),
-      ).toHaveLength(2);
+      ).toHaveLength(3);
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
-      ).toBeGreaterThanOrEqual(2);
+      ).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -83,7 +83,7 @@ describe("landing Shared-agent capability contract", () => {
     }
   });
 
-  test("does not repeat a scenario or a scripted message", () => {
+  test("keeps every room and scripted beat distinct inside the rotation", () => {
     const allText = LANDING_DEMO.map(landingDemoStepText);
 
     expect(new Set(LANDING_DEMO_SCENARIOS.map(({ id }) => id)).size).toBe(5);

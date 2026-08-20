@@ -174,8 +174,8 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Working plan",
-          title: "Saturday evening",
+          label: "Availability match",
+          title: "Saturday is the overlap",
           rows: ["After 7", "Maya, Leo + you", "Waiting on Jamie"],
           status: "Waiting on the group",
           statusKind: "open",
@@ -195,7 +195,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Group plan",
+          label: "Best fit",
           title: "Saturday · 7:30 PM",
           rows: [
             "Everyone can make it",
@@ -203,6 +203,25 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
             "Neighborhood still open",
           ],
           status: "Updated from this group",
+          statusKind: "open",
+        },
+      },
+      { kind: "member", name: "Maya", text: "Noe for me" },
+      { kind: "member", name: "Leo", text: "same if we can get a big table" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Noe leads 2–0. If Priya, Jamie, and you are neutral, that settles it. Any objections?",
+      },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Decision check",
+          title: "Noe leads 2–0",
+          rows: ["No objections yet", "3 people still to weigh in"],
+          status: "Waiting on the group",
           statusKind: "open",
         },
       },
@@ -228,7 +247,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "School week",
+          label: "Handoff map",
           title: "Two pickups covered",
           rows: ["Thu · Maya", "Fri · You", "Sat soccer · Open"],
           status: "Waiting on the group",
@@ -253,13 +272,39 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "This week",
+          label: "Whole week",
           title: "Handoffs covered",
           rows: [
             "Thu pickup · Maya",
             "Fri pickup + cleats · You",
             "Sat soccer + snack · Jamie",
             "Backpack is ready",
+          ],
+          status: "Updated from this group",
+        },
+      },
+      {
+        kind: "member",
+        name: "Maya",
+        text: "if work runs late Thursday I'll say here",
+      },
+      { kind: "user", text: "I can be backup until 5:30" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Maya owns Thursday pickup and you're backup until 5:30. Friday and Saturday stay covered as planned.",
+      },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Backup plan",
+          title: "Thursday has a fallback",
+          rows: [
+            "Primary · Maya at 5",
+            "Backup · You until 5:30",
+            "Fri + Sat covered",
           ],
           status: "Updated from this group",
         },
@@ -286,7 +331,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Home list",
+          label: "Load check",
           title: "One thing still open",
           rows: ["Coffee · You", "Recycling · Leo", "Laundry · Open"],
           status: "Waiting on the group",
@@ -307,11 +352,33 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Home list",
+          label: "Chore balance",
           title: "All covered",
           rows: [
             "Coffee + laundry · You",
             "Recycling + dishwasher · Leo",
+            "Plants · Maya",
+          ],
+          status: "Updated from this group",
+        },
+      },
+      { kind: "member", name: "Priya", text: "trash bags are almost out" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "You already have coffee and laundry. Leo, can trash bags ride with your trip home?",
+      },
+      { kind: "member", name: "Leo", text: "yeah, I'll grab them" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Fair split",
+          title: "No one gets everything",
+          rows: [
+            "Coffee + laundry · You",
+            "Trash bags + dishwasher · Leo",
             "Plants · Maya",
           ],
           status: "Updated from this group",
@@ -339,7 +406,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Arrival board",
+          label: "Arrival sequence",
           title: "Morning arrivals",
           rows: ["Priya · Night before", "Jamie · 9:40", "Maya · 10:15"],
           status: "Kept with this group",
@@ -359,12 +426,38 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "First stop",
+          label: "Shared route",
           title: "Airport to apartment",
           rows: [
             "Meet by arrivals",
             "Look for the red suitcase",
             "Apartment keys · Priya",
+          ],
+          status: "Updated from this group",
+        },
+      },
+      { kind: "member", name: "Jamie", text: "what if Maya's flight is late?" },
+      {
+        kind: "member",
+        name: "Maya",
+        text: "wait 30, then go ahead without me",
+      },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "If Maya isn't out by 10:45, Jamie and you head to the apartment. Priya has the keys, and Maya can follow.",
+      },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Delay plan",
+          title: "10:45 cutoff",
+          rows: [
+            "Jamie + you · Go ahead",
+            "Priya · Has the keys",
+            "Maya · Follows after landing",
           ],
           status: "Updated from this group",
         },
@@ -391,7 +484,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Garden week",
+          label: "Coverage map",
           title: "One spot still open",
           rows: ["Tue · Priya", "Thu · Leo", "Sat · You", "North bed · Open"],
           status: "Waiting on the group",
@@ -416,13 +509,35 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "card",
         card: {
           capability: "conversation-memory",
-          label: "Garden week",
+          label: "Fewest trips",
           title: "Coverage set",
           rows: [
             "Tue · Priya + north bed",
             "Wed · Shade cloth from you",
             "Thu · Leo",
             "Sat · You",
+          ],
+          status: "Updated from this group",
+        },
+      },
+      { kind: "member", name: "Leo", text: "west bed looks dry too" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "You're already there Saturday. Can you add the west bed so Priya doesn't need a second trip?",
+      },
+      { kind: "user", text: "yes, I'll check both" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Least extra travel",
+          title: "West bed added Saturday",
+          rows: [
+            "Owner · You",
+            "Priya avoids a second trip",
+            "Rest of week covered",
           ],
           status: "Updated from this group",
         },

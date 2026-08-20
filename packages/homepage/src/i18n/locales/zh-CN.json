@@ -168,7 +168,6 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}}（+{{dial}}）",
   "homepage_eliza.landing.heroTitle": "每个群聊都需要的那位成员。",
   "homepage_eliza.landing.heroLede": "Eliza 会跟上对话、记住群里的决定，并把计划整理清楚。",
-  "homepage_eliza.landing.useCases": "朋友 · 共同育儿 · 家庭 · 旅行 · 社群",
   "homepage_eliza.landing.ctaText": "发消息",
   "homepage_eliza.landing.copyPhone": "复制 Eliza 的电话号码",
   "homepage_eliza.landing.phoneCopied": "已复制！",

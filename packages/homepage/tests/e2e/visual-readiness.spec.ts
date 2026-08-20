@@ -50,14 +50,14 @@ for (const viewport of [
   });
 }
 
-test("reduced motion renders the settled friends room and all room labels", async ({
+test("reduced motion renders the settled friends room without category labels", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
-  // Reduced motion skips playback but keeps every scenario discoverable in the
-  // room strip and renders one complete, stable friends-room snapshot.
+  // Reduced motion skips playback and renders one complete, stable
+  // friends-room snapshot without adding category or numeric progress text.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
   await expect(demo).toHaveAttribute("data-demo-scenario", "friends");
@@ -66,9 +66,9 @@ test("reduced motion renders the settled friends room and all room labels", asyn
     "data-demo-visited",
     "friends,co-parenting,household,trip,community",
   );
-  await expect(demo).toHaveAttribute("data-demo-messages", "12");
-  await expect(page.locator(".landing-scenario-strip li")).toHaveCount(5);
-  await expect(page.locator(".landing-demo-card")).toHaveCount(2);
+  await expect(demo).toHaveAttribute("data-demo-messages", "16");
+  await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(3);
   await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);
 
   const assistantMessages = await page

@@ -342,9 +342,9 @@ test("landing leads with iMessage and keeps secondary channels available", async
   ).toBeVisible();
   await expect(
     page.getByText("Friends · Co-parenting · Households · Trips · Communities"),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByText("Friday people", { exact: true })).toBeVisible();
-  await expect(page.locator(".landing-scenario-strip li")).toHaveCount(5);
+  await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
   await expect(page.locator(".landing-iphone")).toHaveAttribute(
     "data-demo-scenarios",
     "5",

@@ -186,7 +186,6 @@
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "The one member every group chat needs.",
   "homepage_eliza.landing.heroLede": "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
-  "homepage_eliza.landing.useCases": "Friends · Co-parenting · Households · Trips · Communities",
   "homepage_eliza.landing.ctaText": "Text Eliza",
   "homepage_eliza.landing.copyPhone": "Copy Eliza's phone number",
   "homepage_eliza.landing.phoneCopied": "Copied!",

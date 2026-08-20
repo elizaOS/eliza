@@ -84,26 +84,31 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("all five longer rooms play once without hiding usable thread space", async ({
+test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(75_000);
+  test.setTimeout(130_000);
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-phase", "settled", {
-    timeout: 60_000,
+  await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
+    timeout: 110_000,
   });
-  await expect(phone).toHaveAttribute("data-demo-scenario", "community");
-  await expect(phone).toHaveAttribute("data-demo-scenario-index", "5");
+  await expect(phone).toHaveAttribute("data-demo-scenario", "friends", {
+    timeout: 5_000,
+  });
+  await expect(phone).toHaveAttribute("data-demo-phase", "playing");
+  await expect(phone).toHaveAttribute("data-demo-scenario-index", "1");
   await expect(phone).toHaveAttribute("data-demo-scenarios", "5");
   await expect(phone).toHaveAttribute(
     "data-demo-visited",
     "friends,co-parenting,household,trip,community",
   );
-  await expect(phone).toHaveAttribute("data-demo-messages", "12");
+  await expect
+    .poll(async () => Number(await phone.getAttribute("data-demo-messages")))
+    .toBeGreaterThanOrEqual(4);
 
   await expect
     .poll(
