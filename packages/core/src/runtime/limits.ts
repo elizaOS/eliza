@@ -30,7 +30,7 @@ export interface ChainingLoopConfig {
 	 */
 	maxRepeatedToolCalls: number;
 	/**
-	 * Maximum memory/knowledge-recall search rounds executed per turn
+	 * Maximum successful memory/knowledge-recall search rounds per turn
 	 * (MEMORY_SEARCH-family: `*_SEARCH` recall tools, SEARCH_KNOWLEDGE, and the
 	 * MEMORY umbrella with a search op). The existing redundant-call breaker
 	 * only catches byte-identical repeats; a model reformulating the SAME recall
@@ -41,7 +41,8 @@ export interface ChainingLoopConfig {
 	 * instruction to answer from the results already gathered — the results ARE
 	 * in the trajectory, so no information is lost. Near-duplicate queries
 	 * (same tool, same normalized query tokens) are additionally skipped
-	 * regardless of remaining budget.
+	 * regardless of remaining budget. Failed calls remain governed by the
+	 * repeated-failure guard so this budget does not suppress a corrected retry.
 	 */
 	maxMemorySearchRounds: number;
 	/** Estimated model context window for compaction decisions. */

@@ -4262,8 +4262,9 @@ function recallSearchDedupeKey(
  *     carries the same normalized query tokens for the same tool, regardless
  *     of remaining budget;
  *  2. open-ended "search again with a different phrase" churn — bounded by
- *     `maxRounds` executed recall searches per turn (executed = the step ran,
- *     successfully or not; each one cost a full planner round).
+ *     `maxRounds` successful recall searches per turn. Failed calls are
+ *     bounded separately by the repeated-failure guard, preserving a
+ *     corrected call after invalid arguments or a backend failure.
  *
  * Nothing is lost when a call is skipped: results from executed searches stay
  * in the trajectory, and the caller appends an instruction to answer from
@@ -4283,15 +4284,16 @@ export function partitionMemorySearchBudget(
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || !step.result) continue;
 		if (!isMemoryRecallSearchCall(step.toolCall)) continue;
+		// Failed calls do not spend the recall-result budget. They are already
+		// bounded by the planner's repeated-failure guard, and charging them here
+		// can suppress the first corrected call after schema/backend failures.
+		if (step.result.success !== true) continue;
 		executedRounds++;
 		// Only SUCCESSFUL executions seed the near-duplicate set: a failed search
 		// (schema rejection, backend error) put no results in context, so a
 		// same-query retry with corrected arguments is legitimate — it competes
-		// only against the round budget, never the dedup gate.
-		if (
-			step.result.success !== true ||
-			!successfulRecallResultHasContent(step.result)
-		) {
+		// only against future successful rounds, never the dedup gate.
+		if (!successfulRecallResultHasContent(step.result)) {
 			continue;
 		}
 		const key = normalizedRecallQueryKey(step.toolCall);
