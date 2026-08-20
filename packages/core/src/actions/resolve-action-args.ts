@@ -67,6 +67,7 @@ const RECENT_CONTEXT_LIMIT = 8;
 const MIN_CONFIDENCE = 0.5;
 const FALLBACK_CLARIFICATION =
 	"I'm not sure what you'd like to do — can you say it a bit differently?";
+const JSON_NUMBER_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 interface ParsedExtraction<TSubaction extends string> {
 	subaction: TSubaction | null;
@@ -81,6 +82,22 @@ function asTrimmedString(value: unknown): string {
 
 function nonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseConfidence(value: unknown): number {
+	let numeric: number;
+	if (typeof value === "number") {
+		numeric = value;
+	} else if (typeof value === "string") {
+		if (!JSON_NUMBER_PATTERN.test(value)) {
+			return 0;
+		}
+		numeric = Number(value);
+	} else {
+		return 0;
+	}
+
+	return Number.isFinite(numeric) ? Math.max(0, Math.min(1, numeric)) : 0;
 }
 
 function valueIsPresent(value: unknown): boolean {
@@ -267,16 +284,7 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	const missingRaw = Array.isArray(parsed.missing) ? parsed.missing : [];
 	const missing = missingRaw.filter(nonEmptyString).map((s) => s.trim());
 
-	const confidenceRaw = parsed.confidence;
-	let confidence = 0;
-	if (typeof confidenceRaw === "number" && Number.isFinite(confidenceRaw)) {
-		confidence = Math.max(0, Math.min(1, confidenceRaw));
-	} else if (typeof confidenceRaw === "string") {
-		const numeric = Number.parseFloat(confidenceRaw);
-		if (Number.isFinite(numeric)) {
-			confidence = Math.max(0, Math.min(1, numeric));
-		}
-	}
+	const confidence = parseConfidence(parsed.confidence);
 
 	return { subaction, params, missing, confidence };
 }
