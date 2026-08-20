@@ -1007,7 +1007,30 @@ export async function fetchBackendStream(
 		return { streamId, done: true };
 	}
 
-	const conversationId = decodeURIComponent(match[1] ?? "");
+	const conversationId = decodePathComponent(match[1] ?? "");
+	if (conversationId === null) {
+		// Mirror the buffered route's 400 as stream frames rather than throwing
+		// out of the emitter, which would abandon the stream with no response.
+		await emit({
+			streamId,
+			kind: "response",
+			status: 400,
+			statusText: statusTextForCode(400),
+			headers: { "content-type": "application/json; charset=utf-8" },
+		});
+		await emit({
+			streamId,
+			kind: "chunk",
+			dataBase64: Buffer.from(
+				JSON.stringify({
+					error: "invalid conversation id: malformed URL encoding",
+				}),
+				"utf8",
+			).toString("base64"),
+		});
+		await emit({ streamId, kind: "complete", error: null });
+		return { streamId, done: true };
+	}
 	const body = parseRequestBody(payload);
 	await streamConversationMessageResponse(
 		backend,
@@ -1608,13 +1631,25 @@ async function persistTranscript(
 	return transcript;
 }
 
-function decodeTranscriptId(raw: string): UUID | null {
+/**
+ * Decode one path component, or null when the percent-encoding is malformed.
+ *
+ * `decodeURIComponent` throws a `URIError` on input like `%`, `%2`, or `%ZZ`.
+ * Nothing wraps the bridge's route dispatch, so an unguarded decode turns a
+ * malformed request path into an exception escaping the whole request instead
+ * of the 400 every other invalid path input produces.
+ */
+function decodePathComponent(raw: string): string | null {
 	try {
-		return decodeURIComponent(raw) as UUID;
+		return decodeURIComponent(raw);
 	} catch {
-		// error-policy:J3 Malformed transcript encoding is invalid path input.
+		// error-policy:J3 Malformed encoding is invalid path input, not a fault.
 		return null;
 	}
+}
+
+function decodeTranscriptId(raw: string): UUID | null {
+	return decodePathComponent(raw) as UUID | null;
 }
 
 async function handleTranscriptsRoute(
@@ -1796,7 +1831,13 @@ function handleBrowserWorkspaceRoute(
 	);
 	if (!match) return null;
 
-	const tabId = decodeURIComponent(match[1] ?? "").trim();
+	const decodedTabId = decodePathComponent(match[1] ?? "");
+	if (decodedTabId === null) {
+		return jsonResponse(400, {
+			error: "invalid browser tab id: malformed URL encoding",
+		});
+	}
+	const tabId = decodedTabId.trim();
 	const action = match[2] ?? null;
 	const index = iosBrowserWorkspaceTabs.findIndex((tab) => tab.id === tabId);
 	if (index < 0) {
@@ -3845,7 +3886,12 @@ async function handleNativeIosLocalInferenceRoute(
 		/^\/api\/local-inference\/installed\/([^/]+)\/verify$/,
 	);
 	if (method === "POST" && verifyMatch?.[1]) {
-		const id = decodeURIComponent(verifyMatch[1]);
+		const id = decodePathComponent(verifyMatch[1] ?? "");
+		if (id === null) {
+			return jsonResponse(400, {
+				error: "invalid model id: malformed URL encoding",
+			});
+		}
 		const model = readInstalledModels().find((entry) => entry.id === id);
 		if (!model)
 			return jsonResponse(404, { error: `Model not installed: ${id}` });
@@ -4463,7 +4509,12 @@ export async function handleDirectCoreRoute(
 		return jsonResponse(200, { messages: [] });
 	}
 	if (method === "POST" && messageStreamMatch) {
-		const conversationId = decodeURIComponent(messageStreamMatch[1] ?? "");
+		const conversationId = decodePathComponent(messageStreamMatch[1] ?? "");
+		if (conversationId === null) {
+			return jsonResponse(400, {
+				error: "invalid conversation id: malformed URL encoding",
+			});
+		}
 		const conversation = backend.conversations.get(conversationId);
 		if (!conversation) {
 			return jsonResponse(404, { error: "Conversation not found" });
@@ -4475,7 +4526,12 @@ export async function handleDirectCoreRoute(
 		return bufferedConversationStreamResponse(result);
 	}
 	if (method === "POST" && messageMatch) {
-		const conversationId = decodeURIComponent(messageMatch[1] ?? "");
+		const conversationId = decodePathComponent(messageMatch[1] ?? "");
+		if (conversationId === null) {
+			return jsonResponse(400, {
+				error: "invalid conversation id: malformed URL encoding",
+			});
+		}
 		const conversation = backend.conversations.get(conversationId);
 		if (!conversation) {
 			return jsonResponse(404, { error: "Conversation not found" });
