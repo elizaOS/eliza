@@ -149,6 +149,7 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
@@ -179,7 +180,6 @@ import type {
 	IDiscordService,
 } from "./types";
 import { DiscordEventTypes } from "./types";
-import { buildDiscordReplyPayload } from "./interactions";
 import {
 	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
