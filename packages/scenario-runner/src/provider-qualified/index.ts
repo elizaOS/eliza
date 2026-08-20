@@ -12,3 +12,4 @@ export * from "./qualification-artifact.ts";
 export * from "./qualification-catalog.ts";
 export * from "./qualification-cli.ts";
 export * from "./trajectory-verifier.ts";
+export * from "./twilio-operator-controller.ts";
