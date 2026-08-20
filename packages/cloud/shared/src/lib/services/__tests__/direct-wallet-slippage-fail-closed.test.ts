@@ -43,6 +43,41 @@ describe("parseDirectWalletMetadataNumber", () => {
       }),
     ).toBe(0);
   });
+
+  test("refuses alternate numeric syntax and unsafe integer metadata", () => {
+    for (const value of ["0x10", "0b10", "1e2", " 18 ", "+18", "018"]) {
+      expect(() =>
+        parseDirectWalletMetadataNumber({
+          paymentId: "pay-noncanonical",
+          field: "token_decimals",
+          value,
+          integer: true,
+          max: 255,
+        }),
+      ).toThrow("Direct wallet payment has corrupt numeric metadata");
+    }
+
+    for (const value of ["9007199254740993", Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() =>
+        parseDirectWalletMetadataNumber({
+          paymentId: "pay-unsafe",
+          field: "verify_attempts",
+          value,
+          integer: true,
+        }),
+      ).toThrow("Direct wallet payment has corrupt numeric metadata");
+    }
+
+    expect(() =>
+      parseDirectWalletMetadataNumber({
+        paymentId: "pay-increment-overflow",
+        field: "verify_attempts",
+        value: Number.MAX_SAFE_INTEGER,
+        integer: true,
+        max: Number.MAX_SAFE_INTEGER - 1,
+      }),
+    ).toThrow("Direct wallet payment has corrupt numeric metadata");
+  });
 });
 
 describe("parseDirectWalletSlippageBps (fail-closed boundary)", () => {

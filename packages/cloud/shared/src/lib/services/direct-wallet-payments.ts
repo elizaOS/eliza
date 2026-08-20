@@ -595,14 +595,15 @@ export function parseDirectWalletMetadataNumber(params: {
   max?: number;
 }): number {
   const value = params.value ?? params.defaultValue;
+  const canonicalString = typeof value !== "string" || /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value);
   const parsed =
-    (typeof value === "number" || typeof value === "string") && String(value).trim() !== ""
+    canonicalString && (typeof value === "number" || typeof value === "string")
       ? Number(value)
       : Number.NaN;
   if (
     !Number.isFinite(parsed) ||
     parsed < 0 ||
-    (params.integer && !Number.isInteger(parsed)) ||
+    (params.integer && !Number.isSafeInteger(parsed)) ||
     (params.max !== undefined && parsed > params.max)
   ) {
     throw new ElizaError("Direct wallet payment has corrupt numeric metadata", {
@@ -2421,6 +2422,7 @@ export class DirectWalletPaymentsService {
             value: (metadataOf(payment) as Record<string, unknown>).verify_attempts,
             defaultValue: 0,
             integer: true,
+            max: Number.MAX_SAFE_INTEGER - 1,
           }) + 1;
 
         const bumpVerifyAttempts = () =>

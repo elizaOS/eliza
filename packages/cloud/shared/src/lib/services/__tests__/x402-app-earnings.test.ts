@@ -329,3 +329,36 @@ test("public projection refuses corrupt stored amount and fee values", () => {
     ),
   ).toThrow(/corrupt platformFeeUsd/i);
 });
+
+test("public projection accepts plain decimals and refuses alternate stored-money syntax", () => {
+  const view = x402PaymentRequestsService.toView(
+    paymentRecord({
+      metadata: {
+        kind: "x402_payment_request",
+        amountUsd: "0.05",
+        platformFeeUsd: "0.0005",
+        serviceFeeUsd: "0.01",
+        totalChargedUsd: "0.0605",
+      },
+    }) as never,
+  );
+  expect(view).toMatchObject({
+    amountUsd: 0.05,
+    platformFeeUsd: 0.0005,
+    serviceFeeUsd: 0.01,
+    totalChargedUsd: 0.0605,
+  });
+
+  for (const value of ["0x10", "0b10", "1e2", " 0.05 ", "+0.05", ".05", "00.05"]) {
+    expect(() =>
+      x402PaymentRequestsService.toView(
+        paymentRecord({
+          metadata: {
+            kind: "x402_payment_request",
+            amountUsd: value,
+          },
+        }) as never,
+      ),
+    ).toThrow(/corrupt amountUsd/i);
+  }
+});

@@ -189,9 +189,10 @@ function parseStoredPaymentAmount(params: {
   value: unknown;
   allowZero?: boolean;
 }): number {
+  const canonicalString =
+    typeof params.value !== "string" || /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(params.value);
   const parsed =
-    (typeof params.value === "number" || typeof params.value === "string") &&
-    String(params.value).trim() !== ""
+    canonicalString && (typeof params.value === "number" || typeof params.value === "string")
       ? Number(params.value)
       : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0 || (!params.allowZero && parsed === 0)) {
