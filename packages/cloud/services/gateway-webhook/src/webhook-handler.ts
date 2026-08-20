@@ -609,9 +609,9 @@ async function processMessage(
   // container has booted. Branching on the row alone would answer the first
   // message and then go silent again for every message until boot — for good,
   // if provisioning ends in error. Never branch on `sandbox.status`: a stopped
-  // agent is still a resolved agent, and re-onboarding one would provision a
-  // duplicate (the single guard against that is the early return on an
-  // existing sandbox in ensureElizaAppProvisioning).
+  // agent is still a resolved agent, and re-onboarding one would misroute an
+  // established identity. Provisioning belongs to explicit lifecycle
+  // surfaces; onboarding provisioning status is observation-only.
   //
   // `unreachable` is deliberately NOT onboarding: that is an established agent
   // whose pod stopped heartbeating, and the onboarding state machine would tell

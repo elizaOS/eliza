@@ -1192,19 +1192,31 @@ function fallbackReply(args: {
     }
     return `still here, ${name}! one step left: connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
   }
-  if (args.handoffComplete) {
-    return `you're in, ${name}. your shared Eliza is connected and already knows everything from this chat. just keep talking here.`;
+  switch (args.provisioning.status) {
+    case "running":
+      if (args.handoffComplete) {
+        return `your transcript is copied to the current Dedicated agent, ${name}. its lifecycle record says running; the normal chat path still confirms live readiness.`;
+      }
+      return `your Dedicated lifecycle record says running, ${name}. I'm finishing the transcript handoff, but this status alone does not prove live readiness.`;
+    case "provisioning":
+      return `the Dedicated lifecycle record says provisioning, ${name}. this chat did not start or restart it and cannot promise an ETA.`;
+    case "pending":
+      return `a Dedicated lifecycle record is pending, ${name}. that does not prove a provisioning job is running; use the explicit lifecycle controls to continue.`;
+    case "error":
+      return `the Dedicated lifecycle record is in error, ${name}. this status read does not identify the failed operation; nothing was restarted from this chat.`;
+    case "disconnected":
+      return `your existing Dedicated agent is disconnected, ${name}. this chat did not restart it; retry through the normal lifecycle controls or contact support.`;
+    case "stopped":
+      return `your existing Dedicated agent is stopped, ${name}. use the normal lifecycle controls if you want to resume it.`;
+    case "sleeping":
+      return `your existing Dedicated agent is sleeping, ${name}. use the normal lifecycle controls if you want to wake it.`;
+    case "deletion_pending":
+      return `the previous Dedicated target is being removed, ${name}. this chat will not create or restart a replacement.`;
+    case "deletion_failed":
+      return `removal of the previous Dedicated target failed, ${name}. contact support; this chat will not create or restart it.`;
+    case "none":
+      return `your account is connected, ${name}. no eligible Dedicated target exists; this chat will not create one.`;
   }
-  if (args.provisioning.status === "running") {
-    return `your Dedicated agent is running, ${name}. I'm finishing the existing connection now.`;
-  }
-  if (args.provisioning.status === "error") {
-    return `the last Dedicated setup failed, ${name}. nothing was restarted from this chat.`;
-  }
-  if (args.provisioning.status === "pending" || args.provisioning.status === "provisioning") {
-    return `an existing Dedicated setup is still in progress, ${name}. this chat did not start or restart it.`;
-  }
-  return `your account is connected, ${name}. Dedicated compute stays off until you explicitly start it.`;
 }
 
 function sanitizeReplyText(reply: string): string {
@@ -1512,10 +1524,27 @@ export async function runOnboardingChatWithStore(
 
   if (!requiresLogin && session.userId && session.organizationId) {
     // Account claim and onboarding turns never create or restart Dedicated
-    // compute. Provisioning is an explicit lifecycle action owned by its
-    // dedicated route; this conversation only reports the current state.
-    provisioning = await getElizaAppProvisioningStatus(session.organizationId);
-    session.agentId = provisioning.agentId ?? session.agentId;
+    // compute. Provisioning remains owned by explicit lifecycle controls;
+    // this conversation only reports the current state.
+    provisioning = await getElizaAppProvisioningStatus(session.organizationId, session.userId);
+    const canonicalAgentId = provisioning.agentId ?? undefined;
+    const canonicalLaunchUrl = canonicalAgentId ? controlPanelUrl(canonicalAgentId) : undefined;
+    const handoffReceiptMatchesCanonicalTarget =
+      !session.handoffCopiedAt || session.launchUrl === canonicalLaunchUrl;
+    if (session.agentId !== canonicalAgentId || !handoffReceiptMatchesCanonicalTarget) {
+      // The status selector is the current authority. A target change (or no
+      // eligible target) invalidates every handoff result tied to the old id.
+      // The URL check also self-heals legacy sessions where an older reader
+      // changed agentId without clearing the prior target's handoff receipt.
+      // This prevents stale launch URLs and makes the canonical target earn
+      // its own idempotent transcript handoff.
+      session = {
+        ...session,
+        agentId: canonicalAgentId,
+        handoffCopiedAt: undefined,
+        launchUrl: undefined,
+      };
+    }
   }
 
   let launchUrl = session.launchUrl ?? null;

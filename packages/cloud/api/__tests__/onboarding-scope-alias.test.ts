@@ -8,6 +8,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatResult } from "@/lib/services/eliza-app/onboarding-chat";
+import * as provisioningObservation from "../../shared/src/lib/services/eliza-app/provisioning-observation";
 import type { OnboardingSessionCoordinator } from "../src/onboarding-session-coordinator";
 
 const noProvisioning = {
@@ -37,7 +38,7 @@ mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
 }));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
+  ...provisioningObservation,
   getElizaAppProvisioningStatus: mock(async () => noProvisioning),
 }));
 

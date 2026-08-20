@@ -2,7 +2,7 @@
  * Provisioning agent chat service.
  *
  * Runs entirely on Cloudflare Workers via Cerebras (ultra-fast inference).
- * Converses with the user while their dedicated container is provisioning.
+ * Converses with the user while observing an existing Dedicated container.
  * Conversation history is stored in Redis, keyed per user, capped at 20
  * messages (10 turns), TTL 7 days.
  */
@@ -13,10 +13,12 @@ import {
   type AgentSandboxStatus,
   agentSandboxesRepository,
 } from "../../db/repositories/agent-sandboxes";
+import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { selectElizaAppProvisioningTarget } from "./eliza-app/provisioning";
 
 const HISTORY_CACHE_KEY = (userId: string) => `prov-chat:${userId}`;
 const HISTORY_TTL_SECONDS = 604800; // 7 days
@@ -32,34 +34,79 @@ export interface ChatMessage {
 
 export interface ProvisioningChatResult {
   reply: string;
-  containerStatus: AgentSandboxStatus | "none";
+  containerStatus: ProvisioningChatContainerStatus;
   bridgeUrl: string | null;
   agentId: string | null;
   history: ChatMessage[];
 }
 
-function buildSystemPrompt(status: AgentSandboxStatus | "none"): string {
+export type ProvisioningChatContainerStatus = AgentSandboxStatus | "none" | "unknown";
+
+export type ProvisioningAgentChatSandboxReader = Pick<
+  typeof agentSandboxesRepository,
+  "findByIdAndOrg" | "listByOrganization"
+>;
+
+export const PROVISIONING_CHAT_INFERENCE_FAILURE_REPLY =
+  "I'm having a brief moment of difficulty — please try again in a second. I couldn't confirm your Dedicated container state right now.";
+
+export function buildProvisioningChatSystemPrompt(status: ProvisioningChatContainerStatus): string {
   let statusBlock: string;
 
-  if (status === "running") {
-    statusBlock =
-      "Current container status: running. The user's dedicated container is ready! You can let them know their agent is available and they'll be transferred automatically.";
-  } else if (status === "provisioning" || status === "pending") {
-    statusBlock = `Current container status: ${status}. The container is still being set up (typically 2–5 minutes total). Mention this warmly once if the topic comes up, but don't repeat it on every turn. Focus on being genuinely helpful.`;
-  } else if (status === "error") {
-    statusBlock =
-      "Current container status: error. There was an issue provisioning the container. Be empathetic, let the user know the team is aware, and suggest they refresh or contact support if it persists.";
-  } else {
-    statusBlock = "Current container status: unknown. A container is being set up for the user.";
+  switch (status) {
+    case "running":
+      statusBlock =
+        "Current Dedicated container database status: running. This status observation alone does not prove live readiness or a successful transfer. Say only that the lifecycle record is running; do not promise that the agent will answer until the normal app path confirms it.";
+      break;
+    case "pending":
+      statusBlock =
+        "Current Dedicated container database status: pending. A pending row does not prove that provisioning was requested or that a job is running. Do not claim setup is underway or provide an ETA; direct the user to the explicit lifecycle controls.";
+      break;
+    case "provisioning":
+      statusBlock =
+        "Current Dedicated container database status: provisioning. The lifecycle record says provisioning, but this observation does not prove current readiness or an ETA. Report the recorded state without promising completion.";
+      break;
+    case "error":
+      statusBlock =
+        "Current Dedicated container database status: error. This observation does not identify which lifecycle operation failed or why. Say only that the agent needs attention and suggest the normal lifecycle controls or support; do not claim that provisioning specifically failed.";
+      break;
+    case "disconnected":
+      statusBlock =
+        "Current Dedicated container status: disconnected. The existing agent is unreachable, not being provisioned. Say that clearly and suggest retrying or contacting support; do not claim setup is progressing.";
+      break;
+    case "stopped":
+      statusBlock =
+        "Current Dedicated container status: stopped. The existing agent is stopped, not being provisioned. Suggest using the normal lifecycle controls to resume it; do not claim setup is progressing.";
+      break;
+    case "sleeping":
+      statusBlock =
+        "Current Dedicated container status: sleeping. The existing agent is asleep, not being provisioned. Suggest using the normal lifecycle controls to wake it; do not claim setup is progressing.";
+      break;
+    case "deletion_pending":
+      statusBlock =
+        "Current Dedicated container status: deletion_pending. The existing agent is being removed, not provisioned. Do not claim setup is progressing.";
+      break;
+    case "deletion_failed":
+      statusBlock =
+        "Current Dedicated container status: deletion_failed. Removal of the existing agent failed. Suggest contacting support; do not claim setup is progressing.";
+      break;
+    case "none":
+      statusBlock =
+        "No eligible Dedicated container is currently associated with this user. This status assistant does not create one. Do not claim that setup or provisioning is in progress.";
+      break;
+    case "unknown":
+      statusBlock =
+        "The Dedicated container status lookup is currently unavailable. Do not claim that a container exists or that setup is in progress; ask the user to retry shortly.";
+      break;
   }
 
-  return `You are Eliza, a warm and knowledgeable AI assistant for the elizaOS platform. You're a serverless instance running on Cloudflare while the user's dedicated AI container is being provisioned.
+  return `You are Eliza, a warm and knowledgeable AI assistant for the elizaOS platform. You're the serverless Eliza App onboarding and status assistant. You can explain an existing Dedicated agent's state, but you never create, restart, resume, or provision compute.
 
 ${statusBlock}
 
 You have comprehensive knowledge of elizaOS capabilities: agents, plugins, actions, providers, evaluators, connectors (Telegram, Discord, WhatsApp, iMessage), skills, the Eliza Cloud platform, billing, app creation, and more.
 
-Be conversational, warm, and genuinely helpful. If the user asks what you can do while waiting, offer to:
+Be conversational, warm, and genuinely helpful. If the user asks what you can help with, offer to:
 - Explain elizaOS capabilities and what their agent will be able to do
 - Help them think through which connectors to set up (Telegram, Discord, iMessage, etc.)
 - Discuss their use cases and how elizaOS can help
@@ -67,6 +114,35 @@ Be conversational, warm, and genuinely helpful. If the user asks what you can do
 - Just have a friendly conversation
 
 Keep responses concise and natural. Don't repeat status information unless directly asked.`;
+}
+
+/** Build the model payload whose status copy is pinned by unit tests. */
+export function buildProvisioningChatGenerationInput(
+  status: ProvisioningChatContainerStatus,
+  messages: ChatMessage[],
+): { system: string; messages: ChatMessage[] } {
+  return {
+    system: buildProvisioningChatSystemPrompt(status),
+    messages,
+  };
+}
+
+/** Resolve one user-owned Dedicated target without mutating its lifecycle. */
+export async function resolveProvisioningAgentChatTarget(
+  userId: string,
+  organizationId: string,
+  agentId?: string,
+  repository: ProvisioningAgentChatSandboxReader = agentSandboxesRepository,
+): Promise<AgentSandbox | undefined> {
+  let sandbox = agentId ? await repository.findByIdAndOrg(agentId, organizationId) : undefined;
+
+  if (sandbox) {
+    sandbox = selectElizaAppProvisioningTarget([sandbox], userId);
+  }
+  if (sandbox) return sandbox;
+
+  const sandboxes = await repository.listByOrganization(organizationId);
+  return selectElizaAppProvisioningTarget(sandboxes, userId);
 }
 
 function getCerebrasClient(): ReturnType<typeof createOpenAI> {
@@ -102,19 +178,12 @@ export async function provisioningAgentChat(
   agentId?: string,
 ): Promise<ProvisioningChatResult> {
   // Resolve container status
-  let containerStatus: AgentSandboxStatus | "none" = "none";
+  let containerStatus: ProvisioningChatContainerStatus = "none";
   let bridgeUrl: string | null = null;
-  let resolvedAgentId: string | null = agentId ?? null;
+  let resolvedAgentId: string | null = null;
 
   try {
-    let sandbox = agentId
-      ? await agentSandboxesRepository.findByIdAndOrg(agentId, organizationId)
-      : undefined;
-
-    if (!sandbox) {
-      const sandboxes = await agentSandboxesRepository.listByOrganization(organizationId);
-      sandbox = sandboxes[0];
-    }
+    const sandbox = await resolveProvisioningAgentChatTarget(userId, organizationId, agentId);
 
     if (sandbox) {
       containerStatus = sandbox.status;
@@ -122,6 +191,8 @@ export async function provisioningAgentChat(
       bridgeUrl = sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
     }
   } catch (err) {
+    // error-policy:J4 chat remains available with an explicit unknown status if observation fails.
+    containerStatus = "unknown";
     logger.warn("[ProvisioningAgentChat] Failed to resolve sandbox status", {
       userId,
       organizationId,
@@ -137,22 +208,21 @@ export async function provisioningAgentChat(
   let reply = "";
   try {
     const cerebras = getCerebrasClient();
-    const systemPrompt = buildSystemPrompt(containerStatus);
+    const generationInput = buildProvisioningChatGenerationInput(containerStatus, updatedHistory);
 
     const { text } = await generateText({
       model: cerebras.chat(CEREBRAS_MODEL),
-      system: systemPrompt,
-      messages: updatedHistory,
+      ...generationInput,
     });
 
     reply = text;
   } catch (err) {
+    // error-policy:J4 the chat returns a visible retry response when inference is unavailable.
     logger.error("[ProvisioningAgentChat] generateText failed", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
-    reply =
-      "I'm having a brief moment of difficulty — please try again in a second. Your container is still being set up in the background.";
+    reply = PROVISIONING_CHAT_INFERENCE_FAILURE_REPLY;
   }
 
   // Persist updated history with assistant reply

@@ -1,389 +1,168 @@
-// Exercises provisioning behavior with deterministic cloud-shared lib fixtures.
+/** Exercises the observation-only provisioning reader with deterministic fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
-import { jobsRepository } from "../../../db/repositories/jobs";
-import { ApiError } from "../../api/cloud-worker-errors";
-import { containersEnv as actualContainersEnv } from "../../config/containers-env";
-import { elizaSandboxService } from "../eliza-sandbox";
+import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 
 const listByOrganization = mock();
-const createAgent = mock();
-const enqueueAgentProvision = mock();
-const deleteSandbox = mock();
-const checkAgentCreditGate = mock();
-
-const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
-  (...args) => deleteSandbox(...args) as never,
-);
-
-// Spread the real containersEnv so this process-global mock.module only
-// overrides defaultAgentImage. bun's mock.module leaks across files in a
-// single test process; a partial object would make every other method
-// (appsPublicBaseDomain, defaultHcloudServerType, …) undefined for whichever
-// file happens to import after this one (order varies by platform → Windows).
-mock.module("../../config/containers-env", () => ({
-  containersEnv: {
-    ...actualContainersEnv,
-    defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
-  },
-}));
-
 const listByOrganizationSpy = spyOn(
   agentSandboxesRepository,
   "listByOrganization",
 ).mockImplementation((...args) => listByOrganization(...args) as never);
 
-const createAgentSpy = spyOn(elizaSandboxService, "createAgent").mockImplementation(
-  (...args) => createAgent(...args) as never,
-);
-
-mock.module("../provisioning-jobs", () => ({
-  provisioningJobService: {
-    enqueueAgentProvision,
-  },
-}));
-
-mock.module("../agent-billing-gate", () => ({
-  checkAgentCreditGate,
-}));
-
-const findLatestAgentLifecycleJob = mock();
-const findLatestAgentLifecycleJobSpy = spyOn(
-  jobsRepository,
-  "findLatestAgentLifecycleJob",
-).mockImplementation((...args) => findLatestAgentLifecycleJob(...args) as never);
-
 afterAll(() => {
   listByOrganizationSpy.mockRestore();
-  createAgentSpy.mockRestore();
-  deleteSandboxSpy.mockRestore();
-  findLatestAgentLifecycleJobSpy.mockRestore();
 });
 
-const { ensureElizaAppProvisioning } = await import(
+const { getElizaAppProvisioningStatus, selectElizaAppProvisioningTarget } = await import(
   `./provisioning.ts?test=provisioning-${Date.now()}`
 );
 
-describe("ensureElizaAppProvisioning", () => {
+function sandbox(params: {
+  id: string;
+  status?: AgentSandbox["status"];
+  executionTier?: AgentSandbox["execution_tier"];
+  poolStatus?: AgentSandbox["pool_status"];
+  deletedAt?: Date | null;
+  deletionAttemptId?: string | null;
+  bridgeUrl?: string | null;
+  createdAt?: Date;
+  userId?: string;
+}): AgentSandbox {
+  return {
+    id: params.id,
+    status: params.status ?? "running",
+    execution_tier: params.executionTier ?? "dedicated-always",
+    pool_status: params.poolStatus ?? null,
+    deleted_at: params.deletedAt ?? null,
+    deletion_attempt_id: params.deletionAttemptId ?? null,
+    bridge_url: params.bridgeUrl ?? null,
+    created_at: params.createdAt ?? new Date("2026-08-20T00:00:00Z"),
+    user_id: params.userId ?? "user-1",
+  } as AgentSandbox;
+}
+
+describe("getElizaAppProvisioningStatus", () => {
   beforeEach(() => {
     listByOrganization.mockReset();
-    createAgent.mockReset();
-    enqueueAgentProvision.mockReset();
-    deleteSandbox.mockReset();
-    checkAgentCreditGate.mockReset();
-    findLatestAgentLifecycleJob.mockReset();
   });
 
-  test("checks paid credit before provisioning a new Eliza App agent", async () => {
-    listByOrganization.mockResolvedValue([]);
-    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
-    createAgent.mockResolvedValue({
-      agent: { id: "agent-1", status: "provisioning", bridge_url: null },
-      idempotent: false,
-    });
+  test("selects the newest non-Shared target from mixed-tier rows", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "newest-shared",
+        executionTier: "shared",
+        createdAt: new Date("2026-08-20T03:00:00Z"),
+      }),
+      sandbox({
+        id: "older-dedicated",
+        executionTier: "dedicated-lazy",
+        createdAt: new Date("2026-08-20T01:00:00Z"),
+      }),
+      sandbox({
+        id: "newest-dedicated",
+        status: "provisioning",
+        createdAt: new Date("2026-08-20T02:00:00Z"),
+      }),
+    ]);
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
-    expect(createAgent).toHaveBeenCalledWith({
-      organizationId: "org-1",
-      userId: "user-1",
-      agentName: "Eliza",
-      dockerImage: "ghcr.io/elizaos/eliza:stable",
-      reuseExistingNonTerminal: true,
-      maxNonTerminalAgents: 20,
-    });
-    expect(enqueueAgentProvision).toHaveBeenCalledWith({
-      agentId: "agent-1",
-      organizationId: "org-1",
-      userId: "user-1",
-      agentName: "Eliza",
-    });
-    expect(result).toMatchObject({
+    expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toMatchObject({
       status: "provisioning",
-      agentId: "agent-1",
+      agentId: "newest-dedicated",
       bridgeUrl: null,
     });
   });
 
-  test("reuses an in-flight sandbox without enqueuing a second provision job", async () => {
-    listByOrganization.mockResolvedValue([]);
-    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
-    createAgent.mockResolvedValue({
-      agent: { id: "agent-1", status: "provisioning", bridge_url: null },
-      idempotent: true,
-    });
-
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    // The org-scoped guard already had an agent + its job in flight, so a retry
-    // must not mint a second job.
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      status: "provisioning",
-      agentId: "agent-1",
-    });
-  });
-
-  test("deletes the just-created sandbox when the provision enqueue throws", async () => {
-    listByOrganization.mockResolvedValue([]);
-    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
-    createAgent.mockResolvedValue({
-      agent: { id: "agent-1", status: "pending", bridge_url: null },
-      idempotent: false,
-    });
-    enqueueAgentProvision.mockRejectedValue(new Error("queue down"));
-    deleteSandbox.mockResolvedValue(true);
-
-    await expect(
-      ensureElizaAppProvisioning({ organizationId: "org-1", userId: "user-1" }),
-    ).rejects.toThrow("queue down");
-
-    // A throw between the insert-commit and the enqueue would otherwise strand a
-    // job-less `pending` row the reuse guard then hands back forever — so the
-    // orphan is deleted, letting a retry mint a fresh agent + job.
-    expect(deleteSandbox).toHaveBeenCalledWith("agent-1", "org-1");
-  });
-
-  test("returns an existing running sandbox without consulting the credit gate", async () => {
+  test("never exposes another organization member's Dedicated target", async () => {
     listByOrganization.mockResolvedValue([
-      {
-        id: "agent-1",
-        status: "running",
-        bridge_url: "https://agent.example",
-      },
+      sandbox({
+        id: "newer-other-user",
+        userId: "user-2",
+        createdAt: new Date("2026-08-20T03:00:00Z"),
+      }),
+      sandbox({
+        id: "requesting-user",
+        userId: "user-1",
+        createdAt: new Date("2026-08-20T02:00:00Z"),
+      }),
     ]);
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(createAgent).not.toHaveBeenCalled();
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    // The existing-sandbox early return sits before the credit gate, so a
-    // drained org with a live sandbox still gets it back untouched.
-    expect(checkAgentCreditGate).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
+    expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toMatchObject({
       status: "running",
-      agentId: "agent-1",
-      bridgeUrl: "https://agent.example",
+      agentId: "requesting-user",
     });
   });
 
-  test("returns insufficient_credits without provisioning when a drained org fails the credit gate", async () => {
-    listByOrganization.mockResolvedValue([]);
-    checkAgentCreditGate.mockResolvedValue({
-      allowed: false,
-      balance: 0.05,
-      error:
-        "Insufficient credits. A balance greater than $0.10 is required to create or run Eliza agents.",
-    });
+  test("reports none for a Shared-only organization", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({ id: "shared-running", executionTier: "shared" }),
+      sandbox({ id: "shared-pending", status: "pending", executionTier: "shared" }),
+    ]);
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
-    // The denial must return a status, not throw — runOnboardingChat has no
-    // enclosing try/catch, so a throwing gate would 500 the onboarding turn.
-    expect(createAgent).not.toHaveBeenCalled();
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      status: "insufficient_credits",
+    expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toEqual({
+      status: "none",
       agentId: null,
       bridgeUrl: null,
       sandbox: null,
     });
   });
-});
 
-describe("a dead sandbox no longer locks the organization out (#17924)", () => {
-  // Sibling describes do not inherit the suite above's beforeEach, and these
-  // assertions count calls — without this the counts accumulate across tests.
-  beforeEach(() => {
-    listByOrganization.mockReset();
-    createAgent.mockReset();
-    enqueueAgentProvision.mockReset();
-    deleteSandbox.mockReset();
-    checkAgentCreditGate.mockReset();
-    findLatestAgentLifecycleJob.mockReset();
+  test("skips pool, deleted, and deletion-state Dedicated rows", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({ id: "pool", poolStatus: "unclaimed" }),
+      sandbox({ id: "deleted", deletedAt: new Date("2026-08-20T00:00:00Z") }),
+      sandbox({ id: "deletion-attempt", deletionAttemptId: "attempt-1" }),
+      sandbox({ id: "deleting", status: "deletion_pending" }),
+      sandbox({ id: "failed-delete", status: "deletion_failed" }),
+      sandbox({ id: "live", status: "pending", executionTier: "custom" }),
+    ]);
+
+    expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toMatchObject({
+      status: "pending",
+      agentId: "live",
+    });
   });
 
-  const DEAD_ROW = {
-    id: "agent-dead",
-    organization_id: "org-1",
-    status: "error",
-    bridge_url: null,
-  };
-  const HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  test("keeps terminal and inactive lifecycle states observable", async () => {
+    for (const status of ["error", "disconnected", "stopped", "sleeping"] as const) {
+      listByOrganization.mockResolvedValueOnce([sandbox({ id: `agent-${status}`, status })]);
 
-  function orgWithNewestRow(row: Record<string, unknown>) {
-    checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
-    listByOrganization.mockResolvedValue([row]);
-  }
-
-  test("an errored row is re-armed in place: same agent id, no second agent minted", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-    enqueueAgentProvision.mockResolvedValue({ id: "job-1" });
-
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(enqueueAgentProvision).toHaveBeenCalledWith({
-      agentId: "agent-dead",
-      organizationId: "org-1",
-      userId: "user-1",
-      agentName: "Eliza",
-    });
-    // Minting a second row would leave the org with two agents and orphan the
-    // first — the reuse path exists precisely to keep one row per org.
-    expect(createAgent).not.toHaveBeenCalled();
-    expect(result.agentId).toBe("agent-dead");
+      expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toMatchObject({
+        status,
+        agentId: `agent-${status}`,
+      });
+    }
   });
 
-  test("the reported status stays error — the row only moves when the daemon claims the job", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-    enqueueAgentProvision.mockResolvedValue({ id: "job-1" });
+  test("breaks equal-created-at ties by id independently of input order", () => {
+    const createdAt = new Date("2026-08-20T04:00:00Z");
+    const lower = sandbox({ id: "agent-a", createdAt });
+    const higher = sandbox({ id: "agent-b", createdAt });
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    // Claiming "provisioning" here would be a state the database does not have,
-    // and the stuck-provisioning reaper would never sweep it back.
-    expect(result.status).toBe("error");
+    expect(selectElizaAppProvisioningTarget([lower, higher], "user-1")?.id).toBe("agent-b");
+    expect(selectElizaAppProvisioningTarget([higher, lower], "user-1")?.id).toBe("agent-b");
   });
 
-  test("a second message inside the cooldown does not enqueue again", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue({
-      completed_at: new Date(Date.now() - 60 * 1000).toISOString(),
-    });
+  test("returns a running bridge only for the selected live Dedicated row", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "dedicated-running",
+        bridgeUrl: "https://agent.example",
+        executionTier: "dedicated-lazy",
+      }),
+    ]);
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(result.status).toBe("error");
-  });
-
-  test("the cooldown is measured from the JOB, so row writes cannot push it out forever", async () => {
-    // updated_at on the sandbox is bumped by heartbeat/reconciler/billing; if the
-    // cooldown keyed on it, those writers would re-create the permanent lockout.
-    orgWithNewestRow({ ...DEAD_ROW, updated_at: new Date().toISOString() });
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-    enqueueAgentProvision.mockResolvedValue({ id: "job-1" });
-
-    await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
-  });
-
-  test("a row with no prior job is re-armed immediately", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue(null);
-    enqueueAgentProvision.mockResolvedValue({ id: "job-1" });
-
-    await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
-  });
-
-  test("a drained organization is still refused before any compute is minted", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    checkAgentCreditGate.mockResolvedValue({ allowed: false, balance: 0 });
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(createAgent).not.toHaveBeenCalled();
-    expect(result.status).toBe("insufficient_credits");
-  });
-
-  test("a lifecycle conflict is absorbed, not surfaced as a 500", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-    enqueueAgentProvision.mockRejectedValue(
-      new ApiError(409, "session_not_ready", "Agent agent-dead has unresolved replacement cleanup"),
-    );
-
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    // runOnboardingChat has no enclosing try/catch: an escaping 409 would 500
-    // the user's whole turn over a condition that resolves itself.
-    expect(result.status).toBe("error");
-  });
-
-  test("a non-conflict enqueue failure still escapes", async () => {
-    orgWithNewestRow(DEAD_ROW);
-    findLatestAgentLifecycleJob.mockResolvedValue({ completed_at: HOUR_AGO });
-    enqueueAgentProvision.mockRejectedValue(new Error("database is on fire"));
-
-    await expect(
-      ensureElizaAppProvisioning({ organizationId: "org-1", userId: "user-1" }),
-    ).rejects.toThrow("database is on fire");
-  });
-
-  test("a row being deleted gets a NEW agent, never a revival", async () => {
-    orgWithNewestRow({ ...DEAD_ROW, status: "deletion_pending" });
-    createAgent.mockResolvedValue({
-      agent: { id: "agent-fresh", status: "pending", bridge_url: null },
-      idempotent: false,
-    });
-    enqueueAgentProvision.mockResolvedValue({ id: "job-2" });
-
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
-
-    // Re-arming mid-teardown would race the deletion for the same container.
-    expect(createAgent).toHaveBeenCalled();
-    expect(result.agentId).toBe("agent-fresh");
-  });
-
-  test("a healthy row still short-circuits — no job, no new agent", async () => {
-    orgWithNewestRow({
-      ...DEAD_ROW,
+    expect(await getElizaAppProvisioningStatus("org-1", "user-1")).toMatchObject({
       status: "running",
-      bridge_url: "https://a.test",
+      agentId: "dedicated-running",
+      bridgeUrl: "https://agent.example",
     });
+  });
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: "org-1",
-      userId: "user-1",
-    });
+  test("propagates repository failures instead of fabricating an empty status", async () => {
+    listByOrganization.mockRejectedValue(new Error("sandbox lookup failed"));
 
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(createAgent).not.toHaveBeenCalled();
-    expect(result.status).toBe("running");
+    await expect(getElizaAppProvisioningStatus("org-1", "user-1")).rejects.toThrow(
+      "sandbox lookup failed",
+    );
   });
 });
