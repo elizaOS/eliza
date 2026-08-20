@@ -3,7 +3,7 @@
  * spawned shell in a temp directory (no mocks) — command execution, session
  * tracking, and history-provider context injection.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -140,6 +140,20 @@ describePosixShell("shell plugin real local integration", () => {
       /Cannot navigate outside allowed directory|Command contains forbidden patterns/,
     );
     expect(service.getCurrentDirectory()).toBe(allowedDirectory);
+  });
+
+  it("rejects a real shell workdir symlink that resolves outside", async () => {
+    const outside = mkdtempSync(path.join(tmpdir(), "eliza-shell-outside-"));
+    try {
+      symlinkSync(outside, path.join(allowedDirectory, "escape"));
+      const result = await service.exec("pwd", { workdir: "escape" });
+
+      expect(result.status).toBe("failed");
+      expect(result.reason).toContain("outside allowed directory");
+      expect(service.getCurrentDirectory()).toBe(allowedDirectory);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("surfaces a model-visible error instead of blank output when history retrieval throws", async () => {
