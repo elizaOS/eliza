@@ -154,6 +154,34 @@ function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig
   };
 }
 
+function indexSignalAccountConfigs(
+  accounts: Record<string, SignalAccountConfig>
+): Map<string, SignalAccountConfig> {
+  const normalizedConfigs = new Map<
+    string,
+    { configuredId: string; config: SignalAccountConfig }
+  >();
+  for (const [configuredId, accountConfig] of Object.entries(accounts)) {
+    if (!configuredId) continue;
+    const normalized = normalizeAccountId(configuredId);
+    const existing = normalizedConfigs.get(normalized);
+    if (existing !== undefined && existing.configuredId !== configuredId) {
+      throw new ElizaError("Signal account identifiers collide after normalization", {
+        code: "SIGNAL_ACCOUNT_ID_COLLISION",
+        context: {
+          normalizedAccountId: normalized,
+          configuredIds: [existing.configuredId, configuredId],
+        },
+      });
+    }
+    normalizedConfigs.set(normalized, {
+      configuredId,
+      config: accountConfig,
+    });
+  }
+  return new Map([...normalizedConfigs].map(([accountId, entry]) => [accountId, entry.config]));
+}
+
 /**
  * Lists all configured account IDs
  */
@@ -169,22 +197,7 @@ export function listSignalAccountIds(runtime: IAgentRuntime): string[] {
   // `resolveSignalAccount`/`getAccountConfig` use for lookup, otherwise an
   // uppercase-keyed account (`"Work"`) is listed raw but resolves under
   // `"work"`, misses its overrides, and is silently dropped (issue #22680).
-  const normalizedToConfigured = new Map<string, string>();
-  for (const configuredId of Object.keys(accounts).filter(Boolean)) {
-    const normalized = normalizeAccountId(configuredId);
-    const existing = normalizedToConfigured.get(normalized);
-    if (existing !== undefined && existing !== configuredId) {
-      throw new ElizaError("Signal account identifiers collide after normalization", {
-        code: "SIGNAL_ACCOUNT_ID_COLLISION",
-        context: {
-          normalizedAccountId: normalized,
-          configuredIds: [existing, configuredId],
-        },
-      });
-    }
-    normalizedToConfigured.set(normalized, configuredId);
-  }
-  const ids = Array.from(normalizedToConfigured.keys());
+  const ids = Array.from(indexSignalAccountConfigs(accounts).keys());
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
@@ -217,14 +230,10 @@ function getAccountConfig(
     return undefined;
   }
 
-  // Accept both the exact key and its normalized form so an uppercase or
-  // mixed-case configured key still matches the lowercased lookup id.
-  return (
-    accounts[accountId] ??
-    Object.entries(accounts).find(
-      ([configuredId]) => normalizeAccountId(configuredId) === accountId
-    )?.[1]
-  );
+  // Resolve through the same collision-detecting normalized index used for
+  // enumeration so the public single-account resolver cannot silently choose
+  // one of two ambiguous configured keys.
+  return indexSignalAccountConfigs(accounts).get(accountId);
 }
 
 /**
