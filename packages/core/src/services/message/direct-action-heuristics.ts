@@ -206,6 +206,8 @@ const WEB_SEARCH_NEGATION_PATTERN =
 	/\b(?:(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b[^.!?;]{0,64}\b(?:google\b|(?:browse|search|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)|without\b[^.!?;]{0,32}\b(?:brows(?:e|ing)|search(?:ing)?|look(?:ing)?\s+up|us(?:e|ing))\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)/iu;
 const EXPLICIT_WEB_SEARCH_PATTERN =
 	/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
+const EXPLICIT_URL_FETCH_PATTERN =
+	/\b(?:fetch|read|retrieve|load|open|visit|summari[sz]e)\b[^\n]{0,160}https:\/\/[^\s<>"']+/iu;
 const INTENT_CLAUSE_BOUNDARY_PATTERN =
 	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
 
@@ -234,6 +236,7 @@ export function looksLikeWebSearchRequest(text: string): boolean {
 		(clause) =>
 			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
 			(EXPLICIT_WEB_SEARCH_PATTERN.test(clause) ||
+				EXPLICIT_URL_FETCH_PATTERN.test(clause) ||
 				(asksCurrentInfo.test(clause) && mentionsMarketOrNews.test(clause))),
 	);
 }

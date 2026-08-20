@@ -47,6 +47,19 @@ interface WebFetchParams {
   extract?: string;
 }
 
+const EXPLICIT_WEB_SEARCH_REQUEST =
+  /\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/i;
+const PUBLIC_HTTPS_URL = /https:\/\/[^\s<>"']+/i;
+
+/**
+ * Preserve an explicit user choice of discovery over direct URL retrieval.
+ * A named URL still belongs to WEB_FETCH even when surrounding prose mentions
+ * search; without a URL, an explicit web-search request must reach WEB_SEARCH.
+ */
+export function userExplicitlyRequiresWebSearch(text: string): boolean {
+  return EXPLICIT_WEB_SEARCH_REQUEST.test(text) && !PUBLIC_HTTPS_URL.test(text);
+}
+
 function readParams(options: unknown): WebFetchParams {
   const params = (options as { parameters?: Record<string, unknown> })
     ?.parameters;
@@ -144,7 +157,12 @@ export const webFetch: Action & Record<string, unknown> = {
     },
   ],
 
-  validate: async (): Promise<boolean> => isWebFetchEnabled(),
+  validate: async (_runtime, message): Promise<boolean> => {
+    if (!isWebFetchEnabled()) return false;
+    const text =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    return !userExplicitlyRequiresWebSearch(text);
+  },
 
   handler: async (
     _runtime: IAgentRuntime,

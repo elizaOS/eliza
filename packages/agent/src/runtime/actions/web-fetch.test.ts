@@ -16,7 +16,7 @@ import {
   __setDnsLookupImplForTests,
   __setPinnedFetchImplForTests,
 } from "../custom-actions.ts";
-import { webFetch } from "./web-fetch.ts";
+import { userExplicitlyRequiresWebSearch, webFetch } from "./web-fetch.ts";
 
 // Use a public IP literal so resolveUrlSafety skips DNS and goes straight to
 // the pinned-fetch impl, which we mock — no real network, no DNS.
@@ -67,6 +67,24 @@ describe("WEB_FETCH action", () => {
         false,
       );
     }
+  });
+
+  it("defers explicit discovery requests unless the user names a URL", () => {
+    expect(
+      userExplicitlyRequiresWebSearch(
+        "Search the live web for the latest substantive elizaOS updates.",
+      ),
+    ).toBe(true);
+    expect(
+      userExplicitlyRequiresWebSearch(
+        "Search the web around https://example.com and summarize that page.",
+      ),
+    ).toBe(false);
+    expect(
+      userExplicitlyRequiresWebSearch(
+        "Fetch https://httpstat.us/503 and summarize it.",
+      ),
+    ).toBe(false);
   });
 
   it("returns the fetched value in the result WITHOUT a user-facing callback", async () => {
