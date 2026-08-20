@@ -40,7 +40,7 @@ export function callStartedEvent(
 export function callOpeningGreeting(returningCaller: boolean): string {
   return returningCaller
     ? "Hey, good to hear from you. Want to pick up where we left off?"
-    : "Hi, it's Eliza. Want help planning today? I can text you anything we need.";
+    : "Hi, it's Eliza. Want help planning today? I can text this call a way to continue afterward.";
 }
 
 export function callEndedEvent(reason: string): string {

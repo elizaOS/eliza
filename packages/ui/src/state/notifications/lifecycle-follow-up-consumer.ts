@@ -122,6 +122,32 @@ function storageKey(authorityKey: string): string {
   return `${STORAGE_KEY_PREFIX}${encodeURIComponent(authorityKey)}`;
 }
 
+function activeAgentId(): string | null {
+  return loadPersistedActiveServer()?.cloudRuntimeAgentId ?? null;
+}
+
+/**
+ * A coalesced notice is agent-authorized only when every targeted event names
+ * the agent captured with the consuming authority. Account-level events carry
+ * no agent id and remain valid for any authenticated authority.
+ */
+function isNoticeAuthorizedForAgent(
+  notice: CloudLifecycleFollowUpNotice,
+  authorizedAgentId: string | null,
+): boolean {
+  const targetedAgentIds = new Set(
+    notice.lifecycleEvents.flatMap((event) =>
+      event.agentId === undefined ? [] : [event.agentId],
+    ),
+  );
+  return (
+    targetedAgentIds.size === 0 ||
+    (authorizedAgentId !== null &&
+      targetedAgentIds.size === 1 &&
+      targetedAgentIds.has(authorizedAgentId))
+  );
+}
+
 function readAccepted(
   authorityKey: string,
   now = Date.now(),
@@ -201,13 +227,13 @@ function notificationTitle(notice: CloudLifecycleFollowUpNotice): string {
 
 function toNotification(
   notice: CloudLifecycleFollowUpNotice,
+  authorizedAgentId: string | null,
 ): AgentNotification {
-  const activeAgentId = loadPersistedActiveServer()?.cloudRuntimeAgentId;
   const resumableIntent = notice.lifecycleEvents.find(
     (event) =>
       event.continuation &&
       event.agentId !== undefined &&
-      event.agentId === activeAgentId,
+      event.agentId === authorizedAgentId,
   )?.continuation?.originalIntent;
   return {
     id: notificationId(notice.sessionId),
@@ -237,15 +263,27 @@ function toNotification(
 export async function consumeCloudLifecycleFollowUps(
   authorityKey: string,
   accept: (notification: AgentNotification) => void,
+  authorizedAgentId = activeAgentId(),
 ): Promise<void> {
-  const existing = consumeInFlight.get(authorityKey);
+  const inFlightKey = `${authorityKey}\u0000${authorizedAgentId ?? "no-agent"}`;
+  const existing = consumeInFlight.get(inFlightKey);
   if (existing) return existing;
   const run = async () => {
     const accepted = readAccepted(authorityKey);
-    for (const entry of accepted) accept(toNotification(entry.notice));
+    if (activeAgentId() === authorizedAgentId) {
+      for (const entry of accepted) {
+        if (isNoticeAuthorizedForAgent(entry.notice, authorizedAgentId)) {
+          accept(toNotification(entry.notice, authorizedAgentId));
+        }
+      }
+    }
 
     const response = await client.claimCloudLifecycleFollowUps();
-    const claimed = response.notices.filter(isLifecycleNotice);
+    const claimed = response.notices
+      .filter(isLifecycleNotice)
+      .filter((notice) =>
+        isNoticeAuthorizedForAgent(notice, authorizedAgentId),
+      );
     if (claimed.length === 0) return;
     const bySession = new Map(
       accepted.map((entry) => [entry.notice.sessionId, entry] as const),
@@ -261,11 +299,23 @@ export async function consumeCloudLifecycleFollowUps(
       .sort((left, right) => right.acceptedAt - left.acceptedAt)
       .slice(0, MAX_ACCEPTED_NOTICES);
     if (!writeAccepted(authorityKey, durable)) return;
-    for (const notice of newlyAccepted) accept(toNotification(notice));
-
-    await client.acknowledgeCloudLifecycleFollowUps(
-      claimed.map(({ sessionId, leaseId }) => ({ sessionId, leaseId })),
+    const durableSessionIds = new Set(
+      durable.map((entry) => entry.notice.sessionId),
     );
+    if (activeAgentId() === authorizedAgentId) {
+      for (const notice of newlyAccepted) {
+        if (durableSessionIds.has(notice.sessionId)) {
+          accept(toNotification(notice, authorizedAgentId));
+        }
+      }
+    }
+
+    const acknowledgements = claimed
+      .filter(({ sessionId }) => durableSessionIds.has(sessionId))
+      .map(({ sessionId, leaseId }) => ({ sessionId, leaseId }));
+    if (acknowledgements.length > 0) {
+      await client.acknowledgeCloudLifecycleFollowUps(acknowledgements);
+    }
   };
   const tracked = run()
     .catch((error) => {
@@ -277,9 +327,9 @@ export async function consumeCloudLifecycleFollowUps(
       );
     })
     .finally(() => {
-      consumeInFlight.delete(authorityKey);
+      consumeInFlight.delete(inFlightKey);
     });
-  consumeInFlight.set(authorityKey, tracked);
+  consumeInFlight.set(inFlightKey, tracked);
   return tracked;
 }
 

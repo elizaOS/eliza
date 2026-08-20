@@ -14,9 +14,24 @@ const STORAGE_KEY_PREFIX = "elizaos:accepted-lifecycle-follow-ups:v2:";
 const AUTHORITY_A = "https://cloud.test::user-a::session-a";
 const AUTHORITY_B = "https://cloud.test::user-b::session-b";
 const SESSION_ID = `lifecycle:${"a".repeat(48)}`;
+const AGENT_A = "22222222-2222-4222-8222-222222222222";
+const AGENT_B = "33333333-3333-4333-8333-333333333333";
 
 function storageKey(authorityKey: string): string {
   return `${STORAGE_KEY_PREFIX}${encodeURIComponent(authorityKey)}`;
+}
+
+function setActiveAgent(agentId: string): void {
+  localStorage.setItem(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: `cloud:${agentId}`,
+      kind: "cloud",
+      label: "Eliza",
+      cloudRuntimeAgentId: agentId,
+      cloudRuntime: "dedicated",
+    }),
+  );
 }
 
 function notice(overrides: Record<string, unknown> = {}) {
@@ -98,6 +113,78 @@ describe("lifecycle follow-up consumer", () => {
     expect(restored).toHaveLength(1);
     expect(restored[0]?.id).toBe(first[0]?.id);
     expect(restored[0]?.groupKey).toBe(SESSION_ID);
+  });
+
+  it("persists under Agent A before ACK and replays after an A-to-B switch plus tab loss", async () => {
+    setActiveAgent(AGENT_A);
+    let resolveClaim:
+      | ((value: { notices: ReturnType<typeof notice>[] }) => void)
+      | undefined;
+    vi.spyOn(client, "claimCloudLifecycleFollowUps").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveClaim = resolve;
+        }),
+    );
+    const acceptedBeforeSwitch = vi.fn();
+    const ack = vi
+      .spyOn(client, "acknowledgeCloudLifecycleFollowUps")
+      .mockImplementation(async () => {
+        expect(localStorage.getItem(storageKey(AUTHORITY_A))).toContain(
+          SESSION_ID,
+        );
+        expect(acceptedBeforeSwitch).not.toHaveBeenCalled();
+        return { acknowledged: 1 };
+      });
+    const pending = consumeCloudLifecycleFollowUps(
+      AUTHORITY_A,
+      acceptedBeforeSwitch,
+      AGENT_A,
+    );
+    await vi.waitFor(() =>
+      expect(client.claimCloudLifecycleFollowUps).toHaveBeenCalledTimes(1),
+    );
+
+    setActiveAgent(AGENT_B);
+    resolveClaim?.({
+      notices: [
+        notice({
+          lifecycleEvents: [
+            {
+              kind: "connector_connected",
+              idempotencyKey: "connector-connected:agent-a",
+              resourceId: "connection-a",
+              agentId: AGENT_A,
+              continuation: {
+                originalIntent: "email Maya the report",
+                capabilityId: "communications",
+                requiresConfirmation: true,
+              },
+            },
+          ],
+        }),
+      ],
+    });
+    await pending;
+
+    expect(ack).toHaveBeenCalledWith([
+      { sessionId: SESSION_ID, leaseId: "lease-1" },
+    ]);
+    expect(acceptedBeforeSwitch).not.toHaveBeenCalled();
+
+    __resetLifecycleFollowUpConsumerForTests();
+    setActiveAgent(AGENT_A);
+    vi.mocked(client.claimCloudLifecycleFollowUps).mockResolvedValue({
+      notices: [],
+    });
+    const restored = vi.fn();
+    await consumeCloudLifecycleFollowUps(AUTHORITY_A, restored, AGENT_A);
+
+    expect(restored).toHaveBeenCalledTimes(1);
+    expect(restored.mock.calls[0]?.[0]).toMatchObject({
+      deepLink: "/chat?prefill=email%20Maya%20the%20report",
+      data: { continuations: [{ agentId: AGENT_A }] },
+    });
   });
 
   it("durably dismisses only the selected authority's accepted notice", async () => {
@@ -262,17 +349,8 @@ describe("lifecycle follow-up consumer", () => {
   });
 
   it("accepts a 4000-character continuation only when bound to its target agent", async () => {
-    const agentId = "22222222-2222-4222-8222-222222222222";
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "cloud:personal-agent",
-        kind: "cloud",
-        label: "Eliza",
-        cloudRuntimeAgentId: agentId,
-        cloudRuntime: "dedicated",
-      }),
-    );
+    const agentId = AGENT_A;
+    setActiveAgent(agentId);
     const originalIntent = "x".repeat(4000);
     vi.spyOn(client, "claimCloudLifecycleFollowUps").mockResolvedValue({
       notices: [
@@ -310,18 +388,9 @@ describe("lifecycle follow-up consumer", () => {
     });
   });
 
-  it("never prefills an intent into a different active agent", async () => {
-    const targetAgentId = "22222222-2222-4222-8222-222222222222";
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "cloud:another-agent",
-        kind: "cloud",
-        label: "Another agent",
-        cloudRuntimeAgentId: "33333333-3333-4333-8333-333333333333",
-        cloudRuntime: "dedicated",
-      }),
-    );
+  it("leaves Agent A's lease unacked and unpersisted while Agent B is active", async () => {
+    const targetAgentId = AGENT_A;
+    setActiveAgent(AGENT_B);
     vi.spyOn(client, "claimCloudLifecycleFollowUps").mockResolvedValue({
       notices: [
         notice({
@@ -341,21 +410,14 @@ describe("lifecycle follow-up consumer", () => {
         }),
       ],
     });
-    vi.spyOn(client, "acknowledgeCloudLifecycleFollowUps").mockResolvedValue({
-      acknowledged: 1,
-    });
+    const ack = vi.spyOn(client, "acknowledgeCloudLifecycleFollowUps");
     const accept = vi.fn();
 
-    await consumeCloudLifecycleFollowUps(AUTHORITY_A, accept);
+    await consumeCloudLifecycleFollowUps(AUTHORITY_B, accept, AGENT_B);
 
-    expect(accept.mock.calls[0]?.[0]).toMatchObject({
-      deepLink: "/chat",
-      data: {
-        continuations: [
-          { originalIntent: "email Maya the report", agentId: targetAgentId },
-        ],
-      },
-    });
+    expect(accept).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    expect(localStorage.getItem(storageKey(AUTHORITY_B))).toBeNull();
   });
 
   it("rejects a continuation over 4000 characters or without a target agent", async () => {

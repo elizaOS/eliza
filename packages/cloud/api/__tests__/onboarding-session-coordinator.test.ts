@@ -1040,12 +1040,16 @@ describe("OnboardingSessionCoordinator", () => {
     function drain(
       coordinator: OnboardingSessionCoordinator,
       limit?: number,
+      platformUserId?: string,
     ): Promise<Response> {
       return coordinator.fetch(
         new Request("https://onboarding.test/drain-greetings", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(limit === undefined ? {} : { limit }),
+          body: JSON.stringify({
+            ...(limit === undefined ? {} : { limit }),
+            ...(platformUserId ? { platformUserId } : {}),
+          }),
         }),
       );
     }
@@ -1053,12 +1057,16 @@ describe("OnboardingSessionCoordinator", () => {
     function acknowledge(
       coordinator: OnboardingSessionCoordinator,
       acknowledgements: Array<{ sessionId: string; leaseId: string }>,
+      platformUserId?: string,
     ): Promise<Response> {
       return coordinator.fetch(
         new Request("https://onboarding.test/ack-greetings", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ acknowledgements }),
+          body: JSON.stringify({
+            acknowledgements,
+            ...(platformUserId ? { platformUserId } : {}),
+          }),
         }),
       );
     }
@@ -1181,6 +1189,116 @@ describe("OnboardingSessionCoordinator", () => {
         { sessionId, leaseId: reclaimed[0]?.leaseId ?? "" },
       ]);
       expect((await currentAck.json()) as unknown).toEqual({ acknowledged: 1 });
+    });
+
+    test("one recipient claim reaches a legacy lifecycle notice beyond 128 unrelated rows", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const storage = harness.storageFor(QUEUE);
+      const targetUserId = "11111111-1111-4111-8111-111111111111";
+
+      // Seed the pre-index storage shape directly. Every unrelated primary key
+      // sorts before the target and exceeds the historical one-page scan cap.
+      for (let index = 0; index < 140; index += 1) {
+        const sessionId = `lifecycle:a-${index.toString().padStart(4, "0")}`;
+        await storage.put(
+          `greeting:${encodeURIComponent(sessionId)}`,
+          greeting(sessionId, { platformUserId: `other-${index}` }),
+        );
+      }
+      const targetSessionId = "lifecycle:z-target";
+      await storage.put(
+        `greeting:${encodeURIComponent(targetSessionId)}`,
+        greeting(targetSessionId, { platformUserId: targetUserId }),
+      );
+
+      const claimed = await greetingsOf(await drain(queue, 20, targetUserId));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([
+        targetSessionId,
+      ]);
+    });
+
+    test("one recipient claim scans past a full page of live leases", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const storage = harness.storageFor(QUEUE);
+      const owner = "11111111-1111-4111-8111-111111111111";
+      const recipientPrefix = `greeting-recipient:${encodeURIComponent(owner)}:`;
+      const lease = { id: "already-leased", expiresAt: Date.now() + 60_000 };
+
+      for (let index = 0; index < 128; index += 1) {
+        const sessionId = `lifecycle:a-${index.toString().padStart(4, "0")}`;
+        const entry = greeting(sessionId, { platformUserId: owner, lease });
+        await storage.put(
+          `${recipientPrefix}${encodeURIComponent(sessionId)}`,
+          entry,
+        );
+        await storage.put(`greeting:${encodeURIComponent(sessionId)}`, entry);
+      }
+      const targetSessionId = "lifecycle:z-eligible";
+      const target = greeting(targetSessionId, { platformUserId: owner });
+      await storage.put(
+        `${recipientPrefix}${encodeURIComponent(targetSessionId)}`,
+        target,
+      );
+      await storage.put(
+        `greeting:${encodeURIComponent(targetSessionId)}`,
+        target,
+      );
+      await storage.put("greeting-recipient-index-complete:v1", true);
+
+      const claimed = await greetingsOf(await drain(queue, 20, owner));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([
+        targetSessionId,
+      ]);
+    });
+
+    test("recipient-scoped acknowledgement cannot consume another user's lease", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const owner = "11111111-1111-4111-8111-111111111111";
+      const other = "22222222-2222-4222-8222-222222222222";
+      const sessionId = "lifecycle:recipient-owned";
+      await enqueue(queue, greeting(sessionId, { platformUserId: owner }));
+
+      const [claimed] = await greetingsOf(await drain(queue, 20, owner));
+      expect(claimed).toBeDefined();
+      const acknowledgement = [{ sessionId, leaseId: claimed?.leaseId ?? "" }];
+      const wrongRecipient = await acknowledge(queue, acknowledgement, other);
+      expect((await wrongRecipient.json()) as unknown).toEqual({
+        acknowledged: 0,
+      });
+      const ownerAcknowledgement = await acknowledge(
+        queue,
+        acknowledgement,
+        owner,
+      );
+      expect((await ownerAcknowledgement.json()) as unknown).toEqual({
+        acknowledged: 1,
+      });
+      expect(await greetingsOf(await drain(queue, 20, owner))).toEqual([]);
+    });
+
+    test("recipient and gateway claimers share one exactly-once lease", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const owner = "11111111-1111-4111-8111-111111111111";
+      const sessionId = "lifecycle:shared-lease";
+      await enqueue(queue, greeting(sessionId, { platformUserId: owner }));
+
+      const [recipientLease] = await greetingsOf(await drain(queue, 20, owner));
+      expect(recipientLease).toBeDefined();
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const acknowledged = await acknowledge(
+        queue,
+        [{ sessionId, leaseId: recipientLease?.leaseId ?? "" }],
+        owner,
+      );
+      expect((await acknowledged.json()) as unknown).toEqual({
+        acknowledged: 1,
+      });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
     });
 
     test("re-enqueueing the same session id preserves the original work", async () => {

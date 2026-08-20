@@ -400,6 +400,7 @@ export function __resetVoiceSessionRevocationClientForTests(): void {
 // ---------------------------------------------------------------------------
 
 const SESSION_DIR_KEY_PREFIX = "voice-session:dir:";
+const MAX_SESSION_DIRECTORY_TTL_SECONDS = 24 * 60 * 60 + MAX_REVOCATION_TTL_SECONDS;
 
 // The directory key is scoped to BOTH org and user so a revoke can only resolve
 // a session the SAME user owns — a same-org peer who learns a sessionId cannot
@@ -408,20 +409,21 @@ function sessionDirKey(organizationId: string, userId: string, sessionId: string
   return `${ENV_PREFIX}:${SESSION_DIR_KEY_PREFIX}${organizationId}:${userId}:${sessionId}`;
 }
 
-/** Record the sessionId->jti binding at mint (TTL = token lifetime + slack). */
+/** Record the sessionId->jti binding for the full live-session lifetime. */
 export async function recordVoiceSessionJti(input: {
   organizationId: string;
   userId: string;
   sessionId: string;
   jti: string;
   expSeconds: number;
+  directoryExpSeconds?: number;
 }): Promise<void> {
   const redis = getRedis();
   if (!redis) return;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const ttl = Math.min(
-    Math.max(Math.ceil(input.expSeconds - nowSeconds), 1),
-    MAX_REVOCATION_TTL_SECONDS,
+    Math.max(Math.ceil((input.directoryExpSeconds ?? input.expSeconds) - nowSeconds), 1),
+    input.directoryExpSeconds ? MAX_SESSION_DIRECTORY_TTL_SECONDS : MAX_REVOCATION_TTL_SECONDS,
   );
   await redis.set(sessionDirKey(input.organizationId, input.userId, input.sessionId), input.jti, {
     ex: ttl,

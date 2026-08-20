@@ -1,7 +1,7 @@
 /** Authenticated user-scoped lease and acknowledgement API for in-app lifecycle notices. */
 
 import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { requireAuthOrApiKeyWithOrg, requireAuthWithOrg } from "@/lib/auth";
 import { parseLifecycleCapabilityContinuation } from "@/lib/services/eliza-app/lifecycle-follow-up";
 import {
   acknowledgeProactiveGreetings,
@@ -131,7 +131,18 @@ function parseAcknowledgements(value: unknown): Acknowledgement[] | null {
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
-  const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+  const auth = await requireAuthOrApiKeyWithOrg(c.req.raw);
+  let { user } = auth;
+  if (auth.authMethod === "api_key") {
+    // Lifecycle continuations can contain the user's private original intent.
+    // An unscoped machine key is not interactive authority to read or consume
+    // that inbox. If browser boot auth supplied both a key and a cookie, the
+    // cookie-only helper preserves the authenticated app session.
+    if (!c.req.raw.headers.get("cookie")?.trim()) {
+      return c.json({ error: "Interactive user session required" }, 403);
+    }
+    user = await requireAuthWithOrg(c.req.raw);
+  }
   // error-policy:J3 malformed authenticated input is rejected explicitly.
   const body: unknown = await c.req.json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) {

@@ -1,6 +1,7 @@
 /**
- * Turns explicit caller-to-self SMS requests into bounded Twilio sends whose
- * destination and sender come only from authenticated, signed call claims.
+ * Turns explicit call-continuation SMS requests into bounded Twilio sends to
+ * the Twilio-signed call's From number. Recipient and sender authority come
+ * only from authenticated, signed call claims.
  */
 
 import { logger } from "@/lib/utils/logger";
@@ -14,7 +15,7 @@ const DEFAULT_HANDOFF_BODY =
   "Eliza here — reply to this text to keep going after the call.";
 const HANDOFF_LEDGER_TTL_SECONDS = 7 * 24 * 60 * 60;
 const HANDOFF_HISTORY_CONTENT =
-  "Voice action completed: sent the standard continuation SMS to the authenticated caller.";
+  "Voice action completed: sent the standard continuation SMS to the Twilio-attested call number.";
 
 export type CallerSmsHandoffResult =
   | { handled: false }
@@ -98,8 +99,13 @@ function requestedSmsBody(
   transcript: string,
 ): "continuation" | "unsupported_dictation" | null {
   const normalized = transcript.trim();
+  if (/\b(?:a\s+|the\s+)?link\b/i.test(normalized)) {
+    return /\b(?:text|sms|send)\b/i.test(normalized)
+      ? "unsupported_dictation"
+      : null;
+  }
   if (
-    /^(?:please\s+)?(?:text|sms)\s+me(?:\s+(?:a\s+)?(?:text|message|link))?[.!?]*$/i.test(
+    /^(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?(?:(?:text|sms)\s+(?:me|(?:this|that)\s+to\s+me)(?:\s+(?:a\s+|the\s+)?(?:text|message|link))?|send\s+me\s+(?:a\s+|the\s+)?(?:text|message|link))[.!?]*$/i.test(
       normalized,
     )
   ) {
@@ -131,7 +137,14 @@ async function sendTwilioSms(
     typeof response.sid !== "string" ||
     response.sid.trim().length === 0 ||
     typeof response.status !== "string" ||
-    response.status.trim().length === 0
+    !new Set([
+      "accepted",
+      "queued",
+      "sending",
+      "sent",
+      "delivered",
+      "scheduled",
+    ]).has(response.status.trim().toLowerCase())
   ) {
     throw new Error("Twilio did not return a valid message receipt");
   }
@@ -143,7 +156,7 @@ export function createCallerSmsHandoff(
 ): (transcript: string) => Promise<CallerSmsHandoffResult> {
   const send = config.send ?? sendTwilioSms;
   const now = config.now ?? Date.now;
-  const numbersAreVerified =
+  const numbersAreValidE164 =
     isE164PhoneNumber(config.fromNumber) &&
     isE164PhoneNumber(config.callerNumber);
 
@@ -195,10 +208,10 @@ export function createCallerSmsHandoff(
       return {
         handled: true,
         response:
-          "I can only send the standard continuation text during a call. Say text me.",
+          "I can only send the standard continuation text during a call. Say text me if you want that.",
       };
     }
-    if (!numbersAreVerified) {
+    if (!numbersAreValidE164) {
       return {
         handled: true,
         response: "I can't safely text this call. We can keep going here.",
@@ -293,7 +306,7 @@ export function createCallerSmsHandoff(
     }
     return {
       handled: true,
-      response: "Sent it to the number you're calling from.",
+      response: "Sent the continuation text to the number on this call.",
     };
   };
 }

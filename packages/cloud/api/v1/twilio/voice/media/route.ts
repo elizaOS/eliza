@@ -52,6 +52,7 @@ import {
   resolveTwilioBootstrapLimits,
   TwilioBootstrapGate,
 } from "../lib/twilio-bootstrap-gate";
+import { resolveTwilioMaxCallSeconds } from "../lib/twilio-call-limits";
 import {
   decodeTwilioMedia,
   encodeTwilioMedia,
@@ -69,7 +70,6 @@ const app = new Hono<AppEnv>();
 // target lookup can take several seconds, so retain a bounded 10.24-second
 // window instead of terminating ordinary first calls before setup completes.
 const MAX_PENDING_MEDIA_FRAMES = 512;
-const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
 const bootstrapGate = new TwilioBootstrapGate();
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
@@ -107,16 +107,6 @@ let fallbackUsageStore: InMemoryVoiceUsageStore | null = null;
 function getFallbackUsageStore(): InMemoryVoiceUsageStore {
   if (!fallbackUsageStore) fallbackUsageStore = new InMemoryVoiceUsageStore();
   return fallbackUsageStore;
-}
-
-function resolveMaxCallSeconds(env: VoiceRealtimeEnv): number {
-  const raw = (
-    env as VoiceRealtimeEnv & { TWILIO_VOICE_MAX_CALL_SECONDS?: string }
-  ).TWILIO_VOICE_MAX_CALL_SECONDS;
-  const value = Number(raw);
-  return Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : DEFAULT_MAX_CALL_SECONDS;
 }
 
 app.get("/", async (c) => {
@@ -390,9 +380,10 @@ app.get("/", async (c) => {
       conversationId: claims.conversationId,
       organizationId: claims.organizationId,
       userId: claims.userId,
+      platformGuest: claims.platformGuest,
     });
     const callExpSeconds =
-      Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
+      Math.floor(Date.now() / 1_000) + resolveTwilioMaxCallSeconds(env);
     const prewarmAndRecordCallStart = () =>
       prewarmAndRecordVoiceCallStart(
         () => elizaFetch.prewarm?.(),

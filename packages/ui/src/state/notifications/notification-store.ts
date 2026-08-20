@@ -44,6 +44,7 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
 } from "../../utils/cloud-agent-base";
+import { loadPersistedActiveServer } from "../persistence";
 import {
   consumeCloudLifecycleFollowUps,
   dismissAcceptedCloudLifecycleFollowUps,
@@ -295,6 +296,8 @@ export function acceptInAppLifecycleNotification(
 /** Consume only for the confirmed authority captured by this invocation. */
 function consumeLifecycleForCurrentAuthority(): void {
   const authorityKey = currentAuthorityKey;
+  const authorizedAgentId =
+    loadPersistedActiveServer()?.cloudRuntimeAgentId ?? null;
   if (
     !isAuthenticatedNow() ||
     !authorityKey ||
@@ -303,10 +306,20 @@ function consumeLifecycleForCurrentAuthority(): void {
   ) {
     return;
   }
-  void consumeCloudLifecycleFollowUps(authorityKey, (notification) => {
-    if (currentAuthorityKey !== authorityKey) return;
-    acceptInAppLifecycleNotification(notification);
-  });
+  void consumeCloudLifecycleFollowUps(
+    authorityKey,
+    (notification) => {
+      if (
+        currentAuthorityKey !== authorityKey ||
+        (loadPersistedActiveServer()?.cloudRuntimeAgentId ?? null) !==
+          authorizedAgentId
+      ) {
+        return;
+      }
+      acceptInAppLifecycleNotification(notification);
+    },
+    authorizedAgentId,
+  );
 }
 
 interface WsAgentEvent {

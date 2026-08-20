@@ -33,6 +33,7 @@ const ClaimsSchema = z.object({
   conversationId: ConversationIdSchema,
   calledNumber: z.string().min(1),
   callerNumber: z.string().min(1).optional(),
+  platformGuest: z.boolean().optional(),
   returningCaller: z.boolean(),
   previousInteractionAt: z.number().int().positive().optional(),
 });
@@ -50,6 +51,7 @@ const WireClaimsSchema = z.object({
   n: ConversationIdSchema,
   p: z.string().min(1),
   f: z.string().min(1).optional(),
+  x: z.boolean().optional(),
   r: z.boolean(),
   l: z.number().int().positive().optional(),
 });
@@ -115,6 +117,7 @@ export async function mintTwilioStreamToken(
         n: claims.conversationId,
         p: claims.calledNumber,
         ...(claims.callerNumber ? { f: claims.callerNumber } : {}),
+        ...(claims.platformGuest ? { x: true } : {}),
         r: claims.returningCaller,
         ...(claims.previousInteractionAt
           ? { l: claims.previousInteractionAt }
@@ -164,6 +167,7 @@ export async function verifyTwilioStreamToken(
       conversationId: wire.data.n,
       calledNumber: wire.data.p,
       callerNumber: wire.data.f,
+      platformGuest: wire.data.x,
       returningCaller: wire.data.r,
       previousInteractionAt: wire.data.l,
     });

@@ -40,6 +40,8 @@ export interface InternalElizaConversationFetchClaims {
   conversationId: string;
   organizationId: string;
   userId: string;
+  /** Platform-funded call guest that must not receive personal-account authority. */
+  platformGuest?: boolean;
 }
 
 export type InternalElizaConversationFetch = typeof fetch & {
@@ -119,14 +121,29 @@ export function createInternalElizaConversationFetchFactory(
           organizationId: claims.organizationId,
         })
       : null;
+    const platformGuestAgent = claims.platformGuest
+      ? {
+          ...personalSharedAgent({
+            userId: claims.userId,
+            organizationId: claims.organizationId,
+          }),
+          id: claims.agentId,
+        }
+      : null;
     const readCachedAgent = async (): Promise<SharedRuntimeAgent | null> => {
+      if (
+        platformGuestAgent &&
+        isCachedVoiceAgent(platformGuestAgent, claims)
+      ) {
+        return platformGuestAgent;
+      }
       if (personalAgent?.id === claims.agentId) return personalAgent;
       const cached = await cache.get<SharedRuntimeAgent>(cacheKey);
       return isCachedVoiceAgent(cached, claims) ? cached : null;
     };
 
     const scheduleHydration = (): boolean => {
-      if (personalAgent) return true;
+      if (personalAgent || platformGuestAgent) return true;
       if (!executionCtx) return false;
       if (hydrationPromise) return true;
 
@@ -340,7 +357,13 @@ async function dispatchInternalElizaConversationFetch(
     orgId: claims.organizationId,
     conversationId: claims.conversationId,
     userId: claims.userId,
-    agentKind: isPersonalSharedAgentId(claims.agentId) ? "personal" : "sandbox",
+    // The coordinator's personal lane provides bounded platform funding. A
+    // guest UUID is intentionally non-canonical, so runtime capability checks
+    // do not treat the transport-attested caller as an authenticated account.
+    agentKind:
+      claims.platformGuest || isPersonalSharedAgentId(claims.agentId)
+        ? "personal"
+        : "sandbox",
     trustedMessageRole:
       body &&
       typeof body === "object" &&

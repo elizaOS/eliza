@@ -1,51 +1,54 @@
-/**
- * Proves the public Twilio line resolves callers to account-native personal
- * Shared agents and rejects every unconfigured destination.
- */
+/** Proves signed Twilio calls receive isolated guest scopes, never phone-owned history. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-
-const findOrCreateByPhone = mock(async (_phone: string) => ({
-  user: { id: "11111111-1111-4111-a111-111111111111" },
-  organization: { id: "22222222-2222-4222-a222-222222222222" },
-}));
-
-mock.module("@/lib/services/eliza-app/user-service", () => ({
-  elizaAppUserService: { findOrCreateByPhone },
-}));
-
-const { resolveTwilioVoiceTarget } = await import("./resolve-voice-target");
+import { describe, expect, test } from "bun:test";
+import { isCanonicalPersonalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-identity";
+import { resolveTwilioVoiceTarget } from "./resolve-voice-target";
 
 const PUBLIC_NUMBER = "+14484080429";
-const CALLER_NUMBER = "+14155550100";
 const publicEnv = { ELIZA_APP_TWILIO_PHONE_NUMBER: PUBLIC_NUMBER };
 
-beforeEach(() => findOrCreateByPhone.mockClear());
-
 describe("resolveTwilioVoiceTarget", () => {
-  test("finds or creates the caller account and returns its personal Shared agent", async () => {
-    const result = await resolveTwilioVoiceTarget(
+  test("uses a deterministic call-isolated guest without personal authority", async () => {
+    const identity = { accountSid: "AC123", callSid: "CA123" };
+    const first = await resolveTwilioVoiceTarget(
       publicEnv,
       PUBLIC_NUMBER,
-      CALLER_NUMBER,
+      identity,
+    );
+    const replay = await resolveTwilioVoiceTarget(
+      publicEnv,
+      PUBLIC_NUMBER,
+      identity,
     );
 
-    expect(findOrCreateByPhone).toHaveBeenCalledWith(CALLER_NUMBER);
-    expect(result?.agentId).toMatch(/^personal:[0-9a-f-]{36}$/);
-    expect(result?.agent.id).toBe(result?.agentId);
-    expect(result).toMatchObject({
-      organizationId: "22222222-2222-4222-a222-222222222222",
-      userId: "11111111-1111-4111-a111-111111111111",
-      agent: {
-        execution_tier: "shared",
-      },
-    });
+    expect(replay).toEqual(first);
+    expect(first?.organizationId).toBe("anonymous");
+    expect(first?.userId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first?.agentId).toBe(first?.userId);
+    expect(first?.agent.execution_tier).toBe("shared");
+    expect(isCanonicalPersonalSharedAgent(first!.agent)).toBe(false);
   });
 
-  test("rejects an unconfigured destination before creating an account", async () => {
+  test("isolates every CallSid even when Twilio reports the same caller number", async () => {
+    const first = await resolveTwilioVoiceTarget(publicEnv, PUBLIC_NUMBER, {
+      accountSid: "AC123",
+      callSid: "CA-first",
+    });
+    const next = await resolveTwilioVoiceTarget(publicEnv, PUBLIC_NUMBER, {
+      accountSid: "AC123",
+      callSid: "CA-next",
+    });
+
+    expect(next?.userId).not.toBe(first?.userId);
+    expect(next?.agentId).not.toBe(first?.agentId);
+  });
+
+  test("rejects an unconfigured destination before deriving a guest", async () => {
     await expect(
-      resolveTwilioVoiceTarget(publicEnv, "+12525914471", CALLER_NUMBER),
+      resolveTwilioVoiceTarget(publicEnv, "+12525914471", {
+        accountSid: "AC123",
+        callSid: "CA123",
+      }),
     ).resolves.toBeNull();
-    expect(findOrCreateByPhone).not.toHaveBeenCalled();
   });
 });

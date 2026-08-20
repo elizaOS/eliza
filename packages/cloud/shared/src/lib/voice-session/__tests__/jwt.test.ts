@@ -14,7 +14,9 @@ import {
   __setVoiceSessionRevocationStoreForTests,
   isVoiceSessionJwtConfigured,
   isVoiceSessionTokenRevoked,
+  lookupVoiceSessionJti,
   mintVoiceSessionToken,
+  recordVoiceSessionJti,
   revokeVoiceSessionToken,
   VoiceSessionTokenError,
   verifyVoiceSessionToken,
@@ -243,5 +245,33 @@ describe("voice-session jwt", () => {
     // The module-level store (beforeEach) is healthy and empty; the erroring
     // request-scoped store must still drive the fail-closed answer.
     expect(await isVoiceSessionTokenRevoked("jti-under-outage", erroring as never)).toBe(true);
+  });
+
+  test("retains the directory for a long call without extending bootstrap token TTL", async () => {
+    const values = new Map<string, string>();
+    const writes: Array<{ key: string; ttl?: number }> = [];
+    const fake = {
+      async get(key: string) {
+        return values.get(key) ?? null;
+      },
+      async set(key: string, value: unknown, options?: { ex?: number }) {
+        values.set(key, String(value));
+        writes.push({ key, ttl: options?.ex });
+        return "OK";
+      },
+    };
+    __setVoiceSessionRevocationStoreForTests(fake as never);
+    const nowSeconds = Math.floor(Date.now() / 1_000);
+
+    await recordVoiceSessionJti({
+      ...CLAIMS,
+      jti: "jti-long-call",
+      expSeconds: nowSeconds + 120,
+      directoryExpSeconds: nowSeconds + 1_800,
+    });
+
+    expect(await lookupVoiceSessionJti("org-1", "user-1", "sess-1")).toBe("jti-long-call");
+    expect(writes[0]?.ttl).toBeGreaterThanOrEqual(1_799);
+    expect(writes[0]?.ttl).toBeLessThanOrEqual(1_800);
   });
 });

@@ -20,6 +20,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";
+import { resolveTwilioSessionDirectoryExpSeconds } from "../lib/twilio-call-limits";
 import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   buildRealtimeVoiceTwiML,
@@ -116,11 +117,10 @@ app.post("/", async (c) => {
     return new Response("Invalid signature", { status: 403 });
   }
 
-  const phoneNumber = await resolveTwilioVoiceTarget(
-    c.env,
-    publicLineNumber,
-    callerNumber,
-  );
+  const phoneNumber = await resolveTwilioVoiceTarget(c.env, publicLineNumber, {
+    accountSid: event.AccountSid,
+    callSid: event.CallSid,
+  });
   if (!phoneNumber) {
     return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
       headers: { "Content-Type": "text/xml" },
@@ -265,6 +265,7 @@ app.post("/", async (c) => {
       conversationId,
       calledNumber: publicLineNumber,
       callerNumber,
+      platformGuest: true,
       returningCaller: Boolean(priorCall || priorConversation),
       previousInteractionAt:
         previousInteractionAt > 0 ? previousInteractionAt : undefined,
@@ -277,6 +278,12 @@ app.post("/", async (c) => {
     sessionId: minted.claims.sessionId,
     jti: minted.claims.jti,
     expSeconds: minted.claims.exp,
+    // The media socket may start at the end of the 120-second bootstrap
+    // window, so retain the directory for a full call after bootstrap expiry.
+    directoryExpSeconds: resolveTwilioSessionDirectoryExpSeconds(
+      minted.claims.exp,
+      c.env,
+    ),
   });
   const responseReadyAt = Date.now();
   logger.info("[twilio-voice-inbound] realtime TwiML ready", {

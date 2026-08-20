@@ -76,7 +76,7 @@ describe("caller SMS handoff", () => {
     const { handle, send, recordSuccess } = setup();
     expect(await handle("Text me")).toEqual({
       handled: true,
-      response: "Sent it to the number you're calling from.",
+      response: "Sent the continuation text to the number on this call.",
     });
     expect(send).toHaveBeenCalledTimes(1);
     const params = send.mock.calls[0]?.[2] as URLSearchParams;
@@ -89,9 +89,31 @@ describe("caller SMS handoff", () => {
     expect(recordSuccess).toHaveBeenCalledWith({
       id: "twilio-call:CA123:caller-sms-handoff",
       content:
-        "Voice action completed: sent the standard continuation SMS to the authenticated caller.",
+        "Voice action completed: sent the standard continuation SMS to the Twilio-attested call number.",
       createdAt: 1_700_000_000_000,
     });
+  });
+
+  test("recognizes natural requests for the fixed continuation text", async () => {
+    for (const request of [
+      "Could you text me?",
+      "please send me a message",
+      "text that to me",
+    ]) {
+      const { handle, send } = setup({ store: new TestHandoffStore() });
+      expect((await handle(request)).handled).toBe(true);
+      expect(send).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("does not claim the fixed continuation text contains a requested link", async () => {
+    const { handle, send } = setup();
+    expect(await handle("Could you text me the link?")).toEqual({
+      handled: true,
+      response:
+        "I can only send the standard continuation text during a call. Say text me if you want that.",
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   test("refuses dictated content for an unverified caller identity", async () => {
@@ -99,7 +121,7 @@ describe("caller SMS handoff", () => {
     expect(await handle("Please text me saying Buy oat milk")).toEqual({
       handled: true,
       response:
-        "I can only send the standard continuation text during a call. Say text me.",
+        "I can only send the standard continuation text during a call. Say text me if you want that.",
     });
     expect(await handle("Find me a grocery store")).toEqual({ handled: false });
     expect(send).not.toHaveBeenCalled();
@@ -137,7 +159,7 @@ describe("caller SMS handoff", () => {
     const first = setup({ store, recordSuccess: firstRecord });
     expect(await first.handle("text me")).toEqual({
       handled: true,
-      response: "Sent it to the number you're calling from.",
+      response: "Sent the continuation text to the number on this call.",
     });
 
     const reconnected = setup({ store });
@@ -247,6 +269,29 @@ describe("caller SMS handoff", () => {
       response: "I couldn't send that text. We can keep going here.",
     });
   });
+
+  test.each(["failed", "undelivered", "canceled", "mystery"])(
+    "does not announce success for Twilio status %s",
+    async (status) => {
+      globalThis.fetch = mock(async () =>
+        Response.json({ sid: "SM123", status }, { status: 201 }),
+      ) as unknown as typeof fetch;
+      const handle = createCallerSmsHandoff({
+        accountSid: "AC123",
+        authToken: "secret",
+        callSid: `CA-${status}`,
+        fromNumber: "+14484080429",
+        callerNumber: "+12525914471",
+        store: new TestHandoffStore(),
+        recordSuccess: async () => undefined,
+      });
+
+      expect(await handle("text me")).toEqual({
+        handled: true,
+        response: "I couldn't send that text. We can keep going here.",
+      });
+    },
+  );
 
   test("fails closed when no durable CallSid ledger is configured", async () => {
     const send = mock(async (): Promise<void> => undefined);

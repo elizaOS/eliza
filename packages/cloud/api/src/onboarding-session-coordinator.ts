@@ -78,6 +78,9 @@ function isStoredSessionAlias(value: unknown): value is StoredSessionAlias {
 const SESSION_KEY_PREFIX = "session:";
 const HISTORY_KEY_PREFIX = "history:";
 const GREETING_KEY_PREFIX = "greeting:";
+const GREETING_RECIPIENT_INDEX_PREFIX = "greeting-recipient:";
+const GREETING_RECIPIENT_INDEX_COMPLETE_KEY =
+  "greeting-recipient-index-complete:v1";
 const GREETING_TOMBSTONE_KEY_PREFIX = "greeting-delivered:";
 // Mirrors GREETING_TTL_MS in onboarding-proactive-greeting.ts: stale greetings
 // are dropped at drain time, never delivered.
@@ -98,6 +101,20 @@ interface StoredGreeting {
 
 interface GreetingDeliveryTombstone {
   expiresAt: number;
+}
+
+function greetingKey(sessionId: string): string {
+  return `${GREETING_KEY_PREFIX}${storageComponent(sessionId)}`;
+}
+
+function greetingRecipientIndexPrefix(platformUserId: string): string {
+  return `${GREETING_RECIPIENT_INDEX_PREFIX}${storageComponent(platformUserId)}:`;
+}
+
+function greetingRecipientIndexKey(
+  entry: Pick<StoredGreeting, "platformUserId" | "sessionId">,
+): string {
+  return `${greetingRecipientIndexPrefix(entry.platformUserId)}${storageComponent(entry.sessionId)}`;
 }
 
 function greetingTombstoneKey(
@@ -586,10 +603,54 @@ export class OnboardingSessionCoordinator {
       return Response.json({ success: true });
     }
     if (tombstone) await this.state.storage.delete(tombstoneKey);
-    const key = `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`;
+    const key = greetingKey(body.sessionId);
     const existing = await this.state.storage.get<StoredGreeting>(key);
-    if (!isValidGreeting(existing)) await this.state.storage.put(key, body);
+    const accepted = isValidGreeting(existing) ? existing : body;
+    await this.state.storage.transaction(async (transaction) => {
+      if (!isValidGreeting(existing)) await transaction.put(key, accepted);
+      // Recipient-indexed access prevents an in-app user's private lifecycle
+      // notices from sitting behind an arbitrary number of other users' rows.
+      await transaction.put(greetingRecipientIndexKey(accepted), accepted);
+    });
     return Response.json({ success: true });
+  }
+
+  /**
+   * Backfills recipient indexes for entries written before recipient-scoped
+   * queue access existed. One global completion marker avoids a permanent
+   * marker per user; all subsequent enqueues maintain the index atomically.
+   */
+  private async ensureGreetingRecipientIndex(): Promise<void> {
+    if (
+      await this.state.storage.get<boolean>(
+        GREETING_RECIPIENT_INDEX_COMPLETE_KEY,
+      )
+    ) {
+      return;
+    }
+
+    let startAfter: string | undefined;
+    while (true) {
+      const page = await this.state.storage.list<StoredGreeting>({
+        prefix: GREETING_KEY_PREFIX,
+        ...(startAfter ? { startAfter } : {}),
+        limit: GREETING_SCAN_LIMIT,
+      });
+      const entries = [...page.entries()];
+      const indexes: Record<string, StoredGreeting> = {};
+      for (const [, entry] of entries) {
+        if (isValidGreeting(entry)) {
+          indexes[greetingRecipientIndexKey(entry)] = entry;
+        }
+      }
+      if (Object.keys(indexes).length > 0) {
+        await this.state.storage.put(indexes);
+      }
+      const lastKey = entries.at(-1)?.[0];
+      if (entries.length < GREETING_SCAN_LIMIT || !lastKey) break;
+      startAfter = lastKey;
+    }
+    await this.state.storage.put(GREETING_RECIPIENT_INDEX_COMPLETE_KEY, true);
   }
 
   /**
@@ -623,47 +684,93 @@ export class OnboardingSessionCoordinator {
       Number.isInteger(requested) && requested > 0
         ? Math.min(requested, GREETING_DRAIN_LIMIT_MAX)
         : GREETING_DRAIN_LIMIT_MAX;
-    const entries = await this.state.storage.list<StoredGreeting>({
-      prefix: GREETING_KEY_PREFIX,
-      limit: GREETING_SCAN_LIMIT,
-    });
+    if (platformUserId) {
+      await this.ensureGreetingRecipientIndex();
+    }
     const now = Date.now();
     const claimed: Array<StoredGreeting & { leaseId: string }> = [];
-    const deletions: string[] = [];
-    for (const [key, entry] of entries) {
-      if (!isValidGreeting(entry)) {
-        deletions.push(key);
-        logger.warn(
-          "[OnboardingSessionCoordinator] dropped invalid proactive greeting",
-          { key },
-        );
-        continue;
+    const deletions = new Set<string>();
+    const updates: Record<string, StoredGreeting> = {};
+    const prefix = platformUserId
+      ? greetingRecipientIndexPrefix(platformUserId)
+      : GREETING_KEY_PREFIX;
+    let startAfter: string | undefined;
+    let shouldScan = true;
+    while (shouldScan) {
+      const page = await this.state.storage.list<StoredGreeting>({
+        prefix,
+        ...(startAfter ? { startAfter } : {}),
+        limit: GREETING_SCAN_LIMIT,
+      });
+      const entries = [...page.entries()];
+      for (const [listedKey, entry] of entries) {
+        if (!isValidGreeting(entry)) {
+          deletions.add(listedKey);
+          logger.warn(
+            "[OnboardingSessionCoordinator] dropped invalid proactive greeting",
+            { key: listedKey },
+          );
+          continue;
+        }
+        const primaryKey = greetingKey(entry.sessionId);
+        const recipientKey = greetingRecipientIndexKey(entry);
+        const expiresAt = entry.expiresAt
+          ? Date.parse(entry.expiresAt)
+          : Date.parse(entry.createdAt) + GREETING_TTL_MS;
+        if (now > expiresAt) {
+          deletions.add(primaryKey);
+          deletions.add(recipientKey);
+          logger.warn(
+            "[OnboardingSessionCoordinator] dropped stale proactive greeting",
+            { key: primaryKey },
+          );
+          continue;
+        }
+        if (platformUserId && entry.platformUserId !== platformUserId) {
+          // A corrupt cross-recipient index must never expose its value.
+          deletions.add(listedKey);
+          continue;
+        }
+        if (claimed.length >= limit) continue;
+        if (entry.lease && entry.lease.expiresAt > now) continue;
+        const leaseId = greetingLeaseId();
+        const leased = {
+          ...entry,
+          lease: { id: leaseId, expiresAt: now + GREETING_LEASE_MS },
+        };
+        updates[primaryKey] = leased;
+        updates[recipientKey] = leased;
+        claimed.push({ ...entry, leaseId });
       }
-      const expiresAt = entry.expiresAt
-        ? Date.parse(entry.expiresAt)
-        : Date.parse(entry.createdAt) + GREETING_TTL_MS;
-      if (now > expiresAt) {
-        deletions.push(key);
-        logger.warn(
-          "[OnboardingSessionCoordinator] dropped stale proactive greeting",
-          { key },
-        );
-        continue;
+      const lastKey = entries.at(-1)?.[0];
+      if (
+        !platformUserId ||
+        claimed.length >= limit ||
+        entries.length < GREETING_SCAN_LIMIT ||
+        !lastKey
+      ) {
+        shouldScan = false;
+      } else {
+        // Recipient-prefixed pages form one bounded user's mailbox. Continue
+        // in this same claim so a client that does not poll continuously still
+        // sees eligible work beyond a page of leased or stale entries.
+        startAfter = lastKey;
       }
-      if (platformUserId && entry.platformUserId !== platformUserId) continue;
-      if (claimed.length >= limit) continue;
-      if (entry.lease && entry.lease.expiresAt > now) continue;
-      const leaseId = greetingLeaseId();
-      const leased = {
-        ...entry,
-        lease: { id: leaseId, expiresAt: now + GREETING_LEASE_MS },
-      };
-      await this.state.storage.put(key, leased);
-      claimed.push({ ...entry, leaseId });
     }
-    if (deletions.length > 0) {
-      await this.state.storage.delete(deletions);
-    }
+
+    await this.state.storage.transaction(async (transaction) => {
+      if (Object.keys(updates).length > 0) await transaction.put(updates);
+      const deletionKeys = [...deletions];
+      for (
+        let offset = 0;
+        offset < deletionKeys.length;
+        offset += GREETING_SCAN_LIMIT
+      ) {
+        await transaction.delete(
+          deletionKeys.slice(offset, offset + GREETING_SCAN_LIMIT),
+        );
+      }
+    });
     return Response.json({ greetings: claimed });
   }
 
@@ -709,16 +816,18 @@ export class OnboardingSessionCoordinator {
       ) {
         continue;
       }
-      const key = `${GREETING_KEY_PREFIX}${storageComponent(sessionId)}`;
+      const key = greetingKey(sessionId);
       const entry = await this.state.storage.get<StoredGreeting>(key);
       if (!isValidGreeting(entry) || entry.lease?.id !== leaseId) continue;
       if (platformUserId && entry.platformUserId !== platformUserId) continue;
-      if (entry.expiresAt) {
-        await this.state.storage.put(greetingTombstoneKey(entry), {
-          expiresAt: Date.parse(entry.expiresAt),
-        } satisfies GreetingDeliveryTombstone);
-      }
-      await this.state.storage.delete(key);
+      await this.state.storage.transaction(async (transaction) => {
+        if (entry.expiresAt) {
+          await transaction.put(greetingTombstoneKey(entry), {
+            expiresAt: Date.parse(entry.expiresAt),
+          } satisfies GreetingDeliveryTombstone);
+        }
+        await transaction.delete([key, greetingRecipientIndexKey(entry)]);
+      });
       acknowledged += 1;
     }
     return Response.json({ acknowledged });

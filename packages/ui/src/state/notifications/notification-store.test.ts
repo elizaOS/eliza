@@ -63,6 +63,7 @@ const consumeCloudLifecycleFollowUps = vi.fn<
   (
     authorityKey: string,
     accept: (notification: AgentNotification) => void,
+    authorizedAgentId?: string | null,
   ) => Promise<void>
 >(async () => {});
 const dismissAcceptedCloudLifecycleFollowUps = vi.fn(
@@ -71,6 +72,7 @@ const dismissAcceptedCloudLifecycleFollowUps = vi.fn(
 function latestLifecycleConsumeCall(): [
   string,
   (notification: AgentNotification) => void,
+  authorizedAgentId?: string | null,
 ] {
   const call = consumeCloudLifecycleFollowUps.mock.calls.at(-1);
   if (!call) throw new Error("Expected a lifecycle consume call");
@@ -80,7 +82,8 @@ vi.mock("./lifecycle-follow-up-consumer", () => ({
   consumeCloudLifecycleFollowUps: (
     authorityKey: string,
     accept: (notification: AgentNotification) => void,
-  ) => consumeCloudLifecycleFollowUps(authorityKey, accept),
+    authorizedAgentId?: string | null,
+  ) => consumeCloudLifecycleFollowUps(authorityKey, accept, authorizedAgentId),
   dismissAcceptedCloudLifecycleFollowUps: (...args: unknown[]) =>
     dismissAcceptedCloudLifecycleFollowUps(...args),
 }));
@@ -1035,6 +1038,10 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
 });
 
 describe("notification-store — authority isolation (#18391)", () => {
+  const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
+  const AGENT_A = "22222222-2222-4222-8222-222222222222";
+  const AGENT_B = "33333333-3333-4333-8333-333333333333";
+
   function authenticated(userId: string, sessionId: string): AuthStatusState {
     return {
       phase: "authenticated",
@@ -1057,6 +1064,19 @@ describe("notification-store — authority isolation (#18391)", () => {
       .map((call) => call[1] as (data: Record<string, unknown>) => void);
   }
 
+  function setActiveAgent(agentId: string): void {
+    localStorage.setItem(
+      ACTIVE_SERVER_STORAGE_KEY,
+      JSON.stringify({
+        id: `cloud:${agentId}`,
+        kind: "cloud",
+        label: "Eliza",
+        cloudRuntimeAgentId: agentId,
+        cloudRuntime: "dedicated",
+      }),
+    );
+  }
+
   beforeEach(() => {
     __resetNotificationStoreForTests();
     __resetAuthStatusForTests();
@@ -1069,11 +1089,13 @@ describe("notification-store — authority isolation (#18391)", () => {
     hasToken.mockReset().mockReturnValue(true);
     rotateConnection.mockReset();
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+    localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   });
 
   afterEach(() => {
     __resetNotificationStoreForTests();
     __resetAuthStatusForTests();
+    localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   });
 
   it("Agent A -> Agent B: clears A's rows synchronously and hydrates fresh B rows", async () => {
@@ -1161,6 +1183,22 @@ describe("notification-store — authority isolation (#18391)", () => {
     expect(__getStateForTests().notifications[0]?.id).toBe("lifecycle-b");
     expect(authorityA).toContain("user-a::session-a");
     expect(authorityB).toContain("user-b::session-b");
+  });
+
+  it("drops Agent A lifecycle acceptance after an active-agent switch to B", async () => {
+    setActiveAgent(AGENT_A);
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalled(),
+    );
+    const [, acceptA, authorizedAgentId] = latestLifecycleConsumeCall();
+    expect(authorizedAgentId).toBe(AGENT_A);
+
+    setActiveAgent(AGENT_B);
+    acceptA(makeNotification({ id: "agent-a-lifecycle" }));
+
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
   it("durably dismisses a lifecycle row under its authenticated authority", async () => {

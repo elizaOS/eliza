@@ -2,6 +2,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Bindings } from "@/types/cloud-worker-env";
 
+const handleScopedStream = mock(async (_request: unknown) =>
+  Response.json({ success: true }, { status: 200 }),
+);
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: mock(() => undefined),
@@ -35,11 +39,12 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
 }));
 
 mock.module("@/lib/auth/cron", () => ({
-  timingSafeEqualSecret: () => false,
+  timingSafeEqualSecret: (presented: string, configured: string) =>
+    presented === configured,
 }));
 
 mock.module("@/lib/services/shared-runtime/canonical-scoped-stream", () => ({
-  handleCanonicalScopedAgentStream: mock(),
+  handleCanonicalScopedAgentStream: handleScopedStream,
 }));
 
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
@@ -53,13 +58,22 @@ mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
 
 mock.module("@/lib/services/shared-runtime/personal-shared-agent", () => ({
   isPersonalSharedAgentId: () => false,
-  personalSharedAgent: () => null,
+  personalSharedAgent: (identity: {
+    userId: string;
+    organizationId: string;
+  }) => ({
+    id: "personal:mock",
+    user_id: identity.userId,
+    organization_id: identity.organizationId,
+    execution_tier: "shared",
+  }),
   personalSharedAgentId: () => "personal:mock",
 }));
 
-const { createInternalElizaConversationFetch } = await import(
-  "../lib/internal-eliza-conversation-fetch"
-);
+const {
+  createInternalElizaConversationFetch,
+  createInternalElizaConversationFetchFactory,
+} = await import("../lib/internal-eliza-conversation-fetch");
 
 const AGENT_ID = "agent-1";
 const CONVERSATION_ID = "conv-1";
@@ -142,4 +156,46 @@ describe("internal Eliza conversation stream path encoding", () => {
       });
     },
   );
+
+  test("reconstructs a platform guest without granting a canonical personal identity", async () => {
+    handleScopedStream.mockClear();
+    const factory = createInternalElizaConversationFetchFactory(
+      {
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+        SHARED_RUNTIME_CONVERSATIONS: {},
+      } as Bindings,
+      { waitUntil: () => undefined },
+    );
+    const guestAgentId = "11111111-1111-4111-8111-111111111111";
+    const guestFetch = factory({
+      agentId: guestAgentId,
+      conversationId: guestAgentId,
+      organizationId: "anonymous",
+      userId: guestAgentId,
+      platformGuest: true,
+    });
+
+    const response = await guestFetch(streamUrl(guestAgentId, guestAgentId), {
+      method: "POST",
+      headers: {
+        authorization: "Bearer voice-service",
+        "X-Eliza-Agent-Id": guestAgentId,
+        "X-Eliza-Conversation-Id": guestAgentId,
+        "X-Eliza-Organization-Id": "anonymous",
+        "X-Eliza-User-Id": guestAgentId,
+      },
+      body: JSON.stringify({ text: "hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(handleScopedStream).toHaveBeenCalledTimes(1);
+    const request = handleScopedStream.mock.calls[0]?.[0] as {
+      agent: { id: string };
+      agentKind: string;
+      orgId: string;
+    };
+    expect(request.agent.id).toBe(guestAgentId);
+    expect(request.agentKind).toBe("personal");
+    expect(request.orgId).toBe("anonymous");
+  });
 });

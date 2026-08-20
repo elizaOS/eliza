@@ -27,7 +27,7 @@ describe("voice continuity", () => {
 
   test("uses the exact model-free first and returning call openers", () => {
     expect(callOpeningGreeting(false)).toBe(
-      "Hi, it's Eliza. Want help planning today? I can text you anything we need.",
+      "Hi, it's Eliza. Want help planning today? I can text this call a way to continue afterward.",
     );
     expect(callOpeningGreeting(true)).toBe(
       "Hey, good to hear from you. Want to pick up where we left off?",

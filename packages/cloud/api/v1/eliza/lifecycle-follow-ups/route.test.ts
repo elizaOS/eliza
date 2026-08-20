@@ -30,17 +30,34 @@ const INTERNAL_NOTICE = {
 };
 const drain = mock(async (): Promise<unknown[]> => [INTERNAL_NOTICE]);
 const acknowledge = mock(async () => 1);
-const requireAuth = mock(async (request: Request) => {
-  if (!request.headers.get("authorization")) throw new Error("Unauthorized");
-  return { user: { id: USER_ID, organization_id: "org-1" } };
-});
+const requireAuth = mock(
+  async (
+    request: Request,
+  ): Promise<{
+    user: { id: string; organization_id: string };
+    authMethod: "session" | "api_key";
+  }> => {
+    if (!request.headers.get("authorization")) throw new Error("Unauthorized");
+    return {
+      user: { id: USER_ID, organization_id: "org-1" },
+      authMethod: "session",
+    };
+  },
+);
+const requireCookieAuth = mock(async () => ({
+  id: USER_ID,
+  organization_id: "org-1",
+}));
 
 mock.module("@/lib/services/eliza-app/onboarding-proactive-greeting", () => ({
   drainProactiveGreetings: drain,
   acknowledgeProactiveGreetings: acknowledge,
   enqueueProactiveLifecycleMessage: mock(async () => undefined),
 }));
-mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg: requireAuth }));
+mock.module("@/lib/auth", () => ({
+  requireAuthOrApiKeyWithOrg: requireAuth,
+  requireAuthWithOrg: requireCookieAuth,
+}));
 
 afterAll(() => {
   mock.module("@/lib/auth", () => realAuthExports);
@@ -57,14 +74,23 @@ beforeEach(() => {
   drain.mockImplementation(async () => [INTERNAL_NOTICE]);
   acknowledge.mockClear();
   requireAuth.mockClear();
+  requireAuth.mockImplementation(async (incoming: Request) => {
+    if (!incoming.headers.get("authorization")) throw new Error("Unauthorized");
+    return {
+      user: { id: USER_ID, organization_id: "org-1" },
+      authMethod: "session" as const,
+    };
+  });
+  requireCookieAuth.mockClear();
 });
 
-function request(body: unknown, authorized = true): Request {
+function request(body: unknown, authorized = true, cookie?: string): Request {
   return new Request("https://cloud.test/", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       ...(authorized ? { authorization: "Bearer test" } : {}),
+      ...(cookie ? { cookie } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -218,5 +244,50 @@ describe("in-app lifecycle follow-up route", () => {
     const response = await app.request(request({ action: "claim" }, false));
     expect(response.status).toBe(500);
     expect(drain).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    { action: "claim" },
+    {
+      action: "ack",
+      acknowledgements: [
+        { sessionId: `lifecycle:${"a".repeat(48)}`, leaseId: "lease-1" },
+      ],
+    },
+  ])(
+    "rejects API-key-only $action authority before private queue access",
+    async (body) => {
+      requireAuth.mockResolvedValueOnce({
+        user: { id: USER_ID, organization_id: "org-1" },
+        authMethod: "api_key",
+      });
+
+      const response = await app.request(request(body));
+
+      expect(response.status).toBe(403);
+      expect((await response.json()) as unknown).toEqual({
+        error: "Interactive user session required",
+      });
+      expect(drain).not.toHaveBeenCalled();
+      expect(acknowledge).not.toHaveBeenCalled();
+      expect(requireCookieAuth).not.toHaveBeenCalled();
+    },
+  );
+
+  test("preserves a browser app session when boot API-key auth is also present", async () => {
+    requireAuth.mockResolvedValueOnce({
+      user: { id: "machine-key-user", organization_id: "org-1" },
+      authMethod: "api_key",
+    });
+
+    const response = await app.request(
+      request({ action: "claim" }, true, "eliza_session=interactive"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(requireCookieAuth).toHaveBeenCalledTimes(1);
+    expect(drain).toHaveBeenCalledWith("in_app", {
+      platformUserId: USER_ID,
+    });
   });
 });
