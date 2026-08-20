@@ -11,6 +11,7 @@
 import type { Agent } from "@elizaos/core";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../../../lib/utils/logger";
+import type { DbTransaction } from "../../client";
 import { dbRead, dbWrite } from "../../helpers";
 import { agentTable } from "../../schemas/eliza";
 
@@ -119,7 +120,7 @@ export class AgentsRepository {
    * @returns True if successful, false if agent with same ID already exists.
    * @throws Error if creation fails for reasons other than duplicate ID.
    */
-  async create(agent: Partial<Agent>): Promise<boolean> {
+  async create(agent: Partial<Agent>, tx?: DbTransaction): Promise<boolean> {
     if (!agent.name) {
       throw new Error("[AgentsRepository] Cannot create agent without a name");
     }
@@ -127,11 +128,17 @@ export class AgentsRepository {
     // Check for existing agent with the same ID only (names can be duplicated)
     // Use the write connection so the duplicate check sees the latest row.
     if (agent.id) {
-      const existing = await dbWrite
-        .select({ id: agentTable.id })
-        .from(agentTable)
-        .where(eq(agentTable.id, agent.id))
-        .limit(1);
+      const existing = tx
+        ? await tx
+            .select({ id: agentTable.id })
+            .from(agentTable)
+            .where(eq(agentTable.id, agent.id))
+            .limit(1)
+        : await dbWrite
+            .select({ id: agentTable.id })
+            .from(agentTable)
+            .where(eq(agentTable.id, agent.id))
+            .limit(1);
 
       if (existing.length > 0) {
         logger.warn("[AgentsRepository] Attempted duplicate agent create", {
@@ -141,17 +148,46 @@ export class AgentsRepository {
       }
     }
 
-    await dbWrite.insert(agentTable).values({
+    const insert = {
       ...agent,
       name: agent.name,
       createdAt: toDate(agent.createdAt),
       updatedAt: toDate(agent.updatedAt),
-    } as typeof agentTable.$inferInsert);
+    } as typeof agentTable.$inferInsert;
+    if (tx) {
+      await tx.insert(agentTable).values(insert);
+    } else {
+      await dbWrite.insert(agentTable).values(insert);
+    }
 
     logger.debug("[AgentsRepository] Created agent", {
       agentId: agent.id,
     });
     return true;
+  }
+
+  /**
+   * Idempotently ensures the character runtime mirror inside the caller's
+   * writer transaction. An existing ID is healthy, not a duplicate-create
+   * warning; other constraint failures still reject the transaction.
+   */
+  async ensure(agent: Partial<Agent>, tx: DbTransaction): Promise<void> {
+    if (!agent.id || !agent.name) {
+      throw new Error("[AgentsRepository] Cannot ensure agent without an ID and name");
+    }
+
+    const insert = {
+      ...agent,
+      id: agent.id,
+      name: agent.name,
+      createdAt: toDate(agent.createdAt),
+      updatedAt: toDate(agent.updatedAt),
+    } as typeof agentTable.$inferInsert;
+
+    await tx.insert(agentTable).values(insert).onConflictDoNothing({ target: agentTable.id });
+    logger.debug("[AgentsRepository] Ensured agent", {
+      agentId: agent.id,
+    });
   }
 
   /**
