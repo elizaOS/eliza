@@ -16,6 +16,7 @@
  * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
  * silently leak.
  */
+import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
 import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
@@ -23,6 +24,46 @@ import { getDefaultRedactPatterns } from "./redact";
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
 	"ELIZA_SECRET_SWAP_EXEMPT_VALUES";
+
+/**
+ * Honest model-param graphs are a handful of objects deep. JSON.parse still
+ * admits a 20k-deep nest that then RangeError'd `substituteInValue` on
+ * origin develop.
+ */
+export const MAX_SECRET_SWAP_WALK_DEPTH = 64;
+export const MAX_SECRET_SWAP_WALK_NODES = 100_000;
+export const SECRET_SWAP_UNBOUNDED = "SECRET_SWAP_UNBOUNDED";
+
+type SecretSwapWalkContext = {
+	visits: number;
+	visiting: WeakSet<object>;
+};
+
+function failSecretSwapUnbounded(
+	context: Record<string, unknown>,
+	cause?: unknown,
+): never {
+	throw new ElizaError("Secret-swap value exceeds the walk budget", {
+		code: SECRET_SWAP_UNBOUNDED,
+		cause,
+		context,
+		severity: "fatal",
+	});
+}
+
+export function isSecretSwapUnbounded(error: unknown): boolean {
+	return error instanceof ElizaError && error.code === SECRET_SWAP_UNBOUNDED;
+}
+
+function inspectSwap<T>(operation: string, inspect: () => T): T {
+	try {
+		return inspect();
+	} catch (cause) {
+		// error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+		failSecretSwapUnbounded({ inspection: operation }, cause);
+	}
+}
+
 
 export class SecretSwapUnresolvedPlaceholderError extends Error {
 	readonly placeholders: string[];
@@ -143,6 +184,115 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	);
 }
 
+function createSecretSwapWalkContext(): SecretSwapWalkContext {
+	return { visits: 0, visiting: new WeakSet<object>() };
+}
+
+function reserveSecretSwapVisit(ctx: SecretSwapWalkContext): void {
+	if (ctx.visits >= MAX_SECRET_SWAP_WALK_NODES) {
+		failSecretSwapUnbounded({
+			visits: ctx.visits + 1,
+			maxNodes: MAX_SECRET_SWAP_WALK_NODES,
+		});
+	}
+	ctx.visits += 1;
+}
+
+function ownValueDescriptor(
+	value: object,
+	key: string | number,
+): PropertyDescriptor | undefined {
+	const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, key),
+	);
+	if (!descriptor) return undefined;
+	if (!("value" in descriptor)) {
+		failSecretSwapUnbounded({ accessor: true, key: String(key) });
+	}
+	return descriptor;
+}
+
+function walkSecretSwapValue(
+	value: unknown,
+	depth: number,
+	ctx: SecretSwapWalkContext,
+	mapString: (text: string) => string,
+): unknown {
+	if (typeof value === "string") {
+		return mapString(value);
+	}
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (depth > MAX_SECRET_SWAP_WALK_DEPTH) {
+		failSecretSwapUnbounded({
+			depth,
+			maxDepth: MAX_SECRET_SWAP_WALK_DEPTH,
+		});
+	}
+	if (ctx.visiting.has(value)) {
+		failSecretSwapUnbounded({ cycle: true });
+	}
+	reserveSecretSwapVisit(ctx);
+	ctx.visiting.add(value);
+	try {
+		if (Array.isArray(value)) {
+			const lengthDescriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+				Object.getOwnPropertyDescriptor(value, "length"),
+			);
+			const length =
+				lengthDescriptor && "value" in lengthDescriptor
+					? lengthDescriptor.value
+					: value.length;
+			if (
+				typeof length !== "number" ||
+				!Number.isFinite(length) ||
+				length < 0
+			) {
+				failSecretSwapUnbounded({ arrayLength: length });
+			}
+			const size = Math.trunc(length);
+			const next: unknown[] = [];
+			for (let index = 0; index < size; index += 1) {
+				const descriptor = ownValueDescriptor(value, index);
+				next.push(
+					walkSecretSwapValue(
+						descriptor ? descriptor.value : undefined,
+						depth + 1,
+						ctx,
+						mapString,
+					),
+				);
+			}
+			return next;
+		}
+		if (!isPlainObject(value)) {
+			return value;
+		}
+		const next: Record<string, unknown> = {};
+		for (const key of inspectSwap("ownKeys", () => Reflect.ownKeys(value))) {
+			if (typeof key !== "string") continue;
+			const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+				Object.getOwnPropertyDescriptor(value, key),
+			);
+			if (!descriptor?.enumerable) continue;
+			if (!("value" in descriptor)) {
+				failSecretSwapUnbounded({ accessor: true, key });
+			}
+			next[key] = walkSecretSwapValue(
+				descriptor.value,
+				depth + 1,
+				ctx,
+				mapString,
+			);
+		}
+		return next;
+	} finally {
+		ctx.visiting.delete(value);
+	}
+}
+
+
 export class SecretSwapSession {
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
@@ -238,20 +388,12 @@ export class SecretSwapSession {
 	}
 
 	substituteInValue<T>(value: T): T {
-		if (typeof value === "string") {
-			return this.substituteText(value) as T;
-		}
-		if (Array.isArray(value)) {
-			return value.map((item) => this.substituteInValue(item)) as T;
-		}
-		if (isPlainObject(value)) {
-			const next: Record<string, unknown> = {};
-			for (const [key, child] of Object.entries(value)) {
-				next[key] = this.substituteInValue(child);
-			}
-			return next as T;
-		}
-		return value;
+		return walkSecretSwapValue(
+			value,
+			0,
+			createSecretSwapWalkContext(),
+			(text) => this.substituteText(text),
+		) as T;
 	}
 
 	restoreText(
@@ -275,20 +417,12 @@ export class SecretSwapSession {
 	}
 
 	restoreInValue<T>(value: T, options: { failOnUnresolved?: boolean } = {}): T {
-		if (typeof value === "string") {
-			return this.restoreText(value, options) as T;
-		}
-		if (Array.isArray(value)) {
-			return value.map((item) => this.restoreInValue(item, options)) as T;
-		}
-		if (isPlainObject(value)) {
-			const next: Record<string, unknown> = {};
-			for (const [key, child] of Object.entries(value)) {
-				next[key] = this.restoreInValue(child, options);
-			}
-			return next as T;
-		}
-		return value;
+		return walkSecretSwapValue(
+			value,
+			0,
+			createSecretSwapWalkContext(),
+			(text) => this.restoreText(text, options),
+		) as T;
 	}
 
 	assertNoUnresolvedPlaceholders(value: unknown): void {
