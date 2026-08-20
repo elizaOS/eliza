@@ -16,7 +16,7 @@ packages/scenario-runner/
     index.js / index.d.ts   # ScenarioDefinition, ScenarioTurn, CapturedAction, etc.
   src/
     index.ts                 # Public re-exports
-    cli.ts                   # `eliza-scenarios run|list` — arg parsing + orchestration
+    cli.ts                   # `eliza-scenarios run|list|stability` — arg parsing + orchestration
     executor.ts              # runScenario() — core execution loop (message/action/api/tick turns)
     runtime-factory.ts       # createScenarioRuntime() — boots AgentRuntime with PGLite + LLM
     loader.ts                # discoverScenarios / loadAllScenarios / listScenarioMetadata / expandScenarioDefinition / countScenarioCorpus / validateScenarioCorpus
@@ -24,6 +24,7 @@ packages/scenario-runner/
     judge.ts                 # judgeTextWithLlm() — LLM-as-judge (Cerebras gpt-oss-120b or fallback)
     cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
+    stability.ts             # strict three-attempt plans, aggregation, tiers, and focus lists
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
     seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
@@ -57,6 +58,7 @@ import {
 // Reporting
 import {
   buildAggregate, writeReport, printStdoutSummary, writeScenarioRunViewer,
+  createScenarioStabilityPlan, buildScenarioStabilityReport,
 } from "@elizaos/scenario-runner";
 
 // Native (training corpus) export
@@ -87,12 +89,20 @@ eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
                             [--provider groq|openai|anthropic|google|openrouter|cli]
                             [fileGlob ...]
 eliza-scenarios list <dir> [--lane pr-deterministic|live-only] [fileGlob ...]
+eliza-scenarios stability <output-dir> --runId <id>
+                          [--attempt-report <matrix.json>] # exactly three when supplied
 ```
 
 `--provider` pins a `run` invocation to one configured live provider instead of
 using provider precedence. Invalid or unavailable selections fail loudly.
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
+
+The `stability` command is report plumbing only. With no attempt reports it
+writes a plan with three unique run IDs and isolated `attempt-01` through
+`attempt-03` output directories. With exactly three reports at those declared
+paths, it writes deterministic `3/3`, `2/3`, `1/3`, or `0/3` tiers and a
+focus list. It does not execute scenarios or providers.
 
 ### Lanes
 
