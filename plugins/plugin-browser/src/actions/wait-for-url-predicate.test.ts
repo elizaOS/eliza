@@ -55,3 +55,34 @@ describe("buildWaitForUrlPredicate", () => {
     expect(predicate.test("https://anything.example")).toBe(false);
   });
 });
+
+  it("fail-closes nested-quantifier literals instead of hanging RegExp#test", () => {
+    const pred = buildWaitForUrlPredicate("/(a*)*b/");
+    expect(pred.kind).toBe("regex");
+    const start = Date.now();
+    expect(pred.test("a".repeat(30))).toBe(false);
+    expect(pred.test("https://ci.example/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).toBe(
+      false,
+    );
+    expect(Date.now() - start).toBeLessThan(100);
+  });
+
+  it("fail-closes stacked (a+)+ and (a|a?)+ literals", () => {
+    expect(buildWaitForUrlPredicate("/^(a+)+$/").test("aaaab")).toBe(false);
+    expect(buildWaitForUrlPredicate("/(a|a?)+$/").test("a".repeat(22) + "x")).toBe(
+      false,
+    );
+  });
+
+  it("still compiles a single-quantifier URL regex", () => {
+    const predicate = buildWaitForUrlPredicate("/\\/deploy\\/.+\\/done$/");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test("https://ci.example/deploy/123/done")).toBe(true);
+  });
+
+  it("rejects over-long URLs on the regex path instead of testing them", () => {
+    const predicate = buildWaitForUrlPredicate("/done$/");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test(`${"a".repeat(2049)}done`)).toBe(false);
+    expect(predicate.test("https://ci.example/done")).toBe(true);
+  });
