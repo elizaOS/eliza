@@ -694,7 +694,10 @@ export class IMessageService extends Service implements IIMessageService {
       description:
         "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
       metadata: {
-        aliases: ["imessage", "sms", "text", "messages"],
+        // `sms` is the canonical source owned by the Android Messages plugin.
+        // Keeping the local bridge on its iMessage/Messages names makes source
+        // selection deterministic when both first-party plugins are loaded.
+        aliases: ["imessage", "messages"],
         accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
         bridge: "macos-messages",
         accountSemantics: "local-macos-messages-single-account",
