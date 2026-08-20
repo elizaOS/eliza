@@ -97,7 +97,7 @@ describe("Shared turn AgentRuntime boundary", () => {
     });
   });
 
-  test("blocks unsupported capabilities before runtime or provider dispatch", async () => {
+  test("routes unsupported capabilities through the model with a truthful constraint", async () => {
     let dispatches = 0;
     const result = await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are Eliza." },
@@ -109,8 +109,28 @@ describe("Shared turn AgentRuntime boundary", () => {
     });
 
     expect(result.capabilityWall?.capability).toBe("communications");
-    expect(runtimeInputs).toHaveLength(0);
+    expect(runtimeInputs).toHaveLength(1);
     expect(dispatches).toBe(0);
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Unavailable actions detected");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("do not quote these instructions");
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "A refusal that only states the limitation is incomplete",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain("ready-to-copy wording");
+    expect(JSON.stringify(runtimeInputs[0])).not.toContain("Calls and messages need Dedicated");
+  });
+
+  test("routes streamed capability refusals through the model", async () => {
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "remind me tomorrow",
+    });
+
+    expect(result.capabilityWall?.capability).toBe("reminders");
+    expect(streamInputs).toHaveLength(1);
+    expect(JSON.stringify(streamInputs[0])).toContain("trusted reminder delivery");
+    expect(result.model).not.toBe("capability-wall");
   });
 
   test("commits durable memory only after a runtime reply lands", async () => {

@@ -81,6 +81,7 @@ import {
 } from "../../lib/steward-oauth-url";
 import {
   consumeStewardCodeFromQuery,
+  consumeStewardOAuthStateFromCallback,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
   recoverStewardEmailSessionViaCookie,
@@ -705,7 +706,7 @@ export default function StewardLoginSection() {
       // into the attacker's account. The verifier is consumed ONLY when the
       // state matches, so the user's own in-flight flow survives clicking a
       // foreign link.
-      const returnedState = searchParams.get("state");
+      const returnedState = consumeStewardOAuthStateFromCallback();
       const expectedState = peekStewardOAuthState();
       if (!returnedState || !expectedState || returnedState !== expectedState) {
         stripLegacyTokenParamsFromAddressBar();
@@ -1971,7 +1972,7 @@ export default function StewardLoginSection() {
       )}
 
       {hasOAuthProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {providers.google && (
             <Button
               variant="ghost"
@@ -2006,7 +2007,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "github" ? (
                 <Spinner />

@@ -654,7 +654,7 @@ describe("personal Shared messaging deliveries", () => {
     expect(renewedSession).not.toBe(firstSession);
   });
 
-  test("uses the phone account without provisioning an agent row", async () => {
+  test("auto-registers a first phone message without provisioning an agent row", async () => {
     const response = await request(validPhone);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -666,6 +666,14 @@ describe("personal Shared messaging deliveries", () => {
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
       "00000000-0000-4000-8000-000000000012",
+    );
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000011",
+        user_id: "00000000-0000-4000-8000-000000000012",
+      }),
+      namespace,
+      { warmConversation: true },
     );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -689,7 +697,8 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
-  test("routes a linked Discord DM through the same personal room", async () => {
+  test("auto-registers a first Discord DM in the same personal room", async () => {
+    personalDeliveryIsNew = true;
     const discordUserId = ["123456789", "012345678"].join("");
     const response = await request({
       platform: "discord",
@@ -713,6 +722,14 @@ describe("personal Shared messaging deliveries", () => {
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
     });
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+      { warmConversation: true },
+    );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
       body.data.identity.id,
@@ -771,6 +788,94 @@ describe("personal Shared messaging deliveries", () => {
           source: "telegram",
         }),
       }),
+    );
+  });
+
+  test("keeps a Telegram reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request({
+      ...valid,
+      message: "Remind me in 2 minutes to stretch",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "shared",
+        },
+        reply: "hello from Eliza",
+      },
+    });
+    expect(bridge).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
+      expect.stringMatching(/^personal:/),
+      "Remind me in 2 minutes to stretch",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "telegram:eliza:42",
+      "platform",
+      {
+        platform: "telegram",
+        project: "eliza-app",
+        chatId: "123456789",
+      },
+    );
+  });
+
+  test("keeps a Discord reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const discordUserId = "123456789012345678";
+
+    const response = await request({
+      platform: "discord",
+      discordUserId,
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      messageId: "discord:reminder-42",
+      message: "Remind me in 2 minutes to stretch",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "shared",
+        },
+        reply: "hello from Eliza",
+      },
+    });
+    expect(bridge).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
+      expect.stringMatching(/^personal:/),
+      "Remind me in 2 minutes to stretch",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "discord:reminder-42",
+      "platform",
+      {
+        platform: "discord",
+        discordUserId,
+      },
     );
   });
 
