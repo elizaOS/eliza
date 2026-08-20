@@ -2829,6 +2829,10 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(cloudSdkSrcDir, "index.ts"),
           },
           {
+            find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+            replacement: path.join(cloudSdkSrcDir, "redemption-contract.ts"),
+          },
+          {
             find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
             replacement: path.join(
               cloudSdkSrcDir,

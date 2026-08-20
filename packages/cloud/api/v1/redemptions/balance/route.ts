@@ -19,6 +19,10 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  calculateDailyLimitRemaining,
+  evaluateRedemptionEligibility,
+} from "./eligibility";
 
 interface EarningsBySource {
   source: "miniapp" | "agent" | "mcp";
@@ -136,12 +140,9 @@ app.get("/", async (c) => {
       AND created_at >= ${todayStart}
     `);
 
-    const dailyRedeemed = Number(
-      (dailyRedeemedResult.rows[0] as { total: string })?.total || 0,
-    );
-    const dailyLimitRemaining = Math.max(
-      0,
-      SUPPLY_SHOCK_PROTECTION.USER_DAILY_LIMIT_USD - dailyRedeemed,
+    const dailyLimitRemaining = calculateDailyLimitRemaining(
+      SUPPLY_SHOCK_PROTECTION.USER_DAILY_LIMIT_USD,
+      (dailyRedeemedResult.rows[0] as { total?: string })?.total ?? "0",
     );
 
     const availableBalance = earningsRecord
@@ -160,19 +161,13 @@ app.get("/", async (c) => {
       ? Number(earningsRecord.total_converted_to_credits)
       : 0;
 
-    let canRedeem = true;
-    let reason: string | undefined;
-
-    if (availableBalance < SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD) {
-      canRedeem = false;
-      reason = `Minimum redemption is $${SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD.toFixed(2)}. You have $${availableBalance.toFixed(2)} available.`;
-    } else if (isInCooldown) {
-      canRedeem = false;
-      reason = `Cooldown active. You can redeem again after ${cooldownEndsAt?.toISOString()}.`;
-    } else if (dailyLimitRemaining <= 0) {
-      canRedeem = false;
-      reason = `Daily limit reached. Resets at midnight UTC.`;
-    }
+    const { canRedeem, reason } = evaluateRedemptionEligibility({
+      availableBalance,
+      minimumRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD,
+      isInCooldown: Boolean(isInCooldown),
+      cooldownEndsAt,
+      dailyLimitRemaining,
+    });
 
     const bySource: EarningsBySource[] = earningsBySource.map((e) => ({
       source: (e.source || "miniapp") as "miniapp" | "agent" | "mcp",
