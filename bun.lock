@@ -1659,6 +1659,22 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-design": {
+      "name": "@elizaos/plugin-design",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@types/node": "^25.0.6",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+    },
     "plugins/plugin-discord": {
       "name": "@elizaos/plugin-discord",
       "version": "2.0.3-beta.7",
@@ -4090,6 +4106,8 @@
     "@elizaos/plugin-computeruse": ["@elizaos/plugin-computeruse@workspace:plugins/plugin-computeruse"],
 
     "@elizaos/plugin-contacts": ["@elizaos/plugin-contacts@workspace:plugins/plugin-contacts"],
+
+    "@elizaos/plugin-design": ["@elizaos/plugin-design@workspace:plugins/plugin-design"],
 
     "@elizaos/plugin-discord": ["@elizaos/plugin-discord@workspace:plugins/plugin-discord"],
 
