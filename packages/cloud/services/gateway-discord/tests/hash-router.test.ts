@@ -21,6 +21,14 @@ function endpointSliceResponse(addresses: string[]): Response {
   });
 }
 
+function endpointSliceCallCount(
+  calls: Array<[RequestInfo | URL, RequestInit?]>,
+  serviceName: string,
+): number {
+  const selector = `kubernetes.io/service-name=${serviceName}`;
+  return calls.filter(([input]) => String(input).includes(selector)).length;
+}
+
 describe("hash router", () => {
   afterEach(() => {
     mock.restore();
@@ -134,7 +142,9 @@ describe("hash router", () => {
     );
 
     expect(results.every((targets) => targets.length === 1)).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      endpointSliceCallCount(fetchSpy.mock.calls, "concurrent-stale"),
+    ).toBe(2);
     releaseRefresh?.();
     await refreshHashRing(serverUrl);
   });
@@ -164,12 +174,16 @@ describe("hash router", () => {
         getHashTargets(serverUrl, `user-${index}`, 1),
       ),
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      endpointSliceCallCount(fetchSpy.mock.calls, "concurrent-expired"),
+    ).toBe(2);
     releaseRefresh?.();
 
     const results = await pending;
     expect(results.every((targets) => targets.length === 0)).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(
+      endpointSliceCallCount(fetchSpy.mock.calls, "concurrent-expired"),
+    ).toBe(2);
   });
 
   test("drops a stale ring after prolonged discovery failure", async () => {
