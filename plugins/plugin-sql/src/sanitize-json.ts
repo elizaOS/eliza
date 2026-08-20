@@ -28,6 +28,16 @@ interface SanitizeContext {
   visits: number;
 }
 
+function reflectOrFail<T>(operation: () => T, reason: string): T {
+  try {
+    return operation();
+  } catch (cause) {
+    // error-policy:J2 reflection failures are wrapped at the exact operation;
+    // never inspect an attacker-thrown value with instanceof or property Gets.
+    failUnbounded({ reason }, cause);
+  }
+}
+
 /**
  * Prepare a value for `JSON.stringify` + `$1::jsonb`. Circular references
  * become `null`. Depth past {@link MAX_SQL_JSON_SANITIZE_DEPTH} fails closed.
@@ -80,59 +90,77 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
     }
     context.seen.add(value);
 
-    try {
-      if (value instanceof Date) {
+    if (reflectOrFail(() => value instanceof Date, "date-check")) {
+      try {
         const timestamp = Date.prototype.getTime.call(value);
         return Number.isFinite(timestamp) ? Date.prototype.toISOString.call(value) : null;
+      } catch (cause) {
+        failUnbounded({ reason: "date-read" }, cause);
       }
+    }
 
-      if (Array.isArray(value)) {
-        const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
-        const length = lengthDescriptor?.value;
-        if (
-          !Number.isSafeInteger(length) ||
-          length < 0 ||
-          length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
-        ) {
-          failUnbounded({
-            reason: "array-length",
-            length: typeof length === "number" ? length : "invalid",
-            max: MAX_SQL_JSON_SANITIZE_NODES,
-          });
-        }
-        const result: unknown[] = [];
-        for (let index = 0; index < length; index += 1) {
-          const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-          if (descriptor && ("get" in descriptor || "set" in descriptor)) {
-            failUnbounded({ reason: "array-accessor", index });
-          }
-          result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
-        }
-        return result;
+    if (reflectOrFail(() => Array.isArray(value), "array-check")) {
+      const lengthDescriptor = reflectOrFail(
+        () => Object.getOwnPropertyDescriptor(value, "length"),
+        "array-length-descriptor"
+      );
+      const length = lengthDescriptor?.value;
+      if (
+        !Number.isSafeInteger(length) ||
+        length < 0 ||
+        length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
+      ) {
+        failUnbounded({
+          reason: "array-length",
+          length: typeof length === "number" ? length : "invalid",
+          max: MAX_SQL_JSON_SANITIZE_NODES,
+        });
       }
-
-      const result: Record<string, unknown> = {};
-      for (const key in value) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
-        if (!descriptor?.enumerable) continue;
-        if ("get" in descriptor || "set" in descriptor) {
-          failUnbounded({ reason: "object-accessor" });
+      const result: unknown[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = reflectOrFail(
+          () => Object.getOwnPropertyDescriptor(value, String(index)),
+          "array-item-descriptor"
+        );
+        if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+          failUnbounded({ reason: "array-accessor", index });
         }
-        const sanitizedKey = key.replace(new RegExp(String.fromCharCode(0), "g"), "");
-        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
-        if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
-          failUnbounded({ reason: "custom-toJSON" });
-        }
-        result[sanitizedKey] = sanitizedValue;
+        result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
       }
       return result;
-    } catch (error) {
-      if (error instanceof ElizaError && error.code === SQL_JSON_SANITIZE_UNBOUNDED) {
-        throw error;
-      }
-      // error-policy:J2 reflection failures are wrapped without leaking input.
-      failUnbounded({ reason: "reflection" }, error);
     }
+
+    const keys = reflectOrFail(() => Reflect.ownKeys(value), "object-keys");
+    if (keys.length > MAX_SQL_JSON_SANITIZE_NODES - context.visits) {
+      failUnbounded({ reason: "object-keys", keys: keys.length, max: MAX_SQL_JSON_SANITIZE_NODES });
+    }
+    const result = Object.create(null) as Record<string, unknown>;
+    for (const key of keys) {
+      if (typeof key !== "string") continue;
+      const descriptor = reflectOrFail(
+        () => Object.getOwnPropertyDescriptor(value, key),
+        "object-property-descriptor"
+      );
+      if (!descriptor?.enumerable) continue;
+      if ("get" in descriptor || "set" in descriptor) {
+        failUnbounded({ reason: "object-accessor" });
+      }
+      const sanitizedKey = key.replace(new RegExp(String.fromCharCode(0), "g"), "");
+      const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
+      if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
+        failUnbounded({ reason: "custom-toJSON" });
+      }
+      if (Object.hasOwn(result, sanitizedKey)) {
+        failUnbounded({ reason: "key-collision" });
+      }
+      Object.defineProperty(result, sanitizedKey, {
+        value: sanitizedValue,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return result;
   }
 
   return value;

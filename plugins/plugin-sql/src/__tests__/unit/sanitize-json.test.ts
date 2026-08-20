@@ -164,6 +164,58 @@ describe("sanitizeJsonObject", () => {
     );
   });
 
+  it("does not inspect a hostile value thrown by a reflection trap", () => {
+    const hostileCause = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("secondary prototype trap");
+        },
+      }
+    );
+    const value = new Proxy(
+      { value: 1 },
+      {
+        ownKeys() {
+          throw hostileCause;
+        },
+      }
+    );
+
+    expect(() => sanitizeJsonObject(value)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("preserves __proto__ as JSON data without mutating the result prototype", () => {
+    const input = JSON.parse('{"__proto__":{"admin":true},"safe":1}') as Record<string, unknown>;
+    const sanitized = sanitizeJsonObject(input) as Record<string, unknown>;
+
+    expect(Object.getPrototypeOf(sanitized)).toBeNull();
+    expect(Object.hasOwn(sanitized, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(sanitized))).toEqual(input);
+
+    const nul = String.fromCharCode(0);
+    const nulKey = sanitizeJsonObject({ [`__proto__${nul}`]: { kept: true } }) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.hasOwn(nulKey, "__proto__")).toBe(true);
+    expect(JSON.parse(JSON.stringify(nulKey))).toEqual(JSON.parse('{"__proto__":{"kept":true}}'));
+  });
+
+  it("ignores inherited enumerable work instead of walking it", () => {
+    const prototype = Object.create(null) as Record<string, unknown>;
+    for (let index = 0; index < MAX_SQL_JSON_SANITIZE_NODES * 2; index += 1) {
+      prototype[`inherited-${index}`] = index;
+    }
+    const value = Object.create(prototype) as Record<string, unknown>;
+    value.own = "kept";
+
+    const sanitized = sanitizeJsonObject(value);
+    expect(JSON.parse(JSON.stringify(sanitized))).toEqual({ own: "kept" });
+  });
+
   it("rejects custom toJSON without invoking it", () => {
     let calls = 0;
     const value = {
