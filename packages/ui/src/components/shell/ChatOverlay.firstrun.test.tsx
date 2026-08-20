@@ -214,9 +214,10 @@ describe("ChatOverlay first-run gating", () => {
 
   it("uses the same visible half-height shell as post-onboarding chat", () => {
     const onStateChange = vi.fn();
-    render(
+    const controller = makeController();
+    const { rerender } = render(
       <ChatOverlay
-        controller={makeController()}
+        controller={controller}
         firstRunOpen
         onStateChange={onStateChange}
       />,
@@ -230,6 +231,18 @@ describe("ChatOverlay first-run gating", () => {
     expect(grabber.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
+    // Onboarding owns the first card at the top of the transcript, so the
+    // ordinary-chat dissolve must not obscure its choice controls. Once the
+    // gate clears, the regular transcript owns that decorative fade again.
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        onStateChange={onStateChange}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
