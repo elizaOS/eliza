@@ -79,6 +79,11 @@ cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
 
 - The mocks live at `packages/cloud/test-mocks`; the harness imports from
   `@elizaos/cloud-test-mocks/hetzner`.
+- `src/fixtures/mock-llm.ts` can take the same strict core fixture registry used
+  by scenarios. Its loopback OpenAI adapter supports JSON and SSE completions,
+  tool calls, usage, latency, declared provider errors, timeouts, and client
+  cancellation. Fixed/echo replies remain compatibility fixtures for existing
+  journeys; new tests should pass named fixtures and assert their consumption.
 - The memory sandbox provider is guarded by `NODE_ENV=test` or `CLOUD_E2E=1`;
   it is not selectable in production.
 - The cloud-api adapter avoids Wrangler in CI while still exercising the real

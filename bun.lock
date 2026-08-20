@@ -504,6 +504,7 @@
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/cloud-test-mocks": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
