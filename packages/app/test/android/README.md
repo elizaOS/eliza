@@ -251,3 +251,22 @@ fills the host-agent URL, submits first-run, and writes
 `packages/app/test-results/ios-onboarding-to-home/`: `fresh-onboarding.png`,
 `home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and
 `host-agent.log`.
+
+## Cloud-onboarding lane hygiene
+
+The live cloud-onboarding lanes (`test:e2e:android:cloud-onboarding`,
+`test:e2e:ios:cloud-onboarding`) sign in with the shared deterministic e2e
+SIWE wallet against real Eliza Cloud. A red tap-mode run can strand the
+dedicated agent it provisioned on that wallet's org, which drains real
+credits and makes later runs look less like a first run. Before rerunning
+the lanes, reconcile the org with the cleanup lane from the repo root:
+
+```bash
+bun run cloud:e2e:agents:cleanup                 # dry run: list + selection
+bun run cloud:e2e:agents:cleanup -- --apply --wait   # delete leaked agents
+```
+
+It keeps the newest agent, never touches agents younger than 30 minutes
+(so it cannot race an in-flight onboarding run), and supports `--protect
+<agentId>`, `--keep <n>`, and `--report <path>`. See
+`scripts/cloud/e2e-agent-cleanup.mjs`.
