@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sockets: FakeSocket[] = [];
+const credentialSaves: ReturnType<typeof vi.fn>[] = [];
 
 class FakeSocket {
   readonly ev = new EventEmitter();
@@ -19,7 +20,11 @@ vi.mock("@whiskeysockets/baileys", () => ({
     sockets.push(socket);
     return socket;
   }),
-  useMultiFileAuthState: vi.fn(async () => ({ state: {}, saveCreds: vi.fn() })),
+  useMultiFileAuthState: vi.fn(async () => {
+    const saveCreds = vi.fn(async () => undefined);
+    credentialSaves.push(saveCreds);
+    return { state: {}, saveCreds };
+  }),
   fetchLatestBaileysVersion: vi.fn(async () => ({ version: [2, 3000, 0] })),
   DisconnectReason: {
     loggedOut: 401,
@@ -49,12 +54,14 @@ vi.mock("pino", () => ({
 }));
 
 import makeWASocket, { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
+import QRCode from "qrcode";
 import { WhatsAppPairingSession } from "./whatsapp-pairing";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
   sockets.length = 0;
+  credentialSaves.length = 0;
 });
 
 describe("WhatsAppPairingSession stop/restart race", () => {
@@ -199,5 +206,86 @@ describe("WhatsAppPairingSession stop/restart race", () => {
 
     expect(makeWASocket).toHaveBeenCalledTimes(2);
     expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ status: "connected" }));
+  });
+
+  it("does not emit a QR whose generation finishes after stop()", async () => {
+    let releaseQr: (() => void) | undefined;
+    const qrGate = new Promise<void>((resolve) => {
+      releaseQr = resolve;
+    });
+    vi.mocked(QRCode.toDataURL).mockImplementationOnce(async () => {
+      await qrGate;
+      return "data:image/png;base64,late";
+    });
+    const onEvent = vi.fn();
+    const session = new WhatsAppPairingSession({
+      authDir: "/tmp/whatsapp-pairing-test",
+      accountId: "acct-1",
+      onEvent,
+    });
+    await session.start();
+    sockets[0]?.ev.emit("connection.update", { qr: "sensitive-qr" });
+    await vi.waitFor(() => expect(QRCode.toDataURL).toHaveBeenCalledTimes(1));
+
+    session.stop();
+    releaseQr?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "whatsapp-qr" }));
+    expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ status: "waiting_for_qr" }));
+  });
+
+  it("ignores credential updates from a socket that a restart replaced", async () => {
+    vi.useFakeTimers();
+    const session = new WhatsAppPairingSession({
+      authDir: "/tmp/whatsapp-pairing-test",
+      accountId: "acct-1",
+      onEvent: vi.fn(),
+    });
+    await session.start();
+    const firstSocket = sockets[0];
+    firstSocket?.ev.emit("connection.update", {
+      connection: "close",
+      lastDisconnect: {
+        error: { output: { statusCode: DISCONNECT_REASON.restartRequired } },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sockets).toHaveLength(2);
+    expect(credentialSaves).toHaveLength(2);
+
+    firstSocket?.ev.emit("creds.update", { stale: true });
+    sockets[1]?.ev.emit("creds.update", { current: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(credentialSaves[0]).not.toHaveBeenCalled();
+    expect(credentialSaves[1]).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes a synchronous close emitted by end() inert", async () => {
+    vi.useFakeTimers();
+    const onEvent = vi.fn();
+    const session = new WhatsAppPairingSession({
+      authDir: "/tmp/whatsapp-pairing-test",
+      accountId: "acct-1",
+      onEvent,
+    });
+    await session.start();
+    const socket = sockets[0];
+    socket?.end.mockImplementation(() => {
+      socket.ev.emit("connection.update", {
+        connection: "close",
+        lastDisconnect: {
+          error: { output: { statusCode: DISCONNECT_REASON.restartRequired } },
+        },
+      });
+    });
+
+    session.stop();
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(socket?.end).toHaveBeenCalledTimes(1);
+    expect(makeWASocket).toHaveBeenCalledTimes(1);
+    expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ status: "disconnected" }));
   });
 });
