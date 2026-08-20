@@ -1971,24 +1971,54 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transform: scale(1.18);
 }
 
-.landing-message--typing-multiple .landing-message-avatar-slot {
-  justify-content: flex-start;
-  overflow: visible;
-}
-
-.landing-message--typing-multiple
-  .landing-message-avatar
-  + .landing-message-avatar {
-  margin-left: -0.95rem;
-  box-shadow: 0 0 0 2px #ffffff;
-}
-
 .landing-message-author {
   margin: 0 0 0.16rem 0.7rem;
   color: #76767c;
   font-size: 0.64rem;
   font-weight: 620;
   line-height: 1;
+}
+
+.landing-message--typing {
+  flex: 0 0 auto;
+  min-height: 2.65rem;
+  margin-top: 0.1rem;
+}
+
+.landing-message--typing .landing-message-body {
+  align-content: end;
+  min-height: 2.65rem;
+}
+
+.landing-message--typing .landing-message-author {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing-message--typing-multiple .landing-message-avatar-slot {
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-message--typing-multiple .landing-message-avatar {
+  position: absolute;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 1.5px solid #ffffff;
+}
+
+.landing-message--typing-multiple .landing-message-avatar:first-child {
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.landing-message--typing-multiple .landing-message-avatar:last-child {
+  right: 0;
+  bottom: 0;
+  z-index: 2;
 }
 
 .landing-bubble--user {

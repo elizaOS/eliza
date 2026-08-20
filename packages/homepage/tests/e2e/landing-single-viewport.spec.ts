@@ -261,6 +261,24 @@ test("concurrent human replies share one compact typing row", async ({
   const multipleBubbleBox = await indicator
     .locator(".landing-typing")
     .boundingBox();
+  const multipleAvatarSlotBox = await indicator
+    .locator(".landing-message-avatar-slot")
+    .boundingBox();
+  const multipleBodyBox = await indicator
+    .locator(".landing-message-body")
+    .boundingBox();
+  const latestMessageBox = await page
+    .locator('[data-demo-item="true"]')
+    .last()
+    .boundingBox();
+  const multipleIndicatorBox = await indicator.boundingBox();
+
+  expect(
+    (multipleAvatarSlotBox?.x ?? 0) + (multipleAvatarSlotBox?.width ?? 0),
+  ).toBeLessThanOrEqual((multipleBodyBox?.x ?? 0) + 1);
+  expect(multipleIndicatorBox?.y ?? 0).toBeGreaterThanOrEqual(
+    (latestMessageBox?.y ?? 0) + (latestMessageBox?.height ?? 0),
+  );
 
   await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
     timeout: 3_000,
