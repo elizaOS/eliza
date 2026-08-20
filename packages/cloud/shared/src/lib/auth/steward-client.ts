@@ -439,9 +439,14 @@ async function verifyStewardTokenWithoutCaches(input: {
     clockTolerance: STEWARD_VERIFY_CLOCK_SKEW_SECONDS,
   });
 
+  // @stwd/auth's canonical HS256 session signer omits `typ`; older Eliza
+  // signers included `typ: "JWT"`. Both are ordinary JWT representations.
+  // Keep every other explicit type fail-closed so a token minted for another
+  // protocol cannot be confused with a Steward browser session.
+  const ordinaryTypeIsValid = protectedHeader.typ === undefined || protectedHeader.typ === "JWT";
   if (
     (input.stagingHeader.isCandidate && protectedHeader.typ !== STAGING_SESSION_TOKEN_TYP) ||
-    (!input.stagingHeader.isCandidate && protectedHeader.typ !== "JWT")
+    (!input.stagingHeader.isCandidate && !ordinaryTypeIsValid)
   ) {
     logger.warn("[StewardClient] Rejected token with an invalid typ header");
     return null;

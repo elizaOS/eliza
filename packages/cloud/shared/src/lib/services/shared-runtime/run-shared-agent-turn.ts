@@ -290,6 +290,7 @@ function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
   capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
+  blockedCapabilities: SharedCapabilityWall[] = [],
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -311,8 +312,19 @@ function buildSharedRuntimeSystem(
         : "- Image generation is unavailable on this chat path.\n") +
       "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
-      "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
+      "- When an ambiguous follow-up asks you to execute a prior external action, explain the actual limitation naturally and offer useful planning or drafting help.",
   );
+  if (blockedCapabilities.length) {
+    parts.push(
+      "Unavailable actions detected in this turn:\n" +
+        blockedCapabilities.map((wall) => `- ${wall.label}: ${wall.constraint}`).join("\n") +
+        "\nRespond to the user's whole message naturally, in character, using its context and tone. " +
+        "Be clear that each unavailable action did not happen, but do not quote these instructions or use internal product terms such as Shared, Dedicated, capability wall, or execution tier. " +
+        "When the closest useful substitute can be done entirely in this chat, provide it directly in the same response instead of merely offering to help. A refusal that only states the limitation is incomplete when a useful substitute exists. " +
+        "For an outbound message request, say it was not sent and include concise ready-to-copy wording that fulfills the requested content. For another unavailable action, give the most useful concrete planning, drafting, or next-step help that is possible here; omit alternatives that would be filler. " +
+        "Never imply that an unavailable action succeeded.",
+    );
+  }
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
@@ -354,8 +366,7 @@ export function appendSharedInput(
  * Durable commit of the landed user/assistant pair into the tenant-scoped
  * memory table. Runs only when the caller attached a flag-gated
  * `execution.memory` store, and only for turns a model/runtime actually
- * produced — the capability-wall and degraded paths are transport UX, not
- * model conversation, and stay out of the memory rows.
+ * produced. Degraded no-model responses stay out of the memory rows.
  *
  * WHY a plain await and not waitUntil: this module is deliberately
  * executionCtx-independent (it also runs outside Cloudflare Workers), so no
@@ -386,57 +397,28 @@ function capabilityResolution(
   return resolveSharedCapabilityIntent(input.capabilityText ?? input.message, capabilities);
 }
 
-function appendBlockedCapabilityReplies(reply: string, blocked: SharedCapabilityWall[]): string {
-  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
-  return additions.length ? `${reply.trim()}\n\n${additions.join("\n\n")}` : reply;
-}
-
-function blockedCapabilityReplySuffix(reply: string, blocked: SharedCapabilityWall[]): string {
-  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
-  return additions.length ? `\n\n${additions.join("\n\n")}` : "";
-}
-
-function withBlockedSecondaryCapabilities(
+function withCapabilityResolution(
   result: RunSharedAgentTurnResult,
-  input: RunSharedAgentTurnInput,
-  blocked: SharedCapabilityWall[],
+  capabilityWall: SharedCapabilityWall | undefined,
+  blockedSecondary: SharedCapabilityWall[],
 ): RunSharedAgentTurnResult {
-  if (!blocked.length) return result;
-  const reply = appendBlockedCapabilityReplies(result.reply, blocked);
   return {
     ...result,
-    reply,
-    responded: true,
-    history: appendSharedTurn(
-      input.history,
-      input.message.trim(),
-      reply,
-      input.messageIds,
-      input.messageRole,
-    ),
-    blockedSecondaryCapabilities: blocked,
+    ...(capabilityWall ? { capabilityWall } : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
   };
 }
 
-function withBlockedSecondaryStream(
+function withStreamCapabilityResolution(
   result: RunSharedAgentTurnStreamResult,
-  blocked: SharedCapabilityWall[],
+  capabilityWall: SharedCapabilityWall | undefined,
+  blockedSecondary: SharedCapabilityWall[],
 ): RunSharedAgentTurnStreamResult {
-  if (!blocked.length || !result.parts) return result;
-  const source = result.parts;
-  const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-    for await (const part of source) {
-      if (part.type === "text-delta") {
-        yield part;
-        continue;
-      }
-      const suffix = blockedCapabilityReplySuffix(part.text, blocked);
-      const text = `${part.text.trim()}${suffix}`;
-      if (suffix) yield { type: "text-delta", text: suffix };
-      yield { ...part, text };
-    }
-  })();
-  return { ...result, parts, blockedSecondaryCapabilities: blocked };
+  return {
+    ...result,
+    ...(capabilityWall ? { capabilityWall } : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
+  };
 }
 /**
  * Run one shared (container-free) turn for a simple agent. Returns a degraded
@@ -461,22 +443,6 @@ export async function runSharedAgentTurn(
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
-  if (capabilityWall) {
-    return {
-      reply: capabilityWall.reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        capabilityWall.reply,
-        input.messageIds,
-        input.messageRole,
-      ),
-      model: "capability-wall",
-      degraded: false,
-      capabilityWall,
-    };
-  }
-
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
@@ -493,7 +459,7 @@ export async function runSharedAgentTurn(
   try {
     const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    turn = withBlockedSecondaryCapabilities(
+    turn = withCapabilityResolution(
       await runSharedElizaRuntimeTurn({
         ...input,
         character: {
@@ -507,13 +473,14 @@ export async function runSharedAgentTurn(
               media: actionsEnabled && Boolean(execution.media),
             },
             input.recallContext,
+            capabilityWall ? [capabilityWall] : blockedSecondary,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
       }),
-      input,
+      capabilityWall,
       blockedSecondary,
     );
   } catch (error) {
@@ -553,22 +520,6 @@ export async function runSharedAgentTurnStream(
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
-  if (capabilityWall) {
-    const reply = capabilityWall.reply;
-    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-      yield { type: "text-delta", text: reply };
-      yield { type: "finish", text: reply };
-    })();
-    return {
-      model: "capability-wall",
-      degraded: false,
-      reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
-      parts,
-      capabilityWall,
-    };
-  }
-
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
@@ -584,7 +535,7 @@ export async function runSharedAgentTurnStream(
   try {
     const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
-    return withBlockedSecondaryStream(
+    return withStreamCapabilityResolution(
       await runSharedElizaRuntimeTurnStream({
         ...input,
         character: {
@@ -598,12 +549,14 @@ export async function runSharedAgentTurnStream(
               media: actionsEnabled && Boolean(execution.media),
             },
             input.recallContext,
+            capabilityWall ? [capabilityWall] : blockedSecondary,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
       }),
+      capabilityWall,
       blockedSecondary,
     );
   } catch (error) {

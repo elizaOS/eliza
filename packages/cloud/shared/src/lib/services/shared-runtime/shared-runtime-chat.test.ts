@@ -793,7 +793,7 @@ describe("SharedRuntimeChatService", () => {
     const blockedCommunication = {
       capability: "communications",
       label: "Calls and messages",
-      reply: "I can't initiate a separate email.",
+      constraint: "This session cannot initiate a separate email.",
     };
     streamTurn = {
       degraded: false,

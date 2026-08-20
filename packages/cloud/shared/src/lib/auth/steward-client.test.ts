@@ -174,6 +174,19 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     expect(await verify(userIdOnly)).toBeNull();
   });
 
+  test("accepts canonical Steward session tokens whose protected header omits typ", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const canonicalStewardToken = await new SignJWT({
+      sub: "canonical-steward-user",
+      iat: now,
+      exp: now + 60,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .sign(secretKey());
+
+    expect((await verify(canonicalStewardToken))?.userId).toBe("canonical-steward-user");
+  });
+
   test("revalidates lifetime on distributed cache hits", async () => {
     const now = Math.floor(Date.now() / 1000);
     const signingKeyFingerprint = createHash("sha256")
