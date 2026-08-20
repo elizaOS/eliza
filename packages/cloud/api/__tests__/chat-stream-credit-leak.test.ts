@@ -119,6 +119,12 @@ let ledger = makeLedgerReservation(100, 0.015);
 const admissionCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: {
     createAnonymousReservation: mock(
       () => makeLedgerReservation(0, 0).reservation,
