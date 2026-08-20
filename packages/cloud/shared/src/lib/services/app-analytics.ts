@@ -7,6 +7,7 @@
 import { type AppRequest, appsRepository, type NewAppAnalytics } from "../../db/repositories/apps";
 import type { App } from "../types";
 import { logger } from "../utils/logger";
+import { computeInferenceCharge } from "./app-credit-math";
 
 export interface AppSessionRow {
   sessionId: string;
@@ -363,15 +364,18 @@ export class AppAnalyticsService {
       };
     }
 
-    const markupPercentage = Number(app.inference_markup_percentage ?? 0);
-    const markup = baseCost * (markupPercentage / 100);
-    const finalCost = baseCost + markup;
+    const charge = computeInferenceCharge(baseCost, {
+      monetizationEnabled: true,
+      platformOffsetAmount: 0,
+      purchaseSharePercentage: 0,
+      inferenceMarkupPercentage: app.inference_markup_percentage,
+    });
 
     return {
       baseCost,
-      markup,
-      finalCost,
-      markupPercentage,
+      markup: charge.creatorMarkup,
+      finalCost: charge.totalCost,
+      markupPercentage: charge.markupPercentage,
     };
   }
 

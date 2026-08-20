@@ -513,6 +513,21 @@ describe("linkedinAdsProvider", () => {
     expect(result.metrics?.cpm).toBeCloseTo((19.91833 / 171) * 1000, 4);
   });
 
+  test("fails closed when LinkedIn returns a corrupt spend metric", async () => {
+    enqueue({
+      elements: [{ ...ANALYTICS_FIXTURE.elements[0], costInLocalCurrency: "not-a-number" }],
+    });
+
+    const result = await linkedinAdsProvider.getCampaignMetrics(
+      credentials,
+      "507404993/603407684/145282384",
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.metrics).toBeUndefined();
+    expect(result.error).toContain("invalid analytics metric");
+  });
+
   test("propagates LinkedIn API errors as failed results without partial success", async () => {
     enqueue(
       { message: "Not enough permissions to access: adCampaignGroups.CREATE", status: 403 },

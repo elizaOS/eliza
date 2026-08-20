@@ -1,6 +1,8 @@
-// LinkedIn Marketing API integration (versioned REST) -
-// https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns
+/**
+ * Implements the versioned LinkedIn Marketing API advertising provider.
+ */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../../../utils/logger";
 import { downloadAdMedia, mediaFileName } from "../media-utils";
 import type {
@@ -332,16 +334,42 @@ function analyticsDate(date: Date): string {
   return `(year:${date.getUTCFullYear()},month:${date.getUTCMonth() + 1},day:${date.getUTCDate()})`;
 }
 
+function parseAnalyticsMetric(field: string, value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (
+    (typeof value !== "string" && typeof value !== "number") ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  return parsed;
+}
+
 function sumAnalytics(elements: LinkedInAnalyticsElement[]): CampaignMetrics {
   let spend = 0;
   let impressions = 0;
   let clicks = 0;
   let conversions = 0;
   for (const element of elements) {
-    spend += Number(element.costInLocalCurrency ?? 0) || 0;
-    impressions += element.impressions ?? 0;
-    clicks += element.clicks ?? element.landingPageClicks ?? 0;
-    conversions += (element.externalWebsiteConversions ?? 0) + (element.oneClickLeads ?? 0);
+    spend += parseAnalyticsMetric("costInLocalCurrency", element.costInLocalCurrency);
+    impressions += parseAnalyticsMetric("impressions", element.impressions);
+    clicks += parseAnalyticsMetric(
+      element.clicks === null || element.clicks === undefined ? "landingPageClicks" : "clicks",
+      element.clicks ?? element.landingPageClicks,
+    );
+    conversions +=
+      parseAnalyticsMetric("externalWebsiteConversions", element.externalWebsiteConversions) +
+      parseAnalyticsMetric("oneClickLeads", element.oneClickLeads);
   }
   return {
     spend,

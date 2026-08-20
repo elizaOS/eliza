@@ -185,3 +185,38 @@ describe("AppAnalyticsService.buildSessionAnalytics", () => {
     expect(analytics.sessions[0]?.exitPath).toBe("/b");
   });
 });
+
+describe("AppAnalyticsService.calculateAppPricing", () => {
+  test("applies a valid custom inference markup", () => {
+    const service = new AppAnalyticsService();
+
+    expect(
+      service.calculateAppPricing({
+        baseCost: 2,
+        app: {
+          custom_pricing_enabled: true,
+          inference_markup_percentage: 25,
+        } as never,
+      }),
+    ).toEqual({
+      baseCost: 2,
+      markup: 0.5,
+      finalCost: 2.5,
+      markupPercentage: 25,
+    });
+  });
+
+  test("fails closed when an enabled app has a corrupt markup", () => {
+    const service = new AppAnalyticsService();
+
+    expect(() =>
+      service.calculateAppPricing({
+        baseCost: 2,
+        app: {
+          custom_pricing_enabled: true,
+          inference_markup_percentage: Number.NaN,
+        } as never,
+      }),
+    ).toThrow("Corrupt app monetization inference_markup_percentage");
+  });
+});
