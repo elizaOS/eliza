@@ -47,6 +47,7 @@ const apnsOutcomes = new Map<
   string,
   { outcome: string; reason?: string; status?: number } | Error
 >();
+const loggerInfo = mock((_message: string, _context?: unknown) => undefined);
 const loggerWarn = mock(() => undefined);
 
 function testMessageIdentity(value: unknown): string {
@@ -262,7 +263,7 @@ mock.module("@/lib/utils/logger", () => ({
   logger: {
     debug: () => undefined,
     error: () => undefined,
-    info: () => undefined,
+    info: loggerInfo,
     warn: loggerWarn,
   },
 }));
@@ -290,6 +291,7 @@ beforeEach(() => {
   apnsOutcome = { outcome: "accepted" };
   apnsSentTokens.length = 0;
   apnsOutcomes.clear();
+  loggerInfo.mockClear();
   loggerWarn.mockClear();
 });
 
@@ -823,7 +825,15 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
 
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toEqual({ success: true });
+  await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
+  expect(
+    loggerInfo.mock.calls.filter(
+      ([message]) =>
+        message ===
+        "[SharedRuntimeConversation] conversation prewarm completed",
+    ),
+  ).toHaveLength(1);
   expect(repositoryWrites).toBe(0);
   expect(data.get("conversation")).toMatchObject({
     agentId: AGENT_FIXTURE.id,
@@ -844,7 +854,15 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   );
   expect(warmResponse.status).toBe(200);
   await warmResponse.arrayBuffer();
+  await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
+  expect(
+    loggerInfo.mock.calls.filter(
+      ([message]) =>
+        message ===
+        "[SharedRuntimeConversation] conversation prewarm completed",
+    ),
+  ).toHaveLength(1);
 
   const result = await makeInvoke(object)("first-real-turn");
   expect(result).toMatchObject({ result: { historyLength: 2 } });

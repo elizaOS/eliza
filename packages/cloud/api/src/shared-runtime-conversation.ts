@@ -338,6 +338,7 @@ export class SharedRuntimeConversation {
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
   private hydration: Promise<void> | undefined;
+  private prewarmReady = false;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
@@ -441,6 +442,8 @@ export class SharedRuntimeConversation {
     channelId: string,
     startEmpty: boolean,
   ): Promise<void> {
+    if (this.prewarmReady) return;
+    const startedAt = Date.now();
     try {
       await this.loadConversation(agentId, channelId, startEmpty);
     } catch (error) {
@@ -451,6 +454,7 @@ export class SharedRuntimeConversation {
     if (!this.conversation) {
       throw new Error("Conversation prewarm failed to hydrate history.");
     }
+    const historyReadyAt = Date.now();
     await this.runWithBindings(async () => {
       const imports: Promise<unknown>[] = [
         import("@/lib/services/shared-runtime/shared-runtime-chat"),
@@ -463,6 +467,22 @@ export class SharedRuntimeConversation {
       );
       await Promise.all(imports);
     });
+    this.prewarmReady = true;
+    const completedAt = Date.now();
+    this.state.waitUntil(
+      import("@/lib/utils/logger").then(({ logger }) => {
+        logger.info(
+          "[SharedRuntimeConversation] conversation prewarm completed",
+          {
+            agentId,
+            channelId,
+            historyMs: historyReadyAt - startedAt,
+            runtimeMs: completedAt - historyReadyAt,
+            totalMs: completedAt - startedAt,
+          },
+        );
+      }),
+    );
   }
 
   /**

@@ -97,6 +97,47 @@ describe("ElizaAppUserService account opening balance", () => {
     );
     expect(addCredits).not.toHaveBeenCalled();
   });
+
+  test("reuses a verified active phone account without entering the locked writer", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue({
+      id: "user-repeat",
+      phone_number: "+15551234567",
+      phone_verified: true,
+      is_active: true,
+      deleted_at: null,
+      organization: { id: "org-repeat", is_active: true, credit_balance: "0.00" },
+    });
+
+    const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
+
+    expect(result).toMatchObject({
+      isNew: false,
+      user: { id: "user-repeat" },
+      organization: { id: "org-repeat" },
+    });
+    expect(findOrCreatePhonePersonalAccount).not.toHaveBeenCalled();
+  });
+
+  test("falls back to the locked repair boundary for an inconsistent projection", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue({
+      id: "user-stale",
+      phone_number: "+15550000000",
+      phone_verified: true,
+      is_active: true,
+      deleted_at: null,
+      organization: { id: "org-stale", is_active: true },
+    });
+    findOrCreatePhonePersonalAccount.mockResolvedValue({
+      user: { id: "user-repaired", phone_number: "+15551234567" },
+      organization: { id: "org-repaired", credit_balance: "0.00" },
+      isNew: false,
+    });
+
+    const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
+
+    expect(result.user.id).toBe("user-repaired");
+    expect(findOrCreatePhonePersonalAccount).toHaveBeenCalledTimes(1);
+  });
 });
 
 function uniqueConstraintError(): Error {

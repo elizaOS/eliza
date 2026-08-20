@@ -205,6 +205,11 @@ new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
 # secondary switch; keep the durable binary deployed so recovery can converge.
 [vars]
 NODE_ENV = "production"
+# Compact Shared-runtime receipts contain timings and routing decisions only,
+# never prompt/response text. Keep a bounded production sample so first-turn,
+# provider, shouldReply, and selected-context regressions are measurable.
+SHARED_TURN_TRACES_ENABLED = "true"
+SHARED_TURN_TRACES_SAMPLE = "0.1"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
@@ -487,6 +492,10 @@ __filename = '"/worker.js"'
 
 [env.staging.vars]
 NODE_ENV = "production"
+# Capture every staging turn while validating voice and cross-channel routing.
+# Rows remain compact and exclude prompt/response text.
+SHARED_TURN_TRACES_ENABLED = "true"
+SHARED_TURN_TRACES_SAMPLE = "1"
 # Staging exercises the strongly invalidated sender projection while default
 # and production stay on canonical resolution until the live latency matrix passes.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
@@ -771,6 +780,8 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
+SHARED_TURN_TRACES_ENABLED = "true"
+SHARED_TURN_TRACES_SAMPLE = "0.1"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # The protected production cutover owns
