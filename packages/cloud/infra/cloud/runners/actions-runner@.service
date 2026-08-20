@@ -1,0 +1,31 @@
+# Canonical systemd template unit for the general `eliza-robot-*` Hetzner
+# runner farm. Install as /etc/systemd/system/actions-runner@.service; each
+# instance (actions-runner@<slot>.service) owns exactly one registration under
+# /opt/actions-runners/runner-<slot>.
+#
+# Incident 2026-08 (elizaOS/eliza#19708): the hand-provisioned fragment used
+# KillMode=process, so a unit restart abandoned the previous Runner.Listener.
+# Two live listeners then shared one _diag/pages directory and jobs failed
+# before checkout. KillMode=control-group is the load-bearing line here: a
+# stop/restart must reap the whole listener/worker/helper cgroup so exactly one
+# listener ever owns the slot's registration and diagnostics.
+
+[Unit]
+Description=elizaOS GitHub Actions runner slot %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=github-runner
+Group=github-runner
+WorkingDirectory=/opt/actions-runners/runner-%i
+ExecStart=/opt/actions-runners/runner-%i/runsvc.sh
+KillMode=control-group
+KillSignal=SIGINT
+TimeoutStopSec=5min
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
