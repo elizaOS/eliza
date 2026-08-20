@@ -74,11 +74,5 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
-  },
-  "elizaos": {
-    "app": {
-      "displayName": "Maps",
-      "category": "productivity"
-    }
   }
 }
