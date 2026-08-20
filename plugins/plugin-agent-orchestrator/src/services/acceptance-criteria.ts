@@ -97,10 +97,14 @@ export function shouldRequireGoalContract(): boolean {
 /** Keyword groups feeding {@link detectTaskType}. Ordered most-specific-first
  *  so a goal that matches several groups gets the narrower classification. */
 // "write/make a <lang> script … and run it" (or "run it for me"): a compute
-// deliverable judged by its output. Requires BOTH a script noun and a run
-// verb so "add a build script to package.json" stays coding.
+// deliverable judged by its output. A creation verb directly before the
+// script noun also qualifies — "write me a python script that picks a random
+// dinner idea" is the same one-shot deliverable even without a run verb, and
+// classifying it coding parked a working script on invented lint/test-suite
+// criteria (live 2026-08-20). "add a build script to package.json" stays
+// coding: "add" is not a creation-of-deliverable verb here.
 const SCRIPT_RUN_RE =
-  /\b(?:script|one[- ]?liner)\b[\s\S]{0,80}\b(?:run|execute)\b|\b(?:run|execute)\b[\s\S]{0,40}\bscript\b/i;
+  /\b(?:script|one[- ]?liner)\b[\s\S]{0,80}\b(?:run|execute)\b|\b(?:run|execute)\b[\s\S]{0,40}\bscript\b|\b(?:write|make|create)\b(?:\s+\w+){0,4}?\s+(?:script|one[- ]?liner)\b/i;
 
 const VIEW_RE =
   /\b(view|views|viewkind|widget|dashboard\s+(?:card|panel|tile)|render\s+a\s+view)\b/i;
