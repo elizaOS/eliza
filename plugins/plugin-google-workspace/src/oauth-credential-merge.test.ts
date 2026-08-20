@@ -3,7 +3,7 @@
  * Google API: the walker is the production credential flatten.
  */
 import { ElizaError } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED,
@@ -90,6 +90,46 @@ describe("mergeCredentialObject", () => {
     }
   });
 
+  it("translates revoked root proxies to the typed boundary failure", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    expect(() => mergeCredentialObject({}, proxy)).toThrowError(
+      expect.objectContaining({ code: GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED })
+    );
+  });
+
+  it("never invokes source Proxy get or has traps", () => {
+    let getInvocations = 0;
+    let hasInvocations = 0;
+    const source = new Proxy(
+      {
+        tokens: { refresh_token: "nested-refresh" },
+        access_token: "outer-access",
+      },
+      {
+        get() {
+          getInvocations += 1;
+          throw new Error("get trap must not run");
+        },
+        has() {
+          hasInvocations += 1;
+          throw new Error("has trap must not run");
+        },
+      }
+    );
+    const credentials: OauthCredentialFields = {};
+
+    mergeCredentialObject(credentials, source);
+
+    expect(credentials).toEqual({
+      access_token: "outer-access",
+      refresh_token: "nested-refresh",
+    });
+    expect(getInvocations).toBe(0);
+    expect(hasInvocations).toBe(0);
+  });
+
   it("translates hostile scope descriptor reflection without invoking access", () => {
     const reflectionError = new Error("descriptor reflection denied");
     const scopes = new Proxy(["gmail.read"], {
@@ -105,6 +145,53 @@ describe("mergeCredentialObject", () => {
       expect(error).toBeInstanceOf(ElizaError);
       expect((error as ElizaError).code).toBe(GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED);
       expect((error as Error & { cause?: unknown }).cause).toBe(reflectionError);
+    }
+  });
+
+  it("does not commit partial credentials when reflection fails late", () => {
+    const reflectionError = new Error("scope reflection denied");
+    const scopes = new Proxy(["gmail.read"], {
+      getOwnPropertyDescriptor() {
+        throw reflectionError;
+      },
+    });
+    const credentials: OauthCredentialFields = { refresh_token: "existing-refresh" };
+
+    expect(() =>
+      mergeCredentialObject(credentials, {
+        access_token: "uncommitted-access",
+        refresh_token: "uncommitted-refresh",
+        scopes,
+      })
+    ).toThrowError(expect.objectContaining({ code: GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED }));
+    expect(credentials).toEqual({ refresh_token: "existing-refresh" });
+  });
+
+  it("does not retain an invalid scope length value in error context", () => {
+    const sensitiveLength = { access_token: "must-not-enter-context" };
+    const scopes: unknown[] = [];
+    const nativeDescriptor = Object.getOwnPropertyDescriptor;
+    const descriptorSpy = vi
+      .spyOn(Object, "getOwnPropertyDescriptor")
+      .mockImplementation((target, key) => {
+        if (target === scopes && key === "length") {
+          return { value: sensitiveLength };
+        }
+        return nativeDescriptor(target, key);
+      });
+
+    try {
+      mergeCredentialObject({}, { scopes });
+      expect.unreachable("invalid scope length should fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).context).toEqual({
+        operation: "readScopeArray",
+        reason: "invalidLength",
+      });
+      expect(JSON.stringify((error as ElizaError).context)).not.toContain("must-not-enter-context");
+    } finally {
+      descriptorSpy.mockRestore();
     }
   });
 

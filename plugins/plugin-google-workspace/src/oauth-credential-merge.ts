@@ -93,7 +93,8 @@ function readStringFromRecord(record: object, ...keys: string[]): string | undef
 function readScopeArray(scopes: unknown[], ctx: WalkContext): string {
   const length = dataValue(scopes, "length");
   if (!Number.isSafeInteger(length) || (length as number) < 0) {
-    failUnbounded({ invalidScopesLength: length });
+    // Do not copy the untrusted credential value into diagnostic context.
+    failUnbounded({ operation: "readScopeArray", reason: "invalidLength" });
   }
   reserve(ctx, length as number);
 
@@ -138,10 +139,19 @@ function parseExpiry(value: unknown): number | undefined {
 }
 
 export function mergeCredentialObject(credentials: OauthCredentialFields, value: unknown): void {
-  mergeCredentialObjectInner(credentials, value, 0, {
+  // Stage every field so a failure discovered late in the walk cannot leave a
+  // caller with a partially accepted credential set.
+  const staged: OauthCredentialFields = {};
+  mergeCredentialObjectInner(staged, value, 0, {
     visits: 0,
     visiting: new WeakSet<object>(),
   });
+  if (staged.access_token !== undefined) credentials.access_token = staged.access_token;
+  if (staged.refresh_token !== undefined) credentials.refresh_token = staged.refresh_token;
+  if (staged.id_token !== undefined) credentials.id_token = staged.id_token;
+  if (staged.token_type !== undefined) credentials.token_type = staged.token_type;
+  if (staged.scope !== undefined) credentials.scope = staged.scope;
+  if (staged.expiry_date !== undefined) credentials.expiry_date = staged.expiry_date;
 }
 
 function mergeCredentialObjectInner(
