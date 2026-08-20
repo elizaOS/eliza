@@ -1307,6 +1307,7 @@ async function runCloudCommand(args: {
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(15_000),
   });
   const payload = await responsePayload(response);
   const payloadText =
