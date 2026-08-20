@@ -7632,7 +7632,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "Agent provisioning",
   "cloud.elizaAgentsTable.agentSuspend": "Agent suspend",
   "cloud.elizaAgentsTable.noAgentsYet": "No agents yet",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "Deploy your first agent to get started.",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "Your Shared or Dedicated Agent will appear here when available.",
   "cloud.elizaAgentsTable.searchAgents": "Search agents…",
   "cloud.elizaAgentsTable.allStatuses": "All statuses",
   "cloud.elizaAgentsTable.running": "Running",

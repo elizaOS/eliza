@@ -882,7 +882,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
           defaultValue: "No agents yet",
         })}
         description={t("cloud.elizaAgentsTable.noAgentsYetDesc", {
-          defaultValue: "Create and manage agents from the Eliza app.",
+          defaultValue:
+            "Your Shared or Dedicated Agent will appear here when available.",
         })}
         icon={Boxes}
         action={
