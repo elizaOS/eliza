@@ -126,6 +126,34 @@ same-process observations cannot satisfy these contracts.
 
 Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when deterministic mode is disabled.
 
+## Strict model fixtures
+
+Deterministic scenarios can declare a serializable `modelFixtures` manifest on
+the scenario definition. Each fixture names an exact model type plus optional
+input, prompt, tool-set, and response-schema matchers; its response may contain
+text, JSON, or tool calls. Cardinality defaults to exactly once. Ranges, latency,
+SSE chunking, declared errors, and wait-for-cancellation behavior are explicit.
+
+The runner begins a fresh registry scope for every scenario attempt and records
+only prompt/schema fingerprints, lengths, fixture names, matching reasons, and
+consumption counts in `ScenarioReport.modelFixtureDiagnostics`. Unmatched,
+ambiguous, over-consumed, and unused required fixtures fail the attempt. There
+is no fallback for a declared manifest. Direct action/API scenarios that never
+enter a model path may instead declare
+`modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
+or judge work makes that declaration invalid.
+
+The rollout is staged: undeclared scenarios temporarily retain the legacy
+resolver and reports mark them `legacy-fallback`; declared attempts report
+`strict-fixtures` or `model-free`. The migration ratchet currently records 0
+declared and 117 legacy `pr-deterministic` scenario sources across the
+repository. That legacy count may only decrease, and the epic is complete only
+when it reaches zero.
+
+Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
+single tools, multiple tools, clarifications, terminal replies, evaluators,
+scheduled rendering, and adversarial/malformed outputs.
+
 ## Programmatic use
 
 ```ts

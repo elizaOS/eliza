@@ -29,6 +29,7 @@ import {
   MemoryType,
   stringToUuid,
 } from "@elizaos/core";
+import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import {
   type CapturedAction,
@@ -52,6 +53,10 @@ import {
   isJudgeIndependent,
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
+import {
+  beginScenarioModelFixtureAttempt,
+  scenarioModelFixtureMode,
+} from "./model-fixtures.ts";
 import { redactForScenarioReport } from "./redaction.ts";
 import {
   assertProviderQualifiedPluginPackages,
@@ -76,6 +81,10 @@ export interface ExecutorOptions {
   abortSignal?: AbortSignal;
   executionProfile?: ScenarioExecutionProfile;
   runDir?: string;
+  /** Stable identity for one isolated retry of this scenario. */
+  attemptId?: string;
+  /** Optional bridge to the canonical synthetic-world namespace (#22898). */
+  worldId?: string;
 }
 
 /**
@@ -409,6 +418,7 @@ type RuntimeWithScenarioModelFixtures = AgentRuntime & {
     resetConsumption?: () => void;
   };
   assertScenarioModelFixturesConsumed?: () => void;
+  getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
 };
 
 type SeedRunResult = {
@@ -426,16 +436,6 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   } catch {
     return String(value);
   }
-}
-
-function resetScenarioModelFixtures(runtime: AgentRuntime): void {
-  const registry = (runtime as RuntimeWithScenarioModelFixtures)
-    .scenarioModelFixtures;
-  if (typeof registry?.clear === "function") {
-    registry.clear();
-    return;
-  }
-  registry?.resetConsumption?.();
 }
 
 /**
@@ -481,6 +481,14 @@ function assertScenarioModelFixturesConsumed(
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
+}
+
+function captureScenarioModelFixtureDiagnostics(
+  runtime: AgentRuntime,
+): DeterministicModelDiagnostics | undefined {
+  return (
+    runtime as RuntimeWithScenarioModelFixtures
+  ).getScenarioModelFixtureDiagnostics?.();
 }
 
 function summarizeArtifactsForJudge(value: unknown): string | null {
@@ -2274,6 +2282,7 @@ export async function runScenario(
     actionsCalled: [],
     failedAssertions: [],
     providerName: opts.providerName,
+    modelFixtureMode: scenarioModelFixtureMode(scenario),
     executionProfile,
     evidence:
       executionProfile === "simulated"
@@ -2372,9 +2381,15 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
+  let fixtureConsumptionChecked = false;
 
   try {
-    resetScenarioModelFixtures(runtime);
+    beginScenarioModelFixtureAttempt(
+      runtime,
+      scenario,
+      opts.attemptId ?? `${scenario.id}:attempt-1`,
+      opts.worldId,
+    );
     await resetSharedSchedulingState(runtime);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
@@ -2667,6 +2682,9 @@ export async function runScenario(
     }
 
     const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    fixtureConsumptionChecked = true;
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     if (fixtureFailure) {
       report.status = "failed";
       report.failedAssertions.push({
@@ -2679,6 +2697,18 @@ export async function runScenario(
     report.error = err instanceof Error ? err.message : String(err);
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
+    if (!fixtureConsumptionChecked) {
+      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+      if (fixtureFailure) {
+        report.status = "failed";
+        report.failedAssertions.push({
+          label: "modelFixtures",
+          detail: fixtureFailure,
+        });
+      }
+    }
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
