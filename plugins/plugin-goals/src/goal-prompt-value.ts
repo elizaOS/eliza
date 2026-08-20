@@ -4,12 +4,14 @@
  * RangeError the event loop. Callers interpolate the returned string; they do
  * not walk the graph themselves.
  */
-import { fail } from "./goal-normalize.ts";
+import { fail, GoalsServiceError } from "./goal-normalize.ts";
 
 /** Nesting ceiling. Honest goal/evidence records are a handful of objects deep. */
 export const MAX_GOAL_PROMPT_VALUE_DEPTH = 32;
 /** Node ceiling across the whole prompt walk, including leaves. */
 export const MAX_GOAL_PROMPT_VALUE_NODES = 2048;
+/** Maximum rendered prompt contribution from either goal or evidence. */
+export const MAX_GOAL_PROMPT_VALUE_CODE_UNITS = 32_768;
 export const GOAL_PROMPT_VALUE_UNBOUNDED = "GOAL_PROMPT_VALUE_UNBOUNDED";
 
 type PromptWalkContext = {
@@ -18,7 +20,7 @@ type PromptWalkContext = {
 };
 
 function failUnbounded(
-  axis: "depth" | "visits" | "cycle",
+  axis: "depth" | "visits" | "cycle" | "output" | "reflection",
   context: Record<string, unknown>,
 ): never {
   const message =
@@ -26,7 +28,11 @@ function failUnbounded(
       ? `goal prompt value exceeds ${MAX_GOAL_PROMPT_VALUE_DEPTH} nesting depth`
       : axis === "visits"
         ? `goal prompt value exceeds ${MAX_GOAL_PROMPT_VALUE_NODES} nodes`
-        : "goal prompt value contains a cyclic object";
+        : axis === "cycle"
+          ? "goal prompt value contains a cyclic object"
+          : axis === "output"
+            ? `goal prompt value exceeds ${MAX_GOAL_PROMPT_VALUE_CODE_UNITS} rendered code units`
+            : "goal prompt value could not be inspected safely";
   fail(
     400,
     `${message} (${JSON.stringify(context)})`,
@@ -71,44 +77,102 @@ function formatPromptValueAt(
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    if (ctx.ancestors.has(value)) {
-      failUnbounded("cycle", { depth });
+    const rendered = String(value);
+    if (rendered.length > MAX_GOAL_PROMPT_VALUE_CODE_UNITS) {
+      failUnbounded("output", {
+        length: rendered.length,
+        max: MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
+      });
     }
-    if (value.length === 0) return "(none)";
-    ctx.ancestors.add(value);
-    try {
-      return value
-        .map(
-          (entry) =>
-            `${childIndent}- ${formatPromptValueAt(entry, depth + 1, ctx)}`,
-        )
-        .join("\n");
-    } finally {
-      ctx.ancestors.delete(value);
-    }
+    return rendered;
   }
   if (typeof value === "object") {
     if (ctx.ancestors.has(value)) {
       failUnbounded("cycle", { depth });
     }
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return "(empty)";
     ctx.ancestors.add(value);
     try {
-      return entries
-        .map(([key, entry]) => {
-          const formatted = formatPromptValueAt(entry, depth + 1, ctx);
-          return formatted.includes("\n")
-            ? `${indent}${key}:\n${formatted}`
-            : `${indent}${key}: ${formatted}`;
-        })
-        .join("\n");
+      if (Array.isArray(value)) {
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(
+          value,
+          "length",
+        );
+        const length = lengthDescriptor?.value;
+        if (
+          !Number.isSafeInteger(length) ||
+          length < 0 ||
+          length > MAX_GOAL_PROMPT_VALUE_NODES - ctx.visits
+        ) {
+          failUnbounded("visits", {
+            length: typeof length === "number" ? length : "invalid",
+            max: MAX_GOAL_PROMPT_VALUE_NODES,
+          });
+        }
+        if (length === 0) return "(none)";
+        const parts: string[] = [];
+        let renderedLength = 0;
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            value,
+            String(index),
+          );
+          if (!descriptor || "get" in descriptor || "set" in descriptor) {
+            failUnbounded("reflection", { kind: "array-slot", index });
+          }
+          const part = `${childIndent}- ${formatPromptValueAt(descriptor.value, depth + 1, ctx)}`;
+          renderedLength += part.length + (parts.length > 0 ? 1 : 0);
+          if (renderedLength > MAX_GOAL_PROMPT_VALUE_CODE_UNITS) {
+            failUnbounded("output", {
+              length: renderedLength,
+              max: MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
+            });
+          }
+          parts.push(part);
+        }
+        return parts.join("\n");
+      }
+
+      const parts: string[] = [];
+      let renderedLength = 0;
+      for (const key in value) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor?.enumerable) continue;
+        if ("get" in descriptor || "set" in descriptor) {
+          failUnbounded("reflection", { kind: "object-accessor" });
+        }
+        if (key.length > MAX_GOAL_PROMPT_VALUE_CODE_UNITS) {
+          failUnbounded("output", {
+            length: key.length,
+            max: MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
+          });
+        }
+        const formatted = formatPromptValueAt(descriptor.value, depth + 1, ctx);
+        const part = formatted.includes("\n")
+          ? `${indent}${key}:\n${formatted}`
+          : `${indent}${key}: ${formatted}`;
+        renderedLength += part.length + (parts.length > 0 ? 1 : 0);
+        if (renderedLength > MAX_GOAL_PROMPT_VALUE_CODE_UNITS) {
+          failUnbounded("output", {
+            length: renderedLength,
+            max: MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
+          });
+        }
+        parts.push(part);
+      }
+      return parts.length === 0 ? "(empty)" : parts.join("\n");
+    } catch (error) {
+      if (
+        error instanceof GoalsServiceError &&
+        error.code === GOAL_PROMPT_VALUE_UNBOUNDED
+      ) {
+        throw error;
+      }
+      failUnbounded("reflection", {
+        kind: error instanceof Error ? error.name : typeof error,
+      });
     } finally {
       ctx.ancestors.delete(value);
     }
   }
-  return String(value);
+  failUnbounded("reflection", { kind: typeof value });
 }

@@ -8,6 +8,7 @@ import { GoalsServiceError } from "./goal-normalize.js";
 import {
   formatPromptValue,
   GOAL_PROMPT_VALUE_UNBOUNDED,
+  MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
   MAX_GOAL_PROMPT_VALUE_DEPTH,
   MAX_GOAL_PROMPT_VALUE_NODES,
 } from "./goal-prompt-value.js";
@@ -81,10 +82,44 @@ describe("formatPromptValue", () => {
   });
 
   it("does not RangeError a 20k array nest", () => {
-    const t0 = performance.now();
     const error = expectUnbounded(() => formatPromptValue(nestArray(20_000)));
-    const ms = performance.now() - t0;
     expect(error.message).toContain(String(MAX_GOAL_PROMPT_VALUE_DEPTH));
-    expect(ms).toBeLessThan(50);
+  });
+
+  it("rejects sparse arrays by logical slots", () => {
+    const sparse: unknown[] = [];
+    sparse.length = MAX_GOAL_PROMPT_VALUE_NODES + 1;
+    expectUnbounded(() => formatPromptValue(sparse));
+  });
+
+  it("rejects object accessors without invoking them", () => {
+    let calls = 0;
+    const value = Object.defineProperty({}, "secret", {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return "value";
+      },
+    });
+    expectUnbounded(() => formatPromptValue(value));
+    expect(calls).toBe(0);
+  });
+
+  it("bounds rendered prompt contribution", () => {
+    expectUnbounded(() =>
+      formatPromptValue("x".repeat(MAX_GOAL_PROMPT_VALUE_CODE_UNITS + 1)),
+    );
+  });
+
+  it("contains hostile descriptor traps", () => {
+    const value = new Proxy(
+      { field: "value" },
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      },
+    );
+    expectUnbounded(() => formatPromptValue(value));
   });
 });

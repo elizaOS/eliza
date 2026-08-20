@@ -31,6 +31,7 @@ import { formatPromptValue } from "./goal-prompt-value.ts";
 export {
   formatPromptValue,
   GOAL_PROMPT_VALUE_UNBOUNDED,
+  MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
   MAX_GOAL_PROMPT_VALUE_DEPTH,
   MAX_GOAL_PROMPT_VALUE_NODES,
 } from "./goal-prompt-value.ts";
