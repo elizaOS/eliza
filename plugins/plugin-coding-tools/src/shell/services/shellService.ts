@@ -52,7 +52,6 @@ import {
   getShellConfig,
   killSession,
   pad,
-  resolveWorkdir,
   sanitizeBinaryOutput,
   sliceLogLines,
   truncateMiddle,
@@ -573,12 +572,21 @@ export class ShellService extends Service {
           )
       : null;
 
-    // Resolve workdir
-    const rawWorkdir =
-      options.workdir?.trim() || this.currentDirectory || process.cwd();
-    const resolvedWorkdir = resolveWorkdir(rawWorkdir, warnings);
+    // An explicit cwd is command input, so it must reach the realpath boundary
+    // unchanged instead of degrading to an unrelated process directory.
+    const explicitWorkdir = options.workdir?.trim();
+    if (options.workdir !== undefined && !explicitWorkdir) {
+      return {
+        status: "failed",
+        exitCode: 1,
+        durationMs: 0,
+        aggregated: "",
+        reason: "Explicit workdir must not be empty.",
+      };
+    }
+    const requestedWorkdir = explicitWorkdir ?? this.currentDirectory;
     const validatedWorkdir = validatePath(
-      resolvedWorkdir,
+      requestedWorkdir,
       this.shellConfig.allowedDirectory,
       this.currentDirectory,
     );
@@ -588,7 +596,7 @@ export class ShellService extends Service {
         exitCode: 1,
         durationMs: 0,
         aggregated: "",
-        reason: `workdir is outside allowed directory: ${resolvedWorkdir}`,
+        reason: `workdir is unavailable or outside allowed directory: ${requestedWorkdir}`,
       };
     }
     const workdir = validatedWorkdir;

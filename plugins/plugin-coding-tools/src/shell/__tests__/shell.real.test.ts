@@ -3,7 +3,15 @@
  * spawned shell in a temp directory (no mocks) — command execution, session
  * tracking, and history-provider context injection.
  */
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -154,6 +162,46 @@ describePosixShell("shell plugin real local integration", () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it("resolves an explicit relative workdir from the service current directory", async () => {
+    const child = path.join(allowedDirectory, "relative-child");
+    mkdirSync(child);
+
+    const result = await service.exec("pwd", { workdir: "relative-child" });
+    const realChild = realpathSync(child);
+
+    expect(result.status).toBe("completed");
+    expect(result.cwd).toBe(realChild);
+    expect(result.aggregated.trim()).toBe(realChild);
+  });
+
+  it("rejects missing, dangling, and non-directory explicit workdirs", async () => {
+    const regularFile = path.join(allowedDirectory, "not-a-directory.txt");
+    const dangling = path.join(allowedDirectory, "dangling");
+    writeFileSync(regularFile, "not a cwd");
+    symlinkSync(path.join(allowedDirectory, "missing-target"), dangling);
+
+    for (const workdir of ["missing", "dangling", "not-a-directory.txt"]) {
+      const result = await service.exec("pwd", { workdir });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toContain(
+        "unavailable or outside allowed directory",
+      );
+    }
+  });
+
+  it("does not execute from process cwd when an explicit default-root workdir is missing", async () => {
+    await service.stop();
+    delete process.env.SHELL_ALLOWED_DIRECTORY;
+    service = await ShellService.start(createRuntime(null));
+
+    const result = await service.exec("pwd", {
+      workdir: `missing-explicit-${Date.now()}`,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.reason).toContain("unavailable or outside allowed directory");
   });
 
   it("surfaces a model-visible error instead of blank output when history retrieval throws", async () => {
