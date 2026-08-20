@@ -56,7 +56,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
         className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
       />
       <div
-        className="flex h-full min-h-0 w-full flex-col px-4"
+        className="flex h-full min-h-0 w-full flex-col px-4 sm:px-6"
         style={{
           paddingTop: "max(env(safe-area-inset-top, 0px), 1rem)",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 1rem)",
@@ -71,7 +71,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
             1080×1240) where the OAuth / wallet rows fell below an unscrollable
             fold — see login-page.safe-area.test.tsx. */}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
-          <div className="my-auto w-full max-w-md shrink-0 rounded-xl border border-border bg-card p-6 text-txt md:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
+          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(0,0,0,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
             {children}
           </div>
         </div>
@@ -201,7 +201,7 @@ function PublicLoginPage(): React.JSX.Element {
 
   return (
     <LoginBackground>
-      <main className="space-y-8">
+      <main className="space-y-7">
         <div className="space-y-3 text-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
