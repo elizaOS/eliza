@@ -622,9 +622,8 @@ export function writeScenarioStabilityReport(
     );
   }
   mkdirSync(plan.outputRoot, { recursive: true });
-  writeFileSync(
-    plan.reportPath,
-    `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
+  writeFileSync(plan.reportPath, `${JSON.stringify(report, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
 }
