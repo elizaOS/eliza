@@ -102,7 +102,6 @@ import {
   disableBackForwardNavigationGestures,
   ensureWindowTransparentBackground,
   setNativeDragRegion,
-  setTrafficLightsPosition,
   setWindowShadow,
   setWindowUserResizable,
 } from "./native/mac-window-effects";
@@ -442,8 +441,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
   }
 }
 
-const MAC_TRAFFIC_LIGHTS_X = 14;
-const MAC_TRAFFIC_LIGHTS_Y = 12;
 /** Left inset of the drag strip so it clears the traffic lights. */
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
@@ -454,9 +451,11 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
 /**
- * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
- * native layout whenever the window or webview subtree may have reordered so
- * the drag view stays above WKWebView.
+ * Shadow, drag region, and native chrome layout. Re-calls native layout
+ * whenever the window or webview subtree may have reordered so the drag view
+ * stays above WKWebView. AppKit alone owns its standard traffic lights: moving
+ * them after live resize makes the controls visibly jump between AppKit's
+ * layout and an application-defined offset.
  *
  * Deliberately applies NO vibrancy (#12184): a vibrancy NSVisualEffectView
  * behind a transparent window renders as a full-window frosted-glass sheet over
@@ -489,12 +488,6 @@ function applyMacOSWindowEffects(
     });
   }
 
-  const alignButtons = () =>
-    setTrafficLightsPosition(
-      ptr as Parameters<typeof setTrafficLightsPosition>[0],
-      MAC_TRAFFIC_LIGHTS_X,
-      MAC_TRAFFIC_LIGHTS_Y,
-    );
   const alignDragRegion = () =>
     setNativeDragRegion(
       ptr as Parameters<typeof setNativeDragRegion>[0],
@@ -522,16 +515,11 @@ function applyMacOSWindowEffects(
     disableSwipeBackGesture();
   };
 
-  const alignAllChrome = () => {
-    if (nativeChromeInteractive) alignButtons();
-    alignChromeStructure();
-  };
-
-  alignAllChrome();
-  setTimeout(alignAllChrome, 120);
+  alignChromeStructure();
+  setTimeout(alignChromeStructure, 120);
   // WKWebView can reorder its native subtree after initial layout. Keep the
-  // drag/resize structure above it, but do not continuously reposition the
-  // AppKit traffic-light buttons: AppKit owns their stable live-resize layout.
+  // drag/resize structure above it. Never reposition or repaint AppKit's
+  // traffic-light buttons from this refresh cadence.
   const chromeRefreshTimer = setInterval(alignChromeStructure, 1000);
   let settledChromeTimer: ReturnType<typeof setTimeout> | null = null;
   const alignAfterNativeLayoutSettles = () => {
@@ -539,20 +527,20 @@ function applyMacOSWindowEffects(
     if (settledChromeTimer) clearTimeout(settledChromeTimer);
     settledChromeTimer = setTimeout(() => {
       settledChromeTimer = null;
-      alignAllChrome();
+      alignChromeStructure();
     }, 120);
   };
 
-  // Let AppKit lay out its standard controls throughout live resize/zoom. One
-  // trailing alignment restores our hiddenInset offset after AppKit finishes,
-  // avoiding both per-frame traffic-light jitter and a stale post-zoom frame.
+  // Let AppKit lay out its standard controls throughout live resize/zoom. The
+  // trailing pass only restores the independent drag/resize overlays after
+  // the WKWebView settles; it never changes the controls' frames or artwork.
   win.on("resize", alignAfterNativeLayoutSettles);
-  win.on("focus", alignAllChrome);
+  win.on("focus", alignChromeStructure);
   win.on("blur", () => {
-    alignAllChrome();
-    setTimeout(alignAllChrome, 80);
-    setTimeout(alignAllChrome, 240);
-    setTimeout(alignAllChrome, 700);
+    alignChromeStructure();
+    setTimeout(alignChromeStructure, 80);
+    setTimeout(alignChromeStructure, 240);
+    setTimeout(alignChromeStructure, 700);
   });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
   win.on("move", alignAfterNativeLayoutSettles);
@@ -565,9 +553,9 @@ function applyMacOSWindowEffects(
   // views so drag/resize strips stay hit-testable above the page.
   try {
     win.webview.on("dom-ready", () => {
-      alignAllChrome();
-      setTimeout(alignAllChrome, 50);
-      setTimeout(alignAllChrome, 300);
+      alignChromeStructure();
+      setTimeout(alignChromeStructure, 50);
+      setTimeout(alignChromeStructure, 300);
     });
   } catch {
     // webview may not accept listeners yet in some embed paths
