@@ -3,6 +3,8 @@
  * key stripping plus the depth/node/cycle bound that fails closed instead of
  * RangeErroring OpenAI-compat chat JSON. No live model.
  */
+
+import type http from "node:http";
 import { ElizaError } from "@elizaos/core";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -14,6 +16,7 @@ import {
   MAX_BLOCKED_OBJECT_DEPTH,
   MAX_BLOCKED_OBJECT_NODES,
 } from "./blocked-object-keys";
+import { type ChatRouteContext, handleChatRoutes } from "./chat-routes";
 
 function nestArray(depth: number): unknown {
   let value: unknown = "leaf";
@@ -144,7 +147,7 @@ describe("blocked object key sanitization", () => {
     expect(clean).toEqual({ safe: 1 });
   });
 
-  it("does not invoke numeric array accessors while walking", () => {
+  it("fails closed without invoking numeric array accessors", () => {
     let invoked = 0;
     const array = ["safe"];
     Object.defineProperty(array, "1", {
@@ -155,13 +158,29 @@ describe("blocked object key sanitization", () => {
       },
     });
 
-    expect(hasBlockedObjectKeyDeep(array)).toBe(false);
-    const clean = cloneWithoutBlockedObjectKeys(array);
-
+    expect(hasBlockedObjectKeyDeep(array)).toBe(true);
+    expect(() => cloneWithoutBlockedObjectKeys(array)).toThrowError(
+      expect.objectContaining({ code: BLOCKED_OBJECT_GRAPH_UNBOUNDED }),
+    );
     expect(invoked).toBe(0);
-    expect(clean).toHaveLength(2);
-    expect(clean[0]).toBe("safe");
-    expect(Object.hasOwn(clean, 1)).toBe(false);
+  });
+
+  it("does not invoke ordinary property traps while walking array elements", () => {
+    let invoked = 0;
+    const hostile = new Proxy(["safe"], {
+      get() {
+        invoked += 1;
+        throw new Error("ordinary array reads must not run");
+      },
+      has() {
+        invoked += 1;
+        throw new Error("array membership checks must not run");
+      },
+    });
+
+    expect(hasBlockedObjectKeyDeep(hostile)).toBe(false);
+    expect(cloneWithoutBlockedObjectKeys(hostile)).toEqual(["safe"]);
+    expect(invoked).toBe(0);
   });
 
   it("accepts a realistic broad chat history", () => {
@@ -191,10 +210,36 @@ describe("blocked object key sanitization", () => {
     }
   });
 
-  it("rejects a 20k nest accepted by JSON.parse as blocked", () => {
+  it("returns the existing OpenAI-compat 400 for a parsed 20k nest", async () => {
     const body = JSON.parse(
       `${"[".repeat(20_000)}${"]".repeat(20_000)}`,
     ) as unknown;
-    expect(hasBlockedObjectKeyDeep(body)).toBe(true);
+    const responses: Array<{ data: unknown; status?: number }> = [];
+    const req = { headers: {} } as http.IncomingMessage;
+    const res = {} as http.ServerResponse;
+
+    const handled = await handleChatRoutes({
+      req,
+      res,
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      readJsonBody: async <T extends object>() => body as T,
+      json: (_response, data, status) => responses.push({ data, status }),
+      error: () => expect.unreachable("blocked input uses the JSON responder"),
+      state: {} as ChatRouteContext["state"],
+    });
+
+    expect(handled).toBe(true);
+    expect(responses).toEqual([
+      {
+        data: {
+          error: {
+            message: "Request body contains a blocked object key",
+            type: "invalid_request_error",
+          },
+        },
+        status: 400,
+      },
+    ]);
   });
 });

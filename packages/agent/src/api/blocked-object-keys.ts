@@ -80,6 +80,31 @@ function ownEnumerableStringKeys(value: object): string[] {
   return keys;
 }
 
+function ownArrayLength(value: unknown[]): number {
+  const descriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !descriptor ||
+    !("value" in descriptor) ||
+    !Number.isSafeInteger(descriptor.value) ||
+    descriptor.value < 0
+  ) {
+    failBlockedObjectGraphUnbounded({ invalidArrayLength: true });
+  }
+  return descriptor.value;
+}
+
+function ownArrayElement(
+  value: unknown[],
+  index: number,
+): PropertyDescriptor | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failBlockedObjectGraphUnbounded({ arrayAccessor: true, index });
+  }
+  return descriptor;
+}
+
 function walkHasBlockedObjectKey(
   value: unknown,
   depth: number,
@@ -99,13 +124,11 @@ function walkHasBlockedObjectKey(
   enterBlockedObjectContainer(value, ctx);
   try {
     if (Array.isArray(value)) {
-      reserveBlockedObjectVisits(ctx, value.length);
-      for (let index = 0; index < value.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(
-          value,
-          String(index),
-        );
-        if (!descriptor || !("value" in descriptor)) continue;
+      const length = ownArrayLength(value);
+      reserveBlockedObjectVisits(ctx, length);
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = ownArrayElement(value, index);
+        if (!descriptor) continue;
         if (walkHasBlockedObjectKey(descriptor.value, depth + 1, ctx, true)) {
           return true;
         }
@@ -148,15 +171,13 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
   enterBlockedObjectContainer(value, ctx);
   try {
     if (Array.isArray(value)) {
-      reserveBlockedObjectVisits(ctx, value.length);
+      const length = ownArrayLength(value);
+      reserveBlockedObjectVisits(ctx, length);
       const next: unknown[] = [];
-      next.length = value.length;
-      for (let index = 0; index < value.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(
-          value,
-          String(index),
-        );
-        if (!descriptor || !("value" in descriptor)) continue;
+      next.length = length;
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = ownArrayElement(value, index);
+        if (!descriptor) continue;
         next[index] = cloneWithoutBlockedObjectKeysWalk(
           descriptor.value,
           depth + 1,
