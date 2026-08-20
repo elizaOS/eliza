@@ -28,6 +28,8 @@ function createHarness(options: {
   state?: ConnectorRouteContext["state"];
   saveElizaConfig?: ConnectorRouteContext["saveElizaConfig"];
   onConnectorDisconnect?: ConnectorRouteContext["onConnectorDisconnect"];
+  hasBlockedObjectKeyDeep?: ConnectorRouteContext["hasBlockedObjectKeyDeep"];
+  cloneWithoutBlockedObjectKeys?: ConnectorRouteContext["cloneWithoutBlockedObjectKeys"];
 }) {
   const captured: CapturedResponse = { status: 0, body: undefined };
   const state: ConnectorRouteContext["state"] = options.state ?? {
@@ -52,8 +54,10 @@ function createHarness(options: {
     redactConfigSecrets: (value) => value,
     isBlockedObjectKey: (key) =>
       key === "__proto__" || key === "constructor" || key === "prototype",
-    hasBlockedObjectKeyDeep,
-    cloneWithoutBlockedObjectKeys,
+    hasBlockedObjectKeyDeep:
+      options.hasBlockedObjectKeyDeep ?? hasBlockedObjectKeyDeep,
+    cloneWithoutBlockedObjectKeys:
+      options.cloneWithoutBlockedObjectKeys ?? cloneWithoutBlockedObjectKeys,
     onConnectorDisconnect: options.onConnectorDisconnect,
   };
 
@@ -79,6 +83,26 @@ describe("connector routes", () => {
       error: "Failed to save connector config: disk denied",
     });
     expect(state.config.connectors).toEqual({});
+  });
+
+  it("restores an absent connector map when first-write persistence fails", async () => {
+    const saveElizaConfig = vi.fn(() => {
+      throw new Error("disk denied");
+    });
+    const state: ConnectorRouteContext["state"] = { config: {} };
+    const { ctx, captured } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "slack", config: { enabled: true } },
+      state,
+      saveElizaConfig,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(500);
+    expect(state.config.connectors).toBeUndefined();
+    expect(Object.hasOwn(state.config, "connectors")).toBe(false);
   });
 
   it("rolls back connector deletion when config persistence fails", async () => {
@@ -310,5 +334,74 @@ describe("connector routes", () => {
       JSON.stringify(honest),
     );
     expect(saveElizaConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke nested accessors or ordinary proxy reads", async () => {
+    let invoked = 0;
+    const nested = new Proxy(
+      {
+        safe: true,
+        get trap() {
+          invoked += 1;
+          return "never";
+        },
+      },
+      {
+        get() {
+          invoked += 1;
+          throw new Error("ordinary reads must not run");
+        },
+        has() {
+          invoked += 1;
+          throw new Error("membership checks must not run");
+        },
+      },
+    );
+    const { ctx, captured, state } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "telegram", config: { nested } },
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(invoked).toBe(0);
+    expect(state.config.connectors?.telegram).toEqual({
+      nested: { safe: true },
+    });
+  });
+
+  it("leaves live state untouched if a proxy changes after the guard walk", async () => {
+    let armed = false;
+    const unstable = new Proxy(
+      { safe: true },
+      {
+        ownKeys(target) {
+          if (armed) throw new Error("changed during clone");
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const original = { enabled: true };
+    const state: ConnectorRouteContext["state"] = {
+      config: { connectors: { telegram: original } },
+    };
+    const { ctx } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "telegram", config: { unstable } },
+      state,
+      hasBlockedObjectKeyDeep: (value) => {
+        const blocked = hasBlockedObjectKeyDeep(value);
+        armed = true;
+        return blocked;
+      },
+    });
+
+    await expect(handleConnectorRoutes(ctx)).rejects.toThrow(
+      "changed during clone",
+    );
+    expect(state.config.connectors?.telegram).toBe(original);
   });
 });

@@ -155,15 +155,22 @@ export async function handleConnectorRoutes(
       error(res, "Connector config contains a blocked object key", 400);
       return true;
     }
-    if (!state.config.connectors) state.config.connectors = {};
-    const previousConnector = state.config.connectors[connectorName];
-    state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
+    // Clone before mutating live config. The guard and clone deliberately use
+    // separate bounded walks, so an in-process proxy can still change between
+    // them; a clone failure must leave the live map untouched.
+    const sanitizedConfig = cloneWithoutBlockedObjectKeys(
       config,
     ) as ConnectorConfig;
+    const previousConnectors = state.config.connectors;
+    const previousConnector = previousConnectors?.[connectorName];
+    if (!state.config.connectors) state.config.connectors = {};
+    state.config.connectors[connectorName] = sanitizedConfig;
     try {
       saveElizaConfig(state.config);
     } catch (err) {
-      if (previousConnector === undefined) {
+      if (previousConnectors === undefined) {
+        delete state.config.connectors;
+      } else if (previousConnector === undefined) {
         delete state.config.connectors[connectorName];
       } else {
         state.config.connectors[connectorName] = previousConnector;
