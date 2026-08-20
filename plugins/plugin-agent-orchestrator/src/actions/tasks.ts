@@ -3675,7 +3675,7 @@ async function runSend(
         queueInbox.enqueue(target.session.id, textInput);
         return {
           success: true,
-          text: "The agent is mid-build; the instruction is queued and will be delivered the moment the current run settles. Do NOT stop or respawn the agent for this.",
+          text: "Got it — the build is mid-run, so the new instruction is queued and will be folded in the moment the current step settles.",
           data: {
             sessionId: target.session.id,
             queued: true,
@@ -3703,7 +3703,7 @@ async function runSend(
           inbox.enqueue(target.session.id, textInput);
           return {
             success: true,
-            text: "The agent is mid-step; the instruction is queued and will be delivered the moment the current step settles. Do NOT stop or respawn the agent for this.",
+            text: "Got it — the build is mid-run, so the new instruction is queued and will be folded in the moment the current step settles.",
             data: {
               sessionId: target.session.id,
               queued: true,
