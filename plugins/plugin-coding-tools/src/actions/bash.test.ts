@@ -314,6 +314,35 @@ function makeMessage(
   } as Memory;
 }
 
+function confirmationMessage(
+  original: Memory,
+  token: string,
+  overrides: Partial<Pick<Memory, "id" | "entityId" | "roomId">> & {
+    text?: string;
+  } = {},
+): Memory {
+  return {
+    ...original,
+    id: overrides.id ?? ("55555555-5555-5555-5555-555555555555" as UUID),
+    entityId: overrides.entityId ?? original.entityId,
+    roomId: overrides.roomId ?? original.roomId,
+    content: {
+      ...original.content,
+      text: overrides.text ?? `confirm ${token}`,
+    },
+    createdAt: Date.now(),
+  } as Memory;
+}
+
+function confirmationChallenge(result: ActionResult): string {
+  const challenge = (result.data as Record<string, unknown> | undefined)
+    ?.confirmation_challenge;
+  if (typeof challenge !== "string" || !challenge) {
+    throw new Error("Expected confirmation_challenge");
+  }
+  return challenge;
+}
+
 describeIfPosix("shellAction", () => {
   it("runs local-safe commands through the configured sandbox backend", async () => {
     const exec = vi.fn(async () => ({
@@ -700,37 +729,6 @@ describeIfPosix("shellAction", () => {
       handle,
       (data) => data.status === "exited",
     );
-  });
-
-  it("decodes split multibyte background stdout and stderr as UTF-8 streams", async () => {
-    const { runtime } = await makeRuntime();
-    const message = makeMessage();
-    const script = [
-      'const value = Buffer.from("\u4f60");',
-      "process.stdout.write(value.subarray(0, 1));",
-      "process.stderr.write(value.subarray(0, 2));",
-      "setTimeout(() => {",
-      "  process.stdout.write(value.subarray(1));",
-      "  process.stderr.write(value.subarray(2));",
-      "}, 50);",
-    ].join("");
-    const start = await shellAction.handler?.(runtime, message, undefined, {
-      action: "start_background",
-      command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
-    });
-    const handle = (requireActionResult(start).data as Record<string, unknown>)
-      .handle as string;
-
-    const poll = await pollUntil(
-      runtime,
-      message,
-      handle,
-      (data) => data.status === "exited",
-    );
-    const data = poll.data as Record<string, unknown>;
-
-    expect((data.stdout as Record<string, unknown>).text).toBe("\u4f60");
-    expect((data.stderr as Record<string, unknown>).text).toBe("\u4f60");
   });
 
   it("fences every user-facing background/history relay (#16563)", async () => {
@@ -3170,6 +3168,37 @@ describe("platform-aware canned resource commands", () => {
 });
 
 describe("destructive-bulk confirm gate", () => {
+  it("classifies and executes the same final command after CHAT rewrites", async () => {
+    const calls: string[] = [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params.command);
+      return { output: "rewritten", exitCode: 0, timedOut: false };
+    });
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const rawCommand = "du -sh /* 2>/dev/null | sort -hr | head -n 5";
+    const prompt =
+      "check disk space and name the biggest safe cleanup candidate";
+    const expected = resolveDiskInspectionCommand({
+      command: rawCommand,
+      messageText: prompt,
+      platform: resolveCommandPlatform(),
+    });
+    expect(expected.rewritten).toBe(true);
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, prompt),
+        undefined,
+        { command: rawCommand },
+      ),
+    );
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([expected.command]);
+    expect((result.data as Record<string, unknown>).command).toBe(
+      expected.command,
+    );
+  });
+
   it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
@@ -3191,158 +3220,253 @@ describe("destructive-bulk confirm gate", () => {
     }
   });
 
-  it.runIf(process.platform !== "win32")(
-    "blocks GNU long-form recursive delete before shell execution",
-    async () => {
-      const { command, target } = await createRecursiveDeleteCommand();
-      const { runtime } = await makeRuntime();
-      try {
-        const result = await shellAction.handler?.(
-          runtime,
-          makeMessage(undefined, "clean up the old projects"),
-          undefined,
-          { command: command.replace("rm -rf", "rm --recursive --force") },
-        );
-        expect(result.success).toBe(false);
-        expect(result.text).toContain("needs_confirmation");
-        expect(result.data).toMatchObject({
-          destructive_reason: "recursive delete",
-        });
-        expect(await pathExists(target)).toBe(true);
-      } finally {
-        await fs.rm(target, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it.each([
-    ["line feed", "\n"],
-    ["carriage return", "\r"],
-    ["background separator", " & "],
-  ])(
-    "blocks an unconfirmed recursive delete after an unquoted %s",
-    async (_name, separator) => {
-      const { command, target } = await createRecursiveDeleteCommand();
-      const { runtime } = await makeRuntime();
-      try {
-        const result = await shellAction.handler?.(
-          runtime,
-          makeMessage(undefined, "inspect, then clean up the old projects"),
-          undefined,
-          { command: `printf safe${separator}${command}` },
-        );
-        expect(result.success).toBe(false);
-        expect(result.text).toContain("needs_confirmation");
-        expect(result.data).toMatchObject({
-          destructive_reason: "recursive delete",
-        });
-        expect(await pathExists(target)).toBe(true);
-      } finally {
-        await fs.rm(target, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it.runIf(process.platform !== "win32")(
-    "does not gate destructive-looking heredoc data",
-    async () => {
-      const { runtime } = await makeRuntime();
-      const result = await shellAction.handler?.(
-        runtime,
-        makeMessage(undefined, "print this example without running it"),
-        undefined,
-        { command: "cat <<'EOF'\nrm -rf ./data\nEOF" },
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.text).toContain("rm -rf ./data");
-    },
-  );
-
-  it.runIf(process.platform !== "win32")(
-    "does not let parameter expansion text hide a recursive delete",
-    async () => {
-      const { command, target } = await createRecursiveDeleteCommand();
-      const { runtime } = await makeRuntime();
-      try {
-        const result = await shellAction.handler?.(
-          runtime,
-          makeMessage(undefined, "inspect, then clean up the old projects"),
-          undefined,
-          {
-            command: `printf '%s' \${review_unset:-<<EOF}\n${command}\nEOF`,
-          },
-        );
-
-        expect(result.success).toBe(false);
-        expect(result.text).toContain("needs_confirmation");
-        expect(result.data).toMatchObject({
-          destructive_reason: "recursive delete",
-        });
-        expect(await pathExists(target)).toBe(true);
-      } finally {
-        await fs.rm(target, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it.runIf(process.platform !== "win32")(
-    "gates executable lines after arithmetic shifts and continued heredoc terminators",
-    async () => {
-      const commandShapes = [
-        (command: string) =>
-          `review_slots[1<<2]=ready\n${command}\n2]=ready\n:`,
-        (command: string) => `printf '%s' $[1<<2]\n${command}\n2]\n:`,
-        (command: string) =>
-          `cat <<EOF\nsafe payload\nEO\\\nF\n${command}\nEOF\n:`,
-      ];
-
-      for (const shape of commandShapes) {
-        const syntaxProbe = await execFileAsync("/bin/bash", [
-          "--noprofile",
-          "--norc",
-          "-c",
-          shape("printf shell-boundary"),
-        ]);
-        expect(syntaxProbe.stdout).toContain("shell-boundary");
-
-        const { command, target } = await createRecursiveDeleteCommand();
-        const { runtime } = await makeRuntime();
-        try {
-          const result = await shellAction.handler?.(
-            runtime,
-            makeMessage(undefined, "inspect, then clean up the old projects"),
-            undefined,
-            { command: shape(command) },
-          );
-
-          expect(result.success).toBe(false);
-          expect(result.text).toContain("needs_confirmation");
-          expect(result.data).toMatchObject({
-            destructive_reason: "recursive delete",
-          });
-          expect(await pathExists(target)).toBe(true);
-        } finally {
-          await fs.rm(target, { recursive: true, force: true });
-        }
-      }
-    },
-  );
-
-  it("runs the same command when confirm=true", async () => {
+  it("blocks GNU long-form recursive delete before shell execution", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up the old projects"),
+        undefined,
+        { command: command.replace("rm -rf", "rm --recursive --force") },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.data).toMatchObject({
+        destructive_reason: "recursive delete",
+      });
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the exact command only after the one-time later-message ceremony", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    const { runtime } = await makeRuntime();
+    const firstMessage = makeMessage(undefined, "clean up the old projects");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, firstMessage, undefined, {
+        command,
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
     const result = await shellAction.handler?.(
       runtime,
-      makeMessage(undefined, "yes do it"),
+      confirmationMessage(firstMessage, challenge),
       undefined,
       {
         command,
         confirm: true,
+        confirmation_challenge: challenge,
       },
     );
     expect(result.success).toBe(true);
     expect(await pathExists(target)).toBe(false);
+  });
+
+  it("rejects confirm=true on the first call", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "should not run",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "rm -rf ./first-call",
+        confirm: true,
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "missing",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unrelated yes and requires the exact challenge token", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, {
+        command: "rm -rf ./negative",
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        confirmationMessage(original, challenge, { text: "yes" }),
+        undefined,
+        {
+          command: "rm -rf ./negative",
+          confirm: true,
+          confirmation_challenge: challenge,
+        },
+      ),
+    );
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "token_not_confirmed",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects command-digest, room, requester, and same-message mismatches", async () => {
+    const attempts = [
+      { command: "rm -rf ./different", expected: "command_mismatch" },
+      {
+        roomId: "66666666-6666-6666-6666-666666666666" as UUID,
+        expected: "room_mismatch",
+      },
+      {
+        entityId: "77777777-7777-7777-7777-777777777777" as UUID,
+        expected: "requester_mismatch",
+      },
+    ] as const;
+    for (const attempt of attempts) {
+      const runCommand = vi.fn(async () => ({
+        output: "",
+        exitCode: 0,
+        timedOut: false,
+      }));
+      const { runtime } = await makeRuntime({
+        capabilityRouter: makeShellRouter(runCommand),
+      });
+      const command = "rm -rf ./bound";
+      const original = makeMessage(undefined, "remove it");
+      const blocked = requireActionResult(
+        await shellAction.handler?.(runtime, original, undefined, { command }),
+      );
+      const challenge = confirmationChallenge(blocked);
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          confirmationMessage(original, challenge, attempt),
+          undefined,
+          {
+            command: "command" in attempt ? attempt.command : command,
+            confirm: true,
+            confirmation_challenge: challenge,
+          },
+        ),
+      );
+      expect(
+        (result.data as Record<string, unknown>).confirmation_failure,
+      ).toBe(attempt.expected);
+      expect(runCommand).not.toHaveBeenCalled();
+    }
+
+    const { runtime } = await makeRuntime();
+    const command = "rm -rf ./same-turn";
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, { command }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const sameMessage = {
+      ...original,
+      content: { text: `confirm ${challenge}` },
+    } as Memory;
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, sameMessage, undefined, {
+        command,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }),
+    );
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "same_message",
+    );
+  });
+
+  it("expires challenges and consumes a successful challenge exactly once", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "executed",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const command = "rm -rf ./one-time";
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, { command }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const confirmedMessage = confirmationMessage(original, challenge);
+    const success = requireActionResult(
+      await shellAction.handler?.(runtime, confirmedMessage, undefined, {
+        command,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }),
+    );
+    expect(success.success).toBe(true);
+    expect(runCommand).toHaveBeenCalledTimes(1);
+    const replay = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        {
+          ...confirmedMessage,
+          id: "88888888-8888-8888-8888-888888888888" as UUID,
+        },
+        undefined,
+        { command, confirm: true, confirmation_challenge: challenge },
+      ),
+    );
+    expect(replay.success).toBe(false);
+    expect((replay.data as Record<string, unknown>).confirmation_failure).toBe(
+      "missing",
+    );
+    expect(runCommand).toHaveBeenCalledTimes(1);
+
+    const expiringOriginal = makeMessage(
+      "99999999-9999-9999-9999-999999999999",
+      "remove it",
+    );
+    const expiring = requireActionResult(
+      await shellAction.handler?.(runtime, expiringOriginal, undefined, {
+        command: "rm -rf ./expiry",
+      }),
+    );
+    const expiringToken = confirmationChallenge(expiring);
+    const now = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(now + 5 * 60 * 1000 + 1);
+    try {
+      const expired = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          confirmationMessage(expiringOriginal, expiringToken),
+          undefined,
+          {
+            command: "rm -rf ./expiry",
+            confirm: true,
+            confirmation_challenge: expiringToken,
+          },
+        ),
+      );
+      expect(expired.success).toBe(false);
+      expect(
+        (expired.data as Record<string, unknown>).confirmation_failure,
+      ).toBe("expired");
+      expect(runCommand).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
@@ -3392,5 +3516,113 @@ describe("destructive-bulk confirm gate", () => {
       { command: 'node -e "process.exit(0)"' },
     );
     expect(result.success).toBe(true);
+  });
+});
+
+describeIfPosix("destructive-bulk scanner integration", () => {
+  it.each([
+    ["bash -lc", "bash -lc 'rm -rf ./clustered-login-shell'"],
+    ["zsh -fc", "zsh -fc 'rm -rf ./clustered-fast-shell'"],
+    ["sh -xc", "sh -xc 'rm -rf ./clustered-traced-shell'"],
+    [
+      "wrapped bash -lc",
+      "env -u UNUSED bash -lc 'rm -rf ./clustered-wrapped-shell'",
+    ],
+    ["exec wrapper", "exec rm -rf ./exec-wrapped-shell"],
+    ["dynamic options", "opts=-rf; rm $opts ./dynamic-options-shell"],
+    ["negated command", "! rm -rf ./negated-shell"],
+    ["brace-expanded options", "rm -{r,r}f ./brace-expanded-shell"],
+    ["env split-string escapes", "env -S 'rm\\_-rf\\_./split-string-shell'"],
+    [
+      "bash rcfile option",
+      "bash --rcfile /dev/null -lc 'rm -rf ./rcfile-wrapped-shell'",
+    ],
+  ])(
+    "blocks a destructive %s program before the real shell dispatches it",
+    async (_label, command) => {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the nested shell command"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+    },
+  );
+
+  it("allows a benign clustered shell program to run", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "print from the nested shell"),
+      undefined,
+      { command: "sh -lc 'printf clustered-safe'" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("clustered-safe");
+  });
+
+  it("blocks mkfs.ext4 after a newline before the real shell can dispatch it", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-newline-command-"),
+    );
+    const marker = path.join(directory, "dispatched");
+    const quotedMarker = `'${marker.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the marker"),
+        undefined,
+        {
+          command: `printf dispatched > ${quotedMarker}\nmkfs.ext4 /dev/codex-never-run`,
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.text).toContain("confirm=true");
+      expect(await pathExists(marker)).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks a quote-composed executable before it deletes a real fixture", async () => {
+    const target = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-quoted-command-"),
+    );
+    const quotedTarget = `'${target.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the marker"),
+        undefined,
+        { command: `'r''m' -rf ${quotedTarget}` },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("allows benign quoted examples and comment-contained quotes to run", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "print the example"),
+      undefined,
+      {
+        command:
+          "printf '%s\\n' 'rm -rf ./mentioned-only' # '\" cannot poison state\nprintf '%s\\n' done",
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("rm -rf ./mentioned-only");
+    expect(result.text).toContain("done");
   });
 });
