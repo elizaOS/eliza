@@ -281,7 +281,7 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 | `ELIZA_BUILD_VARIANT` | `"store"` for App Store / Play Store builds |
 | `ELIZA_RELEASE_AUTHORITY` | `"apple-app-store"` for iOS store builds (tightens CSP) |
 | `ELIZA_IOS_FULL_BUN_ENGINE` | `1` enables full Bun runtime on iOS |
-| `VITE_ELIZA_IOS_RUNTIME_MODE` | `"local"` or `"cloud"` — iOS runtime mode for Capacitor plugin |
+| `VITE_ELIZA_IOS_RUNTIME_MODE` | `"local"`, `"remote-mac"`, or `"cloud"` — iOS runtime mode for Capacitor plugin |
 | `VITE_ELIZA_IOS_API_BASE` | Override iOS agent API base URL |
 
 ## How to extend
