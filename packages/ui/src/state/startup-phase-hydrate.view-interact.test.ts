@@ -19,6 +19,7 @@ const clientMock = vi.hoisted(() => {
   return {
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
+    getBaseUrl: vi.fn(() => ""),
     getCodingAgentStatus: vi.fn(async () => ({ tasks: [] })),
     handlers,
     onWsEvent: vi.fn(
@@ -33,6 +34,10 @@ const clientMock = vi.hoisted(() => {
   };
 });
 
+const androidRuntimeMock = vi.hoisted(() => ({
+  isAndroidCloudBuild: vi.fn(() => false),
+}));
+
 const viewInteractMock = vi.hoisted(() => ({
   dispatchViewInteract: vi.fn(async () => {}),
 }));
@@ -42,6 +47,11 @@ vi.mock("../api", () => ({
 }));
 
 vi.mock("../components/views/view-interact-registry", () => viewInteractMock);
+vi.mock("../platform/android-runtime", () => androidRuntimeMock);
+
+beforeEach(() => {
+  androidRuntimeMock.isAndroidCloudBuild.mockReturnValue(false);
+});
 
 function makeDeps(): ReadyPhaseDeps {
   return {
@@ -86,6 +96,24 @@ describe("bindReadyPhase pty hydration readiness gate", () => {
       deps.agentRunningRef.current = true;
       vi.advanceTimersByTime(5_000);
       expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never polls an absent app-shell API in the Play cloud WebView", () => {
+    clientMock.getCodingAgentStatus.mockClear();
+    androidRuntimeMock.isAndroidCloudBuild.mockReturnValue(true);
+    vi.useFakeTimers();
+    try {
+      const deps = makeDeps();
+      deps.agentRunningRef.current = true;
+      const cleanup = bindReadyPhase({ current: deps });
+
+      vi.advanceTimersByTime(5_000);
+      expect(clientMock.getCodingAgentStatus).not.toHaveBeenCalled();
 
       cleanup();
     } finally {

@@ -344,7 +344,12 @@ export function bindReadyPhase(
   const doHydratePty = () => {
     const baseUrl =
       typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
-    if (!supportsFullAppShellRoutes(baseUrl)) return;
+    if (
+      !supportsAppShellRoutesForRuntime(baseUrl, {
+        androidCloudBuild: isAndroidCloudBuild(),
+      })
+    )
+      return;
     client
       .getCodingAgentStatus()
       .then((s) => {
