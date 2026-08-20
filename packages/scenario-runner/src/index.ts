@@ -39,6 +39,7 @@ export {
   waitForScenarioRequiredServices,
 } from "./required-services.ts";
 export * from "./synthetic-control.ts";
+export * from "./stability.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

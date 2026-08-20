@@ -83,7 +83,17 @@ eliza-scenarios run  <dir>
   --provider <name>        Pin the live provider: groq, openai, anthropic,
                            google, openrouter, or cli
   [fileGlob ...]           Filter by file glob pattern
+
+eliza-scenarios stability <output-dir> --runId <id>
+  --attempt-report <path>  Aggregate a matrix report; supply exactly three
 ```
+
+With no attempt reports, `stability` writes a three-attempt plan containing
+unique run IDs and isolated output paths. Once the three declared `matrix.json`
+reports exist, supply all three paths to produce strict `3/3` through `0/3`
+tiers, structural failure classifications, and a deterministic focus list.
+This command only plans and aggregates artifacts; it does not execute scenarios
+or model providers.
 
 ## Provider-qualified release evidence
 
