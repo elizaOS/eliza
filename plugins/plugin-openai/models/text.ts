@@ -327,10 +327,11 @@ function normalizeCerebrasModelId(modelName: string): string {
 function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
   const id = normalizeCerebrasModelId(modelName);
-  // gemma-4-31b is also a Cerebras reasoning model (emits reasoning_content;
-  // accepts reasoning_effort — verified live HTTP 200 on 2026-08-19). Without
-  // the bounded default an uncapped reasoning budget can consume the whole
-  // completion and return empty visible content on capped calls.
+  // gemma-4-31b accepts reasoning_effort but does NOT reason unless the field
+  // is sent — and `"low"` is not bounded for it: hidden reasoning consumes the
+  // entire completion budget on small-capped calls (max_tokens 128 →
+  // finish_reason "length", content null; verified live 2026-08-20). Its
+  // correct default is explicit `"none"`, mapped per-model below.
   return id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "gemma-4-31b";
 }
 
@@ -374,6 +375,7 @@ function resolveThinkingOffReasoningEffort(
   if (isCerebrasMode(runtime)) {
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
+    if (cerebrasId === "gemma-4-31b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -381,10 +383,26 @@ function resolveThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * Per-model Cerebras reasoning default. `"low"` bounds the models whose hidden
+ * reasoning must be capped but still helps quality; gemma-4-31b gets `"none"`
+ * because any non-none effort can spend the whole completion budget on hidden
+ * reasoning and return empty content on small-capped calls (live 2026-08-20).
+ */
+function resolveCerebrasDefaultReasoningEffort(
+  modelName: string | undefined
+): ReasoningEffort | "none" | undefined {
+  if (!modelName) return undefined;
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  if (id === "gemma-4-31b") return "none";
+  return undefined;
+}
+
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
-): ReasoningEffort | undefined {
+): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -396,11 +414,11 @@ function resolveReasoningEffort(
     );
   }
   // The exact provider contract gates this default: family lookalikes may
-  // reject the field, while both supported reasoning models need a bounded
-  // budget so visible content survives a capped response. An explicit valid
-  // value above wins over this default.
-  if (isCerebrasMode(runtime) && isCerebrasReasoningModel(modelName)) {
-    return "low";
+  // reject the field, and the right bound is per-model — "low" caps hidden
+  // reasoning for gpt-oss/zai, while gemma-4-31b needs "none" outright. An
+  // explicit valid value above wins over this default.
+  if (isCerebrasMode(runtime)) {
+    return resolveCerebrasDefaultReasoningEffort(modelName);
   }
   return undefined;
 }
