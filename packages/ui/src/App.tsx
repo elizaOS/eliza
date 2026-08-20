@@ -65,6 +65,7 @@ import {
   LazyStreamView,
   LazyTasksPageView,
   LazyTrajectoriesView,
+  LazyVaultPageView,
   LazyViewBoundary,
   scheduleRouteViewChunkPrefetch,
 } from "./app-route-loaders";
@@ -1367,6 +1368,7 @@ function buildStaticTabRenderers(): Record<
         />
       </TabContentView>
     ),
+    vault: wrap(<LazyVaultPageView />),
     // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.

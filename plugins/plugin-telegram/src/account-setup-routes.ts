@@ -176,6 +176,14 @@ function resolveConfiguredPhone(
     : null;
 }
 
+function isVaultReference(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value.startsWith("vault://") &&
+    value.length > "vault://".length
+  );
+}
+
 // Public Telegram Desktop app credentials (api_id 2040). api_id/api_hash
 // identify the CLIENT APP, not the user, and grant no account access on their
 // own — the minted StringSession is the real secret. Bundling a working default
@@ -210,7 +218,8 @@ export function resolveTelegramAppCredentials(
     Number.isInteger(parsedAccountId) &&
     parsedAccountId > 0 &&
     typeof connConfig.appHash === "string" &&
-    connConfig.appHash.trim().length > 0
+    connConfig.appHash.trim().length > 0 &&
+    !isVaultReference(connConfig.appHash)
   ) {
     return {
       apiId: parsedAccountId,

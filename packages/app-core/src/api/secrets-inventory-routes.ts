@@ -1,8 +1,8 @@
 /**
  * Vault inventory + profile + routing API routes.
  *
- *   GET    /api/secrets/inventory                   → VaultEntryMeta[]
- *                                                    (no values; loopback gate only — list is meta)
+ *   GET    /api/secrets/inventory                   → VaultEntryMeta[] + non-revealing
+ *                                                    connector storage findings
  *   GET    /api/secrets/inventory/:key              → reveal active-profile value
  *                                                    (sensitive → ensureCompatSensitiveRouteAuthorized)
  *   PUT    /api/secrets/inventory/:key              → upsert { value, label?, providerId?, category? }
@@ -36,6 +36,9 @@
  */
 
 import type http from "node:http";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { logger } from "@elizaos/core";
 import {
   listVaultInventory,
   profileStorageKey,
@@ -50,6 +53,7 @@ import {
   type VaultEntryProfile,
   writeRoutingConfig,
 } from "@elizaos/vault";
+import { listConnectorSecretFindings } from "../services/connector-secret-inventory";
 import { sharedVault } from "../services/vault-mirror";
 import {
   type CompatStateLike,
@@ -64,6 +68,7 @@ const KEY_RE = /^[A-Za-z0-9_.-]+$/;
 const PROFILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CATEGORY_VALUES: ReadonlySet<VaultEntryCategory> = new Set([
   "provider",
+  "connector",
   "plugin",
   "wallet",
   "credential",
@@ -191,7 +196,27 @@ export async function handleSecretsInventoryRoute(
     const entries = categoryParam
       ? all.filter((e) => e.category === categoryParam)
       : all;
-    sendJson(res, 200, { ok: true, entries: entries as VaultEntryMeta[] });
+    let securityFindings: ReturnType<typeof listConnectorSecretFindings> = [];
+    if (!categoryParam) {
+      try {
+        securityFindings = listConnectorSecretFindings(
+          loadElizaConfig() as unknown as Record<string, unknown>,
+          resolveStateDir(),
+        );
+      } catch {
+        // Inventory remains usable if the compatibility config is malformed or
+        // disappears during a concurrent write. Do not attach the thrown value:
+        // parser errors can echo credential-bearing source text.
+        logger.warn(
+          "[secrets-inventory] connector fallback findings unavailable",
+        );
+      }
+    }
+    sendJson(res, 200, {
+      ok: true,
+      entries: entries as VaultEntryMeta[],
+      securityFindings,
+    });
     return true;
   }
 

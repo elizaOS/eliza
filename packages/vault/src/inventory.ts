@@ -38,6 +38,7 @@ const PROFILE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
  * High-level category of a vault entry — drives grouping in the UI.
  *
  * - `provider`   — model-provider API keys (OPENAI_API_KEY, etc.)
+ * - `connector`  — per-account connector credentials (`connector.<agent>.*`)
  * - `plugin`     — non-provider plugin tokens (WORKFLOW_API_KEY, GITHUB_TOKEN, …)
  * - `wallet`     — wallet private keys / mnemonics
  * - `credential` — saved-login records (`creds.<domain>.<user>`)
@@ -46,6 +47,7 @@ const PROFILE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
  */
 export type VaultEntryCategory =
   | "provider"
+  | "connector"
   | "plugin"
   | "wallet"
   | "credential"
@@ -101,6 +103,10 @@ export function categorizeKey(key: string): VaultEntryCategory {
   if (key.startsWith("creds.")) return "credential";
   if (key.startsWith("pm.")) return "session";
   if (key.startsWith("_manager.") || key === ROUTING_KEY) return "system";
+  // ConnectorCredentialStoreService uses this canonical durable-ref shape:
+  // connector.<agentId>.<provider>.<accountId>.<credentialType>. Keep these
+  // user-account credentials distinct from plugin-wide API keys in inventory.
+  if (key.startsWith("connector.")) return "connector";
   if (
     /(?:_PRIVATE_KEY|_MNEMONIC|_SEED_PHRASE)$/i.test(key) ||
     /^(?:EVM|SOLANA|BTC|ETH|BITCOIN)_/i.test(key) ||
@@ -420,6 +426,7 @@ function parseMetaRecord(
 function isCategory(v: string): v is VaultEntryCategory {
   return (
     v === "provider" ||
+    v === "connector" ||
     v === "plugin" ||
     v === "wallet" ||
     v === "credential" ||

@@ -75,6 +75,23 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
+  it("uses the resolved runtime setting when config stores an appHash vault reference", () => {
+    const creds = resolveTelegramAppCredentials(
+      makeRuntime({
+        TELEGRAM_APP_ID: "12345",
+        TELEGRAM_APP_HASH: "resolvedHashresolvedHashresolved1",
+      }),
+      {
+        appId: "12345",
+        appHash: "vault://connector.host.telegramAccount.default.appHash",
+      },
+    );
+    expect(creds).toEqual({
+      apiId: 12345,
+      apiHash: "resolvedHashresolvedHashresolved1",
+    });
+  });
+
   it("ignores a non-numeric TELEGRAM_APP_ID and falls back to the bundled default", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({

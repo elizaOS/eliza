@@ -36,6 +36,7 @@ export type InstallMethod =
 
 export type VaultEntryCategory =
   | "provider"
+  | "connector"
   | "plugin"
   | "wallet"
   | "credential"
@@ -61,8 +62,20 @@ export interface VaultEntryMeta {
   kind: "secret" | "value" | "reference";
 }
 
+/** Non-revealing credential material still outside encrypted Vault storage. */
+export interface ConnectorSecretFinding {
+  id: string;
+  connector: string;
+  label: string;
+  source: "eliza-config" | "state-file";
+  protection: "mode-0600" | "permissions-need-attention";
+  autoMigratesOnDesktop: boolean;
+  detail: string;
+}
+
 const VAULT_ENTRY_CATEGORIES: ReadonlySet<VaultEntryCategory> = new Set([
   "provider",
+  "connector",
   "plugin",
   "wallet",
   "credential",

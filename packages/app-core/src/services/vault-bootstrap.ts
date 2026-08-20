@@ -7,7 +7,8 @@
  *   1. eliza.json `env[KEY]` and `env.vars[KEY]`
  *   2. `<stateDir>/config.env`
  *   3. eliza.json `plugins.entries[<id>].config[KEY]`
- *   4. `process.env[KEY]` for keys flagged sensitive in any registered plugin
+ *   4. eliza.json top-level connector credential fields
+ *   5. `process.env[KEY]` for keys flagged sensitive in any registered plugin
  *      (does not mutate process.env — only mirrors to the vault).
  *
  * Idempotent by `vault.has(key)` per-key checks — no separate marker
@@ -31,6 +32,10 @@ import {
 import { logger } from "@elizaos/core";
 import { loadRegistry } from "@elizaos/registry/first-party";
 import type { Vault } from "@elizaos/vault";
+import {
+  CONNECTOR_SECRET_FIELDS,
+  connectorVaultKey,
+} from "./connector-secret-inventory";
 import { sharedVault } from "./vault-mirror";
 
 interface AgentBridge {
@@ -127,6 +132,7 @@ async function migrateElizaJson(
   async function tryMigrate(
     container: Record<string, unknown>,
     key: string,
+    options: { forceSensitive?: boolean; vaultKey?: string } = {},
   ): Promise<void> {
     const value = container[key];
     if (typeof value !== "string" || value.length === 0) return;
@@ -135,17 +141,20 @@ async function migrateElizaJson(
       return;
     }
     const isSensitive =
-      sensitiveKeys.has(key) || inferSensitiveByHeuristic(key);
+      options.forceSensitive === true ||
+      sensitiveKeys.has(key) ||
+      inferSensitiveByHeuristic(key);
     if (!isSensitive) return;
+    const vaultKey = options.vaultKey ?? key;
     try {
-      await vault.set(key, value, { sensitive: true });
-      container[key] = bridge.formatVaultRef(key);
-      migrated.push(key);
+      await vault.set(vaultKey, value, { sensitive: true });
+      container[key] = bridge.formatVaultRef(vaultKey);
+      migrated.push(vaultKey);
       mutated = true;
     } catch (err) {
-      failed.push(key);
+      failed.push(vaultKey);
       logger.error(
-        { err, key },
+        { err, key: vaultKey },
         "[vault-bootstrap] failed to migrate eliza.json secret",
       );
     }
@@ -181,7 +190,40 @@ async function migrateElizaJson(
     }
   }
 
+  const connectorsValue =
+    (config as { connectors?: unknown }).connectors ??
+    (config as { channels?: unknown }).channels;
+  if (isPlainRecord(connectorsValue)) {
+    for (const [connectorName, secretFields] of Object.entries(
+      CONNECTOR_SECRET_FIELDS,
+    )) {
+      const connectorConfig = connectorsValue[connectorName];
+      if (!isPlainRecord(connectorConfig)) continue;
+      for (const fieldName of secretFields) {
+        await tryMigrate(connectorConfig, fieldName, {
+          forceSensitive: true,
+          vaultKey: connectorVaultKey(connectorName, fieldName),
+        });
+      }
+    }
+  }
+
   return { migrated, skipped, failed, mutated };
+}
+
+/**
+ * Focused test seam for the in-place eliza.json migration policy. Production
+ * callers should use `bootstrapVaultSecrets` so config persistence and the
+ * remaining plaintext sources are handled together.
+ *
+ * @internal
+ */
+export async function migrateElizaJsonSecretsForTesting(
+  config: ElizaConfig,
+  vault: Vault,
+  sensitiveKeys: ReadonlySet<string> = new Set(),
+) {
+  return migrateElizaJson(config, vault, sensitiveKeys, agentBridge());
 }
 
 async function migrateConfigEnvFile(
