@@ -347,6 +347,22 @@
       } catch {}
     })();
   </script>
+  <script>
+    // The detached macOS assistant is a transparent native overlay, not a
+    // full application canvas. Classify it before the FOUC guard below is
+    // parsed so the shared black launch surface and branded preboot shell can
+    // never flash inside the pill window while the renderer bundle loads.
+    (() => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const shellMode = params.get("shellMode") || params.get("shell-mode");
+        if (shellMode !== "chat-overlay") return;
+        const root = document.documentElement;
+        root.setAttribute("data-chat-overlay-preboot", "true");
+        root.style.setProperty("--launch-bg", "transparent");
+      } catch {}
+    })();
+  </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
        The launch surface is black (#000000 — DEFAULT_BACKGROUND_COLOR, the
@@ -368,6 +384,13 @@
     body,
     #root {
       background-color: var(--launch-bg, #000000);
+    }
+
+    html[data-chat-overlay-preboot="true"],
+    html[data-chat-overlay-preboot="true"] body,
+    html[data-chat-overlay-preboot="true"] #root {
+      background: transparent;
+      background-color: transparent;
     }
 
     html, body {
@@ -492,6 +515,13 @@
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
       if (!shell) return;
+      // The overlay's host is transparent from the first style calculation.
+      // Remove the full-app brand lockup synchronously; ChatOverlay owns the
+      // only visible loading/ready surface in this specialized window.
+      if (document.documentElement.getAttribute("data-chat-overlay-preboot") === "true") {
+        shell.remove();
+        return;
+      }
       // The head classified public marketing before any CSS could paint. Drop
       // the agent-branded boot shell synchronously and leave the already-white
       // root visible until the static hero commits.

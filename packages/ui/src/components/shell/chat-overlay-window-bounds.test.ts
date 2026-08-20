@@ -8,6 +8,7 @@ import {
   type ChatOverlayWindowBounds,
   computeChatOverlayWindowBounds,
   createChatOverlayWindowBoundsCoordinator,
+  createChatOverlayWindowSizeCoordinator,
   resolveChatOverlayCompactWindowSize,
   shouldHideRestingChatOverlay,
 } from "./chat-overlay-window-bounds";
@@ -179,5 +180,65 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     coordinator.schedule(true);
     await coordinator.whenIdle();
     expect(onFailure).toHaveBeenCalledWith(failure);
+  });
+});
+
+describe("createChatOverlayWindowSizeCoordinator", () => {
+  it("restores the latest detent after an older native resize completes", async () => {
+    const restingWrite = deferred<void>();
+    const applied: Array<{ width: number; height: number }> = [];
+    const onFailure = vi.fn();
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async (size) => {
+        applied.push(size);
+        if (size.height === 6) await restingWrite.promise;
+      },
+      onFailure,
+    });
+
+    coordinator.schedule({ width: 576, height: 64 });
+    await coordinator.whenIdle();
+
+    coordinator.schedule({ width: 48, height: 6 });
+    await flushMicrotasks();
+    expect(applied).toEqual([
+      { width: 576, height: 64 },
+      { width: 48, height: 6 },
+    ]);
+
+    // The final renderer request intentionally matches the size that was last
+    // settled before the in-flight resting write. It must still invalidate the
+    // older revision and restore the composer after that write completes.
+    coordinator.schedule({ width: 576, height: 64 });
+    restingWrite.resolve();
+    await coordinator.whenIdle();
+
+    expect(applied).toEqual([
+      { width: 576, height: 64 },
+      { width: 48, height: 6 },
+      { width: 576, height: 64 },
+    ]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it("cancels a queued stale resize when the latest size is already applied", async () => {
+    const firstWrite = deferred<void>();
+    const applied: Array<{ width: number; height: number }> = [];
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async (size) => {
+        applied.push(size);
+        if (applied.length === 1) await firstWrite.promise;
+      },
+      onFailure: vi.fn(),
+    });
+
+    coordinator.schedule({ width: 576, height: 64 });
+    await flushMicrotasks();
+    coordinator.schedule({ width: 48, height: 6 });
+    coordinator.schedule({ width: 576, height: 64 });
+    firstWrite.resolve();
+    await coordinator.whenIdle();
+
+    expect(applied).toEqual([{ width: 576, height: 64 }]);
   });
 });

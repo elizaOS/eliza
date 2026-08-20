@@ -130,7 +130,8 @@ body {
 html.eliza-chat-overlay-shell,
 html.eliza-chat-overlay-shell body,
 html.eliza-chat-overlay-shell #root {
-  background: transparent;
+  /* biome-ignore lint/complexity/noImportantStyles: the native overlay must override the base root canvas in every load/HMR ordering */
+  background: transparent !important;
 }
 
 /* The native shell hosts the image wallpaper below the WebView (see

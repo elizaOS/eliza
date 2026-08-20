@@ -28,7 +28,8 @@ html.eliza-electrobun-macos-titlebar {
    visually legible without restoring a heavy title bar: one quiet divider at
    the bottom of the 38px native AppKit drag strip. Pointer events stay with
    the native strip and the traffic lights. */
-html.eliza-electrobun-managed-window body::before {
+html.eliza-electrobun-macos-titlebar:not(.eliza-electrobun-custom-titlebar)
+body::before {
   position: fixed;
   z-index: 2147483646;
   top: 37px;
@@ -45,12 +46,15 @@ html.eliza-electrobun-managed-window body::before {
    other first-row content never paint underneath that native hit region. The
    root remains the containing block; fixed overlays (including ChatOverlay)
    keep their intended viewport-relative bottom anchoring. */
-html.eliza-electrobun-managed-window body {
+html.eliza-electrobun-macos-titlebar:not(.eliza-electrobun-custom-titlebar)
+body {
   box-sizing: border-box;
   padding-top: var(--eliza-macos-native-titlebar-height);
 }
 
-html.eliza-electrobun-managed-window #root {
+html.eliza-electrobun-macos-titlebar:not(.eliza-electrobun-custom-titlebar)
+  #root {
+  height: calc(100dvh - var(--eliza-macos-native-titlebar-height));
   min-height: calc(100dvh - var(--eliza-macos-native-titlebar-height));
 }
 

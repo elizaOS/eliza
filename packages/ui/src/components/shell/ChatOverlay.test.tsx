@@ -83,7 +83,6 @@ import {
   setNativeWallpaperSource,
 } from "../../glass/native-backdrop";
 import { resetGlassBridgeForTests } from "../../glass/native-bridge";
-import { GLASS_SHEET_FILL } from "../../glass/tokens";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -4414,9 +4413,11 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       />,
     );
     const surface = screen.getByTestId("chat-sheet-surface");
-    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
+    expect(surface.style.backgroundColor).toBe("rgba(10, 10, 12, 0.64)");
+    expect(surface.style.backdropFilter).toBe("");
     fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
-    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
+    expect(surface.style.backgroundColor).toBe("rgba(10, 10, 12, 0.64)");
+    expect(surface.style.backdropFilter).toBe("");
   });
 
   it("steps the detached Mac pill down on short 24px grabber pulls", async () => {
@@ -4545,6 +4546,66 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       eventTimeStamp.mockRestore();
       now.mockRestore();
     }
+  });
+
+  it("retires the detached native sheet envelope after a grabber tap collapses half to input", async () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+
+    let grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 0 });
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
+
+    grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 0 });
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+
+    // The closing transcript stays mounted only for the visible spring. Once
+    // that spring finishes, the renderer must publish INPUT so AppKit shrinks
+    // the host from 600x820 to the exact 576x64 composer frame.
+    await waitFor(
+      () => {
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+      },
+      { timeout: 2_000 },
+    );
+  });
+
+  it("retires sheet preview and staging together after detached Mac history closes to the pill", async () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="pill"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-pill"), { detail: 0 });
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.dataset.detent).toBe("half");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(sheet.dataset.detent).toBe("pill");
+
+    await waitFor(
+      () => {
+        expect(sheet.dataset.collapsePhase).toBeUndefined();
+        expect(sheet.dataset.revealed).toBe("false");
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("resting");
+      },
+      { timeout: 2_000 },
+    );
   });
 
   it("a big upward over-pull of the grabber maximizes to full-bleed", () => {

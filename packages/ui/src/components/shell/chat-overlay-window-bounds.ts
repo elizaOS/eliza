@@ -328,12 +328,15 @@ export function createChatOverlayWindowSizeCoordinator(
 
   const schedule = (requestedSize: ChatOverlayMaterialSize): void => {
     const size = normalizeMaterialSize(requestedSize);
-    if (sizesEqual(lastApplied, size)) return;
     const revision = ++latestRevision;
     const operation = tail.then(async () => {
       if (revision !== latestRevision || sizesEqual(lastApplied, size)) return;
       await bridge.setBottomBarSize(size);
-      if (revision === latestRevision) lastApplied = size;
+      // Record every completed native mutation, even if a newer request arrived
+      // while this write was in flight. Otherwise the queue can believe the
+      // host is still at the prior size and incorrectly skip restoring the
+      // renderer's latest detent.
+      lastApplied = size;
     });
     // error-policy:J4 Native geometry failure becomes the visible action notice
     // supplied by the detached shell boundary.

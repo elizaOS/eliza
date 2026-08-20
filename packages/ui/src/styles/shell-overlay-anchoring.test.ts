@@ -65,6 +65,7 @@ function keyframesBlock(css: string, name: string): string {
 describe("chat-overlay shell entry-animation anchoring (#20063)", () => {
   const baseCss = readStyle("base.css");
   const stylesCss = readStyle("styles.css");
+  const electrobunMacCss = readStyle("electrobun-mac-window-drag.css");
 
   it("declares shell-overlay-in-anchored keyframes carrying translateX(-50%) in every keyframe", () => {
     const anchored = keyframesBlock(baseCss, "shell-overlay-in-anchored");
@@ -111,5 +112,24 @@ describe("chat-overlay shell entry-animation anchoring (#20063)", () => {
     );
     expect(shell).toContain("translate: none !important");
     expect(shell).toContain("transform: translateX(-50%)");
+  });
+
+  it("keeps every detached overlay root canvas force-transparent", () => {
+    const rootCanvas = stylesCss.match(
+      /html\.eliza-chat-overlay-shell,\s*html\.eliza-chat-overlay-shell body,\s*html\.eliza-chat-overlay-shell #root\s*\{[^}]*\}/,
+    );
+    expect(rootCanvas?.[0]).toContain("background: transparent !important");
+  });
+
+  it("reserves native titlebar space after a managed Workspace cleans its URL", () => {
+    const stablePlatformSelector =
+      /html\.eliza-electrobun-macos-titlebar:not\(\.eliza-electrobun-custom-titlebar\)\s+body\s*\{[^}]*padding-top:\s*var\(--eliza-macos-native-titlebar-height\)/;
+    expect(electrobunMacCss).toMatch(stablePlatformSelector);
+    expect(electrobunMacCss).toMatch(
+      /html\.eliza-electrobun-macos-titlebar:not\(\.eliza-electrobun-custom-titlebar\)\s+#root\s*\{[^}]*height:\s*calc\(100dvh\s*-\s*var\(--eliza-macos-native-titlebar-height\)\)/,
+    );
+    expect(electrobunMacCss).not.toMatch(
+      /html\.eliza-electrobun-managed-window\s+body\s*\{[^}]*padding-top/,
+    );
   });
 });

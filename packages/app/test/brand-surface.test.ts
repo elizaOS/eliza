@@ -99,6 +99,24 @@ describe("brand surfaces", () => {
     );
   });
 
+  it("keeps the detached chat overlay transparent and skips the full-app preboot brand", () => {
+    const html = read("index.html");
+    expect(html).toContain('shellMode !== "chat-overlay"');
+    expect(html).toContain('data-chat-overlay-preboot", "true"');
+    expect(html).toContain(
+      'root.style.setProperty("--launch-bg", "transparent")',
+    );
+    expect(html).toMatch(
+      /html\[data-chat-overlay-preboot="true"\][\s\S]*?background(?:-color)?:\s*transparent/,
+    );
+    expect(html).toContain(
+      'document.documentElement.getAttribute("data-chat-overlay-preboot") === "true"',
+    );
+    expect(html).toMatch(
+      /data-chat-overlay-preboot[\s\S]*?shell\.remove\(\);[\s\S]*?return;/,
+    );
+  });
+
   it("app.config web/theme colors track the home background (never the brand accent)", () => {
     // theme-color paints the iOS-standalone home-indicator safe-area inset —
     // a PERSISTENT surface, so it must equal the default home background,

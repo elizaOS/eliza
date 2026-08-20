@@ -406,7 +406,11 @@ function ChatOverlayShell() {
     windowSizeClass,
   ]);
   const reportWindowMaterialSize = useCallback(
-    (size: ChatOverlayMaterialSize): void => {
+    (
+      size: ChatOverlayMaterialSize,
+      measuredSizeClass: ChatOverlayWindowSizeClass,
+    ): void => {
+      if (measuredSizeClass !== windowSizeClassRef.current) return;
       reportNativeInteractiveSize(size);
       if (
         controller?.authGate.gated ||
@@ -2241,7 +2245,10 @@ function ChatOverlayMount({
   onRequestedOpenChange?: (open: boolean) => void;
   onWindowExpandedChange?: (expanded: boolean) => void;
   onWindowSizeClassChange?: (sizeClass: ChatOverlayWindowSizeClass) => void;
-  onWindowMaterialSizeChange?: (size: ChatOverlayMaterialSize) => void;
+  onWindowMaterialSizeChange?: (
+    size: ChatOverlayMaterialSize,
+    sizeClass: ChatOverlayWindowSizeClass,
+  ) => void;
   desktopOverlayHost?: boolean;
 }): ReactNode {
   const controller = useShellControllerContext();

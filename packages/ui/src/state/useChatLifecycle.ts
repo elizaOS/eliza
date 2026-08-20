@@ -403,12 +403,30 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setConversations([]);
       const s = await client.restartAndWait(120_000);
       setAgentStatus(s);
-      const greetConvId = await hydrateInitialConversationState();
-      await requestGreetingWhenRunning(greetConvId);
       setPendingRestart(false);
       setPendingRestartReasons([]);
       void loadPlugins();
       setActionNotice(LIFECYCLE_MESSAGES.restart.success, "success", 2400);
+
+      // The runtime is usable as soon as restartAndWait reports it running.
+      // Conversation hydration and the optional greeting are renderer setup;
+      // neither may keep the global lifecycle lock (and its persistent
+      // "Restarting agent..." notice) held indefinitely. Run them after the
+      // successful restart boundary and report failures without relabeling a
+      // healthy runtime restart as failed.
+      void (async () => {
+        try {
+          const greetConvId = await hydrateInitialConversationState();
+          await requestGreetingWhenRunning(greetConvId);
+        } catch (err) {
+          logger.warn(
+            {
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "Post-restart conversation setup failed",
+          );
+        }
+      })();
     } catch (err) {
       setActionNotice(
         `Failed to ${LIFECYCLE_MESSAGES.restart.verb} agent: ${

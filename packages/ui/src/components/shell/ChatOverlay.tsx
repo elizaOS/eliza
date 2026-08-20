@@ -65,6 +65,7 @@ import {
 import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import { useNativeGlassDiag } from "../../glass/native-backdrop";
 import {
+  GLASS_DESKTOP_SHEET_FILL,
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
@@ -1269,7 +1270,10 @@ export function ChatOverlay({
   /** Selects the stable native envelope surrounding the renderer animation. */
   onWindowSizeClassChange?: (sizeClass: ChatOverlayWindowSizeClass) => void;
   /** Reports settled material geometry outside an active sheet transition. */
-  onWindowMaterialSizeChange?: (size: ChatOverlayMaterialSize) => void;
+  onWindowMaterialSizeChange?: (
+    size: ChatOverlayMaterialSize,
+    sizeClass: ChatOverlayWindowSizeClass,
+  ) => void;
   /**
    * Keeps detached desktop presentation anchored to its canonical logical
    * stage. The native window follows the measured material, so its temporary
@@ -1961,6 +1965,9 @@ export function ChatOverlay({
     );
   }, [panelElement]);
   const materialMeasureFrameRef = React.useRef<number | null>(null);
+  const hostWindowSizeClassRef = React.useRef<ChatOverlayWindowSizeClass>(
+    pilled ? "resting" : "input",
+  );
   const lastMaterialSizeRef = React.useRef<ChatOverlayMaterialSize | null>(
     null,
   );
@@ -1979,7 +1986,7 @@ export function ChatOverlay({
       return;
     }
     lastMaterialSizeRef.current = next;
-    onWindowMaterialSizeChange(next);
+    onWindowMaterialSizeChange(next, hostWindowSizeClassRef.current);
   }, [onWindowMaterialSizeChange, pilled]);
   const queueWindowMaterialSize = React.useCallback(() => {
     if (!onWindowMaterialSizeChange || typeof window === "undefined") return;
@@ -2192,6 +2199,11 @@ export function ChatOverlay({
     : hostWindowExpanded || morphExpanded
       ? "input"
       : "resting";
+  // ResizeObserver and motion-frame reports are asynchronous. Tag every
+  // measurement with the detent that actually owns it so AppKit never applies
+  // a late sheet rectangle to the compact composer (or a late composer
+  // rectangle to the resting pill).
+  hostWindowSizeClassRef.current = hostWindowSizeClass;
   React.useLayoutEffect(() => {
     onWindowSizeClassChange?.(hostWindowSizeClass);
   }, [hostWindowSizeClass, onWindowSizeClassChange]);
@@ -3272,6 +3284,21 @@ export function ChatOverlay({
     [threadPresented, pilled, fullBleed, halfH],
   );
   const [headerVisible, setHeaderVisible] = React.useState(false);
+  const finishThreadClosed = React.useCallback(() => {
+    // Closing owns two temporary renderer latches: the transcript preview keeps
+    // the shrinking body mounted, and pill staging holds the composer shape
+    // until that body reaches zero. They must retire as one atomic endpoint.
+    // Clearing only the preview leaves `openProgress` pinned at the composer
+    // end while mode already says PILL, which is the invisible/opaque/stuck
+    // native surface seen after an interrupted or zero-distance close.
+    if (pillCollapseStagingRef.current) {
+      pillCollapseStagingRef.current = false;
+      setPillCollapseStaging(false);
+    }
+    setDragPreviewMounted(false);
+    setSheetSettled(true);
+    setDraggingState(false);
+  }, [setDragPreviewMounted, setDraggingState]);
   useMotionValueEvent(threadHeight, "change", (h) => {
     markLayoutShiftIntent();
     const next = evalHeaderVisible(h);
@@ -3286,11 +3313,7 @@ export function ChatOverlay({
       !sheetOpen &&
       dragPreviewVisibleRef.current
     ) {
-      if (pillCollapseStagingRef.current) {
-        pillCollapseStagingRef.current = false;
-        setPillCollapseStaging(false);
-      }
-      setDragPreviewMounted(false);
+      finishThreadClosed();
     }
   });
   // Re-evaluate on settled-state changes that don't tick the height (programmatic
@@ -3562,6 +3585,14 @@ export function ChatOverlay({
   const threadContentOpacity = useTransform(threadHeight, [72, 128], [0, 1], {
     clamp: true,
   });
+  // WebKit can preserve one stale composited transcript tile while the native
+  // window changes between its sheet and compact envelopes. Opacity alone does
+  // not suppress that tile. Remove the transcript from paint below the same
+  // reveal threshold so neither opening nor closing can flash a message at the
+  // top of the newly resized transparent window.
+  const threadContentVisibility = useTransform(threadHeight, (height) =>
+    height > 72 ? "visible" : "hidden",
+  );
   // Sub-threshold release: spring back to the current detent (no state change).
   // Also settles the pill→input morph to its resting end (0 while pilled, 1 once
   // open) so a half-finished pill drag springs cleanly back to the capsule.
@@ -3674,6 +3705,20 @@ export function ChatOverlay({
   // (draggingRef gates this so it never fights the gesture).
   React.useEffect(() => {
     if (draggingRef.current) return;
+    // `closeSheet` / the collapsed detent deliberately keeps the transcript
+    // mounted while `animateThreadClosed` eases it to zero. Do not immediately
+    // replace that close-specific spring with the generic detent spring: doing
+    // so cancels `animateThreadClosed`'s completion handler, strands
+    // `dragPreviewVisible`, and leaves the detached native host at its 600x820
+    // sheet envelope around a visually collapsed composer.
+    if (
+      !sheetOpen &&
+      !pilled &&
+      dragPreviewVisibleRef.current &&
+      threadAnimationRef.current !== null
+    ) {
+      return;
+    }
     const open = pilled && !pillCollapseStaging ? 0 : 1;
     if (reduce) {
       stopOpenProgressAnimation();
@@ -3686,6 +3731,7 @@ export function ChatOverlay({
     pilled,
     pillCollapseStaging,
     reduce,
+    sheetOpen,
     openProgress,
     animateOpenProgress,
     stopOpenProgressAnimation,
@@ -3701,20 +3747,16 @@ export function ChatOverlay({
     if (threadHeight.get() <= 1) {
       stopThreadAnimation();
       threadHeight.set(0);
-      setDragPreviewMounted(false);
-      setSheetSettled(true);
-      setDraggingState(false);
+      finishThreadClosed();
       return;
     }
     const controls = animateThreadHeight(0, COLLAPSE_SPRING);
     void controls.finished
       .then(() => {
-        if (
-          modeRef.current === "input" &&
-          !draggingRef.current &&
-          threadHeight.get() <= 1
-        ) {
-          setDragPreviewMounted(false);
+        const closedMode =
+          modeRef.current === "input" || modeRef.current === "pill";
+        if (closedMode && !draggingRef.current && threadHeight.get() <= 1) {
+          finishThreadClosed();
         }
       })
       .catch(() => {
@@ -3722,8 +3764,7 @@ export function ChatOverlay({
       });
   }, [
     animateThreadHeight,
-    setDragPreviewMounted,
-    setDraggingState,
+    finishThreadClosed,
     stopThreadAnimation,
     threadHeight,
   ]);
@@ -6200,19 +6241,21 @@ export function ChatOverlay({
               // out at taller detents: doing so made the same panel alternate
               // between transparent and opaque after drags and interrupted
               // settles. The full workstation/mobile contract remains unchanged.
-              backgroundColor: firstRunOpen
-                ? "transparent"
-                : desktopOverlayHost
-                  ? GLASS_SHEET_FILL
+              backgroundColor: desktopOverlayHost
+                ? GLASS_DESKTOP_SHEET_FILL
+                : firstRunOpen
+                  ? "transparent"
                   : nativeInsetSheet
                     ? "var(--bg)"
                     : surfaceBackgroundColor,
-              backdropFilter: cssSheetBackdropActive
-                ? GLASS_SHEET_BACKDROP_FILTER
-                : undefined,
-              WebkitBackdropFilter: cssSheetBackdropActive
-                ? GLASS_SHEET_BACKDROP_FILTER
-                : undefined,
+              backdropFilter:
+                cssSheetBackdropActive && !desktopOverlayHost
+                  ? GLASS_SHEET_BACKDROP_FILTER
+                  : undefined,
+              WebkitBackdropFilter:
+                cssSheetBackdropActive && !desktopOverlayHost
+                  ? GLASS_SHEET_BACKDROP_FILTER
+                  : undefined,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
@@ -6519,7 +6562,10 @@ export function ChatOverlay({
                     <motion.div
                       inert={searchOpen || undefined}
                       className="flex size-full min-h-0 flex-col"
-                      style={{ opacity: searchOpen ? 0 : threadContentOpacity }}
+                      style={{
+                        opacity: searchOpen ? 0 : threadContentOpacity,
+                        visibility: threadContentVisibility,
+                      }}
                     >
                       <MessageScrollerViewport
                         id="continuous-thread"
