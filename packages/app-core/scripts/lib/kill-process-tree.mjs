@@ -85,3 +85,50 @@ export function signalSpawnedProcessTree(child, signal) {
   if (pid === undefined || pid === null) return;
   signalProcessTree(pid, signal);
 }
+
+/**
+ * Signal the dedicated Unix process group created by `spawn(..., { detached:
+ * true })`. Unlike a parent/child walk, this still reaches launcher descendants
+ * after their immediate parent exits and they are reparented. Desktop dev uses
+ * one dedicated group per service, so the negative PID target is exact.
+ *
+ * Falls back to the normal tree walk on Windows and when the child is not a
+ * process-group leader.
+ *
+ * @param {import("node:child_process").ChildProcess | null | undefined} child
+ * @param {"SIGTERM" | "SIGKILL"} signal
+ */
+export function signalSpawnedProcessGroup(child, signal) {
+  const pid = child?.pid;
+  if (!Number.isFinite(pid) || pid <= 0) return;
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-pid, signal === "SIGKILL" ? "SIGKILL" : "SIGTERM");
+      return;
+    } catch {
+      // ESRCH means this child was not the leader of a live dedicated group.
+    }
+  }
+  signalProcessTree(pid, signal);
+}
+
+/**
+ * Whether a detached child's dedicated Unix process group still has members.
+ * This detects GUI launcher descendants even after the tracked CLI parent has
+ * exited, which ChildProcess.exitCode alone cannot do.
+ *
+ * @param {import("node:child_process").ChildProcess | null | undefined} child
+ * @returns {boolean}
+ */
+export function isSpawnedProcessGroupAlive(child) {
+  const pid = child?.pid;
+  if (!Number.isFinite(pid) || pid <= 0 || process.platform === "win32") {
+    return false;
+  }
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

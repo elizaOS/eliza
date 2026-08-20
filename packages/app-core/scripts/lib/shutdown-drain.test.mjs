@@ -297,7 +297,11 @@ describe("dev-platform supervisor wiring", () => {
       "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
     );
     expect(devPlatformSource).toContain(
-      "signalTree: signalSpawnedProcessTree,",
+      "signalTree: signalSpawnedProcessGroup,",
+    );
+    expect(devPlatformSource).toContain("isSpawnedProcessGroupAlive(child)");
+    expect(devPlatformSource).toContain(
+      'signalSpawnedProcessGroup(child, "SIGKILL")',
     );
   });
 
@@ -314,5 +318,12 @@ describe("dev-platform supervisor wiring", () => {
       'childNames.set(child, "electrobun");',
     );
     expect(devPlatformSource).toContain('childNames.set(child, "api");');
+  });
+
+  it("assigns the native Eliza app one strict RPC port", () => {
+    expect(devPlatformSource).toContain("ELECTROBUN_RPC_PORT:");
+    expect(devPlatformSource).toContain(
+      'process.env.ELIZA_NATIVE_RPC_PORT?.trim() || "50001"',
+    );
   });
 });

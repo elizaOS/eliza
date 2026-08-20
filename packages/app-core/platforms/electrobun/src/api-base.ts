@@ -302,6 +302,22 @@ export function resolveRendererFacingApiBase(
 }
 
 /**
+ * Renderer-facing base for an externally managed desktop runtime.
+ *
+ * `dev:desktop` deliberately runs the API as a sibling process while Vite
+ * proxies `/api` to it. The renderer must therefore stay on the Vite origin:
+ * sending WKWebView directly from `:ui` to `:api` is cross-origin and correctly
+ * fails the strict loopback Origin/Host trust check. Packaged renderers (and
+ * genuinely remote external runtimes) keep the configured external base.
+ */
+export function resolveExternalRendererFacingApiBase(
+  env: Record<string, string | undefined>,
+  externalApiBase: string,
+): string {
+  return resolveHttpLoopbackRendererOriginForApiClient(env) ?? externalApiBase;
+}
+
+/**
  * Push the API base URL (and optional token) to the renderer via typed
  * RPC message (CSP-safe). The renderer bridge handles `apiBaseUpdate`.
  */

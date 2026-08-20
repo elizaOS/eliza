@@ -78,7 +78,11 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
-import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
+import {
+  isSpawnedProcessGroupAlive,
+  signalSpawnedProcessGroup,
+  signalSpawnedProcessTree,
+} from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -1023,6 +1027,10 @@ async function launch() {
     {
       NODE_ENV: "development",
       ELECTROBUN_SKIP_CODESIGN: "1",
+      // Reserve a single deterministic native RPC listener for Eliza. The
+      // patched Electrobun dependency treats an explicit port as strict, so a
+      // stale/duplicate native app fails instead of silently moving to 50002.
+      ELECTROBUN_RPC_PORT: process.env.ELIZA_NATIVE_RPC_PORT?.trim() || "50001",
       ELIZA_ELECTROBUN_REPO_ROOT: bundleRoot,
       ...appIdentity,
       ...(desktopCefWorkaroundEnv
@@ -1191,10 +1199,24 @@ function shutdownDesktopDev({
       child,
     })),
     drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
-    signalTree: signalSpawnedProcessTree,
+    // Every pushChild service is detached into its own process group. Signal
+    // that exact group so a GUI launcher cannot orphan its Bun descendant by
+    // exiting before the supervisor's bounded drain finishes.
+    signalTree: signalSpawnedProcessGroup,
     log: (line) => console.log(line),
     warn: (line) => console.error(line),
   }).then(() => {
+    // ChildProcess `exit` only proves the tracked CLI parent exited. Electrobun
+    // may have already forked a native launcher into the same dedicated group;
+    // never let that surviving app/pill outlive the dev session.
+    for (const child of children) {
+      if (isSpawnedProcessGroupAlive(child)) {
+        console.error(
+          `[eliza] ${childNames.get(child) ?? "child"} process group survived shutdown — forcing final cleanup.`,
+        );
+        signalSpawnedProcessGroup(child, "SIGKILL");
+      }
+    }
     process.exit(exitCode);
   });
 }

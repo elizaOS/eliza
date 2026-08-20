@@ -15,6 +15,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -2065,7 +2066,19 @@ export class ElizaClient {
             .replace(/^wss:\/\//i, "https://")
             .replace(/^ws:\/\//i, "http://");
         const injectedOrigin = toHttpOrigin(new URL(wsBase).origin);
-        if (injectedOrigin === window.location.origin) {
+        const explicitBaseIsDesktopLoopback = (() => {
+          if (!isElectrobunRuntime() || !this.baseUrl) return false;
+          const hostname = new URL(this.baseUrl).hostname.toLowerCase();
+          return (
+            hostname === "127.0.0.1" ||
+            hostname === "localhost" ||
+            hostname === "::1"
+          );
+        })();
+        if (
+          injectedOrigin === window.location.origin &&
+          !explicitBaseIsDesktopLoopback
+        ) {
           wsBase = undefined; // fall through to the explicit client base
         }
       } catch {

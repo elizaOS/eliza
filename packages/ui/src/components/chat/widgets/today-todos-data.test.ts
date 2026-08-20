@@ -1,15 +1,21 @@
+// @vitest-environment jsdom
 /** Verifies parseTodayTodos through the package's configured test harness. */
 // Read-model unit tests for the home "Today" card: boundary parsing of the
 // untrusted /api/lifeops/todos wire, the due/overdue-today selection, and the
 // occurrence-complete write. Deterministic — `now` is injected, fetch is stubbed.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { getBaseUrlMock } = vi.hoisted(() => ({
+const { getBaseUrlMock, isElectrobunRuntimeMock } = vi.hoisted(() => ({
   getBaseUrlMock: vi.fn(() => "http://localhost"),
+  isElectrobunRuntimeMock: vi.fn(() => false),
 }));
 
 vi.mock("../../../api", () => ({
   client: { getBaseUrl: getBaseUrlMock },
+}));
+
+vi.mock("../../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: isElectrobunRuntimeMock,
 }));
 
 import {
@@ -44,6 +50,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   getBaseUrlMock.mockReturnValue("http://localhost");
+  isElectrobunRuntimeMock.mockReturnValue(false);
 });
 
 describe("parseTodayTodos", () => {
@@ -136,6 +143,22 @@ describe("isOverdue / overdueCount", () => {
 });
 
 describe("fetchTodayTodos", () => {
+  it("uses the desktop same-origin proxy instead of the raw loopback API port", async () => {
+    isElectrobunRuntimeMock.mockReturnValue(true);
+    getBaseUrlMock.mockReturnValue("http://127.0.0.1:31337");
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ todos: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTodayTodos();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/lifeops/todos",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("GETs the owner-todos route and parses the response", async () => {
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetchMock = vi.fn(

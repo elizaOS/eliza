@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import appViteConfig, {
   appDevWsBasePlugin,
   resolveAppShellLocalCspSources,
+  resolveDevApiProxyAuthority,
   rewriteSameOriginDevProxyOrigin,
 } from "./vite.config";
 
@@ -90,6 +91,17 @@ describe("app shell local connection policy", () => {
 });
 
 describe("development API proxy origin", () => {
+  test("uses the matching authority policy for browser and native desktop dev", () => {
+    expect(resolveDevApiProxyAuthority()).toEqual({
+      changeOrigin: false,
+      xfwd: true,
+    });
+    expect(resolveDevApiProxyAuthority("http://127.0.0.1:2338")).toEqual({
+      changeOrigin: true,
+      xfwd: false,
+    });
+  });
+
   test("normalizes only a same-origin Vite request to the local API", () => {
     const setHeader = mock(() => undefined);
     expect(
@@ -105,6 +117,7 @@ describe("development API proxy origin", () => {
       ),
     ).toBe(true);
     expect(setHeader).toHaveBeenCalledWith("Origin", "http://127.0.0.1:32637");
+    expect(setHeader).toHaveBeenCalledWith("Sec-Fetch-Site", "same-origin");
   });
 
   test("preserves cross-origin and malformed origins for the API to reject", () => {
@@ -119,5 +132,68 @@ describe("development API proxy origin", () => {
       ).toBe(false);
       expect(setHeader).not.toHaveBeenCalled();
     }
+  });
+
+  test("recovers same-origin proof after proxy Host rewrite only on loopback", () => {
+    const setHeader = mock(() => undefined);
+    expect(
+      rewriteSameOriginDevProxyOrigin(
+        { setHeader },
+        {
+          headers: {
+            host: "127.0.0.1:32637",
+            origin: "http://127.0.0.1:2338",
+          },
+          socket: { remoteAddress: "::1" },
+        },
+        "http://127.0.0.1:32637",
+        "http://127.0.0.1:2338",
+      ),
+    ).toBe(true);
+    expect(setHeader).toHaveBeenCalledWith("Origin", "http://127.0.0.1:32637");
+
+    const remoteSetHeader = mock(() => undefined);
+    expect(
+      rewriteSameOriginDevProxyOrigin(
+        { setHeader: remoteSetHeader },
+        {
+          headers: {
+            host: "127.0.0.1:32637",
+            origin: "http://127.0.0.1:2338",
+          },
+          socket: { remoteAddress: "192.0.2.20" },
+        },
+        "http://127.0.0.1:32637",
+        "http://127.0.0.1:2338",
+      ),
+    ).toBe(false);
+    expect(remoteSetHeader).not.toHaveBeenCalled();
+  });
+
+  test("normalizes a same-origin browser GET referer when Origin is absent", () => {
+    const setHeader = mock(() => undefined);
+    expect(
+      rewriteSameOriginDevProxyOrigin(
+        { setHeader },
+        {
+          headers: {
+            host: "127.0.0.1:32437",
+            referer: "http://127.0.0.1:2338/workspace",
+          },
+          socket: { remoteAddress: "127.0.0.1" },
+        },
+        "http://127.0.0.1:32437",
+        "http://127.0.0.1:2338",
+      ),
+    ).toBe(true);
+    expect(setHeader).toHaveBeenCalledWith(
+      "Referer",
+      "http://127.0.0.1:32437/",
+    );
+    expect(setHeader).toHaveBeenCalledWith("Sec-Fetch-Site", "same-origin");
+    expect(setHeader).not.toHaveBeenCalledWith(
+      "Origin",
+      "http://127.0.0.1:32437",
+    );
   });
 });
