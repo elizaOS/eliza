@@ -309,7 +309,14 @@ describe("parseTransactionsCsv", () => {
   it("keeps 'Credit Card Amount'/'Debit Card Amount' compound descriptors as signed", () => {
     // The narrowly reviewed compound-descriptor rule: "credit"/"debit" here name
     // a card noun, not a direction, so the sign of each value decides direction.
-    for (const headerCell of ["Credit Card Amount", "Debit Card Amount"]) {
+    for (const headerCell of [
+      "Credit Card Amount",
+      "Debit Card Amount",
+      "Debit/Credit Card Amount",
+      "Debit / Credit Card Amount",
+      "Credit/Debit Card Amount",
+      "Credit / Debit Card Amount",
+    ]) {
       const r = parseTransactionsCsv(
         `Date,Payee,${headerCell}\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n`,
       );

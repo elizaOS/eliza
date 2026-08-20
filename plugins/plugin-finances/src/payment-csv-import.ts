@@ -31,7 +31,14 @@ const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
 // signed statement amount, not a credit-only column; the same holds for a debit
 // card. These phrases are neutralized before direction words are counted so the
 // residual header carries no false direction signal.
-const NON_DIRECTIONAL_DESCRIPTORS = ["credit card", "debit card"];
+const NON_DIRECTIONAL_DESCRIPTORS = [
+  // Order matters: consume the elliptical shared-card phrases before their
+  // shorter suffixes, otherwise "Debit/Credit Card Amount" would retain the
+  // leading "debit" and be misclassified as a debit-only column.
+  /\b(?:debit\s*\/\s*credit|credit\s*\/\s*debit)\s+card\b/g,
+  /\bcredit\s+card\b/g,
+  /\bdebit\s+card\b/g,
+] as const;
 const MERCHANT_COLUMN_HINTS = [
   "merchant",
   "payee",
@@ -125,7 +132,7 @@ type DirectionColumnKind = "debit" | "credit" | "signed";
 function classifyDirectionColumn(headerCell: string): DirectionColumnKind {
   let normalized = headerCell.toLowerCase();
   for (const descriptor of NON_DIRECTIONAL_DESCRIPTORS) {
-    normalized = normalized.split(descriptor).join(" ");
+    normalized = normalized.replace(descriptor, " ");
   }
   const tokens = normalized.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
   let debitWords = 0;
