@@ -71,9 +71,10 @@ registerPreset({
 		try {
 			const response = await fetch("https://api.github.com/user", {
 				headers: {
-					Authorization: `Bearer ${credentials.token}`,
+					Authorization: *** ${credentials.token}`,
 					Accept: "application/vnd.github+json",
 				},
+			signal: AbortSignal.timeout(15_000),
 			});
 			if (!response.ok) {
 				return {
@@ -104,7 +105,8 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://api.vercel.com/v9/projects", {
-				headers: { Authorization: `Bearer ${credentials.token}` },
+				headers: { Authorization: *** ${credentials.token}` },
+			signal: AbortSignal.timeout(15_000),
 			});
 			if (!response.ok) {
 				return {
@@ -147,6 +149,7 @@ registerPreset({
 						"X-Auth-Key": credentials.apiKey,
 						"X-Auth-Email": credentials.email,
 					},
+					signal: AbortSignal.timeout(15_000),
 				},
 			);
 			if (!response.ok) {
@@ -195,6 +198,7 @@ registerPreset({
 					max_tokens: 1,
 					messages: [{ role: "user", content: "hi" }],
 				}),
+			signal: AbortSignal.timeout(15_000),
 			});
 			if (response.ok || response.status === 429) {
 				return { valid: true, identity: "key verified" };
@@ -221,7 +225,8 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			const response = await fetch("https://api.openai.com/v1/models", {
-				headers: { Authorization: `Bearer ${credentials.apiKey}` },
+				headers: { Authorization: *** ${credentials.apiKey}` },
+			signal: AbortSignal.timeout(15_000),
 			});
 			if (response.ok || response.status === 429) {
 				return { valid: true, identity: "key verified" };
@@ -250,7 +255,7 @@ registerPreset({
 			const response = await fetch("https://rest.fal.run/fal-ai/fast-sdxl", {
 				method: "POST",
 				headers: {
-					Authorization: `Key ${credentials.apiKey}`,
+					Authorization: *** ${credentials.apiKey}`,
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
@@ -258,6 +263,7 @@ registerPreset({
 					image_size: { width: 64, height: 64 },
 					num_images: 1,
 				}),
+			signal: AbortSignal.timeout(15_000),
 			});
 			if (response.ok || response.status === 422 || response.status === 429) {
 				return { valid: true, identity: "key verified" };
