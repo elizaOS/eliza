@@ -147,6 +147,7 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
         authorization: `Bearer ${this.authToken}`,
       },
       body: JSON.stringify(request),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
       // error-policy:J3 best-effort read of untrusted error body for context; failure → empty detail, error still thrown below
@@ -173,6 +174,7 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
       {
         method: "POST",
         headers: { authorization: `Bearer ${this.authToken}` },
+        signal: AbortSignal.timeout(15_000),
       },
     );
     // A 404 means the lease is already gone (expired/revoked) — the desired
