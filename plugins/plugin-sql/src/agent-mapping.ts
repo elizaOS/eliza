@@ -51,9 +51,13 @@ export function documentsFromDb(raw: readonly unknown[] | null | undefined): Doc
 /** Maps Agent's protobuf-shaped DocumentSourceItem entries to the DB knowledge column shape. */
 export function documentsToDb(
   documents: readonly DocumentSourceItem[] | null | undefined
-): (string | { path: string; shared?: boolean })[] {
+): (string | { path: string; shared?: boolean } | { directory: string; shared?: boolean })[] {
   if (!documents || documents.length === 0) return [];
-  const out: (string | { path: string; shared?: boolean })[] = [];
+  const out: (
+    | string
+    | { path: string; shared?: boolean }
+    | { directory: string; shared?: boolean }
+  )[] = [];
   for (const document of documents) {
     if (document.item.case === "path") {
       out.push(document.item.value);
@@ -61,7 +65,11 @@ export function documentsToDb(
       const { path, directory, shared } = document.item.value;
       const resolvedPath = path ?? directory;
       if (typeof resolvedPath === "string") {
-        out.push({ path: resolvedPath, shared });
+        // Serialize under the `directory` key so the reader
+        // (normalizeLegacyDocumentEntry checks `path` before `directory`)
+        // restores the typed `directory` discriminant and the `shared` flag
+        // instead of silently downgrading the entry to a bare path.
+        out.push({ directory: resolvedPath, shared });
       }
     }
   }
@@ -95,8 +103,12 @@ function normalizeLegacyDocumentEntry(raw: unknown): DocumentSourceItem | null {
     return {
       item: {
         case: "directory",
+        // Restore under the canonical `path` field (same mapping as
+        // `normalizeDocumentItem` in core). `documentDirectorySchema` requires
+        // `path`, so emitting `directory` here would produce an in-memory value
+        // that character validation rejects and re-normalization drops.
         value: {
-          directory: raw.directory,
+          path: raw.directory,
           shared: typeof raw.shared === "boolean" ? raw.shared : undefined,
         },
       },

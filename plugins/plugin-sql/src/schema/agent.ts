@@ -27,7 +27,9 @@ export const agentTable = pgTable("agents", {
   topics: jsonb("topics").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   adjectives: jsonb("adjectives").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   knowledge: jsonb("knowledge")
-    .$type<(string | { path: string; shared?: boolean })[]>()
+    .$type<
+      (string | { path: string; shared?: boolean } | { directory: string; shared?: boolean })[]
+    >()
     .default(sql`'[]'::jsonb`)
     .notNull(),
   plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
