@@ -39,6 +39,7 @@ import {
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleEntityRoutes } from "./entities.js";
+import { handleOwnerActivationRoutes } from "./first-run-activation-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import { handleRelationshipRoutes } from "./relationships.js";
@@ -370,6 +371,9 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/definitions" },
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
+  // Owner activation (one durable turn per owner+agent+contract version).
+  { type: "POST", path: "/api/lifeops/first-run/activate" },
+  { type: "GET", path: "/api/lifeops/first-run/activation" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
   // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
@@ -587,6 +591,7 @@ function lifeOpsRouteHandler(): LegacyRouteHandler {
       httpRes,
       (runtime as AgentRuntime) ?? null,
     );
+    if (await handleOwnerActivationRoutes(ctx)) return;
     if (await handleEntityRoutes(ctx)) return;
     if (await handleRelationshipRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);

@@ -1313,6 +1313,15 @@ export type {
   RunCheckinRequest,
 } from "./lifeops/checkin/types.js";
 export {
+  activationMemoryId,
+  type EnsureActivationInput,
+  type EnsureActivationResult,
+  OWNER_ACTIVATION_CONTRACT_VERSION,
+  OWNER_ACTIVATION_MESSAGE,
+  type OwnerActivationEntry,
+  OwnerActivationService,
+} from "./lifeops/first-run/activation.js";
+export {
   FirstRunService,
   type ScheduledTaskRunnerLike,
   setScheduledTaskRunner,
@@ -1522,6 +1531,7 @@ export {
 } from "./providers/recent-task-states.js";
 export { roomPolicyProvider } from "./providers/room-policy.js";
 export { workThreadsProvider } from "./providers/work-threads.js";
+export { handleOwnerActivationRoutes } from "./routes/first-run-activation-routes.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
