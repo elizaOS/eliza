@@ -46,11 +46,13 @@ const ALLOW_FIRST_RUN =
 
 function activeServerSeed(): string {
   if (BACKEND === "host") {
+    const accessToken = process.env.ELIZA_ANDROID_HOST_AGENT_TOKEN?.trim();
     return JSON.stringify({
       id: "remote:host",
       kind: "remote",
       label: "Host agent",
       apiBase: "http://127.0.0.1:31337",
+      ...(accessToken ? { accessToken } : {}),
     });
   }
   // The renderer reads runtime mode from localStorage (a SEPARATE store from the
@@ -414,13 +416,21 @@ export async function waitForShellReady(
 
 /**
  * Client-side SPA navigation. Capacitor's WebView has no server-side fallback
- * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. We drive
- * the app's own router via the History API instead, exactly like a user tap.
+ * for nested paths, so a hard page.goto('/apps/x') serves a blank 404. Dispatch
+ * the shell's public navigation event instead of mutating history directly:
+ * the surface-realm broker correctly denies raw history writes from a mounted
+ * app view, while the shell event follows the same privileged path as a user
+ * tap or an agent navigate-view action.
  */
 export async function gotoRoute(page: Page, routePath: string): Promise<void> {
   await page.evaluate((path: string) => {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    const pathSegments = path.split("/").filter(Boolean);
+    const viewId = pathSegments.at(-1) ?? "chat";
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewId, viewPath: path },
+      }),
+    );
   }, routePath);
 }
 

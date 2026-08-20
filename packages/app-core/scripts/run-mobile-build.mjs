@@ -2247,7 +2247,9 @@ export function injectCopyForkLlamaLibTask(content) {
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
     `    def abiToken = project.ext.forkLlamaAbiTokens[abi]\n` +
-    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
+    `    def candidates = [\n` +
+    `        new File(elizaRepoRoot, "packages/app/android/app/src/main/assets/agent/\${abi}").toString()\n` +
+    `    ] + ['vulkan', 'cpu'].collect { backend ->\n` +
     `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() }\n` +

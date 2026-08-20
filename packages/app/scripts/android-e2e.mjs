@@ -11,6 +11,7 @@
  * --no-emulator-boot, and --no-wait.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -530,6 +531,7 @@ async function main() {
     if (has("--start-host-agent")) {
       const step = startBundleStep(bundle, "start deterministic host agent");
       try {
+        const hostAgentToken = randomBytes(32).toString("hex");
         hostAgent = await startDeviceE2eHostAgent({
           repoRoot: elizaRoot,
           artifactDir: bundle.logsDir,
@@ -537,9 +539,12 @@ async function main() {
             "--host-agent-port",
             process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
           ),
+          env: { ...process.env, ELIZA_API_TOKEN: hostAgentToken },
+          pairingDisabled: false,
           log,
         });
         process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
+        process.env.ELIZA_ANDROID_HOST_AGENT_TOKEN = hostAgentToken;
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
         failAndroidStep(bundle, step, error);
