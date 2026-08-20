@@ -53,6 +53,59 @@ export const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 export const DEFAULT_OUTPUT_TOKENS = 500;
 
 /**
+ * Reject corrupt settlement inputs before they can turn a negative cost into a
+ * refund larger than its backing reservation. Zero is valid for a completed
+ * request that produced no billable usage.
+ */
+export function assertValidCreditSettlementCosts(params: {
+  reservedAmount: number;
+  actualCost: number;
+  scope: string;
+}): void {
+  const { reservedAmount, actualCost, scope } = params;
+  if (!Number.isFinite(reservedAmount) || reservedAmount < 0) {
+    throw new ElizaError(`${scope} received an invalid reserved cost`, {
+      code: "INVALID_RESERVED_CREDIT_COST",
+      context: { reservedAmount },
+      severity: "fatal",
+    });
+  }
+  if (!Number.isFinite(actualCost) || actualCost < 0) {
+    throw new ElizaError(`${scope} received an invalid actual cost`, {
+      code: "INVALID_ACTUAL_CREDIT_COST",
+      context: { actualCost, reservedAmount },
+      severity: "fatal",
+    });
+  }
+}
+
+/** Fail and emit a structured alert when a refund lacks sufficient backing. */
+export function assertCreditRefundWithinReservation(params: {
+  reservedAmount: number;
+  refundAmount: number;
+  scope: string;
+}): void {
+  const { reservedAmount, refundAmount, scope } = params;
+  if (
+    !Number.isFinite(refundAmount) ||
+    refundAmount < 0 ||
+    refundAmount - reservedAmount > EPSILON
+  ) {
+    const error = new ElizaError(`${scope} refund exceeds its backing reservation`, {
+      code: "CREDIT_REFUND_EXCEEDS_RESERVATION",
+      context: { reservedAmount, refundAmount },
+      severity: "fatal",
+    });
+    logger.error("[Credits] Refusing an unbacked reconciliation refund", {
+      reservedAmount,
+      refundAmount,
+      code: error.code,
+    });
+    throw error;
+  }
+}
+
+/**
  * Grace window for the stale-reservation sweep, derived from the WORST-CASE
  * legitimately-in-flight metered request (#11683). The provider HTTP layer
  * retries each call up to PROVIDER_DEFAULT_MAX_RETRIES times (tries = retries
@@ -1465,7 +1518,7 @@ export class CreditsService {
 
       const reservedAmount = Math.abs(parseNumeric(reservation.amount, "reservation_amount"));
       const reservationMetadata = parseMetadata(reservation.metadata);
-      const normalizedActualCost = Math.max(actualCost, 0);
+      const normalizedActualCost = actualCost;
       const enqueueAffiliatePayout = async (collectedTotalCost: number): Promise<void> => {
         await enqueueCollectedAffiliatePayout(tx, {
           reservationMetadata,
@@ -1600,6 +1653,11 @@ export class CreditsService {
       }
 
       if (difference > 0) {
+        assertCreditRefundWithinReservation({
+          reservedAmount: claimedReservedAmount,
+          refundAmount: difference,
+          scope: "CreditsService.reconcileReservationTransaction",
+        });
         const refundMetadata = JSON.stringify({
           ...baseMetadata,
           type: "reconciliation_refund",
@@ -2057,6 +2115,11 @@ export class CreditsService {
     metadata?: Record<string, unknown>;
   }): Promise<CreditReconciliationResult> {
     const { organizationId, reservedAmount, actualCost, description, metadata } = params;
+    assertValidCreditSettlementCosts({
+      reservedAmount,
+      actualCost,
+      scope: "CreditsService.reconcile",
+    });
     const difference = reservedAmount - actualCost;
     const reservationTxId =
       typeof metadata?.reservation_transaction_id === "string"
@@ -2141,6 +2204,11 @@ export class CreditsService {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (difference > 0) {
+          assertCreditRefundWithinReservation({
+            reservedAmount,
+            refundAmount: difference,
+            scope: "CreditsService.reconcile",
+          });
           const refund = await this.refundCredits({
             organizationId,
             amount: difference,
