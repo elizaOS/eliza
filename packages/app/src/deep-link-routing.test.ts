@@ -297,6 +297,14 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
+  it("routes pairing links to the Devices & Runtimes settings section", () => {
+    expect(resolveDeepLinkNavigationIntent("pair")).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "my-runtimes",
+    });
+  });
+
   it("routes a wallet deep link to the inventory tab (/wallet)", () => {
     expect(resolveDeepLinkNavigationIntent("wallet")).toEqual({
       viewId: "inventory",

@@ -9,6 +9,7 @@ import {
 } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getNativePlugin } from "../bridge/native-plugins";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 const DEVICE_ID_KEY = "eliza.remote-controller.device-id.v1";
 
@@ -187,7 +188,7 @@ function stablePublicDeviceId(): string {
   const stored = globalThis.localStorage?.getItem(DEVICE_ID_KEY)?.trim();
   if (stored) return stored;
   const created = crypto.randomUUID();
-  globalThis.localStorage?.setItem(DEVICE_ID_KEY, created);
+  shellLocalStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 }
 

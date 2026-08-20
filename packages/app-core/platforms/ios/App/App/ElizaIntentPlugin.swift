@@ -100,7 +100,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else {
             return nil
         }
-        return item as? SecKey
+        return (item as! SecKey)
     }
 
     private static func createControllerPrivateKey(

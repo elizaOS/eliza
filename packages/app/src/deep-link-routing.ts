@@ -84,6 +84,12 @@ export function resolveDeepLinkNavigationIntent(
       return { viewId: "cloud-apps", viewPath: "/cloud-apps" };
     case "settings":
       return { viewId: "settings", viewPath: "/settings" };
+    case "pair":
+      return {
+        viewId: "settings",
+        viewPath: "/settings",
+        subview: "my-runtimes",
+      };
     case "wallet":
     case "inventory":
       // `/wallet` resolves to the `inventory` tab via `tabFromPath`.

@@ -2219,11 +2219,8 @@ function handleDeepLink(url: string): void {
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
   if (path === "pair" && queueRemotePairingDeepLink(url)) {
-    dispatchDeepLinkNavigation({
-      viewId: "settings",
-      viewPath: "/settings",
-      subview: "devices-runtimes",
-    });
+    const pairingNavigation = resolveDeepLinkNavigationIntent(path);
+    if (pairingNavigation) dispatchDeepLinkNavigation(pairingNavigation);
     return;
   }
   if (path === "auth/callback") {
