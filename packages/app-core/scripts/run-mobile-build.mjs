@@ -5708,6 +5708,7 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
+  "eliza-tasks.js",
   "llama-cpp-kernels.json",
 ]);
 
