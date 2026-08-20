@@ -711,6 +711,14 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["GENERATE_MEDIA"],
     minMessageTurns: 2,
   },
+  "deterministic-lifeops-brief-recalibrate": {
+    actionNames: [
+      "BRIEF_RECALIBRATE",
+      "BRIEF_COMPOSE_MORNING",
+      "BRIEF_RESET_RECALIBRATION",
+    ],
+    minMessageTurns: 4,
+  },
   "deterministic-lifeops-multiday-journey": {
     actionNames: ["SCHEDULED_TASKS"],
     minMessageTurns: 5,
