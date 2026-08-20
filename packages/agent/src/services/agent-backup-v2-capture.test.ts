@@ -1325,4 +1325,51 @@ describe("streamAgentBackupV2Capture", () => {
       code: "AGENT_BACKUP_V2_AGENT_MISMATCH",
     });
   });
+
+  it("admits a real PGlite cluster that holds no user data", async () => {
+    // The ceiling used to be 40 MiB, measured against the whole data directory,
+    // and a cluster with zero user data measures 38.0 MiB — 2 MiB of headroom,
+    // gone as soon as pgvector and fuzzystrmatch load. Being `fatal`, that made
+    // agents undeletable (#23116). The existing over-limit test could not catch
+    // it: a synthetic sparse file proves the comparison fires without ever
+    // saying where the threshold sits. This one measures a real cluster, which
+    // is the only shape that surfaces the inversion.
+    const root = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "eliza-backup-empty-pglite-"),
+    );
+    const dataDir = path.join(root, ".pgdata");
+    let db: PGlite | undefined;
+    try {
+      db = new PGlite({ dataDir });
+      await db.waitReady;
+      await db.close();
+      db = undefined;
+
+      let physicalBytes = 0;
+      const walk = async (dir: string): Promise<void> => {
+        for (const entry of await fs.promises.readdir(dir, {
+          withFileTypes: true,
+        })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) await walk(full);
+          else if (entry.isFile())
+            physicalBytes += (await fs.promises.stat(full)).size;
+        }
+      };
+      await walk(dataDir);
+
+      // Fitting is not the bar — the old 40 MiB ceiling technically "fit" a
+      // 38.0 MiB empty cluster, with 2 MiB left for everything the agent ever
+      // writes, and tipped over as soon as pgvector and fuzzystrmatch loaded.
+      // A ceiling meant to bound USER data must leave at least as much room as
+      // the catalogs already occupy; otherwise it is a gate on initdb.
+      expect(physicalBytes).toBeGreaterThan(0);
+      expect(AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.maxPhysicalBytes).toBeGreaterThan(
+        physicalBytes * 2,
+      );
+    } finally {
+      await db?.close();
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

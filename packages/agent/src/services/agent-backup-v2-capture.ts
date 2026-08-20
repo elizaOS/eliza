@@ -54,7 +54,24 @@ const PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES = 32 * MIB;
  * fixed tar/gzip overhead.
  */
 export const AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS = Object.freeze({
-  maxPhysicalBytes: 40 * MIB,
+  /**
+   * Terminal ceiling: a directory this large can never pass the available-memory
+   * gate below, so failing fast is honest rather than making the caller retry.
+   *
+   * It has to sit between two measured bounds, and at 40 MiB it sat effectively
+   * on the lower one. A freshly initialised PGlite cluster measures 38.0 MiB
+   * with zero user data, so the old ceiling left 2 MiB for everything an agent
+   * ever writes and tipped over once pgvector and fuzzystrmatch loaded. Because
+   * this failure is `fatal`, that did not merely block a backup — it made the
+   * agent permanently undeletable (#23116). The upper bound is where the memory gate
+   * becomes unsatisfiable: a default 3072 MiB container boots at ~2.1 GiB RSS,
+   * leaving ~950 MiB, and the gate needs `archive * 8 + 32 MiB`, so anything
+   * past roughly 115 MiB of archive can never succeed anywhere on the fleet.
+   *
+   * 128 MiB is inside that window with room on both sides. Real capacity
+   * pressure is the memory gate's job, and it fails `ephemeral` so it retries.
+   */
+  maxPhysicalBytes: 128 * MIB,
   availableMemoryHeadroomBytes: PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES,
   archiveCopyFactor: 8,
   archiveEntryOverheadBytes: 4 * 1024,
