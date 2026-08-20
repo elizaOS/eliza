@@ -24,7 +24,7 @@ src/face_nms.c                  detection suppression
 src/face_kernels.c              scalar kernels
 scripts/blazeface_to_gguf.py    detector converter
 scripts/face_embed_to_gguf.py   embedder converter
-test/                           ABI, runtime, alignment, distance, and parity
+test/                           ABI, runtime, alignment, distance, hostile GGUF, and parity
 ```
 
 The detector converter is pinned to `hollance/BlazeFace-PyTorch@2c5b59d`. The shipped embedding family is `facenet_128`, pinned to `facenet-pytorch==2.5.3`; `arcface_mini_128` remains an ABI-compatible identifier, not the default artifact.

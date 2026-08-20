@@ -23,12 +23,17 @@
  *     dtype (u32)
  *     offset (u64, relative to start of tensor data section)
  *   tensor data section, aligned to general.alignment (default 32).
+ *
+ * Length fields are untrusted. Cursor advances compare against remaining
+ * bytes — never `ptr + u64` — so a 32-byte file that declares UINT64_MAX
+ * key length cannot wrap pointer arithmetic and memcpy-crash the process.
  */
 
 #include "face_internal.h"
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,20 +118,36 @@ typedef struct {
     int            err;
 } cur_t;
 
+static size_t cur_remaining(const cur_t *c) {
+    if (!c->p || !c->end || c->p > c->end) return 0;
+    return (size_t)(c->end - c->p);
+}
+
+static int cur_need(cur_t *c, size_t n) {
+    if (cur_remaining(c) < n) { c->err = -EINVAL; return -EINVAL; }
+    return 0;
+}
+
+static int cur_skip(cur_t *c, uint64_t n) {
+    if (n > cur_remaining(c)) { c->err = -EINVAL; return -EINVAL; }
+    c->p += (size_t)n;
+    return 0;
+}
+
 static uint8_t  cur_u8(cur_t *c) {
-    if (c->p + 1 > c->end) { c->err = -EINVAL; return 0; }
+    if (cur_need(c, 1) != 0) return 0;
     uint8_t v = *c->p; c->p += 1; return v;
 }
 static uint16_t cur_u16(cur_t *c) {
-    if (c->p + 2 > c->end) { c->err = -EINVAL; return 0; }
+    if (cur_need(c, 2) != 0) return 0;
     uint16_t v; memcpy(&v, c->p, 2); c->p += 2; return v;
 }
 static uint32_t cur_u32(cur_t *c) {
-    if (c->p + 4 > c->end) { c->err = -EINVAL; return 0; }
+    if (cur_need(c, 4) != 0) return 0;
     uint32_t v; memcpy(&v, c->p, 4); c->p += 4; return v;
 }
 static uint64_t cur_u64(cur_t *c) {
-    if (c->p + 8 > c->end) { c->err = -EINVAL; return 0; }
+    if (cur_need(c, 8) != 0) return 0;
     uint64_t v; memcpy(&v, c->p, 8); c->p += 8; return v;
 }
 static int32_t  cur_i32(cur_t *c) { uint32_t v = cur_u32(c); int32_t r; memcpy(&r, &v, 4); return r; }
@@ -137,14 +158,14 @@ static double   cur_f64(cur_t *c) { uint64_t v = cur_u64(c); double   r; memcpy(
 static char *cur_string_owned(cur_t *c, const char **raw_p, uint64_t *raw_len) {
     uint64_t n = cur_u64(c);
     if (c->err) return NULL;
-    if (c->p + n > c->end) { c->err = -EINVAL; return NULL; }
-    char *s = (char *)malloc(n + 1);
+    if (n > cur_remaining(c)) { c->err = -EINVAL; return NULL; }
+    char *s = (char *)malloc((size_t)n + 1);
     if (!s) { c->err = -ENOMEM; return NULL; }
-    memcpy(s, c->p, n);
+    memcpy(s, c->p, (size_t)n);
     s[n] = '\0';
     if (raw_p) *raw_p = (const char *)c->p;
     if (raw_len) *raw_len = n;
-    c->p += n;
+    c->p += (size_t)n;
     return s;
 }
 
@@ -191,16 +212,21 @@ static int parse_value(cur_t *c, face_gguf_kv *out, uint32_t type) {
             if (etype == GGUF_TYPE_STRING) {
                 for (uint64_t i = 0; i < alen; ++i) {
                     uint64_t en = cur_u64(c);
-                    if (c->err || c->p + en > c->end) { c->err = -EINVAL; return c->err; }
-                    c->p += en;
+                    if (c->err || cur_skip(c, en) != 0) {
+                        c->err = -EINVAL;
+                        return c->err;
+                    }
                 }
             } else if (etype == GGUF_TYPE_ARRAY) {
                 return -EINVAL;
             } else {
                 size_t esz;
                 if (gguf_dtype_size(etype, &esz) != 0) return -EINVAL;
-                if (c->p + esz * alen > c->end) { c->err = -EINVAL; return c->err; }
-                c->p += esz * alen;
+                if (esz != 0 && alen > (uint64_t)SIZE_MAX / esz) {
+                    c->err = -EINVAL;
+                    return -EINVAL;
+                }
+                if (cur_skip(c, (uint64_t)esz * alen) != 0) return c->err;
             }
             return 0;
         }
@@ -227,7 +253,7 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         .err = 0,
     };
 
-    if (c.p + 4 > c.end || memcmp(c.p, GGUF_MAGIC, 4) != 0) {
+    if (cur_need(&c, 4) != 0 || memcmp(c.p, GGUF_MAGIC, 4) != 0) {
         if (err) *err = -EINVAL;
         munmap(map, map_size); close(fd);
         return NULL;
@@ -245,6 +271,17 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         if (err) *err = c.err;
         munmap(map, map_size); close(fd);
         return NULL;
+    }
+    /* Each KV / tensor record starts with a u64 length. A count larger
+     * than the remaining bytes cannot be honest; calloc would otherwise
+     * try to allocate terabytes from a 24-byte file. */
+    {
+        size_t rem = cur_remaining(&c);
+        if (n_kvs > rem || n_tensors > rem) {
+            if (err) *err = -EINVAL;
+            munmap(map, map_size); close(fd);
+            return NULL;
+        }
     }
 
     face_gguf *g = (face_gguf *)calloc(1, sizeof(face_gguf));
@@ -301,7 +338,14 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         g->tensors[i].data_off  = off;
 
         uint64_t elems = 1;
-        for (int d = 0; d < g->tensors[i].ndim; ++d) elems *= (uint64_t)g->tensors[i].dims[d];
+        for (int d = 0; d < g->tensors[i].ndim; ++d) {
+            uint64_t dim = (uint64_t)g->tensors[i].dims[d];
+            if (dim > 0 && elems > UINT64_MAX / dim) {
+                if (err) *err = -EINVAL;
+                goto fail;
+            }
+            elems *= dim;
+        }
         size_t esz;
         if (g->tensors[i].dtype == GGML_TYPE_F32) esz = 4;
         else if (g->tensors[i].dtype == GGML_TYPE_F16) esz = 2;
@@ -309,7 +353,11 @@ face_gguf *face_gguf_open(const char *path, int *err) {
             if (err) *err = -EINVAL;
             goto fail;
         }
-        g->tensors[i].n_bytes = elems * esz;
+        if (esz != 0 && elems > UINT64_MAX / (uint64_t)esz) {
+            if (err) *err = -EINVAL;
+            goto fail;
+        }
+        g->tensors[i].n_bytes = elems * (uint64_t)esz;
     }
 
     uint64_t cur_off = (uint64_t)((const uint8_t *)c.p - (const uint8_t *)map);
@@ -317,8 +365,13 @@ face_gguf *face_gguf_open(const char *path, int *err) {
     g->tensor_data_off = cur_off + pad;
 
     for (uint64_t i = 0; i < n_tensors; ++i) {
+        if (g->tensors[i].data_off > UINT64_MAX - g->tensor_data_off) {
+            if (err) *err = -EINVAL;
+            goto fail;
+        }
         g->tensors[i].data_off += g->tensor_data_off;
-        if (g->tensors[i].data_off + g->tensors[i].n_bytes > map_size) {
+        if (g->tensors[i].n_bytes > map_size ||
+            g->tensors[i].data_off > (uint64_t)map_size - g->tensors[i].n_bytes) {
             if (err) *err = -EINVAL;
             goto fail;
         }
