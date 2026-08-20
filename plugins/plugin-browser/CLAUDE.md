@@ -22,6 +22,7 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 - **BrowserService** (`src/browser-service.ts`) — Pluggable target registry. Built-in targets: `workspace` (always registered), `bridge` (registered when `BrowserBridgeRouteService` is available), `stagehand` (registered when any stagehand URL env var is configured and the target is not disabled). External plugins register additional targets via `BrowserService.registerTarget(target)`. Service type constant: `BROWSER_SERVICE_TYPE = "browser"`.
 - **BrowserBridgeRouteService** (`src/service.ts`) — Interface (`BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin"`) that a consumer (e.g. plugin-personal-assistant) implements. Owns companion pairing, sync, tab/page-context CRUD, and browser session management. The routes in this plugin call into the registered implementor.
 - **Browser bridge policy** (`src/bridge-policy.ts`) — Pure token TTL / expiry, focus-window, and URL-domain helpers shared by host plugins.
+- **Browser domain policy** (`src/browser-domain-policy.ts`) — Per-domain command policy hooks (issue #19882). Host plugins register `BrowserDomainPolicy` implementations via `registerBrowserDomainPolicy`; the `BrowserService` dispatcher evaluates every command (including nested batch steps) before target selection, and the JSDOM workspace form path re-evaluates at the resolved submit URL (submit interception). Evaluation fails closed: a throwing or malformed policy blocks, and the built-in `createBrowserDomainAllowlistPolicy` blocks gated effects on unknown domains. With no policies registered, dispatch behavior is unchanged; the generic eval/upload hard block is independent of policy registration.
 - **Browser bridge readiness** (`src/bridge-readiness.ts`) — Pure companion recency, permission, pause, and readiness-state policy used by host plugins and UI surfaces that summarize bridge setup.
 - **Browser bridge records** (`src/bridge-records.ts`) — Constructors for companion, tab, and page-context domain records. Host plugins persist records but should not redefine their shape/defaults.
 
@@ -47,6 +48,7 @@ src/
   plugin.ts                        browserPlugin export — actions, services, providers, routes, schema, autoEnable
   browser-service.ts               BrowserService + BrowserTarget interface + BROWSER_SERVICE_TYPE
   bridge-policy.ts                 Browser bridge token TTL / expiry, focus-window, and URL-domain helpers
+  browser-domain-policy.ts         Per-domain command policy hooks + fail-closed allowlist policy (#19882)
   bridge-readiness.ts              Browser bridge readiness / permission policy helpers
   bridge-records.ts                Browser bridge companion/tab/page-context record constructors
   companion-auth.ts                BrowserBridgeCompanion auth types and token-validation helpers

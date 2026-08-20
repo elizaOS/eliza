@@ -3,6 +3,9 @@
  */
 
 import type { JSDOM } from "jsdom";
+import { browserBridgeDomainFromUrl } from "../bridge-policy.js";
+import { evaluateBrowserDomainPolicies } from "../browser-domain-policy.js";
+import { BrowserDispatchFailure } from "../dispatch-types.js";
 import {
   buildBrowserWorkspaceElementSelector,
   findClosestBrowserWorkspaceForm,
@@ -218,6 +221,26 @@ export async function submitWebBrowserWorkspaceForm(
   const action = form.getAttribute("action")?.trim() || tab.url;
   const method = (form.getAttribute("method")?.trim() || "get").toLowerCase();
   const submitUrl = new URL(action, tab.url).toString();
+  // Submit interception (issue #19882): the resolved submit URL is only known
+  // here, after the form's action/base resolution — so per-domain policies get
+  // their authoritative check at this exact point, before any bytes leave.
+  const decision = evaluateBrowserDomainPolicies({
+    subaction: "click",
+    effect: "submit",
+    domain: browserBridgeDomainFromUrl(submitUrl),
+    url: submitUrl,
+    targetId: "workspace",
+    phase: "submit",
+  });
+  if (decision.verdict !== "allow") {
+    throw new BrowserDispatchFailure(
+      "POLICY_BLOCKED",
+      decision.verdict === "require_confirmation"
+        ? `Browser form submit to "${submitUrl}" requires explicit confirmation by domain policy "${decision.policyId}": ${decision.reason}`
+        : `Browser form submit to "${submitUrl}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+      { targetId: "workspace" },
+    );
+  }
   const formData = new dom.window.FormData(form);
   const searchParams = new URLSearchParams();
 

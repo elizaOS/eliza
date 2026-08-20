@@ -45,6 +45,10 @@ import {
   createBrowserUploadReceipt,
 } from "./browser-command-authority.js";
 import {
+  browserDomainPolicyRequestForCommand,
+  evaluateBrowserDomainPolicies,
+} from "./browser-domain-policy.js";
+import {
   BrowserDispatchFailure,
   isBrowserDispatchFailure,
   isIdempotentBrowserSubaction,
@@ -174,6 +178,28 @@ function findBlockedGenericCommand(
     }
   }
   return null;
+}
+
+/**
+ * Flattens a command and its nested batch steps so every step is policy
+ * checked individually — a blocked navigation cannot hide inside a batch.
+ */
+function flattenBrowserCommands(
+  command: BrowserWorkspaceCommand,
+): BrowserWorkspaceCommand[] {
+  const flat: BrowserWorkspaceCommand[] = [];
+  const pending = [command];
+  const visited = new Set<BrowserWorkspaceCommand>();
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (!candidate || visited.has(candidate)) continue;
+    visited.add(candidate);
+    flat.push(candidate);
+    if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
+      pending.push(...candidate.steps);
+    }
+  }
+  return flat;
 }
 
 export class BrowserService extends Service {
@@ -392,6 +418,24 @@ export class BrowserService extends Service {
           : "Browser upload requires an exact consume-once interaction confirmation.",
         { targetId: targetId ?? null },
       );
+    }
+    // Per-domain policy hooks (issue #19882): every step — including nested
+    // batch steps — is evaluated against the registered policies before any
+    // target is selected. The first non-allow decision blocks the whole
+    // dispatch; nothing has executed yet, so failing here is side-effect free.
+    for (const step of flattenBrowserCommands(command)) {
+      const decision = evaluateBrowserDomainPolicies(
+        browserDomainPolicyRequestForCommand(step, targetId ?? null),
+      );
+      if (decision.verdict !== "allow") {
+        throw new BrowserDispatchFailure(
+          "POLICY_BLOCKED",
+          decision.verdict === "require_confirmation"
+            ? `Browser command "${step.subaction}" requires explicit confirmation by domain policy "${decision.policyId}": ${decision.reason}`
+            : `Browser command "${step.subaction}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+          { targetId: targetId ?? null },
+        );
+      }
     }
     return this.executeSelected(command, targetId);
   }
