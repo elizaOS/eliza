@@ -223,6 +223,22 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
     }
   });
 
+  it("preserves fractional and infinite public byte-limit overrides", () => {
+    const spec = specWithData({ payload: "ok" });
+    const exactBytes = new TextEncoder().encode(JSON.stringify(spec)).length;
+
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: exactBytes - 0.5 }).ok,
+    ).toBe(false);
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: exactBytes + 0.5 }).ok,
+    ).toBe(true);
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: Number.POSITIVE_INFINITY })
+        .ok,
+    ).toBe(true);
+  });
+
   it("translates hostile reflection traps instead of throwing", () => {
     const data = new Proxy(
       {},

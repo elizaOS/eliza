@@ -676,10 +676,11 @@ export function validateElizaGenUiSpec(
     ancestors: new WeakSet<object>(),
     halted: false,
     bytes: 0,
-    maxBytes:
-      Number.isSafeInteger(options.maxJsonBytes) && options.maxJsonBytes >= 0
-        ? options.maxJsonBytes
-        : 0,
+    // Preserve the public option's existing numeric comparison semantics:
+    // fractional limits naturally admit only integral byte counts below them,
+    // and Infinity remains an explicit unbounded override. Negative and NaN
+    // limits already failed the final size check and therefore fail here too.
+    maxBytes: options.maxJsonBytes >= 0 ? options.maxJsonBytes : 0,
   });
   if (issues.length > 0) return { ok: false, errors: issues };
   if (!validateJsonSize(snapshot, issues, options))
