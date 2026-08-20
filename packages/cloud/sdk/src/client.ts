@@ -138,6 +138,7 @@ import {
   type SnapshotType,
   type SubmitPressReleaseInput,
   type SubmitPressReleaseResponse,
+  type SubscriptionPlansResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -452,6 +453,12 @@ export class ElizaCloudClient {
 
   listModels(): Promise<ModelListResponse> {
     return this.v1.get<ModelListResponse>("/models", { skipAuth: true });
+  }
+
+  getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
+    return this.v1.get<SubscriptionPlansResponse>("/subscriptions/plans", {
+      skipAuth: true,
+    });
   }
 
   createResponse(
