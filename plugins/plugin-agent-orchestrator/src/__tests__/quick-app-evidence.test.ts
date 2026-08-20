@@ -167,7 +167,7 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
         path.join(appDir, "style.css"),
         "body { background: linear-gradient(#3aa8a0, #0f2f2c); }",
       );
-      fs.writeFileSync(path.join(appDir, "big.css"), "x".repeat(5000));
+      fs.writeFileSync(path.join(appDir, "big.css"), "x".repeat(9000));
       fs.writeFileSync(path.join(appDir, "img.png"), "notreally");
 
       const contents = readFsVerifiedContents(workdir, [
@@ -182,7 +182,8 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
       ]);
       expect(contents[0]?.content).toContain("linear-gradient(#3aa8a0");
       expect(contents[1]?.content).toContain("[truncated]");
-      expect(contents[1]?.content.length).toBeLessThan(2100);
+      // MAX_CONTENT_CHARS is 6_000 (raised so whole small apps fit the verifier).
+      expect(contents[1]?.content.length).toBeLessThan(6200);
     } finally {
       fs.rmSync(workdir, { recursive: true, force: true });
     }

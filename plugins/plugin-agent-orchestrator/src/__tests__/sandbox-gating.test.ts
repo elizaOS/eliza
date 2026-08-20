@@ -103,6 +103,7 @@ describe("agent-orchestrator sandbox gating", () => {
     ).toEqual([
       "agent-orchestrator.sub-agent-completion",
       "agent-orchestrator.sub-agent-failure",
+      "agent-orchestrator.durable-cancel-routing",
     ]);
   });
 

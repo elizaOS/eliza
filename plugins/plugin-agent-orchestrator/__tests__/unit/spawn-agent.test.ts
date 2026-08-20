@@ -119,7 +119,12 @@ describe("TASKS:spawn_agent", () => {
     );
     expect(result?.success).toBe(true);
     expect(result?.text).toContain("result is not available yet");
-    expect(cb).not.toHaveBeenCalled();
+    // The spawn posts ONE short model-phrased ack (owner directive
+    // 2026-08-19: dev-speak spawn banners replaced with "on it"-class lines).
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(
+      String((cb.mock.calls[0]?.[0] as { text?: string })?.text ?? ""),
+    ).not.toContain("Spawned coding sub-agent");
     expect(result?.continueChain).toBe(false);
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",

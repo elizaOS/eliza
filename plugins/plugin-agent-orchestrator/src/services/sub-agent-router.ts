@@ -3931,7 +3931,14 @@ function composeNarration(
     const urls = collectVerifiableUrlCandidates(response).filter(
       (url) =>
         !isLoopbackUrl(url) &&
-        (deployBase ? url.startsWith(deployBase.replace(/\/+$/, "")) : false),
+        (deployBase
+          ? url.startsWith(deployBase.replace(/\/+$/, ""))
+          : // No configured deploy host: an artifact-shaped /apps/<slug>/ URL
+            // is still a deliverable address; only plain third-party links
+            // (asset CDNs) stay dropped. `false` here silently swallowed the
+            // retry's fresh deliverable URL on hosts without the custom
+            // deploy config.
+            Boolean(appRoutePathPrefix(url))),
     );
     if (urls.length > 0) return `${header}\n${urls.join("\n")}`;
     // A recovered retry with no claimed URL still delivered something the

@@ -71,14 +71,14 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
     });
     expect(evidence).toContain("## VERIFIED URLS");
     expect(evidence).toMatch(
-      /http:\/\/localhost:3000\/app \(LOOPBACK — not publicly reachable\)/,
+      /http:\/\/localhost:3000\/app \(loopback probe — local serving confirmed by the orchestrator\)/,
     );
     expect(evidence).toContain("https://app.example.com");
     // The public URL line must NOT carry the loopback flag.
     const publicLine = evidence
       .split("\n")
       .find((line) => line.includes("app.example.com"));
-    expect(publicLine).not.toMatch(/LOOPBACK/);
+    expect(publicLine).not.toMatch(/loopback/i);
   });
 
   it("mines build/test/typecheck lines out of recorded signals", () => {
@@ -200,7 +200,7 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
     expect(evidence).toContain("0 errors");
     expect(evidence).toContain("## VERIFIED URLS");
     expect(evidence).toContain("https://app.example.com");
-    expect(evidence).toMatch(/http:\/\/localhost:3000 \(LOOPBACK/);
+    expect(evidence).toMatch(/http:\/\/localhost:3000 \(loopback probe/);
     expect(evidence).toContain("## ARTIFACTS");
     expect(evidence).toContain("[screenshot] screenshot — /tmp/shots/home.png");
     expect(evidence).toContain(

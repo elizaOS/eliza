@@ -522,6 +522,18 @@ export function retrieveActions(
 			const explicitAliases =
 				explicitParentAliasesForCandidateAction(actionName);
 			if (explicitAliases.length > 0) return explicitAliases;
+			// A candidate that is a real simile claimed by multiple parents is
+			// ambiguous by contract — the shape heuristics below (coding-name →
+			// TASKS, view-name → VIEWS) must not overrule that refusal (live
+			// regression: GITHUB_LIST_ISSUES claimed by TASKS and a repo-issues
+			// parent still exact-hinted TASKS via the coding-token heuristic).
+			if (
+				collectAmbiguousSimiles(input.catalog.parents).has(
+					normalizeActionName(actionName),
+				)
+			) {
+				return [];
+			}
 			return candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
 				: parentAliasesForCandidateAction(actionName);
@@ -1323,6 +1335,37 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 /** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
  *  on every retrieval and the catalog is stable within a process. */
 const warnedAmbiguousSimiles = new Set<string>();
+
+/** Normalized similes claimed by MORE than one catalog parent — routing on
+ * one of these steals the intent from the other parent (#16561), so both the
+ * simile resolver and the shape-heuristic alias fallback must refuse them. */
+function collectAmbiguousSimiles(
+	parents: readonly ActionCatalogParent[],
+): Set<string> {
+	const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+	const claimed = new Map<string, string>();
+	const ambiguous = new Set<string>();
+	for (const parent of parents) {
+		const ownSimiles = new Set(
+			[
+				...parent.similes,
+				...parent.children.flatMap((child) => child.similes),
+			].flatMap((simile) => {
+				const normalized = normalizeActionName(simile);
+				return !normalized || parentNames.has(normalized) ? [] : [normalized];
+			}),
+		);
+		for (const normalized of ownSimiles) {
+			const claimedBy = claimed.get(normalized);
+			if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
+				ambiguous.add(normalized);
+				continue;
+			}
+			claimed.set(normalized, parent.normalizedName);
+		}
+	}
+	return ambiguous;
+}
 
 function resolveSimileParentHints(
 	parents: readonly ActionCatalogParent[],

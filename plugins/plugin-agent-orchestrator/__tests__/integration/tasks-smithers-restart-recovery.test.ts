@@ -234,6 +234,20 @@ describe("TASKS Smithers restart recovery", () => {
       await firstTaskService.start();
 
       let simulatedCrash = false;
+      // A host death after the Smithers graph commits also means the child's
+      // task_complete event is never processed — without dropping it, the
+      // event-driven link terminalizer (the phantom-boot-resume fix) writes
+      // state:"completed" through the real service and closes the very crash
+      // window this test exists to exercise.
+      const realEmit = firstAcp.emitSessionEvent.bind(firstAcp);
+      firstAcp.emitSessionEvent = (
+        sessionId: string,
+        event: Parameters<typeof realEmit>[1],
+        data: unknown,
+      ) => {
+        if (event === "task_complete") return;
+        realEmit(sessionId, event, data);
+      };
       const actionTaskService = {
         createTask: firstTaskService.createTask.bind(firstTaskService),
         attachSession: firstTaskService.attachSession.bind(firstTaskService),

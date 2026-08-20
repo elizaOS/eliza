@@ -184,12 +184,12 @@ function pathSegment(value: string, fallback: string): string {
 
 /** Resolve the tenant-isolated SQLite file for a durable coding task. */
 export function resolveTaskDbPath(tenantId: string, taskId: string): string {
-  if (tenantId.trim().length === 0) {
+  if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
     throw new ElizaError("Smithers task tenant id is required", {
       code: "SMITHERS_TASK_TENANT_REQUIRED",
     });
   }
-  if (taskId.trim().length === 0) {
+  if (typeof taskId !== "string" || taskId.trim().length === 0) {
     throw new ElizaError("Smithers task id is required", {
       code: "SMITHERS_TASK_ID_REQUIRED",
       context: { tenantId },

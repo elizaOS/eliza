@@ -52,7 +52,7 @@ describe("TASKS:stop_agent", () => {
           callback(),
         )
       )?.data,
-    ).toEqual({ stoppedCount: 1 });
+    ).toEqual({ stoppedCount: 1, stoppedSessions: ["abcdef123456"] });
   });
   it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(

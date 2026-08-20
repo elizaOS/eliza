@@ -60,6 +60,7 @@ import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   diagnoseCodingAccountFallback,
+  isRefreshTokenExpiryText,
   isTokenExpiryText,
   resolveCodingAccountStrategy,
   selectCodingAccount,
@@ -4611,7 +4612,12 @@ export class AcpService extends Service {
     // that dies with only expiry text would otherwise emit no failureKind at
     // all, defeating the typed signal. Recognize either.
     const expired = isTokenExpiryText(text);
-    if (!isAuthText(text) && !expired) return {};
+    // Refresh-token expiry is excluded from isTokenExpiryText by design (it is
+    // a dead credential, not a recoverable access-token lapse) but it is still
+    // auth-shaped: without this it fell through both checks and emitted no
+    // failureKind at all, leaving the account unmarked.
+    const refreshExpired = isRefreshTokenExpiryText(text);
+    if (!isAuthText(text) && !expired && !refreshExpired) return {};
     // The `token_expired` reason drives a downstream recovery that keeps the
     // account HEALTHY and just re-injects a fresh token — valid ONLY for the
     // claude bare-token injection path (CLAUDE_CODE_OAUTH_TOKEN the third-party

@@ -221,9 +221,9 @@ describe("Tier S — planner-facing refusals fire no callback and carry facts", 
 
 describe("Tier H — sole-delivery confirmations are model-phrased", () => {
   it("stop_agent(all): facts reach the model prompt, ONE callback, canonical text === callback text", async () => {
-    // Stop/cancel are receipt-less by design, so the settle guard replaces
-    // the confirmation with the unconfirmed-outcome projection — itself
-    // phrased through the same seam. Both model calls carry the frame facts.
+    // Stops now settle against stoppedSessions receipts, so the confirmation
+    // stands as-is: one model call phrases it from the frame facts and no
+    // unconfirmed-outcome projection runs.
     const useModel = vi.fn(async () => "Both agents are wrapped up now.");
     const { runtime } = makeRuntime({
       sessions: [fakeSession("s-1", "site build"), fakeSession("s-2", "docs")],
@@ -238,17 +238,13 @@ describe("Tier H — sole-delivery confirmations are model-phrased", () => {
     expect(result.text).toBe(replies[0]);
     expect(result.userFacingText).toBe(replies[0]);
     expect(result.data).toMatchObject({ stoppedCount: 2 });
-    // Call 1 phrases the stop confirmation from facts; call 2 phrases the
-    // settle projection. Never more.
-    expect(useModel).toHaveBeenCalledTimes(2);
+    // Exactly one model call: the confirmation phrased from facts. A stop
+    // with receipts needs no settle projection call.
+    expect(useModel).toHaveBeenCalledTimes(1);
     const confirmPrompt = (useModel.mock.calls[0] as unknown[])[1] as {
       system: string;
     };
     expect(confirmPrompt.system).toContain("stoppedCount: 2");
-    const warnPrompt = (useModel.mock.calls[1] as unknown[])[1] as {
-      system: string;
-    };
-    expect(warnPrompt.system).toContain("unconfirmed");
   });
 
   it("stop_agent(all): model outage degrades to the factual fallback chain, count unchanged", async () => {
@@ -259,11 +255,9 @@ describe("Tier H — sole-delivery confirmations are model-phrased", () => {
       action: "stop_agent",
       all: true,
     });
-    // No model: the receipt-less stop settles to the factual unconfirmed
-    // fallback — one message, canonical equality, no internal vocabulary.
-    expect(replies).toEqual([
-      "The stop agent may have gone through, but I could not confirm it — please check before retrying.",
-    ]);
+    // No model: the stop's receipts back the factual fallback — one truthful
+    // message, canonical equality, no internal vocabulary.
+    expect(replies).toEqual(["Stopped 1 task agent."]);
     expect(result.text).toBe(replies[0]);
     expect(result.userFacingText).toBe(replies[0]);
     expect(replies[0]).not.toMatch(/receipt|commit|session|acp/i);
@@ -301,11 +295,9 @@ describe("Tier H — sole-delivery confirmations are model-phrased", () => {
       action: "stop_agent",
       all: true,
     });
-    // Both the confirm phrasing AND the settle projection rejected the
-    // banned-vocab output, so the factual fallback is what ships.
-    expect(replies).toEqual([
-      "The stop agent may have gone through, but I could not confirm it — please check before retrying.",
-    ]);
+    // The confirm phrasing rejected the banned-vocab output, so the factual
+    // receipt-backed fallback is what ships.
+    expect(replies).toEqual(["Stopped 1 task agent."]);
   });
 
   it("issue create: model prose + byte-identical URL appendix, ONE callback, receipts bound", async () => {

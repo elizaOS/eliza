@@ -3234,21 +3234,31 @@ async function runSpawnAgent(
     // status below stays planner-facing only. The verbose "Spawned coding
     // sub-agent … working asynchronously" text reached normies verbatim
     // (owner feedback 2026-08-19: dev-speak; wants "on it"-class acks).
-    const { text: spawnAckText } = await phraseForUser(
-      runtime,
-      {
-        intent: "notify",
-        facts: { label, working: true, resultWillFollow: true },
-        mustNotClaim: ["the work is finished"],
-      },
-      "on it.",
-    );
-    await callbackText(callback, spawnAckText, { voiced: true });
+    // An explicit planner deferUserReply means the user asked for no interim
+    // reply — honor it by skipping the visible ack entirely (the structured
+    // status below still grounds the planner's finish pass).
+    const spawnAckText = deferUserReply
+      ? undefined
+      : (
+          await phraseForUser(
+            runtime,
+            {
+              intent: "notify",
+              facts: { label, working: true, resultWillFollow: true },
+              mustNotClaim: ["the work is finished"],
+            },
+            "on it.",
+          )
+        ).text;
+    if (spawnAckText) {
+      await callbackText(callback, spawnAckText, { voiced: true });
+    }
     return {
       success: true,
       text: `Spawned coding sub-agent "${label}" (${session.agentType}). It is working asynchronously — its result is not available yet and will arrive as a follow-up message.`,
-      userFacingText: spawnAckText,
-      verifiedUserFacing: true,
+      ...(spawnAckText
+        ? { userFacingText: spawnAckText, verifiedUserFacing: true }
+        : {}),
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the

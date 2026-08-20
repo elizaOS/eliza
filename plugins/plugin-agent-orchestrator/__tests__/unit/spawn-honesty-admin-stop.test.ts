@@ -8,7 +8,7 @@
  * Deterministic unit test with a stubbed runtime; no live model.
  */
 import type { State } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   cancelTaskAction,
   createTaskAction,
@@ -23,6 +23,22 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 const createOptions = { parameters: { action: "create" } };
+
+// These pins exercise ack routing on the direct-prompt path. Under the
+// default Smithers path a create without a durable task owner fails closed
+// (covered by the widget-emission suite).
+let previousSmithers: string | undefined;
+beforeEach(() => {
+  previousSmithers = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+  process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
+});
+afterEach(() => {
+  if (previousSmithers === undefined) {
+    delete process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+  } else {
+    process.env.ELIZA_ORCHESTRATOR_SMITHERS = previousSmithers;
+  }
+});
 const freshState = () => ({}) as State;
 
 function runtimeRouting(
@@ -50,8 +66,8 @@ describe("TASKS:create respawn-ack suppression", () => {
     expect(result?.success).toBe(true);
     expect(cb).toHaveBeenCalled();
     const delivered = cb.mock.calls[0]?.[0] as { text?: string };
-    expect(delivered.text).toContain("Created task agent");
-    expect(result?.userFacingText).toContain("Created task agent");
+    expect(delivered.text).toContain("On it");
+    expect(result?.userFacingText).toContain("On it");
     expect(result?.turnComplete).toBe(true);
   });
 

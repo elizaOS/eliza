@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach} from "vitest";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
@@ -17,6 +17,22 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
+  // These pins exercise the direct-prompt spawn shapes. Under the default
+  // Smithers path a create without an OrchestratorTaskService fails closed
+  // by contract (durable owner required before ACP spawn), which is covered
+  // by the widget-emission suite.
+  let previousSmithers: string | undefined;
+  beforeEach(() => {
+    previousSmithers = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+    process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
+  });
+  afterEach(() => {
+    if (previousSmithers === undefined) {
+      delete process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+    } else {
+      process.env.ELIZA_ORCHESTRATOR_SMITHERS = previousSmithers;
+    }
+  });
   it("executes a declared history alias on the promoted create tool instead of stranding", async () => {
     // New virtual-pin contract: explicit declared discriminators execute.
     const create = promoteSubactionsToActions(createTaskAction).find(
@@ -147,7 +163,7 @@ describe("TASKS:create", () => {
     expect(result?.success).toBe(true);
     // Without an OrchestratorTaskService, no [TASK:…] widget block is appended;
     // the callback still receives the prose summary.
-    expect(result?.text).toBe("Created task agent.");
+    expect(result?.text).toBe("On it — building that now.");
     expect(result?.data?.taskId).toBeNull();
     expect(result?.data?.agents).toEqual([
       {
