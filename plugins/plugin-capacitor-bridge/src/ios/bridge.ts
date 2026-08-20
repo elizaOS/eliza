@@ -1704,6 +1704,13 @@ async function handleTranscriptsRoute(
 	}
 
 	if (method === "DELETE") {
+		// `/api/transcripts/:id` addresses transcripts only. GET and PUT already
+		// refuse an id whose memory is not one; deleting without the same check
+		// turned this route into a delete primitive for every memory the agent
+		// owns, since any message, fact, or document id would be accepted here
+		// and removed with a 200.
+		const existing = await getTranscript(runtime, id);
+		if (!existing) return jsonResponse(404, { error: "not found" });
 		await runtime.deleteMemory(id);
 		return jsonResponse(200, { ok: true });
 	}
