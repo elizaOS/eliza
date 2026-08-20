@@ -4,21 +4,40 @@
  * doubles; no test output is accepted as qualification evidence.
  */
 
-import { createHash, generateKeyPairSync } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign as signPayload,
+} from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
-import type { ScenarioReport } from "../types.ts";
+import type {
+  ProviderEffectObservation,
+  ScenarioEvidenceObserverProvenance,
+  ScenarioReport,
+} from "../types.ts";
 import {
   type ExternalProviderCanaryCapabilities,
   executeExternalProviderCanary,
 } from "./external-canary-orchestrator.ts";
-import type { ProviderRunBindings } from "./manifest.ts";
+import { canonicalSha256, type ProviderRunBindings } from "./manifest.ts";
 import {
   authorizeProviderCanary,
   createProviderCanaryTargetBinding,
   createProviderFailureProbeHashBinding,
 } from "./operator-authorization.ts";
-import { providerObserverKeyId } from "./qualification.ts";
+import {
+  PROVIDER_OBSERVER_EVIDENCE_SCHEMA,
+  type ProviderObserverEvidencePayload,
+  providerEvidenceSigningBytes,
+  providerObserverKeyId,
+  runnerResultSha256,
+  SEMANTIC_JUDGE_EVIDENCE_SCHEMA,
+  type SemanticJudgeEvidencePayload,
+  semanticEvidenceSigningBytes,
+} from "./qualification.ts";
+import { reverifyProviderQualificationArtifact } from "./qualification-artifact.ts";
+import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
@@ -84,7 +103,11 @@ function scenario(): ScenarioDefinition {
   };
 }
 
-function bindings(authorityKeyId: string): ProviderRunBindings {
+function bindings(
+  authorityKeyId: string,
+  observerKeyId: string,
+  judgeKeyId: string,
+): ProviderRunBindings {
   const accountRefSha256 = hash("operator-calendar-account");
   const connectionRefSha256 = hash("operator-calendar-connection");
   const principalRefSha256 = hash("operator-principal");
@@ -100,7 +123,7 @@ function bindings(authorityKeyId: string): ProviderRunBindings {
     trust: {
       manifestAuthorityKeyId: authorityKeyId,
       observerSigners: [
-        { observerId: "calendar-observer", keyId: hash("observer-key") },
+        { observerId: "calendar-observer", keyId: observerKeyId },
       ],
     },
     target: {
@@ -118,7 +141,7 @@ function bindings(authorityKeyId: string): ProviderRunBindings {
       actingModel: "acting-model",
       judgeProvider: "independent-provider",
       judgeModel: "independent-model",
-      judgeKeyId: hash("judge-key"),
+      judgeKeyId,
     },
     connectors: [
       {
@@ -212,33 +235,268 @@ function bindings(authorityKeyId: string): ProviderRunBindings {
 
 function harness() {
   const definition = scenario();
-  const keyPair = generateKeyPairSync("ed25519");
-  const publicKeyPem = keyPair.publicKey.export({
+  const authorityPair = generateKeyPairSync("ed25519");
+  const observerPair = generateKeyPairSync("ed25519");
+  const semanticPair = generateKeyPairSync("ed25519");
+  const authorityPublicKeyPem = authorityPair.publicKey.export({
+    type: "spki",
+    format: "pem",
+  });
+  const observerPublicKeyPem = observerPair.publicKey.export({
+    type: "spki",
+    format: "pem",
+  });
+  const semanticPublicKeyPem = semanticPair.publicKey.export({
     type: "spki",
     format: "pem",
   });
   const authorization = authorizeProviderCanary({
     scenario: definition,
-    bindings: bindings(providerObserverKeyId(publicKeyPem)),
-    manifestAuthorityPrivateKey: keyPair.privateKey,
+    bindings: bindings(
+      providerObserverKeyId(authorityPublicKeyPem),
+      providerObserverKeyId(observerPublicKeyPem),
+      providerObserverKeyId(semanticPublicKeyPem),
+    ),
+    manifestAuthorityPrivateKey: authorityPair.privateKey,
   });
+  const manifest = authorization.manifest;
   const events: string[] = [];
-  const report = { id: definition.id } as ScenarioReport;
-  const trajectories = {
-    scenarioId: definition.id,
-    runId: authorization.manifest.run.runId,
-    setSha256: hash("trajectory-set"),
-  };
-  const observerEvidence = {
-    payload: {
-      scenarioId: definition.id,
-      runId: authorization.manifest.run.runId,
-      runNonce: authorization.manifest.run.nonce,
-      manifestSha256: authorization.manifest.manifestSha256,
-      trajectorySetSha256: trajectories.setSha256,
+  const finalChecks = manifest.scenario.finalChecks.map((check) => ({
+    definitionSha256: check.definitionSha256,
+    status: "passed" as const,
+  }));
+  const report: ScenarioReport = {
+    id: definition.id,
+    title: definition.title,
+    domain: definition.domain,
+    tags: [],
+    status: "passed",
+    durationMs: 60_000,
+    turns: [],
+    finalChecks: manifest.scenario.finalChecks.map((check) => ({
+      label: check.type,
+      type: check.type,
+      status: "passed",
+      detail: "independently verified",
+    })),
+    actionsCalled: [],
+    failedAssertions: [],
+    providerName: "live-provider",
+    executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
+    evidence: {
+      schemaVersion: 1,
+      executionProfile: "provider-qualified",
+      qualification: {
+        status: "unqualified",
+        publishable: false,
+        reasons: ["external-controller-decision:pending"],
+      },
+      observerProvenance: [],
+      trajectoryHashes: [],
+      observations: [],
     },
   };
-  const semanticEvidence = { payload: { ...observerEvidence.payload } };
+  const trajectorySha256 = hash("trajectory bytes");
+  const stageSha256 = hash("canonical stage");
+  const trajectories: VerifiedScenarioTrajectorySet = {
+    scenarioId: definition.id,
+    runId: manifest.run.runId,
+    scenarioStartedAtIso: "2026-08-20T17:00:00.000Z",
+    scenarioEndedAtIso: "2026-08-20T17:01:00.000Z",
+    runDirectoryRealPath: "/private/operator/run-1",
+    verifiedAtIso: "2026-08-20T17:01:05.000Z",
+    setSha256: "0".repeat(64),
+    trajectories: [
+      {
+        artifact: {
+          trajectoryId: "trajectory-1",
+          relativePath: "trajectories/agent/trajectory-1.json",
+          sha256: trajectorySha256,
+          recorder: {
+            implementation: "@elizaos/core/trajectory-recorder",
+            version: "1",
+            environment: "operator-canary",
+          },
+        },
+        stages: [
+          {
+            stageId: "stage-calendar-create",
+            kind: "tool",
+            sha256: stageSha256,
+            startedAtIso: "2026-08-20T17:00:20.000Z",
+            endedAtIso: "2026-08-20T17:00:30.000Z",
+            tool: {
+              name: "CALENDAR",
+              argsSha256: hash("calendar tool args"),
+              resultSha256: hash("calendar tool result"),
+              success: true,
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const trajectorySetSha256 = canonicalSha256(
+    trajectories.trajectories.map((trajectory) => ({
+      artifact: trajectory.artifact,
+      stages: trajectory.stages,
+    })),
+    "verifiedTrajectories",
+  );
+  trajectories.setSha256 = trajectorySetSha256;
+  const observer: ScenarioEvidenceObserverProvenance = {
+    observerId: "calendar-observer",
+    kind: "provider-api",
+    implementation: "calendar-readback-adapter",
+    version: "1.0.0",
+    environment: "operator-canary",
+    configurationSha256: hash("observer config"),
+  };
+  const observation: ProviderEffectObservation = {
+    observationId: "effect-1",
+    kind: "provider-effect",
+    observedAtIso: "2026-08-20T17:01:05.000Z",
+    observerId: observer.observerId,
+    source: {
+      kind: "provider-api",
+      system: "google-calendar",
+      environment: "operator-canary",
+      recordIdSha256: hash("provider-record"),
+      accountRefSha256: hash("operator-calendar-account"),
+    },
+    payloadSha256: hash("observation payload"),
+    trajectoryRefs: [
+      {
+        trajectoryId: "trajectory-1",
+        stageId: "stage-calendar-create",
+        sha256: trajectorySha256,
+      },
+    ],
+    provider: "google-calendar",
+    operation: "event-create",
+    accountRefSha256: hash("operator-calendar-account"),
+    requestSha256: hash("provider request"),
+    responseSha256: hash("provider response"),
+    providerReceiptIdSha256: hash("provider receipt"),
+    readbackSha256: hash("provider readback"),
+  };
+  const observerPayload: ProviderObserverEvidencePayload = {
+    schema: PROVIDER_OBSERVER_EVIDENCE_SCHEMA,
+    manifestSha256: manifest.manifestSha256,
+    runId: manifest.run.runId,
+    runNonce: manifest.run.nonce,
+    scenarioId: manifest.scenario.id,
+    scenarioStartedAtIso: trajectories.scenarioStartedAtIso,
+    scenarioEndedAtIso: trajectories.scenarioEndedAtIso,
+    trajectoryVerifiedAtIso: trajectories.verifiedAtIso,
+    signedAtIso: "2026-08-20T17:01:10.000Z",
+    trajectorySetSha256,
+    runnerResultSha256: runnerResultSha256({
+      scenarioStatus: "passed",
+      finalChecks,
+    }),
+    observerProvenance: [observer],
+    observations: [observation],
+    connectorBindings: [
+      {
+        observationId: observation.observationId,
+        provider: "google",
+        accountRefSha256: hash("operator-calendar-account"),
+        connectionRefSha256: hash("operator-calendar-connection"),
+        authorizationGrantSha256s: [hash("calendar-write-grant")],
+        operation: manifest.target.operation,
+      },
+    ],
+    failureProbeObservations: manifest.requiredFailureProbes.map((probe) => ({
+      probeId: probe.probeId,
+      observedAtIso: "2026-08-20T17:01:06.000Z",
+      observerId: probe.observerId,
+      sourceKind: probe.sourceKind,
+      system: probe.system,
+      environment: probe.environment,
+      provider: probe.provider,
+      connectorProvider: probe.connectorProvider,
+      accountRefSha256: probe.accountRefSha256,
+      connectionRefSha256: probe.connectionRefSha256,
+      operation: probe.operation,
+      failureClass: probe.failureClass,
+      requestPayloadSha256: probe.requestPayloadSha256,
+      responseSha256: hash(`response:${probe.probeId}`),
+      providerRequestIdSha256:
+        probe.failureClass === "provider-rejected"
+          ? hash(`provider-request:${probe.probeId}`)
+          : null,
+      responseStatusCode: probe.expectedStatusCode,
+      errorCodeSha256: probe.expectedErrorCodeSha256,
+      scopeSha256: probe.scopeSha256,
+      beforeSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      afterSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      authorizationGrantSha256: probe.authorizationGrantSha256,
+    })),
+    stageReferences: [
+      {
+        observationId: observation.observationId,
+        trajectoryId: "trajectory-1",
+        stageId: "stage-calendar-create",
+        stageSha256,
+      },
+    ],
+    providerEffectAssurances: [
+      {
+        observationId: observation.observationId,
+        providerAccepted: true,
+        readbackVerified: true,
+        idempotency: {
+          mode: "provider-key",
+          keySha256: hash("idempotency key"),
+          replayVerified: true,
+        },
+      },
+    ],
+  };
+  const observerEvidence = {
+    keyId: providerObserverKeyId(observerPublicKeyPem),
+    payload: observerPayload,
+    signature: signPayload(
+      null,
+      providerEvidenceSigningBytes(observerPayload),
+      observerPair.privateKey,
+    ).toString("base64url"),
+  };
+  const semanticPayload: SemanticJudgeEvidencePayload = {
+    schema: SEMANTIC_JUDGE_EVIDENCE_SCHEMA,
+    manifestSha256: manifest.manifestSha256,
+    runId: manifest.run.runId,
+    runNonce: manifest.run.nonce,
+    scenarioId: manifest.scenario.id,
+    scenarioEndedAtIso: trajectories.scenarioEndedAtIso,
+    trajectoryVerifiedAtIso: trajectories.verifiedAtIso,
+    signedAtIso: "2026-08-20T17:01:12.000Z",
+    trajectorySetSha256,
+    actingAdapter: manifest.models.actingAdapter,
+    actingProvider: manifest.models.actingProvider,
+    actingModel: manifest.models.actingModel,
+    judgeProvider: manifest.models.judgeProvider,
+    judgeModel: manifest.models.judgeModel,
+    verdicts: manifest.scenario.semanticCriteria.map((criterion) => ({
+      criterionId: criterion.criterionId,
+      rubricSha256: criterion.rubricSha256,
+      status: "passed",
+      score: 0.95,
+      requestSha256: hash(`request:${criterion.criterionId}`),
+      responseSha256: hash(`response:${criterion.criterionId}`),
+    })),
+  };
+  const semanticEvidence = {
+    keyId: providerObserverKeyId(semanticPublicKeyPem),
+    payload: semanticPayload,
+    signature: signPayload(
+      null,
+      semanticEvidenceSigningBytes(semanticPayload),
+      semanticPair.privateKey,
+    ).toString("base64url"),
+  };
   const capabilities = {
     observer: {
       async begin() {
@@ -246,7 +504,7 @@ function harness() {
         return {
           async complete() {
             events.push("observer.complete");
-            return observerEvidence as never;
+            return observerEvidence;
           },
         };
       },
@@ -260,13 +518,13 @@ function harness() {
     trajectories: {
       async verify() {
         events.push("trajectories.verify");
-        return trajectories as never;
+        return trajectories;
       },
     },
     semanticJudge: {
       async judge() {
         events.push("semanticJudge.judge");
-        return semanticEvidence as never;
+        return semanticEvidence;
       },
     },
     cleanup: {
@@ -284,14 +542,15 @@ function harness() {
     input: {
       scenario: definition,
       authorization,
-      pinnedManifestAuthorityPublicKeysPem: [publicKeyPem] as const,
+      pinnedManifestAuthorityPublicKeysPem: [authorityPublicKeyPem] as const,
       operationKind: "google-calendar.event-create" as const,
       providerTarget,
       operationInput,
       failureProbes,
-      pinnedObserverPublicKeysPem: [publicKeyPem] as const,
-      pinnedSemanticJudgePublicKeysPem: [publicKeyPem] as const,
+      pinnedObserverPublicKeysPem: [observerPublicKeyPem] as const,
+      pinnedSemanticJudgePublicKeysPem: [semanticPublicKeyPem] as const,
       capabilities,
+      now: () => new Date("2026-08-20T17:01:20.000Z"),
     },
     capabilities,
     events,
@@ -300,6 +559,44 @@ function harness() {
 }
 
 describe("external provider canary orchestration", () => {
+  it("publishes one genuinely qualified and reverified artifact after cleanup", async () => {
+    const test = harness();
+    const result = await executeExternalProviderCanary(test.input);
+
+    expect(result.completedStages).toEqual([
+      "authorization-validated",
+      "observer-started",
+      "ingress-completed",
+      "trajectories-verified",
+      "observer-evidence-completed",
+      "semantic-judgment-completed",
+      "artifact-reverified",
+      "cleanup-completed",
+      "published",
+    ]);
+    expect(test.events).toEqual([
+      "observer.begin",
+      "ingress.execute",
+      "trajectories.verify",
+      "observer.complete",
+      "semanticJudge.judge",
+      "cleanup.cleanup",
+      "publisher.publish",
+    ]);
+    expect(
+      test.events.filter((event) => event === "publisher.publish"),
+    ).toHaveLength(1);
+    expect(result.artifact.decision.qualification).toEqual({
+      status: "qualified",
+      publishable: true,
+      reasons: [],
+    });
+    expect(result.artifact.qualifiedReport?.status).toBe("passed");
+    expect(() =>
+      reverifyProviderQualificationArtifact(result.artifact),
+    ).not.toThrow();
+  });
+
   it("rejects invalid operator authorization before any external capability", async () => {
     const test = harness();
     const authorization = structuredClone(test.input.authorization);
