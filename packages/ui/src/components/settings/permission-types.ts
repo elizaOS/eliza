@@ -45,10 +45,10 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     id: "microphone",
     name: "Microphone",
     nameKey: "permissionssection.permission.microphone.name",
-    description: "Voice input for talk mode and speech recognition",
+    description: "Voice input during a voice session you start",
     descriptionKey: "permissionssection.permission.microphone.description",
     icon: "mic",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android"],
     requiredForFeatures: ["talkmode", "voice"],
   },
   {
@@ -192,7 +192,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey:
       "permissionssection.permission.speechRecognition.description",
     icon: "audio-lines",
-    platforms: ["ios", "web"],
+    platforms: ["web"],
     requiredForFeatures: ["talkmode", "voice", "swabble"],
   },
   {

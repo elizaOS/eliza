@@ -79,20 +79,12 @@ function platformCopy(platform: string | null | undefined): PlatformCopy {
 /* ── Streaming permission views (mobile / web) ──────────────────── */
 
 function MobilePermissionsView() {
-  const t = useAppSelector((s) => s.t);
   const {
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
   } = useBootConfig();
   return (
     <SettingsStack>
-      <StreamingPermissionsSettingsView
-        mode="mobile"
-        testId="mobile-permissions"
-        title={t("permissionssection.StreamingPermissions", {
-          defaultValue: "Streaming Permissions",
-        })}
-      />
       <MobileSystemPermissionsPanel />
       <MobileSignalsPermissionsPanel />
       {AppBlockerSettingsCard ? <AppBlockerSettingsCard mode="mobile" /> : null}
@@ -110,16 +102,21 @@ function mobileSettingsPlatform(): "ios" | "android" | "web" {
   return "web";
 }
 
+export function mobileSystemPermissionDefinitions(
+  mobilePlatform: "ios" | "android" | "web",
+) {
+  return SYSTEM_PERMISSIONS.filter((def) =>
+    def.platforms.includes(mobilePlatform),
+  );
+}
+
 function MobileSystemPermissionsPanel() {
   const t = useAppSelector((s) => s.t);
   const branding = useBranding();
   const mobilePlatform = mobileSettingsPlatform();
   const registry = useMemo(() => createMobileSignalsPermissionsRegistry(), []);
   const permissionDefs = useMemo(
-    () =>
-      SYSTEM_PERMISSIONS.filter((def) =>
-        def.platforms.includes(mobilePlatform),
-      ),
+    () => mobileSystemPermissionDefinitions(mobilePlatform),
     [mobilePlatform],
   );
   const [states, setStates] = useState<

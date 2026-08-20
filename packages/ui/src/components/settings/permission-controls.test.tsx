@@ -9,6 +9,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../api";
+import { mobileSystemPermissionDefinitions } from "./PermissionsSection";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import type { CapabilityDef } from "./permission-types";
 import { SYSTEM_PERMISSIONS } from "./permission-types";
@@ -126,5 +127,17 @@ describe("PermissionRow shell toggle", () => {
     expect(sw.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(sw);
     expect(onToggleShell).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("mobile permission catalog", () => {
+  it("uses the canonical microphone permission without promoting Apple Speech", () => {
+    const iosIds = mobileSystemPermissionDefinitions("ios").map(
+      (definition) => definition.id,
+    );
+
+    expect(iosIds).toContain("microphone");
+    expect(iosIds).toContain("notifications");
+    expect(iosIds).not.toContain("speech-recognition");
   });
 });
