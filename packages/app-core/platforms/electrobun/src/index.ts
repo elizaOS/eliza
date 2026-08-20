@@ -22,6 +22,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import {
   resolveDesktopRuntimeModeWithDeployment,
+  resolveExternalRendererFacingApiBase,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
 } from "./api-base";
@@ -99,6 +100,7 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
+  ensureWindowTransparentBackground,
   setNativeDragRegion,
   setTrafficLightsPosition,
   setWindowShadow,
@@ -511,11 +513,8 @@ function applyMacOSWindowEffects(
       ptr as Parameters<typeof disableBackForwardNavigationGestures>[0],
     );
 
-  const alignChrome = () => {
-    if (nativeChromeInteractive) {
-      alignButtons();
-      alignDragRegion();
-    }
+  const alignChromeStructure = () => {
+    if (nativeChromeInteractive) alignDragRegion();
     setWindowUserResizable(
       ptr as Parameters<typeof setWindowUserResizable>[0],
       nativeChromeInteractive,
@@ -523,29 +522,52 @@ function applyMacOSWindowEffects(
     disableSwipeBackGesture();
   };
 
-  alignChrome();
-  setTimeout(alignChrome, 120);
-  const chromeRefreshTimer = setInterval(alignChrome, 1000);
+  const alignAllChrome = () => {
+    if (nativeChromeInteractive) alignButtons();
+    alignChromeStructure();
+  };
 
-  win.on("resize", alignChrome);
-  win.on("focus", alignChrome);
+  alignAllChrome();
+  setTimeout(alignAllChrome, 120);
+  // WKWebView can reorder its native subtree after initial layout. Keep the
+  // drag/resize structure above it, but do not continuously reposition the
+  // AppKit traffic-light buttons: AppKit owns their stable live-resize layout.
+  const chromeRefreshTimer = setInterval(alignChromeStructure, 1000);
+  let settledChromeTimer: ReturnType<typeof setTimeout> | null = null;
+  const alignAfterNativeLayoutSettles = () => {
+    alignChromeStructure();
+    if (settledChromeTimer) clearTimeout(settledChromeTimer);
+    settledChromeTimer = setTimeout(() => {
+      settledChromeTimer = null;
+      alignAllChrome();
+    }, 120);
+  };
+
+  // Let AppKit lay out its standard controls throughout live resize/zoom. One
+  // trailing alignment restores our hiddenInset offset after AppKit finishes,
+  // avoiding both per-frame traffic-light jitter and a stale post-zoom frame.
+  win.on("resize", alignAfterNativeLayoutSettles);
+  win.on("focus", alignAllChrome);
   win.on("blur", () => {
-    alignChrome();
-    setTimeout(alignChrome, 80);
-    setTimeout(alignChrome, 240);
-    setTimeout(alignChrome, 700);
+    alignAllChrome();
+    setTimeout(alignAllChrome, 80);
+    setTimeout(alignAllChrome, 240);
+    setTimeout(alignAllChrome, 700);
   });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
-  win.on("move", alignChrome);
-  win.on("close", () => clearInterval(chromeRefreshTimer));
+  win.on("move", alignAfterNativeLayoutSettles);
+  win.on("close", () => {
+    clearInterval(chromeRefreshTimer);
+    if (settledChromeTimer) clearTimeout(settledChromeTimer);
+  });
 
   // WKWebView is often inserted or reordered after first layout; restack native
   // views so drag/resize strips stay hit-testable above the page.
   try {
     win.webview.on("dom-ready", () => {
-      alignChrome();
-      setTimeout(alignChrome, 50);
-      setTimeout(alignChrome, 300);
+      alignAllChrome();
+      setTimeout(alignAllChrome, 50);
+      setTimeout(alignAllChrome, 300);
     });
   } catch {
     // webview may not accept listeners yet in some embed paths
@@ -848,7 +870,10 @@ async function startRendererServer(): Promise<string> {
   // resolved external base directly; local mode keeps the loopback agent port.
   const initialApiBase =
     initialRuntime.mode === "external" && initialRuntime.externalApi.base
-      ? initialRuntime.externalApi.base
+      ? resolveExternalRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          initialRuntime.externalApi.base,
+        )
       : resolveInitialApiBase(
           process.env as Record<string, string | undefined>,
         );
@@ -1066,9 +1091,13 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
   const rendererUrl = await resolveRendererUrl();
   const runtime = resolveDesktopRuntime();
   if (runtime.mode === "external" && runtime.externalApi.base) {
+    const rendererApiBase = resolveExternalRendererFacingApiBase(
+      process.env as Record<string, string | undefined>,
+      runtime.externalApi.base,
+    );
     const externalRendererUrl = appendApiBaseParam(
       rendererUrl,
-      runtime.externalApi.base,
+      rendererApiBase,
     );
     return appendRuntimeChooserTestParam(externalRendererUrl);
   }
@@ -1262,6 +1291,20 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // has fixed, display-derived geometry, so skip bounds persistence + the
   // first-launch maximize entirely.
   if (bottomBar) {
+    const nativeWindowPointer = (win as { ptr?: unknown }).ptr;
+    if (
+      process.platform === "darwin" &&
+      nativeWindowPointer &&
+      !ensureWindowTransparentBackground(
+        nativeWindowPointer as Parameters<
+          typeof ensureWindowTransparentBackground
+        >[0],
+      )
+    ) {
+      logger.warn(
+        "[main-window] failed to enforce transparent native pill background",
+      );
+    }
     try {
       (
         win as typeof win & { setAlwaysOnTop?: (flag: boolean) => void }
@@ -1855,9 +1898,13 @@ function injectApiBase(win: BrowserWindow): void {
     runtimeResolution.mode === "external" &&
     runtimeResolution.externalApi.base
   ) {
+    const rendererBase = resolveExternalRendererFacingApiBase(
+      process.env as Record<string, string | undefined>,
+      runtimeResolution.externalApi.base,
+    );
     apiBaseOwner.notifyChange(
       win,
-      runtimeResolution.externalApi.base,
+      rendererBase,
       resolveApiToken(process.env) ?? "",
     );
     setAgentReady(true);

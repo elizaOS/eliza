@@ -98,6 +98,7 @@ import {
 } from "./agent";
 import {
   createSecurityScopedBookmark,
+  ensureWindowTransparentBackground,
   type FnMonitorStartResult,
   getFnSystemUsageType,
   isAppActive,
@@ -107,6 +108,7 @@ import {
   makeKeyAndOrderFront,
   orderOut,
   pollFnMonitor,
+  pollWindowOutsideClick,
   setWindowInteractiveMaterialSize,
   startAccessingSecurityScopedBookmark,
   startFnMonitor,
@@ -1600,6 +1602,7 @@ X-GNOME-Autostart-enabled=true
     if (!win || !workArea) return;
     const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarTransparentHost();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
   }
@@ -1618,6 +1621,7 @@ X-GNOME-Autostart-enabled=true
     if (!win || !workArea) return;
     const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarTransparentHost();
     this.applyBottomBarInteractiveMaterial();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
@@ -1656,6 +1660,18 @@ X-GNOME-Autostart-enabled=true
     }
   }
 
+  /** Reassert the chromeless host after AppKit processes a frame transition. */
+  private applyBottomBarTransparentHost(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) return;
+    ensureWindowTransparentBackground(
+      ptr as Parameters<typeof ensureWindowTransparentBackground>[0],
+    );
+  }
+
   /** Mirror the canonical mobile pull-sheet state in the native host frame. */
   async setBottomBarSurfaceState(options: {
     state: BottomBarSurfaceState;
@@ -1676,6 +1692,7 @@ X-GNOME-Autostart-enabled=true
     win.setAlwaysOnTop(options.state !== "MAXIMIZED");
     const frame = computeBottomBarSurfaceFrame(workArea, options.state);
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarTransparentHost();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
   }
@@ -1715,6 +1732,7 @@ X-GNOME-Autostart-enabled=true
       : computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
     try {
       win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.applyBottomBarTransparentHost();
       this.applyBottomBarInteractiveMaterial();
       this.bottomBarWorkArea = nextWorkArea;
       this.bottomBarFrameDirty = false;
@@ -1737,13 +1755,33 @@ X-GNOME-Autostart-enabled=true
       // When the app becomes foreground again with only a minimized window
       // (for example via Dock click), restore it automatically.
       const appActive = isAppActive();
+      const wasAppActive = this._appActive;
       if (!this._appActive && appActive && win.isMinimized()) {
         void this.showWindow();
       }
       this._appActive = appActive;
 
+      // A detached assistant panel can accept its first mouse event without
+      // becoming the key window. In that state `isKeyWindow()` remains false
+      // for the entire interaction, so the key-window edge below cannot report
+      // the user's click into another application. Application deactivation is
+      // the authoritative click-away edge for that non-key panel: notify the
+      // renderer even when `_windowFocused` was already false so an expanded
+      // sheet reliably steps down to its visible composer.
+      if (wasAppActive && !appActive) {
+        this._windowFocused = false;
+        this.send("desktopWindowBlur");
+      }
+
       const ptr = (win as { ptr?: unknown }).ptr;
       if (!ptr) return;
+      const outsideClick = pollWindowOutsideClick(
+        ptr as Parameters<typeof pollWindowOutsideClick>[0],
+      );
+      if (outsideClick && !(wasAppActive && !appActive)) {
+        this._windowFocused = false;
+        this.send("desktopWindowBlur");
+      }
       const focused = isKeyWindow(ptr as Parameters<typeof isKeyWindow>[0]);
       if (focused !== this._windowFocused) {
         this._windowFocused = focused;

@@ -2,7 +2,13 @@
 import { Screen } from "electrobun/bun";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
-import { setWindowInteractiveMaterialSize } from "./mac-window-effects";
+import {
+  ensureWindowTransparentBackground,
+  isAppActive,
+  isKeyWindow,
+  pollWindowOutsideClick,
+  setWindowInteractiveMaterialSize,
+} from "./mac-window-effects";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -17,11 +23,13 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
+  ensureWindowTransparentBackground: vi.fn(() => true),
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
   setWindowInteractiveMaterialSize: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
+  pollWindowOutsideClick: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
   orderOut: vi.fn(),
   setNativeDragRegion: vi.fn(),
@@ -345,6 +353,9 @@ describe("DesktopManager main window controls", () => {
     vi.mocked(Screen.getPrimaryDisplay).mockReturnValue({
       workArea: { x: 100, y: 50, width: 900, height: 700 },
     } as never);
+    vi.mocked(isAppActive).mockReturnValue(false);
+    vi.mocked(isKeyWindow).mockReturnValue(false);
+    vi.mocked(pollWindowOutsideClick).mockReturnValue(false);
     delete process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY;
   });
 
@@ -432,6 +443,9 @@ describe("DesktopManager main window controls", () => {
 
     await manager.setBottomBarSize({ width: 600, height: 820 });
     expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
+    expect(ensureWindowTransparentBackground).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+    );
 
     await manager.setBottomBarInteractiveSize({ width: 380.1, height: 180.1 });
     expect(setWindowInteractiveMaterialSize).toHaveBeenLastCalledWith(
@@ -579,6 +593,59 @@ describe("DesktopManager main window controls", () => {
       focused: true,
     });
     expect(sendToWebview).toHaveBeenCalledWith("desktopWindowFocus", undefined);
+  });
+
+  it("reports application deactivation for a non-key detached panel", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendToWebview = vi.fn();
+      vi.mocked(isAppActive).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(isKeyWindow).mockReturnValue(false);
+      const { manager } = createManagerWithWindow();
+      manager.setSendToWebview(sendToWebview);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).not.toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+      await expect(manager.isWindowFocused()).resolves.toEqual({
+        focused: false,
+      });
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports clicks outside a non-key detached panel material", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendToWebview = vi.fn();
+      vi.mocked(isAppActive).mockReturnValue(false);
+      vi.mocked(isKeyWindow).mockReturnValue(false);
+      vi.mocked(pollWindowOutsideClick)
+        .mockReturnValueOnce(true)
+        .mockReturnValue(false);
+      const { manager, window } = createManagerWithWindow();
+      Object.assign(window, { ptr: { id: "detached-panel" } });
+      manager.setSendToWebview(sendToWebview);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hides on close by default and hard-closes when tray-minimize is disabled", async () => {

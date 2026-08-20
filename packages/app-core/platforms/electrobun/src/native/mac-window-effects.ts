@@ -16,12 +16,14 @@ import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-l
  */
 type MacEffectsSymbols = {
   enableWindowVibrancy(ptr: Pointer): boolean;
+  ensureWindowTransparentBackground(ptr: Pointer): boolean;
   setWindowInteractiveMaterialSize(
     ptr: Pointer,
     width: number,
     height: number,
     cornerRadius: number,
   ): boolean;
+  pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
@@ -83,8 +85,16 @@ function loadLib(): MacEffectsLib {
     // FFIType descriptors at the TypeScript level.
     return dlopen(dylibPath, {
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
+      ensureWindowTransparentBackground: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
       setWindowInteractiveMaterialSize: {
         args: [FFIType.ptr, FFIType.f64, FFIType.f64, FFIType.f64],
+        returns: FFIType.bool,
+      },
+      pollWindowOutsideClick: {
+        args: [FFIType.ptr],
         returns: FFIType.bool,
       },
       setWindowShadowEnabled: {
@@ -182,6 +192,11 @@ export function enableVibrancy(ptr: Pointer): boolean {
   return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
 }
 
+/** Keep a chromeless overlay's native canvas clear without adding vibrancy. */
+export function ensureWindowTransparentBackground(ptr: Pointer): boolean {
+  return getLib()?.symbols.ensureWindowTransparentBackground(ptr) ?? false;
+}
+
 export function setWindowInteractiveMaterialSize(
   ptr: Pointer,
   width: number,
@@ -272,6 +287,11 @@ export function isAppActive(): boolean {
 /** Returns true if the window is currently the key (focused) window */
 export function isKeyWindow(ptr: Pointer): boolean {
   return getLib()?.symbols.isWindowKey(ptr) ?? false;
+}
+
+/** Consume a native click that landed outside the painted pill material. */
+export function pollWindowOutsideClick(ptr: Pointer): boolean {
+  return getLib()?.symbols.pollWindowOutsideClick(ptr) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {

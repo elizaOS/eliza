@@ -33,6 +33,13 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
 
 @interface ElizaWindowInteractiveMaterialController : NSObject
+{
+@private
+	std::atomic_bool _outsideClickPending;
+	uint32_t _lastLeftMouseDownCount;
+	uint32_t _lastRightMouseDownCount;
+	uint32_t _lastOtherMouseDownCount;
+}
 @property(nonatomic, weak) NSWindow *window;
 @property(nonatomic) NSSize materialSize;
 @property(nonatomic) CGFloat materialCornerRadius;
@@ -42,6 +49,9 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 @property(nonatomic, strong) NSTimer *pointerPollTimer;
 - (instancetype)initWithWindow:(NSWindow *)window;
 - (void)handleEvent:(NSEvent *)event;
+- (void)handleGlobalEvent:(NSEvent *)event;
+- (void)pollPointerState;
+- (BOOL)consumeOutsideClick;
 - (void)setMaterialWidth:(CGFloat)width
 				  height:(CGFloat)height
 			cornerRadius:(CGFloat)cornerRadius;
@@ -54,6 +64,13 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	if (self == nil) return nil;
 	_window = window;
 	_materialSize = window.contentView.bounds.size;
+	_outsideClickPending.store(false, std::memory_order_relaxed);
+	_lastLeftMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	_lastRightMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventRightMouseDown);
+	_lastOtherMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventOtherMouseDown);
 	__weak ElizaWindowInteractiveMaterialController *weakSelf = self;
 	NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDown |
 		NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged |
@@ -62,7 +79,7 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 		NSEventMaskOtherMouseUp | NSEventMaskOtherMouseDragged;
 	_globalMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:mask
 										 handler:^(NSEvent *event) {
-		[weakSelf handleEvent:event];
+		[weakSelf handleGlobalEvent:event];
 	}];
 	_localMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
 									 handler:^NSEvent *(NSEvent *event) {
@@ -78,11 +95,54 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	_pointerPollTimer = [NSTimer timerWithTimeInterval:(1.0 / 30.0)
 										  repeats:YES
 											block:^(__unused NSTimer *timer) {
-		[weakSelf applyForScreenPoint:[NSEvent mouseLocation]];
+		[weakSelf pollPointerState];
 	}];
 	[[NSRunLoop mainRunLoop] addTimer:_pointerPollTimer
 								 forMode:NSRunLoopCommonModes];
 	return self;
+}
+
+- (void)handleGlobalEvent:(NSEvent *)event {
+	switch (event.type) {
+		case NSEventTypeLeftMouseDown:
+		case NSEventTypeRightMouseDown:
+		case NSEventTypeOtherMouseDown:
+			if (![self containsScreenPoint:[NSEvent mouseLocation]]) {
+				_outsideClickPending.store(true, std::memory_order_release);
+			}
+			break;
+		default:
+			break;
+	}
+	[self handleEvent:event];
+}
+
+- (BOOL)consumeOutsideClick {
+	return _outsideClickPending.exchange(false, std::memory_order_acq_rel)
+		? YES
+		: NO;
+}
+
+- (void)pollPointerState {
+	uint32_t leftMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	uint32_t rightMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventRightMouseDown);
+	uint32_t otherMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventOtherMouseDown);
+	BOOL mouseDownOccurred =
+		leftMouseDownCount != _lastLeftMouseDownCount ||
+		rightMouseDownCount != _lastRightMouseDownCount ||
+		otherMouseDownCount != _lastOtherMouseDownCount;
+	_lastLeftMouseDownCount = leftMouseDownCount;
+	_lastRightMouseDownCount = rightMouseDownCount;
+	_lastOtherMouseDownCount = otherMouseDownCount;
+
+	NSPoint screenPoint = [NSEvent mouseLocation];
+	if (mouseDownOccurred && ![self containsScreenPoint:screenPoint]) {
+		_outsideClickPending.store(true, std::memory_order_release);
+	}
+	[self applyForScreenPoint:screenPoint];
 }
 
 - (void)dealloc {
@@ -157,6 +217,96 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 
 static const void *kElizaWindowInteractiveMaterialControllerKey =
 	&kElizaWindowInteractiveMaterialControllerKey;
+
+static NSMutableDictionary<NSValue *, NSValue *> *
+elizaOriginalAcceptsFirstMouseImplementations(void) {
+	static NSMutableDictionary<NSValue *, NSValue *> *implementations = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		implementations = [[NSMutableDictionary alloc] init];
+	});
+	return implementations;
+}
+
+/**
+ * AppKit normally consumes the first click in an inactive window to activate
+ * the app. That is correct for a document window, but makes a floating pill
+ * feel broken: its visible button needs a second click. Keep ordinary windows'
+ * behavior, while letting views inside the interactive-material window accept
+ * the activating click itself.
+ */
+static BOOL elizaAcceptsFirstMouseForInteractiveMaterial(id receiver,
+													 SEL selector,
+													 NSEvent *event) {
+	NSView *view = [receiver isKindOfClass:[NSView class]]
+		? (NSView *)receiver
+		: nil;
+	NSWindow *window = [view window];
+	if (window != nil &&
+		objc_getAssociatedObject(
+			window, kElizaWindowInteractiveMaterialControllerKey) != nil) {
+		return YES;
+	}
+
+	Class cls = object_getClass(receiver);
+	NSValue *key = [NSValue valueWithPointer:(__bridge const void *)cls];
+	NSValue *stored =
+		[elizaOriginalAcceptsFirstMouseImplementations() objectForKey:key];
+	IMP original = (IMP)[stored pointerValue];
+	if (original == nullptr ||
+		original == (IMP)elizaAcceptsFirstMouseForInteractiveMaterial) {
+		return NO;
+	}
+	return ((BOOL(*)(id, SEL, NSEvent *))original)(receiver, selector, event);
+}
+
+static IMP elizaUnpatchedAcceptsFirstMouseImplementation(Class cls) {
+	NSMutableDictionary<NSValue *, NSValue *> *implementations =
+		elizaOriginalAcceptsFirstMouseImplementations();
+	for (Class cursor = cls; cursor != Nil;
+		 cursor = class_getSuperclass(cursor)) {
+		NSValue *key =
+			[NSValue valueWithPointer:(__bridge const void *)cursor];
+		NSValue *stored = [implementations objectForKey:key];
+		IMP candidate = (IMP)[stored pointerValue];
+		if (candidate != nullptr &&
+			candidate != (IMP)elizaAcceptsFirstMouseForInteractiveMaterial) {
+			return candidate;
+		}
+	}
+	Method method = class_getInstanceMethod(cls, @selector(acceptsFirstMouse:));
+	return method == nullptr ? nullptr : method_getImplementation(method);
+}
+
+static void elizaInstallFirstMouseAcceptance(NSView *view) {
+	if (view == nil) return;
+
+	// Patch deepest views first because WKWebView delegates mouse handling to
+	// private content subviews. Per-class replacement is conditional on the
+	// window's associated controller, so full Workspace windows retain standard
+	// AppKit activation semantics.
+	for (NSView *subview in [view subviews]) {
+		elizaInstallFirstMouseAcceptance(subview);
+	}
+
+	Class cls = object_getClass(view);
+	NSValue *key = [NSValue valueWithPointer:(__bridge const void *)cls];
+	NSMutableDictionary<NSValue *, NSValue *> *implementations =
+		elizaOriginalAcceptsFirstMouseImplementations();
+	if ([implementations objectForKey:key] != nil) return;
+
+	Method method = class_getInstanceMethod(cls, @selector(acceptsFirstMouse:));
+	if (method == nullptr) return;
+	IMP original = elizaUnpatchedAcceptsFirstMouseImplementation(cls);
+	if (original == nullptr) return;
+	[implementations
+		setObject:[NSValue valueWithPointer:(const void *)original]
+		  forKey:key];
+	class_replaceMethod(
+		cls, @selector(acceptsFirstMouse:),
+		(IMP)elizaAcceptsFirstMouseForInteractiveMaterial,
+		method_getTypeEncoding(method));
+}
 
 static NSMutableArray<NSURL *> *elizaSecurityScopedUrls(void) {
 	static NSMutableArray<NSURL *> *urls = nil;
@@ -264,6 +414,22 @@ static NSString *elizaErrorMessage(NSError *error, NSString *fallback) {
 - (void)mouseDown:(NSEvent *)event {
 	NSWindow *window = [self window];
 	if (window != nil && event != nil) {
+		// A custom client-area drag view replaces AppKit's normal titlebar hit
+		// target, so it must preserve the user's system titlebar double-click
+		// preference itself. NSUserDefaults searches NSGlobalDomain, where macOS
+		// stores AppleActionOnDoubleClick (Maximize, Minimize, or None).
+		if ([event clickCount] >= 2) {
+			NSString *action = [[NSUserDefaults standardUserDefaults]
+				stringForKey:@"AppleActionOnDoubleClick"];
+			if ([action caseInsensitiveCompare:@"Minimize"] == NSOrderedSame) {
+				[window miniaturize:nil];
+			} else if (action == nil ||
+					   [action caseInsensitiveCompare:@"None"] != NSOrderedSame) {
+				// Missing preference is the macOS default: zoom/fill the window.
+				[window performZoom:nil];
+			}
+			return;
+		}
 		// Standard API for dragging from client-area views (hiddenInset).
 		[window performWindowDragWithEvent:event];
 	}
@@ -2410,6 +2576,36 @@ extern "C" void stopAccessingSecurityScopedBookmarks(void) {
 	}
 }
 
+extern "C" bool ensureWindowTransparentBackground(void *windowPtr) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		// The detached pill paints only its visible glass material in WKWebView.
+		// Reassert the native clear canvas after window creation so AppKit cannot
+		// temporarily restore an opaque default backing surface during frame or
+		// Space transitions. This intentionally adds no NSVisualEffectView.
+		[window setOpaque:NO];
+		[window setBackgroundColor:[NSColor clearColor]];
+		[window setTitlebarAppearsTransparent:YES];
+		// The resting host is only 48x6 points. AppKit's ordinary window shadow
+		// expands far beyond that material and reads as a dark outlined capsule
+		// around the renderer's white bar. The detached overlay owns its complete
+		// visual treatment, so the native host must stay shadowless at every frame.
+		[window setHasShadow:NO];
+		[window invalidateShadow];
+		success = YES;
+	});
+	return success;
+}
+
 extern "C" bool enableWindowVibrancy(void *windowPtr) {
 	if (windowPtr == nullptr) {
 		return false;
@@ -2495,12 +2691,29 @@ extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
 				window, kElizaWindowInteractiveMaterialControllerKey, controller,
 				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 		}
+		elizaInstallFirstMouseAcceptance([window contentView]);
 		[controller setMaterialWidth:(CGFloat)width
 							height:(CGFloat)height
 					  cornerRadius:(CGFloat)cornerRadius];
 		success = YES;
 	});
 	return success;
+}
+
+/** Consume one click that landed outside the painted interactive material. */
+extern "C" bool pollWindowOutsideClick(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL outsideClick = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		outsideClick = [controller consumeOutsideClick];
+	});
+	return outsideClick == YES;
 }
 
 extern "C" bool setWindowShadowEnabled(void *windowPtr, bool enabled) {
@@ -2581,12 +2794,6 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 		}
 
 		if (contentView != nil) {
-			ElizaInactiveTrafficLightsOverlayView *oldOverlay =
-				findInactiveTrafficLightsOverlay(buttonContainer);
-			if (oldOverlay != nil) {
-				[oldOverlay removeFromSuperview];
-			}
-
 			NSMutableArray<NSValue *> *buttonRectsInContent =
 				[NSMutableArray arrayWithCapacity:3];
 			NSRect overlayFrame = NSZeroRect;
@@ -2603,6 +2810,9 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 
 			if (hasOverlayFrame) {
 				overlayFrame = NSInsetRect(overlayFrame, -1.0, -1.0);
+				// Reuse one overlay owned by the content view. Looking under the
+				// traffic-light button container (the old behavior) never found this
+				// view, so every resize/focus refresh stacked another native overlay.
 				ElizaInactiveTrafficLightsOverlayView *overlay =
 					ensureInactiveTrafficLightsOverlay(contentView);
 				[overlay setFrame:overlayFrame];
@@ -2625,6 +2835,16 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 
 		[buttonContainer setNeedsLayout:YES];
 		[buttonContainer layoutSubtreeIfNeeded];
+		// hiddenInset WKWebView navigation/zoom can restack the renderer above the
+		// titlebar subtree. Reorder the existing AppKit button container in its own
+		// host (without reparenting or replacing the standard controls) so close,
+		// minimize, and zoom stay visible and fully native after every route/layout.
+		NSView *titlebarHost = [buttonContainer superview];
+		if (titlebarHost != nil) {
+			[titlebarHost addSubview:buttonContainer
+						 positioned:NSWindowAbove
+						relativeTo:nil];
+		}
 		[window invalidateShadow];
 		success = YES;
 	});

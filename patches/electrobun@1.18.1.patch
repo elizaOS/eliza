@@ -11,3 +11,47 @@ index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966d
  	},
  	"dependencies": {},
  	"trustedDependencies": []
+diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
+--- a/dist/api/bun/core/Socket.ts
++++ b/dist/api/bun/core/Socket.ts
+@@ -56,8 +56,13 @@ export const removeSocketForWebview = (webviewId: number) => {
+ };
+ 
+ const startRPCServer = () => {
+-	const startPort = 50000;
+-	const endPort = 65535;
++	const configuredPort = Number.parseInt(Bun.env.ELECTROBUN_RPC_PORT ?? "", 10);
++	const hasConfiguredPort =
++		Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65535;
++	const startPort = hasConfiguredPort ? configuredPort : 50000;
++	// An explicit port is an ownership contract. Do not silently let a second
++	// native app drift onto the next port and coexist with the intended app.
++	const endPort = hasConfiguredPort ? startPort : 65535;
+-	const payloadLimit = 1024 * 1024 * 500; // 500MB
+-	let port = startPort;
+-	let server = null;
++	const payloadLimit = 1024 * 1024 * 500; // 500MB
++	let port = startPort;
++	let server = null;
+diff --git a/dist-macos-arm64/api/bun/core/Socket.ts b/dist-macos-arm64/api/bun/core/Socket.ts
+--- a/dist-macos-arm64/api/bun/core/Socket.ts
++++ b/dist-macos-arm64/api/bun/core/Socket.ts
+@@ -56,8 +56,13 @@ export const removeSocketForWebview = (webviewId: number) => {
+ };
+ 
+ const startRPCServer = () => {
+-	const startPort = 50000;
+-	const endPort = 65535;
++	const configuredPort = Number.parseInt(Bun.env.ELECTROBUN_RPC_PORT ?? "", 10);
++	const hasConfiguredPort =
++		Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65535;
++	const startPort = hasConfiguredPort ? configuredPort : 50000;
++	// An explicit port is an ownership contract. Do not silently let a second
++	// native app drift onto the next port and coexist with the intended app.
++	const endPort = hasConfiguredPort ? startPort : 65535;
+-	const payloadLimit = 1024 * 1024 * 500; // 500MB
+-	let port = startPort;
+-	let server = null;
++	const payloadLimit = 1024 * 1024 * 500; // 500MB
++	let port = startPort;
++	let server = null;
