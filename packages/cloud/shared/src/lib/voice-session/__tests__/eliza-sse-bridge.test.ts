@@ -98,11 +98,23 @@ describe("eliza sse bridge", () => {
   test("bounds and allowlists Server-Timing without retaining descriptions", () => {
     expect(
       parseElizaServerTiming(
-        'turn_claim;dur=4.44;desc="tenant-secret", provider;desc="cerebras", injected;dur=1;desc="raw", turn_hydrate;dur=700001, turn_admission;dur=-2',
+        'turn_claim;dur=4.4;desc="tenant-secret", provider;desc="cerebras", injected;dur=1;desc="raw", turn_hydrate;dur=700001, turn_admission;dur=-2',
       ),
     ).toEqual({ metrics: { turn_claim: 4.4 }, provider: "cerebras" });
     expect(parseElizaServerTiming(`turn_claim;dur=1,${"x".repeat(2_100)}`)).toBeNull();
     expect(parseElizaServerTiming('provider;desc="attacker-controlled"')).toBeNull();
+  });
+
+  test("rejects non-canonical Server-Timing duration representations", () => {
+    for (const duration of ["0x10", "1e3", "+1", "01", ".5", "1.", "1.25"]) {
+      expect(parseElizaServerTiming(`turn_claim;dur=${duration}`)).toBeNull();
+    }
+    expect(parseElizaServerTiming("turn_claim;dur=0")).toEqual({
+      metrics: { turn_claim: 0 },
+    });
+    expect(parseElizaServerTiming("turn_claim;dur=600000.0")).toEqual({
+      metrics: { turn_claim: 600000 },
+    });
   });
 
   test("decodes local runtime token frames without replaying fullText", async () => {
