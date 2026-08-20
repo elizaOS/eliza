@@ -129,7 +129,7 @@ describe("computeDiarizationErrorRate — greedy mapping fallback", () => {
 			seg("p", 2000, 3000), // c collapsed onto p → a confusion either arm
 		];
 		const exact = computeDiarizationErrorRate(reference, hypothesis, {
-			maxExactSpeakers: 16,
+			maxExactSpeakers: 7,
 		});
 		const greedy = computeDiarizationErrorRate(reference, hypothesis, {
 			maxExactSpeakers: 0,
