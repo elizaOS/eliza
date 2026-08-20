@@ -7,6 +7,7 @@ import {
 } from "../platform/remote-controller-identity";
 import type { AgentProfile } from "../state/agent-profile-types";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type { AgentRequestTransport } from "./transport";
 
 interface RelayClient {
@@ -62,7 +63,9 @@ async function nextSequence(sessionId: string): Promise<number> {
     const existing = Number(globalThis.localStorage?.getItem(key) ?? "0");
     const sequence =
       Number.isSafeInteger(existing) && existing >= 0 ? existing + 1 : 1;
-    globalThis.localStorage?.setItem(key, String(sequence));
+    runAsPrivilegedShell(() =>
+      globalThis.localStorage?.setItem(key, String(sequence)),
+    );
     return sequence;
   } finally {
     release();

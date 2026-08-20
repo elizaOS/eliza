@@ -24,6 +24,7 @@ import {
   updateAgentProfile,
 } from "../../state";
 import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { SettingsStack } from "../settings/settings-layout";
 import type { LinkedElizaDevice } from "./MyRuntimesSection";
 import { MyRuntimesSection } from "./MyRuntimesSection";
@@ -221,7 +222,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         `managed-host:${hostId}`,
         JSON.stringify(enrolled.enrollment),
       );
-      globalThis.localStorage?.setItem(CLOUD_HOST_ID_KEY, hostId);
+      shellLocalStorage.setItem(CLOUD_HOST_ID_KEY, hostId);
     }
     const pairing = await client.createCloudRemotePairing({ hostId });
     const payload = new URL("elizaos://pair");
