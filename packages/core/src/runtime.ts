@@ -6101,6 +6101,36 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
+	 * Prefer the concrete backend receipt returned by a model handler over the
+	 * handler's registration name. OpenAI-compatible handlers can register once
+	 * as `openai` while the request is actually served by Cerebras, EvoLink, or
+	 * another compatible backend; status and downstream trajectory attribution
+	 * must report the backend that answered, not merely the transport plugin.
+	 */
+	private servingProviderFromResult(
+		result: unknown,
+		registeredProvider: string,
+	): string {
+		if (!result || typeof result !== "object" || Array.isArray(result)) {
+			return registeredProvider;
+		}
+		const providerMetadata = (result as Record<string, unknown>)
+			.providerMetadata;
+		if (
+			providerMetadata &&
+			typeof providerMetadata === "object" &&
+			!Array.isArray(providerMetadata)
+		) {
+			const concreteProvider = (providerMetadata as Record<string, unknown>)
+				.provider;
+			if (typeof concreteProvider === "string" && concreteProvider.trim()) {
+				return concreteProvider.trim();
+			}
+		}
+		return registeredProvider;
+	}
+
+	/**
 	 * The provider name that served the most recent successful `useModel` call
 	 * for the given model type, or `undefined` if no such call has completed
 	 * (so callers can fail-closed rather than fabricate a provider). Lets the
@@ -7427,7 +7457,10 @@ export class AgentRuntime implements IAgentRuntime {
 					// "default" (#13623).
 					this.noteResolvedModelProvider(
 						requestedModelKey,
-						resolvedModel.provider,
+						this.servingProviderFromResult(
+							resultRef.current,
+							resolvedModel.provider,
+						),
 					);
 
 					this.logger.trace(
@@ -7533,7 +7566,10 @@ export class AgentRuntime implements IAgentRuntime {
 				// "default" (#13623).
 				this.noteResolvedModelProvider(
 					requestedModelKey,
-					resolvedModel.provider,
+					this.servingProviderFromResult(
+						resultRef.current,
+						resolvedModel.provider,
+					),
 				);
 
 				this.logger.trace(

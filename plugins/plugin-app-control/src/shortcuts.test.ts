@@ -16,18 +16,18 @@ const MATCH_CONTEXT = {
 } as const;
 
 describe("viewNavigationShortcuts (#8791)", () => {
-	it("remain compatibility exports but are not registered ahead of the model", () => {
+	it("remain compatibility exports while the post-Stage-1 evaluator is registered", () => {
 		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
 			),
-		).not.toContain("app-control.view-command-shortcut");
+		).toContain("app-control.view-command-shortcut");
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
 			),
-		).not.toContain("app-control.view-followup-routing");
+		).toContain("app-control.create-choice-shortcut");
 	});
 
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {

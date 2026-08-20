@@ -27,6 +27,7 @@ import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	Entity,
 	Evaluator,
+	EvaluatorRunOptions,
 	IAgentRuntime,
 	JSONSchema,
 	Memory,
@@ -516,9 +517,38 @@ const reflectionContextByMessage = new WeakMap<
 	Promise<ReflectionPrepared>
 >();
 
+function boundRecentMessagesToCompletedTurn(
+	memories: Memory[],
+	message: Memory,
+	options: EvaluatorRunOptions,
+): Memory[] {
+	const turnMemoryIds = new Set(
+		[message, ...(options.responses ?? [])]
+			.map((memory) => memory.id)
+			.filter((id): id is UUID => typeof id === "string" && id.length > 0),
+	);
+	const turnTimestamps = [message, ...(options.responses ?? [])]
+		.map((memory) => memory.createdAt)
+		.filter((createdAt): createdAt is number => Number.isFinite(createdAt));
+	const completedTurnAt =
+		turnTimestamps.length > 0 ? Math.max(...turnTimestamps) : undefined;
+
+	return memories.filter((memory) => {
+		if (memory.id && turnMemoryIds.has(memory.id)) return true;
+		if (completedTurnAt === undefined || !Number.isFinite(memory.createdAt)) {
+			return true;
+		}
+		// Reflection is detached from delivery. A same-room follow-up can therefore
+		// be persisted before this read completes. Exclude anything at/after this
+		// turn's boundary unless it is one of this turn's explicit message IDs.
+		return (memory.createdAt as number) < completedTurnAt;
+	});
+}
+
 async function prepareReflectionContext(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: EvaluatorRunOptions,
 ): Promise<ReflectionPrepared> {
 	const existing = reflectionContextByMessage.get(message);
 	if (existing) return existing;
@@ -537,8 +567,12 @@ async function prepareReflectionContext(
 				}),
 				getEntityDetails({ runtime, roomId: message.roomId }),
 			]);
-		const recentMessages = recentMessagesRaw.filter(
-			(memory) => !isSyntheticConversationArtifactMemory(memory),
+		const recentMessages = boundRecentMessagesToCompletedTurn(
+			recentMessagesRaw.filter(
+				(memory) => !isSyntheticConversationArtifactMemory(memory),
+			),
+			message,
+			options,
 		);
 		return {
 			recentMessages,
@@ -565,9 +599,10 @@ async function prepareReflectionContext(
 async function prepareFacts(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: EvaluatorRunOptions,
 ): Promise<FactPrepared> {
 	const [base, roomFacts, entityFacts] = await Promise.all([
-		prepareReflectionContext(runtime, message),
+		prepareReflectionContext(runtime, message, options),
 		runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
@@ -1031,8 +1066,8 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	async shouldRun({ message, options }) {
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareFacts(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareFacts(runtime, message, options);
 	},
 	prompt({ prepared }) {
 		const { durable, current } = partitionByKind(prepared.knownFacts);
@@ -1146,8 +1181,8 @@ export const relationshipEvaluator: Evaluator<
 	async shouldRun({ message, options }) {
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareReflectionContext(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareReflectionContext(runtime, message, options);
 	},
 	prompt({ prepared }) {
 		return `Find semantic relationship changes between participants.
@@ -1201,8 +1236,8 @@ export const identityEvaluator: Evaluator<
 	async shouldRun({ message, options }) {
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareReflectionContext(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareReflectionContext(runtime, message, options);
 	},
 	prompt({ prepared }) {
 		return `Find explicit platform identity claims for known room participants.
@@ -1253,12 +1288,12 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	async shouldRun({ message, options }) {
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message, state }) {
+	async prepare({ runtime, message, state, options }) {
 		const cachedActionResults = message.id
 			? runtime.getActionResults(message.id)
 			: [];
 		return {
-			...(await prepareReflectionContext(runtime, message)),
+			...(await prepareReflectionContext(runtime, message, options)),
 			actionResults:
 				cachedActionResults.length > 0
 					? cachedActionResults

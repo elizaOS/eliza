@@ -2063,6 +2063,19 @@ export function installPromptOptimizations(
       estimateTokenCount(systemPrompt + userPromptForTrajectory);
     const completionTokens =
       capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
+    const resultProviderMetadata =
+      result &&
+      typeof result === "object" &&
+      !Array.isArray(result) &&
+      (result as Record<string, unknown>).providerMetadata &&
+      typeof (result as Record<string, unknown>).providerMetadata ===
+        "object" &&
+      !Array.isArray((result as Record<string, unknown>).providerMetadata)
+        ? ((result as Record<string, unknown>).providerMetadata as Record<
+            string,
+            unknown
+          >)
+        : {};
     const fallbackCall = {
       stepId: normalizedTrajectoryStepId ?? undefined,
       model: resolveTrajectoryModelLabel(
@@ -2101,6 +2114,7 @@ export function installPromptOptimizations(
         !Array.isArray(payloadRecord.providerMetadata)
           ? (payloadRecord.providerMetadata as Record<string, unknown>)
           : {}),
+        ...resultProviderMetadata,
         promptOptimization: promptOptimizationTelemetry,
       },
     };

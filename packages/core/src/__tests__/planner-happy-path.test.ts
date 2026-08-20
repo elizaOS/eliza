@@ -341,7 +341,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				},
 			],
 		});
-
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage(),
@@ -1403,7 +1402,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				},
 			],
 		});
-
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage("open notes"),
@@ -1429,6 +1427,95 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				(stage) => stage.kind === "tool" && stage.tool?.name === "VIEWS",
 			),
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
+	});
+
+	it("runs one model-only acknowledgement after a deterministic navigation action", async () => {
+		let viewCalls = 0;
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			handler: async () => {
+				viewCalls++;
+				return {
+					success: true,
+					text: '{"effect":"view_navigation","status":"accepted"}',
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					modelReplyStyle: "brief_ui_acknowledgement",
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view_with_model_reply",
+			priority: 10,
+			deterministicActions: ["VIEWS"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "notes" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "Opening Notes now.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: "All set.",
+				},
+			],
+		});
+		runtime.composeState = vi.fn(async () => makeState());
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open notes"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(viewCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("All set.");
+		}
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(runtime.composeState).not.toHaveBeenCalled();
+		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
+			stages: Array<{ kind: string }>;
+		};
+		expect(trajectory.stages.some((stage) => stage.kind === "toolSearch")).toBe(
+			false,
+		);
 	});
 
 	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {

@@ -917,6 +917,11 @@ describe("OpenAI native text plumbing", () => {
       cacheReadInputTokens: 1,
       finishReason: "stop",
       toolCalls,
+      providerMetadata: {
+        modelName: "gpt-test-small",
+        provider: "openai",
+        retryCount: 0,
+      },
     });
   });
 
@@ -959,6 +964,11 @@ describe("OpenAI native text plumbing", () => {
       cacheReadInputTokens: 6,
       finishReason: "tool-calls",
       toolCalls,
+      providerMetadata: {
+        modelName: "gpt-test-small",
+        provider: "openai",
+        retryCount: 0,
+      },
     });
   });
 

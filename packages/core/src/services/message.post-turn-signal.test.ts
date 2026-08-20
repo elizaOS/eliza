@@ -58,4 +58,38 @@ describe("post-turn semantic signal", () => {
 			}),
 		).toBe(true);
 	});
+
+	it("skips reflection for a pure internal view switch", () => {
+		expect(
+			hasPostTurnSemanticSignal(
+				message("show me my calendar"),
+				state([
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyStyle: "brief_ui_acknowledgement",
+						data: { actionName: "VIEWS" },
+					},
+				]),
+				{ actions: ["VIEWS"] },
+			),
+		).toBe(false);
+	});
+
+	it("keeps reflection when view navigation also carries durable information", () => {
+		expect(
+			hasPostTurnSemanticSignal(
+				message("Open notes; I live in Berlin."),
+				state([
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyStyle: "brief_ui_acknowledgement",
+						data: { actionName: "VIEWS" },
+					},
+				]),
+				{ actions: ["VIEWS"] },
+			),
+		).toBe(true);
+	});
 });

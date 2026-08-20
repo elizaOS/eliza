@@ -2328,6 +2328,11 @@ async function generateTextByModelType(
         providerOptions,
         generateParams
       );
+      details.providerMetadata = {
+        modelName,
+        provider: usageProvider,
+        ...retryMetadata(),
+      };
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, async () => {
@@ -2387,6 +2392,11 @@ async function generateTextByModelType(
       providerOptions,
       generateParams
     );
+    details.providerMetadata = {
+      modelName,
+      provider: usageProvider,
+      ...retryMetadata(),
+    };
     details.response = "";
     assertActiveTrajectoryForLlmCall({
       actionType: details.actionType,

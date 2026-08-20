@@ -7,7 +7,7 @@
  */
 import type { AgentRuntime, ModelRegistrationInfo } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { detectRuntimeModel } from "./agent-model";
 
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
@@ -20,6 +20,7 @@ type RuntimeOpts = {
   characterModel?: string;
   /** Provider core recorded as having served the last chat call. */
   lastServingProvider?: string;
+  settings?: Record<string, string>;
 };
 
 function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
@@ -44,6 +45,7 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
     plugins: opts.plugins ?? [],
     getModelRegistrations: () => registrations,
     getLastResolvedModelProvider: () => opts.lastServingProvider,
+    getSetting: (key: string) => opts.settings?.[key],
     character: opts.characterModel ? { model: opts.characterModel } : {},
   } as unknown as AgentRuntime;
   return runtime;
@@ -146,6 +148,32 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
     expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
       ELIZA_CLOUD_PROVIDER_NAME,
     );
+  });
+
+  it("reports the concrete Cerebras backend behind the OpenAI-compatible handler", () => {
+    const runtime = makeRuntime({
+      lastServingProvider: "openai",
+      settings: { ELIZA_PROVIDER: "cerebras" },
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("cerebras");
+  });
+
+  it("keeps genuine OpenAI serving truth when no compatible backend is selected", () => {
+    const runtime = makeRuntime({
+      lastServingProvider: "openai",
+      settings: { OPENAI_API_KEY: "present" },
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("openai");
+  });
+
+  it("uses the same process-environment provider fallback as the compatible handler", () => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    try {
+      const runtime = makeRuntime({ lastServingProvider: "openai" });
+      expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("cerebras");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("returns the direct-transport primary model", () => {

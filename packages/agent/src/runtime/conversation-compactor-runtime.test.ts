@@ -1088,7 +1088,13 @@ describe("installPromptOptimizations telemetry", () => {
         ) {
           return "runtime summary preserved parcel code LIME-4421";
         }
-        return "final response";
+        return {
+          text: "final response",
+          providerMetadata: {
+            provider: "cerebras",
+            modelName: "gpt-oss-120b",
+          },
+        };
       },
     };
     (globalThis as Record<symbol, unknown>)[
@@ -1129,13 +1135,17 @@ describe("installPromptOptimizations telemetry", () => {
       maxTokens: 100,
     });
 
-    expect(result).toBe("final response");
+    expect(result).toMatchObject({ text: "final response" });
     expect(trajectoryCalls).toHaveLength(1);
     const call = trajectoryCalls[0];
     if (!call) throw new Error("missing trajectory call");
     expect(String(call.userPrompt)).toContain("runtime summary");
     expect(String(call.userPrompt)).not.toBe(prompt);
     const providerMetadata = call.providerMetadata as Record<string, unknown>;
+    expect(providerMetadata).toMatchObject({
+      provider: "cerebras",
+      modelName: "gpt-oss-120b",
+    });
     const telemetry = providerMetadata.promptOptimization as Record<
       string,
       unknown

@@ -538,4 +538,43 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 		// One shared conversation read plus factMemory's room/entity fact reads.
 		expect(runtime.getMemories).toHaveBeenCalledTimes(3);
 	});
+
+	it("keeps a fast follow-up out of the prior turn's detached reflection", async () => {
+		const turn = message("open notes");
+		turn.createdAt = 100;
+		const response: Memory = {
+			...message("Got it"),
+			id: "00000000-0000-0000-0000-0000000000e1" as UUID,
+			entityId: agentId,
+			createdAt: 110,
+		};
+		const followUp: Memory = {
+			...message("go back"),
+			id: "00000000-0000-0000-0000-0000000000e2" as UUID,
+			createdAt: 120,
+		};
+		const earlier: Memory = {
+			...message("earlier context"),
+			id: "00000000-0000-0000-0000-0000000000e3" as UUID,
+			createdAt: 90,
+		};
+		const runtime = contextRuntime(roomEntities(3));
+		(runtime.getMemories as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+			followUp,
+			response,
+			turn,
+			earlier,
+		]);
+
+		const prepared = await relationshipEvaluator.prepare?.({
+			runtime,
+			message: turn,
+			state: { values: {}, data: {}, text: "" },
+			options: { responses: [response] },
+		});
+
+		expect(
+			prepared?.recentMessages.map((memory) => memory.content.text),
+		).toEqual(["Got it", "open notes", "earlier context"]);
+	});
 });

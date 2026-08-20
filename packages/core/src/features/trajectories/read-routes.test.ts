@@ -72,6 +72,14 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						id: "t1",
 						status: "completed",
 						llmCallCount: 3,
+						stepCount: 2,
+						totalPromptTokens: 120,
+						totalCompletionTokens: 18,
+						totalCacheReadInputTokens: 64,
+						totalCacheCreationInputTokens: 8,
+						totalReward: 0.75,
+						scenarioId: "scenario-1",
+						batchId: "batch-1",
 						source: "discord",
 						roomId: "room-1",
 						entityId: "entity-1",
@@ -102,6 +110,14 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			id: "t1",
 			status: "completed",
 			llmCallCount: 3,
+			stepCount: 2,
+			totalPromptTokens: 120,
+			totalCompletionTokens: 18,
+			totalCacheReadInputTokens: 64,
+			totalCacheCreationInputTokens: 8,
+			totalReward: 0.75,
+			scenarioId: "scenario-1",
+			batchId: "batch-1",
 		});
 		// timeout collapses to the viewer's tri-state "error"
 		expect(b.trajectories[1]).toMatchObject({ id: "t2", status: "error" });
@@ -205,15 +221,22 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						llmCalls: [
 							{
 								callId: "c0",
+								timestamp: 520,
 								model: "m",
+								modelVersion: "v1",
 								response: "RESPOND",
 								stepType: "should_respond",
+								latencyMs: 17,
+								promptTokens: 40,
+								completionTokens: 4,
 							},
 							{
 								callId: "c1",
 								model: "m",
+								userPrompt: "open notes",
 								response: "plan",
 								stepType: "reasoning",
+								latencyMs: 23,
 							},
 						],
 						providerAccesses: [
@@ -250,9 +273,23 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 				metadata: Record<string, unknown>;
 				llmCallCount: number;
 			};
-			llmCalls: Array<{ stepType: string }>;
-			providerAccesses: unknown[];
-			toolEvents: Array<{ actionName: string; success: boolean }>;
+			llmCalls: Array<{
+				stepType: string;
+				stepId: string;
+				timestamp?: number;
+				latencyMs?: number;
+				promptTokens?: number;
+				completionTokens?: number;
+				userPrompt?: string;
+			}>;
+			providerAccesses: Array<{
+				stepId: string;
+				providerName: string;
+			}>;
+			toolEvents: Array<{
+				actionName: string;
+				success: boolean;
+			}>;
 			semanticStages: Array<{
 				stageId: string;
 				payload: Record<string, unknown>;
@@ -271,7 +308,21 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			"should_respond",
 			"reasoning",
 		]);
+		expect(b.llmCalls).toMatchObject([
+			{
+				stepId: "s0",
+				timestamp: 520,
+				latencyMs: 17,
+				promptTokens: 40,
+				completionTokens: 4,
+			},
+			{ stepId: "s0", userPrompt: "open notes", latencyMs: 23 },
+		]);
 		expect(b.providerAccesses).toHaveLength(1);
+		expect(b.providerAccesses[0]).toMatchObject({
+			stepId: "s0",
+			providerName: "facts",
+		});
 		expect(b.toolEvents[0]).toMatchObject({
 			actionName: "REPLY",
 			success: true,

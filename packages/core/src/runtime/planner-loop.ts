@@ -486,10 +486,10 @@ async function runPlannerLoopIterations(
 	// reply after its effect completes. This is deliberately narrower than the
 	// evaluator's general CONTINUE path: only an explicit final-scope tool call
 	// can arm it, and any subsequent tool call disarms it.
-	let pendingRequiredModelReply = false;
+	let pendingRequiredModelReply = params.initialModelReplyStyle !== undefined;
 	let pendingRequiredModelReplyStyle:
 		| PlannerToolResult["modelReplyStyle"]
-		| undefined;
+		| undefined = params.initialModelReplyStyle;
 	let requiredModelReplyRepairAttempts = 0;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1

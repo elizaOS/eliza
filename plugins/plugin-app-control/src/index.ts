@@ -24,6 +24,7 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
+import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
@@ -158,9 +159,9 @@ export const appControlPlugin: Plugin = {
 		agentSwitchAction,
 		settingsAction,
 	],
-	// Model-owned view-switch cascade:
-	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
-	//     action contract, including explicit multilingual navigation requests.
+	// View-switch cascade:
+	//  1. PLAN   — exact multilingual commands select one deterministic VIEWS
+	//     call after Stage 1; contextual navigation remains model-selected.
 	//  2. ACTION — viewsAction resolves the selected target and navigates.
 	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
@@ -168,9 +169,15 @@ export const appControlPlugin: Plugin = {
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
 	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Ordinary
-	// view navigation and follow-up language stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
+	// Exact multilingual navigation is already resolved by the same rigid matcher
+	// the action uses. Select that one verified action deterministically so a
+	// second model call does not re-plan parameters Stage 1 already identified.
+	// The post-action acknowledgement remains model-authored. Persisted choice
+	// widgets keep their separate explicit continuation protocol.
+	responseHandlerEvaluators: [
+		viewCommandShortcutEvaluator,
+		createChoiceShortcutEvaluator,
+	],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,

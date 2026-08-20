@@ -46,14 +46,59 @@ export function lastServingTextProvider(
   runtime: AgentRuntime,
 ): string | undefined {
   try {
-    return (
+    const serving =
       runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE) ??
-      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL)
-    );
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL);
+    return resolveCompatibleTextBackend(runtime, serving);
   } catch {
     // error-policy:J7 diagnostics must not kill the model-label resolver
     return undefined;
   }
+}
+
+function readRuntimeSetting(
+  runtime: AgentRuntime,
+  key: string,
+): string | undefined {
+  const runtimeValue = runtime.getSetting?.(key);
+  if (typeof runtimeValue === "string" && runtimeValue.trim()) {
+    return runtimeValue.trim();
+  }
+  const environmentValue = process.env[key]?.trim();
+  return environmentValue || undefined;
+}
+
+/**
+ * The OpenAI plugin is also the transport for compatible APIs. Core normally
+ * records the concrete backend receipt, but legacy/string-only model results
+ * can expose only the registration name. In that case, apply the same explicit
+ * endpoint selection rules as the plugin so status names the service actually
+ * handling requests instead of the transport implementation.
+ */
+function resolveCompatibleTextBackend(
+  runtime: AgentRuntime,
+  serving: string | undefined,
+): string | undefined {
+  if (serving?.toLowerCase() !== "openai") return serving;
+
+  const explicitProvider = readRuntimeSetting(
+    runtime,
+    "ELIZA_PROVIDER",
+  )?.toLowerCase();
+  if (explicitProvider === "cerebras" || explicitProvider === "evolink") {
+    return explicitProvider;
+  }
+
+  const baseUrl = readRuntimeSetting(runtime, "OPENAI_BASE_URL");
+  if (baseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl)) return "cerebras";
+  if (baseUrl && /(^|\.)evolink\.ai(\/|$)/i.test(baseUrl)) return "evolink";
+
+  const openAiKey = readRuntimeSetting(runtime, "OPENAI_API_KEY");
+  if (!openAiKey && !baseUrl) {
+    if (readRuntimeSetting(runtime, "CEREBRAS_API_KEY")) return "cerebras";
+    if (readRuntimeSetting(runtime, "EVOLINK_API_KEY")) return "evolink";
+  }
+  return serving;
 }
 
 /**
@@ -271,6 +316,8 @@ export function resolveProviderFromModel(model: string): string | null {
 
   const providers: Array<{ match: string; label: string }> = [
     { match: "elizacloud", label: "Eliza Cloud" },
+    { match: "cerebras", label: "Cerebras" },
+    { match: "evolink", label: "EvoLink" },
     { match: "openrouter", label: "OpenRouter" },
     { match: "openai", label: "OpenAI" },
     { match: "anthropic", label: "Anthropic" },

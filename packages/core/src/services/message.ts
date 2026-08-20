@@ -154,6 +154,7 @@ import {
 	type PlannerLoopParams,
 	type PlannerLoopResult,
 	type PlannerRuntime,
+	type PlannerStep,
 	type PlannerToolCall,
 	type PlannerToolResult,
 	type PlannerTrajectory,
@@ -8659,8 +8660,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			selectedContexts,
 			userRoles: [senderRole],
 		});
-		const recomposedPlannerState =
-			typeof args.runtime.composeState === "function"
+		const deterministicToolCall = messageHandler.plan.deterministicToolCall;
+		const recomposedPlannerState = deterministicToolCall
+			? args.state
+			: typeof args.runtime.composeState === "function"
 				? // Reuse what the Stage-1 compose already ran for this message;
 					// refresh RECENT_MESSAGES only when an early reply actually
 					// changed history. An empty refresh set means maximum reuse;
@@ -8871,26 +8874,51 @@ export async function runV5MessageRuntimeStage1(args: {
 				}),
 			};
 		}
-		const localizedExamplesProvider = getLocalizedExamplesProvider(
-			args.runtime,
-		);
+		const deterministicAction = deterministicToolCall
+			? resolveRuntimeAction(
+					buildRuntimeActionLookup(args.runtime),
+					deterministicToolCall.name,
+				)
+			: undefined;
+		// A deterministic evaluator already selected the exact canonical action.
+		// Do not rebuild the full localized catalog or run semantic action search:
+		// neither can alter that selection, and both add visible latency. Keep only
+		// the matching action from the already gate-checked candidate set so context
+		// rendering remains honest; the executor still re-runs every canonical gate.
+		const deterministicSurfaceActions = deterministicToolCall
+			? plannerCandidateActions.filter(
+					(action) =>
+						deterministicAction !== undefined &&
+						normalizeActionIdentifier(action.name) ===
+							normalizeActionIdentifier(deterministicAction.name),
+				)
+			: undefined;
+		const localizedExamplesProvider = deterministicToolCall
+			? undefined
+			: getLocalizedExamplesProvider(args.runtime);
 		const localizedExamples = localizedExamplesProvider
 			? await localizedExamplesProvider({
 					recentMessage: getUserMessageText(args.message),
 				})
 			: null;
-		const actionSurface = buildV5PlannerActionSurface({
-			actions: plannerCandidateActions,
-			message: args.message,
-			state: plannerState,
-			messageHandler,
-			selectedContexts,
-			recorder,
-			trajectoryId,
-			logger: args.runtime.logger,
-			reportError: args.runtime.reportError.bind(args.runtime),
-			localizedExamples: localizedExamples ?? undefined,
-		});
+		const actionSurface = deterministicToolCall
+			? buildFullV5PlannerActionSurface({
+					actions: deterministicSurfaceActions ?? [],
+					candidateActions: [deterministicToolCall.name],
+					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
+				})
+			: buildV5PlannerActionSurface({
+					actions: plannerCandidateActions,
+					message: args.message,
+					state: plannerState,
+					messageHandler,
+					selectedContexts,
+					recorder,
+					trajectoryId,
+					logger: args.runtime.logger,
+					reportError: args.runtime.reportError.bind(args.runtime),
+					localizedExamples: localizedExamples ?? undefined,
+				});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(
 				normalizeActionIdentifier(action.name),
@@ -9260,17 +9288,41 @@ export async function runV5MessageRuntimeStage1(args: {
 				}
 
 				const reportableResultText = result.userFacingText?.trim();
-				const finalMessage =
+				let finalMessage =
 					!callbackDelivered &&
 					reportableResultText &&
 					(result.success === true || result.verifiedUserFacing === true)
 						? reportableResultText
 						: undefined;
+				let synthesisSteps: PlannerStep[] = [];
+				if (
+					!callbackDelivered &&
+					result.success === true &&
+					result.modelReplyRequired === true &&
+					result.modelReplyStyle !== undefined
+				) {
+					const synthesis = await runPlannerLoop({
+						runtime: plannerRuntime,
+						context: plannerContextAfterEarlyReply,
+						initialModelReplyStyle: result.modelReplyStyle,
+						config: args.plannerLoopConfig,
+						executeToolCall: () => {
+							throw new Error(
+								"Post-action acknowledgement synthesis cannot execute tools",
+							);
+						},
+						recorder,
+						trajectoryId,
+						providerAttributionState: plannerState,
+					});
+					finalMessage = synthesis.finalMessage;
+					synthesisSteps = synthesis.trajectory.steps;
+				}
 				return {
 					status: "finished",
 					trajectory: {
 						context: plannerContextAfterEarlyReply,
-						steps: [{ iteration: 0, toolCall, result }],
+						steps: [{ iteration: 0, toolCall, result }, ...synthesisSteps],
 						archivedSteps: [],
 						plannedQueue: [],
 						evaluatorOutputs: [],
@@ -10599,15 +10651,41 @@ export function isSimpleReplyResponse(
 const POST_TURN_SEMANTIC_SIGNAL =
 	/(?:https?:\/\/|\b(?:i am|i'm|i have|i've|i feel|i like|i love|i hate|i prefer|i need|i want|my|we|our|remember|friend|partner|wife|husband|relationship|work at|live in|located in|goal|plan)\b)/i;
 
+const POST_TURN_STRONG_MEMORY_SIGNAL =
+	/(?:https?:\/\/|\b(?:i am|i'm|i have|i've|i feel|i like|i love|i hate|i prefer|i need|i want|remember|friend|partner|wife|husband|relationship|work at|live in|located in|goal|plan)\b)/i;
+
+function isSuccessfulViewsActionResult(value: unknown): boolean {
+	if (!isRecord(value) || value.success !== true) return false;
+	return (
+		isRecord(value.data) &&
+		typeof value.data.actionName === "string" &&
+		normalizeActionIdentifier(value.data.actionName) === "VIEWS"
+	);
+}
+
 export function hasPostTurnSemanticSignal(
 	message: Pick<Memory, "content">,
 	state: Pick<State, "data"> | undefined,
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
-	if (!isSimpleReplyResponse(responseContent)) return true;
 	const actionResults = state?.data?.actionResults;
-	if (Array.isArray(actionResults) && actionResults.length > 0) return true;
+	const pureInternalViewNavigation =
+		Array.isArray(actionResults) &&
+		actionResults.length > 0 &&
+		actionResults.every(isSuccessfulViewsActionResult);
 	const text = message.content.text?.trim() ?? "";
+	// A verified VIEWS result only changed local UI state.
+	// Running the full reflection model over its large view-registry payload
+	// stores no facts and competes with the user's next navigation turn. Keep
+	// reflection only when the same utterance carries an independent durable fact.
+	if (
+		pureInternalViewNavigation &&
+		!POST_TURN_STRONG_MEMORY_SIGNAL.test(text)
+	) {
+		return false;
+	}
+	if (!isSimpleReplyResponse(responseContent)) return true;
+	if (Array.isArray(actionResults) && actionResults.length > 0) return true;
 	return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
 
