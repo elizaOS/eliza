@@ -10,6 +10,7 @@ import { waitForLandingIntro } from "./landing-readiness";
 const VIEWPORTS = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
+  { width: 390, height: 1275 },
   { width: 1024, height: 768 },
   { width: 1440, height: 900 },
 ] as const;
@@ -32,6 +33,9 @@ for (const viewport of VIEWPORTS) {
       );
       if (!phone) throw new Error("Landing phone missing");
       const phoneStyle = getComputedStyle(phone);
+      const thread = document.querySelector<HTMLElement>(
+        ".landing-phone-thread",
+      );
       return {
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
@@ -42,6 +46,7 @@ for (const viewport of VIEWPORTS) {
           borderRadius: phoneStyle.borderRadius,
           paddingTop: phoneStyle.paddingTop,
         },
+        threadMaskImage: thread ? getComputedStyle(thread).maskImage : null,
         mobileThreadGap:
           phoneHeader && firstThreadItem
             ? firstThreadItem.getBoundingClientRect().top -
@@ -59,9 +64,15 @@ for (const viewport of VIEWPORTS) {
       expect(Number.parseFloat(layout.phoneFrame.paddingTop)).toBe(0);
       expect(Number.parseFloat(layout.phoneFrame.borderRadius)).toBe(0);
       expect(layout.mobileThreadGap).not.toBeNull();
+      expect(layout.threadMaskImage).toBe("none");
       expect(
         layout.mobileThreadGap ?? Number.POSITIVE_INFINITY,
       ).toBeLessThanOrEqual(64);
+      if (viewport.height >= 1000) {
+        expect(layout.mobileThreadGap ?? Number.POSITIVE_INFINITY).toBeLessThan(
+          32,
+        );
+      }
     } else {
       expect(Number.parseFloat(layout.phoneFrame.paddingTop)).toBeGreaterThan(
         0,
@@ -72,3 +83,254 @@ for (const viewport of VIEWPORTS) {
     }
   });
 }
+
+test("prefills the human setup, then lets Eliza respond", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-messages", "4");
+  await expect(
+    page.getByText("we're low on coffee", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("and oat milk", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("I took recycling out", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("laundry got left in the washer again lol", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".landing-bubble--eliza")).toHaveCount(0);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
+  await expect(phone).toHaveAttribute("data-demo-typing", "Eliza", {
+    timeout: 2_500,
+  });
+  await expect(
+    page.getByText(
+      "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
+      { exact: true },
+    ),
+  ).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator(".landing-demo-card")).toHaveCount(1, {
+    timeout: 5_000,
+  });
+});
+
+test("plays the original welcome aura each time the contact menu opens", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    let contextCount = 0;
+    class FakeAudioParam {
+      setValueAtTime(_value: number, _time: number) {}
+      exponentialRampToValueAtTime(_value: number, _time: number) {}
+    }
+    class FakeAudioNode {
+      connect(destination: unknown) {
+        return destination;
+      }
+    }
+    class FakeGainNode extends FakeAudioNode {
+      gain = new FakeAudioParam();
+    }
+    class FakeOscillatorNode extends FakeAudioNode {
+      frequency = new FakeAudioParam();
+      type: OscillatorType = "sine";
+      start(_time: number) {}
+      stop(_time: number) {}
+    }
+    class FakeAudioContext {
+      currentTime = 0;
+      destination = new FakeAudioNode();
+      constructor() {
+        contextCount += 1;
+      }
+      createGain() {
+        return new FakeGainNode();
+      }
+      createOscillator() {
+        return new FakeOscillatorNode();
+      }
+      resume() {
+        return Promise.resolve();
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: FakeAudioContext,
+    });
+    Object.defineProperty(window, "__landingAuraContextCount", {
+      configurable: true,
+      get: () => contextCount,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const tapTarget = page.locator(".landing-tap-target");
+  await tapTarget.click();
+  await expect(page.locator(".landing-sheet")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __landingAuraContextCount: number;
+          }
+        ).__landingAuraContextCount,
+    ),
+  ).toBe(1);
+
+  await page.locator(".landing-sheet-close").click();
+  await tapTarget.click();
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __landingAuraContextCount: number;
+          }
+        ).__landingAuraContextCount,
+    ),
+  ).toBe(2);
+});
+
+test("human replies show the participant's iOS typing indicator", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
+    timeout: 8_000,
+  });
+
+  const indicator = page.locator('[data-demo-typing-indicator="Jules"]');
+  await expect(indicator).toBeVisible();
+  await expect(indicator.locator(".landing-message-author")).toHaveText(
+    "Jules",
+  );
+  await expect(indicator.locator(".landing-message-avatar")).toHaveAttribute(
+    "src",
+    "/brand/people/demo-jules.webp",
+  );
+  await expect(indicator.locator(".landing-typing span")).toHaveCount(3);
+  await expect(indicator.locator(".landing-typing")).toHaveAttribute(
+    "aria-label",
+    "Jules is typing",
+  );
+
+  await expect(phone).toHaveAttribute("data-demo-typing", "", {
+    timeout: 4_000,
+  });
+  await expect(page.getByText("I'm home late", { exact: true })).toBeVisible();
+});
+
+test("concurrent human replies share one compact typing row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-typing", "Eli,Jules", {
+    timeout: 12_000,
+  });
+
+  const indicator = page.locator(
+    '[data-demo-typing-indicator="Eli and Jules"]',
+  );
+  await expect(indicator).toBeVisible();
+  await expect(indicator.locator(".landing-message-author")).toHaveText(
+    "Eli and Jules",
+  );
+  await expect(indicator.locator(".landing-message-avatar")).toHaveCount(2);
+  await expect(indicator.locator(".landing-typing")).toHaveAttribute(
+    "aria-label",
+    "Eli and Jules are typing",
+  );
+  const multipleAuthorBox = await indicator
+    .locator(".landing-message-author")
+    .boundingBox();
+  const multipleBubbleBox = await indicator
+    .locator(".landing-typing")
+    .boundingBox();
+
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
+    timeout: 3_000,
+  });
+  const singleIndicator = page.locator('[data-demo-typing-indicator="Jules"]');
+  const singleAuthorBox = await singleIndicator
+    .locator(".landing-message-author")
+    .boundingBox();
+  const singleBubbleBox = await singleIndicator
+    .locator(".landing-typing")
+    .boundingBox();
+  expect(
+    Math.abs((multipleAuthorBox?.x ?? 0) - (singleAuthorBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs((multipleBubbleBox?.x ?? 0) - (singleBubbleBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  await expect(page.getByText("I'm home late", { exact: true })).toBeVisible();
+  await expect(page.getByText("plants are done", { exact: true })).toBeVisible({
+    timeout: 3_000,
+  });
+});
+
+test("all five longer rooms keep rotating without hiding usable thread space", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  await page.setViewportSize({ width: 390, height: 1275 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
+    timeout: 280_000,
+  });
+  await expect(phone).toHaveAttribute("data-demo-scenario", "household", {
+    timeout: 5_000,
+  });
+  await expect(phone).toHaveAttribute("data-demo-phase", "playing");
+  await expect(phone).toHaveAttribute("data-demo-scenario-index", "1");
+  await expect(phone).toHaveAttribute("data-demo-scenarios", "5");
+  await expect(phone).toHaveAttribute(
+    "data-demo-visited",
+    "household,co-parenting,friends,trip,community",
+  );
+  await expect
+    .poll(async () => Number(await phone.getAttribute("data-demo-messages")))
+    .toBeGreaterThanOrEqual(4);
+
+  await expect
+    .poll(
+      () =>
+        page.locator(".landing-phone-thread").evaluate((thread) => {
+          const messages =
+            thread.querySelectorAll<HTMLElement>("[data-demo-item]");
+          const firstMessage = messages.item(0);
+          const lastMessage = messages.item(messages.length - 1);
+          if (!firstMessage || !lastMessage) return false;
+          const threadRect = thread.getBoundingClientRect();
+          const firstRect = firstMessage.getBoundingClientRect();
+          const messageRect = lastMessage.getBoundingClientRect();
+          if (thread.scrollHeight <= thread.clientHeight + 1) {
+            return (
+              firstRect.top - threadRect.top <= 70 &&
+              messageRect.bottom <= threadRect.bottom
+            );
+          }
+          return threadRect.bottom - messageRect.bottom <= 18;
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+});

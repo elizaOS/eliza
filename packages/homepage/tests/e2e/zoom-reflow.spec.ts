@@ -143,7 +143,7 @@ for (const viewport of REFLOW_VIEWPORTS) {
       ]);
       const sheetActions = [
         contactSheet.getByRole("button", { name: "Text Eliza on iMessage" }),
-        contactSheet.getByRole("link", { name: "Call Eliza" }),
+        contactSheet.getByRole("button", { name: "Call Eliza" }),
         contactSheet.getByRole("link", {
           name: "Message Eliza on Telegram",
         }),

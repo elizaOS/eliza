@@ -1435,27 +1435,19 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
 .landing-hero-heading {
   margin: 0;
-  max-width: 18ch;
-  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
+  max-width: 14ch;
+  font-size: clamp(2.25rem, 4.2vw, 4.15rem);
+  font-weight: 720;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
   text-wrap: balance;
   color: var(--brand-black);
-}
-
-.landing-hero-lede {
-  margin: 1.5rem 0 0;
-  max-width: 30rem;
-  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
-  font-weight: 400;
-  line-height: 1.35;
-  text-wrap: pretty;
 }
 
 .landing-hero-actions {
@@ -1466,7 +1458,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   min-width: 0;
   width: 100%;
   gap: 0.65rem;
-  margin-top: 1.65rem;
+  margin-top: 1.4rem;
 }
 
 .landing-copy-notice {
@@ -1476,9 +1468,9 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   z-index: 40;
   display: inline-flex;
   align-items: center;
-  min-height: 2.25rem;
+  min-height: 2.8rem;
   margin: 0.2rem 0 0;
-  padding: 0 0.75rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.85rem;
   border-radius: 999px;
   background: rgb(255 255 255 / 76%);
   color: #166534;
@@ -1489,15 +1481,26 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-copy-notice-action {
-  min-height: 2.75rem;
-  margin-left: 0.75rem;
+  min-height: 2.125rem;
+  margin-left: 0.6rem;
+  padding: 0 0.85rem;
   border: 0;
-  background: transparent;
-  color: currentColor;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 7%);
+  color: #171717;
   font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.landing-copy-notice-action:hover,
+.landing-copy-notice-action:focus-visible {
+  background: rgb(0 0 0 / 12%);
+}
+
+.landing-copy-notice-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .landing-copy-notice--handoff {
@@ -1510,9 +1513,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-secondary-channels {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
 }
 
 .landing-channel {
@@ -1520,11 +1525,17 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 76%);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 9%);
+  gap: 0.4rem;
+  min-height: 2.55rem;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 82%);
+  color: rgb(17 17 17 / 72%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 8%);
+  font-size: 0.82rem;
+  font-weight: 620;
+  line-height: 1;
+  text-decoration: none;
   cursor: pointer;
   transition:
     transform 160ms ease-out,
@@ -1535,6 +1546,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 .landing-channel:hover {
   transform: translateY(-2px);
   background: #ffffff;
+  color: #111111;
   box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
 }
 
@@ -1564,17 +1576,21 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transition:
     background 0.15s ease,
     color 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .landing-cta--black {
-  background: var(--brand-black);
+  background: var(--landing-orange);
   color: var(--brand-white);
+  box-shadow: 0 12px 28px rgb(255 88 0 / 24%);
 }
 
 .landing-cta--black:hover {
-  background: rgb(0 0 0 / 82%);
+  background: #d94b00;
   color: var(--brand-white);
+  box-shadow: 0 14px 32px rgb(217 75 0 / 30%);
+  transform: translateY(-1px);
 }
 
 .landing-cta--white {
@@ -1584,8 +1600,19 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-cta--white:hover {
-  background: var(--brand-black);
-  color: var(--brand-white);
+  background: #f7f7f8;
+  color: var(--brand-black);
+  transform: translateY(-1px);
+}
+
+.landing-cta:active,
+.landing-channel:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.landing-cta:focus-visible {
+  outline: 3px solid #111111;
+  outline-offset: 3px;
 }
 
 /* iPhone-styled iMessage preview */
@@ -1602,7 +1629,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-iphone {
   justify-self: center;
-  width: 19.5rem;
+  width: 22rem;
   border-radius: 3.2rem;
   padding: 0.55rem;
   background: #0b0b0f;
@@ -1610,7 +1637,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   -webkit-user-select: none;
   user-select: none;
   box-shadow:
-    0 40px 90px rgb(0 0 0 / 30%),
+    0 42px 88px rgb(31 24 43 / 28%),
+    0 12px 30px rgb(31 24 43 / 16%),
     inset 0 0 0 2px rgb(255 255 255 / 14%);
 }
 
@@ -1650,10 +1678,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(
     to bottom,
     #ffffff 0%,
-    #ffffff 62%,
+    #ffffff 88%,
     rgb(255 255 255 / 0%) 100%
   );
-  padding-bottom: 1.6rem;
+  padding-bottom: 2.15rem;
 }
 
 .landing-iphone-statusbar {
@@ -1720,16 +1748,64 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-phone-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0.35rem 0.9rem 0.6rem;
 }
 
+.landing-phone-back,
+.landing-phone-video {
+  position: absolute;
+  top: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: #007aff;
+}
+
+.landing-phone-back {
+  left: 0.45rem;
+}
+
+.landing-phone-video {
+  right: 0.45rem;
+}
+
+.landing-phone-back svg,
+.landing-phone-video svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .landing-phone-contact {
   display: grid;
   justify-items: center;
   gap: 0.2rem;
+}
+
+.landing-phone-contact--group {
+  gap: 0.3rem;
+}
+
+.landing-group-avatars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0.75rem;
+}
+
+.landing-group-avatar {
+  width: 2.45rem;
+  height: 2.45rem;
+  margin-left: -0.75rem;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 12%);
 }
 
 .landing-phone-avatar {
@@ -1760,6 +1836,36 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   color: #b0b0b6;
 }
 
+.landing-phone-name--group {
+  gap: 0.28rem;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.landing-phone-name--group > span {
+  display: grid;
+  justify-items: center;
+  gap: 0.04rem;
+}
+
+.landing-phone-name--group strong {
+  font-size: 0.79rem;
+  line-height: 1.1;
+}
+
+.landing-phone-name--group small {
+  max-width: 12.5rem;
+  overflow: hidden;
+  color: #74747a;
+  font-size: 0.58rem;
+  font-weight: 500;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .landing-thread-preamble {
   display: grid;
   justify-items: center;
@@ -1784,6 +1890,14 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   padding: 8.6rem 0.9rem 2.15rem;
   overflow-y: auto;
   scrollbar-width: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.landing-iphone[data-demo-phase="switching"] .landing-phone-thread {
+  opacity: 0;
+  transform: translateX(-0.35rem);
 }
 
 .landing-phone-thread::-webkit-scrollbar {
@@ -1802,6 +1916,81 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.landing-message {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.34rem;
+  max-width: 90%;
+}
+
+.landing-message--user {
+  align-self: flex-end;
+  max-width: 82%;
+}
+
+.landing-message--member,
+.landing-message--eliza {
+  align-self: flex-start;
+}
+
+.landing-message .landing-bubble {
+  max-width: 100%;
+}
+
+.landing-message-body {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.landing-message--user .landing-message-body {
+  justify-items: end;
+}
+
+.landing-message-avatar-slot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: 0 0 1.55rem;
+  width: 1.55rem;
+  min-height: 1.55rem;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.landing-message-avatar {
+  display: block;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.landing-message-avatar--eliza {
+  transform: scale(1.18);
+}
+
+.landing-message--typing-multiple .landing-message-avatar-slot {
+  justify-content: flex-start;
+  overflow: visible;
+}
+
+.landing-message--typing-multiple
+  .landing-message-avatar
+  + .landing-message-avatar {
+  margin-left: -0.95rem;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.landing-message-author {
+  margin: 0 0 0.16rem 0.7rem;
+  color: #76767c;
+  font-size: 0.64rem;
+  font-weight: 620;
+  line-height: 1;
+}
+
 .landing-bubble--user {
   align-self: flex-end;
   background: #0a84ff;
@@ -1810,6 +1999,13 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-bubble--eliza {
+  align-self: flex-start;
+  background: #e9e9eb;
+  color: #111;
+  border-bottom-left-radius: 0.3rem;
+}
+
+.landing-bubble--member {
   align-self: flex-start;
   background: #e9e9eb;
   color: #111;
@@ -1933,7 +2129,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Eliza's three-dot typing indicator */
+/* iOS-style three-dot indicator shared by Eliza and human participants. */
 .landing-typing {
   display: inline-flex;
   align-items: center;
@@ -1946,6 +2142,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   height: 0.45rem;
   border-radius: 50%;
   background: #9a9aa0;
+  transform: scale(0.82);
+  will-change: opacity, transform;
   animation: landing-typing-pulse 1.2s ease-out infinite;
 }
 
@@ -1962,15 +2160,16 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   60%,
   100% {
     opacity: 0.55;
+    transform: scale(0.82);
   }
   30% {
     opacity: 1;
+    transform: scale(1);
   }
 }
 
 .landing-bubble-card {
-  align-self: flex-start;
-  max-width: 88%;
+  max-width: 100%;
   animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   opacity: 0;
   transform: translateY(8px);
@@ -1978,22 +2177,33 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-demo-card {
   display: grid;
-  gap: 0.18rem;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid rgb(0 0 0 / 10%);
+  gap: 0.22rem;
+  padding: 0.76rem 0.9rem;
+  border: 1px solid rgb(0 0 0 / 7%);
   border-radius: 1rem;
-  background: #ffffff;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 6%);
+  background: #f2f2f7;
+  box-shadow: none;
   font-size: 0.88rem;
   line-height: 1.3;
 }
 
 .landing-demo-card-label {
-  color: #8e8e93;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #6e6e73;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.landing-demo-card-label::before {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: #8e8e93;
+  content: "";
 }
 
 .landing-demo-card strong {
@@ -2007,12 +2217,33 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   text-wrap: pretty;
 }
 
+.landing-demo-card-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  color: #76767c;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.landing-demo-card-source svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
 .landing-demo-card-status {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  margin-top: 0.25rem;
-  color: #5b5b60;
+  margin-top: 0.32rem;
+  color: #6e6e73;
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -2021,7 +2252,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   width: 0.82rem;
   height: 0.82rem;
   flex: 0 0 auto;
-  color: #6e6e73;
+  color: #007aff;
+}
+
+.landing-demo-card-status[data-status-kind="open"] svg {
+  color: #007aff;
 }
 
 /* The keyboard moves as one opaque iOS surface. Fading it independently from
@@ -2210,6 +2445,12 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: rgb(0 0 0 / 4%);
 }
 
+.landing-sheet-row:focus-visible,
+.landing-sheet-close:focus-visible {
+  outline: 3px solid var(--landing-orange);
+  outline-offset: 2px;
+}
+
 .landing-sheet-row--account {
   margin-top: 0.35rem;
   border-color: rgb(0 0 0 / 14%);
@@ -2247,6 +2488,20 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     display: contents;
   }
 
+  .landing-copy-notice--handoff {
+    bottom: calc(4.4rem + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 1.5rem);
+    min-height: 3.25rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.9rem;
+    font-size: 0.88rem;
+    white-space: nowrap;
+  }
+
+  .landing-copy-notice--handoff .landing-copy-notice-action {
+    min-height: 2.55rem;
+    margin-left: 0.55rem;
+  }
+
   .landing-hero-heading {
     position: absolute;
     width: 1px;
@@ -2260,8 +2515,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
   .landing-hero-actions,
   .landing-secondary-channels,
-  .landing-phone-number,
-  .landing-hero-lede {
+  .landing-phone-number {
     display: none;
   }
 
@@ -2328,7 +2582,21 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-header {
-    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
+    padding: max(0.45rem, env(safe-area-inset-top)) 0.75rem 0.5rem;
+  }
+
+  .landing-phone-back,
+  .landing-phone-video {
+    top: max(0.65rem, env(safe-area-inset-top));
+  }
+
+  .landing-group-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .landing-phone-name--group small {
+    max-width: min(15rem, 62vw);
   }
 
   .landing-sheet {
@@ -2355,14 +2623,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-thread {
+    --scroll-fade-mask: none;
+
     flex: 1;
     min-height: 0;
     padding: 0.25rem 0.9rem 0.5rem;
-  }
-
-  .landing-phone-thread::before {
-    content: "";
-    margin-top: auto;
   }
 
   .landing-bubble {
@@ -2370,6 +2635,30 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     padding: 0.5rem 0.8rem;
     font-size: 0.98rem;
     line-height: 1.32;
+  }
+
+  .landing-message {
+    max-width: 88%;
+  }
+
+  .landing-message--user {
+    max-width: 78%;
+  }
+
+  .landing-message-avatar-slot,
+  .landing-message-avatar {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .landing-message-avatar-slot {
+    flex-basis: 1.7rem;
+    min-height: 1.7rem;
+  }
+
+  .landing-message--typing-multiple .landing-message-avatar-slot {
+    flex-basis: 1.7rem;
+    width: 1.7rem;
   }
 
   .landing-demo-card {

@@ -8,6 +8,9 @@ import { getLegacyOnboardingRedirect } from "@/lib/legacy-onboarding-redirect";
 import LandingPage from "@/pages/landing";
 
 const MarketingPage = lazy(() => import("@/pages/marketing"));
+const DemoScenariosPage = import.meta.env.DEV
+  ? lazy(() => import("@/pages/demo-scenarios"))
+  : null;
 const LoginPage = lazy(() => import("@/pages/login"));
 const ConnectedPage = lazy(() => import("@/pages/connected"));
 const GetStartedPage = lazy(() => import("@/pages/get-started"));
@@ -51,6 +54,9 @@ export function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/leaderboard" element={<LandingPage />} />
+          {DemoScenariosPage ? (
+            <Route path="/demo-scenarios" element={<DemoScenariosPage />} />
+          ) : null}
           <Route path="/downloads" element={<MarketingPage />} />
           <Route element={<AuthedShell />}>
             <Route path="/login" element={<LoginPage />} />

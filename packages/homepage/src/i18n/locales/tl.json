@@ -167,7 +167,6 @@
   "homepage_eliza.phoneInput.phoneAria": "Numero ng telepono",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Apat na oras ng iyong oras pabalik bawat linggo.",
-  "homepage_eliza.landing.heroLede": "Hi, ako si Eliza — ang personal assistant mo. Nandito ako para makatipid ka ng oras at bawasan ang iyong mga alalahanin.",
   "homepage_eliza.landing.ctaText": "Text",
   "homepage_eliza.landing.copyPhone": "Kopyahin ang numero ni Eliza",
   "homepage_eliza.landing.phoneCopied": "Nakopya!",

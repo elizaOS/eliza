@@ -167,7 +167,6 @@
   "homepage_eliza.phoneInput.phoneAria": "Số điện thoại",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Bốn giờ mỗi tuần, trở về tay bạn.",
-  "homepage_eliza.landing.heroLede": "Chào, mình là Eliza — trợ lý cá nhân của bạn. Mình ở đây để tiết kiệm thời gian và gánh bớt việc cho bạn.",
   "homepage_eliza.landing.ctaText": "Nhắn tin",
   "homepage_eliza.landing.copyPhone": "Sao chép số của Eliza",
   "homepage_eliza.landing.phoneCopied": "Đã sao chép!",
