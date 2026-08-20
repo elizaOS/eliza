@@ -23,6 +23,7 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import { normalizeProviderQualificationPublicKeyPins } from "./qualification-artifact.ts";
 import {
   renderProviderQualificationMarkdown,
   writeProviderQualificationOutputIntoReservedDirectory,
@@ -236,6 +237,62 @@ function readPublicKeys(
   ) as [string, ...string[]];
 }
 
+function preflightEvidenceTrustPins(input: {
+  manifestAuthorityPublicKeysPem: readonly [string, ...string[]];
+  observerPublicKeysPem: readonly [string, ...string[]];
+  semanticJudgePublicKeysPem: readonly [string, ...string[]];
+  manifestAuthorityKeyId: string;
+  observerKeyIds: readonly string[];
+  semanticJudgeKeyId: string;
+}): void {
+  const authorityPins = normalizeProviderQualificationPublicKeyPins(
+    input.manifestAuthorityPublicKeysPem,
+    "manifestAuthorityPublicKeyFiles",
+  );
+  const observerPins = normalizeProviderQualificationPublicKeyPins(
+    input.observerPublicKeysPem,
+    "observerPublicKeyFiles",
+  );
+  const semanticPins = normalizeProviderQualificationPublicKeyPins(
+    input.semanticJudgePublicKeysPem,
+    "semanticJudgePublicKeyFiles",
+  );
+  const authorityIds = new Set(authorityPins.map((pin) => pin.keyId));
+  const observerIds = new Set(observerPins.map((pin) => pin.keyId));
+  const semanticIds = new Set(semanticPins.map((pin) => pin.keyId));
+  if (!authorityIds.has(input.manifestAuthorityKeyId)) {
+    throw new Error(
+      "external provider-canary manifest authority pin does not include the authorized signer",
+    );
+  }
+  for (const keyId of input.observerKeyIds) {
+    if (!observerIds.has(keyId)) {
+      throw new Error(
+        "external provider-canary observer pins do not include every manifest observer signer",
+      );
+    }
+  }
+  if (!semanticIds.has(input.semanticJudgeKeyId)) {
+    throw new Error(
+      "external provider-canary semantic pins do not include the manifest judge signer",
+    );
+  }
+  for (const keyId of authorityIds) {
+    if (observerIds.has(keyId) || semanticIds.has(keyId)) {
+      throw new Error(
+        "external provider-canary trust domains must use disjoint public keys",
+      );
+    }
+  }
+  for (const keyId of observerIds) {
+    if (semanticIds.has(keyId)) {
+      throw new Error(
+        "external provider-canary trust domains must use disjoint public keys",
+      );
+    }
+  }
+}
+
 /** Import one explicitly pinned trusted operator bundle. */
 export async function loadPinnedExternalProviderCapabilityModule(
   absoluteModuleFile: string,
@@ -303,6 +360,11 @@ export async function executeExternalProviderCanaryFromConfig(
     baseDir,
     config.manifestAuthorityPublicKeyFiles,
   );
+  const observerPins = readPublicKeys(baseDir, config.observerPublicKeyFiles);
+  const semanticPins = readPublicKeys(
+    baseDir,
+    config.semanticJudgePublicKeyFiles,
+  );
 
   // Validate every signed private preimage before importing operator code that
   // can access credentials or perform network I/O.
@@ -314,6 +376,17 @@ export async function executeExternalProviderCanaryFromConfig(
     providerTarget,
     operationInput,
     failureProbes,
+  });
+  preflightEvidenceTrustPins({
+    manifestAuthorityPublicKeysPem: authorityPins,
+    observerPublicKeysPem: observerPins,
+    semanticJudgePublicKeysPem: semanticPins,
+    manifestAuthorityKeyId:
+      preflight.authorization.manifest.trust.manifestAuthorityKeyId,
+    observerKeyIds: preflight.authorization.manifest.trust.observerSigners.map(
+      (signer) => signer.keyId,
+    ),
+    semanticJudgeKeyId: preflight.authorization.manifest.models.judgeKeyId,
   });
   const outputDir = resolveFrom(baseDir, config.outputDir);
   mkdirSync(outputDir, { recursive: false, mode: 0o700 });
@@ -341,14 +414,8 @@ export async function executeExternalProviderCanaryFromConfig(
       providerTarget,
       operationInput,
       failureProbes,
-      pinnedObserverPublicKeysPem: readPublicKeys(
-        baseDir,
-        config.observerPublicKeyFiles,
-      ),
-      pinnedSemanticJudgePublicKeysPem: readPublicKeys(
-        baseDir,
-        config.semanticJudgePublicKeyFiles,
-      ),
+      pinnedObserverPublicKeysPem: observerPins,
+      pinnedSemanticJudgePublicKeysPem: semanticPins,
       capabilities: {
         ...operatorCapabilities,
         publisher: {
