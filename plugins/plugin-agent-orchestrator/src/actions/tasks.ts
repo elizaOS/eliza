@@ -2562,13 +2562,48 @@ function appBuildSlugWorkdir(
       );
     }
   }
-  const baseSlug =
-    label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40)
-      .replace(/-+$/g, "") || "app";
+  // Slug = short noun phrase, not the whole imperative sentence: planner
+  // labels like "Build an interactive magic 8 ball page w…" produced public
+  // URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete
+  // with a mid-word chop (live 2026-08-20). Strip leading verb/filler
+  // tokens, keep at most five meaningful ones, never cut inside a token.
+  const SLUG_FILLER = new Set([
+    "build",
+    "create",
+    "make",
+    "design",
+    "generate",
+    "ship",
+    "add",
+    "an",
+    "a",
+    "the",
+    "me",
+    "us",
+    "my",
+    "lil",
+    "little",
+    "simple",
+    "basic",
+    "interactive",
+    "working",
+    "fully",
+    "functional",
+  ]);
+  const slugTokens = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  while (slugTokens.length > 1 && SLUG_FILLER.has(slugTokens[0] as string)) {
+    slugTokens.shift();
+  }
+  const keptTokens = slugTokens.slice(0, 5);
+  while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
+    keptTokens.pop();
+  }
+  const baseSlug = keptTokens.join("-") || "app";
   // Edit-shaped asks reuse the newest EXISTING app in the slug family instead
   // of minting the next free slot: "make the unit converter dark mode, same
   // link" re-derived the slug from its label, landed on the STALE bare
