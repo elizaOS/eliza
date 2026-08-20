@@ -1,4 +1,12 @@
+/**
+ * Exercises pinned-document provider pagination through the production service
+ * boundary with deterministic adapter responses.
+ */
 import { describe, expect, it, vi } from "vitest";
+import {
+	DOCUMENT_LIST_MAX_LIMIT,
+	DOCUMENT_LIST_MAX_PINNED_PAGES,
+} from "../../database/document-list-query";
 import { logger } from "../../logger";
 import { type Memory, MemoryType, type UUID } from "../../types";
 import {
@@ -24,6 +32,54 @@ function document(title: string, text: string, pinned = false): Memory {
 			pinned,
 		},
 	};
+}
+
+function runtimeWithDocumentQuery(
+	queryDocuments: ReturnType<typeof vi.fn>,
+	agentId = "00000000-0000-0000-0000-0000000000a1" as UUID,
+) {
+	return {
+		agentId,
+		adapter: {
+			documentListQueryCapability: 2,
+			queryDocuments,
+			queryDocumentFragments: vi.fn(async () => []),
+			getDocument: vi.fn(async () => null),
+			compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+			deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
+		},
+		getMemories: vi.fn(async () => []),
+		searchMemories: vi.fn(async () => []),
+		getModel: vi.fn(() => null),
+		reportError: vi.fn(),
+		logger: {
+			info: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+			debug: vi.fn(),
+		},
+	};
+}
+
+function listPinnedDocuments(
+	service: DocumentService,
+	agentId = "00000000-0000-0000-0000-0000000000a1" as UUID,
+): Promise<Memory[]> {
+	return (
+		service as unknown as {
+			listPinnedDocumentsWithRequester(
+				resolveRequester: () => Promise<{
+					entityId: UUID;
+					roomIds: UUID[];
+					role: "RUNTIME";
+				}>,
+			): Promise<Memory[]>;
+		}
+	).listPinnedDocumentsWithRequester(async () => ({
+		entityId: agentId,
+		roomIds: [],
+		role: "RUNTIME",
+	}));
 }
 
 describe("pinned DOCUMENTS provider knowledge", () => {
@@ -152,6 +208,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			totalMatched: 0,
 			documents: [],
 			availableDocuments: [],
+			availableHasMore: false,
 			hasMore: true,
 			nextCursor: {
 				createdAt: 1000,
@@ -204,6 +261,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 				totalMatched: 0,
 				documents: [],
 				availableDocuments: [],
+				availableHasMore: false,
 				hasMore: true,
 				nextCursor: {
 					createdAt: 1000 + callCount,
@@ -243,6 +301,155 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
 		});
-		expect(queryDocumentsMock).toHaveBeenCalledTimes(51); // 1 list + 50 pinned pages
+		expect(queryDocumentsMock).toHaveBeenCalledTimes(
+			1 + DOCUMENT_LIST_MAX_PINNED_PAGES,
+		);
+	});
+
+	it("rejects an oversized adapter page before filtering or retaining rows", async () => {
+		const oversizedPage = Array.from(
+			{ length: DOCUMENT_LIST_MAX_LIMIT + 1 },
+			(_, index) => document(`Pinned ${index}`, "bounded", true),
+		);
+		const queryDocumentsMock = vi.fn(async () => ({
+			totalVisible: oversizedPage.length,
+			totalAvailable: oversizedPage.length,
+			totalMatched: oversizedPage.length,
+			documents: oversizedPage,
+			availableDocuments: [],
+			availableHasMore: false,
+			hasMore: false,
+		}));
+		const service = new DocumentService(
+			runtimeWithDocumentQuery(queryDocumentsMock) as never,
+		);
+
+		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_INVALID_RESULT",
+		});
+		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects a malformed adapter cursor with a typed integrity failure", async () => {
+		const queryDocumentsMock = vi.fn(async () => ({
+			totalVisible: 0,
+			totalAvailable: 0,
+			totalMatched: 0,
+			documents: [],
+			availableDocuments: [],
+			availableHasMore: false,
+			hasMore: true,
+			nextCursor: { createdAt: 1, id: 7 },
+		}));
+		const service = new DocumentService(
+			runtimeWithDocumentQuery(queryDocumentsMock) as never,
+		);
+
+		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_INVALID_RESULT",
+		});
+		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("detects a logical cursor cycle despite changing object shape", async () => {
+		let pinnedCalls = 0;
+		const cursor = {
+			createdAt: 1000,
+			id: "00000000-0000-0000-0000-0000000000c1" as UUID,
+		};
+		const queryDocumentsMock = vi.fn(async ({ limit }: { limit: number }) => {
+			if (limit !== DOCUMENT_LIST_MAX_LIMIT) {
+				return {
+					status: "ok",
+					totalVisible: 0,
+					totalAvailable: 0,
+					totalMatched: 0,
+					documents: [],
+					availableDocuments: [],
+					availableHasMore: false,
+					hasMore: false,
+				};
+			}
+			pinnedCalls += 1;
+			return {
+				status: "ok",
+				totalVisible: 0,
+				totalAvailable: 0,
+				totalMatched: 0,
+				documents: [],
+				availableDocuments: [],
+				availableHasMore: false,
+				hasMore: true,
+				nextCursor:
+					pinnedCalls === 1
+						? { ...cursor, ignoredAdapterField: "first" }
+						: {
+								ignoredAdapterField: `different-${pinnedCalls}`,
+								id: cursor.id,
+								createdAt: cursor.createdAt,
+							},
+			};
+		});
+		const service = new DocumentService(
+			runtimeWithDocumentQuery(queryDocumentsMock) as never,
+		);
+
+		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_CURSOR_LOOP",
+		});
+		expect(pinnedCalls).toBe(2);
+		expect(queryDocumentsMock).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ cursor }),
+		);
+	});
+
+	it("accepts a pinned document returned on the final legal page", async () => {
+		let pinnedCalls = 0;
+		const finalPinned = document("Final rule", "ALWAYS VERIFY", true);
+		const queryDocumentsMock = vi.fn(async ({ limit }: { limit: number }) => {
+			if (limit !== DOCUMENT_LIST_MAX_LIMIT) {
+				return {
+					status: "ok",
+					totalVisible: 0,
+					totalAvailable: 0,
+					totalMatched: 0,
+					documents: [],
+					availableDocuments: [],
+					availableHasMore: false,
+					hasMore: false,
+				};
+			}
+			pinnedCalls += 1;
+			const isFinal = pinnedCalls === DOCUMENT_LIST_MAX_PINNED_PAGES;
+			return {
+				status: "ok",
+				totalVisible: 1,
+				totalAvailable: 1,
+				totalMatched: 1,
+				documents: isFinal ? [finalPinned] : [],
+				availableDocuments: [],
+				availableHasMore: false,
+				hasMore: !isFinal,
+				...(isFinal
+					? {}
+					: {
+							nextCursor: {
+								createdAt: 1000 + pinnedCalls,
+								id: `00000000-0000-0000-0000-${pinnedCalls
+									.toString(16)
+									.padStart(12, "0")}` as UUID,
+							},
+						}),
+			};
+		});
+		const service = new DocumentService(
+			runtimeWithDocumentQuery(queryDocumentsMock) as never,
+		);
+
+		const result = await listPinnedDocuments(service);
+
+		expect(pinnedCalls).toBe(DOCUMENT_LIST_MAX_PINNED_PAGES);
+		expect(result).toEqual([finalPinned]);
 	});
 });
