@@ -61,6 +61,7 @@ import {
 	createSkillDownloadLifecycle,
 	DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS,
 	isSkillDownloadError,
+	MAX_SKILL_DOWNLOAD_TIMEOUT_MS,
 	readCappedSkillPackage,
 	readCappedSkillText,
 	type SkillDownloadLifecycle,
@@ -299,9 +300,13 @@ export class AgentSkillsService extends Service {
 		if (
 			configuredFetchTimeout !== undefined &&
 			configuredFetchTimeout !== null &&
-			(!Number.isFinite(configuredFetchTimeout) || configuredFetchTimeout <= 0)
+			(!Number.isInteger(configuredFetchTimeout) ||
+				configuredFetchTimeout <= 0 ||
+				configuredFetchTimeout > MAX_SKILL_DOWNLOAD_TIMEOUT_MS)
 		) {
-			throw new Error("fetchTimeoutMs must be a positive finite number or null");
+			throw new Error(
+				"fetchTimeoutMs must be a positive bounded integer or null",
+			);
 		}
 		this.fetchTimeoutMs =
 			configuredFetchTimeout === undefined

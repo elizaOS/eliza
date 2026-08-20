@@ -5,14 +5,15 @@
  * fail-closed behavior through every remote installer.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemorySkillStore } from "../storage";
 import {
 	createSkillDownloadLifecycle,
 	DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS,
+	MAX_SKILL_DOWNLOAD_TIMEOUT_MS,
 	MAX_SKILL_PACKAGE_BYTES,
 	readCappedSkillPackage,
 	readCappedSkillText,
@@ -151,9 +152,16 @@ describe("readCappedSkillPackage", () => {
 		optedOut.dispose();
 	});
 
-	it("rejects invalid deadline overrides", () => {
+	it.each([
+		0,
+		-1,
+		0.5,
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		MAX_SKILL_DOWNLOAD_TIMEOUT_MS + 1,
+	])("rejects invalid deadline override %s", (downloadTimeoutMs) => {
 		expect(() =>
-			createSkillDownloadLifecycle({ downloadTimeoutMs: 0 }),
+			createSkillDownloadLifecycle({ downloadTimeoutMs }),
 		).toThrow(
 			expect.objectContaining({ code: "SKILL_DOWNLOAD_INVALID_TIMEOUT" }),
 		);
