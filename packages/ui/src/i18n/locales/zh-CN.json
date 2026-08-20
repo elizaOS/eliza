@@ -6941,7 +6941,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "智能体配置",
   "cloud.elizaAgentsTable.agentSuspend": "智能体暂停",
   "cloud.elizaAgentsTable.noAgentsYet": "暂无智能体",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "部署您的第一个智能体以开始使用。",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "您的共享智能体或专属智能体可用后会显示在这里。",
   "cloud.elizaAgentsTable.searchAgents": "搜索智能体…",
   "cloud.elizaAgentsTable.allStatuses": "所有状态",
   "cloud.elizaAgentsTable.running": "运行中",

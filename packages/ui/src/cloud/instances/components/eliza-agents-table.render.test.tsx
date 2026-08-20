@@ -213,6 +213,29 @@ describe("ElizaAgentsTable per-row view model", () => {
     }
   });
 
+  it("uses product copy instead of a deploy instruction when no rows exist", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable agents={[]} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("No agents yet")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your Shared or Dedicated Agent will appear here when available.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/deploy your first agent/i)).toBeNull();
+  });
+
   it("uses active poll jobs as the displayed status and busy state", () => {
     const vm = derive({ status: "pending" }, { active: true });
 
