@@ -172,6 +172,50 @@ describe("landing Shared-agent capability contract", () => {
     );
   });
 
+  test("makes the friends room proactive without guaranteeing allergy safety", () => {
+    const friends = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "friends",
+    );
+    const copy = friends?.steps.map(landingDemoStepText).join(" ") ?? "";
+    const capabilities = new Set(
+      friends?.steps.flatMap((step) =>
+        step.kind === "member" || step.kind === "user" ? [] : [step.capability],
+      ),
+    );
+
+    expect(capabilities).toEqual(
+      new Set([
+        "connected-calendar",
+        "conversation-memory",
+        "public-web-search",
+        "room-memory",
+      ]),
+    );
+    expect(copy).toContain("severe peanut allergy");
+    expect(copy).toContain("needs direct confirmation");
+    expect(copy).not.toMatch(/allergy-safe|guaranteed safe|zero risk/i);
+  });
+
+  test("lets the trip room reconcile schedules before adding live logistics", () => {
+    const trip = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "trip",
+    );
+    const copy = trip?.steps.map(landingDemoStepText).join(" ") ?? "";
+    const firstFour = trip?.steps.slice(0, 4) ?? [];
+
+    expect(
+      firstFour.every((step) =>
+        step.kind === "member" || step.kind === "user"
+          ? !/\b9:40\b|\b10:15\b/.test(step.text)
+          : false,
+      ),
+    ).toBe(true);
+    expect(copy).toContain("I matched the travel calendars");
+    expect(copy).toContain("4 travel calendars shared");
+    expect(copy).toContain("covered route");
+    expect(copy).toContain("vegetarian-friendly lunch options");
+  });
+
   test.each([
     [
       "I'm here to save you time and take things off your plate. Should we start with your email?",

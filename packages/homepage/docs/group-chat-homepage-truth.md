@@ -35,6 +35,12 @@ Humor may come from adult coordination friction and Eliza's dry operational
 clarity. A child, medical need, custody safety concern, or participant's private
 data must never be the punchline.
 
+Restaurant and venue names in the illustrative rooms are fictional. Dietary
+preferences may be matched from room-shared context, but a severe allergy is a
+hard constraint: never label a restaurant safe from public information alone.
+Keep direct cross-contact confirmation visibly open before recommending a final
+choice.
+
 ## Do not claim without new runtime proof
 
 - Booking, buying, calendar changes, or messages sent to people or services
