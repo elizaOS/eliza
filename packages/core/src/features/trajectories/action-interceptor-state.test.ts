@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { logger } from "../../logger";
 import type { Action, IAgentRuntime, Memory, State } from "../../types";
 import {
 	setTrajectoryContext,
@@ -94,6 +95,24 @@ describe("snapshotStateForTrajectory", () => {
 			},
 		};
 		expect(snapshotStateForTrajectory(poisoned)).toBeNull();
+	});
+
+	it("warns when a throwing getter degrades the snapshot", () => {
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+		try {
+			const poisoned = {
+				get boom() {
+					throw new Error("getter");
+				},
+			};
+			expect(snapshotStateForTrajectory(poisoned)).toBeNull();
+			expect(warn).toHaveBeenCalled();
+			expect(String(warn.mock.calls[0]?.[0])).toMatch(
+				/state snapshot degraded to null/,
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });
 

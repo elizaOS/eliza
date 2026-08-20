@@ -38,7 +38,12 @@ export function snapshotStateForTrajectory(state: unknown): JsonValue | null {
 	if (state === undefined || state === null) return null;
 	try {
 		return sanitizeTrajectoryJsonValue(state) ?? null;
-	} catch {
+	} catch (error) {
+		// error-policy:J7 snapshot diagnostics must never fail the turn; a
+		// poisoned getter degrades the snapshot to null but is surfaced.
+		logger.warn(
+			`[TrajectoryInterceptor] state snapshot degraded to null: ${error instanceof Error ? error.message : String(error)}`,
+		);
 		return null;
 	}
 }
