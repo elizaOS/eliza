@@ -5,10 +5,13 @@
  * password — and persists the resulting `StringSession` under the state dir.
  * Consumed by `account-setup-routes.ts`.
  */
+
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
+import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
@@ -117,35 +120,99 @@ function resolveTelegramAccountSessionDir(): string {
 }
 
 export function resolveTelegramAccountSessionFile(): string {
+  return path.join(resolveTelegramAccountSessionDir(), "session.enc");
+}
+
+function resolveLegacyTelegramAccountSessionFile(): string {
   return path.join(resolveTelegramAccountSessionDir(), "session.txt");
 }
 
 function resolveTelegramAccountAuthStateFile(): string {
+  return path.join(resolveTelegramAccountSessionDir(), "auth-state.enc");
+}
+
+function resolveLegacyTelegramAccountAuthStateFile(): string {
   return path.join(resolveTelegramAccountSessionDir(), "auth-state.json");
 }
 
-export function loadTelegramAccountSessionString(): string {
-  const sessionFile = resolveTelegramAccountSessionFile();
-  if (!fs.existsSync(sessionFile)) {
-    return "";
+const TELEGRAM_SESSION_AAD = "telegram-account.session.v1";
+const TELEGRAM_AUTH_STATE_AAD = "telegram-account.auth-state.v1";
+
+function telegramAccountMasterKey(): Buffer {
+  return loadDefaultMasterKeySync();
+}
+
+function writeEncryptedFile(filePath: string, plaintext: string, aad: string) {
+  const ciphertext = encrypt(telegramAccountMasterKey(), plaintext, aad);
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    fs.writeFileSync(temporaryPath, ciphertext, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    fs.renameSync(temporaryPath, filePath);
+    fs.chmodSync(filePath, 0o600);
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
   }
-  return fs.readFileSync(sessionFile, "utf8").trim();
+}
+
+function readEncryptedFile(filePath: string, aad: string): string {
+  return decrypt(
+    telegramAccountMasterKey(),
+    fs.readFileSync(filePath, "utf8").trim(),
+    aad,
+  );
+}
+
+function readEncryptedOrMigrate(
+  filePath: string,
+  legacyPath: string,
+  aad: string,
+): string {
+  if (fs.existsSync(filePath)) {
+    return readEncryptedFile(filePath, aad);
+  }
+  if (!fs.existsSync(legacyPath)) return "";
+
+  const legacy = fs.readFileSync(legacyPath, "utf8").trim();
+  if (!legacy) return "";
+  writeEncryptedFile(filePath, legacy, aad);
+  if (readEncryptedFile(filePath, aad) !== legacy) {
+    throw new Error("Telegram credential migration verification failed");
+  }
+  fs.rmSync(legacyPath, { force: true });
+  return legacy;
+}
+
+export function loadTelegramAccountSessionString(): string {
+  return readEncryptedOrMigrate(
+    resolveTelegramAccountSessionFile(),
+    resolveLegacyTelegramAccountSessionFile(),
+    TELEGRAM_SESSION_AAD,
+  );
 }
 
 export function saveTelegramAccountSessionString(session: string): void {
-  fs.writeFileSync(resolveTelegramAccountSessionFile(), session, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  writeEncryptedFile(
+    resolveTelegramAccountSessionFile(),
+    session,
+    TELEGRAM_SESSION_AAD,
+  );
 }
 
 export function clearTelegramAccountSession(): void {
   fs.rmSync(resolveTelegramAccountSessionFile(), { force: true });
+  fs.rmSync(resolveLegacyTelegramAccountSessionFile(), { force: true });
 }
 
 export function telegramAccountSessionExists(): boolean {
-  const sessionFile = resolveTelegramAccountSessionFile();
-  return fs.existsSync(sessionFile) && fs.statSync(sessionFile).size > 0;
+  return [
+    resolveTelegramAccountSessionFile(),
+    resolveLegacyTelegramAccountSessionFile(),
+  ].some(
+    (filePath) => fs.existsSync(filePath) && fs.statSync(filePath).size > 0,
+  );
 }
 
 function readTrimmedString(value: unknown): string | null {
@@ -249,15 +316,17 @@ function readPersistedConnectorConfig(
 }
 
 function loadTelegramAccountAuthState(): PersistedTelegramAccountAuthState | null {
-  const authStateFile = resolveTelegramAccountAuthStateFile();
-  if (!fs.existsSync(authStateFile)) {
+  const raw = readEncryptedOrMigrate(
+    resolveTelegramAccountAuthStateFile(),
+    resolveLegacyTelegramAccountAuthStateFile(),
+    TELEGRAM_AUTH_STATE_AAD,
+  );
+  if (!raw) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(
-      fs.readFileSync(authStateFile, "utf8"),
-    ) as unknown;
+    const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
@@ -281,23 +350,25 @@ function loadTelegramAccountAuthState(): PersistedTelegramAccountAuthState | nul
 function saveTelegramAccountAuthState(
   state: PersistedTelegramAccountAuthState,
 ): void {
-  fs.writeFileSync(
+  writeEncryptedFile(
     resolveTelegramAccountAuthStateFile(),
     JSON.stringify(state),
-    {
-      encoding: "utf8",
-      mode: 0o600,
-    },
+    TELEGRAM_AUTH_STATE_AAD,
   );
 }
 
 export function clearTelegramAccountAuthState(): void {
   fs.rmSync(resolveTelegramAccountAuthStateFile(), { force: true });
+  fs.rmSync(resolveLegacyTelegramAccountAuthStateFile(), { force: true });
 }
 
 export function telegramAccountAuthStateExists(): boolean {
-  const authStateFile = resolveTelegramAccountAuthStateFile();
-  return fs.existsSync(authStateFile) && fs.statSync(authStateFile).size > 0;
+  return [
+    resolveTelegramAccountAuthStateFile(),
+    resolveLegacyTelegramAccountAuthStateFile(),
+  ].some(
+    (filePath) => fs.existsSync(filePath) && fs.statSync(filePath).size > 0,
+  );
 }
 
 export function defaultTelegramAccountDeviceModel(): string {

@@ -11,6 +11,16 @@ const vaultMocks = vi.hoisted(() => ({
   createManager: vi.fn(),
 }));
 
+const secureStoreMocks = vi.hoisted(() => ({
+  protection: {
+    backend: "macos_keychain" as const,
+    available: true,
+    synchronized: false as const,
+    scope: "device" as const,
+    access: "app_only" as const,
+  },
+}));
+
 vi.mock("@elizaos/vault", () => ({
   createManager: vaultMocks.createManager,
   deleteSavedLogin: vaultMocks.deleteSavedLogin,
@@ -28,6 +38,13 @@ vi.mock("../services/vault-mirror", () => ({
 vi.mock("../services/secrets-manager-installer", () => ({
   _resetSecretsManagerInstallerForTesting: vi.fn(),
   getSecretsManagerInstaller: vi.fn(),
+}));
+
+vi.mock("../security/platform-secure-store-node", () => ({
+  createNodePlatformSecureStore: vi.fn(() => ({})),
+  describeNodePlatformSecureStore: vi.fn(
+    async () => secureStoreMocks.protection,
+  ),
 }));
 
 vi.mock("./auth.ts", () => ({
@@ -137,5 +154,41 @@ describe("GET/DELETE /api/secrets/logins/:domain encoding", () => {
     expect(vaultMocks.getAutofillAllowed).not.toHaveBeenCalled();
     expect(vaultMocks.getSavedLogin).not.toHaveBeenCalled();
     expect(vaultMocks.deleteSavedLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/secrets/manager/protection", () => {
+  beforeEach(() => {
+    _setSecretsManagerForTesting({} as never);
+  });
+
+  it("reports the local, connector, Apple, and Cloud trust boundaries", async () => {
+    const res = fakeRes();
+    const handled = await handleSecretsManagerRoute(
+      req("GET", "/api/secrets/manager/protection"),
+      res.res,
+      "/api/secrets/manager/protection",
+      "GET",
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    expect(res.status()).toBe(200);
+    expect(res.body()).toEqual({
+      ok: true,
+      protection: {
+        localVault: {
+          encryptedAtRest: true,
+          cipher: "AES-256-GCM",
+          masterKey: secureStoreMocks.protection,
+        },
+        appleKeychainSync: false,
+        appleKeychainScope: "app-only",
+        connectorSessions: {
+          telegramPersonal: "vault-master-key-encrypted",
+        },
+        cloudTrustDomain: "separate-organization-kms",
+      },
+    });
   });
 });

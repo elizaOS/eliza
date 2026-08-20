@@ -9,7 +9,6 @@
  * multi-account support keep working without changes.
  */
 
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -652,13 +651,9 @@ function isClaudeCodeInvalidGrantError(err: unknown): boolean {
 }
 
 /**
- * Try to read a Claude Code OAuth credential blob from disk or the macOS
- * keychain. Does NOT validate expiry — that's the caller's job (so it can
- * decide whether to refresh via the refresh token).
- *
- * Claude Code stores credentials in two places:
- *   - `~/.claude/.credentials.json` (Linux / older macOS installs)
- *   - macOS Keychain entry "Claude Code-credentials" (current macOS)
+ * Try to read a Claude Code OAuth credential blob from its explicit local
+ * file. Does NOT validate expiry — that's the caller's job (so it can decide
+ * whether to refresh via the refresh token).
  *
  * Note that Claude Code's runtime keeps the live access token in memory and
  * refreshes it via the refresh token on demand — the persisted access token
@@ -712,26 +707,6 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
     logger.debug(
       `[auth] Claude Code credential file unavailable: ${String(error)}`,
     );
-  }
-
-  // 2. Try macOS Keychain
-  if (process.platform === "darwin") {
-    try {
-      const raw = execSync(
-        'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
-        { encoding: "utf8", timeout: 3000 },
-      ).trim();
-      if (raw) {
-        const blob = parse(raw, "keychain");
-        if (blob) return blob;
-      }
-    } catch (error) {
-      // error-policy:J4 the optional keychain source is unavailable; pooled and
-      // configured auth sources remain usable.
-      logger.debug(
-        `[auth] Claude Code keychain credential unavailable: ${String(error)}`,
-      );
-    }
   }
 
   return null;

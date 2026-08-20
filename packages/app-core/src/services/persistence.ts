@@ -10,8 +10,10 @@
  * Preferences when it isn't (e.g. older mobile shells that haven't shipped
  * the SQLite plugin yet, or web preview).
  *
- * Token storage MUST go through Keychain on iOS — handled separately by
- * `platform-secure-store-node.ts`.
+ * Native renderer tokens are intercepted by the storage bridge and stored in
+ * iOS Keychain or the desktop OS credential store. This module may keep the
+ * synchronous localStorage-shaped API, but native hosts never persist raw token
+ * records in localStorage or Capacitor Preferences.
  */
 
 import {

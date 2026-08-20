@@ -239,6 +239,7 @@
         "@elizaos/capacitor-mobile-signals": "workspace:*",
         "@elizaos/capacitor-phone": "workspace:*",
         "@elizaos/capacitor-screencapture": "workspace:*",
+        "@elizaos/capacitor-secure-store": "workspace:*",
         "@elizaos/capacitor-swabble": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-talkmode": "workspace:*",
@@ -344,6 +345,7 @@
         "@elizaos/skills": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@elizaos/vault": "workspace:*",
+        "@napi-rs/keyring": "^1.1.6",
         "@node-rs/argon2": "^2.0.2",
         "@upstash/redis": "^1.37.0",
         "adm-zip": "^0.6.0",
@@ -399,6 +401,7 @@
         "@elizaos/capacitor-mobile-signals": "workspace:*",
         "@elizaos/capacitor-phone": "workspace:*",
         "@elizaos/capacitor-screencapture": "workspace:*",
+        "@elizaos/capacitor-secure-store": "workspace:*",
         "@elizaos/capacitor-swabble": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-talkmode": "workspace:*",
@@ -1202,6 +1205,7 @@
       "optionalDependencies": {
         "@elizaos/capacitor-bun-runtime": "workspace:*",
         "@elizaos/capacitor-camera": "workspace:*",
+        "@elizaos/capacitor-secure-store": "workspace:*",
       },
       "peerDependencies": {
         "@capacitor-community/bluetooth-le": ">=8.0.0",
@@ -2622,6 +2626,20 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "plugins/plugin-native-secure-store": {
+      "name": "@elizaos/capacitor-secure-store",
+      "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "rollup": "^4.62.4",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
     "plugins/plugin-native-settings": {
       "name": "@elizaos/plugin-native-settings",
       "version": "2.0.3-beta.7",
@@ -3146,6 +3164,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/vault": "workspace:*",
         "@telegraf/types": "^7.1.0",
         "@types/node": "^24.0.10",
         "strip-literal": "^3.0.0",
@@ -4052,6 +4071,8 @@
     "@elizaos/capacitor-phone": ["@elizaos/capacitor-phone@workspace:plugins/plugin-native-phone"],
 
     "@elizaos/capacitor-screencapture": ["@elizaos/capacitor-screencapture@workspace:plugins/plugin-native-screencapture"],
+
+    "@elizaos/capacitor-secure-store": ["@elizaos/capacitor-secure-store@workspace:plugins/plugin-native-secure-store"],
 
     "@elizaos/capacitor-swabble": ["@elizaos/capacitor-swabble@workspace:plugins/plugin-native-swabble"],
 
@@ -10064,6 +10085,8 @@
     "@elizaos/capacitor-phone/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-screencapture/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/capacitor-secure-store/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
     "@elizaos/capacitor-swabble/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 

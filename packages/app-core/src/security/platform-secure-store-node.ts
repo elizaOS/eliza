@@ -1,9 +1,9 @@
 /**
- * Node-side OS secure-store backends for agent secrets: macOS Keychain (the
- * `security` CLI, passwords passed via stdin to keep them out of argv / `ps`),
- * Linux libsecret (`secret-tool`), and an explicit unavailable backend on
- * platforms with no adapter. Exposes the platform factory plus availability and
- * env-gated (`ELIZA_WALLET_OS_STORE`) enablement checks for the wallet key path.
+ * Node-side OS secure-store backends for agent secrets: macOS Keychain through
+ * the native `@napi-rs/keyring` binding, Linux libsecret (`secret-tool`), and an
+ * explicit unavailable backend on platforms with no adapter. macOS deliberately
+ * never shells out to `/usr/bin/security`: the system CLI can target a stale
+ * default keychain and show a misleading "Keychain Not Found" dialog.
  */
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
@@ -17,6 +17,7 @@ import {
 import type {
   PlatformSecureStore,
   PlatformSecureStoreBackend,
+  PlatformSecureStoreProtection,
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
@@ -32,45 +33,7 @@ function isLinux(): boolean {
   return process.platform === "linux";
 }
 
-/**
- * Write a password to the macOS Keychain via stdin to avoid argv exposure.
- * The `security add-generic-password` command reads from stdin when `-w`
- * is the last argument with no value. It prompts twice (password + retype),
- * so we write the value twice separated by a newline.
- */
-function keychainSetViaStdin(args: string[], password: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("security", args, {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        Object.assign(new Error(stderr.trim() || `security exited ${code}`), {
-          stderr,
-          code,
-        }),
-      );
-    });
-    // Swallow EPIPE if security exits before reading stdin (e.g. arg error).
-    // Without this, Node emits an unhandled error and may crash the process.
-    child.stdin.on("error", () => {});
-    // Write password twice (password + retype) then close stdin
-    child.stdin.write(`${password}\n${password}\n`, () => {
-      child.stdin.end();
-    });
-  });
-}
-
+/** Write to Linux Secret Service via stdin so the secret never enters argv. */
 function secretToolStoreWithStdin(
   args: string[],
   secretLine: string,
@@ -130,25 +93,38 @@ async function secretToolOnPath(): Promise<boolean> {
   return secretToolOnPathSync();
 }
 
-function macErrReason(
-  stderr: string,
-  code: number | null,
-): SecureStoreGetResult {
-  const s = stderr.toLowerCase();
+function nativeStoreReason(error: unknown): SecureStoreGetResult {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
   if (
-    s.includes("could not be found") ||
-    s.includes("the specified item could not be found")
+    normalized.includes("no entry") ||
+    normalized.includes("not found") ||
+    normalized.includes("could not be found")
   ) {
     return { ok: false, reason: "not_found" };
   }
-  if (s.includes("user canceled") || s.includes("user cancelled")) {
+  if (
+    normalized.includes("denied") ||
+    normalized.includes("auth") ||
+    normalized.includes("user cancel") ||
+    normalized.includes("interaction not allowed")
+  ) {
     return { ok: false, reason: "denied" };
   }
   return {
     ok: false,
-    reason: code === 44 || code === 45 ? "denied" : "error",
-    message: stderr.trim().slice(0, 300),
+    reason: "error",
+    // Never return a native exception verbatim: platform libraries have
+    // historically embedded account identifiers in their error messages.
+    message: "Native credential store operation failed.",
   };
+}
+
+let macKeyringModule: Promise<typeof import("@napi-rs/keyring")> | undefined;
+
+function loadMacKeyring(): Promise<typeof import("@napi-rs/keyring")> {
+  macKeyringModule ??= import("@napi-rs/keyring");
+  return macKeyringModule;
 }
 
 class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
@@ -156,10 +132,10 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execFileAsync("security", ["-h"], { encoding: "utf8" });
+      await loadMacKeyring();
       return true;
     } catch {
-      // error-policy:J4 keychain tool unavailable (probe)
+      // error-policy:J4 native Keychain binding unavailable (probe)
       return false;
     }
   }
@@ -170,26 +146,17 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreGetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { stdout, stderr: _stderr } = await execFileAsync(
-        "security",
-        [
-          "find-generic-password",
-          "-s",
-          ELIZA_AGENT_VAULT_SERVICE,
-          "-a",
-          account,
-          "-w",
-        ],
-        { encoding: "utf8" },
-      );
-      const value = stdout.trim();
+      const { AsyncEntry } = await loadMacKeyring();
+      const value = await new AsyncEntry(
+        ELIZA_AGENT_VAULT_SERVICE,
+        account,
+      ).getPassword();
       if (!value) {
         return { ok: false, reason: "not_found" };
       }
       return { ok: true, value };
     } catch (err: unknown) {
-      const e = err as { stderr?: string; code?: number };
-      return macErrReason(String(e.stderr ?? err), e.code ?? null);
+      return nativeStoreReason(err);
     }
   }
 
@@ -200,41 +167,24 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreSetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      // Pass password via stdin instead of argv to avoid exposure via `ps`.
-      // The `-w` flag (last, with no value) triggers stdin read mode.
-      await keychainSetViaStdin(
-        [
-          "add-generic-password",
-          "-s",
-          ELIZA_AGENT_VAULT_SERVICE,
-          "-a",
-          account,
-          "-U",
-          "-w",
-        ],
+      const { AsyncEntry } = await loadMacKeyring();
+      await new AsyncEntry(ELIZA_AGENT_VAULT_SERVICE, account).setPassword(
         value,
       );
       return { ok: true };
     } catch (err: unknown) {
-      const stderr = String((err as { stderr?: string }).stderr ?? err);
-      return {
-        ok: false,
-        reason: "error",
-        message: stderr.trim().slice(0, 300),
-      };
+      return nativeStoreReason(err);
     }
   }
 
   async delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      await execFileAsync("security", [
-        "delete-generic-password",
-        "-s",
+      const { AsyncEntry } = await loadMacKeyring();
+      await new AsyncEntry(
         ELIZA_AGENT_VAULT_SERVICE,
-        "-a",
         account,
-      ]);
+      ).deleteCredential();
     } catch {
       // ignore — item may not exist
     }
@@ -358,6 +308,29 @@ export function createNodePlatformSecureStore(): PlatformSecureStore {
     return new LinuxSecretToolPlatformSecureStore();
   }
   return new NonePlatformSecureStore();
+}
+
+/** Non-secret posture for support and the Vault protection UI. */
+export async function describeNodePlatformSecureStore(
+  store: PlatformSecureStore = createNodePlatformSecureStore(),
+): Promise<PlatformSecureStoreProtection> {
+  const available = await store.isAvailable();
+  if (!available || store.backend === "none") {
+    return {
+      backend: store.backend,
+      available: false,
+      synchronized: false,
+      scope: "unavailable",
+      access: "unavailable",
+    };
+  }
+  return {
+    backend: store.backend,
+    available: true,
+    synchronized: false,
+    scope: "host",
+    access: store.backend === "macos_keychain" ? "app_only" : "user_session",
+  };
 }
 
 const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);

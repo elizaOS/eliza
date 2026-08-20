@@ -15,6 +15,13 @@ import { logger } from "@elizaos/logger";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
+import {
+  type DesktopSecureStoreKind,
+  desktopSecureStoreDelete,
+  desktopSecureStoreGet,
+  desktopSecureStoreSet,
+} from "./electrobun-rpc";
+import { isElectrobunRuntime } from "./electrobun-runtime";
 
 /**
  * Lazy-load the @capacitor/preferences module on demand. Keeping it out of the
@@ -38,6 +45,10 @@ function loadPreferences() {
   return import("@capacitor/preferences");
 }
 
+function loadAppleSecureStore() {
+  return import("@elizaos/capacitor-secure-store");
+}
+
 function isNativePlatform(): boolean {
   try {
     const platform = Capacitor.getPlatform();
@@ -58,11 +69,10 @@ function isNativePlatform(): boolean {
 const SYNCED_KEYS = new Set([
   "eliza.control.settings.v1",
   "eliza.device.identity",
+  // Android continues to use Preferences for these records. Apple native
+  // hosts intercept them through PROTECTED_STORAGE_KIND before this set is
+  // consulted, so credentials never land in Preferences there.
   "eliza.device.auth",
-  // The Eliza Cloud session (#13377): with cloud-only onboarding this is THE
-  // credential — losing it to a WKWebView purge signs the user out and, mid-
-  // onboarding, restarts the sign-in ask (the mobile "login loop"). Same
-  // durability class as eliza.device.auth above.
   STEWARD_TOKEN_KEY,
   "elizaos:active-server",
   "eliza:first-run-complete",
@@ -97,12 +107,113 @@ const SYNCED_KEYS = new Set([
   "eliza:e2e-wallet:autologin",
 ]);
 
+const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
+  ["eliza.device.auth", "session.device_auth"],
+  [STEWARD_TOKEN_KEY, "session.steward_token"],
+  ["elizaos:active-server", "runtime.active_server"],
+  ["elizaos:agent-profiles", "runtime.agent_profiles"],
+]);
+
+const protectedStorageCache = new Map<string, string>();
+
+function isAppleNativePlatform(): boolean {
+  try {
+    return Capacitor.getPlatform() === "ios" && isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+function isProtectedStorageHost(): boolean {
+  return isAppleNativePlatform() || isElectrobunRuntime();
+}
+
+async function protectedStoreGet(key: string): Promise<string | null> {
+  const kind = PROTECTED_STORAGE_KIND.get(key);
+  if (!kind) return null;
+  if (isAppleNativePlatform()) {
+    const { ElizaSecureStore } = await loadAppleSecureStore();
+    const result = await ElizaSecureStore.get({ key: kind });
+    if (result.ok) {
+      return typeof result.value === "string" ? result.value : null;
+    }
+    if (result.error === "not_found") return null;
+    throw new Error("Apple protected storage is unavailable");
+  }
+  if (isElectrobunRuntime()) {
+    const result = await desktopSecureStoreGet(kind);
+    if (result?.ok) {
+      return typeof result.value === "string" ? result.value : null;
+    }
+    if (result?.reason === "not_found") return null;
+    throw new Error("Desktop protected storage is unavailable");
+  }
+  return null;
+}
+
+async function protectedStoreSet(key: string, value: string): Promise<boolean> {
+  const kind = PROTECTED_STORAGE_KIND.get(key);
+  if (!kind) return false;
+  if (isAppleNativePlatform()) {
+    const { ElizaSecureStore } = await loadAppleSecureStore();
+    return (await ElizaSecureStore.set({ key: kind, value })).ok;
+  }
+  if (isElectrobunRuntime()) {
+    return (await desktopSecureStoreSet(kind, value))?.ok === true;
+  }
+  return false;
+}
+
+async function protectedStoreDelete(key: string): Promise<void> {
+  const kind = PROTECTED_STORAGE_KIND.get(key);
+  if (!kind) return;
+  if (isAppleNativePlatform()) {
+    const { ElizaSecureStore } = await loadAppleSecureStore();
+    await ElizaSecureStore.remove({ key: kind });
+    return;
+  }
+  if (isElectrobunRuntime()) {
+    await desktopSecureStoreDelete(kind);
+  }
+}
+
 // In-memory cache of values from Preferences (for native)
 const preferencesCache = new Map<string, string>();
 
 // Flag to track if initial sync has completed
 let initialized = false;
 let storageProxyInstalled = false;
+
+interface NativeStorageMethods {
+  storage: Storage;
+  setItem: (key: string, value: string) => void;
+  getItem: (key: string) => string | null;
+  removeItem: (key: string) => void;
+  prototypeSetItem: Storage["setItem"];
+  prototypeGetItem: Storage["getItem"];
+  prototypeRemoveItem: Storage["removeItem"];
+}
+
+let nativeLocalStorageMethods: NativeStorageMethods | null = null;
+
+function getNativeLocalStorageMethods(): NativeStorageMethods {
+  if (nativeLocalStorageMethods) return nativeLocalStorageMethods;
+  const storage = window.localStorage;
+  const prototype = Object.getPrototypeOf(storage) as Storage;
+  const prototypeSetItem = prototype.setItem;
+  const prototypeGetItem = prototype.getItem;
+  const prototypeRemoveItem = prototype.removeItem;
+  nativeLocalStorageMethods = {
+    storage,
+    setItem: prototypeSetItem.bind(storage),
+    getItem: prototypeGetItem.bind(storage),
+    removeItem: prototypeRemoveItem.bind(storage),
+    prototypeSetItem,
+    prototypeGetItem,
+    prototypeRemoveItem,
+  };
+  return nativeLocalStorageMethods;
+}
 
 const PREFERENCE_READ_TIMEOUT_MS = 1_500;
 // Warm-up probe before hydration: retry a few times so a cold native bridge
@@ -165,9 +276,12 @@ export async function initializeStorageBridge(): Promise<void> {
     return;
   }
 
-  if (!isNativePlatform()) {
+  if (!isNativePlatform() && !isElectrobunRuntime()) {
     return;
   }
+
+  const { getItem: originalGetItem, removeItem: originalRemoveItem } =
+    getNativeLocalStorageMethods();
 
   // The Capacitor Preferences plugin is frequently not yet responsive on the
   // first read during very early WebView startup (the bridge is still wiring
@@ -177,27 +291,37 @@ export async function initializeStorageBridge(): Promise<void> {
   // with a few short retries until the plugin answers, then hydrate. The probe
   // can't distinguish "plugin cold" from "key genuinely unset", so it is capped
   // and never blocks first paint for more than a moment.
-  let pluginResponded = false;
-  for (let attempt = 0; attempt < PREFERENCE_HYDRATION_ATTEMPTS; attempt += 1) {
-    if (await preferencesResponded()) {
-      pluginResponded = true;
-      break;
-    }
-    if (attempt < PREFERENCE_HYDRATION_ATTEMPTS - 1) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, PREFERENCE_HYDRATION_RETRY_MS),
-      );
+  let pluginResponded = isElectrobunRuntime();
+  if (isNativePlatform()) {
+    for (
+      let attempt = 0;
+      attempt < PREFERENCE_HYDRATION_ATTEMPTS;
+      attempt += 1
+    ) {
+      if (await preferencesResponded()) {
+        pluginResponded = true;
+        break;
+      }
+      if (attempt < PREFERENCE_HYDRATION_ATTEMPTS - 1) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, PREFERENCE_HYDRATION_RETRY_MS),
+        );
+      }
     }
   }
 
   // Load synced keys from Preferences into cache. Hydration stays best-effort so
   // a single stale preference read cannot block first paint.
-  const entries = await Promise.all(
-    Array.from(
-      SYNCED_KEYS,
-      async (key) => [key, await readPreferenceWithTimeout(key)] as const,
-    ),
-  );
+  const entries = isNativePlatform()
+    ? await Promise.all(
+        Array.from(
+          isAppleNativePlatform()
+            ? [...SYNCED_KEYS].filter((key) => !PROTECTED_STORAGE_KIND.has(key))
+            : SYNCED_KEYS,
+          async (key) => [key, await readPreferenceWithTimeout(key)] as const,
+        ),
+      )
+    : [];
   for (const [key, value] of entries) {
     if (value === null) continue;
     preferencesCache.set(key, value);
@@ -213,6 +337,57 @@ export async function initializeStorageBridge(): Promise<void> {
     }
   }
 
+  // Migrate legacy plaintext credentials only after a write + read-back match.
+  // On a failed store call the old value stays in place for recovery, while all
+  // new writes below remain memory-only instead of silently reintroducing
+  // plaintext persistence.
+  let protectedStoreResponded = true;
+  if (isProtectedStorageHost()) {
+    for (const key of PROTECTED_STORAGE_KIND.keys()) {
+      try {
+        const protectedValue = await protectedStoreGet(key);
+        if (protectedValue !== null) {
+          protectedStorageCache.set(key, protectedValue);
+          originalRemoveItem(key);
+          if (isNativePlatform()) {
+            const { Preferences } = await loadPreferences();
+            await Preferences.remove({ key });
+          }
+          continue;
+        }
+
+        const preferenceValue = isNativePlatform()
+          ? await readPreferenceWithTimeout(key)
+          : null;
+        const legacyValue = preferenceValue ?? originalGetItem(key);
+        if (legacyValue === null) continue;
+
+        protectedStorageCache.set(key, legacyValue);
+        const stored = await protectedStoreSet(key, legacyValue);
+        const verified = stored ? await protectedStoreGet(key) : null;
+        if (verified !== legacyValue) {
+          protectedStoreResponded = false;
+          logger.error(
+            { key },
+            "[StorageBridge] protected-storage migration did not verify",
+          );
+          continue;
+        }
+        originalRemoveItem(key);
+        if (isNativePlatform()) {
+          const { Preferences } = await loadPreferences();
+          await Preferences.remove({ key });
+        }
+      } catch (err) {
+        protectedStoreResponded = false;
+        logger.error(
+          { err, key },
+          "[StorageBridge] protected-storage hydration failed",
+        );
+      }
+    }
+  }
+
   // Set up the storage proxy (idempotent) so localStorage<->Preferences sync
   // works even while we wait for a cold plugin to warm up.
   setupStorageProxy();
@@ -223,7 +398,7 @@ export async function initializeStorageBridge(): Promise<void> {
   // re-hydrates instead of permanently dropping critical synced keys —
   // first-run-complete, active-server, the smoke request — which otherwise
   // strands the user in onboarding or silently skips the QA smoke.
-  if (pluginResponded) {
+  if (pluginResponded && protectedStoreResponded) {
     initialized = true;
   }
 }
@@ -236,18 +411,52 @@ function setupStorageProxy(): void {
     return;
   }
 
-  if (!isNativePlatform()) {
+  if (!isNativePlatform() && !isElectrobunRuntime()) {
     return;
   }
 
-  const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
-  const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
-  const originalRemoveItem = window.localStorage.removeItem.bind(
-    window.localStorage,
-  );
+  const nativeStorage = getNativeLocalStorageMethods();
+  const {
+    setItem: originalSetItem,
+    getItem: originalGetItem,
+    removeItem: originalRemoveItem,
+  } = nativeStorage;
 
-  // Override setItem
-  window.localStorage.setItem = (key: string, value: string): void => {
+  // Patch the shared Storage prototype with a localStorage-only branch instead
+  // of assigning named properties on the Storage instance. Web Storage objects
+  // have exotic named-property behavior, so a plain `localStorage.setItem =
+  // fn` (and, in WebKit-style implementations, even an own descriptor) can
+  // become a persisted key or be ignored. sessionStorage and any other Storage
+  // object continue through the captured native prototype methods unchanged.
+  const localStorageInstance = nativeStorage.storage;
+  const storagePrototype = Object.getPrototypeOf(
+    localStorageInstance,
+  ) as Storage;
+  const { prototypeSetItem, prototypeGetItem, prototypeRemoveItem } =
+    nativeStorage;
+  const secureSetItem = (key: string, value: string): void => {
+    if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      protectedStorageCache.set(key, value);
+      originalRemoveItem(key);
+      setTimeout(() => {
+        protectedStoreSet(key, value)
+          .then((stored) => {
+            if (!stored) {
+              logger.error(
+                { key },
+                "[StorageBridge] secure-store rejected protected write",
+              );
+            }
+          })
+          .catch((err) => {
+            logger.error(
+              { err, key },
+              "[StorageBridge] failed to persist protected key",
+            );
+          });
+      }, 0);
+      return;
+    }
     // Always set in localStorage first
     originalSetItem(key, value);
 
@@ -274,7 +483,10 @@ function setupStorageProxy(): void {
   };
 
   // Override getItem
-  window.localStorage.getItem = (key: string): string | null => {
+  const secureGetItem = (key: string): string | null => {
+    if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      return protectedStorageCache.get(key) ?? null;
+    }
     // For synced keys, prefer the cache (which was loaded from Preferences)
     if (SYNCED_KEYS.has(key) && preferencesCache.has(key)) {
       return preferencesCache.get(key) ?? null;
@@ -283,7 +495,20 @@ function setupStorageProxy(): void {
   };
 
   // Override removeItem
-  window.localStorage.removeItem = (key: string): void => {
+  const secureRemoveItem = (key: string): void => {
+    if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      protectedStorageCache.delete(key);
+      originalRemoveItem(key);
+      setTimeout(() => {
+        protectedStoreDelete(key).catch((err) => {
+          logger.error(
+            { err, key },
+            "[StorageBridge] failed to remove protected key",
+          );
+        });
+      }, 0);
+      return;
+    }
     originalRemoveItem(key);
 
     if (SYNCED_KEYS.has(key)) {
@@ -304,6 +529,36 @@ function setupStorageProxy(): void {
     }
   };
 
+  Object.defineProperties(storagePrototype, {
+    setItem: {
+      configurable: true,
+      writable: true,
+      value: function storageBridgeSetItem(
+        this: Storage,
+        key: string,
+        value: string,
+      ) {
+        if (this === localStorageInstance) return secureSetItem(key, value);
+        return prototypeSetItem.call(this, key, value);
+      },
+    },
+    getItem: {
+      configurable: true,
+      writable: true,
+      value: function storageBridgeGetItem(this: Storage, key: string) {
+        if (this === localStorageInstance) return secureGetItem(key);
+        return prototypeGetItem.call(this, key);
+      },
+    },
+    removeItem: {
+      configurable: true,
+      writable: true,
+      value: function storageBridgeRemoveItem(this: Storage, key: string) {
+        if (this === localStorageInstance) return secureRemoveItem(key);
+        return prototypeRemoveItem.call(this, key);
+      },
+    },
+  });
   storageProxyInstalled = true;
 }
 
@@ -311,6 +566,11 @@ function setupStorageProxy(): void {
  * Get a value from storage (works on both native and web)
  */
 export async function getStorageValue(key: string): Promise<string | null> {
+  if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    const value = await protectedStoreGet(key);
+    if (value !== null) protectedStorageCache.set(key, value);
+    return value ?? protectedStorageCache.get(key) ?? null;
+  }
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const { Preferences } = await loadPreferences();
     const result = await Preferences.get({ key });
@@ -326,6 +586,13 @@ export async function setStorageValue(
   key: string,
   value: string,
 ): Promise<void> {
+  if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    protectedStorageCache.set(key, value);
+    if (!(await protectedStoreSet(key, value))) {
+      throw new Error(`Protected storage rejected write for ${key}`);
+    }
+    return;
+  }
   // Privileged: this is the shell-side persistence helper (session/auth/
   // first-run keys); the view-facing path is the scoped override in
   // DynamicViewLoader's bridge compat, not this function.
@@ -341,6 +608,11 @@ export async function setStorageValue(
  * Remove a value from storage (works on both native and web)
  */
 export async function removeStorageValue(key: string): Promise<void> {
+  if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    protectedStorageCache.delete(key);
+    await protectedStoreDelete(key);
+    return;
+  }
   runAsPrivilegedShell(() => window.localStorage.removeItem(key));
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {

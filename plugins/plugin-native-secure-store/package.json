@@ -1,0 +1,73 @@
+{
+  "name": "@elizaos/capacitor-secure-store",
+  "version": "2.0.3-beta.7",
+  "description": "Device-only Apple Keychain storage for Eliza app credentials.",
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "eliza-source": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "dist/",
+    "ios/Sources/",
+    "*.podspec"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git"
+  },
+  "scripts": {
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-secure-store -- bun run build:unlocked",
+    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorSecureStore"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "rollup": "^4.62.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Unavailable fallback; secrets are never persisted on web by this plugin.",
+      "ios": true,
+      "node": "macOS uses the Electrobun secure-store bridge."
+    }
+  }
+}

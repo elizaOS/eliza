@@ -113,6 +113,52 @@ export interface DetectedProvider {
   status?: string;
 }
 
+export type DesktopSecureStoreKind =
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles";
+
+export type DesktopSecureStoreResult =
+  | { ok: true; value?: string }
+  | {
+      ok: false;
+      reason: "not_found" | "denied" | "unavailable" | "error";
+      message?: string;
+    };
+
+export async function desktopSecureStoreGet(
+  kind: DesktopSecureStoreKind,
+): Promise<DesktopSecureStoreResult | null> {
+  return invokeDesktopBridgeRequest<DesktopSecureStoreResult>({
+    rpcMethod: "secureStoreGet",
+    ipcChannel: "secureStore:get",
+    params: { kind },
+  });
+}
+
+export async function desktopSecureStoreSet(
+  kind: DesktopSecureStoreKind,
+  value: string,
+): Promise<DesktopSecureStoreResult | null> {
+  return invokeDesktopBridgeRequest<DesktopSecureStoreResult>({
+    rpcMethod: "secureStoreSet",
+    ipcChannel: "secureStore:set",
+    params: { kind, value },
+  });
+}
+
+export async function desktopSecureStoreDelete(
+  kind: DesktopSecureStoreKind,
+): Promise<boolean> {
+  const result = await invokeDesktopBridgeRequest<{ ok: true }>({
+    rpcMethod: "secureStoreDelete",
+    ipcChannel: "secureStore:delete",
+    params: { kind },
+  });
+  return result?.ok === true;
+}
+
 export interface DesktopRuntimeModeInfo {
   mode: "local" | "external" | "disabled";
   externalApiBase?: string | null;

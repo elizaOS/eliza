@@ -43,6 +43,7 @@ import type {
   InstallableBackendId,
   InstallMethod,
   ManagerPreferences,
+  VaultProtectionStatus,
 } from "./types";
 
 const BACKEND_ORDER: BackendId[] = [
@@ -55,6 +56,7 @@ const BACKEND_ORDER: BackendId[] = [
 export interface OverviewTabProps {
   backends: BackendStatus[];
   preferences: ManagerPreferences;
+  protection: VaultProtectionStatus | null;
   installMethods: Record<InstallableBackendId, InstallMethod[]>;
   saving: boolean;
   savedAt: number | null;
@@ -70,6 +72,7 @@ export function OverviewTab(props: OverviewTabProps) {
   const {
     backends,
     preferences,
+    protection,
     installMethods,
     saving,
     savedAt,
@@ -161,6 +164,7 @@ export function OverviewTab(props: OverviewTabProps) {
 
   return (
     <div className="space-y-3">
+      {protection ? <ProtectionCard protection={protection} /> : null}
       <div className="flex items-center justify-between pb-1">
         <p className="text-2xs text-muted">
           {t("vault.overview.routeHint", {
@@ -248,6 +252,54 @@ export function OverviewTab(props: OverviewTabProps) {
         </Button>
       </div>
     </div>
+  );
+}
+
+export function ProtectionCard({
+  protection,
+}: {
+  protection: VaultProtectionStatus;
+}) {
+  const key = protection.localVault.masterKey;
+  const protectedLocally =
+    protection.localVault.encryptedAtRest && key.available;
+  return (
+    <section
+      data-testid="vault-protection-card"
+      className="rounded-sm border border-border/50 bg-surface/40 p-3"
+    >
+      <div className="flex items-start gap-2">
+        {protectedLocally ? (
+          <CheckCircle2
+            className="mt-0.5 h-4 w-4 shrink-0 text-success"
+            aria-hidden
+          />
+        ) : (
+          <AlertCircle
+            className="mt-0.5 h-4 w-4 shrink-0 text-warning"
+            aria-hidden
+          />
+        )}
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium text-txt">
+            {protectedLocally
+              ? "Protected by this device"
+              : "Device key protection needs attention"}
+          </p>
+          <p className="text-2xs leading-relaxed text-muted">
+            Local Vault values use {protection.localVault.cipher}; the master
+            key is held by {key.backend.replaceAll("_", " ")}. Apple Keychain
+            sync is off, and app credentials are not shared with widgets or
+            keyboards.
+          </p>
+          <p className="text-2xs leading-relaxed text-muted">
+            Eliza Cloud organization secrets remain in a separate KMS trust
+            domain. Telegram Personal session state is encrypted with the local
+            Vault master key.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -191,6 +191,7 @@
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-screencapture": "workspace:*",
+    "@elizaos/capacitor-secure-store": "workspace:*",
     "@elizaos/capacitor-swabble": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/capacitor-talkmode": "workspace:*",

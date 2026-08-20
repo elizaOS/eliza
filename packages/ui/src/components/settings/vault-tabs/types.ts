@@ -29,6 +29,26 @@ export interface ManagerPreferences {
   routing?: Record<string, BackendId>;
 }
 
+export interface VaultProtectionStatus {
+  localVault: {
+    encryptedAtRest: boolean;
+    cipher: string;
+    masterKey: {
+      backend: string;
+      available: boolean;
+      synchronized: false;
+      scope: "device" | "host" | "unavailable";
+      access: "app_only" | "user_session" | "unavailable";
+    };
+  };
+  appleKeychainSync: false;
+  appleKeychainScope: "app-only";
+  connectorSessions: {
+    telegramPersonal: "vault-master-key-encrypted";
+  };
+  cloudTrustDomain: "separate-organization-kms";
+}
+
 export type InstallMethod =
   | { kind: "brew"; package: string; cask: boolean }
   | { kind: "npm"; package: string }

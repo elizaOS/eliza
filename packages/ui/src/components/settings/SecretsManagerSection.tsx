@@ -52,6 +52,7 @@ import type {
   ManagerPreferences,
   RoutingConfig,
   VaultEntryMeta,
+  VaultProtectionStatus,
   VaultTabNavigate,
 } from "./vault-tabs/types";
 
@@ -314,6 +315,9 @@ export function VaultWorkspace({
   const [routingConfig, setRoutingConfig] = useState<RoutingConfig | null>(
     null,
   );
+  const [protection, setProtection] = useState<VaultProtectionStatus | null>(
+    null,
+  );
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [apps, setApps] = useState<InstalledApp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -331,6 +335,7 @@ export function VaultWorkspace({
         methodsRes,
         entriesRes,
         routingRes,
+        protectionRes,
         agentsRes,
         appsRes,
       ] = await Promise.all([
@@ -349,6 +354,11 @@ export function VaultWorkspace({
         client.rawRequest("/api/secrets/routing", undefined, {
           allowNonOk: true,
         }),
+        client
+          .rawRequest("/api/secrets/manager/protection", undefined, {
+            allowNonOk: true,
+          })
+          .catch(() => null),
         // error-policy:J4 best-effort enrichment — these endpoints may not
         // exist in headless/test shells; the Routing tab renders without them
         // (documented at the consumers below).
@@ -383,6 +393,14 @@ export function VaultWorkspace({
       const routingJson = (await routingRes.json()) as {
         config: RoutingConfig;
       };
+      if (protectionRes?.ok) {
+        const protectionJson = (await protectionRes.json()) as {
+          protection?: VaultProtectionStatus;
+        };
+        setProtection(protectionJson.protection ?? null);
+      } else {
+        setProtection(null);
+      }
       setBackends(backendsJson.backends);
       setPreferences(prefsJson.preferences);
       setInstallMethods(methodsJson.methods);
@@ -595,6 +613,7 @@ export function VaultWorkspace({
                   <OverviewTab
                     backends={backends}
                     preferences={preferences}
+                    protection={protection}
                     installMethods={installMethods}
                     saving={saving}
                     savedAt={savedAt}
