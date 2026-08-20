@@ -6909,9 +6909,22 @@ export class OrchestratorTaskService extends Service {
         try {
           await acp.stopSession(session.sessionId);
         } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          // A session the transport no longer knows is DE FACTO dead — its
+          // record was retention-swept or the subprocess is long gone.
+          // Fail-closing here trapped tasks forever: one transient stop
+          // failure marked the row stop_failed, the ACP record aged out, and
+          // every later archive 500'd on "Failed to stop 1 active session"
+          // (live 2026-08-20, metronome ghost). Not-found terminalizes.
+          if (/not found|no session|unknown session/i.test(error)) {
+            await this.store.updateSession(session.sessionId, {
+              status: "stopped",
+              stoppedAt: Date.now(),
+            });
+            return;
+          }
           // error-policy:J1 collect per-session stop failures; the loop throws a
           // structured RecoveryConflictError afterward when any session failed.
-          const error = err instanceof Error ? err.message : String(err);
           failures.push({ sessionId: session.sessionId, error });
           if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
             await this.store.updateSession(session.sessionId, {

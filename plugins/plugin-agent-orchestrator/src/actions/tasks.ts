@@ -1228,12 +1228,12 @@ async function runCreateLegacy(
       tasks.length > 1
         ? `On it — starting ${tasks.length} builds.`
         : "On it — building that now.",
-      // 1.5s lost the race to Cerebras on effectively every create (the
-      // fallback shipped verbatim across four consecutive live builds,
-      // owner-reported as "hardcoded slop" 2026-08-20); 3.5s matches every
-      // other phraseForUser site. The ack is out-of-band, so the only cost
-      // is the ack arriving ~2s later.
-      { timeoutMs: 3_500 },
+      // 1.5s lost the race to Cerebras on effectively every create, and 3.5s
+      // still lost ~1 in 3 (owner-reported canned "On it — building that
+      // now." repeats, 2026-08-20). The ack is out-of-band and nothing waits
+      // on it, so buy the model voice with a longer window; the fallback is
+      // now a genuine outage path, not the common case.
+      { timeoutMs: 6_000 },
     );
     earlyAckText = text;
     // Out-of-band send: same-turn callback deliveries batch at turn end (five
