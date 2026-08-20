@@ -4,6 +4,7 @@
  */
 // @vitest-environment jsdom
 
+import type { AgentNotification } from "@elizaos/core";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +21,7 @@ vi.mock("../../widgets/WidgetHost", () => ({
 }));
 
 import {
+  __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   __setHydratedForTests,
 } from "../../state/notifications/notification-store";
@@ -76,6 +78,31 @@ describe("HomeScreen entrance flicker lock (#9304)", () => {
     ).toBe(false);
     expect(homeContent?.hasAttribute("aria-hidden")).toBe(false);
     expect(homeContent?.hasAttribute("inert")).toBe(false);
+  });
+
+  it("does not suppress home content when a live notification predates hydration", () => {
+    __ingestNotificationForTests({
+      id: "00000000-0000-4000-8000-000000000001" as AgentNotification["id"],
+      title: "Approval needed",
+      category: "approval",
+      priority: "urgent",
+      source: "test",
+      createdAt: Date.now(),
+    });
+    const { container } = render(
+      <HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />,
+    );
+
+    expect(
+      container
+        .querySelector("[data-home-below-notifications]")
+        ?.hasAttribute("data-home-notifications-pending"),
+    ).toBe(false);
+    expect(
+      container
+        .querySelector('[aria-label="Home content"]')
+        ?.hasAttribute("inert"),
+    ).toBe(false);
   });
 
   it("plays home-enter once on mount, never re-adds it on a later re-render (no flash)", () => {

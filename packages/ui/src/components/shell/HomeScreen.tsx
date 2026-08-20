@@ -232,6 +232,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // A retrying authority releases the home immediately rather than hiding the
   // launcher behind a slow or unavailable notification service.
   const notificationLayoutPending =
+    notifications.length === 0 &&
     hydrated === false &&
     (hydrationStatus === "idle" || hydrationStatus === "loading");
   const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
