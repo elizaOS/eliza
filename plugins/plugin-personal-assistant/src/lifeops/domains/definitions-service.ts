@@ -482,12 +482,13 @@ export class DefinitionsDomain {
         `occurrence cannot be completed from state ${occurrence.state}`,
       );
     }
+    const completedAt = now.toISOString();
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,
       state: "completed",
       snoozedUntil: null,
       completionPayload: {
-        completedAt: now.toISOString(),
+        completedAt,
         note: normalizeOptionalString(request.note) ?? null,
         metadata: cloneRecord(request.metadata),
         previousState: occurrence.state,
@@ -536,8 +537,8 @@ export class DefinitionsDomain {
           source: "life",
           sourceId: updatedOccurrence.id,
           eventType: "completed",
-          eventAt: updatedOccurrence.completionPayload.completedAt,
-          domainEventId: `occurrence_completed:${updatedOccurrence.id}:${updatedOccurrence.completionPayload.completedAt}`,
+          eventAt: completedAt,
+          domainEventId: `occurrence_completed:${updatedOccurrence.id}:${completedAt}`,
           weight: 1,
           metadata: {
             definitionId: updatedOccurrence.definitionId,
