@@ -144,7 +144,7 @@ export function createNavigateViewHandler({
   setTab: (tab: Tab) => void;
   setTabForPath?: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
-}): (event: Event) => void {
+}): (event: Event) => boolean {
   const activatePathTab = setTabForPath ?? setTab;
   const activateTabForPath = (path: string) => {
     const routeTab = tabFromPath(path);
@@ -153,7 +153,7 @@ export function createNavigateViewHandler({
 
   return (event: Event) => {
     const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-    if (!detail) return;
+    if (!detail) return false;
     storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
       setViewLayout?.(null);
@@ -166,7 +166,7 @@ export function createNavigateViewHandler({
       }
       setActiveDesktopTabId(null);
       setTab("chat");
-      return;
+      return true;
     }
     if (detail.action === "split-view" || detail.action === "tile-views") {
       const viewIds = layoutViewIdsForDetail(detail);
@@ -191,18 +191,18 @@ export function createNavigateViewHandler({
       });
       activatePathTab("views");
       navigatePath("/views");
-      return;
+      return true;
     }
     const path = pathForNavigateViewDetail(
       detail,
       availableViewsForDesktopTabs,
     );
-    if (!path) return;
+    if (!path) return false;
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
     if (directTab) {
       setTab(directTab);
-      return;
+      return true;
     }
     if (detail.action === "open-window" && detail.viewId) {
       const entry = desktopEntryForDetail(
@@ -238,7 +238,7 @@ export function createNavigateViewHandler({
           activateTabForPath(viewPath);
           navigatePath(viewPath);
         });
-      return;
+      return true;
     }
     if (detail.viewId) {
       const entry = desktopEntryForDetail(
@@ -252,5 +252,6 @@ export function createNavigateViewHandler({
     }
     activateTabForPath(path);
     navigatePath(path);
+    return true;
   };
 }

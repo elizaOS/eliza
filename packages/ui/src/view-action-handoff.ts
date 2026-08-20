@@ -5,8 +5,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { normalizeCompletedActionHandoffId } from "@elizaos/shared/events";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
+import { dispatchCompletedActionNavigation } from "./completed-action-navigation";
 import { dispatchNavigateViewEvent } from "./events";
 import { getWindowNavigationPath } from "./navigation";
 
@@ -34,6 +36,7 @@ export interface ViewActionHandoff {
   viewPath?: string;
   subview?: string;
   completedActionDelivered?: true;
+  completedActionHandoffId?: string;
 }
 
 function readString(value: unknown): string | undefined {
@@ -65,6 +68,9 @@ export function findViewActionHandoff(
     if ((mode === "show" || mode === "open") && viewId) {
       const viewPath = readString(readOwnValue(values, "viewPath"));
       const subview = readString(readOwnValue(values, "subview"));
+      const completedActionHandoffId = normalizeCompletedActionHandoffId(
+        readOwnValue(values, "completedActionHandoffId"),
+      );
       return {
         viewId,
         ...(viewPath ? { viewPath } : {}),
@@ -72,6 +78,7 @@ export function findViewActionHandoff(
         ...(readOwnValue(values, "completedActionDelivered") === true
           ? { completedActionDelivered: true }
           : {}),
+        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
       };
     }
   }
@@ -248,12 +255,19 @@ export function dispatchViewActionHandoffDirect(
 ): boolean {
   const handoff = findViewActionHandoff(actionResults);
   if (!handoff) return false;
-  dispatch({
+  const detail = {
     viewId: handoff.viewId,
     source: "agent",
     ...(handoff.viewPath ? { viewPath: handoff.viewPath } : {}),
     ...(handoff.subview ? { subview: handoff.subview } : {}),
-  });
+    ...(handoff.completedActionHandoffId
+      ? { completedActionHandoffId: handoff.completedActionHandoffId }
+      : {}),
+  } as const;
+  if (dispatch === dispatchNavigateViewEvent) {
+    return dispatchCompletedActionNavigation(detail);
+  }
+  dispatch(detail);
   return true;
 }
 

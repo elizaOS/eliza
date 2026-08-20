@@ -4,6 +4,7 @@
  * navigation; the post-tool model owns all visible wording.
  */
 
+import { randomUUID } from "node:crypto";
 import type {
 	ActionResult,
 	HandlerCallback,
@@ -377,6 +378,8 @@ interface NavigateResult {
 	subview?: string;
 	/** The server synchronously accepted delivery to the originating renderer. */
 	completedActionDelivered?: true;
+	/** Renderer-observed idempotency key echoed by a supporting server. */
+	completedActionHandoffId?: string;
 }
 
 function navigationEffectReceipt({
@@ -438,6 +441,7 @@ async function navigateToView(
 	navigationLabel = view.label,
 	delivery?: "originating-client" | "completed-action",
 	originatingClientId?: string,
+	completedActionHandoffId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A shell without the navigate route did not accept the requested effect.
@@ -461,6 +465,7 @@ async function navigateToView(
 					...(resolvedSubview ? { subview: resolvedSubview } : {}),
 					...(delivery ? { delivery } : {}),
 					...(originatingClientId ? { clientId: originatingClientId } : {}),
+					...(completedActionHandoffId ? { completedActionHandoffId } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -475,6 +480,17 @@ async function navigateToView(
 				if (!(error instanceof SyntaxError)) throw error;
 				responseBody = null;
 			}
+			const echoedCompletedActionHandoffId =
+				completedActionHandoffId &&
+				typeof responseBody === "object" &&
+				responseBody !== null &&
+				!Array.isArray(responseBody) &&
+				Object.getOwnPropertyDescriptor(
+					responseBody,
+					"completedActionHandoffId",
+				)?.value === completedActionHandoffId
+					? completedActionHandoffId
+					: undefined;
 			return {
 				ok: true,
 				text: navigationEffectReceipt({
@@ -485,8 +501,12 @@ async function navigateToView(
 				}),
 				subview: resolvedSubview,
 				...(delivery === "completed-action" &&
-				confirmsCompletedActionDelivery(responseBody)
+				confirmsCompletedActionDelivery(responseBody) &&
+				(!completedActionHandoffId || echoedCompletedActionHandoffId)
 					? { completedActionDelivered: true as const }
+					: {}),
+				...(echoedCompletedActionHandoffId
+					? { completedActionHandoffId: echoedCompletedActionHandoffId }
 					: {}),
 			};
 		}
@@ -638,17 +658,23 @@ export async function runViewsShow({
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
+	const completedActionDelivery =
+		!isRealtimeVoiceTurn(message) && Boolean(originatingClientId);
+	const completedActionHandoffId = completedActionDelivery
+		? randomUUID()
+		: undefined;
 	const result = await navigateToView(
 		view,
 		viewType,
 		subview ?? undefined,
 		navigationLabel,
-		isRealtimeVoiceTurn(message)
+		!completedActionDelivery && isRealtimeVoiceTurn(message)
 			? "originating-client"
-			: originatingClientId
+			: completedActionDelivery
 				? "completed-action"
 				: undefined,
 		originatingClientId,
+		completedActionHandoffId,
 	);
 
 	logger.info(
@@ -672,6 +698,9 @@ export async function runViewsShow({
 			...(result.subview ? { subview: result.subview } : {}),
 			...(confirmsCompletedActionDelivery(result)
 				? { completedActionDelivered: true }
+				: {}),
+			...(result.completedActionHandoffId
+				? { completedActionHandoffId: result.completedActionHandoffId }
 				: {}),
 		},
 		data: { view, ...(result.subview ? { subview: result.subview } : {}) },

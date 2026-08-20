@@ -409,12 +409,22 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("targets app-chat navigation to the client that sent the turn", async () => {
 			installNavigateCapture();
-			vi.mocked(globalThis.fetch).mockResolvedValue({
-				ok: true,
-				status: 200,
-				text: async () => "",
-				json: async () => ({ ok: true, completedActionDelivered: true }),
-			} as Response);
+			vi.mocked(globalThis.fetch).mockImplementation(async (_url, init) => {
+				const requestBody = JSON.parse(String(init?.body)) as Record<
+					string,
+					unknown
+				>;
+				return {
+					ok: true,
+					status: 200,
+					text: async () => "",
+					json: async () => ({
+						ok: true,
+						completedActionDelivered: true,
+						completedActionHandoffId: requestBody.completedActionHandoffId,
+					}),
+				} as Response;
+			});
 			const action = createViewsAction({
 				client: clientFor(REGISTRY),
 				hasOwnerAccess: vi.fn(async () => true),
@@ -438,11 +448,57 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(lastCall).toBeDefined();
 			if (!lastCall) throw new Error("expected the view navigation request");
 			const [, init] = lastCall;
-			expect(JSON.parse(String(init?.body))).toMatchObject({
+			const requestBody = JSON.parse(String(init?.body)) as Record<
+				string,
+				unknown
+			>;
+			expect(requestBody).toMatchObject({
 				clientId: "seeker-client",
 				delivery: "completed-action",
 			});
-			expect(result?.values).toMatchObject({ completedActionDelivered: true });
+			expect(requestBody.completedActionHandoffId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f-]{27}$/,
+			);
+			expect(result?.values).toMatchObject({
+				completedActionDelivered: true,
+				completedActionHandoffId: requestBody.completedActionHandoffId,
+			});
+		});
+
+		it("keeps terminal fallback enabled when an older server does not echo the handoff id", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockImplementation(async () => {
+				return {
+					ok: true,
+					status: 200,
+					text: async () => "",
+					json: async () => ({
+						ok: true,
+						completedActionDelivered: true,
+					}),
+				} as Response;
+			});
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "older-server-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
 		});
 
 		it("keeps terminal fallback enabled for a malformed success receipt", async () => {

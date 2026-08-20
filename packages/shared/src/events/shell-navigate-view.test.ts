@@ -45,6 +45,7 @@ describe("shell navigate view websocket event", () => {
         layout: "split",
         placement: "right",
         alwaysOnTop: true,
+        completedActionHandoffId: "handoff-1234",
         payload: { permissionRequest: { permission: "microphone" } },
       }),
     ).toEqual({
@@ -59,6 +60,7 @@ describe("shell navigate view websocket event", () => {
       layout: "split",
       placement: "right",
       alwaysOnTop: true,
+      completedActionHandoffId: "handoff-1234",
       payload: { permissionRequest: { permission: "microphone" } },
     });
   });
@@ -72,6 +74,7 @@ describe("shell navigate view websocket event", () => {
           subview: "",
           views: [null, ""],
           alwaysOnTop: "yes",
+          completedActionHandoffId: "spaces are rejected",
         }),
       ),
     ).toEqual({
