@@ -14,6 +14,10 @@ export interface StewardPlatformProvisionUserResult {
   isNew: boolean;
 }
 
+export interface StewardPlatformUserLifecycleResult {
+  userId: string;
+}
+
 type StewardPlatformUserResponse =
   | {
       ok: true;
@@ -103,4 +107,54 @@ export async function provisionStewardPlatformUser(
   });
 
   return { userId, isNew };
+}
+
+async function mutateStewardPlatformUser(
+  userId: string,
+  method: "PATCH" | "DELETE",
+  suffix = "",
+  body?: Record<string, unknown>,
+): Promise<StewardPlatformUserLifecycleResult> {
+  const response = await fetch(
+    `${getStewardApiUrl()}/platform/users/${encodeURIComponent(userId)}${suffix}`,
+    {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Steward-Platform-Key": getStewardPlatformKey(),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  // A replayed purge after Steward already removed the identity is complete,
+  // not an operator-visible failure. Deactivation still treats 404 as an error.
+  if (method === "DELETE" && response.status === 404) {
+    return { userId };
+  }
+  const payload = await readStewardPlatformUserResponse(response);
+  if (!response.ok || !payload.ok) {
+    const message =
+      "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : `Steward user lifecycle request returned ${response.status}`;
+    throw new Error(message);
+  }
+  return { userId };
+}
+
+/** Immediately prevents new Steward sessions while a deletion request waits for purge. */
+export async function deactivateStewardPlatformUser(
+  userId: string,
+): Promise<StewardPlatformUserLifecycleResult> {
+  return await mutateStewardPlatformUser(userId, "PATCH", "/deactivate", {
+    deactivated: true,
+  });
+}
+
+/** Permanently removes the Steward identity after the Cloud retention window. */
+export async function deleteStewardPlatformUser(
+  userId: string,
+): Promise<StewardPlatformUserLifecycleResult> {
+  return await mutateStewardPlatformUser(userId, "DELETE");
 }

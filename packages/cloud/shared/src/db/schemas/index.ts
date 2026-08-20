@@ -12,6 +12,7 @@ export * from "./ad-creatives";
 export * from "./ad-report-shares";
 export * from "./ad-slots";
 export * from "./ad-transactions";
+export * from "./account-deletion-requests";
 export * from "./admin-users";
 export * from "./affiliate-payout-outbox";
 export * from "./affiliates";
