@@ -383,10 +383,7 @@ describe("resolveExternalRendererFacingApiBase", () => {
 
   it("preserves the configured external base without a loopback dev renderer", () => {
     expect(
-      resolveExternalRendererFacingApiBase(
-        {},
-        "https://agent.example.test",
-      ),
+      resolveExternalRendererFacingApiBase({}, "https://agent.example.test"),
     ).toBe("https://agent.example.test");
   });
 });

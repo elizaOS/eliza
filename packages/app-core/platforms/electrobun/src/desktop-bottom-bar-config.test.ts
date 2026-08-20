@@ -232,7 +232,7 @@ describe("desktop bottom-bar config", () => {
     it("keeps the composer width and bottom anchor while making room above for its menu", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "INPUT_MENU")).toEqual({
         x: 760,
-        y: 704,
+        y: 704 - BOTTOM_BAR_BOTTOM_INSET,
         width: 600,
         height: 320,
       });

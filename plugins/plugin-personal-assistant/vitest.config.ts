@@ -174,7 +174,10 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
 const aiEntry = resolveCorePackageEntry("ai");
-const fsExtraEntry = resolveCorePackageEntry("fs-extra");
+const fsExtraEntry = path.join(
+  resolveNodePackageRoot("fs-extra"),
+  "lib/index.js",
+);
 const handlebarsEntry = resolveCorePackageEntry("handlebars");
 const mammothEntry = resolveCorePackageEntry("mammoth");
 const markdownItRoot = resolveCorePackageRoot("markdown-it");

@@ -191,11 +191,14 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     expect(sheetBlackoutProgress(200, 0, 0.4)).toBeCloseTo(0.4, 10);
   });
 
-  it("blends the live sheet surface to the opaque --bg once the drag crosses the half detent", async () => {
+  it("blends a stable compositor child to opaque once the drag crosses the half detent", async () => {
     render(<ChatOverlay controller={makeController()} />);
     const el = grabber();
     const surface = () =>
       screen.getByTestId("chat-sheet-surface") as HTMLElement;
+    const blackout = () =>
+      screen.getByTestId("chat-sheet-blackout") as HTMLElement;
+    const restingSurfaceFill = surface().style.backgroundColor;
 
     const now = vi.spyOn(performance, "now");
     const eventTime = vi
@@ -206,9 +209,8 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     // jsdom viewport: halfH is 353 — drag the thread 500px up, past HALF.
     now.mockReturnValue(400);
     fireEvent.pointerMove(el, { clientY: 300, pointerId: 1 });
-    await waitFor(() =>
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100"),
-    );
+    await waitFor(() => expect(blackout().style.opacity).toBe("1"));
+    expect(surface().style.backgroundColor).toBe(restingSurfaceFill);
     now.mockReturnValue(3000);
     fireEvent.pointerUp(el, { clientY: 300, pointerId: 1 });
     eventTime.mockRestore();
@@ -218,7 +220,8 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     // left it): the blackout holds — no glass re-frost.
     await waitFor(() => {
       expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100");
+      expect(blackout().style.opacity).toBe("1");
+      expect(surface().style.backgroundColor).toBe(restingSurfaceFill);
     });
   });
 });

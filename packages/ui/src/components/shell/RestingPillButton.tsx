@@ -29,7 +29,7 @@ export function RestingPillButton({
       {...props}
       className={cn(
         "pointer-events-auto flex h-1.5 w-12 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-white shadow-none outline-none",
-        "active:scale-95 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+        "active:scale-95",
         className,
       )}
     >
