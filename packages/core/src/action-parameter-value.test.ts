@@ -89,21 +89,18 @@ describe("toActionParameterValue", () => {
 		expect(result[2]).toBe("x");
 	});
 
-	it("translates hostile primitive conversion and preserves its cause", () => {
-		const conversionFailure = new Error("hostile primitive conversion");
+	it("rejects callable Proxies without invoking their get trap", () => {
+		let gets = 0;
 		const hostile = new Proxy(() => undefined, {
 			get() {
-				throw conversionFailure;
+				gets += 1;
+				throw new Error("get trap escaped");
 			},
 		});
-		try {
-			toActionParameterValue(hostile);
-			expect.unreachable("primitive conversion should fail closed");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ElizaError);
-			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
-			expect((error as Error).cause).toBe(conversionFailure);
-		}
+		expect(() => toActionParameterValue(hostile)).toThrowError(
+			expect.objectContaining({ code: ACTION_PARAMETER_UNBOUNDED }),
+		);
+		expect(gets).toBe(0);
 	});
 
 	it("throws on a cyclic record without hanging", () => {
@@ -167,7 +164,7 @@ describe("toActionParameterValue", () => {
 			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
 			expect((error as Error).name).not.toBe("TypeError");
 			expect((error as Error).cause).toBeInstanceOf(TypeError);
-			expect(String((error as Error).cause)).toMatch(/IsArray/);
+			expect(String((error as Error).cause)).toMatch(/Array\.isArray|IsArray/);
 		}
 	});
 

@@ -250,6 +250,11 @@ function toActionParameterValueInner(
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return value;
 	}
+	if (typeof value === "function") {
+		// Functions are not JSON values. String coercion can invoke a callable
+		// Proxy's Symbol.toPrimitive/toString `get` trap, so reject without access.
+		failUnbounded({ invalidType: "function" });
+	}
 	if (!value || typeof value !== "object") {
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return inspectRecord("primitiveToString", () => String(value));
