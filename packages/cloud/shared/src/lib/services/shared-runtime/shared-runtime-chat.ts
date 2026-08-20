@@ -175,6 +175,7 @@ function recordFailedTurnTraceOffPath(
 ): void {
   if (!terminalTiming) return;
   void settleOffResponsePath(executionCtx, async () => {
+    const completedAt = Date.now();
     await recordSharedTurnTrace(
       { insertTrace: (row) => sharedTurnTracesRepository.insertTrace(row) },
       {
@@ -184,7 +185,11 @@ function recordFailedTurnTraceOffPath(
         channelId,
         traceId: terminalTiming.traceId,
         startedAt,
-        latencyMs: Math.max(0, Math.round(terminalTiming.offsets.completedOffsetMs ?? 0)),
+        // The bounded runtime offset can be null when the measurement is
+        // unavailable or rejected. The trace row still has an honest wall
+        // clock duration instead of fabricating a healthy zero-millisecond
+        // failure.
+        latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
         finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
         stages: [{ name: "runtime" }],

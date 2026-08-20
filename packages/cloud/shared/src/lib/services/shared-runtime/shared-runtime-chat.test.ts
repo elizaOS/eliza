@@ -1,13 +1,13 @@
 /**
  * Covers the cache-only shared chat engine across response and SSE boundaries.
  *
- * Real history-store and waitUntil contracts are used; only model and money
- * providers are deterministic seams.
+ * Real history-store and waitUntil contracts are used; model, money, and the
+ * durable trace repository are deterministic seams.
  */
 
 process.env.MOCK_REDIS = "1";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 
 let turn: Record<string, unknown>;
@@ -25,11 +25,51 @@ let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
 let lastTurnRole: "system" | "user" | undefined;
+let turnTimingOutcome: "success" | "error" | null = null;
+let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
+const traceRows: Array<Record<string, unknown>> = [];
+const insertTrace = mock(async (row: Record<string, unknown>) => {
+  traceRows.push(row);
+});
+
+mock.module("../../../db/repositories/shared-turn-traces", () => ({
+  sharedTurnTracesRepository: { insertTrace },
+}));
+
+function timingReceipt(
+  outcome: "success" | "error" | "aborted",
+  completedOffsetMs: number | null = 125,
+) {
+  return {
+    traceId: `trace-${outcome}`,
+    outcome,
+    historyMessageCount: 1,
+    phases: {
+      edgeContextDurationMs: 1,
+      runtimeInitializeDurationMs: 2,
+      connectionDurationMs: 3,
+      historyProjectionDurationMs: 4,
+    },
+    offsets: {
+      providerDispatchOffsetMs: 5,
+      providerFirstTextOffsetMs: outcome === "success" ? 6 : null,
+      completedOffsetMs,
+    },
+    inference: {
+      composeStateDurationMs: 7,
+      shouldRespondAndContextDurationMs: 8,
+      responseHandlerFieldsDurationMs: 9,
+      providerTotalDurationMs: 10,
+      slowestProviderDurationMs: 10,
+    },
+    routing: { decision: "respond" as const, contextIds: ["room"] },
+  };
+}
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -164,12 +204,15 @@ mock.module("./run-shared-agent-turn", () => ({
   runSharedAgentTurn: async (input: {
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
+    onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
     [key: string]: unknown;
   }) => {
     turnCalls++;
     lastTurnRole = input.messageRole;
     lastTurnInput = input;
     turnInputs.push(input);
+    onTurnDispatch?.();
+    if (turnTimingOutcome) input.onRuntimeTiming?.(timingReceipt(turnTimingOutcome, null));
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -409,6 +452,12 @@ beforeEach(() => {
   billingGate = null;
   releaseBilling = () => {};
   streamAbortSignal = undefined;
+  turnTimingOutcome = null;
+  onTurnDispatch = null;
+  traceRows.length = 0;
+  insertTrace.mockClear();
+  delete process.env.SHARED_TURN_TRACES_ENABLED;
+  delete process.env.SHARED_TURN_TRACES_SAMPLE;
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
@@ -524,6 +573,79 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("samples success, error, and abort terminal receipts exactly once without content", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "1";
+    let nowMs = 10_000;
+    const now = spyOn(Date, "now").mockImplementation(() => nowMs);
+    const assertOnlyReceipt = (outcome: "success" | "error" | "aborted") => {
+      expect(insertTrace).toHaveBeenCalledTimes(1);
+      expect(traceRows).toHaveLength(1);
+      const row = traceRows[0] as {
+        latency_ms: number;
+        stages: { terminalTiming?: { outcome?: string } };
+      };
+      expect(row.stages.terminalTiming?.outcome).toBe(outcome);
+      expect(JSON.stringify(row)).not.toContain("hello");
+      return row;
+    };
+
+    try {
+      turnTimingOutcome = "success";
+      const successHarness = harness();
+      await new SharedRuntimeChatService().bridge(agent, rpc, successHarness);
+      await Promise.all(successHarness.background);
+      assertOnlyReceipt("success");
+
+      traceRows.length = 0;
+      insertTrace.mockClear();
+      turnTimingOutcome = "error";
+      turnError = wrappedProviderError(503);
+      onTurnDispatch = () => {
+        nowMs += 137;
+      };
+      const errorHarness = harness();
+      await expect(new SharedRuntimeChatService().bridge(agent, rpc, errorHarness)).rejects.toThrow(
+        "shared turn failed",
+      );
+      await Promise.all(errorHarness.background);
+      expect(assertOnlyReceipt("error").latency_ms).toBe(137);
+
+      traceRows.length = 0;
+      insertTrace.mockClear();
+      turnTimingOutcome = null;
+      turnError = null;
+      onTurnDispatch = null;
+      let releaseStream = () => {};
+      const streamGate = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+      streamTurn = {
+        degraded: false,
+        cancel: async () => {
+          const emitTiming = lastStreamTurnInput?.onRuntimeTiming as
+            | ((receipt: ReturnType<typeof timingReceipt>) => void)
+            | undefined;
+          emitTiming?.(timingReceipt("aborted"));
+          releaseStream();
+        },
+        parts: (async function* () {
+          yield { type: "text-delta", text: "partial" };
+          await streamGate;
+        })(),
+      };
+      const abortHarness = harness();
+      const response = await new SharedRuntimeChatService().stream(agent, rpc, abortHarness);
+      const reader = response.body!.getReader();
+      await reader.read();
+      await reader.cancel("test abort");
+      await Promise.all(abortHarness.background);
+      assertOnlyReceipt("aborted");
+    } finally {
+      now.mockRestore();
+    }
   });
 
   test("platform-funded personal Shared rate-limits without touching account credits", async () => {
