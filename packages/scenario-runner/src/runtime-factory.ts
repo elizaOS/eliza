@@ -20,6 +20,8 @@ import {
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
+  type DeterministicModelDiagnostics,
+  type DeterministicModelFixtureRegistry,
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
@@ -28,6 +30,7 @@ import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
   pluginPackageIsRegistered,
@@ -873,14 +876,21 @@ export async function createScenarioRuntime(
         "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
     }
+    // Undeclared scenarios retain the pre-manifest resolver during the staged
+    // corpus migration. Any explicit declaration is strict and fail-closed.
+    let modelFixtureMode: ScenarioModelFixtureMode = "legacy-fallback";
     const deterministicModelPlugin = createDeterministicModelPlugin({
-      resolve: resolveScenarioDeterministicModelCall,
+      resolve: (call) =>
+        modelFixtureMode === "legacy-fallback"
+          ? resolveScenarioDeterministicModelCall(call)
+          : null,
     });
     await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
-      scenarioModelFixtures?: unknown;
+      scenarioModelFixtures?: DeterministicModelFixtureRegistry;
       assertScenarioModelFixturesConsumed?: () => void;
-      getScenarioModelFixtureDiagnostics?: () => unknown;
+      getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
+      setScenarioModelFixtureMode?: (mode: ScenarioModelFixtureMode) => void;
     };
     runtimeWithScenarioFixtures.scenarioModelFixtures =
       deterministicModelPlugin.fixtures;
@@ -888,6 +898,9 @@ export async function createScenarioRuntime(
       deterministicModelPlugin.assertFixturesConsumed;
     runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
       deterministicModelPlugin.getFixtureDiagnostics;
+    runtimeWithScenarioFixtures.setScenarioModelFixtureMode = (mode) => {
+      modelFixtureMode = mode;
+    };
     logger.info(
       "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
     );
