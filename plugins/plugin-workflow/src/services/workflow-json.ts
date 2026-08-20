@@ -3,6 +3,7 @@
  * untrusted graphs without invoking accessors or prototypes and accounts for
  * their exact serialized UTF-8 size before Drizzle or worker serialization.
  */
+import { types as utilTypes } from 'node:util';
 import { WorkflowApiError } from '../types/index';
 
 /** Nesting ceiling. Honest workflow records are a handful of objects deep. */
@@ -136,6 +137,12 @@ function cloneJsonValue(
   }
   if (typeof value === 'bigint') {
     failUnbounded('Workflow JSON may not contain bigint values');
+  }
+
+  // Proxy reflection can execute caller-controlled traps even when no property
+  // value is read. Reject before the first reflective operation.
+  if (utilTypes.isProxy(value)) {
+    failUnbounded('Workflow JSON may not contain proxies');
   }
 
   if (context.ancestors.has(value)) {

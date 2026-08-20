@@ -84,6 +84,9 @@ function normalizeWorkflow(
   fallbackActive: boolean
 ): WorkflowDefinition {
   const snapshot = cloneJson(workflow);
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new WorkflowApiError('Workflow definition must be an object', 400);
+  }
   if (typeof snapshot.source !== 'string') {
     throw new WorkflowApiError('Workflow source is required', 400);
   }
@@ -299,19 +302,23 @@ export class EmbeddedWorkflowService extends Service {
   ): Promise<void> {
     await this.getDb()
       .insert(workflowRevisions)
-      .values({
-        agentId: this.tenantId,
-        id: randomUUID(),
-        workflowId: id,
-        versionId: stored.versionId,
-        name: stored.workflow.name,
-        active: stored.workflow.active === true,
-        workflow: cloneJson(stored.workflow),
-        createdAt: stored.createdAt,
-        updatedAt: stored.updatedAt,
-        capturedAt: nowIso(),
-        operation,
-      });
+      .values(this.revisionValues(id, stored, operation));
+  }
+
+  private revisionValues(id: string, stored: StoredWorkflow, operation: WorkflowRevisionOperation) {
+    return {
+      agentId: this.tenantId,
+      id: randomUUID(),
+      workflowId: id,
+      versionId: stored.versionId,
+      name: stored.workflow.name,
+      active: stored.workflow.active === true,
+      workflow: cloneJson(stored.workflow),
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
+      capturedAt: nowIso(),
+      operation,
+    };
   }
 
   async createWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
@@ -350,17 +357,25 @@ export class EmbeddedWorkflowService extends Service {
     const updatedAt = nowIso();
     const versionId = randomUUID();
     const normalized = normalizeWorkflow(workflow, id, current.workflow.active === true);
-    await this.captureRevision(id, current, revisionOperation);
-    await this.getDb()
-      .update(embeddedWorkflows)
-      .set({
-        name: normalized.name,
-        active: normalized.active === true,
-        workflow: normalized,
-        updatedAt,
-        versionId,
-      })
-      .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)));
+    await this.getDb().transaction(async (transaction) => {
+      await transaction
+        .insert(workflowRevisions)
+        .values(this.revisionValues(id, current, revisionOperation));
+      const updatedRows = await transaction
+        .update(embeddedWorkflows)
+        .set({
+          name: normalized.name,
+          active: normalized.active === true,
+          workflow: normalized,
+          updatedAt,
+          versionId,
+        })
+        .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)))
+        .returning({ id: embeddedWorkflows.id });
+      if (updatedRows.length !== 1) {
+        throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
+      }
+    });
     const response = responseFromStored({
       workflow: normalized,
       createdAt: current.createdAt,

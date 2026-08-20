@@ -107,6 +107,10 @@ afterEach(async () => {
 describe('embedded native workflow lifecycle', () => {
   test('snapshots required fields before reads or persistence', async () => {
     const { service } = await harness();
+    await expect(
+      service.createWorkflow(null as unknown as WorkflowDefinition)
+    ).rejects.toMatchObject({ statusCode: 400 });
+
     let sourceReads = 0;
     const unsafe = definition('Unsafe source');
     Object.defineProperty(unsafe, 'source', {
@@ -158,6 +162,32 @@ describe('embedded native workflow lifecycle', () => {
 
     const updated = await service.updateWorkflow(created.id, definition('Valid next update'));
     expect(updated.name).toBe('Valid next update');
+    expect((await service.listWorkflowRevisions(created.id)).data).toHaveLength(1);
+  });
+
+  test('rolls back revision capture when the workflow update fails', async () => {
+    const { service, client } = await harness();
+    const created = await service.createWorkflow({ ...definition('Original'), id: 'atomic' });
+    await client.exec(`
+      ALTER TABLE workflow.embedded_workflows
+      ADD CONSTRAINT reject_failed_update CHECK (name <> 'Rejected update');
+    `);
+
+    await expect(
+      service.updateWorkflow(created.id, definition('Rejected update'))
+    ).rejects.toThrow();
+    expect((await service.getWorkflow(created.id)).name).toBe('Original');
+    expect(
+      (
+        await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM workflow.workflow_revisions WHERE workflow_id = $1',
+          [created.id]
+        )
+      ).rows[0]?.count
+    ).toBe(0);
+
+    const updated = await service.updateWorkflow(created.id, definition('Valid after rollback'));
+    expect(updated.name).toBe('Valid after rollback');
     expect((await service.listWorkflowRevisions(created.id)).data).toHaveLength(1);
   });
 
