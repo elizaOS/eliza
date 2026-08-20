@@ -5,7 +5,11 @@
 
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { closeDownloadWriter, writeDownloadChunk } from "./download-writer.ts";
+import {
+	closeDownloadWriter,
+	teardownFailedDownload,
+	writeDownloadChunk,
+} from "./download-writer.ts";
 
 class GatedWriter extends Writable {
 	writeCallback: ((error?: Error | null) => void) | undefined;
@@ -31,6 +35,25 @@ class FailingWriter extends Writable {
 		callback: (error?: Error | null) => void,
 	): void {
 		callback(new Error("disk write failed"));
+	}
+}
+
+class GatedDestroyWriter extends Writable {
+	destroyCallback: ((error?: Error | null) => void) | undefined;
+
+	override _write(
+		_chunk: Buffer,
+		_encoding: BufferEncoding,
+		callback: (error?: Error | null) => void,
+	): void {
+		callback();
+	}
+
+	override _destroy(
+		_error: Error | null,
+		callback: (error?: Error | null) => void,
+	): void {
+		this.destroyCallback = callback;
 	}
 }
 
@@ -85,5 +108,31 @@ describe("abort-aware model download writer", () => {
 		await closed;
 		expect(writer.destroyed).toBe(true);
 		expect(writer.closed).toBe(true);
+	});
+
+	it("cancels the reader and closes the writer before removing a partial", async () => {
+		const events: string[] = [];
+		const reader = {
+			cancel: async () => {
+				events.push("reader-cancelled");
+			},
+		};
+		const writer = new GatedDestroyWriter();
+		writer.once("close", () => events.push("writer-closed"));
+		const teardown = teardownFailedDownload({
+			reader,
+			writer,
+			removePartial: () => events.push("partial-removed"),
+		});
+		await Promise.resolve();
+		expect(events).toEqual(["reader-cancelled"]);
+		expect(writer.destroyCallback).toBeTypeOf("function");
+		writer.destroyCallback?.();
+		await teardown;
+		expect(events).toEqual([
+			"reader-cancelled",
+			"writer-closed",
+			"partial-removed",
+		]);
 	});
 });

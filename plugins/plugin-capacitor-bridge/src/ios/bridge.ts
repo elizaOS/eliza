@@ -46,6 +46,7 @@ import {
 } from "@elizaos/shared/transcripts";
 import {
 	closeDownloadWriter,
+	teardownFailedDownload,
 	writeDownloadChunk,
 } from "../shared/download-writer.ts";
 import {
@@ -3228,15 +3229,13 @@ async function runNativeModelDownload(
 			error: failure instanceof Error ? failure.message : String(failure),
 		});
 		try {
-			await reader?.cancel();
+			await teardownFailedDownload({
+				reader,
+				writer,
+				removePartial: () => rmSync(partialPath, { force: true }),
+			});
 		} catch {
-			// error-policy:J6 best-effort teardown of the failed response stream.
-		}
-		writer?.destroy();
-		try {
-			rmSync(partialPath, { force: true });
-		} catch {
-			// error-policy:J6 best-effort teardown of the failed partial file.
+			// error-policy:J6 best-effort teardown after preserving the download failure.
 		}
 		throw failure;
 	} finally {

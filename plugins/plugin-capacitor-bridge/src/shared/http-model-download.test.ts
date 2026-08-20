@@ -58,7 +58,7 @@ afterEach(async () => {
 
 describe("downloadHttpModel", () => {
 	it("allows a progressive transfer to outlive one idle window", async () => {
-		const chunks = ["one", "two", "three", "four", "five"];
+		const chunks = Array.from({ length: 25 }, (_, index) => `chunk-${index};`);
 		const { url } = await listen((_request, response) => {
 			let index = 0;
 			const interval = setInterval(() => {
@@ -68,7 +68,7 @@ describe("downloadHttpModel", () => {
 					clearInterval(interval);
 					response.end();
 				}
-			}, 60);
+			}, 50);
 		});
 		const target = paths();
 
@@ -76,11 +76,11 @@ describe("downloadHttpModel", () => {
 			url,
 			...target,
 			label: "slow model",
-			idleTimeoutMs: 150,
-			totalTimeoutMs: 2_000,
+			idleTimeoutMs: 1_000,
+			totalTimeoutMs: 5_000,
 		});
 
-		expect(bytes).toBe(19);
+		expect(bytes).toBe(Buffer.byteLength(chunks.join("")));
 		expect(readFileSync(target.finalPath, "utf8")).toBe(chunks.join(""));
 		expect(existsSync(target.stagingPath)).toBe(false);
 	});

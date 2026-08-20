@@ -5,6 +5,16 @@
 
 import type { Writable } from "node:stream";
 
+interface CancelableDownloadReader {
+	cancel(reason?: unknown): Promise<unknown>;
+}
+
+interface FailedDownloadTeardownOptions {
+	reader?: CancelableDownloadReader;
+	writer?: Writable;
+	removePartial(): void;
+}
+
 function abortReason(signal: AbortSignal): Error {
 	return signal.reason instanceof Error
 		? signal.reason
@@ -120,4 +130,32 @@ export function closeDownloadWriter(
 			settle(error instanceof Error ? error : new Error(String(error)));
 		}
 	});
+}
+
+function destroyDownloadWriter(writer: Writable): Promise<void> {
+	if (writer.closed) return Promise.resolve();
+	return new Promise((resolve) => {
+		const onError = (): void => {
+			// The original download failure remains authoritative while destroy
+			// drains any follow-up stream error through the close boundary.
+		};
+		writer.on("error", onError);
+		writer.once("close", () => {
+			writer.off("error", onError);
+			resolve();
+		});
+		writer.destroy();
+	});
+}
+
+export async function teardownFailedDownload({
+	reader,
+	writer,
+	removePartial,
+}: FailedDownloadTeardownOptions): Promise<void> {
+	await Promise.allSettled([
+		reader?.cancel(),
+		writer ? destroyDownloadWriter(writer) : undefined,
+	]);
+	removePartial();
 }
