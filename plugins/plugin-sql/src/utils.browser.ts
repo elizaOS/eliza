@@ -17,6 +17,7 @@ export function resolvePgliteDir(_dir?: string, _fallbackDir?: string): string {
 
 export {
   MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_NODES,
   SQL_JSON_SANITIZE_UNBOUNDED,
   sanitizeJsonObject,
 } from "./sanitize-json.ts";

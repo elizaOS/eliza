@@ -83,6 +83,7 @@ import {
   validateQueryEntitiesPagination,
   type World,
 } from "@elizaos/core";
+import { sanitizeJsonObject } from "./sanitize-json";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
   if (bio == null) return [];
@@ -2990,7 +2991,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       try {
         // Sanitize JSON body to prevent Unicode escape sequence errors
-        const sanitizedBody = this.sanitizeJsonObject(params.body);
+        const sanitizedBody = sanitizeJsonObject(params.body);
 
         // Serialize to JSON string first for an additional layer of protection
         // This ensures any problematic characters are properly escaped during JSON serialization
@@ -3022,68 +3023,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
     });
-  }
-
-  /**
-   * Sanitizes a JSON object for jsonb storage: strips NUL characters (which
-   * PostgreSQL/PGlite jsonb rejects as the `\u0000` escape) and breaks
-   * circular references.
-   *
-   * WHY nothing else is rewritten: the sanitized value is serialized with
-   * JSON.stringify, which already escapes backslashes and control characters
-   * correctly. This function used to ALSO double every backslash not followed
-   * by ["\/bfnrtu] and mangle non-hex `\u` sequences, so a body value like
-   * "C:\Users" was stored (and read back) as "C:\\Users" — silent data
-   * corruption of any string containing a backslash.
-   *
-   * @param value - The value to sanitize
-   * @returns The sanitized value
-   */
-  private sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-    if (value === null || value === undefined) {
-      return value;
-    }
-
-    if (typeof value === "string") {
-      return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
-    }
-
-    if (typeof value === "bigint") {
-      return value.toString();
-    }
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    if (value instanceof Date) {
-      return Number.isFinite(value.getTime()) ? value.toISOString() : null;
-    }
-
-    if (typeof value === "object") {
-      if (seen.has(value as object)) {
-        return null;
-      } else {
-        seen.add(value as object);
-      }
-
-      if (Array.isArray(value)) {
-        return value.map((item) => this.sanitizeJsonObject(item, seen));
-      } else {
-        const result: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(value)) {
-          // Also sanitize object keys
-          const sanitizedKey =
-            typeof key === "string"
-              ? key.replace(new RegExp(String.fromCharCode(0), "g"), "")
-              : key;
-          result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
-        }
-        return result;
-      }
-    }
-
-    return value;
   }
 
   /**

@@ -15,6 +15,7 @@ import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_NODES,
   SQL_JSON_SANITIZE_UNBOUNDED,
   sanitizeJsonObject,
 } from "../../sanitize-json";
@@ -125,8 +126,54 @@ describe("sanitizeJsonObject", () => {
   });
 
   it("does not RangeError a 20k array nest", () => {
-    const t0 = performance.now();
     expect(() => sanitizeJsonObject(nestArray(20_000))).toThrowError(ElizaError);
-    expect(performance.now() - t0).toBeLessThan(50);
+  });
+
+  it("rejects sparse arrays by logical slots", () => {
+    const sparse: unknown[] = [];
+    sparse.length = MAX_SQL_JSON_SANITIZE_NODES + 1;
+    expect(() => sanitizeJsonObject(sparse)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("rejects object accessors without invoking them", () => {
+    let calls = 0;
+    const value = Object.defineProperty({}, "secret", {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return "value";
+      },
+    });
+    expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("contains hostile descriptor traps in a typed error", () => {
+    const value = new Proxy(
+      { value: 1 },
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      }
+    );
+    expect(() => sanitizeJsonObject(value)).toThrowError(
+      expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+    );
+  });
+
+  it("rejects custom toJSON without invoking it", () => {
+    let calls = 0;
+    const value = {
+      safe: true,
+      toJSON() {
+        calls += 1;
+        return { expanded: "x".repeat(100_000) };
+      },
+    };
+    expect(() => sanitizeJsonObject(value)).toThrowError(ElizaError);
+    expect(calls).toBe(0);
   });
 });

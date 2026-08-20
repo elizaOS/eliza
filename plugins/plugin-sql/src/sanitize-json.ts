@@ -10,14 +10,22 @@ import { ElizaError } from "@elizaos/core";
 
 /** Nesting ceiling. Honest log/memory bodies are a handful of objects deep. */
 export const MAX_SQL_JSON_SANITIZE_DEPTH = 64;
+/** Logical values copied into one jsonb bind before the write fails closed. */
+export const MAX_SQL_JSON_SANITIZE_NODES = 10_000;
 export const SQL_JSON_SANITIZE_UNBOUNDED = "SQL_JSON_SANITIZE_UNBOUNDED";
 
-function failUnbounded(context: Record<string, unknown>): never {
-  throw new ElizaError(`sql json sanitize exceeds ${MAX_SQL_JSON_SANITIZE_DEPTH} nesting depth`, {
+function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
+  throw new ElizaError("sql json sanitize exceeded its safe structural budget", {
     code: SQL_JSON_SANITIZE_UNBOUNDED,
     context,
+    cause,
     severity: "fatal",
   });
+}
+
+interface SanitizeContext {
+  seen: WeakSet<object>;
+  visits: number;
 }
 
 /**
@@ -26,11 +34,22 @@ function failUnbounded(context: Record<string, unknown>): never {
  */
 export function sanitizeJsonObject(
   value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-  depth = 0
+  seen: WeakSet<object> = new WeakSet<object>()
 ): unknown {
+  return sanitizeJsonValue(value, { seen, visits: 0 }, 0);
+}
+
+function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: number): unknown {
   if (depth > MAX_SQL_JSON_SANITIZE_DEPTH) {
     failUnbounded({ depth, max: MAX_SQL_JSON_SANITIZE_DEPTH });
+  }
+
+  context.visits += 1;
+  if (context.visits > MAX_SQL_JSON_SANITIZE_NODES) {
+    failUnbounded({
+      visits: context.visits,
+      max: MAX_SQL_JSON_SANITIZE_NODES,
+    });
   }
 
   if (value === null || value === undefined) {
@@ -55,27 +74,65 @@ export function sanitizeJsonObject(
     return Number.isFinite(value) ? value : null;
   }
 
-  if (value instanceof Date) {
-    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
-  }
-
   if (typeof value === "object") {
-    if (seen.has(value as object)) {
+    if (context.seen.has(value)) {
       return null;
     }
-    seen.add(value as object);
+    context.seen.add(value);
 
-    if (Array.isArray(value)) {
-      return value.map((item) => sanitizeJsonObject(item, seen, depth + 1));
-    }
+    try {
+      if (value instanceof Date) {
+        const timestamp = Date.prototype.getTime.call(value);
+        return Number.isFinite(timestamp) ? Date.prototype.toISOString.call(value) : null;
+      }
 
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
-      const sanitizedKey =
-        typeof key === "string" ? key.replace(new RegExp(String.fromCharCode(0), "g"), "") : key;
-      result[sanitizedKey] = sanitizeJsonObject(val, seen, depth + 1);
+      if (Array.isArray(value)) {
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+        const length = lengthDescriptor?.value;
+        if (
+          !Number.isSafeInteger(length) ||
+          length < 0 ||
+          length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
+        ) {
+          failUnbounded({
+            reason: "array-length",
+            length: typeof length === "number" ? length : "invalid",
+            max: MAX_SQL_JSON_SANITIZE_NODES,
+          });
+        }
+        const result: unknown[] = [];
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+          if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+            failUnbounded({ reason: "array-accessor", index });
+          }
+          result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
+        }
+        return result;
+      }
+
+      const result: Record<string, unknown> = {};
+      for (const key in value) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor?.enumerable) continue;
+        if ("get" in descriptor || "set" in descriptor) {
+          failUnbounded({ reason: "object-accessor" });
+        }
+        const sanitizedKey = key.replace(new RegExp(String.fromCharCode(0), "g"), "");
+        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
+        if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
+          failUnbounded({ reason: "custom-toJSON" });
+        }
+        result[sanitizedKey] = sanitizedValue;
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof ElizaError && error.code === SQL_JSON_SANITIZE_UNBOUNDED) {
+        throw error;
+      }
+      // error-policy:J2 reflection failures are wrapped without leaking input.
+      failUnbounded({ reason: "reflection" }, error);
     }
-    return result;
   }
 
   return value;
