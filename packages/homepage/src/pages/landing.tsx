@@ -100,19 +100,19 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 };
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
-const INITIAL_RENDERED_ITEMS = 4;
-const USER_KEYSTROKE_MS = 28;
-const HUMAN_REPLY_BASE_MS = 650;
-const HUMAN_REPLY_PER_CHARACTER_MS = 14;
-const HUMAN_REPLY_MAX_MS = 1_250;
-const ELIZA_TYPING_MS = 360;
-const BEAT_PAUSE_MS = 180;
-const PRE_USER_MS = 500;
-const PRE_ELIZA_MS = 120;
-const PRE_CARD_MS = 240;
-const SEND_HOLD_MS = 240;
-const SCENARIO_READING_HOLD_MS = 5_500;
-const SCENARIO_SWITCH_MS = 320;
+const USER_KEYSTROKE_MS = 38;
+const HUMAN_REPLY_BASE_MS = 1_100;
+const HUMAN_REPLY_PER_CHARACTER_MS = 18;
+const HUMAN_REPLY_MAX_MS = 1_900;
+const ELIZA_TYPING_MS = 480;
+const BEAT_PAUSE_MS = 300;
+const PRE_USER_MS = 650;
+const PRE_ELIZA_MS = 180;
+const PRE_CARD_MS = 360;
+const SEND_HOLD_MS = 300;
+const SCENARIO_OPENING_PAUSE_MS = 600;
+const SCENARIO_READING_HOLD_MS = 7_500;
+const SCENARIO_SWITCH_MS = 500;
 
 function humanReplyDelay(text: string): number {
   return Math.min(
@@ -281,9 +281,7 @@ function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
   const [scenarioIndex, setScenarioIndex] = useState(0);
-  const [items, setItems] = useState<DemoItem[]>(() =>
-    scenarioItems(DEMO_SCENARIOS[0], 0).slice(0, INITIAL_RENDERED_ITEMS),
-  );
+  const [items, setItems] = useState<DemoItem[]>([]);
   const [phase, setPhase] = useState<"playing" | "settled" | "switching">(
     "playing",
   );
@@ -318,7 +316,7 @@ function PhoneMockup() {
     ) => {
       for (const [index, step] of steps.entries()) {
         if (cancelled) return;
-        const id = activeScenarioIndex * 100 + INITIAL_RENDERED_ITEMS + index;
+        const id = activeScenarioIndex * 100 + index;
         const nextStep = steps[index + 1];
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
@@ -400,12 +398,7 @@ function PhoneMockup() {
             await sleep(SCENARIO_SWITCH_MS);
             if (cancelled) return;
             setScenarioIndex(index);
-            setItems(
-              scenarioItems(nextScenario, index).slice(
-                0,
-                INITIAL_RENDERED_ITEMS,
-              ),
-            );
+            setItems([]);
             setVisitedScenarioIds((previous) =>
               previous.includes(nextScenario.id)
                 ? previous
@@ -413,7 +406,9 @@ function PhoneMockup() {
             );
             setPhase("playing");
           }
-          await play(nextScenario.steps.slice(INITIAL_RENDERED_ITEMS), index);
+          await sleep(SCENARIO_OPENING_PAUSE_MS);
+          if (cancelled) return;
+          await play(nextScenario.steps, index);
           if (cancelled) return;
           setPhase("settled");
           await sleep(SCENARIO_READING_HOLD_MS);

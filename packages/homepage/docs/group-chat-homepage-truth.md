@@ -19,8 +19,11 @@ what still needs connector-by-connector runtime proof.
   apparent decision, so the demo shows how Eliza keeps a plan coherent as the
   conversation changes instead of jumping straight to a terminal answer.
 - A permissioned connected-capability moment when the card names its source:
-  shared calendars, public web results, room-only memory, or a reminder the
-  speaking user explicitly requested.
+  shared calendars, public web results, room-only memory, or personal reminders
+  the speaking user has already allowed.
+- Proactive assistance after ordinary human conversation. People should not
+  need to narrate setup or prompt Eliza to compare, search, remember, or update
+  an already-approved personal reminder.
 
 The demo must remain illustrative, use fictional names, and keep every Eliza
 statement inside the declared capability contract enforced by
@@ -58,8 +61,9 @@ data must never be the punchline.
   it; the UI must never imply that one participant granted access for another.
 - Long-term memory is scoped to the named room, begins with an explicit save,
   and stays inspectable, correctable, and removable.
-- Reminder examples act only for the person who requested them unless every
-  affected participant separately opts in.
+- Reminder examples act only for the named person whose existing permission is
+  shown in the source line. Eliza never creates or changes reminders for other
+  participants unless each affected person separately opts in.
 - Public web results show freshness and remain suggestions, not silent booking
   or purchasing actions.
 

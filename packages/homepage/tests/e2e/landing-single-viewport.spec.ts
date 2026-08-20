@@ -84,6 +84,20 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+test("opens an empty room and flows in the first message", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-messages", "0");
+  await expect(phone).toHaveAttribute("data-demo-typing", "Maya", {
+    timeout: 2_000,
+  });
+  await expect(
+    page.getByText("dinner this weekend?", { exact: true }),
+  ).toBeVisible({ timeout: 4_000 });
+});
+
 test("human replies show the participant's iOS typing indicator", async ({
   page,
 }) => {
@@ -93,7 +107,7 @@ test("human replies show the participant's iOS typing indicator", async ({
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
-    timeout: 5_000,
+    timeout: 15_000,
   });
 
   const indicator = page.locator('[data-demo-typing-indicator="Jamie"]');
@@ -112,7 +126,7 @@ test("human replies show the participant's iOS typing indicator", async ({
   );
 
   await expect(phone).toHaveAttribute("data-demo-typing", "", {
-    timeout: 3_000,
+    timeout: 4_000,
   });
   await expect(page.getByText("7:30 works", { exact: true })).toBeVisible();
 });
@@ -126,7 +140,7 @@ test("concurrent human replies share one compact typing row", async ({
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-typing", "Maya,Leo", {
-    timeout: 8_000,
+    timeout: 20_000,
   });
 
   const indicator = page.locator('[data-demo-typing-indicator="Maya and Leo"]');
@@ -154,14 +168,14 @@ test("concurrent human replies share one compact typing row", async ({
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(230_000);
+  test.setTimeout(300_000);
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
-    timeout: 210_000,
+    timeout: 280_000,
   });
   await expect(phone).toHaveAttribute("data-demo-scenario", "friends", {
     timeout: 5_000,

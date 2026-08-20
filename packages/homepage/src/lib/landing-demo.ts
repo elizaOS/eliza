@@ -224,13 +224,13 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
     members: ["Maya", "Leo", "Priya", "Jamie"],
     steps: [
       { kind: "member", name: "Maya", text: "dinner this weekend?" },
-      { kind: "user", text: "compare the calendars we shared?" },
-      { kind: "member", name: "Leo", text: "mine is connected" },
-      { kind: "member", name: "Priya", text: "mine too" },
+      { kind: "user", text: "I'm in" },
+      { kind: "member", name: "Leo", text: "same" },
+      { kind: "member", name: "Priya", text: "quiet place, ideally outside" },
       {
         capability: "connected-calendar",
         kind: "eliza",
-        text: "Four shared calendars overlap Saturday after 7. Jamie still needs to answer.",
+        text: "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
       },
       {
         capability: "connected-calendar",
@@ -295,11 +295,11 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         text: "Noe works if there are vegetarian options",
       },
       { kind: "member", name: "Jamie", text: "good with me, I'll be 10 late" },
-      { kind: "user", text: "who can get there first for a table?" },
+      { kind: "user", text: "I won't get there before 7:30" },
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "No objections, so Noe is set. Priya needs vegetarian options, Jamie arrives around 7:40, and the early arrival can get the table.",
+        text: "Noe is set. Priya needs vegetarian options, Jamie arrives around 7:40, and an early arrival for the table is the only thing left.",
       },
       { kind: "member", name: "Maya", text: "I can get there by 7:20" },
       {
@@ -344,7 +344,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
       },
       { kind: "user", text: "I can cover Friday pickup" },
       { kind: "member", name: "Nina", text: "blue backpack is packed" },
-      { kind: "user", text: "which adult has soccer Saturday?" },
+      { kind: "user", text: "soccer is Saturday morning" },
       {
         capability: "connected-calendar",
         kind: "eliza",
@@ -436,11 +436,11 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         text: "yes. consensus. unsettling.",
       },
       {
-        capability: "conversation-memory",
+        capability: "scheduled-reminder",
         kind: "eliza",
-        text: "Nina packs the inhaler Thursday, and you verify it Friday. What time should I nudge you?",
+        text: "Nina packs the inhaler Thursday; you verify it Friday. Your existing 4:30 handoff reminder now includes that check.",
       },
-      { kind: "user", text: "Friday at 4:30" },
+      { kind: "user", text: "great. that's one less text." },
       {
         kind: "member",
         name: "Nina",
@@ -449,7 +449,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
       {
         capability: "scheduled-reminder",
         kind: "eliza",
-        text: "Reminder set for Friday at 4:30 to verify the inhaler. Nobody needs to text anyone twice.",
+        text: "Friday's 4:30 reminder now includes the inhaler check. Nobody needs to text anyone twice.",
       },
       {
         capability: "scheduled-reminder",
@@ -464,7 +464,10 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
             "Cleats · Stay in the car",
             "Backpack · Already packed",
           ],
-          source: { kind: "reminder", label: "Your reminders · allowed" },
+          source: {
+            kind: "reminder",
+            label: "Your reminders · already allowed",
+          },
           status: "One reminder, zero follow-ups",
         },
       },
@@ -477,13 +480,13 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
     members: ["Noor", "Eli", "Jules"],
     steps: [
       { kind: "member", name: "Noor", text: "we're low on coffee" },
-      { kind: "user", text: "I'll get coffee—save oat milk as our default" },
+      { kind: "user", text: "I'll get coffee; we always buy oat milk" },
       { kind: "member", name: "Eli", text: "recycling is out" },
       { kind: "member", name: "Jules", text: "laundry is still running" },
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "Coffee is yours. I saved oat milk as this household's default. Eli did recycling; laundry is still open.",
+        text: "Coffee is yours. Oat milk stays the household default. Eli did recycling; laundry is still open.",
       },
       {
         capability: "room-memory",
@@ -554,11 +557,11 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         name: "Noor",
         text: "I can shop if we keep the list short",
       },
-      { kind: "user", text: "same pasta night list as last time" },
+      { kind: "user", text: "pasta tonight" },
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "This household's saved pasta night list is pasta, tomatoes, parmesan, and oat milk. Noor, still okay?",
+        text: "The household's usual pasta night list is pasta, tomatoes, parmesan, and oat milk. Noor, that keeps your trip to four items.",
       },
       { kind: "member", name: "Eli", text: "that's the full list" },
       { kind: "member", name: "Noor", text: "four things, still easy" },
@@ -667,7 +670,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         name: "Samira",
         text: "the apartment isn't ready until 3",
       },
-      { kind: "user", text: "check transit and bag storage nearby?" },
+      { kind: "user", text: "we need somewhere for bags until 3" },
       {
         kind: "member",
         name: "Theo",
@@ -678,8 +681,8 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         kind: "eliza",
         text: "Public listings show a staffed luggage desk two blocks away, open until 9. The airport train is running normally.",
       },
-      { kind: "member", name: "Emi", text: "then lunch nearby?" },
-      { kind: "member", name: "Samira", text: "yes, nothing chosen yet" },
+      { kind: "member", name: "Emi", text: "lunch nearby would be easiest" },
+      { kind: "member", name: "Samira", text: "nothing chosen yet" },
       {
         capability: "public-web-search",
         kind: "eliza",
@@ -789,11 +792,14 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         name: "Dev",
         text: "then the seedlings need an extra soak Saturday",
       },
-      { kind: "user", text: "I can do that—ping me Saturday morning" },
       {
-        capability: "conversation-memory",
+        kind: "user",
+        text: "I can do that; Saturday mornings are when I forget",
+      },
+      {
+        capability: "scheduled-reminder",
         kind: "eliza",
-        text: "Saturday now covers the west bed and an extra seedling soak, without adding another trip.",
+        text: "Saturday now covers the west bed and an extra seedling soak. Your usual Saturday reminder now includes both.",
       },
       {
         kind: "member",
@@ -808,7 +814,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
       {
         capability: "scheduled-reminder",
         kind: "eliza",
-        text: "Saturday morning reminder set. Rosa checks mulch Tuesday, Tasha stages the hose, and you handle both heat-prep jobs.",
+        text: "Saturday's reminder now covers the west bed and seedlings. Rosa checks mulch Tuesday; Tasha stages the hose.",
       },
       {
         capability: "scheduled-reminder",
@@ -823,7 +829,10 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
             "Sat · West bed + seedlings",
             "Owner Saturday · You",
           ],
-          source: { kind: "reminder", label: "Your reminders · allowed" },
+          source: {
+            kind: "reminder",
+            label: "Your reminders · already allowed",
+          },
           status: "Saturday reminder set",
         },
       },

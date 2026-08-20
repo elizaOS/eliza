@@ -162,6 +162,16 @@ describe("landing Shared-agent capability contract", () => {
     expect(new Set(allText).size).toBe(allText.length);
   });
 
+  test("lets people talk normally instead of prompting Eliza's plumbing", () => {
+    const humanCopy = LANDING_DEMO.flatMap((step) =>
+      step.kind === "user" || step.kind === "member" ? [step.text] : [],
+    ).join(" ");
+
+    expect(humanCopy).not.toMatch(
+      /compare the calendars|mine is connected|check transit|ping me|save oat milk/i,
+    );
+  });
+
   test.each([
     [
       "I'm here to save you time and take things off your plate. Should we start with your email?",

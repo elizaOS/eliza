@@ -75,7 +75,7 @@ test("reduced motion renders the settled friends room without category labels", 
     .locator(".landing-bubble--eliza")
     .allTextContents();
   expect(assistantMessages).toContain(
-    "Four shared calendars overlap Saturday after 7. Jamie still needs to answer.",
+    "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
   );
   await expect(
     page.locator('[data-demo-source="calendar"]').first(),
