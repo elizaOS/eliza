@@ -104,6 +104,7 @@ export interface MyRuntimesSectionProps {
     accessToken?: string;
   }) => void | Promise<void>;
   busy?: boolean;
+  pairingDisabledReason?: string;
   className?: string;
 }
 
@@ -137,6 +138,7 @@ export function MyRuntimesSection({
   onAddSshHost,
   onAddRemote,
   busy = false,
+  pairingDisabledReason,
   className,
 }: MyRuntimesSectionProps) {
   const [pairOpen, setPairOpen] = useState(false);
@@ -266,7 +268,10 @@ export function MyRuntimesSection({
     <SettingsStack data-testid="devices-and-runtimes" className={className}>
       <SettingsGroup
         title="Linked devices"
-        description="Use your phone or another computer to control your Eliza agents. Eliza Cloud connects approved devices privately; no Tailscale account is required."
+        description={
+          pairingDisabledReason ??
+          "Use your phone or another computer to control your Eliza agents. Eliza Cloud connects approved devices privately; no Tailscale account is required."
+        }
         action={
           <Button
             type="button"

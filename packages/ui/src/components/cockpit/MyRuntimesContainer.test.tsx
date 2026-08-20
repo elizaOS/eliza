@@ -5,10 +5,15 @@
 // the agent-profile registry and the non-destructive re-point mocked, covering
 // both the trusted switch and the untrusted-remote refusal. Deterministic
 // RTL/jsdom; the registry + re-point are vi mocks, not real state.
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  peekPendingRemotePairingCode,
+  queueRemotePairingDeepLink,
+  takePendingRemotePairingCode,
+} from "../../platform/remote-pairing-deep-link";
 import type { AgentProfile } from "../../state/agent-profile-types";
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   revokeCloudRemoteHost: vi.fn(),
   revokeCloudRemoteSession: vi.fn(),
   listCloudRemoteSessions: vi.fn(async () => []),
+  consumeCloudRemotePairing: vi.fn(),
+  getOrCreateControllerPublicIdentity: vi.fn(),
   // The container only reads `ok` + `reason`; type the mock to the subset it
   // consumes so both success and the untrusted-remote case are assignable.
   switchRuntimeNonDestructive: vi.fn((): { ok: boolean; reason?: string } => ({
@@ -32,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
   isStoreBuild: vi.fn(() => false),
   isAndroidCloudBuild: vi.fn(() => false),
+  isAuthenticated: vi.fn(() => true),
 }));
 
 vi.mock("../../state", () => ({
@@ -50,11 +58,16 @@ vi.mock("../../platform/ssh-runtime", () => ({
   startSshRuntime: mocks.startSshRuntime,
   stopSshRuntime: mocks.stopSshRuntime,
 }));
+vi.mock("../../platform/remote-controller-identity", () => ({
+  getOrCreateControllerPublicIdentity:
+    mocks.getOrCreateControllerPublicIdentity,
+}));
 vi.mock("../../api", () => ({
   client: {
     revokeCloudRemoteHost: mocks.revokeCloudRemoteHost,
     revokeCloudRemoteSession: mocks.revokeCloudRemoteSession,
     listCloudRemoteSessions: mocks.listCloudRemoteSessions,
+    consumeCloudRemotePairing: mocks.consumeCloudRemotePairing,
   },
 }));
 vi.mock("../../state/runtime-url-trust", () => ({
@@ -65,6 +78,9 @@ vi.mock("../../build-variant", () => ({
 }));
 vi.mock("../../platform/android-runtime", () => ({
   isAndroidCloudBuild: mocks.isAndroidCloudBuild,
+}));
+vi.mock("../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => mocks.isAuthenticated(),
 }));
 
 import {
@@ -93,7 +109,10 @@ const REG = {
   profiles: PROFILES,
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  takePendingRemotePairingCode();
+});
 
 describe("MyRuntimesContainer", () => {
   beforeEach(() => {
@@ -103,12 +122,33 @@ describe("MyRuntimesContainer", () => {
     mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(true);
     mocks.isStoreBuild.mockReturnValue(false);
     mocks.isAndroidCloudBuild.mockReturnValue(false);
+    mocks.isAuthenticated.mockReturnValue(true);
     mocks.addAgentProfile.mockReturnValue({
       id: "new-1",
       label: "Laptop",
       kind: "remote",
       apiBase: "http://100.72.1.9:3000",
       createdAt: "2026-06-30T00:00:00.000Z",
+    });
+    mocks.consumeCloudRemotePairing.mockResolvedValue({
+      ownerId: "owner-1",
+      sessionId: "23766030-0000-0000-0000-000000000000",
+      hostId: "host-1",
+      targetDisplayName: "My Mac",
+      targetIdentity: {
+        keyId: "host-key-1",
+        signingPublicKeyJwk: { kty: "EC" },
+        encryptionPublicKeyJwk: { kty: "EC" },
+      },
+    });
+    mocks.getOrCreateControllerPublicIdentity.mockResolvedValue({
+      deviceId: "iphone-1",
+      displayName: "iPhone",
+      platform: "ios",
+      keyId: "phone-key-1",
+      signingPublicKeyJwk: { kty: "EC" },
+      encryptionPublicKeyJwk: { kty: "EC" },
+      createdAt: Date.UTC(2026, 7, 20),
     });
     localStorage.clear();
   });
@@ -206,6 +246,44 @@ describe("MyRuntimesContainer", () => {
     render(<MyRuntimesContainer />);
     expect(screen.getByTestId("runtime-local-1")).toBeTruthy();
     expect(screen.getByTestId("runtime-local-1-active")).toBeTruthy();
+  });
+
+  it("gates pairing behind the required Eliza Cloud sign-in", () => {
+    mocks.isAuthenticated.mockReturnValue(false);
+    render(<MyRuntimesContainer />);
+    expect(
+      screen.getByText(/Sign in to Eliza Cloud to link this device/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Enter code" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Link device" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("keeps a scanned code queued until auth succeeds, then redeems it once", async () => {
+    mocks.isAuthenticated.mockReturnValue(false);
+    expect(queueRemotePairingDeepLink("elizaos://pair?code=482731")).toBe(true);
+    const view = render(<MyRuntimesContainer />);
+    expect(mocks.consumeCloudRemotePairing).not.toHaveBeenCalled();
+    expect(peekPendingRemotePairingCode()).toBe("482731");
+
+    mocks.isAuthenticated.mockReturnValue(true);
+    view.rerender(<MyRuntimesContainer />);
+    await waitFor(() =>
+      expect(mocks.consumeCloudRemotePairing).toHaveBeenCalledWith(
+        "482731",
+        expect.any(Object),
+      ),
+    );
+    await waitFor(() => expect(peekPendingRemotePairingCode()).toBeNull());
+    expect(mocks.addAgentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "My Mac",
+        apiBase: "eliza-remote://session/23766030-0000-0000-0000-000000000000",
+      }),
+      { activate: false },
+    );
   });
 
   it("refuses switching to local when gated, and does not call the switch", async () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearPendingRemotePairingCode,
+  peekPendingRemotePairingCode,
   queueRemotePairingDeepLink,
   takePendingRemotePairingCode,
 } from "./remote-pairing-deep-link";
@@ -23,5 +25,15 @@ describe("remote pairing QR deep links", () => {
     expect(
       queueRemotePairingDeepLink("elizaos://pair?session=bad&code=482731"),
     ).toBe(false);
+  });
+
+  it("keeps a code queued through auth and clears only the redeemed value", () => {
+    expect(queueRemotePairingDeepLink("elizaos://pair?code=482731")).toBe(true);
+    expect(peekPendingRemotePairingCode()).toBe("482731");
+    expect(peekPendingRemotePairingCode()).toBe("482731");
+    expect(clearPendingRemotePairingCode("111111")).toBe(false);
+    expect(peekPendingRemotePairingCode()).toBe("482731");
+    expect(clearPendingRemotePairingCode("482731")).toBe(true);
+    expect(peekPendingRemotePairingCode()).toBeNull();
   });
 });

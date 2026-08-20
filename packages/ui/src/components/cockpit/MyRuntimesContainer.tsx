@@ -6,11 +6,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { client } from "../../api";
 import { isStoreBuild } from "../../build-variant";
+import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getOrCreateControllerPublicIdentity } from "../../platform/remote-controller-identity";
 import {
+  clearPendingRemotePairingCode,
+  peekPendingRemotePairingCode,
   REMOTE_PAIRING_DEEP_LINK_EVENT,
-  takePendingRemotePairingCode,
 } from "../../platform/remote-pairing-deep-link";
 import {
   deleteRuntimeCredential,
@@ -85,6 +87,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<LinkedElizaDevice[]>([]);
+  const isAuthenticated = useIsAuthenticated();
 
   // On a store / android-cloud build the on-device local runtime isn't a real
   // option (no local code execution) — hide it and refuse switching to it, so
@@ -324,12 +327,16 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   useEffect(() => {
     let redeeming = false;
     const redeemPending = () => {
-      const code = takePendingRemotePairingCode();
+      if (!isAuthenticated) return;
+      const code = peekPendingRemotePairingCode();
       if (!code || redeeming) return;
       redeeming = true;
       setBusy(true);
       setError(null);
       void onRedeemPairing(code)
+        .then(() => {
+          clearPendingRemotePairingCode(code);
+        })
         .catch((cause: unknown) => {
           setError(
             cause instanceof Error
@@ -352,7 +359,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         REMOTE_PAIRING_DEEP_LINK_EVENT,
         redeemPending,
       );
-  }, [onRedeemPairing]);
+  }, [isAuthenticated, onRedeemPairing]);
 
   const onRevokeDevice = useCallback(
     async (sessionId: string) => {
@@ -488,8 +495,15 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         devices={devices}
         onSwitch={onSwitch}
         onRemoveRuntime={onRemoveRuntime}
-        onCreatePairing={hideLocal ? undefined : onCreatePairing}
-        onRedeemPairing={onRedeemPairing}
+        onCreatePairing={
+          hideLocal || !isAuthenticated ? undefined : onCreatePairing
+        }
+        onRedeemPairing={isAuthenticated ? onRedeemPairing : undefined}
+        pairingDisabledReason={
+          isAuthenticated
+            ? undefined
+            : "Sign in to Eliza Cloud to link this device. Scanned pairing codes wait securely until sign-in finishes."
+        }
         onRevokeDevice={onRevokeDevice}
         onAddSshHost={hideLocal ? undefined : onAddSshHost}
         onAddRemote={onAddRemote}

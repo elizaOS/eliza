@@ -29,3 +29,18 @@ export function takePendingRemotePairingCode(): string | null {
   pendingCode = null;
   return code;
 }
+
+/** Inspect the queued code without consuming it while Cloud auth is pending. */
+export function peekPendingRemotePairingCode(): string | null {
+  return pendingCode;
+}
+
+/**
+ * Clear only the code that was successfully redeemed. A second QR arriving
+ * while the first request is in flight must remain queued for its own redeem.
+ */
+export function clearPendingRemotePairingCode(code: string): boolean {
+  if (pendingCode !== code) return false;
+  pendingCode = null;
+  return true;
+}
