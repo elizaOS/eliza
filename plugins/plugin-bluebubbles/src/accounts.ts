@@ -299,24 +299,24 @@ export function resolveBlueBubblesAccount(
 	const configured = Boolean(serverUrl && password);
 	const webhookPath = allowOwnerBind
 		? (accountConfig.webhookPath ??
-				multiConfig.webhookPath ??
-				getStringSetting(runtime, "BLUEBUBBLES_WEBHOOK_PATH") ??
-				undefined)
+			multiConfig.webhookPath ??
+			getStringSetting(runtime, "BLUEBUBBLES_WEBHOOK_PATH") ??
+			undefined)
 		: accountConfig.webhookPath;
 	const autoStartCommand = allowOwnerBind
 		? (accountConfig.autoStartCommand ??
-				multiConfig.autoStartCommand ??
-				getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND"))
+			multiConfig.autoStartCommand ??
+			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND"))
 		: accountConfig.autoStartCommand;
 	const autoStartArgs = allowOwnerBind
 		? (accountConfig.autoStartArgs ??
-				multiConfig.autoStartArgs ??
-				envAutoStartArgs)
+			multiConfig.autoStartArgs ??
+			envAutoStartArgs)
 		: accountConfig.autoStartArgs;
 	const autoStartCwd = allowOwnerBind
 		? (accountConfig.autoStartCwd ??
-				multiConfig.autoStartCwd ??
-				getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_CWD"))
+			multiConfig.autoStartCwd ??
+			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_CWD"))
 		: accountConfig.autoStartCwd;
 	const autoStartWaitMs =
 		accountConfig.autoStartWaitMs ??

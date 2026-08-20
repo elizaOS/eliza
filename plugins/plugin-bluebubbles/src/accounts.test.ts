@@ -48,7 +48,14 @@ describe("resolveBlueBubblesAccount owner-bind fail-closed", () => {
 
 	it("does not give a ghost accountId the owner server URL or password", () => {
 		const rt = createRuntime(
-			{ accounts: { work: { serverUrl: "http://work.example:1234", password: "work-secret" } } },
+			{
+				accounts: {
+					work: {
+						serverUrl: "http://work.example:1234",
+						password: "work-secret",
+					},
+				},
+			},
 			ownerEnv,
 		);
 		const ghost = resolveBlueBubblesAccount(rt, "ghost-account");
@@ -59,7 +66,10 @@ describe("resolveBlueBubblesAccount owner-bind fail-closed", () => {
 	});
 
 	it("does not let a named account without its own creds inherit env identity", () => {
-		const rt = createRuntime({ accounts: { work: { enabled: true } } }, ownerEnv);
+		const rt = createRuntime(
+			{ accounts: { work: { enabled: true } } },
+			ownerEnv,
+		);
 		const work = resolveBlueBubblesAccount(rt, "work");
 		expect(work.accountId).toBe("work");
 		expect(work.serverUrl).toBe("");
