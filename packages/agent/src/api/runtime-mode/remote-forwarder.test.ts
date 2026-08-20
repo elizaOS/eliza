@@ -10,9 +10,33 @@
 import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,
+  buildRemoteTargetUrl,
   redactPushTokenRequestUrl,
   shouldForwardToRemoteTarget,
 } from "./remote-forwarder.ts";
+
+describe("buildRemoteTargetUrl", () => {
+  test("keeps the configured origin for absolute-form request targets", () => {
+    const target = buildRemoteTargetUrl(
+      "https://attacker.invalid/api/cloud/login?next=1",
+      "http://127.0.0.1:31337",
+    );
+
+    expect(target.origin).toBe("http://127.0.0.1:31337");
+    expect(target.pathname).toBe("/api/cloud/login");
+    expect(target.search).toBe("?next=1");
+  });
+
+  test("treats a double-slash pathname as a path, not a network-path reference", () => {
+    const target = buildRemoteTargetUrl(
+      "http://controller.invalid//attacker.invalid/api/cloud/login",
+      "https://target.local:8443",
+    );
+
+    expect(target.origin).toBe("https://target.local:8443");
+    expect(target.pathname).toBe("//attacker.invalid/api/cloud/login");
+  });
+});
 
 test("legacy push-token URLs are redacted before agent diagnostics", () => {
   expect(
