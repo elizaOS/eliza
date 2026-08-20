@@ -208,8 +208,10 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 				/(?<![\p{L}])acab(?:o|amos)\s+de\s+(?:crear|guardar|programar|añadir|agregar|configurar|actualizar|eliminar|borrar|cancelar|apuntar|anotar|registrar|agendar)/giu,
 				// First-person preterite is unambiguous by conjugation: "guardé", "programé"
 				/(?<![\p{L}])(?:guardé|creé|programé|agregué|añadí|configuré|actualicé|eliminé|borré|cancelé|anoté|registré|agendé|apunté)(?![\p{L}])/giu,
-				// "tu recordatorio está programado", "queda guardado", "está listo"
-				/(?<![\p{L}])(?:est[áa]n?|queda(?:n|ron)?|qued[óo])\s+(?:ya\s+)?(?:guardad|programad|cread|configurad|agendad|anotad|registrad|list)[oa]s?(?![\p{L}])/giu,
+				// "tu recordatorio está programado", "queda guardado". Vague
+				// readiness ("quedó listo", like English "is ready") is left to
+				// the model's semantic replyEffectStatus classification.
+				/(?<![\p{L}])(?:est[áa]n?|queda(?:n|ron)?|qued[óo])\s+(?:ya\s+)?(?:guardad|programad|cread|configurad|agendad|anotad|registrad)[oa]s?(?![\p{L}])/giu,
 				// Participle-first openers: "Listo —", "Guardado."
 				/(?:^|[.!?。！？\n]\s*)(?:listo|hecho|guardado|creado|agendado|programado|añadido|agregado)\s*[.!…—–:-]/giu,
 			],
