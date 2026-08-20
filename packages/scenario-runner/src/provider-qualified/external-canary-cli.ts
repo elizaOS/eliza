@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -25,7 +25,7 @@ import {
 } from "./operator-authorization.ts";
 import {
   renderProviderQualificationMarkdown,
-  writeProviderQualificationOutputExclusive,
+  writeProviderQualificationOutputIntoReservedDirectory,
 } from "./qualification-cli.ts";
 
 export const EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA =
@@ -315,56 +315,76 @@ export async function executeExternalProviderCanaryFromConfig(
     operationInput,
     failureProbes,
   });
+  const outputDir = resolveFrom(baseDir, config.outputDir);
+  mkdirSync(outputDir, { recursive: false, mode: 0o700 });
+  let outputWritten = false;
   const loadOperatorModule =
     dependencies.loadOperatorModule ??
     loadPinnedExternalProviderCapabilityModule;
-  const module = await loadOperatorModule(
-    resolveFrom(baseDir, config.operatorModuleFile),
-    config.operatorModuleSha256,
-  );
-  const operatorCapabilities =
-    await module.createExternalProviderCanaryCapabilities({
-      scenarioId: scenario.id,
+  try {
+    const module = await loadOperatorModule(
+      resolveFrom(baseDir, config.operatorModuleFile),
+      config.operatorModuleSha256,
+    );
+    const operatorCapabilities =
+      await module.createExternalProviderCanaryCapabilities({
+        scenarioId: scenario.id,
+        operationKind: config.operationKind,
+        runId: preflight.authorization.manifest.run.runId,
+        manifestSha256: preflight.authorization.manifest.manifestSha256,
+      });
+    const result = await executeExternalProviderCanary({
+      scenario,
+      authorization,
+      pinnedManifestAuthorityPublicKeysPem: authorityPins,
       operationKind: config.operationKind,
-      runId: preflight.authorization.manifest.run.runId,
-      manifestSha256: preflight.authorization.manifest.manifestSha256,
-    });
-  const result = await executeExternalProviderCanary({
-    scenario,
-    authorization,
-    pinnedManifestAuthorityPublicKeysPem: authorityPins,
-    operationKind: config.operationKind,
-    providerTarget,
-    operationInput,
-    failureProbes,
-    pinnedObserverPublicKeysPem: readPublicKeys(
-      baseDir,
-      config.observerPublicKeyFiles,
-    ),
-    pinnedSemanticJudgePublicKeysPem: readPublicKeys(
-      baseDir,
-      config.semanticJudgePublicKeyFiles,
-    ),
-    capabilities: {
-      ...operatorCapabilities,
-      publisher: {
-        async publish(artifact) {
-          writeProviderQualificationOutputExclusive(
-            resolveFrom(baseDir, config.outputDir),
-            artifact,
-          );
+      providerTarget,
+      operationInput,
+      failureProbes,
+      pinnedObserverPublicKeysPem: readPublicKeys(
+        baseDir,
+        config.observerPublicKeyFiles,
+      ),
+      pinnedSemanticJudgePublicKeysPem: readPublicKeys(
+        baseDir,
+        config.semanticJudgePublicKeyFiles,
+      ),
+      capabilities: {
+        ...operatorCapabilities,
+        publisher: {
+          async publish(artifact) {
+            writeProviderQualificationOutputIntoReservedDirectory(
+              outputDir,
+              artifact,
+            );
+            outputWritten = true;
+          },
         },
       },
-    },
-    ...(config.maxSignatureAgeMs === undefined
-      ? {}
-      : { maxSignatureAgeMs: config.maxSignatureAgeMs }),
-    ...(config.maxClockSkewMs === undefined
-      ? {}
-      : { maxClockSkewMs: config.maxClockSkewMs }),
-  });
-  process.stdout.write(renderProviderQualificationMarkdown(result.artifact));
-  return 0;
+      ...(config.maxSignatureAgeMs === undefined
+        ? {}
+        : { maxSignatureAgeMs: config.maxSignatureAgeMs }),
+      ...(config.maxClockSkewMs === undefined
+        ? {}
+        : { maxClockSkewMs: config.maxClockSkewMs }),
+    });
+    process.stdout.write(renderProviderQualificationMarkdown(result.artifact));
+    return 0;
+  } catch (error) {
+    if (!outputWritten) {
+      try {
+        rmdirSync(outputDir);
+      } catch (cleanupError) {
+        // error-policy:J2 A dirty reservation is security-relevant and retains
+        // both the execution and local cleanup failures for the operator.
+        throw new AggregateError(
+          [error, cleanupError],
+          "external provider-canary execution failed and its output reservation could not be removed",
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 export async function runExternalProviderCanaryCli(

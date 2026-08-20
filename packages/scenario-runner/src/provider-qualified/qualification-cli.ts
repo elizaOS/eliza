@@ -347,6 +347,14 @@ export function writeProviderQualificationOutputExclusive(
   artifact: ProviderQualificationArtifact,
 ): void {
   mkdirSync(outputDir, { recursive: false, mode: 0o700 });
+  writeProviderQualificationOutputIntoReservedDirectory(outputDir, artifact);
+}
+
+/** Write a capsule into an empty directory atomically reserved by a caller. */
+export function writeProviderQualificationOutputIntoReservedDirectory(
+  outputDir: string,
+  artifact: ProviderQualificationArtifact,
+): void {
   const jsonTemporary = path.join(outputDir, ".qualification.json.tmp");
   const markdownTemporary = path.join(outputDir, ".qualification.md.tmp");
   writeFileSync(jsonTemporary, `${JSON.stringify(artifact, null, 2)}\n`, {
