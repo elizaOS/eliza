@@ -31,7 +31,6 @@ import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
 import { scrubPersistedAgentProfileTokens } from "../state/agent-profiles";
 import { loadPersistedActiveServer } from "../state/persistence";
-import { isPrivateNetworkHost } from "../state/private-network-host";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 
@@ -74,8 +73,7 @@ const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 // that window before declaring the backend unreachable, so a boot race doesn't
 // strand the user on the failure screen until the next 5-minute poll. A genuine
 // down backend still resolves to `server_unavailable` after the budget; a 401
-// is authoritative in the activated hook. The startup prime has one narrower
-// private-runtime exception documented at `primeAuthStatusProbe`.
+// is authoritative and never retried.
 const SERVER_UNAVAILABLE_RETRIES = 10;
 const SERVER_UNAVAILABLE_RETRY_MS = 1000;
 const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
@@ -96,10 +94,8 @@ function publishAuthStatus(state: AuthStatusState): void {
   }
 }
 
-async function authMeWithRejectedBearerRecovery(
-  initialResult?: Awaited<ReturnType<typeof authMe>>,
-) {
-  const result = initialResult ?? (await authMe());
+async function authMeWithRejectedBearerRecovery() {
+  const result = await authMe();
   if (result.ok || result.status !== 401 || result.access?.mode !== "remote") {
     return result;
   }
@@ -115,25 +111,6 @@ async function authMeWithRejectedBearerRecovery(
   setBootConfig({ ...getBootConfig(), apiToken: undefined });
   scrubRejectedActiveServerCredential(apiToken);
   return authMe();
-}
-
-function shouldDeferPrimedPrivateRuntimeRejection(
-  result: Awaited<ReturnType<typeof authMe>>,
-): boolean {
-  if (result.ok || result.status !== 401 || result.access?.mode !== "remote") {
-    return false;
-  }
-  if (!getBootConfig().apiToken?.trim()) return false;
-
-  const activeServer = loadPersistedActiveServer();
-  if (activeServer?.kind !== "remote" || !activeServer.apiBase) return false;
-  try {
-    return isPrivateNetworkHost(new URL(activeServer.apiBase).hostname);
-  } catch {
-    // error-policy:J3 an unparseable target cannot qualify for the private
-    // runtime startup grace path, so normal fail-closed rejection owns it.
-    return false;
-  }
 }
 
 async function fetchAuthStatus(): Promise<void> {
@@ -200,12 +177,13 @@ async function fetchAuthStatus(): Promise<void> {
  * overlaps the backend polling/hydration phases instead of serializing after
  * the shell becomes paintable (App.tsx's `useAuthStatus` skips until then).
  *
- * Only outcomes stable across the boot race are published into the shared
- * snapshot. Authenticated and ordinary unauthenticated results are stable. A
- * 503/unreachable result and the first bearer-backed 401 from a private remote
- * runtime are discarded because its listener can bind before startup restores
- * auth authority. The hook's activation fetch re-probes after startup; a
- * repeated 401 then follows the normal credential-scrub and login contract.
+ * Only the two outcomes that are stable across the boot race are published
+ * into the shared snapshot: `authenticated` and `unauthenticated` (a 401 is
+ * authoritative). A 503/unreachable outcome is discarded — the backend may
+ * legitimately still be binding mid-boot, and publishing `server_unavailable`
+ * from here would flash the startup-failure screen for a backend that comes
+ * up moments later. The hook's activation fetch re-probes with the full
+ * 10×1s retry budget in that case, exactly as before priming existed.
  *
  * Fire-and-forget and single-shot: repeat calls, an in-flight real fetch, or
  * an already-resolved snapshot make it a no-op.
@@ -215,19 +193,7 @@ export function primeAuthStatusProbe(): void {
   if (authStatusSnapshot.phase !== "loading") return;
   const probeEpoch = authStatusEpoch;
   authStatusPrime = (async () => {
-    const firstResult = await authMe();
-    if (probeEpoch !== authStatusEpoch) return;
-    // A private runtime can bind its listener before bearer/session authority
-    // finishes restoring. Do not erase a persisted device credential from that
-    // one boot-overlap response: activation will re-probe after startup. A
-    // second 401 still takes the ordinary scrub + unauthenticated path.
-    if (shouldDeferPrimedPrivateRuntimeRejection(firstResult)) return;
-    const result =
-      firstResult.ok ||
-      firstResult.status !== 401 ||
-      firstResult.access?.mode !== "remote"
-        ? firstResult
-        : await authMeWithRejectedBearerRecovery(firstResult);
+    const result = await authMeWithRejectedBearerRecovery();
     if (probeEpoch !== authStatusEpoch) return;
     // A real fetch started (or a state was published) while the prime was in
     // flight — that path owns the snapshot; drop the primed result.
