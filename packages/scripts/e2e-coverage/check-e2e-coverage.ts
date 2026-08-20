@@ -28,10 +28,25 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildPluginCoverage, type PluginCoverage } from "./inventory.ts";
+import {
+  buildSyntheticWorldInventory,
+  discoverRuntimeSurfaces,
+  evaluateSyntheticWorldDrift,
+  loadSyntheticWorldManifest,
+  type SyntheticWorldDrift,
+} from "./synthetic-world-inventory.ts";
 
 const BASELINE_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "keyless-e2e-baseline.json",
+);
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const SYNTHETIC_WORLD_MANIFEST_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "synthetic-world-manifest.json",
 );
 
 interface Baseline {
@@ -46,6 +61,8 @@ export interface CoverageGateResult {
   /** Baseline entries that no longer have a surface / no longer exist. */
   staleMissing: string[];
   ok: boolean;
+  /** Canonical all-surface drift gate introduced by #22897. */
+  syntheticWorld?: SyntheticWorldDrift;
 }
 
 export function loadBaseline(): Baseline {
@@ -76,7 +93,7 @@ export function evaluateCoverage(
   const staleMissing: string[] = [];
   for (const dir of baseline.knownUncovered) {
     const entry = surfaceByDir.get(dir);
-    if (!entry || !entry.hasSurface) {
+    if (!entry?.hasSurface) {
       staleMissing.push(dir);
       continue;
     }
@@ -110,10 +127,31 @@ function main(): number {
   }
 
   const baseline = loadBaseline();
-  const result = evaluateCoverage(coverage, baseline);
+  const legacyResult = evaluateCoverage(coverage, baseline);
+  const registrations = discoverRuntimeSurfaces(REPO_ROOT);
+  const syntheticWorldManifest = loadSyntheticWorldManifest(
+    SYNTHETIC_WORLD_MANIFEST_PATH,
+  );
+  const syntheticWorld = evaluateSyntheticWorldDrift(
+    registrations,
+    syntheticWorldManifest,
+    REPO_ROOT,
+  );
+  const result: CoverageGateResult = {
+    ...legacyResult,
+    syntheticWorld,
+    ok: legacyResult.ok && syntheticWorld.ok,
+  };
 
   if (args.includes("--json")) {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    const inventory = buildSyntheticWorldInventory(
+      REPO_ROOT,
+      syntheticWorldManifest,
+      new Date().toISOString(),
+    );
+    process.stdout.write(
+      `${JSON.stringify({ ...result, inventory }, null, 2)}\n`,
+    );
     return result.ok ? 0 : 1;
   }
 
@@ -122,7 +160,7 @@ function main(): number {
       (c) => c.hasSurface && c.hasKeylessE2e,
     ).length;
     process.stdout.write(
-      `[e2e-coverage] OK — ${covered} surface plugin(s) have keyless e2e; ${baseline.knownUncovered.length} baselined as uncovered.\n`,
+      `[e2e-coverage] OK — canonical inventory has ${registrations.length} registered surface(s) with explicit dispositions; ${covered} legacy action/connector plugin(s) have keyless e2e; ${baseline.knownUncovered.length} legacy gaps remain baselined.\n`,
     );
     return 0;
   }
@@ -141,6 +179,28 @@ function main(): number {
     process.stderr.write(
       `[e2e-coverage] FAIL — ${result.staleMissing.length} baselined plugin(s) no longer expose a surface or no longer exist; remove them from keyless-e2e-baseline.json:\n  ${result.staleMissing.join("\n  ")}\n`,
     );
+  }
+  if (!syntheticWorld.ok) {
+    if (syntheticWorld.newlyUncovered.length > 0) {
+      process.stderr.write(
+        `[synthetic-world] FAIL — ${syntheticWorld.newlyUncovered.length} newly registered surface(s) have no explicit disposition:\n  ${syntheticWorld.newlyUncovered.join("\n  ")}\nAdd executable boundary evidence or a reviewed, written status; never regenerate the baseline merely to silence drift.\n`,
+      );
+    }
+    if (syntheticWorld.stale.length > 0) {
+      process.stderr.write(
+        `[synthetic-world] FAIL — ${syntheticWorld.stale.length} stale disposition(s) must be removed (the baseline may only shrink):\n  ${syntheticWorld.stale.join("\n  ")}\n`,
+      );
+    }
+    if (syntheticWorld.invalid.length > 0) {
+      process.stderr.write(
+        `[synthetic-world] FAIL — ${syntheticWorld.invalid.length} invalid disposition(s) lack a written reason or executable boundary signal:\n  ${syntheticWorld.invalid.join("\n  ")}\n`,
+      );
+    }
+    if (syntheticWorld.omittedPackages.length > 0) {
+      process.stderr.write(
+        `[synthetic-world] FAIL — ${syntheticWorld.omittedPackages.length} maintained plugin manifest(s) have no discoverable production TypeScript entrypoint:\n  ${syntheticWorld.omittedPackages.join("\n  ")}\nDeclare an eliza-source export or a root/src index entry; packages may not disappear from the inventory silently.\n`,
+      );
+    }
   }
   return 1;
 }

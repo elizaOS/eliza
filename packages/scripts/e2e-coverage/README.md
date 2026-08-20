@@ -1,7 +1,53 @@
-# e2e coverage gates
+# Synthetic-world and e2e coverage gates
 
-Two complementary coverage gates live in this directory. Both read real source
-statically (no runtime boot) and share `inventory.ts`.
+The canonical #22897 gate inventories every production-registered runtime
+surface and gives every row an explicit synthetic-world disposition. The two
+older #8801/#8802 projections remain available for compatibility.
+
+## Canonical synthetic-world inventory (#22897)
+
+`synthetic-world-inventory.ts` uses the TypeScript compiler graph to follow
+real plugin registration objects through imports, factories, arrays, and
+spreads. It inventories actions and promoted subactions, providers, services,
+evaluators, event handlers, routes, views, model handlers, connector ingress
+and egress, scheduled workers, queues, native bridges, and deployable Cloud
+services. Cloud routes come from the generated production router plus explicit
+manual Hono mounts; a dead `route.ts` file that is not mounted does not count.
+
+Every discovered row must exist in `synthetic-world-manifest.json` with exactly
+one status: `covered`, `exempt`, `platform-deferred`,
+`provider-qualified-only`, or `unsupported-product`, and a written reason.
+Covered rows additionally require an existing executable artifact and a
+boundary-specific signal found in that artifact. This prevents unit shape tests
+from being reported as E2E proof. Mock-only evidence remains `simulated`; it is
+never promoted to provider qualification.
+
+The manifest is an exact per-surface ratchet. A new registration fails CI, a
+removed registration makes its disposition stale, and a covered artifact whose
+signal disappears becomes invalid. `generate-synthetic-world-manifest.ts` is a
+review-only bootstrap aid and refuses to write without
+`--bootstrap-reviewed-baseline`; do not use it to silence drift.
+
+The machine report records owner, package, source, platform requirements,
+external dependencies, mock fidelity, reset support, deterministic and
+live-model scenario IDs, Cloud E2E cells, evidence class, workstream, status,
+and reason. Its summaries group gaps by owner, dependency, scenario lane, and
+mock-world workstream.
+
+```bash
+bun run audit:e2e-coverage
+bun run audit:e2e-coverage -- --json
+bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
+bun test packages/scripts/e2e-coverage/synthetic-world-inventory.test.ts
+```
+
+The report writer preserves the #8802 files and additionally writes
+`synthetic-world-inventory.json` and `SYNTHETIC_WORLD.md`. Root `bun run verify`
+runs the canonical drift gate.
+
+## Compatibility contracts (#8801 and #8802)
+
+Both legacy contracts remain callable and keep their existing output fields:
 
 1. **Surface coverage ship-gate (issue #8802)** — every slash command, pre-LLM
    shortcut (#8791), plugin-declared HTTP route, and view must have a real
@@ -9,6 +55,12 @@ statically (no runtime boot) and share `inventory.ts`.
 2. **Per-plugin keyless-e2e coverage gate (issue #8801)** — every plugin that
    exposes an agent surface (actions and/or a message connector) must ship at
    least one keyless e2e scenario, or be ratcheted in the baseline.
+
+The default `audit:e2e-coverage` human output now leads with the canonical row
+count, while `--list-uncovered` remains the old plugin-directory list and
+`--json` retains `newlyUncovered`, `staleCovered`, `staleMissing`, and `ok`
+alongside the new `syntheticWorld` and `inventory` fields. The #8802 matrix
+schema and filenames are unchanged.
 
 ---
 

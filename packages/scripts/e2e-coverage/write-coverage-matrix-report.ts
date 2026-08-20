@@ -24,6 +24,11 @@ import {
   type CoverageMatrix,
   REPO_ROOT,
 } from "./inventory.ts";
+import {
+  buildSyntheticWorldInventory,
+  loadSyntheticWorldManifest,
+  type SyntheticWorldInventory,
+} from "./synthetic-world-inventory.ts";
 
 interface CliOptions {
   reportDir: string;
@@ -191,16 +196,79 @@ function renderMarkdown(matrix: CoverageMatrix): string {
   return lines.join("\n");
 }
 
+function renderSyntheticWorldMarkdown(
+  inventory: SyntheticWorldInventory,
+): string {
+  const lines = [
+    "# Synthetic-world runtime surface inventory (#22897)",
+    "",
+    `Generated: ${inventory.generatedAt}`,
+    "",
+    `- Registered production surfaces: ${inventory.summary.total}`,
+    `- Covered: ${inventory.summary.byStatus.covered ?? 0}`,
+    `- Explicit gaps/deferrals: ${inventory.gaps.length}`,
+    "",
+    "## Counts by surface kind",
+    "",
+    "| Kind | Count |",
+    "| --- | ---: |",
+    ...Object.entries(inventory.summary.byKind).map(
+      ([kind, count]) => `| ${kind} | ${count} |`,
+    ),
+    "",
+    "## Counts by status",
+    "",
+    "| Status | Count |",
+    "| --- | ---: |",
+    ...Object.entries(inventory.summary.byStatus).map(
+      ([status, count]) => `| ${status} | ${count} |`,
+    ),
+    "",
+    "## Gaps grouped by workstream",
+    "",
+  ];
+  for (const [workstream, count] of Object.entries(
+    inventory.summary.byWorkstream,
+  )) {
+    lines.push(`- ${workstream}: ${count}`);
+  }
+  lines.push(
+    "",
+    "The machine-readable report contains owner, dependencies, platform requirements, mock/reset fidelity, scenario lanes, Cloud E2E cells, evidence class, status, and written reason for every row.",
+    "",
+  );
+  return lines.join("\n");
+}
+
 function main(): number {
   const options = parseArgs(process.argv.slice(2));
   const matrix = buildCoverageMatrix({
     generatedAt: new Date().toISOString(),
   });
+  const syntheticManifest = loadSyntheticWorldManifest(
+    path.join(
+      REPO_ROOT,
+      "packages/scripts/e2e-coverage/synthetic-world-manifest.json",
+    ),
+  );
+  const syntheticWorld = buildSyntheticWorldInventory(
+    REPO_ROOT,
+    syntheticManifest,
+    matrix.generatedAt,
+  );
 
   mkdirSync(options.reportDir, { recursive: true });
   writeFileSync(
     path.join(options.reportDir, "e2e-matrix.json"),
     `${JSON.stringify(matrix, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(options.reportDir, "synthetic-world-inventory.json"),
+    `${JSON.stringify(syntheticWorld, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(options.reportDir, "SYNTHETIC_WORLD.md"),
+    renderSyntheticWorldMarkdown(syntheticWorld),
   );
   const viewerDir = path.join(options.reportDir, "viewer");
   mkdirSync(viewerDir, { recursive: true });
@@ -221,7 +289,8 @@ function main(): number {
     process.stdout.write(
       `e2e coverage — commands ${s.commands.covered}/${s.commands.total}; ` +
         `routes ${s.pluginRoutes.covered}/${s.pluginRoutes.total} (+${s.pluginRoutes.exempt} exempt); ` +
-        `blocking gaps ${s.blockingGaps}; advisory ${s.advisoryGaps}\n`,
+        `blocking gaps ${s.blockingGaps}; advisory ${s.advisoryGaps}; ` +
+        `synthetic-world ${syntheticWorld.summary.byStatus.covered ?? 0}/${syntheticWorld.summary.total} covered\n`,
     );
     for (const gap of matrix.blockingGaps) {
       process.stdout.write(`  BLOCKING ${gap.id}: ${escapeHtml(gap.detail)}\n`);
