@@ -287,6 +287,15 @@ export async function resolveDocumentRequester(
 
 type DocumentRequesterResolver = () => Promise<DocumentRequester>;
 
+function documentListCursorKey(cursor: DocumentListCursor): string {
+	return [
+		cursor.createdAt,
+		cursor.id.toLowerCase(),
+		cursor.snapshotCreatedAt ?? "",
+		cursor.snapshotId?.toLowerCase() ?? "",
+	].join(":");
+}
+
 /**
  * Coalesces requester authorization only for one caller-owned read composition.
  * Rejections are evicted so a retry re-reads the authoritative role and room
@@ -750,7 +759,7 @@ export class DocumentService extends Service {
 					},
 				);
 			}
-			const serializedCursor = JSON.stringify(page.nextCursor);
+			const serializedCursor = documentListCursorKey(page.nextCursor);
 			if (seenCursors.has(serializedCursor)) {
 				throw new ElizaError(
 					"Document list reported a repeating pagination cursor",
