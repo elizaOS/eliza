@@ -1001,6 +1001,77 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "10.0.2.2",
+  "adb reverse",
+]);
+
+/** Physically removes direct/simulator routing defaults from Play renderer code. */
+export function scrubAndroidCloudLocalRouting(source: string): string {
+  return source
+    .replaceAll("31337", "0")
+    .replaceAll("31338", "0")
+    .replaceAll("32437", "0")
+    .replaceAll("32438", "0")
+    .replaceAll("10.0.2.2", "invalid.invalid")
+    .replaceAll("adb reverse", "Android cloud routing");
+}
+
+function androidCloudRendererPolicyPlugin(): Plugin {
+  return {
+    name: "android-cloud-renderer-policy",
+    enforce: "pre",
+    transform(code, id) {
+      const sourcePath = path.resolve(id.split("?")[0] ?? id);
+      if (
+        !IS_ANDROID_CLOUD_RENDERER_BUILD ||
+        id.startsWith("\0") ||
+        id.includes("node_modules") ||
+        !sourcePath.startsWith(`${elizaRoot}${path.sep}`)
+      ) {
+        return null;
+      }
+      const scrubbed = scrubAndroidCloudLocalRouting(code);
+      return scrubbed === code ? null : { code: scrubbed, map: null };
+    },
+    renderChunk(code) {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return null;
+      const scrubbed = scrubAndroidCloudLocalRouting(code);
+      return scrubbed === code ? null : { code: scrubbed, map: null };
+    },
+    generateBundle(_options, bundle) {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
+      const findings: string[] = [];
+      for (const [fileName, output] of Object.entries(bundle)) {
+        const content =
+          output.type === "chunk"
+            ? output.code
+            : typeof output.source === "string"
+              ? output.source
+              : null;
+        if (content === null) continue;
+        for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+          if (content.toLowerCase().includes(marker.toLowerCase())) {
+            findings.push(`${fileName}: ${marker}`);
+          }
+        }
+      }
+      if (findings.length > 0) {
+        throw new Error(
+          `Android Cloud renderer contains forbidden local routing markers:\n${findings
+            .sort()
+            .map((finding) => `  - ${finding}`)
+            .join("\n")}`,
+        );
+      }
+    },
+  };
+}
+
 /** Viewport policies selected by the app-shell metadata transform. */
 export const VIEWPORT_META_NATIVE =
   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
