@@ -35,28 +35,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!--
-                Declares MainActivity as a home-screen candidate so Eliza can be
-                selected as the device default launcher (ROLE_HOME). Required for
-                AOSP / sideload full-device takeovers (e.g. Light Phone 3) where
-                Eliza replaces the stock launcher; on Play/retail builds the user
-                still explicitly grants the Home role.
-            -->
-<intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="@string/custom_url_scheme" />
             </intent-filter>
-</activity>
-<!--
-            Continuous-chat foreground service (R10 §6.2). Owns the long-
-            lived microphone capture path so VAD-gated / always-on chat
-            survives screen lock + backgrounding. foregroundServiceType
-            "microphone" is required on API 34+ alongside the
-            FOREGROUND_SERVICE_MICROPHONE permission.
-        -->
-<provider
+        </activity>
+
+        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
@@ -65,19 +52,8 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
-<!--
-            Voice-input keyboard (IME, FUTO Voice Input pattern). Declaring an
-            InputMethodService with a voice-mode subtype (@xml/method) surfaces
-            Eliza under Settings -> System -> Languages & input -> On-screen
-            keyboard and lets other keyboards' mic long-press hand off to Eliza.
-            BIND_INPUT_METHOD is the system-held bind permission; the
-            android.view.im metadata declares the subtype + switch-back support.
-            Android IMEs may record audio (unlike iOS extensions), so this
-            keyboard records directly and transcribes via the on-device engine's
-            loopback ASR route, deep-linking into the app
-            (elizaos://voice?source=android-ime) when the engine isn't running.
-        -->
-<activity
+
+        <activity
             android:name="ai.elizaos.app.ElizaShareActivity"
             android:exported="true"
             android:label="@string/app_action_smart_reply_long"
@@ -93,20 +69,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-</application>
+    </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- MODIFY_AUDIO_SETTINGS: communication-mode routing + speakerphone for the
          hands-free voice loop (engages the platform AEC). See TalkModePlugin. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-<!-- BLE pendant (omi DevKit1) via @capacitor-community/bluetooth-le.
-         Android 12+ (API 31+) uses the runtime BLUETOOTH_SCAN / BLUETOOTH_CONNECT
-         permissions instead of legacy location. usesPermissionFlags="neverForLocation"
-         asserts the scan is NOT used to derive physical location, so the user is
-         NOT prompted for location on the Light Phone III (Android 13+). The legacy
-         BLUETOOTH / BLUETOOTH_ADMIN perms are gated to maxSdkVersion=30 for older
-         devices only. See NativeBlePendantTransport + PENDANT-ANDROID-REPORT.md. -->
+    <!-- Defense in depth against permissions contributed by transitive manifests. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 </manifest>
