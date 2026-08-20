@@ -227,4 +227,35 @@ describe("z.ai text parameter resolution", () => {
       })
     );
   });
+
+  it("handles valid providerOptions and rejects cyclic providerOptions with ZAI_PROVIDER_OPTIONS_UNBOUNDED", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: { agentName: "test-agent", extra: { foo: "bar" } },
+      })
+    ).resolves.toBe("ok");
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: cyclic as never,
+      })
+    ).rejects.toMatchObject({
+      code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED",
+    });
+  });
 });
