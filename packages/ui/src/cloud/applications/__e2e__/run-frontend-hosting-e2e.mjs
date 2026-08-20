@@ -233,6 +233,12 @@ export const mkdir = anyfn;
 export const stat = anyfn;
 export const readdir = () => [];
 export const isIP = () => 0;
+export class BlockList {
+  addSubnet() {}
+  check() {
+    return false;
+  }
+}
 export const statfsSync = anyfn;
 export const cp = anyfn;
 export const unlinkSync = anyfn;
