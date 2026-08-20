@@ -13,7 +13,13 @@
  * ADMIN-or-higher — never a raw stored role grant. Sits on the runtime boundary
  * (getRoom / getWorld / getEntitiesForRoom / getRelationships / useModel) and
  * imports roles.ts lazily to avoid a cycle with createUniqueUuid.
+ * Nested LLM `{ match: … }` unwraps are bounded in `entity-matches.ts`.
  */
+import {
+	type EntityMatch,
+	normalizeEntityMatches,
+	readEntityResolutionField,
+} from "./entity-matches";
 import { logger } from "./logger";
 // Type-only (erased at runtime, so no cycle with roles.ts, which imports
 // createUniqueUuid from this module). The role-resolution values are pulled via a
@@ -32,7 +38,6 @@ import {
 } from "./types";
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
-import { isObjectRecord as isRecord } from "./utils/type-guards";
 import { truncateWellFormed } from "./utils/well-formed";
 
 type EntityDetailsRecord = Pick<
@@ -91,42 +96,14 @@ export async function resolveTrustedComponentSourceIds(
 const MAX_ENTITY_DISPLAY_NAMES = 8;
 const MAX_ENTITY_DISPLAY_COUNT = 10;
 const MAX_ENTITY_METADATA_CHARS = 2_000;
-interface EntityMatch {
-	name?: string;
-	reason?: string;
-}
-
 interface ParsedResolution {
 	resolvedId?: string;
 	confidence?: string;
 	matches?: {
-		match?: EntityMatch | EntityMatch[];
+		match?:
+			| { name?: string; reason?: string }
+			| { name?: string; reason?: string }[];
 	};
-}
-
-function normalizeEntityMatch(value: unknown): EntityMatch | null {
-	if (!isRecord(value)) return null;
-
-	const name = typeof value.name === "string" ? value.name : undefined;
-	const reason = typeof value.reason === "string" ? value.reason : undefined;
-
-	if (!name) return null;
-	return { name, reason };
-}
-
-function normalizeEntityMatches(value: unknown): EntityMatch[] {
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => normalizeEntityMatch(entry))
-			.filter((entry): entry is EntityMatch => entry !== null);
-	}
-
-	if (isRecord(value) && "match" in value) {
-		return normalizeEntityMatches(value.match);
-	}
-
-	const directMatch = normalizeEntityMatch(value);
-	return directMatch ? [directMatch] : [];
 }
 
 function parseEntityResolutionResponse(
@@ -147,15 +124,19 @@ function parseEntityResolutionResponse(
 	}
 
 	if (parsedJson && typeof parsedJson === "object") {
-		const obj = parsedJson as Record<string, unknown>;
-		const type = typeof obj.type === "string" ? obj.type : undefined;
+		const typeValue = readEntityResolutionField(parsedJson, "type");
+		const entityIdValue = readEntityResolutionField(parsedJson, "entityId");
+		const resolvedIdValue = readEntityResolutionField(parsedJson, "resolvedId");
+		const type = typeof typeValue === "string" ? typeValue : undefined;
 		const entityId =
-			typeof obj.entityId === "string"
-				? obj.entityId
-				: typeof obj.resolvedId === "string"
-					? obj.resolvedId
+			typeof entityIdValue === "string"
+				? entityIdValue
+				: typeof resolvedIdValue === "string"
+					? resolvedIdValue
 					: undefined;
-		const matches = normalizeEntityMatches(obj.matches);
+		const matches = normalizeEntityMatches(
+			readEntityResolutionField(parsedJson, "matches"),
+		);
 
 		if (type || entityId || matches.length > 0) {
 			return {
