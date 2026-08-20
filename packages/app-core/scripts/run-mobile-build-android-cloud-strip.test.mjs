@@ -74,12 +74,8 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
   });
 
   it("accounts for every committed ElizaAgentService-referencing main source", () => {
+    expect(fs.existsSync(androidMainJavaRoot)).toBe(true);
     const referencing = collectAgentServiceReferencingSources();
-
-    // Sanity: the source tree really does have such files (guards against a
-    // silently-empty scan, e.g. a moved android path, turning this green).
-    expect(referencing.length).toBeGreaterThan(0);
-    expect(referencing).toContain("ElizaAgentService.java");
 
     const stripped = new Set(ANDROID_CLOUD_STRIPPED_JAVA_FILES);
     const rewritten = new Set(ANDROID_CLOUD_REWRITTEN_JAVA_FILES);
@@ -98,8 +94,10 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
     const strippedClassNames = ANDROID_CLOUD_STRIPPED_JAVA_FILES.map((file) =>
       file.replace(/\.java$/, ""),
     );
-    const testFiles = fs
-      .readdirSync(androidTestJavaRoot, { withFileTypes: true })
+    const testEntries = fs.existsSync(androidTestJavaRoot)
+      ? fs.readdirSync(androidTestJavaRoot, { withFileTypes: true })
+      : [];
+    const testFiles = testEntries
       .filter((entry) => entry.isFile() && entry.name.endsWith(".java"))
       .map((entry) => entry.name)
       .sort();
@@ -113,8 +111,13 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
       );
     });
 
-    expect(ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES).toEqual(
-      referencesStrippedCode,
+    const strippedTests = new Set(ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES);
+    const unaccounted = referencesStrippedCode.filter(
+      (file) => !strippedTests.has(file),
     );
+
+    // A fully Play-safe committed tree may contain none of these tests, while
+    // the strip list must remain ready for a regenerated upstream platform.
+    expect(unaccounted).toEqual([]);
   });
 });

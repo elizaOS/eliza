@@ -42,4 +42,3 @@ project(':capacitor-status-bar').projectDir = new File(resolveNodePackageDir('@c
 
 include ':elizaos-capacitor-talkmode'
 project(':elizaos-capacitor-talkmode').projectDir = new File('../../../../plugins/plugin-native-talkmode/android')
-
