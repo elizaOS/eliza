@@ -3,7 +3,14 @@
  * spawned shell in a temp directory (no mocks) — command execution, session
  * tracking, and history-provider context injection.
  */
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -146,14 +153,43 @@ describePosixShell("shell plugin real local integration", () => {
     const outside = mkdtempSync(path.join(tmpdir(), "eliza-shell-outside-"));
     try {
       symlinkSync(outside, path.join(allowedDirectory, "escape"));
-      const result = await service.exec("pwd", { workdir: "escape" });
+      const result = await service.exec("pwd", {
+        workdir: path.join(allowedDirectory, "escape"),
+      });
 
       expect(result.status).toBe("failed");
-      expect(result.reason).toContain("outside allowed directory");
+      expect(result.reason).toContain(
+        "unavailable or outside allowed directory",
+      );
       expect(service.getCurrentDirectory()).toBe(allowedDirectory);
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it("resolves an existing relative workdir from the service cwd", async () => {
+    const inside = path.join(allowedDirectory, "inside");
+    mkdirSync(inside);
+
+    const result = await service.exec("pwd", { workdir: "inside" });
+
+    expect(result.status).toBe("completed");
+    expect(result.cwd).toBe(realpathSync(inside));
+  });
+
+  it("rejects a missing explicit workdir under the default allowed root", async () => {
+    await service.stop();
+    process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
+    service = await ShellService.start(createRuntime(null));
+
+    const missing = path.join(
+      process.cwd(),
+      `.eliza-shell-missing-${process.pid}-${Date.now()}`,
+    );
+    const result = await service.exec("pwd", { workdir: missing });
+
+    expect(result.status).toBe("failed");
+    expect(result.reason).toContain("unavailable or outside allowed directory");
   });
 
   it("surfaces a model-visible error instead of blank output when history retrieval throws", async () => {

@@ -574,9 +574,15 @@ export class ShellService extends Service {
       : null;
 
     // Resolve workdir
+    const requestedWorkdir = options.workdir?.trim();
     const rawWorkdir =
-      options.workdir?.trim() || this.currentDirectory || process.cwd();
-    const resolvedWorkdir = resolveWorkdir(rawWorkdir, warnings);
+      requestedWorkdir || this.currentDirectory || process.cwd();
+    // An explicit workdir is a security boundary, so unavailable input must
+    // reach validatePath and fail closed. Preserve the established fallback
+    // only for an implicit stale service cwd.
+    const resolvedWorkdir = requestedWorkdir
+      ? rawWorkdir
+      : resolveWorkdir(rawWorkdir, warnings);
     const validatedWorkdir = validatePath(
       resolvedWorkdir,
       this.shellConfig.allowedDirectory,
@@ -588,7 +594,7 @@ export class ShellService extends Service {
         exitCode: 1,
         durationMs: 0,
         aggregated: "",
-        reason: `workdir is outside allowed directory: ${resolvedWorkdir}`,
+        reason: `workdir is unavailable or outside allowed directory: ${rawWorkdir}`,
       };
     }
     const workdir = validatedWorkdir;
