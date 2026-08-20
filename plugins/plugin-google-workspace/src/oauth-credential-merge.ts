@@ -25,10 +25,11 @@ type WalkContext = {
   visiting: WeakSet<object>;
 };
 
-function failUnbounded(context: Record<string, unknown>): never {
+function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
   throw new ElizaError("Google OAuth credential JSON exceeds the token-merge walk budget", {
     code: GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED,
     context,
+    ...(cause === undefined ? {} : { cause }),
     severity: "fatal",
   });
 }
@@ -43,14 +44,34 @@ function reserve(ctx: WalkContext, count: number): void {
   ctx.visits += count;
 }
 
+function isArray(value: object): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch (cause) {
+    // error-policy:J2 Translate reflection failure at the credential boundary
+    // while preserving the engine or Proxy error that caused it.
+    failUnbounded({ operation: "isArray" }, cause);
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
+  return value && typeof value === "object" && !isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
 
+function dataDescriptor(value: object, key: string): PropertyDescriptor | undefined {
+  try {
+    return Object.getOwnPropertyDescriptor(value, key);
+  } catch (cause) {
+    // error-policy:J2 Translate reflection failure at the credential boundary
+    // while preserving the engine or Proxy error that caused it.
+    failUnbounded({ operation: "getOwnPropertyDescriptor", key }, cause);
+  }
+}
+
 function dataValue(value: object, key: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  const descriptor = dataDescriptor(value, key);
   if (!descriptor || !("value" in descriptor)) return undefined;
   return descriptor.value;
 }
@@ -78,7 +99,7 @@ function readScopeArray(scopes: unknown[], ctx: WalkContext): string {
 
   const values: string[] = [];
   for (let index = 0; index < (length as number); index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(scopes, String(index));
+    const descriptor = dataDescriptor(scopes, String(index));
     if (!descriptor) continue;
     if (!("value" in descriptor)) {
       failUnbounded({ accessor: `scopes[${index}]` });
@@ -91,21 +112,29 @@ function readScopeArray(scopes: unknown[], ctx: WalkContext): string {
 }
 
 function parseExpiry(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value > 0 && value < 10_000_000_000 ? value * 1000 : value;
-  }
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-  if (typeof value === "string" && value.trim()) {
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) {
-      return parseExpiry(numeric);
+  try {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value > 0 && value < 10_000_000_000 ? value * 1000 : value;
     }
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? undefined : parsed;
+    // `instanceof` performs prototype reflection and `getTime` validates the
+    // receiver's internal slot, either of which can reject a hostile Proxy.
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+    if (typeof value === "string" && value.trim()) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        return parseExpiry(numeric);
+      }
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+  } catch (cause) {
+    // error-policy:J2 Expiry reflection is part of the same credential boundary;
+    // retain its underlying Proxy or invalid-receiver failure.
+    failUnbounded({ operation: "parseExpiry" }, cause);
   }
-  return undefined;
 }
 
 export function mergeCredentialObject(credentials: OauthCredentialFields, value: unknown): void {
@@ -155,7 +184,7 @@ function mergeCredentialObjectInner(
     if (idToken) credentials.id_token = idToken;
     if (tokenType) credentials.token_type = tokenType;
     const scopes = dataValue(record, "scopes");
-    if (Array.isArray(scopes)) {
+    if (scopes && typeof scopes === "object" && isArray(scopes)) {
       credentials.scope = readScopeArray(scopes, ctx);
     } else if (scope) {
       credentials.scope = scope;
