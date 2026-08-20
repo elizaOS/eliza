@@ -20,8 +20,10 @@ type MacEffectsSymbols = {
     ptr: Pointer,
     width: number,
     height: number,
+    cornerRadius: number,
   ): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
+  setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
   disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
@@ -82,10 +84,14 @@ function loadLib(): MacEffectsLib {
     return dlopen(dylibPath, {
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
       setWindowInteractiveMaterialSize: {
-        args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+        args: [FFIType.ptr, FFIType.f64, FFIType.f64, FFIType.f64],
         returns: FFIType.bool,
       },
       setWindowShadowEnabled: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
+      setWindowUserResizable: {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
       },
@@ -180,15 +186,32 @@ export function setWindowInteractiveMaterialSize(
   ptr: Pointer,
   width: number,
   height: number,
+  cornerRadius: number,
 ): boolean {
   return (
-    getLib()?.symbols.setWindowInteractiveMaterialSize(ptr, width, height) ??
-    false
+    getLib()?.symbols.setWindowInteractiveMaterialSize(
+      ptr,
+      width,
+      height,
+      cornerRadius,
+    ) ?? false
   );
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
   return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
+}
+
+/**
+ * Enable or disable user-driven native window resizing. Disabling also removes
+ * any previously installed native drag/resize overlay views so a hot-reloaded
+ * bottom-bar window cannot retain stale resize cursors or invisible hit bands.
+ */
+export function setWindowUserResizable(
+  ptr: Pointer,
+  enabled: boolean,
+): boolean {
+  return getLib()?.symbols.setWindowUserResizable(ptr, enabled) ?? false;
 }
 
 export function setTrafficLightsPosition(
@@ -200,10 +223,13 @@ export function setTrafficLightsPosition(
 }
 
 /**
- * @param height Pass `0` for thickness derived from the window's NSScreen (backing
- *   scale + very wide displays). Pass a positive value (points) to pin depth. The same
- *   value sizes the top drag strip and the right/bottom/corner resize overlay views
- *   (native, above WKWebView).
+ * @param x Left inset in points. Pass a negative value to mark the remainder of
+ *   the titlebar as one continuous drag surface (used by managed Workspace and
+ *   Settings windows, whose top strip contains no renderer controls).
+ * @param height Pass `0` for thickness derived from the window's NSScreen
+ *   (backing scale + very wide displays). Pass a positive value (points) to pin
+ *   depth. The same value sizes the top drag strip and the
+ *   right/bottom/corner resize overlay views (native, above WKWebView).
  */
 export function setNativeDragRegion(
   ptr: Pointer,

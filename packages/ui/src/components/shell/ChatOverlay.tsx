@@ -39,6 +39,7 @@ import type {
   ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
@@ -392,6 +393,17 @@ const SHEET_SPRING = {
   stiffness: 320,
   damping: 34,
   mass: 0.9,
+};
+// Closing traverses hundreds of pixels while opening usually settles a nearby
+// detent. Reusing the aggressive detent spring made most of the transcript
+// disappear in the first few frames and left a slow tail, which read as a snap
+// from sheet to composer. A calmer, near-critically-damped close keeps the
+// transcript, frame, and composer moving as one surface without adding bounce.
+const COLLAPSE_SPRING = {
+  type: "spring" as const,
+  stiffness: 235,
+  damping: 30,
+  mass: 1,
 };
 // Slightly springier preset for the pill→input "liquid glass" open: a touch
 // less damping than the height spring so the input reads as springing IN on a
@@ -938,6 +950,7 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
  */
 function SheetGrabber({
   open,
+  visuallyOpen = open,
   onOpen,
   onClose,
   binding,
@@ -946,6 +959,13 @@ function SheetGrabber({
   pilled,
 }: {
   open: boolean;
+  /**
+   * Keep the open-sheet chrome until the closing transcript reaches its visual
+   * endpoint. `open` remains the semantic/interaction state, while this avoids
+   * swapping the 36x4 open handle for the 48x6 composer handle halfway through
+   * the height spring.
+   */
+  visuallyOpen?: boolean;
   onOpen: () => void;
   onClose: () => void;
   binding: PullGestureBinding;
@@ -1027,7 +1047,7 @@ function SheetGrabber({
         // its right, so a tiny miss opened/flung the sheet instead of opening
         // chat actions. Once the sheet is open, those controls are far below
         // this top handle and the generous full-width drag lane is safe again.
-        open ? "inset-x-6 py-2" : "inset-x-[4.5rem] h-2 p-0",
+        visuallyOpen ? "inset-x-6 py-2" : "inset-x-[4.5rem] h-2 p-0",
         // Keep the complete target inside the painted panel. A pseudo-element
         // used to extend above the visible bubble, which made transparent
         // desktop pixels steal clicks from the app underneath.
@@ -1046,7 +1066,7 @@ function SheetGrabber({
           // two crossfade and must be pixel-identical. OPEN sheet: a quieter,
           // smaller bar (the full-size handle over the transcript read as
           // oversized chrome).
-          open ? "h-1 w-9" : "h-1.5 w-12",
+          visuallyOpen ? "h-1 w-9" : "h-1.5 w-12",
           // A dedicated opacity/scale breath marks live agent work without
           // repurposing shadcn's text-only shimmer utility.
           breathing && "eliza-chat-handle-breathe",
@@ -1181,7 +1201,9 @@ export function ChatOverlay({
   onDetentChange,
   onStateChange,
   initialMode = "input",
+  initiallyOpen = false,
   requestedOpen,
+  openRequestSequence,
   onRequestedOpenChange,
   onWindowExpandedChange,
   onWindowSizeClassChange,
@@ -1220,10 +1242,23 @@ export function ChatOverlay({
   /** Initial resting shape for a host-owned compact window. */
   initialMode?: Extract<ChatMode, "pill" | "input">;
   /**
+   * Start a detached pill host at its visible composer without changing its
+   * resting contract. Unlike `requestedOpen`, this is consumed only by the
+   * initial state: later Escape/grabber transitions can still settle at pill.
+   */
+  initiallyOpen?: boolean;
+  /**
    * Cross-window request from the shared shell authority. This is edge-driven,
    * not a controlled detent: local gestures remain the presentation authority.
    */
   requestedOpen?: boolean;
+  /**
+   * Monotonic host request used by native summon surfaces (tray/menu/hotkey).
+   * Unlike `requestedOpen`, this remains actionable when shared controller
+   * state already says open but the native presentation is resting after a
+   * renderer remount. Every new value means "step out of the pill now".
+   */
+  openRequestSequence?: number;
   /** Mirrors local pill/open edges back to the shared shell authority. */
   onRequestedOpenChange?: (open: boolean) => void;
   /**
@@ -1534,7 +1569,7 @@ export function ChatOverlay({
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen
       ? "full"
-      : initialMode === "pill" && requestedOpen
+      : initialMode === "pill" && (initiallyOpen || requestedOpen)
         ? "input"
         : initialMode,
   );
@@ -1706,10 +1741,10 @@ export function ChatOverlay({
     openProgressAnimationRef.current = null;
   }, []);
   const animateThreadHeight = React.useCallback(
-    (target: number) => {
+    (target: number, transition = SHEET_SPRING) => {
       stopThreadAnimation();
       setSheetSettled(false);
-      const controls = animate(threadHeight, target, SHEET_SPRING);
+      const controls = animate(threadHeight, target, transition);
       threadAnimationRef.current = controls;
       // Drop the drag-scoped GPU promotion only once the RELEASE spring has come
       // to rest — clearing it on release itself would strip `will-change` mid
@@ -1734,11 +1769,25 @@ export function ChatOverlay({
   const animateOpenProgress = React.useCallback(
     (target: number) => {
       stopOpenProgressAnimation();
-      openProgressAnimationRef.current = animate(
-        openProgress,
-        target,
-        OPEN_SPRING,
-      );
+      const controls = animate(openProgress, target, OPEN_SPRING);
+      openProgressAnimationRef.current = controls;
+      // Springs converge asymptotically. Leaving their final fractional value
+      // behind kept `morphExpanded` true after a completed close, so the native
+      // host remained input-width while only the 48x6 resting bar was painted.
+      // Snap the completed transition to its semantic endpoint; interrupted
+      // controls are ignored because the replacement owns the ref.
+      void controls.finished
+        .then(() => {
+          if (openProgressAnimationRef.current !== controls) return;
+          openProgressAnimationRef.current = null;
+          openProgress.set(target);
+          const nextExpanded = target > 0;
+          morphExpandedRef.current = nextExpanded;
+          setMorphExpanded(nextExpanded);
+        })
+        .catch(() => {
+          // A new gesture/transition stopped this spring and owns the endpoint.
+        });
     },
     [openProgress, stopOpenProgressAnimation],
   );
@@ -1940,6 +1989,13 @@ export function ChatOverlay({
       reportWindowMaterialSize();
     });
   }, [onWindowMaterialSizeChange, reportWindowMaterialSize]);
+  // ResizeObserver reports layout-box changes, but the pill-to-composer morph
+  // is intentionally compositor-only (`transform: scale(...)`). During that
+  // settle the layout box can remain 64px tall while the painted glass is
+  // already shorter, leaving an invisible native mouse strip above it. Sample
+  // the transformed rect on the same motion frames so AppKit always mirrors
+  // the pixels the user can actually see and touch.
+  useMotionValueEvent(openProgress, "change", queueWindowMaterialSize);
   // biome-ignore lint/correctness/useExhaustiveDependencies: pill commits can replace interactive children before observers or motion ticks fire
   React.useLayoutEffect(() => {
     queueWindowMaterialSize();
@@ -3635,6 +3691,43 @@ export function ChatOverlay({
     stopOpenProgressAnimation,
   ]);
 
+  const animateThreadClosed = React.useCallback(() => {
+    // A long direct-manipulation pull can arrive here with the visual height
+    // already at zero. Framer Motion does not emit a change event for a
+    // zero-distance spring, so relying only on the motion-value listener leaves
+    // `dragPreviewMounted` true forever and the native host stranded at its
+    // 600x820 sheet envelope. Settle that endpoint synchronously; otherwise
+    // retain the transcript until the real closing spring completes.
+    if (threadHeight.get() <= 1) {
+      stopThreadAnimation();
+      threadHeight.set(0);
+      setDragPreviewMounted(false);
+      setSheetSettled(true);
+      setDraggingState(false);
+      return;
+    }
+    const controls = animateThreadHeight(0, COLLAPSE_SPRING);
+    void controls.finished
+      .then(() => {
+        if (
+          modeRef.current === "input" &&
+          !draggingRef.current &&
+          threadHeight.get() <= 1
+        ) {
+          setDragPreviewMounted(false);
+        }
+      })
+      .catch(() => {
+        // A fresh gesture owns the replacement animation and its preview.
+      });
+  }, [
+    animateThreadHeight,
+    setDragPreviewMounted,
+    setDraggingState,
+    stopThreadAnimation,
+    threadHeight,
+  ]);
+
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
     setFreeH(null);
@@ -3661,7 +3754,7 @@ export function ChatOverlay({
       // follows the spring down; the settle listener below unmounts it once the
       // height reaches 0 (robust to the [baseH] effect re-issuing the spring).
       setDragPreviewMounted(true);
-      animateThreadHeight(0);
+      animateThreadClosed();
       // Settle the pill morph to the input's resting end explicitly: a drag
       // that dipped past the bottom left openProgress below 1, and the
       // `pilled`-driven effect won't re-fire when `pilled` stays false — the
@@ -3674,10 +3767,23 @@ export function ChatOverlay({
     openProgress,
     stopThreadAnimation,
     stopOpenProgressAnimation,
-    animateThreadHeight,
+    animateThreadClosed,
     animateOpenProgress,
     setDragPreviewMounted,
   ]);
+
+  // The detached native window cannot observe document pointer events that
+  // land in another application. Native blur is the actual click-away signal:
+  // step an expanded sheet down to the still-visible composer, never all the
+  // way to the tiny resting bar.
+  React.useEffect(() => {
+    if (!desktopOverlayHost || !sheetOpen || pinnedOpen) return undefined;
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopWindowBlur",
+      ipcChannel: "desktop:windowBlur",
+      listener: () => closeSheet(),
+    });
+  }, [closeSheet, desktopOverlayHost, pinnedOpen, sheetOpen]);
 
   // Collapse the whole chat to the bottom pill capsule — the shared landing for
   // every "put the chat away" release (flick down from the input, an input drag
@@ -3845,7 +3951,8 @@ export function ChatOverlay({
         threadHeight.set(target);
         openProgress.set(1);
       } else {
-        animateThreadHeight(target);
+        if (to === "collapsed") animateThreadClosed();
+        else animateThreadHeight(target);
         // Every detent is on the input side of the pill morph. A drag that
         // dipped past the bottom (openProgress < 1) then released upward onto a
         // detent must settle the morph home — the pilled effect won't re-fire
@@ -3872,6 +3979,7 @@ export function ChatOverlay({
       stopThreadAnimation,
       stopOpenProgressAnimation,
       animateThreadHeight,
+      animateThreadClosed,
       animateOpenProgress,
       animateFullBleedTo,
       overpullCapT,
@@ -4912,6 +5020,19 @@ export function ChatOverlay({
       collapseToPill();
     }
   }, [collapseToPill, openFromPill, pinnedOpen, requestedOpen]);
+  const previousOpenRequestSequenceRef = React.useRef(openRequestSequence);
+  React.useEffect(() => {
+    if (
+      openRequestSequence === undefined ||
+      previousOpenRequestSequenceRef.current === openRequestSequence
+    ) {
+      return;
+    }
+    previousOpenRequestSequenceRef.current = openRequestSequence;
+    if (pinnedOpen || modeRef.current !== "pill") return;
+    externallyRequestedOpenRef.current = true;
+    openFromPill();
+  }, [openFromPill, openRequestSequence, pinnedOpen]);
 
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
@@ -5229,6 +5350,7 @@ export function ChatOverlay({
           ? -PILL_COMMIT_OVERSHOOT
           : -PILL_OPEN_DISTANCE / 2;
       if (
+        !desktopOverlayHost &&
         !pilled &&
         cont <= pillCommitCont &&
         !pillCommittedMidDragRef.current
@@ -5270,6 +5392,7 @@ export function ChatOverlay({
       setDragPreviewMounted,
       getPanelElement,
       keyboardBlocksMaximize,
+      desktopOverlayHost,
     ],
   );
 
@@ -5406,7 +5529,13 @@ export function ChatOverlay({
         // back up to a detent it deliberately left. A downward flick also
         // closes the keyboard — goToDetent("collapsed") blurs; half-step too.
         const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-        if (h <= SHEET_DETENT_MAGNET) return collapseFromRelease();
+        if (h <= SHEET_DETENT_MAGNET) {
+          // Detached macOS has an explicit three-stage path: thread ->
+          // composer -> resting bar. A single long pull must not crossfade to
+          // the tiny bar while the transcript is still shrinking.
+          if (desktopOverlayHost) return closeSheet();
+          return collapseFromRelease();
+        }
         if (h > halfH + 1) {
           inputRef.current?.blur();
           goToDetent("half");
@@ -5463,6 +5592,11 @@ export function ChatOverlay({
         const downwardTravel = Math.max(0, -dragLastOffsetRef.current);
         if (downwardTravel < DESKTOP_OVERLAY_COLLAPSE_DISTANCE) {
           settleDrag();
+          return;
+        }
+        const releasedH = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+        if (sheetOpen && releasedH <= SHEET_DETENT_MAGNET) {
+          closeSheet();
           return;
         }
         if (expanded) goToDetent("half");
@@ -5818,11 +5952,19 @@ export function ChatOverlay({
         // the shape spring (its value equals the plain rest inset at the boundary,
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
-        paddingBottom: keyboardLiftActive
-          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
-          : fullBleed || restoreDragging || isDragging
-            ? overlayPadBottom
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
+        // The detached macOS host already seats its exact native frame above
+        // the display edge. Reapplying the shared mobile 0.5rem rest gap here
+        // moved the 48x6 button eight pixels ABOVE its own 48x6 NSWindow: it
+        // could appear clipped or visible-but-unclickable while the actual host
+        // intercepted a different strip. Keep renderer and native coordinates
+        // identical; mobile/inline surfaces retain their safe-area clearance.
+        paddingBottom: desktopOverlayHost
+          ? "0px"
+          : keyboardLiftActive
+            ? `${KEYBOARD_COMPOSER_GAP_PX}px`
+            : fullBleed || restoreDragging || isDragging
+              ? overlayPadBottom
+              : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
       data-chat-gesture-surface=""
@@ -5949,6 +6091,7 @@ export function ChatOverlay({
           // grabber entirely: it is pinned, undismissable, and sign-in-first.
           <SheetGrabber
             open={sheetOpen}
+            visuallyOpen={threadPresented}
             onOpen={openFromGrabber}
             // A click on the detached Mac grabber closes the conversation to
             // the still-visible composer. Reaching the tiny resting pill is a
@@ -6053,10 +6196,14 @@ export function ChatOverlay({
               // the orange app theme behind. Full-bleed stays fully opaque (it
               // covers the whole screen — there is nothing to see through, and
               // the blur would be wasted battery).
+              // The detached macOS companion is always glass. Do not black it
+              // out at taller detents: doing so made the same panel alternate
+              // between transparent and opaque after drags and interrupted
+              // settles. The full workstation/mobile contract remains unchanged.
               backgroundColor: firstRunOpen
                 ? "transparent"
-                : desktopOverlayHost && nativeInsetSheet
-                  ? "transparent"
+                : desktopOverlayHost
+                  ? GLASS_SHEET_FILL
                   : nativeInsetSheet
                     ? "var(--bg)"
                     : surfaceBackgroundColor,

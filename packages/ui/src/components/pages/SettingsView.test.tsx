@@ -7,6 +7,7 @@
 // and state barrel are stubbed.
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -316,10 +317,12 @@ describe("SettingsView", () => {
     );
   });
 
-  it("tapping a hub row opens that section as a subview under the same header", () => {
+  it("tapping a hub row opens that section as a subview under the same header", async () => {
     render(<SettingsView />);
 
-    fireEvent.click(hubRow("runtime"));
+    await act(async () => {
+      fireEvent.click(hubRow("runtime"));
+    });
 
     // The section body is now mounted and the shared header retitles to it.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
@@ -385,11 +388,13 @@ describe("SettingsView", () => {
     expect(permissionPrimingMock.calls).toHaveLength(0);
   });
 
-  it("the header back affordance returns from a section to the hub", () => {
+  it("the header back affordance returns from a section to the hub", async () => {
     render(<SettingsView initialSection="runtime" />);
 
     const back = screen.getByRole("button", { name: "Back to Settings" });
-    fireEvent.click(back);
+    await act(async () => {
+      fireEvent.click(back);
+    });
 
     // Back on the hub: header titled "Settings", hub list, no section body.
     expect(screen.getByTestId("view-header").textContent).toContain("Settings");
@@ -478,6 +483,18 @@ describe("SettingsView", () => {
       expect(
         screen.getByRole("button", { name: "Back to launcher" }),
       ).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("uses the detached-window close action for the desktop back button", () => {
+    const restore = mockMatchMedia((query) => query.includes("min-width:"));
+    const onClose = vi.fn();
+    try {
+      render(<SettingsView onClose={onClose} />);
+      fireEvent.click(screen.getByRole("button", { name: "Back to launcher" }));
+      expect(onClose).toHaveBeenCalledTimes(1);
     } finally {
       restore();
     }

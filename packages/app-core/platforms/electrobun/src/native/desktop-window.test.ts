@@ -411,16 +411,16 @@ describe("DesktopManager main window controls", () => {
     manager.enableBottomBarReanchor();
 
     await manager.setBottomBarExpanded({ expanded: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
 
     await manager.setBottomBarExpanded({ expanded: false });
-    expect(window.setFrame).toHaveBeenLastCalledWith(526, 744, 48, 6);
+    expect(window.setFrame).toHaveBeenLastCalledWith(526, 730, 48, 6);
 
     await manager.setBottomBarExpanded({ expanded: false, hovered: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(250, 686, 600, 64);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 672, 600, 64);
 
     await manager.setBottomBarExpanded({ expanded: false, chip: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+    expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
     await manager.dispose();
   });
 
@@ -431,13 +431,14 @@ describe("DesktopManager main window controls", () => {
     manager.enableBottomBarReanchor();
 
     await manager.setBottomBarSize({ width: 600, height: 820 });
-    expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
 
     await manager.setBottomBarInteractiveSize({ width: 380.1, height: 180.1 });
     expect(setWindowInteractiveMaterialSize).toHaveBeenLastCalledWith(
       nativeWindowPtr,
       380,
       180,
+      32,
     );
     await manager.dispose();
   });
@@ -463,7 +464,7 @@ describe("DesktopManager main window controls", () => {
       manager.setMainWindow(window as never);
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();
@@ -484,7 +485,7 @@ describe("DesktopManager main window controls", () => {
       ).rejects.toThrow("native frame unavailable");
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       expect(window.setFrame).toHaveBeenCalledTimes(2);
       await manager.dispose();
     } finally {
@@ -502,7 +503,7 @@ describe("DesktopManager main window controls", () => {
       expect(window.setFrame).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();
@@ -646,6 +647,68 @@ describe("DesktopManager main window controls", () => {
 
     await vi.waitFor(() => expect(requestQuit).toHaveBeenCalledTimes(1));
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
+  });
+
+  it("routes the product tray destinations natively even when no renderer owns the click", async () => {
+    const manager = new DesktopManager();
+    const window = new FakeBrowserWindow();
+    const openWorkspace = vi.fn();
+    const openSettings = vi.fn();
+    const send = vi.fn();
+    manager.setMainWindow(window as never);
+    manager.setSendToWebview(send);
+    manager.setOpenWorkspaceCallback(openWorkspace);
+    manager.setOpenSettingsCallback(openSettings);
+
+    await manager.createTray({
+      icon: "/tmp/appIcon.png",
+      menu: [
+        { id: "tray-show-window", label: "Open Eliza" },
+        { id: "tray-open-desktop-workspace", label: "Open Workspace" },
+        { id: "tray-open-settings", label: "Settings…" },
+      ],
+    });
+
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-open-desktop-workspace" },
+    });
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-open-settings" },
+    });
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-show-window" },
+    });
+
+    await vi.waitFor(() => expect(openWorkspace).toHaveBeenCalledTimes(1));
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("desktopShortcutPressed", {
+      id: "chat-overlay-open",
+      accelerator: "tray",
+    });
+  });
+
+  it("does not run bare tray-icon toggle behavior for a native menu action", async () => {
+    const manager = new DesktopManager();
+    const window = new FakeBrowserWindow();
+    manager.setMainWindow(window as never);
+
+    await manager.createTray({
+      icon: "/tmp/appIcon.png",
+      menu: [{ id: "tray-show-window", label: "Open Eliza" }],
+    });
+
+    const tray = electrobunMock.trayInstances[0];
+    const trayClickHandler = tray?.on.mock.calls.find(
+      ([event]) => event === "tray-clicked",
+    )?.[1] as ((event?: unknown) => void) | undefined;
+    expect(trayClickHandler).toBeTypeOf("function");
+
+    trayClickHandler?.({ data: { action: "tray-show-window" } });
+
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
   });
 
   it("attaches a minimal native fallback menu at tray creation", async () => {
@@ -874,6 +937,7 @@ describe("DesktopManager notifications", () => {
   it("covers callback and native context-menu boundaries used beside notifications", async () => {
     const manager = new DesktopManager();
     const sent = vi.fn();
+    const openWorkspace = vi.fn();
     const openSettings = vi.fn();
     const openSurface = vi.fn(async () => ({
       id: "surface-1",
@@ -890,6 +954,7 @@ describe("DesktopManager notifications", () => {
       alwaysOnTop: false,
     }));
     manager.setSendToWebview(sent);
+    manager.setOpenWorkspaceCallback(openWorkspace);
     manager.setOpenSettingsCallback(openSettings);
     manager.setOpenSurfaceWindowCallback(openSurface);
     manager.setOpenAppWindowCallback(openApp);
@@ -898,6 +963,8 @@ describe("DesktopManager notifications", () => {
     manager.setRequestQuitCallback(async () => undefined);
     manager.setRestoreMainWindowCallback(async () => undefined);
 
+    manager.openWorkspace();
+    expect(openWorkspace).toHaveBeenCalledTimes(1);
     manager.openSettings("notifications");
     expect(openSettings).toHaveBeenCalledWith("notifications");
     expect(await manager.openSurfaceWindow("chat")).toMatchObject({

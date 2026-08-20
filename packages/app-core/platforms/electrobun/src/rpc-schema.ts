@@ -1635,6 +1635,10 @@ export type ElizaDesktopRPCSchema = {
         params: { url: string; title?: string };
         response: DesktopReleaseNotesWindowInfo;
       };
+      desktopOpenWorkspaceWindow: {
+        params: undefined;
+        response: undefined;
+      };
       desktopOpenSettingsWindow: {
         params: { tabHint?: string } | undefined;
         response: undefined;
@@ -2534,6 +2538,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:clearSessionData": "desktopClearSessionData",
   "desktop:getWebGpuBrowserStatus": "desktopGetWebGpuBrowserStatus",
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
+  "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
   "desktop:openAppWindow": "desktopOpenAppWindow",

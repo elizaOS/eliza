@@ -407,4 +407,5 @@ describe("App chat-overlay first-run composition", () => {
     expect(conductorMock.mount).toHaveBeenCalled();
     expect(queryByTestId("first-run-conductor-mount")).not.toBeNull();
   });
+
 });

@@ -173,6 +173,13 @@ export async function openDesktopSettingsWindow(
   );
 }
 
+export async function openDesktopWorkspaceWindow(): Promise<void> {
+  await requestDesktopBridge<void>(
+    "desktopOpenWorkspaceWindow",
+    "desktop:openWorkspaceWindow",
+  );
+}
+
 export async function openDesktopSurfaceWindow(
   surface: DesktopWorkspaceSurface,
   options?: { browse?: string },

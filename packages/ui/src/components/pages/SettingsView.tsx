@@ -226,6 +226,7 @@ function SettingsSectionSurfaceAnchor({
 
 export function SettingsView({
   inModal,
+  onClose,
   initialSection,
   navigatePayload,
   navigateSequence = 0,
@@ -398,6 +399,7 @@ export function SettingsView({
   // opens on the exact same hub when the viewport becomes narrow.
   const desktopSectionDef = activeSectionDef ?? visibleSections[0] ?? null;
   const displayedSectionDef = isDesktop ? desktopSectionDef : activeSectionDef;
+  const closeSettings = onClose ?? navigateBackToLauncher;
 
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
   // shows its title with a back action. Connector detail is one level deeper
@@ -420,7 +422,7 @@ export function SettingsView({
     ? backToConnectorsIndex
     : activeSectionDef
       ? backToHub
-      : navigateBackToLauncher;
+      : closeSettings;
   const backLabel = connectorDetailId
     ? "Back to Connectors"
     : activeSectionDef
@@ -431,7 +433,7 @@ export function SettingsView({
       grouped={grouped}
       activeId={desktopSectionDef?.id ?? null}
       onSelect={openSection}
-      onBack={navigateBackToLauncher}
+      onBack={closeSettings}
       settingsLabel={settingsTitle}
       label={(labelKey, fallback) => t(labelKey, { defaultValue: fallback })}
     />

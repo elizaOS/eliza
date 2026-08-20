@@ -111,6 +111,8 @@ import {
   type ChatOverlayWindowSizeClass,
   readChatOverlayAuthSize,
   readChatOverlayStageSize,
+  resolveChatOverlayCompactWindowSize,
+  shouldHideRestingChatOverlay,
   useChatOverlayWindowInteractiveSize,
   useChatOverlayWindowSize,
 } from "./components/shell/chat-overlay-window-bounds";
@@ -141,6 +143,7 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
+  CHAT_OVERLAY_OPEN_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -329,6 +332,19 @@ function ChatOverlayShell() {
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
+  const [openRequestSequence, setOpenRequestSequence] = useState(0);
+  useEffect(() => {
+    const handleExplicitOpen = (): void => {
+      controller?.open();
+      // Native summon is an imperative presentation request, not merely a
+      // desired controller boolean. Preserve it as an edge even when the
+      // shared controller already reports open after a renderer remount.
+      setOpenRequestSequence((sequence) => sequence + 1);
+    };
+    document.addEventListener(CHAT_OVERLAY_OPEN_EVENT, handleExplicitOpen);
+    return () =>
+      document.removeEventListener(CHAT_OVERLAY_OPEN_EVENT, handleExplicitOpen);
+  }, [controller]);
   const [windowExpanded, setWindowExpanded] = useState(
     controller?.isOpen ?? false,
   );
@@ -372,19 +388,10 @@ function ChatOverlayShell() {
       reportNativeInteractiveSize(stageSize);
       return;
     }
-    const compactSize =
-      windowSizeClass === "input"
-        ? {
-            width: Math.max(
-              CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-              stageSize.width - 24,
-            ),
-            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-          }
-        : {
-            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-          };
+    const compactSize = resolveChatOverlayCompactWindowSize(
+      windowSizeClass,
+      stageSize,
+    );
     reportNativeWindowSize(compactSize);
     // Reset the native hit target synchronously on every compact transition.
     // The measured composer height may expand it moments later, but stale sheet
@@ -442,14 +449,16 @@ function ChatOverlayShell() {
     [controller],
   );
   // The canonical overlay consumes the first Escape to return to its pill.
-  // Once the real presentation reports pill, a second Escape hides the native
-  // window so transparent pixels never remain above other applications.
+  // Only hide after the renderer has reported the actual RESTING size class.
+  // `windowExpanded` is false for both INPUT and RESTING, so using it here made
+  // one Escape from the visible composer both collapse and hide the window in
+  // the same event — the resting bar appeared to vanish entirely.
   useEffect(() => {
     if (typeof document === "undefined" || !isElectrobunRuntime()) {
       return undefined;
     }
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || windowExpanded) return;
+      if (!shouldHideRestingChatOverlay(event.key, windowSizeClass)) return;
       void invokeDesktopBridgeRequest<void>({
         rpcMethod: "desktopHideWindow",
         ipcChannel: "desktop:hideWindow",
@@ -457,7 +466,7 @@ function ChatOverlayShell() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [windowExpanded]);
+  }, [windowSizeClass]);
   return (
     <>
       <GlassStyles />
@@ -482,8 +491,10 @@ function ChatOverlayShell() {
         ) : (
           <ChatOverlayMount
             initialMode="pill"
+            initiallyOpen
             desktopOverlayHost
             requestedOpen={controller?.isOpen}
+            openRequestSequence={openRequestSequence}
             onRequestedOpenChange={handleRequestedOpenChange}
             onWindowExpandedChange={setWindowExpanded}
             onWindowSizeClassChange={handleWindowSizeClassChange}
@@ -2209,7 +2220,9 @@ function ChatOverlayMount({
   onDetentChange,
   onStateChange,
   initialMode,
+  initiallyOpen,
   requestedOpen,
+  openRequestSequence,
   onRequestedOpenChange,
   onWindowExpandedChange,
   onWindowSizeClassChange,
@@ -2222,7 +2235,9 @@ function ChatOverlayMount({
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
   initialMode?: "pill" | "input";
+  initiallyOpen?: boolean;
   requestedOpen?: boolean;
+  openRequestSequence?: number;
   onRequestedOpenChange?: (open: boolean) => void;
   onWindowExpandedChange?: (expanded: boolean) => void;
   onWindowSizeClassChange?: (sizeClass: ChatOverlayWindowSizeClass) => void;
@@ -2263,7 +2278,9 @@ function ChatOverlayMount({
       onDetentChange={onDetentChange}
       onStateChange={onStateChange}
       initialMode={initialMode}
+      initiallyOpen={initiallyOpen}
       requestedOpen={requestedOpen}
+      openRequestSequence={openRequestSequence}
       onRequestedOpenChange={onRequestedOpenChange}
       onWindowExpandedChange={onWindowExpandedChange}
       onWindowSizeClassChange={onWindowSizeClassChange}

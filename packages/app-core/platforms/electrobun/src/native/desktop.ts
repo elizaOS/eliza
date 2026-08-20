@@ -51,6 +51,7 @@ import {
   isBottomBarSurfaceState,
   normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
+  resolveBottomBarMaterialCornerRadius,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -385,6 +386,7 @@ export class DesktopManager {
   private bottomBarFrameDirty = false;
 
   // Callback to open the settings window (set by index.ts)
+  private openWorkspaceCallback: (() => void) | null = null;
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
   private openSurfaceWindowCallback:
     | ((
@@ -493,6 +495,13 @@ export class DesktopManager {
   }
 
   /**
+   * Set the callback used to open the complete workstation window.
+   */
+  setOpenWorkspaceCallback(cb: (() => void) | null): void {
+    this.openWorkspaceCallback = cb;
+  }
+
+  /**
    * Set the callback used to open the settings window from menus.
    */
   setOpenSettingsCallback(cb: (tabHint?: string) => void): void {
@@ -564,6 +573,13 @@ export class DesktopManager {
       this.mainWindowIsFullWindow = false;
       this.refreshMainWindowPresence();
     }
+  }
+
+  /**
+   * Open the complete workstation window via the registered callback.
+   */
+  openWorkspace(): void {
+    this.openWorkspaceCallback?.();
   }
 
   /**
@@ -799,7 +815,13 @@ export class DesktopManager {
     this.teardownTrayEvents();
 
     // Electrobun tray click is simpler — no bounds/modifiers
-    this.trayClickHandler = () => {
+    this.trayClickHandler = (event?: { data?: { action?: string } }) => {
+      // Electrobun delivers native menu selections through the same
+      // `tray-clicked` channel as a bare tray-icon click. Let the menu handler
+      // below own those actions. Treating "Open Eliza" as both an icon click
+      // and a menu click races hideWindow() against showWindow(), which can
+      // leave the resting pill invisible even though the menu action fired.
+      if (event?.data?.action) return;
       const win = this.mainWindow;
       const windowVisible =
         Boolean(win) && !this._windowHidden && !(win?.isMinimized() ?? true);
@@ -867,11 +889,24 @@ export class DesktopManager {
       // Native actions — these must work even when the renderer RPC bridge
       // is not yet connected (e.g. PGLite init on Windows can take 240s).
       if (action === "show" || action === "tray-show-window") {
-        void this.showWindow().catch((err: unknown) => {
-          logger.warn(
-            `[Desktop] Failed to show window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+        void this.showWindow()
+          .then(() => {
+            // Menu wording is explicit ("Open Eliza"), so expand the shared
+            // overlay rather than applying the global hotkey's toggle policy.
+            this.send("desktopShortcutPressed", {
+              id: "chat-overlay-open",
+              accelerator: "tray",
+            });
+          })
+          .catch((err: unknown) => {
+            logger.warn(
+              `[Desktop] Failed to show window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      } else if (action === "tray-open-desktop-workspace") {
+        this.openWorkspaceCallback?.();
+      } else if (action === "tray-open-settings") {
+        this.openSettingsCallback?.();
       } else if (action === "tray-hide-window") {
         void this.hideWindow().catch((err: unknown) => {
           logger.warn(
@@ -1612,6 +1647,7 @@ X-GNOME-Autostart-enabled=true
       ptr as Parameters<typeof setWindowInteractiveMaterialSize>[0],
       this.bottomBarInteractiveSize.width,
       this.bottomBarInteractiveSize.height,
+      resolveBottomBarMaterialCornerRadius(this.bottomBarInteractiveSize),
     );
     if (!applied) {
       throw new Error(

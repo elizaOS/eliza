@@ -68,6 +68,9 @@ export * from "../views/view-event-types";
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
 
+/** Explicitly expand the detached desktop ChatOverlay without toggling it. */
+export const CHAT_OVERLAY_OPEN_EVENT = "eliza:chat-overlay-open" as const;
+
 export interface FocusConnectorEventDetail {
   connectorId: string;
 }
@@ -231,7 +234,8 @@ export function dispatchBackIntent(): boolean {
 
 export type ElizaDocumentEventName =
   | SharedDocumentEventName
-  | typeof FOCUS_CONNECTOR_EVENT;
+  | typeof FOCUS_CONNECTOR_EVENT
+  | typeof CHAT_OVERLAY_OPEN_EVENT;
 
 export type ElizaWindowEventName =
   | SharedWindowEventName

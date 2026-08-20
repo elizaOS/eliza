@@ -35,13 +35,16 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 @interface ElizaWindowInteractiveMaterialController : NSObject
 @property(nonatomic, weak) NSWindow *window;
 @property(nonatomic) NSSize materialSize;
+@property(nonatomic) CGFloat materialCornerRadius;
 @property(nonatomic) BOOL interactionPinned;
 @property(nonatomic, strong) id globalMonitor;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) NSTimer *pointerPollTimer;
 - (instancetype)initWithWindow:(NSWindow *)window;
 - (void)handleEvent:(NSEvent *)event;
-- (void)setMaterialWidth:(CGFloat)width height:(CGFloat)height;
+- (void)setMaterialWidth:(CGFloat)width
+				  height:(CGFloat)height
+			cornerRadius:(CGFloat)cornerRadius;
 @end
 
 @implementation ElizaWindowInteractiveMaterialController
@@ -102,7 +105,15 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 		[contentView isFlipped] ? NSMaxY(bounds) - height : NSMinY(bounds),
 		width,
 		height);
-	return NSPointInRect(contentPoint, materialRect);
+	CGFloat radius = MIN(
+		MAX(0.0, self.materialCornerRadius),
+		MIN(materialRect.size.width, materialRect.size.height) / 2.0);
+	if (radius <= 0.0) return NSPointInRect(contentPoint, materialRect);
+	NSBezierPath *materialPath =
+		[NSBezierPath bezierPathWithRoundedRect:materialRect
+									xRadius:radius
+									yRadius:radius];
+	return [materialPath containsPoint:contentPoint];
 }
 
 - (void)applyForScreenPoint:(NSPoint)screenPoint {
@@ -134,8 +145,11 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	[self applyForScreenPoint:[NSEvent mouseLocation]];
 }
 
-- (void)setMaterialWidth:(CGFloat)width height:(CGFloat)height {
+- (void)setMaterialWidth:(CGFloat)width
+				  height:(CGFloat)height
+			cornerRadius:(CGFloat)cornerRadius {
 	self.materialSize = NSMakeSize(width, height);
+	self.materialCornerRadius = cornerRadius;
 	[self applyForScreenPoint:[NSEvent mouseLocation]];
 }
 
@@ -474,6 +488,45 @@ static void elizaRemoveResizeStripOverlays(NSView *contentView) {
 			[v removeFromSuperview];
 		}
 	}
+}
+
+/**
+ * Opt a window in or out of user-driven native resizing. The detached Eliza
+ * pill is repositioned and resized only by its state machine; AppKit edge
+ * resizing creates misleading cursors and can desynchronize the native frame
+ * from the painted surface. Removing our overlay views here also cleans up a
+ * window that installed them before a development hot reload.
+ */
+extern "C" bool setWindowUserResizable(void *windowPtr, bool enabled) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		NSWindowStyleMask styleMask = [window styleMask];
+		if (enabled) {
+			styleMask |= NSWindowStyleMaskResizable;
+		} else {
+			styleMask &= ~NSWindowStyleMaskResizable;
+		}
+		[window setStyleMask:styleMask];
+
+		if (!enabled) {
+			NSView *contentView = [window contentView];
+			elizaRemoveResizeStripOverlays(contentView);
+			[window invalidateCursorRectsForView:contentView];
+		}
+
+		success = YES;
+	});
+
+	return success;
 }
 
 /** Positions right/bottom/BR strips; z-order: below dragView, corner above
@@ -2420,9 +2473,11 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 
 /** Restrict pointer interaction to the bottom-centered painted material. */
 extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
-												 double height) {
+												 double height,
+												 double cornerRadius) {
 	if (windowPtr == nullptr || !isfinite(width) || !isfinite(height) ||
-		width <= 0.0 || height <= 0.0) {
+		!isfinite(cornerRadius) || width <= 0.0 || height <= 0.0 ||
+		cornerRadius < 0.0) {
 		return false;
 	}
 
@@ -2440,7 +2495,9 @@ extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
 				window, kElizaWindowInteractiveMaterialControllerKey, controller,
 				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 		}
-		[controller setMaterialWidth:(CGFloat)width height:(CGFloat)height];
+		[controller setMaterialWidth:(CGFloat)width
+							height:(CGFloat)height
+					  cornerRadius:(CGFloat)cornerRadius];
 		success = YES;
 	});
 	return success;
@@ -2659,13 +2716,24 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		if (![window isKindOfClass:[NSWindow class]]) {
 			return;
 		}
+		// Electrobun can construct hiddenInset managed windows with movement
+		// disabled even though they have no native titlebar. Explicit native drag
+		// views call performWindowDragWithEvent:, which is a no-op for a
+		// non-movable NSWindow. Restore the standard macOS window contract here;
+		// only the visible top strip receives those mouse events.
+		[window setMovable:YES];
 
 		NSView *contentView = [window contentView];
 		if (contentView == nil) {
 			return;
 		}
 
-		CGFloat dragX = MAX(0.0, x);
+		// Managed Workspace/Settings windows pass a negative inset to request one
+		// continuous, obvious drag surface across the otherwise-empty title strip.
+		// Main windows keep the positive-inset segmented behavior so renderer
+		// controls in their title rows remain interactive.
+		BOOL continuousTitlebar = x < 0.0;
+		CGFloat dragX = MAX(0.0, fabs(x));
 		CGFloat dragHeight = elizaChromeDepthPoints(window, height);
 		CGFloat resizeDepth = MIN(dragHeight, 12.0);
 		CGFloat contentWidth = contentView.bounds.size.width;
@@ -2677,8 +2745,10 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		CGFloat dragY = flipped ? 0.0 : contentView.bounds.size.height - dragHeight;
 		dragY = MAX(0.0, dragY);
 
-		NSArray<NSValue *> *dragRects =
-			elizaTitlebarNativeDragRects(contentWidth, dragHeight, flipped);
+		NSArray<NSValue *> *dragRects = continuousTitlebar
+			? @[[NSValue valueWithRect:NSMakeRect(0.0, 0.0, contentWidth,
+											 dragHeight)]]
+			: elizaTitlebarNativeDragRects(contentWidth, dragHeight, flipped);
 		NSArray<NSString *> *identifiers = elizaNativeDragViewIdentifiers();
 		ElectrobunNativeDragView *lastDragView = nil;
 		for (NSUInteger index = 0; index < [identifiers count]; index++) {

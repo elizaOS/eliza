@@ -83,6 +83,7 @@ import {
   setNativeWallpaperSource,
 } from "../../glass/native-backdrop";
 import { resetGlassBridgeForTests } from "../../glass/native-bridge";
+import { GLASS_SHEET_FILL } from "../../glass/tokens";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -261,6 +262,28 @@ describe("ChatOverlay", () => {
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
   });
 
+  it("can boot a detached pill host at the visible composer and still collapse to pill", async () => {
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        initiallyOpen
+        desktopOverlayHost
+      />,
+    );
+
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    expect(screen.getByTestId("chat-overlay").style.paddingBottom).toBe("0px");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+  });
+
   it("admits semantic pill activation without duplicating physical pointer taps", async () => {
     const onRequestedOpenChange = vi.fn();
     render(
@@ -285,6 +308,44 @@ describe("ChatOverlay", () => {
       );
     });
     expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("honors repeated native open requests even when requestedOpen is already true", async () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={true}
+        openRequestSequence={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={true}
+        openRequestSequence={1}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
   });
 
   it("admits semantic grabber activation without duplicating physical pointer taps", async () => {
@@ -1336,6 +1397,19 @@ describe("ChatOverlay", () => {
     expect(
       document.getElementById("continuous-thread")?.getAttribute("tabindex"),
     ).toBe("-1");
+    // The semantic detent has committed to INPUT, but the still-painted sheet
+    // must keep its open chrome until the closing spring reaches zero. Swapping
+    // the handle size and surface variant here made the collapse visibly snap
+    // halfway through the motion.
+    expect(screen.getByTestId("chat-sheet").dataset.variant).toBe("closed");
+    expect(screen.getByTestId("chat-sheet-grabber").className).toContain(
+      "inset-x-6",
+    );
+    expect(
+      screen
+        .getByTestId("chat-sheet-grabber")
+        .querySelector("span[aria-hidden='true']")?.className,
+    ).toContain("w-9");
   });
 
   it("lands full when a collapsed drag is released above the half threshold", () => {
@@ -4297,6 +4371,54 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
+  it("native click-away closes detached Mac history only to the visible composer", () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(sheet.dataset.detent).toBe("half");
+
+      act(() => nativeBlur?.(undefined));
+
+      expect(sheet.dataset.detent).toBe("collapsed");
+      expect(sheet.dataset.chatState).toBe("INPUT");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps detached Mac glass translucent at every open detent", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
+  });
+
   it("steps the detached Mac pill down on short 24px grabber pulls", async () => {
     const now = vi.spyOn(performance, "now");
     const eventTimeStamp = vi
@@ -4354,6 +4476,71 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       grabber = screen.getByTestId("chat-sheet-grabber");
       await pullDown(42);
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    } finally {
+      eventTimeStamp.mockRestore();
+      now.mockRestore();
+    }
+  });
+
+  it("lands a long detached Mac sheet pull on the composer before the resting bar", async () => {
+    const now = vi.spyOn(performance, "now");
+    const onWindowSizeClassChange = vi.fn();
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+          onWindowSizeClassChange={onWindowSizeClassChange}
+        />,
+      );
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      now.mockReturnValue(1_000);
+      fireEvent.pointerDown(grabber, {
+        clientY: 300,
+        screenY: 300,
+        pointerId: 43,
+      });
+      now.mockReturnValue(1_400);
+      fireEvent.pointerMove(grabber, {
+        clientY: 860,
+        screenY: 860,
+        pointerId: 43,
+      });
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      // Crossing the bottom while held must not swap in the second pill
+      // surface underneath the still-shrinking transcript.
+      expect(screen.getByTestId("chat-sheet").dataset.detent).not.toBe("pill");
+      expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
+
+      now.mockReturnValue(1_800);
+      fireEvent.pointerUp(grabber, {
+        clientY: 860,
+        screenY: 860,
+        pointerId: 43,
+      });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
+      expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+        "true",
+      );
+      // This drag already carried the rendered transcript completely to zero,
+      // so release must retire the preview and native sheet envelope instead
+      // of leaving an invisible 600x820 click blocker behind the composer.
+      await waitFor(() => {
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+      });
     } finally {
       eventTimeStamp.mockRestore();
       now.mockRestore();

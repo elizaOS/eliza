@@ -98,6 +98,8 @@ export interface DesktopShellWindowPresentation {
   titleBarStyle: DesktopShellTitleBarStyle;
   transparent: boolean;
   nativeShadow: boolean;
+  /** Whether macOS should install native titlebar drag and edge-resize views. */
+  nativeChromeInteractive: boolean;
 }
 
 /**
@@ -128,12 +130,18 @@ export function resolveDesktopShellWindowPresentation(
           : "default",
     transparent: bottomBar,
     nativeShadow: !kiosk && !bottomBar,
+    nativeChromeInteractive: !bottomBar,
   };
 }
 
 /** Resting native hit area matching the 48×6 visible bar exactly. */
 export const DEFAULT_BOTTOM_BAR_WIDTH = 48;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 6;
+/**
+ * Keep the six-point resting bar visibly above the display edge. The native
+ * window remains exactly 48×6, so this does not add any transparent hit area.
+ */
+export const BOTTOM_BAR_BOTTOM_INSET = 14;
 
 /** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
 export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
@@ -149,6 +157,9 @@ export const INPUT_MENU_BOTTOM_BAR_HEIGHT = 320;
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
 export const EXPANDED_BOTTOM_BAR_HEIGHT = 820;
+
+/** Match ChatOverlay's settled inset radius without making clear corners hot. */
+export const BOTTOM_BAR_MATERIAL_CORNER_RADIUS = 32;
 
 export interface BottomBarSizeOptions {
   expanded: boolean;
@@ -181,6 +192,18 @@ export function normalizeBottomBarMaterialSize(
     width: Math.max(1, Math.round(size.width)),
     height: Math.max(1, Math.round(size.height)),
   };
+}
+
+/** Round only the painted capsule/panel; transparent corner pixels pass through. */
+export function resolveBottomBarMaterialCornerRadius(
+  size: BottomBarMaterialSize,
+): number {
+  const normalized = normalizeBottomBarMaterialSize(size);
+  return Math.min(
+    BOTTOM_BAR_MATERIAL_CORNER_RADIUS,
+    normalized.width / 2,
+    normalized.height / 2,
+  );
 }
 
 /** Resolve the native bottom-bar size for rest, hover, sign-in, or overlay. */
@@ -238,7 +261,11 @@ export function computeBottomBarFrame(
   const x =
     Math.round(workArea.x) + margin + Math.round((availableWidth - width) / 2);
   const y =
-    Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
+    Math.round(workArea.y) +
+    Math.round(workArea.height) -
+    height -
+    margin -
+    BOTTOM_BAR_BOTTOM_INSET;
   return { x, y, width, height };
 }
 
@@ -285,7 +312,9 @@ export function computeBottomBarSurfaceFrame(
   );
   return {
     x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: Math.round(workArea.y + workArea.height - height),
+    y: Math.round(
+      workArea.y + workArea.height - height - BOTTOM_BAR_BOTTOM_INSET,
+    ),
     width,
     height,
   };

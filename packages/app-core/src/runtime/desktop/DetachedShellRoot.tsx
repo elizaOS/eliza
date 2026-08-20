@@ -7,6 +7,8 @@
  * off every window's first-paint graph; PluginsPageView is imported statically
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
+
+import { invokeDesktopBridgeRequest } from "@elizaos/ui/bridge/electrobun-rpc";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
@@ -110,6 +112,19 @@ const SettingsView = lazyNamedView(
   "SettingsView",
 );
 
+function closeDetachedWindow(): void {
+  if (typeof window === "undefined") return;
+  void invokeDesktopBridgeRequest<void>({
+    rpcMethod: "desktopCloseWindow",
+    ipcChannel: "desktop:closeWindow",
+  }).then((result) => {
+    // Browser previews do not install the Electrobun bridge. Keep the web
+    // fallback there, but let the native host close the owning managed window
+    // because WKWebView ignores script-initiated window.close().
+    if (result === null) window.close();
+  });
+}
+
 function DetachedLazyBoundary({ children }: { children: JSX.Element }) {
   return (
     <Suspense
@@ -145,7 +160,9 @@ function DetachedSettingsSectionView({
     case "updates":
       return <ReleaseCenterView />;
     default:
-      return <SettingsView initialSection={section} />;
+      return (
+        <SettingsView initialSection={section} onClose={closeDetachedWindow} />
+      );
   }
 }
 

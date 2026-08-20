@@ -34,6 +34,7 @@ export interface ChatOverlayWindowBoundsCoordinator {
 
 export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 48;
 export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 6;
+export const CHAT_OVERLAY_INPUT_WINDOW_HEIGHT = 64;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
 export const CHAT_OVERLAY_STAGE_WIDTH = CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH;
@@ -47,6 +48,36 @@ export interface ChatOverlayMaterialSize {
 }
 
 export type ChatOverlayWindowSizeClass = "resting" | "input" | "sheet";
+
+/** Only a second Escape from the already-settled resting pill hides native UI. */
+export function shouldHideRestingChatOverlay(
+  key: string,
+  sizeClass: ChatOverlayWindowSizeClass,
+): boolean {
+  return key === "Escape" && sizeClass === "resting";
+}
+
+/**
+ * Returns the stable compact native envelope for the visible composer or the
+ * final white-bar rest state. The renderer cannot measure a 64px composer
+ * while its WKWebView is still clipped to the 6px resting host, so INPUT must
+ * receive a real first frame instead of depending on ResizeObserver recovery.
+ */
+export function resolveChatOverlayCompactWindowSize(
+  sizeClass: Extract<ChatOverlayWindowSizeClass, "resting" | "input">,
+  stageSize: ChatOverlayMaterialSize,
+): ChatOverlayMaterialSize {
+  if (sizeClass === "input") {
+    return {
+      width: Math.max(CHAT_OVERLAY_RESTING_WINDOW_WIDTH, stageSize.width - 24),
+      height: CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
+    };
+  }
+  return {
+    width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+    height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  };
+}
 
 interface ChatOverlayWindowSizeBridge {
   setBottomBarSize: (size: ChatOverlayMaterialSize) => Promise<void>;

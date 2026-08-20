@@ -40,8 +40,12 @@ describe("desktop tray config", () => {
     const nativeDesktopSource = readFileSync(desktopNativePath, "utf8");
 
     expect(nativeDesktopSource).toContain("FALLBACK_TRAY_MENU_ITEMS");
-    expect(nativeDesktopSource).toContain('label: "Windows"');
-    expect(nativeDesktopSource).toContain('{ id: "quit", label: "Quit" }');
+    expect(nativeDesktopSource).toContain(
+      '{ id: "tray-show-window", label: "Open Eliza" }',
+    );
+    expect(nativeDesktopSource).toContain(
+      '{ id: "quit", label: "Quit Eliza" }',
+    );
     expect(nativeDesktopSource).toContain(
       "options.menu ?? FALLBACK_TRAY_MENU_ITEMS",
     );

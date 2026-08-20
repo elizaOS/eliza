@@ -424,6 +424,7 @@ const rendererBuildAction = resolveRendererBuildAction({
   distStale: rendererDistStale,
   distExists: rendererDistExists,
   skipRequested: rendererBuildSkipRequested,
+  liveDevServer: viteDevServer,
 });
 let ranInitialViteBuild = false;
 
@@ -445,6 +446,10 @@ if (rendererBuildAction === "build") {
     stdio: "inherit",
   });
   console.log("[eliza] Renderer ready.\n");
+} else if (rendererBuildAction === "skip-hmr") {
+  console.log(
+    "\n[eliza] Skipping production renderer build — Vite HMR serves source directly.\n",
+  );
 } else if (rendererBuildAction === "skip-stale") {
   console.warn(
     "\n[eliza] Skipping STALE vite build (ELIZA_DESKTOP_RENDERER_BUILD=skip) —\n" +
@@ -988,20 +993,14 @@ async function launch() {
       force: viteDepForce,
       port: uiDevPort,
     });
-    pushChild(
-      "vite",
-      viteCommand.command,
-      viteCommand.args,
-      appDir,
-      {
-        NODE_ENV: "development",
-        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      },
-    );
+    pushChild("vite", viteCommand.command, viteCommand.args, appDir, {
+      NODE_ENV: "development",
+      ELIZA_VITE_LOOPBACK_ORIGIN: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_API_PORT: apiPort,
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
   }
@@ -1011,15 +1010,9 @@ async function launch() {
       appDir,
       viteArgs: ["build", "--watch"],
     });
-    pushChild(
-      "vite",
-      viteWatchCommand.command,
-      viteWatchCommand.args,
-      appDir,
-      {
-        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-      },
-    );
+    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+    });
   }
 
   const electrobunChild = pushChild(

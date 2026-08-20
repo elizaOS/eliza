@@ -92,6 +92,7 @@ import {
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
+  isStartupDiagnosticsOwnedByBundle,
   terminateManagedAgentOnHostExit,
 } from "./native/agent";
 import { getDesktopManager } from "./native/desktop";
@@ -101,6 +102,7 @@ import {
   setNativeDragRegion,
   setTrafficLightsPosition,
   setWindowShadow,
+  setWindowUserResizable,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
@@ -462,6 +464,9 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 function applyMacOSWindowEffects(
   win: BrowserWindow,
   nativeShadow: boolean,
+  trackAsMainWindow = true,
+  continuousManagedDragStrip = false,
+  nativeChromeInteractive = true,
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -475,10 +480,12 @@ function applyMacOSWindowEffects(
     ptr as Parameters<typeof setWindowShadow>[0],
     nativeShadow,
   );
-  updateCurrentMainWindowEffectsState({
-    vibrancyEnabled: false,
-    shadowEnabled: shadowConfigured ? nativeShadow : null,
-  });
+  if (trackAsMainWindow) {
+    updateCurrentMainWindowEffectsState({
+      vibrancyEnabled: false,
+      shadowEnabled: shadowConfigured ? nativeShadow : null,
+    });
+  }
 
   const alignButtons = () =>
     setTrafficLightsPosition(
@@ -489,7 +496,9 @@ function applyMacOSWindowEffects(
   const alignDragRegion = () =>
     setNativeDragRegion(
       ptr as Parameters<typeof setNativeDragRegion>[0],
-      MAC_NATIVE_DRAG_REGION_X,
+      continuousManagedDragStrip
+        ? -MAC_NATIVE_DRAG_REGION_X
+        : MAC_NATIVE_DRAG_REGION_X,
       MAC_NATIVE_DRAG_REGION_HEIGHT,
     );
   // The shell owns horizontal swipe UI (chat-sheet dismiss, pager row-swipes)
@@ -503,8 +512,14 @@ function applyMacOSWindowEffects(
     );
 
   const alignChrome = () => {
-    alignButtons();
-    alignDragRegion();
+    if (nativeChromeInteractive) {
+      alignButtons();
+      alignDragRegion();
+    }
+    setWindowUserResizable(
+      ptr as Parameters<typeof setWindowUserResizable>[0],
+      nativeChromeInteractive,
+    );
     disableSwipeBackGesture();
   };
 
@@ -1272,7 +1287,16 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win, presentation.nativeShadow);
+    // The detached pill owns its exact painted hit region in the renderer. It
+    // is not a user-resizable document window, so never install native titlebar
+    // drag or edge/corner resize overlays over it.
+    applyMacOSWindowEffects(
+      win,
+      presentation.nativeShadow,
+      true,
+      false,
+      presentation.nativeChromeInteractive,
+    );
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();
@@ -1721,7 +1745,10 @@ const MAX_RPC_REQUEST_TIME_MS = 600_000;
  * @param label  Diagnostic tag included in the "no RPC method" warning so
  *               main / settings / surface windows are distinguishable.
  */
-function createDesktopRpc(label: string): {
+function createDesktopRpc(
+  label: string,
+  closeCurrentWindow?: () => void | Promise<void>,
+): {
   rpc: ElizaDesktopRpc;
   sendToWebview: SendToWebview;
   releaseShellSync: () => void;
@@ -1766,6 +1793,7 @@ function createDesktopRpc(label: string): {
       requests: buildBunRpcHandlers({
         sendToWebview,
         shellControllerEndpoint: shellSyncEndpoint,
+        closeCurrentWindow,
       }) as BunRpcRequestsHandlers,
     },
   });
@@ -2125,6 +2153,10 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      if (action === "open-workspace") {
+        void surfaceWindowManager?.openWorkspaceWindow();
+        return true;
+      }
       // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
       // its own window via the same app-window path detached surfaces use.
       // Checked before the generic `new-window:` surface branch because that
@@ -2133,12 +2165,16 @@ async function setupUpdater(): Promise<void> {
       if (viewId) {
         const entry = findViewMenuEntryById(viewId);
         if (entry) {
-          void getDesktopManager().openAppWindow({
-            slug: `view-${entry.id}`,
-            title: entry.label,
-            path: entry.path,
-            alwaysOnTop: false,
-          });
+          if (entry.id === "settings") {
+            void createSettingsWindow();
+          } else {
+            void getDesktopManager().openAppWindow({
+              slug: `view-${entry.id}`,
+              title: entry.label,
+              path: entry.path,
+              alwaysOnTop: false,
+            });
+          }
         }
         return true;
       }
@@ -2768,18 +2804,33 @@ async function main(): Promise<void> {
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
-      const { rpc, releaseShellSync } = createDesktopRpc("surface");
+      let managedWindow: (BrowserWindow & ManagedWindowLike) | undefined;
+      const { rpc, releaseShellSync } = createDesktopRpc("surface", () => {
+        managedWindow?.close();
+      });
       const window = createElectrobunBrowserWindow({
         ...options,
         rpc,
       }) as BrowserWindow & ManagedWindowLike;
+      managedWindow = window;
+      // hiddenInset removes the native title bar. WKWebView does not reliably
+      // honor CSS app-region dragging, so every managed macOS window using
+      // that presentation needs the same native top drag strip as the normal
+      // workstation. Do not let a secondary window overwrite diagnostics for
+      // the main pill/workstation while applying its own chrome.
+      if (options.titleBarStyle === "hiddenInset") {
+        applyMacOSWindowEffects(window, true, false, true);
+      }
       surfaceRpcs.set(window, rpc);
       // Drop this window's relay endpoint when it closes so a churned detached
       // surface does not leak (#16442).
       window.on("close", releaseShellSync);
       return window;
     },
-    resolveRendererUrl,
+    // Resolve the runtime-aware URL up front. Late dom-ready API injection is
+    // retained as failover, but cannot be the first source of truth because
+    // the renderer startup coordinator runs before that event is delivered.
+    resolveRendererUrl: resolveRendererUrlForCurrentRuntime,
     readPreload: () => readResolvedPreloadScript(import.meta.dir),
     wireRpc: (window) => {
       const rpc = surfaceRpcs.get(window);
@@ -2815,6 +2866,12 @@ async function main(): Promise<void> {
   }
 
   // Wire detached window callbacks so menus and RPC can open them.
+  getDesktopManager().setOpenWorkspaceCallback(() => {
+    if (!surfaceWindowManager) {
+      throw new Error("Surface window manager is not ready.");
+    }
+    void surfaceWindowManager.openWorkspaceWindow();
+  });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);
   });
@@ -3039,7 +3096,7 @@ function buildStartupCrashDiscordReport(options: {
   const reportLines = [
     `${BRAND.appName} startup crash report`,
     "",
-    "Share this report in Discord and ping @iono.",
+    "Share this report in Discord and ping @eliza bot.",
     "",
     `Source: ${options.source}`,
     `Timestamp: ${new Date().toISOString()}`,
@@ -3120,7 +3177,24 @@ async function maybePromptStartupCrashReport(): Promise<void> {
     return;
   }
 
+  // An externally supervised desktop does not own the embedded AgentManager
+  // lifecycle. Its shared startup-status.json may still describe a failed
+  // launch from another checkout or an older embedded build, so surfacing that
+  // record here produces a false "recovered" dialog in a healthy app. Only the
+  // local/embedded runtime that writes this status is allowed to prompt for it.
+  if (resolveDesktopRuntime().mode !== "local") {
+    return;
+  }
+
   const diagnostics = getStartupDiagnosticsSnapshot();
+  if (
+    !isStartupDiagnosticsOwnedByBundle(
+      diagnostics,
+      resolveStartupBundlePath(process.execPath),
+    )
+  ) {
+    return;
+  }
   const looksLikeStartupFailure =
     diagnostics.state === "error" &&
     diagnostics.phase !== "ready" &&
@@ -3144,7 +3218,7 @@ async function maybePromptStartupCrashReport(): Promise<void> {
     message:
       "The previous launch failed. A crash report is ready to share with support.",
     detail:
-      "Choose Copy Report, paste into Discord, and ping @iono. You can also open logs.",
+      "Choose Copy Report, paste into Discord, and ping @eliza bot. You can also open logs.",
     buttons: ["Copy Report", "Open Logs Folder", "Continue"],
     defaultId: 0,
     cancelId: 2,
@@ -3161,7 +3235,7 @@ async function maybePromptStartupCrashReport(): Promise<void> {
       Utils.clipboardWriteText(report);
       Utils.showNotification({
         title: "Crash report copied",
-        body: "Paste in Discord and ping @iono.",
+        body: "Paste in Discord and ping @eliza bot.",
       });
     } catch (err) {
       logger.warn(

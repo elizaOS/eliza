@@ -9,7 +9,7 @@ export type DetachedSurface =
   | "plugins"
   | "connectors"
   | "cloud";
-export type ManagedSurface = DetachedSurface | "settings" | "app";
+export type ManagedSurface = DetachedSurface | "workspace" | "settings" | "app";
 
 export interface ManagedWindowSnapshot {
   id: string;
@@ -60,7 +60,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "default";
+  titleBarStyle: "hidden" | "hiddenInset" | "default";
   transparent: boolean;
 }
 
@@ -93,6 +93,7 @@ const SURFACE_LABELS: Record<ManagedSurface, string> = {
   plugins: "Plugins",
   connectors: "Connectors",
   cloud: "Cloud",
+  workspace: "Workspace",
   settings: "Settings",
   app: "App",
 };
@@ -105,6 +106,7 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   plugins: { x: 180, y: 160, width: 1180, height: 860 },
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
+  workspace: { x: 120, y: 80, width: 1440, height: 960 },
   settings: { x: 180, y: 120, width: 1240, height: 900 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
@@ -122,7 +124,12 @@ export function isDetachedSurface(value: string): value is DetachedSurface {
 }
 
 function isManagedSurface(value: string): value is ManagedSurface {
-  return value === "settings" || value === "app" || isDetachedSurface(value);
+  return (
+    value === "workspace" ||
+    value === "settings" ||
+    value === "app" ||
+    isDetachedSurface(value)
+  );
 }
 
 function ordinalTitle(surface: ManagedSurface, ordinal: number): string {
@@ -144,6 +151,9 @@ export function buildSurfaceShellQuery(
   tabHint?: string,
   browse?: string,
 ): string {
+  if (surface === "workspace") {
+    return "";
+  }
   if (surface === "settings") {
     const normalizedTab = normalizeSettingsTabHint(tabHint);
     return normalizedTab
@@ -164,8 +174,41 @@ export function buildSurfaceWindowRendererUrl(
   browse?: string,
 ): string {
   const renderer = new URL(rendererUrl);
+  // Surface windows must receive the runtime target on their very first
+  // document load. The native dom-ready injection is a repair/failover path;
+  // it happens after the renderer's startup coordinator has already read the
+  // URL and can therefore arrive too late to prevent a false "Can't connect"
+  // state. Preserve only the trusted host-owned boot parameters while
+  // discarding unrelated/stale renderer query state.
+  const apiBase = renderer.searchParams.get("apiBase");
+  const runtimeChooser = renderer.searchParams.get("enableRuntimeChooser");
   renderer.search = buildSurfaceShellQuery(surface, tabHint, browse);
+  if (apiBase) renderer.searchParams.set("apiBase", apiBase);
+  if (runtimeChooser) {
+    renderer.searchParams.set("enableRuntimeChooser", runtimeChooser);
+  }
+  if (surface === "workspace" || surface === "settings") {
+    renderer.searchParams.set("desktopSurface", surface);
+  }
   renderer.hash = "";
+  return renderer.toString();
+}
+
+/**
+ * Route the one full workstation window without turning the destination into
+ * a detached `appWindow`. Settings is part of the workstation product, not a
+ * second native application/window.
+ */
+export function buildWorkspaceWindowRendererUrl(
+  rendererUrl: string,
+  routePath = "/",
+  section?: string,
+): string {
+  const renderer = new URL(
+    buildSurfaceWindowRendererUrl(rendererUrl, "workspace"),
+  );
+  renderer.pathname = routePath.startsWith("/") ? routePath : `/${routePath}`;
+  renderer.hash = section ? `#${encodeURIComponent(section)}` : "";
   return renderer.toString();
 }
 
@@ -228,25 +271,45 @@ export class SurfaceWindowManager {
   }
 
   async openSettingsWindow(tabHint?: string): Promise<ManagedWindowSnapshot> {
+    return this.openWorkspaceWindow(
+      "/settings",
+      normalizeSettingsTabHint(tabHint),
+    );
+  }
+
+  /**
+   * Open the complete Eliza workstation as a singleton. Unlike detached
+   * surface/app windows, this loads the renderer root so it mounts the normal
+   * app shell and its one shared ChatOverlay at the bottom.
+   */
+  async openWorkspaceWindow(
+    routePath = "/",
+    section?: string,
+  ): Promise<ManagedWindowSnapshot> {
     const existing = Array.from(this.windows.values()).find(
-      (entry) => entry.surface === "settings",
+      (entry) => entry.surface === "workspace",
     );
     if (existing) {
-      // A tab hint on an already-open Settings window must navigate the
-      // window to the requested section — the menu items ("Voice Controls",
-      // "Permissions", "Cloud Settings", …) all route through here, and
-      // merely re-focusing left the stale section on screen (#19996).
-      const normalizedTab = normalizeSettingsTabHint(tabHint);
-      if (normalizedTab && existing.window.webview.loadURL) {
+      if ((routePath !== "/" || section) && existing.window.webview.loadURL) {
         const rendererUrl = await this.resolveRendererUrlFn();
         existing.window.webview.loadURL(
-          buildSurfaceWindowRendererUrl(rendererUrl, "settings", normalizedTab),
+          buildWorkspaceWindowRendererUrl(rendererUrl, routePath, section),
         );
       }
       existing.window.focus();
       return this.toSnapshot(existing);
     }
-    return this.createManagedWindow("settings", tabHint, true);
+    return this.createManagedWindow(
+      "workspace",
+      undefined,
+      true,
+      undefined,
+      routePath === "/" && !section ? undefined : routePath,
+      undefined,
+      false,
+      undefined,
+      section,
+    );
   }
 
   async openSurfaceWindow(
@@ -373,6 +436,7 @@ export class SurfaceWindowManager {
     titleOverride?: string,
     alwaysOnTop = false,
     slug?: string,
+    workspaceSection?: string,
   ): Promise<ManagedWindowSnapshot> {
     if (!isManagedSurface(surface)) {
       throw new Error(`Unsupported surface: ${surface}`);
@@ -404,7 +468,13 @@ export class SurfaceWindowManager {
         ? ordinalTitle(surface, 1)
         : ordinalTitle(surface, existingCount + 1);
     const url = routePath
-      ? buildAppWindowRendererUrl(rendererUrl, routePath)
+      ? surface === "workspace"
+        ? buildWorkspaceWindowRendererUrl(
+            rendererUrl,
+            routePath,
+            workspaceSection,
+          )
+        : buildAppWindowRendererUrl(rendererUrl, routePath)
       : buildSurfaceWindowRendererUrl(rendererUrl, surface, tabHint, browse);
     const id = slug ? `${surface}_${slug}` : `${surface}_${++this.counter}`;
 
@@ -421,7 +491,12 @@ export class SurfaceWindowManager {
       url,
       preload,
       frame,
-      titleBarStyle: "default",
+      // Match the normal macOS workstation presentation: remove the redundant
+      // native title strip while retaining the integrated window controls.
+      titleBarStyle:
+        surface === "workspace" || surface === "settings"
+          ? "hiddenInset"
+          : "default",
       transparent: false,
     });
     if (alwaysOnTop) {

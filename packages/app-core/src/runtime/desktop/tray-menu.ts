@@ -170,7 +170,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     entryPoint: "tray",
     label: "Open Workspace",
     expectedAction:
-      "Open a detached settings window focused on the desktop workspace section.",
+      "Open and focus the complete Eliza workstation with its shared chat overlay.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -178,7 +178,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "tray-open-settings",
     entryPoint: "tray",
     label: "Settings…",
-    expectedAction: "Open the standard Eliza settings window.",
+    expectedAction: "Open Settings inside the full Eliza workspace.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

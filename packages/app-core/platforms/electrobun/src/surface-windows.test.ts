@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BoundsStore,
   buildAppWindowRendererUrl,
+  buildSurfaceWindowRendererUrl,
+  buildWorkspaceWindowRendererUrl,
   type CreateManagedWindowOptions,
   type ManagedWindowFrame,
   type ManagedWindowLike,
@@ -121,7 +123,30 @@ describe("SurfaceWindowManager app windows", () => {
     );
   });
 
-  it("opens settings as a singleton, focuses the existing window, and encodes tab hints", async () => {
+  it("preserves only host-owned runtime parameters for workspace first paint", () => {
+    expect(
+      buildSurfaceWindowRendererUrl(
+        "http://127.0.0.1:5173/?boot=stale&apiBase=http%3A%2F%2F127.0.0.1%3A32437&enableRuntimeChooser=1#old",
+        "workspace",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437&enableRuntimeChooser=1&desktopSurface=workspace",
+    );
+  });
+
+  it("routes settings inside the full workspace while preserving runtime boot parameters", () => {
+    expect(
+      buildWorkspaceWindowRendererUrl(
+        "http://127.0.0.1:5173/?boot=stale&apiBase=http%3A%2F%2F127.0.0.1%3A32437#old",
+        "/settings",
+        "voice",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/settings?apiBase=http%3A%2F%2F127.0.0.1%3A32437&desktopSurface=workspace#voice",
+    );
+  });
+
+  it("opens settings inside the singleton workspace and encodes section hints", async () => {
     const fixture = createFixture();
 
     const first = await fixture.manager.openSettingsWindow(
@@ -132,14 +157,34 @@ describe("SurfaceWindowManager app windows", () => {
     expect(second).toEqual(first);
     expect(fixture.created).toHaveLength(1);
     expect(fixture.created[0]?.options).toMatchObject({
-      title: "elizaOS Settings",
-      url: "http://127.0.0.1:5173/?shell=settings&tab=voice",
+      title: "elizaOS Workspace",
+      url: "http://127.0.0.1:5173/settings?desktopSurface=workspace#voice",
+      titleBarStyle: "hiddenInset",
     });
     expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
-    expect(fixture.manager.listWindows("settings")).toEqual([first]);
+    expect(fixture.manager.listWindows("workspace")).toEqual([first]);
+    expect(fixture.manager.listWindows("settings")).toEqual([]);
   });
 
-  it("navigates an already-open settings window to the requested tab instead of just focusing it (#19996)", async () => {
+  it("opens the complete frameless workstation root as a singleton", async () => {
+    const fixture = createFixture();
+
+    const first = await fixture.manager.openWorkspaceWindow();
+    const second = await fixture.manager.openWorkspaceWindow();
+
+    expect(second).toEqual(first);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.options).toMatchObject({
+      title: "elizaOS Workspace",
+      url: "http://127.0.0.1:5173/?desktopSurface=workspace",
+      titleBarStyle: "hiddenInset",
+      transparent: false,
+    });
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
+    expect(fixture.manager.listWindows("workspace")).toEqual([first]);
+  });
+
+  it("navigates the already-open workspace to the requested settings section (#19996)", async () => {
     const fixture = createFixture();
 
     await fixture.manager.openSettingsWindow("open-settings-voice");
@@ -152,14 +197,17 @@ describe("SurfaceWindowManager app windows", () => {
 
     expect(fixture.created).toHaveLength(1);
     expect(window?.webview.loadURL).toHaveBeenCalledWith(
-      "http://127.0.0.1:5173/?shell=settings&tab=permissions",
+      "http://127.0.0.1:5173/settings?desktopSurface=workspace#permissions",
     );
     expect(window?.focus).toHaveBeenCalled();
 
-    // No tab hint (plain "Settings Window" menu item): focus only, no reload.
+    // Plain Settings returns the same workstation to the Settings hub.
     window?.webview.loadURL.mockClear();
     await fixture.manager.openSettingsWindow();
-    expect(window?.webview.loadURL).not.toHaveBeenCalled();
+    expect(window?.webview.loadURL).toHaveBeenCalledWith(
+      "http://127.0.0.1:5173/settings?desktopSurface=workspace",
+    );
+    expect(fixture.manager.listWindows("settings")).toEqual([]);
   });
 
   it("opens browser surfaces with browse query encoding and ignores browse for non-browser surfaces", async () => {

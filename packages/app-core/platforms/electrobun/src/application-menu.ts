@@ -243,11 +243,11 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   return {
     label: "Desktop",
     submenu: [
-      { label: "Desktop Workspace", action: "open-settings-desktop" },
+      { label: "Desktop Workspace", action: "open-workspace" },
       { label: "Voice Controls", action: "open-settings-voice" },
       { label: "Permissions", action: "open-settings-permissions" },
       { label: "Cloud Settings", action: "open-settings-cloud" },
-      { label: "Settings Window", action: "open-settings" },
+      { label: "Settings", action: "open-settings" },
       {
         label: "Secrets Storage…",
         action: "open-secrets-manager",
@@ -439,7 +439,7 @@ export function buildApplicationMenu({
                 action: "new-window:connectors",
               },
               { label: "New Cloud Window", action: "new-window:cloud" },
-              { label: "Settings Window", action: "open-settings" },
+              { label: "Settings", action: "open-settings" },
               { type: "separator" as const },
               ...buildOpenWindowItems(
                 visibleDetachedWindows,

@@ -168,4 +168,18 @@ describe("buildApplicationMenu", () => {
       desktop?.submenu?.some((item) => item.action === "desktop-notify"),
     ).toBe(true);
   });
+
+  it("opens the complete desktop workspace instead of misrouting to settings", () => {
+    const menu = buildApplicationMenu({
+      isMac: true,
+      browserEnabled: true,
+      detachedWindows: noWindows,
+    });
+    const desktop = menu.find((item) => item.label === "Desktop");
+    const workspace = desktop?.submenu?.find(
+      (item) => item.label === "Desktop Workspace",
+    );
+
+    expect(workspace?.action).toBe("open-workspace");
+  });
 });

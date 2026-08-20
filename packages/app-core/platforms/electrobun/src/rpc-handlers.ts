@@ -307,9 +307,11 @@ function requireShellControllerEndpoint(
 export function buildBunRpcHandlers({
   sendToWebview,
   shellControllerEndpoint,
+  closeCurrentWindow,
 }: {
   sendToWebview: SendToWebview;
   shellControllerEndpoint?: ShellControllerEndpoint;
+  closeCurrentWindow?: () => void | Promise<void>;
 }): BunRpcHandlers {
   const agent = getAgentManager();
   const camera = getCameraManager();
@@ -791,7 +793,6 @@ export function buildBunRpcHandlers({
     desktopUnminimizeWindow: async () => desktop.unminimizeWindow(),
     desktopMaximizeWindow: async () => desktop.maximizeWindow(),
     desktopUnmaximizeWindow: async () => desktop.unmaximizeWindow(),
-    desktopCloseWindow: async () => desktop.closeWindow(),
     desktopShowWindow: async () => desktop.showWindow(),
     desktopHideWindow: async () => desktop.hideWindow(),
     desktopFocusWindow: async () => desktop.focusWindow(),
@@ -858,6 +859,7 @@ export function buildBunRpcHandlers({
     ...buildWindowRpcHandlers({
       desktop,
       appName: getBrandConfig().appName,
+      closeCurrentWindow,
     }),
     ...buildDynamicViewRpcHandlers({
       registry: dynamicViewRegistry,

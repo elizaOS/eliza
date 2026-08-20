@@ -13,14 +13,21 @@ import {
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
-import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
+import {
+  CHAT_OVERLAY_OPEN_EVENT,
+  dispatchAppEvent,
+  TRAY_ACTION_EVENT,
+} from "@elizaos/ui/events";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
   setDesktopLauncherEntries,
 } from "@elizaos/ui/state/desktop-tray-launcher";
 import { useApp } from "@elizaos/ui/state/useApp";
-import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
+import {
+  openDesktopSettingsWindow,
+  openDesktopWorkspaceWindow,
+} from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
 import {
   DESKTOP_VIEW_WINDOWS,
@@ -164,6 +171,10 @@ export function DesktopTrayRuntime() {
         // window via the same app-window path detached surfaces use.
         const viewId = parseTrayOpenViewItemId(itemId);
         if (viewId) {
+          if (viewId === "settings") {
+            await openDesktopSettingsWindow();
+            return;
+          }
           const view = DESKTOP_VIEW_WINDOWS.find(
             (entry) => entry.id === viewId,
           );
@@ -181,13 +192,18 @@ export function DesktopTrayRuntime() {
 
         switch (itemId) {
           case "tray-open-desktop-workspace":
-            await openDesktopSettingsWindow("desktop");
+            await openDesktopWorkspaceWindow();
             return;
           case "tray-open-settings":
             await openDesktopSettingsWindow();
             return;
           case "tray-show-window":
             await showAndFocusWindow();
+            // The native menu push and renderer menu notification are separate
+            // delivery paths. Expand through the canonical ChatOverlay event
+            // here too so "Open Eliza" cannot degrade into a no-op if the
+            // native push arrived before the renderer subscribed.
+            dispatchAppEvent(CHAT_OVERLAY_OPEN_EVENT);
             return;
           case "quit":
             await invokeDesktopBridgeRequest<void>({

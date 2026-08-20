@@ -8,6 +8,8 @@ import {
   type ChatOverlayWindowBounds,
   computeChatOverlayWindowBounds,
   createChatOverlayWindowBoundsCoordinator,
+  resolveChatOverlayCompactWindowSize,
+  shouldHideRestingChatOverlay,
 } from "./chat-overlay-window-bounds";
 
 function deferred<T>() {
@@ -45,6 +47,38 @@ describe("computeChatOverlayWindowBounds", () => {
         false,
       ),
     ).toEqual({ x: 659, y: 762, width: 48, height: 6 });
+  });
+});
+
+describe("resolveChatOverlayCompactWindowSize", () => {
+  it("gives the visible composer a real first native frame", () => {
+    expect(
+      resolveChatOverlayCompactWindowSize("input", {
+        width: 600,
+        height: 820,
+      }),
+    ).toEqual({ width: 576, height: 64 });
+  });
+
+  it("keeps the final white-bar rest hitbox exact", () => {
+    expect(
+      resolveChatOverlayCompactWindowSize("resting", {
+        width: 600,
+        height: 820,
+      }),
+    ).toEqual({ width: 48, height: 6 });
+  });
+});
+
+describe("shouldHideRestingChatOverlay", () => {
+  it("keeps the window visible while Escape collapses sheet or composer", () => {
+    expect(shouldHideRestingChatOverlay("Escape", "sheet")).toBe(false);
+    expect(shouldHideRestingChatOverlay("Escape", "input")).toBe(false);
+  });
+
+  it("hides only on Escape from the already-settled resting pill", () => {
+    expect(shouldHideRestingChatOverlay("Escape", "resting")).toBe(true);
+    expect(shouldHideRestingChatOverlay("Enter", "resting")).toBe(false);
   });
 });
 

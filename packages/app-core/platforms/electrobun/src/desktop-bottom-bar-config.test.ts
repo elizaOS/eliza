@@ -4,6 +4,7 @@ import {
   AUTH_GATE_BOTTOM_BAR_HEIGHT,
   AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
+  BOTTOM_BAR_BOTTOM_INSET,
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
@@ -15,6 +16,7 @@ import {
   isBottomBarSurfaceState,
   normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
+  resolveBottomBarMaterialCornerRadius,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
   shouldStartBottomBar,
@@ -36,6 +38,20 @@ describe("desktop bottom-bar config", () => {
       { width: Number.POSITIVE_INFINITY, height: 32 },
     ])("rejects non-positive or non-finite material size %#", (size) => {
       expect(() => normalizeBottomBarMaterialSize(size)).toThrow(RangeError);
+    });
+  });
+
+  describe("resolveBottomBarMaterialCornerRadius", () => {
+    it("matches the capsule at rest and the 32px panel radius when open", () => {
+      expect(
+        resolveBottomBarMaterialCornerRadius({ width: 48, height: 6 }),
+      ).toBe(3);
+      expect(
+        resolveBottomBarMaterialCornerRadius({ width: 576, height: 64 }),
+      ).toBe(32);
+      expect(
+        resolveBottomBarMaterialCornerRadius({ width: 600, height: 820 }),
+      ).toBe(32);
     });
   });
 
@@ -104,7 +120,9 @@ describe("desktop bottom-bar config", () => {
       expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
       expect(frame.height).toBe(DEFAULT_BOTTOM_BAR_HEIGHT);
       expect(frame.x).toBe((1920 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
-      expect(frame.y).toBe(1080 - DEFAULT_BOTTOM_BAR_HEIGHT);
+      expect(frame.y).toBe(
+        1080 - DEFAULT_BOTTOM_BAR_HEIGHT - BOTTOM_BAR_BOTTOM_INSET,
+      );
     });
 
     it("respects work-area origin (multi-monitor offset)", () => {
@@ -116,7 +134,9 @@ describe("desktop bottom-bar config", () => {
       });
       expect(frame.x).toBe(1920 + (1440 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
       expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
-      expect(frame.y).toBe(24 + 900 - DEFAULT_BOTTOM_BAR_HEIGHT);
+      expect(frame.y).toBe(
+        24 + 900 - DEFAULT_BOTTOM_BAR_HEIGHT - BOTTOM_BAR_BOTTOM_INSET,
+      );
     });
 
     it("centers custom dimensions inside an optional margin", () => {
@@ -127,7 +147,7 @@ describe("desktop bottom-bar config", () => {
       expect(frame.x).toBe(200);
       expect(frame.width).toBe(600);
       expect(frame.height).toBe(100);
-      expect(frame.y).toBe(800 - 100 - 20);
+      expect(frame.y).toBe(800 - 100 - 20 - BOTTOM_BAR_BOTTOM_INSET);
     });
 
     it("does not inflate an exact measured material height", () => {
@@ -182,7 +202,12 @@ describe("desktop bottom-bar config", () => {
             height: EXPANDED_BOTTOM_BAR_HEIGHT,
           },
         ),
-      ).toEqual({ x: 420, y: 104, width: 600, height: 820 });
+      ).toEqual({
+        x: 420,
+        y: 104 - BOTTOM_BAR_BOTTOM_INSET,
+        width: 600,
+        height: 820,
+      });
     });
   });
 
@@ -215,11 +240,21 @@ describe("desktop bottom-bar config", () => {
 
     it("opens centered phone-width sheets at under-half and half-or-over heights", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "OPEN_UNDER_HALF")).toEqual(
-        { x: 740, y: 604, width: 640, height: 420 },
+        {
+          x: 740,
+          y: 604 - BOTTOM_BAR_BOTTOM_INSET,
+          width: 640,
+          height: 420,
+        },
       );
       expect(
         computeBottomBarSurfaceFrame(workArea, "OPEN_HALF_OR_OVER"),
-      ).toEqual({ x: 740, y: 404, width: 640, height: 620 });
+      ).toEqual({
+        x: 740,
+        y: 404 - BOTTOM_BAR_BOTTOM_INSET,
+        width: 640,
+        height: 620,
+      });
     });
 
     it("gives MAXIMIZED the complete usable work area", () => {
@@ -243,18 +278,21 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "default",
         transparent: false,
         nativeShadow: true,
+        nativeChromeInteractive: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "default",
         titleBarStyle: "hiddenInset",
         transparent: false,
         nativeShadow: true,
+        nativeChromeInteractive: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "default",
         titleBarStyle: "default",
         transparent: false,
         nativeShadow: true,
+        nativeChromeInteractive: true,
       });
     });
 
@@ -270,6 +308,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeChromeInteractive: false,
       });
       expect(
         resolveDesktopShellWindowPresentation(
@@ -282,6 +321,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeChromeInteractive: false,
       });
     });
 
@@ -300,6 +340,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: false,
         nativeShadow: false,
+        nativeChromeInteractive: true,
       });
     });
   });

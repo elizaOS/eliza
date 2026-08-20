@@ -92,6 +92,7 @@ import {
 } from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
+  CHAT_OVERLAY_OPEN_EVENT,
   COMMAND_PALETTE_EVENT,
   createNavigateViewEvent,
   dispatchAppEvent,
@@ -672,6 +673,13 @@ if (shouldEnableElectrobunMacWindowDrag()) {
     "eliza-electrobun-frameless",
     "eliza-electrobun-macos-titlebar",
   );
+  const desktopSurface = getWindowUrlSearchParams().get("desktopSurface");
+  if (desktopSurface === "workspace" || desktopSurface === "settings") {
+    document.documentElement.classList.add(
+      "eliza-electrobun-managed-window",
+      `eliza-electrobun-${desktopSurface}-window`,
+    );
+  }
 }
 
 // Dev escape hatches: ?reset forces a truly fresh first-run session by
@@ -2547,6 +2555,8 @@ async function initializeDesktopShell(): Promise<void> {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
       } else if (id === "chat-overlay") {
         void summonChatOverlay();
+      } else if (id === "chat-overlay-open") {
+        dispatchAppEvent(CHAT_OVERLAY_OPEN_EVENT);
       } else if (id === "push-to-talk") {
         dispatchAppEvent(PUSH_TO_TALK_TOGGLE_EVENT);
       }
@@ -3484,6 +3494,12 @@ async function main(): Promise<void> {
   }
 
   injectWaifuChatAccessToken();
+  // Every Electrobun renderer window, including the complete workspace root,
+  // may carry the host-owned local API target. Apply it before the startup
+  // coordinator mounts; limiting this to detached/popout routes made the
+  // workspace boot against stale persisted Cloud state and show a false
+  // connection failure even while the local API was healthy.
+  injectDetachedShellApiBase();
 
   // Kick the hashed @elizaos/ui/voice chunk fetch off NOW — before any
   // storage-bridge await — so it downloads concurrently with the native
@@ -3500,7 +3516,6 @@ async function main(): Promise<void> {
   }
 
   if (isStandaloneWindowShell(windowShellRoute)) {
-    injectDetachedShellApiBase();
     applyStoredDetachedShellTheme();
     if (isDetachedWindowShell(windowShellRoute)) {
       syncDetachedShellLocation(windowShellRoute);

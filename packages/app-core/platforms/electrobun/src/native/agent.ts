@@ -82,6 +82,11 @@ export interface StartupDiagnosticsSnapshot {
   configDir: string;
   logPath: string;
   statusPath: string;
+  /** Bundle which wrote this global recovery record. Dev worktrees share the
+   * config directory, so a record without this identity must never be surfaced
+   * by an unrelated build. */
+  ownerBundlePath: string | null;
+  ownerPid: number | null;
   database: DatabaseSnapshot;
 }
 
@@ -848,8 +853,36 @@ export function getStartupDiagnosticsSnapshot(): StartupDiagnosticsSnapshot {
     configDir: parsed?.configDir ?? resolveConfigDir(),
     logPath: parsed?.logPath ?? getDiagnosticLogPath(),
     statusPath: parsed?.statusPath ?? getStartupStatusPath(),
+    ownerBundlePath:
+      typeof parsed?.ownerBundlePath === "string"
+        ? parsed.ownerBundlePath
+        : null,
+    ownerPid:
+      typeof parsed?.ownerPid === "number" && Number.isFinite(parsed.ownerPid)
+        ? parsed.ownerPid
+        : null,
     database: parsed?.database ?? createUnknownDatabaseSnapshot(),
   };
+}
+
+/**
+ * A startup failure is actionable only for the exact app bundle that wrote it.
+ * Multiple local worktrees intentionally share the Eliza config directory;
+ * without this guard, launching a healthy candidate can display another
+ * checkout's stale `runtime_entry_missing` failure.
+ */
+export function isStartupDiagnosticsOwnedByBundle(
+  diagnostics: Pick<StartupDiagnosticsSnapshot, "ownerBundlePath">,
+  currentBundlePath: string | null | undefined,
+): boolean {
+  const owner = diagnostics.ownerBundlePath?.trim();
+  const current = currentBundlePath?.trim();
+  if (!owner || !current) return false;
+  const normalize = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(owner) === normalize(current);
 }
 
 export function getStartupDiagnosticLogTail(maxChars = 16_000): string {
@@ -2310,6 +2343,8 @@ export class AgentManager {
       configDir: resolveConfigDir(),
       logPath: getDiagnosticLogPath(),
       statusPath: getStartupStatusPath(),
+      ownerBundlePath: resolveStartupBundlePath(process.execPath),
+      ownerPid: process.pid,
       database: this.databaseSnapshot,
     });
   }

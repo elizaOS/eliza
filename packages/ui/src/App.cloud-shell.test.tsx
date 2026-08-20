@@ -77,6 +77,7 @@ describe("App standalone chat-overlay wiring", () => {
     // HomePill/AssistantOverlay path is a distinct implementation.
     expect(overlayShell).toContain("<ChatOverlayMount");
     expect(overlayShell).toContain('initialMode="pill"');
+    expect(overlayShell).toContain("initiallyOpen");
     expect(overlayShell).toContain("desktopOverlayHost");
     expect(overlayShell).toContain("requestedOpen={controller?.isOpen}");
     expect(overlayShell).toContain(

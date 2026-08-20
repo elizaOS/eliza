@@ -6,6 +6,7 @@ describe("dynamic view RPC schema", () => {
   it("maps desktop window channels to typed RPC methods", () => {
     expect(CHANNEL_TO_RPC_METHOD).toMatchObject({
       "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
+      "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
       "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
       "desktop:openAppWindow": "desktopOpenAppWindow",
       "desktop:setManagedWindowAlwaysOnTop":

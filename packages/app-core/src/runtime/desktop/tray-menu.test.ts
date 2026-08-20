@@ -33,20 +33,18 @@ describe("desktop tray menu", () => {
     }
   });
 
-  it("routes Workspace and Settings through their canonical window helper", () => {
+  it("routes Workspace and Settings through their distinct canonical window helpers", () => {
     const source = readFileSync(trayRuntimePath, "utf8");
     expect(source).toContain('case "tray-open-desktop-workspace"');
-    expect(source).toContain('openDesktopSettingsWindow("desktop")');
+    expect(source).toContain("openDesktopWorkspaceWindow()");
+    expect(source).not.toContain('openDesktopSettingsWindow("desktop")');
     expect(source).toContain('case "tray-open-settings"');
     expect(source).toContain("openDesktopSettingsWindow()");
   });
 
-  it("DesktopTrayRuntime opens Messages through the shared chat event", () => {
+  it("expands the shared ChatOverlay when Open Eliza is selected", () => {
     const source = readFileSync(trayRuntimePath, "utf8");
-    expect(source).toContain('case "tray-open-chat"');
-    expect(source).toContain("dispatchChatOpen()");
-    expect(source).not.toContain(
-      'case "tray-open-chat":\n            switchShellView("desktop");',
-    );
+    expect(source).toContain('case "tray-show-window"');
+    expect(source).toContain("dispatchAppEvent(CHAT_OVERLAY_OPEN_EVENT)");
   });
 });
