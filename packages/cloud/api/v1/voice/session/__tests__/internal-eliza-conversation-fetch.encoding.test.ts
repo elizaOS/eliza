@@ -43,13 +43,18 @@ mock.module("@/lib/services/shared-runtime/canonical-scoped-stream", () => ({
 }));
 
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
+  commitPersonalProvisionalHistoryConvergence: mock(),
   coordinateSharedConversationPrewarm: mock(),
   coordinateSharedLifecycleEvent: mock(),
+  preparePersonalProvisionalHistoryConvergence: mock(),
+  purgeSharedConversationRooms: mock(),
+  releasePersonalProvisionalHistoryConvergence: mock(),
 }));
 
 mock.module("@/lib/services/shared-runtime/personal-shared-agent", () => ({
   isPersonalSharedAgentId: () => false,
   personalSharedAgent: () => null,
+  personalSharedAgentId: () => "personal-agent",
 }));
 
 const { createInternalElizaConversationFetch } = await import(

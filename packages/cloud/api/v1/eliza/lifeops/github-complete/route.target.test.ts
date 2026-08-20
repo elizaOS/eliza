@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import * as realAgentGithubReturn from "@/lib/services/agent-github-return";
 
 const createLifeOpsGithubReturnResponse = mock(
   () => new Response("ok", { status: 200 }),
@@ -14,6 +15,8 @@ const createLifeOpsGithubReturnResponse = mock(
 
 mock.module("@/lib/services/agent-github-return", () => ({
   createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin:
+    realAgentGithubReturn.normalizePostMessageTargetOrigin,
 }));
 
 const route = (await import("./route")).default;

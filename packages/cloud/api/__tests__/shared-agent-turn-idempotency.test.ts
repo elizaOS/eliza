@@ -125,11 +125,15 @@ mock.module("@/lib/services/ai-billing-records", () => ({
 }));
 mock.module("@/lib/services/inference-admission-gate", () => ({
   isInferenceAdmissionDispatchMarkError: () => false,
+  warmInferenceAdmissionGate: async () => undefined,
+  warmInferenceRateLimitGate: async () => undefined,
 }));
 mock.module("@/lib/services/inference-billing-fast-path", () => ({
   InferenceBalanceCacheWarmingError: class extends Error {},
 }));
 mock.module("@/lib/services/shared-runtime/run-shared-agent-turn", () => ({
+  appendSharedInput: mock(),
+  appendSharedTurn: mock(),
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
     message: string;
