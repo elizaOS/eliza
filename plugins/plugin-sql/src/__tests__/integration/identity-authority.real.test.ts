@@ -5,11 +5,15 @@
 
 import type { UUID } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { authIdentityTable } from "../../schema/authIdentity";
+import { authOwnerBindingTable } from "../../schema/authOwnerBinding";
+import { connectorAccountsTable } from "../../schema/connectorAccounts";
 import { entityTable } from "../../schema/entity";
 import {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
+  identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
 } from "../../schema/identityAuthority";
@@ -33,21 +37,35 @@ describe("SQL identity authority", () => {
   const sourceD = crypto.randomUUID() as UUID;
   const sourceE = crypto.randomUUID() as UUID;
   const sourceF = crypto.randomUUID() as UUID;
+  const ownerPrincipalId = crypto.randomUUID() as UUID;
+  const configuredOwnerAliasId = crypto.randomUUID() as UUID;
 
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase("identity-authority-real");
     cleanup = setup.cleanup;
     db = setup.adapter.getDatabase() as DrizzleDatabase;
     agentId = setup.testAgentId;
-    service = new SqlIdentityResolutionService(setup.runtime);
-    await db.insert(entityTable).values(
-      [actorId, canonicalId, sourceA, sourceB, sourceC, sourceD, sourceE, sourceF].map((id) => ({
-        id,
-        agentId,
-        names: [id],
-        metadata: {},
-      }))
+    const getSetting = setup.runtime.getSetting.bind(setup.runtime);
+    vi.spyOn(setup.runtime, "getSetting").mockImplementation((key) =>
+      key === "ELIZA_INSTANCE_ID" ? "identity-authority-test" : getSetting(key)
     );
+    service = new SqlIdentityResolutionService(setup.runtime);
+    await db
+      .insert(entityTable)
+      .values(
+        [
+          actorId,
+          canonicalId,
+          sourceA,
+          sourceB,
+          sourceC,
+          sourceD,
+          sourceE,
+          sourceF,
+          ownerPrincipalId,
+          configuredOwnerAliasId,
+        ].map((id) => ({ id, agentId, names: [id], metadata: {} }))
+      );
   });
 
   afterAll(async () => {
@@ -85,6 +103,10 @@ describe("SQL identity authority", () => {
     };
     const commitDigest = computeIdentityRequestDigest("commit-merge", commitValue);
     const committed = await service.commitMerge({ ...commitValue, requestDigest: commitDigest });
+    await db
+      .update(identityMergeJournalTable)
+      .set({ expiresAt: new Date() })
+      .where(eq(identityMergeJournalTable.id, plan.id));
     const replayed = await service.commitMerge({ ...commitValue, requestDigest: commitDigest });
     expect(replayed).toEqual(committed);
     expect((await service.resolveForDataAccess(agentId, sourceA)).canonicalPrincipalId).toBe(
@@ -287,5 +309,128 @@ describe("SQL identity authority", () => {
       .where(eq(identityMergeJournalTable.id, plan.id));
     expect(journalAfter?.status).toBe("planned");
     expect(journalAfter?.commitIdempotencyKey).toBeNull();
+  });
+
+  it("requires a live same-instance account and canonicalizes configured owners", async () => {
+    const identityId = crypto.randomUUID();
+    const bindingId = crypto.randomUUID();
+    const accountId = crypto.randomUUID() as UUID;
+    await db.insert(authIdentityTable).values({
+      id: identityId,
+      kind: "owner",
+      displayName: "Owner",
+      createdAt: Date.now(),
+    });
+    await db.insert(authOwnerBindingTable).values({
+      id: bindingId,
+      identityId,
+      connector: "discord",
+      externalId: "owner-subject",
+      displayHandle: "owner",
+      instanceId: "identity-authority-test",
+      verifiedAt: Date.now(),
+    });
+    await db.insert(connectorAccountsTable).values({
+      id: accountId,
+      agentId,
+      provider: "discord",
+      accountKey: "owner-account",
+      externalId: "owner-subject",
+      ownerBindingId: bindingId,
+      accessGate: "owner_binding",
+      status: "connected",
+    });
+    await db.insert(identityClaimTable).values({
+      agentId,
+      principalEntityId: ownerPrincipalId,
+      namespace: "connector_subject",
+      connectorId: "discord",
+      connectorAccountId: accountId,
+      externalSubjectId: "owner-subject",
+      verification: "owner_bound",
+      ownerBindingId: bindingId,
+      status: "active",
+      confidence: 1,
+      verifiedAt: new Date(),
+    });
+
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "disabled" })
+      .where(eq(connectorAccountsTable.id, accountId));
+    await expect(
+      service.evaluateOwnerBinding({
+        agentId,
+        actorPrincipalId: ownerPrincipalId,
+        candidateOwnerPrincipalIds: [ownerPrincipalId],
+        purpose: "role_resolution",
+      })
+    ).resolves.toEqual({ decision: "not_bound", reason: "no_active_binding" });
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "connected" })
+      .where(eq(connectorAccountsTable.id, accountId));
+
+    const [state] = await db
+      .select()
+      .from(identityAuthorityStateTable)
+      .where(eq(identityAuthorityStateTable.agentId, agentId));
+    const proposalValue = {
+      agentId,
+      canonicalPrincipalId: ownerPrincipalId,
+      sourcePrincipalIds: [configuredOwnerAliasId],
+      actorPrincipalId: actorId,
+      reason: "configured owner alias",
+      idempotencyKey: "proposal-owner-alias",
+    };
+    const plan = await service.proposeMerge({
+      ...proposalValue,
+      requestDigest: computeIdentityRequestDigest("propose-merge", proposalValue),
+    });
+    const confirmation = await service.confirmMerge({
+      agentId,
+      planId: plan.id,
+      expectedGeneration: state?.generation ?? -1,
+      actorPrincipalId: actorId,
+    });
+    const commitValue = {
+      agentId,
+      planId: plan.id,
+      confirmationId: confirmation.id,
+      expectedGeneration: state?.generation ?? -1,
+      actorPrincipalId: actorId,
+      idempotencyKey: "commit-owner-alias",
+    };
+    await service.commitMerge({
+      ...commitValue,
+      requestDigest: computeIdentityRequestDigest("commit-merge", commitValue),
+    });
+
+    await expect(
+      service.evaluateOwnerBinding({
+        agentId,
+        actorPrincipalId: ownerPrincipalId,
+        candidateOwnerPrincipalIds: [configuredOwnerAliasId],
+        purpose: "role_resolution",
+      })
+    ).resolves.toMatchObject({
+      decision: "bound",
+      actorCanonicalPrincipalId: ownerPrincipalId,
+      ownerPrincipalId: configuredOwnerAliasId,
+      ownerBindingId: bindingId,
+    });
+
+    await db
+      .update(authOwnerBindingTable)
+      .set({ instanceId: "foreign-instance" })
+      .where(eq(authOwnerBindingTable.id, bindingId));
+    await expect(
+      service.evaluateOwnerBinding({
+        agentId,
+        actorPrincipalId: ownerPrincipalId,
+        candidateOwnerPrincipalIds: [configuredOwnerAliasId],
+        purpose: "role_resolution",
+      })
+    ).resolves.toEqual({ decision: "not_bound", reason: "no_active_binding" });
   });
 });

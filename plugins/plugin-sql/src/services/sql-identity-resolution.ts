@@ -390,6 +390,11 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     request: Parameters<IdentityResolutionService["evaluateOwnerBinding"]>[0]
   ): Promise<OwnerBindingEvaluation> {
     this.assertAgent(request.agentId);
+    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
+    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
+    if (instanceId.length === 0) {
+      return { decision: "unavailable", reason: "service_unavailable" };
+    }
     const cluster = await this.getCluster(request.agentId, request.actorPrincipalId);
     if (!cluster) return { decision: "not_bound", reason: "no_active_binding" };
     const ownerClaim = cluster.claims.find(
@@ -399,11 +404,25 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         claim.ownerBindingId !== null
     );
     if (!ownerClaim) return { decision: "not_bound", reason: "no_active_binding" };
-    if (!request.candidateOwnerPrincipalIds.includes(cluster.canonicalPrincipalId)) {
+    const candidateResolutions = await Promise.all(
+      request.candidateOwnerPrincipalIds.map(async (candidateOwnerPrincipalId) => ({
+        configured: candidateOwnerPrincipalId,
+        resolved: await this.resolveCanonicalPrincipal(request.agentId, candidateOwnerPrincipalId),
+      }))
+    );
+    const matchedOwner = candidateResolutions.find(
+      ({ resolved }) => resolved.canonicalPrincipalId === cluster.canonicalPrincipalId
+    );
+    if (!matchedOwner) {
       return { decision: "not_bound", reason: "wrong_owner" };
     }
     const [account] = await this.db
-      .select({ ownerBindingId: connectorAccountsTable.ownerBindingId })
+      .select({
+        ownerBindingId: connectorAccountsTable.ownerBindingId,
+        provider: connectorAccountsTable.provider,
+        status: connectorAccountsTable.status,
+        deletedAt: connectorAccountsTable.deletedAt,
+      })
       .from(connectorAccountsTable)
       .where(
         and(
@@ -417,6 +436,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       .select({
         connector: authOwnerBindingTable.connector,
         externalId: authOwnerBindingTable.externalId,
+        instanceId: authOwnerBindingTable.instanceId,
         verifiedAt: authOwnerBindingTable.verifiedAt,
       })
       .from(authOwnerBindingTable)
@@ -425,8 +445,12 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     if (
       !account ||
       !binding ||
+      account.deletedAt !== null ||
+      account.status !== "connected" ||
+      account.provider !== ownerClaim.connectorId ||
       binding.connector !== ownerClaim.connectorId ||
       binding.externalId !== ownerClaim.externalSubjectId ||
+      binding.instanceId !== instanceId ||
       binding.verifiedAt <= 0
     ) {
       return { decision: "not_bound", reason: "no_active_binding" };
@@ -434,7 +458,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     return {
       decision: "bound",
       actorCanonicalPrincipalId: cluster.canonicalPrincipalId,
-      ownerPrincipalId: cluster.canonicalPrincipalId,
+      ownerPrincipalId: matchedOwner.configured,
       claimId: ownerClaim.id,
       ownerBindingId: ownerClaim.ownerBindingId as string,
       generation: cluster.generation,
@@ -727,12 +751,6 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       if (journal?.operation !== "merge") {
         fail("IDENTITY_PLAN_NOT_COMMITTABLE", "Merge plan is not committable.");
       }
-      if (
-        journal.expiresAt <= new Date() ||
-        journal.planDigest !== digest("elizaos:identity:merge-plan:v1", mapJournal(journal).plan)
-      ) {
-        fail("IDENTITY_PLAN_EXPIRED", "Merge plan expired or its digest changed.");
-      }
       if (journal.status === "committed" || journal.status === "completed") {
         if (
           journal.commitIdempotencyKey === request.idempotencyKey &&
@@ -741,6 +759,12 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
           return mapJournal(journal);
         }
         fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Merge was already committed by another request.");
+      }
+      if (
+        journal.expiresAt <= new Date() ||
+        journal.planDigest !== digest("elizaos:identity:merge-plan:v1", mapJournal(journal).plan)
+      ) {
+        fail("IDENTITY_PLAN_EXPIRED", "Merge plan expired or its digest changed.");
       }
       if (journal.status !== "planned") {
         fail("IDENTITY_PLAN_NOT_COMMITTABLE", "Merge plan is not committable.");
