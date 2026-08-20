@@ -114,28 +114,59 @@ async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
   if (method === "GET" || method === "HEAD") {
     return { body: null, tooLarge: false };
   }
-  const chunks: Buffer[] = [];
-  let total = 0;
-  let tooLarge = false;
-  for await (const chunk of req) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.byteLength;
-    if (total > MAX_HONO_BODY_BYTES) {
-      tooLarge = true;
-      // Stop draining the socket immediately — do not buffer the rest and do
-      // not allocate the ArrayBuffer. Destroying prevents a slow-client from
-      // holding the connection open while we discard the remainder.
-      req.destroy();
-      break;
-    }
-    chunks.push(buf);
+
+  const declaredLength = Number(req.headers["content-length"]);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_HONO_BODY_BYTES) {
+    req.pause();
+    return { body: null, tooLarge: true };
   }
-  if (tooLarge) return { body: null, tooLarge: true };
-  if (chunks.length === 0) return { body: null, tooLarge: false };
-  const concatenated = Buffer.concat(chunks);
-  const body = new ArrayBuffer(concatenated.byteLength);
-  new Uint8Array(body).set(concatenated);
-  return { body, tooLarge: false };
+
+  return new Promise<ReadNodeBodyResult>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      req.off("aborted", onAborted);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onAborted = () => onError(new Error("Request body was aborted"));
+    const onEnd = () => {
+      cleanup();
+      if (chunks.length === 0) {
+        resolve({ body: null, tooLarge: false });
+        return;
+      }
+      const concatenated = Buffer.concat(chunks, total);
+      const body = new ArrayBuffer(concatenated.byteLength);
+      new Uint8Array(body).set(concatenated);
+      resolve({ body, tooLarge: false });
+    };
+    const onData = (chunk: Buffer | Uint8Array | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buf.byteLength;
+      if (total > MAX_HONO_BODY_BYTES) {
+        cleanup();
+        // Pause immediately, but keep the socket alive until the 413 response
+        // is flushed. Destroying IncomingMessage here resets the connection and
+        // turns the promised HTTP response into ECONNRESET for real clients.
+        req.pause();
+        resolve({ body: null, tooLarge: true });
+        return;
+      }
+      chunks.push(buf);
+    };
+
+    req.on("data", onData);
+    req.once("end", onEnd);
+    req.once("error", onError);
+    req.once("aborted", onAborted);
+  });
 }
 
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
@@ -270,6 +301,8 @@ export async function tryHandleHonoRuntimeRoute(options: {
     // to Hono — the body was never fully buffered and the request was destroyed.
     res.statusCode = 413;
     res.setHeader("content-type", "application/json");
+    res.setHeader("connection", "close");
+    res.once("finish", () => req.destroy());
     res.end(
       JSON.stringify({
         error: "Request body too large",

@@ -9,14 +9,19 @@
  * MAX_BODY_BYTES = 1 MiB), a POST to any Hono-eligible plugin routeHandler with
  * an unbounded body was fully buffered — hanging or OOM-ing the process.
  *
- * The fix caps `readNodeBody` at 1 MiB to match server.ts: when exceeded it
- * destroys the request, does not allocate the ArrayBuffer, and
- * `tryHandleHonoRuntimeRoute` writes 413 and returns true (request handled).
- * GET/HEAD still skip the body entirely.
+ * The fix caps `readNodeBody` at 1 MiB to match server.ts. Real Node HTTP tests
+ * prove both declared-length and chunked oversized requests receive a complete
+ * 413 response before the connection closes; GET/HEAD still skip the body.
  */
 
 import { EventEmitter } from "node:events";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  request,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -110,39 +115,58 @@ function makeReqRes(
   };
 }
 
-/**
- * Origin `readNodeBody` from `origin/develop` (no maxBytes / 413 / destroy).
- * Inlined so this file can prove the hang/OOM class without checking out the
- * parent: a 1 MiB + 1 body is fully buffered into an ArrayBuffer.
- */
-async function originReadNodeBody(
-  req: IncomingMessage,
-): Promise<ArrayBuffer | null> {
-  const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return null;
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  if (chunks.length === 0) return null;
-  const concatenated = Buffer.concat(chunks);
-  const body = new ArrayBuffer(concatenated.byteLength);
-  new Uint8Array(body).set(concatenated);
-  return body;
-}
-
-describe("origin/develop readNodeBody (unbounded)", () => {
-  it("fully buffers a 1 MiB + 1 POST body into an ArrayBuffer", async () => {
-    const oversized = Buffer.alloc(ONE_MIB + 1, 0x61);
-    const req = Readable.from([oversized]) as unknown as IncomingMessage;
-    req.method = "POST";
-    req.url = "/api/test-plugin/echo";
-    req.headers = { host: "localhost" };
-    const body = await originReadNodeBody(req);
-    expect(body).not.toBeNull();
-    expect(body?.byteLength).toBe(ONE_MIB + 1);
+async function realHttpPost(
+  chunks: Buffer[],
+  contentLength?: number,
+): Promise<{ status: number; body: string }> {
+  const runtime = makeRuntime();
+  const server = createServer((req, res) => {
+    void tryHandleHonoRuntimeRoute({
+      req,
+      res,
+      runtime,
+      isAuthorized: () => true,
+    }).catch((error) => {
+      res.statusCode = 500;
+      res.end(String(error));
+    });
   });
-});
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    return await new Promise((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/api/test-plugin/echo",
+          method: "POST",
+          headers:
+            contentLength === undefined
+              ? undefined
+              : { "content-length": String(contentLength) },
+        },
+        (res) => {
+          const responseChunks: Buffer[] = [];
+          res.on("data", (chunk) => responseChunks.push(Buffer.from(chunk)));
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body: Buffer.concat(responseChunks).toString("utf8"),
+            }),
+          );
+        },
+      );
+      req.on("error", reject);
+      for (const chunk of chunks) req.write(chunk);
+      req.end();
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
 
 describe("tryHandleHonoRuntimeRoute body cap", () => {
   beforeEach(() => {
@@ -150,20 +174,24 @@ describe("tryHandleHonoRuntimeRoute body cap", () => {
     routeCalls = 0;
   });
 
-  it("returns 413 and does not dispatch routeHandler when body exceeds 1 MiB", async () => {
+  it("returns a complete 413 over real HTTP for an oversized declared body", async () => {
     const oversized = Buffer.alloc(ONE_MIB + 1, 0x61);
-    const h = makeReqRes("POST", "/api/test-plugin/echo", oversized);
-    const handled = await tryHandleHonoRuntimeRoute({
-      req: h.req,
-      res: h.res,
-      runtime: makeRuntime(),
-      isAuthorized: () => true,
+    const response = await realHttpPost([oversized], oversized.byteLength);
+    expect(response.status).toBe(413);
+    expect(JSON.parse(response.body)).toEqual({
+      error: "Request body too large",
+      maxBytes: ONE_MIB,
     });
+    expect(routeCalls).toBe(0);
+  });
 
-    expect(handled).toBe(true);
-    await h.ended();
-    expect(h.status()).toBe(413);
-    expect(JSON.parse(h.body())).toEqual({
+  it("returns a complete 413 over real HTTP when a chunked body crosses the cap", async () => {
+    const response = await realHttpPost([
+      Buffer.alloc(ONE_MIB, 0x61),
+      Buffer.from("overflow"),
+    ]);
+    expect(response.status).toBe(413);
+    expect(JSON.parse(response.body)).toEqual({
       error: "Request body too large",
       maxBytes: ONE_MIB,
     });
