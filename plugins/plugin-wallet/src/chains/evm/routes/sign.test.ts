@@ -233,7 +233,7 @@ describe("EVM browser signing routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({
-      error: "unsupported EVM chainId: -1",
+      error: "chainId must be a number or hex string",
     });
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
   });
