@@ -252,8 +252,10 @@ function parseReaction(row: {
 export interface ChatDbAttachment {
   /** chat.db `attachment.guid`. */
   guid: string;
-  /** Filename as stored, if known. */
+  /** User-facing transfer filename, if known. */
   filename: string | null;
+  /** Local Messages attachment path, if the bytes have downloaded. */
+  path: string | null;
   /** Apple UTI (e.g. `public.jpeg`, `com.apple.quicktime-movie`). */
   uti: string | null;
   /** Best-available MIME type (may be null for some UTIs). */
@@ -792,7 +794,8 @@ export async function openChatDb(
           }>;
           attachments = attRows.map((a) => ({
             guid: a.guid,
-            filename: a.transfer_name ?? a.filename ?? null,
+            filename: a.transfer_name ?? a.filename?.split("/").pop() ?? null,
+            path: a.filename,
             uti: a.uti,
             mimeType: a.mime_type,
             totalBytes: a.total_bytes,
