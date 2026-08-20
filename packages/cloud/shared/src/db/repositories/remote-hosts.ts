@@ -1,5 +1,6 @@
 /** Tenant-scoped persistence for user-owned Macs and VPS runtime hosts. */
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
 import { type NewRemoteHost, type RemoteHost, remoteHosts } from "../schemas/remote-hosts";
 import { remoteSessions } from "../schemas/remote-sessions";
@@ -40,6 +41,27 @@ export class RemoteHostsRepository {
           eq(remoteHosts.id, hostId),
           eq(remoteHosts.organization_id, organizationId),
           eq(remoteHosts.user_id, userId),
+          isNull(remoteHosts.revoked_at),
+        ),
+      )
+      .limit(1);
+    return host;
+  }
+
+  async authenticate(hostId: string, token: string): Promise<RemoteHost | undefined> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(token);
+    } catch {
+      return undefined;
+    }
+    const [host] = await this.database
+      .select()
+      .from(remoteHosts)
+      .where(
+        and(
+          eq(remoteHosts.id, hostId),
+          eq(remoteHosts.host_token_hash, tokenHash),
           isNull(remoteHosts.revoked_at),
         ),
       )

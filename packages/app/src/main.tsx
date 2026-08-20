@@ -131,6 +131,7 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import { queueRemotePairingDeepLink } from "@elizaos/ui/platform/remote-pairing-deep-link";
 import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
   clearStandaloneBottomReclaim,
@@ -2217,6 +2218,14 @@ function handleDeepLink(url: string): void {
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
+  if (path === "pair" && queueRemotePairingDeepLink(url)) {
+    dispatchDeepLinkNavigation({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "devices-runtimes",
+    });
+    return;
+  }
   if (path === "auth/callback") {
     void handleAuthCallbackDeepLink(parsed, path, url);
     return;

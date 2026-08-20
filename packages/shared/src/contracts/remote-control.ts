@@ -20,6 +20,7 @@ export type RemoteControllerPlatform =
   | "web";
 
 export type RemoteCommandAction =
+  | "agent.request"
   | "agent.message"
   | "agent.pause"
   | "agent.resume"
@@ -101,6 +102,12 @@ export interface RemoteCommandResult<TResult = unknown> {
   result?: TResult;
   errorCode?: string;
   completedAt: number;
+}
+
+export interface SignedRemoteCommandResult<TResult = unknown> {
+  body: RemoteCommandResult<TResult>;
+  /** ECDSA P-256/SHA-256 signature from the target runtime. */
+  signature: string;
 }
 
 function canonicalizeValue(value: unknown): string {

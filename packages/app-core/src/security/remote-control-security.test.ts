@@ -8,6 +8,7 @@ import {
   type RemoteControllerGrant,
   type RemoteControllerPublicIdentity,
   type SignedRemoteCommand,
+  type SignedRemoteCommandResult,
 } from "@elizaos/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -16,6 +17,7 @@ import {
   encryptRemoteCommand,
   InMemoryRemoteReplayStore,
   verifyRemoteCommand,
+  verifyRemoteCommandResult,
 } from "./remote-control-security";
 
 const NOW = 2_000_000_000_000;
@@ -224,5 +226,44 @@ describe("encrypted relay envelope", () => {
         "runtime-encryption-key-1",
       ),
     ).toThrow();
+  });
+});
+
+describe("verifyRemoteCommandResult", () => {
+  it("accepts only the target-signed result bound to the expected command", () => {
+    const body = {
+      version: REMOTE_CONTROL_PROTOCOL_VERSION,
+      commandId: "command-1",
+      targetRuntimeId: "mac-1",
+      status: "completed" as const,
+      result: { text: "hello from the Mac" },
+      completedAt: NOW,
+    };
+    const signedResult: SignedRemoteCommandResult = {
+      body,
+      signature: sign(
+        "sha256",
+        Buffer.from(canonicalizeRemoteControlValue(body)),
+        keys.privateKey,
+      ).toString("base64url"),
+    };
+    const publicJwk = keys.publicKey.export({ format: "jwk" });
+    expect(
+      verifyRemoteCommandResult(signedResult, publicJwk, "command-1", "mac-1"),
+    ).toBe(true);
+    expect(
+      verifyRemoteCommandResult(signedResult, publicJwk, "command-2", "mac-1"),
+    ).toBe(false);
+    expect(
+      verifyRemoteCommandResult(
+        {
+          ...signedResult,
+          signature: signed({}, otherKeys.privateKey).signature,
+        },
+        publicJwk,
+        "command-1",
+        "mac-1",
+      ),
+    ).toBe(false);
   });
 });

@@ -128,6 +128,10 @@ import {
   desktopDeleteRuntimeCredential,
   desktopGetOrCreateControllerIdentity,
   desktopLoadRuntimeCredential,
+  desktopOpenRemoteCommand,
+  desktopOpenRemoteCommandResult,
+  desktopSealRemoteCommandResult,
+  desktopSignRemoteValue,
   desktopStoreRuntimeCredential,
 } from "./runtime-credential-rpc";
 import {
@@ -695,6 +699,10 @@ export function buildBunRpcHandlers({
     desktopLoadRuntimeCredential,
     desktopDeleteRuntimeCredential,
     desktopGetOrCreateControllerIdentity,
+    desktopSignRemoteValue,
+    desktopOpenRemoteCommand,
+    desktopOpenRemoteCommandResult,
+    desktopSealRemoteCommandResult,
     desktopStartSshRuntime,
     desktopStopSshRuntime,
     nativeTranscriptPublishStream: async (params) =>

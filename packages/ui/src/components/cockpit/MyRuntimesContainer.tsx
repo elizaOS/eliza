@@ -9,6 +9,10 @@ import { isStoreBuild } from "../../build-variant";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getOrCreateControllerPublicIdentity } from "../../platform/remote-controller-identity";
 import {
+  REMOTE_PAIRING_DEEP_LINK_EVENT,
+  takePendingRemotePairingCode,
+} from "../../platform/remote-pairing-deep-link";
+import {
   loadRuntimeCredential,
   storeRuntimeCredential,
 } from "../../platform/runtime-credential-store";
@@ -231,20 +235,76 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
     };
   }, [refreshLinkedDevices]);
 
-  const onRedeemPairing = useCallback(async (code: string) => {
-    const identity = await getOrCreateControllerPublicIdentity();
-    const result = await client.consumeCloudRemotePairing(code, identity);
-    if (result.ingressUrl) {
-      addAgentProfile(
-        {
-          kind: "remote",
-          label: "Linked Mac",
-          apiBase: result.ingressUrl,
-        },
-        { activate: false },
+  const onRedeemPairing = useCallback(
+    async (code: string) => {
+      const identity = await getOrCreateControllerPublicIdentity();
+      const result = await client.consumeCloudRemotePairing(code, identity);
+      if (result.hostId && result.targetIdentity) {
+        addAgentProfile(
+          {
+            kind: "remote",
+            label: result.targetDisplayName ?? "Linked Mac",
+            apiBase: `eliza-remote://session/${encodeURIComponent(result.sessionId)}`,
+            remoteRelay: {
+              ownerId: result.ownerId,
+              sessionId: result.sessionId,
+              targetRuntimeId: result.hostId,
+              targetKeyId: result.targetIdentity.keyId,
+              targetSigningPublicKeyJwk:
+                result.targetIdentity.signingPublicKeyJwk,
+              targetEncryptionPublicKeyJwk:
+                result.targetIdentity.encryptionPublicKeyJwk,
+            },
+          },
+          { activate: false },
+        );
+      } else if (result.ingressUrl) {
+        addAgentProfile(
+          {
+            kind: "remote",
+            label: "Linked runtime",
+            apiBase: result.ingressUrl,
+          },
+          { activate: false },
+        );
+      }
+      refresh();
+    },
+    [refresh],
+  );
+
+  useEffect(() => {
+    let redeeming = false;
+    const redeemPending = () => {
+      const code = takePendingRemotePairingCode();
+      if (!code || redeeming) return;
+      redeeming = true;
+      setBusy(true);
+      setError(null);
+      void onRedeemPairing(code)
+        .catch((cause: unknown) => {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "The pairing code could not be redeemed.",
+          );
+        })
+        .finally(() => {
+          redeeming = false;
+          setBusy(false);
+        });
+    };
+    globalThis.addEventListener?.(
+      REMOTE_PAIRING_DEEP_LINK_EVENT,
+      redeemPending,
+    );
+    redeemPending();
+    return () =>
+      globalThis.removeEventListener?.(
+        REMOTE_PAIRING_DEEP_LINK_EVENT,
+        redeemPending,
       );
-    }
-  }, []);
+  }, [onRedeemPairing]);
 
   const onRevokeDevice = useCallback(
     async (sessionId: string) => {

@@ -32,6 +32,10 @@ export function isTrustedRestoreApiBaseUrl(
   // in-process: no network dial, no attacker-choosable host, no bearer-token
   // exfiltration surface.
   if (isMobileLocalAgentIpcBase(apiBase)) return true;
+  // First-party relay pseudo-base: no network address or token is embedded;
+  // requests are translated into account-authorized, signed E2E envelopes.
+  if (/^eliza-remote:\/\/session\/[A-Za-z0-9%._~-]+$/.test(apiBase))
+    return true;
 
   let parsed: URL;
   try {

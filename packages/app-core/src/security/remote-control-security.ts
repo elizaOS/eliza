@@ -25,6 +25,7 @@ import {
   type RemoteControllerGrant,
   type RemoteControllerPublicIdentity,
   type SignedRemoteCommand,
+  type SignedRemoteCommandResult,
 } from "@elizaos/shared";
 
 export type RemoteCommandRejection =
@@ -118,8 +119,8 @@ function relayAad(
 }
 
 /** End-to-end encrypt a signed command for a runtime; Cloud sees ciphertext. */
-export function encryptRemoteCommand(
-  command: SignedRemoteCommand,
+export function encryptRemoteControlPayload(
+  payload: SignedRemoteCommand | SignedRemoteCommandResult,
   senderKeyId: string,
   recipientKeyId: string,
   recipientPublicKeyJwk: JsonWebKey,
@@ -149,7 +150,7 @@ export function encryptRemoteCommand(
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(relayAad(envelopeHeader));
   const encrypted = Buffer.concat([
-    cipher.update(canonicalizeRemoteControlValue(command), "utf8"),
+    cipher.update(canonicalizeRemoteControlValue(payload), "utf8"),
     cipher.final(),
   ]);
   const ciphertext = Buffer.concat([encrypted, cipher.getAuthTag()]);
@@ -162,12 +163,26 @@ export function encryptRemoteCommand(
   };
 }
 
+export function encryptRemoteCommand(
+  command: SignedRemoteCommand,
+  senderKeyId: string,
+  recipientKeyId: string,
+  recipientPublicKeyJwk: JsonWebKey,
+): EncryptedRemoteCommand {
+  return encryptRemoteControlPayload(
+    command,
+    senderKeyId,
+    recipientKeyId,
+    recipientPublicKeyJwk,
+  );
+}
+
 /** Authenticated decryption for the intended runtime only. */
-export function decryptRemoteCommand(
+export function decryptRemoteControlPayload<T>(
   envelope: EncryptedRemoteCommand,
   recipientPrivateKeyJwk: JsonWebKey,
   expectedRecipientKeyId: string,
-): SignedRemoteCommand {
+): T {
   if (
     envelope.version !== REMOTE_CONTROL_PROTOCOL_VERSION ||
     envelope.algorithm !== "ECDH-P256-HKDF-SHA256+A256GCM" ||
@@ -210,7 +225,49 @@ export function decryptRemoteCommand(
     decipher.update(encrypted),
     decipher.final(),
   ]).toString("utf8");
-  return JSON.parse(plaintext) as SignedRemoteCommand;
+  return JSON.parse(plaintext) as T;
+}
+
+export function decryptRemoteCommand(
+  envelope: EncryptedRemoteCommand,
+  recipientPrivateKeyJwk: JsonWebKey,
+  expectedRecipientKeyId: string,
+): SignedRemoteCommand {
+  return decryptRemoteControlPayload<SignedRemoteCommand>(
+    envelope,
+    recipientPrivateKeyJwk,
+    expectedRecipientKeyId,
+  );
+}
+
+/** Verify that a decrypted result was signed by the selected target runtime. */
+export function verifyRemoteCommandResult(
+  signed: SignedRemoteCommandResult,
+  signingPublicKeyJwk: JsonWebKey,
+  expectedCommandId: string,
+  expectedTargetRuntimeId: string,
+): boolean {
+  const { body, signature } = signed;
+  if (
+    body?.version !== REMOTE_CONTROL_PROTOCOL_VERSION ||
+    body.commandId !== expectedCommandId ||
+    body.targetRuntimeId !== expectedTargetRuntimeId ||
+    !["accepted", "completed", "rejected", "cancelled"].includes(body.status) ||
+    !Number.isFinite(body.completedAt) ||
+    !signature
+  ) {
+    return false;
+  }
+  try {
+    return verify(
+      "sha256",
+      Buffer.from(canonicalizeRemoteControlValue(body)),
+      createPublicKey({ key: signingPublicKeyJwk, format: "jwk" }),
+      Buffer.from(signature, "base64url"),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Verify all bindings before atomically consuming replay state. */

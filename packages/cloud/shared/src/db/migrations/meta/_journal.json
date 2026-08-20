@@ -1905,6 +1905,13 @@
       "when": 1792958400000,
       "tag": "0277_remote_session_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1792958400000,
+      "tag": "0272_remote_command_relay",
+      "breakpoints": true
     }
   ]
 }

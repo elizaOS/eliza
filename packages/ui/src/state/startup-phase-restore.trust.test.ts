@@ -69,6 +69,11 @@ describe("isTrustedRestoreApiBaseUrl", () => {
     // the Bun engine never started).
     expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://ipc")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://ipc/")).toBe(true);
+    expect(
+      isTrustedRestoreApiBaseUrl(
+        "eliza-remote://session/23766030-0000-0000-0000-000000000000",
+      ),
+    ).toBe(true);
   });
 
   it("still rejects other custom schemes and non-IPC authorities on the IPC scheme", () => {

@@ -10,8 +10,11 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const hostId = c.req.param("id");
+    if (!hostId)
+      return c.json({ success: false, error: "Host id required" }, 400);
     const host = await remoteHostsRepository.revoke(
-      c.req.param("id"),
+      hostId,
       user.organization_id,
       user.id,
     );

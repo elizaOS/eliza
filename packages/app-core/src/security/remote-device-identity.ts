@@ -5,13 +5,27 @@
  * keys with Secure Enclave references behind the same public contract.
  */
 
-import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import {
+  createHash,
+  createPrivateKey,
+  generateKeyPairSync,
+  randomUUID,
+  sign,
+} from "node:crypto";
+import {
+  canonicalizeRemoteControlValue,
+  type EncryptedRemoteCommand,
   REMOTE_CONTROL_PROTOCOL_VERSION,
+  type RemoteCommandResult,
   type RemoteControllerPlatform,
   type RemoteControllerPublicIdentity,
+  type SignedRemoteCommandResult,
 } from "@elizaos/shared";
 import type { PlatformSecureStore } from "./platform-secure-store";
+import {
+  decryptRemoteControlPayload,
+  encryptRemoteControlPayload,
+} from "./remote-control-security";
 
 export interface StoredRemoteDeviceIdentity {
   publicIdentity: RemoteControllerPublicIdentity;
@@ -162,6 +176,55 @@ export async function loadRemoteDevicePrivateKeys(
     // error-policy:J4 malformed local key material is unusable and never repaired silently
     return null;
   }
+}
+
+export async function signRemoteDeviceValue(
+  store: PlatformSecureStore,
+  deviceId: string,
+  value: unknown,
+): Promise<string> {
+  const keys = await loadRemoteDevicePrivateKeys(store, deviceId);
+  if (!keys) throw new Error("Controller private key is unavailable");
+  return sign(
+    "sha256",
+    Buffer.from(canonicalizeRemoteControlValue(value)),
+    createPrivateKey({ key: keys.signingPrivateKeyJwk, format: "jwk" }),
+  ).toString("base64url");
+}
+
+export async function decryptRemoteDevicePayload<T>(
+  store: PlatformSecureStore,
+  deviceId: string,
+  envelope: EncryptedRemoteCommand,
+  expectedRecipientKeyId: string,
+): Promise<T> {
+  const keys = await loadRemoteDevicePrivateKeys(store, deviceId);
+  if (!keys) throw new Error("Controller private key is unavailable");
+  return decryptRemoteControlPayload<T>(
+    envelope,
+    keys.encryptionPrivateKeyJwk,
+    expectedRecipientKeyId,
+  );
+}
+
+export async function sealRemoteCommandResult(
+  store: PlatformSecureStore,
+  deviceId: string,
+  result: RemoteCommandResult,
+  senderKeyId: string,
+  recipientKeyId: string,
+  recipientPublicKeyJwk: JsonWebKey,
+): Promise<EncryptedRemoteCommand> {
+  const signed: SignedRemoteCommandResult = {
+    body: result,
+    signature: await signRemoteDeviceValue(store, deviceId, result),
+  };
+  return encryptRemoteControlPayload(
+    signed,
+    senderKeyId,
+    recipientKeyId,
+    recipientPublicKeyJwk,
+  );
 }
 
 export async function deleteRemoteDeviceIdentity(

@@ -76,6 +76,7 @@ import {
   isIosInProcessLocalAgentBase,
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { remoteRelayTransportForUrl } from "./remote-relay-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
@@ -528,6 +529,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
   value: string | null | undefined,
 ): boolean {
   return (
+    value?.startsWith("eliza-remote://session/") === true ||
     isIosInProcessLocalAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
@@ -1773,6 +1775,7 @@ export class ElizaClient {
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
       (await desktopLocalAgentTransportForUrl(requestUrl)) ??
+      remoteRelayTransportForUrl(requestUrl, this) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport

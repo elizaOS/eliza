@@ -263,10 +263,12 @@ app.post("/consume", rateLimit(RateLimitPresets.STRICT), async (c) => {
       success: true,
       data: {
         sessionId: result.session.id,
+        ownerId: result.session.user_id,
         agentId: result.session.agent_id,
         hostId: result.session.host_id,
         status: result.session.status,
         ingressUrl: result.session.ingress_url,
+        targetDisplayName: targetHost?.display_name ?? null,
         targetIdentity: targetHost
           ? {
               keyId: targetHost.runtime_key_id,

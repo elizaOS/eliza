@@ -1,6 +1,10 @@
 /** Lists and enrolls Cloud-account-owned remote runtime hosts. */
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  generateRemoteHostToken,
+  hashRemoteHostToken,
+} from "@/db/crypto/remote-host-token";
 import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -101,6 +105,8 @@ app.post("/", async (c) => {
     }
     const hostId = crypto.randomUUID();
     const hostname = `eliza-host-${hostId.replace(/-/g, "").slice(0, 20)}`;
+    const hostToken = generateRemoteHostToken();
+    const hostTokenHash = await hashRemoteHostToken(hostToken);
     const expiration = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString();
     const client = new HeadscaleClient({ apiUrl, apiKey, user: userName });
     const preAuthKey = await client.createPreAuthKey({
@@ -120,6 +126,7 @@ app.post("/", async (c) => {
       runtime_key_id: parsed.data.hostIdentity.keyId,
       signing_public_jwk: parsed.data.hostIdentity.signingPublicKeyJwk,
       encryption_public_jwk: parsed.data.hostIdentity.encryptionPublicKeyJwk,
+      host_token_hash: hostTokenHash,
       status: "pending",
     });
     c.header("Cache-Control", "no-store");
@@ -130,6 +137,7 @@ app.post("/", async (c) => {
         displayName: host.display_name,
         loginServer: publicUrl,
         authKey: preAuthKey.key,
+        hostToken,
         hostname,
         expiresAt: preAuthKey.expiration || expiration,
         status: host.status,

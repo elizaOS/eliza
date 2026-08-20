@@ -71,7 +71,7 @@ describe("remote host enrollment", () => {
         HEADSCALE_API_URL: "http://headscale.internal",
         HEADSCALE_PUBLIC_URL: "https://headscale.example.test",
         HEADSCALE_API_KEY: "server-side-only-key",
-      } as AppEnv["Bindings"],
+      } as unknown as AppEnv["Bindings"],
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -92,6 +92,13 @@ describe("remote host enrollment", () => {
     const body = (await response.json()) as { data: Record<string, unknown> };
     expect(body.data.authKey).toBe("one-use-enrollment-key");
     expect(body.data.loginServer).toBe("https://headscale.example.test");
+    expect(body.data.hostToken).toMatch(/^eliza_host_[A-Za-z0-9_-]{43}$/);
+    expect(create.mock.calls[0]?.[0]?.host_token_hash).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(create.mock.calls[0]?.[0]?.host_token_hash).not.toBe(
+      body.data.hostToken,
+    );
   });
 
   test("fails closed without server-side Headscale configuration", async () => {

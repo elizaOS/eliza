@@ -21,6 +21,7 @@ export const remoteHosts = pgTable(
     runtime_key_id: text("runtime_key_id").notNull(),
     signing_public_jwk: jsonb("signing_public_jwk").notNull().$type<JsonWebKey>(),
     encryption_public_jwk: jsonb("encryption_public_jwk").notNull().$type<JsonWebKey>(),
+    host_token_hash: text("host_token_hash"),
     status: text("status").notNull().default("pending"),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

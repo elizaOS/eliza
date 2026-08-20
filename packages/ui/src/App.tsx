@@ -99,6 +99,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
+import { RemoteHostRelayAgent } from "./components/remote/RemoteHostRelayAgent";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
@@ -3368,6 +3369,7 @@ function AppContent() {
             NotificationsHomeCenter is the one in-app notification surface.
             Native platforms may still raise their OS notification. */}
         <NotificationsShellBoot />
+        <RemoteHostRelayAgent />
         {/* Tiny dismissible build stamp (bottom-left) so testers can verify
             PWA cache freshness at a glance. Best-effort: hidden when
             /build-info.json is absent (production builds without the

@@ -22,6 +22,15 @@ export interface AgentProfile {
   accessToken?: string;
   /** Opaque native secure-store lookup key; never credential material. */
   credentialRef?: string;
+  /** Public authority metadata for an E2E-encrypted Cloud relay session. */
+  remoteRelay?: {
+    ownerId: string;
+    sessionId: string;
+    targetRuntimeId: string;
+    targetKeyId: string;
+    targetSigningPublicKeyJwk: JsonWebKey;
+    targetEncryptionPublicKeyJwk: JsonWebKey;
+  };
   /** ISO-8601 creation timestamp. */
   createdAt: string;
   /** ISO-8601 timestamp of last successful connection. */

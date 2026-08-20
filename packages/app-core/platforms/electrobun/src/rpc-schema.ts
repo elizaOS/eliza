@@ -13,7 +13,12 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
-import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
+import type {
+  EncryptedRemoteCommand,
+  RemoteCommandResult,
+  RemoteControllerPublicIdentity,
+  SignedRemoteCommand,
+} from "@elizaos/shared";
 import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
@@ -1598,6 +1603,45 @@ export type ElizaDesktopRPCSchema = {
         };
         response: RemoteControllerPublicIdentity;
       };
+      desktopSignRemoteValue: {
+        params: { deviceId: string; value: unknown };
+        response: { signature: string };
+      };
+      desktopOpenRemoteCommand: {
+        params: {
+          deviceId: string;
+          hostKeyId: string;
+          envelope: EncryptedRemoteCommand;
+          authority: {
+            ownerId: string;
+            sessionId: string;
+            targetRuntimeId: string;
+            controller: RemoteControllerPublicIdentity;
+          };
+        };
+        response: SignedRemoteCommand;
+      };
+      desktopOpenRemoteCommandResult: {
+        params: {
+          deviceId: string;
+          controllerKeyId: string;
+          envelope: EncryptedRemoteCommand;
+          targetSigningPublicKeyJwk: JsonWebKey;
+          expectedCommandId: string;
+          expectedTargetRuntimeId: string;
+        };
+        response: RemoteCommandResult;
+      };
+      desktopSealRemoteCommandResult: {
+        params: {
+          deviceId: string;
+          hostKeyId: string;
+          controllerKeyId: string;
+          controllerEncryptionPublicKeyJwk: JsonWebKey;
+          result: RemoteCommandResult;
+        };
+        response: EncryptedRemoteCommand;
+      };
       desktopStartSshRuntime: {
         params: {
           runtimeId: string;
@@ -2562,6 +2606,10 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:deleteRuntimeCredential": "desktopDeleteRuntimeCredential",
   "desktop:getOrCreateControllerIdentity":
     "desktopGetOrCreateControllerIdentity",
+  "desktop:signRemoteValue": "desktopSignRemoteValue",
+  "desktop:openRemoteCommand": "desktopOpenRemoteCommand",
+  "desktop:openRemoteCommandResult": "desktopOpenRemoteCommandResult",
+  "desktop:sealRemoteCommandResult": "desktopSealRemoteCommandResult",
   "desktop:startSshRuntime": "desktopStartSshRuntime",
   "desktop:stopSshRuntime": "desktopStopSshRuntime",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",

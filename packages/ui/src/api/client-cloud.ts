@@ -5,7 +5,10 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core";
-import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
+import type {
+  EncryptedRemoteCommand,
+  RemoteControllerPublicIdentity,
+} from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -194,6 +197,19 @@ export interface CloudRemoteSession {
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CloudClaimedRemoteCommand {
+  commandId: string;
+  sequence: number;
+  expiresAt: string;
+  envelope: EncryptedRemoteCommand;
+  authority: {
+    ownerId: string;
+    sessionId: string;
+    targetRuntimeId: string;
+    controller: RemoteControllerPublicIdentity;
+  };
 }
 
 interface CloudAgentDeleteCondition {
@@ -1535,6 +1551,7 @@ declare module "./client-base" {
       host: CloudRemoteHost;
       enrollment: {
         authKey: string;
+        hostToken: string;
         loginServer: string;
         hostname: string;
         expiresAt: string;
@@ -1550,10 +1567,12 @@ declare module "./client-base" {
       controller: RemoteControllerPublicIdentity,
     ): Promise<{
       sessionId: string;
+      ownerId: string;
       agentId: string | null;
       hostId: string | null;
       status: "active";
       ingressUrl: string | null;
+      targetDisplayName: string | null;
       targetIdentity: {
         keyId: string;
         signingPublicKeyJwk: JsonWebKey;
@@ -1565,6 +1584,33 @@ declare module "./client-base" {
       hostId?: string;
     }): Promise<CloudRemoteSession[]>;
     revokeCloudRemoteSession(sessionId: string): Promise<void>;
+    enqueueCloudRemoteCommand(input: {
+      sessionId: string;
+      commandId: string;
+      sequence: number;
+      expiresAt: number;
+      envelope: EncryptedRemoteCommand;
+    }): Promise<void>;
+    claimCloudRemoteCommand(input: {
+      sessionId: string;
+      hostId: string;
+      hostToken: string;
+    }): Promise<CloudClaimedRemoteCommand | null>;
+    completeCloudRemoteCommand(input: {
+      sessionId: string;
+      commandId: string;
+      hostId: string;
+      hostToken: string;
+      resultEnvelope: EncryptedRemoteCommand;
+    }): Promise<void>;
+    readCloudRemoteCommandResult(input: {
+      sessionId: string;
+      commandId: string;
+    }): Promise<{
+      status: "pending" | "claimed" | "completed" | "expired";
+      resultEnvelope: EncryptedRemoteCommand | null;
+      completedAt: string | null;
+    }>;
     createCloudCompatAgent(opts: {
       agentName: string;
       agentConfig?: Record<string, unknown>;
@@ -2407,6 +2453,7 @@ ElizaClient.prototype.enrollCloudRemoteHost = async function (
         displayName: string;
         loginServer: string;
         authKey: string;
+        hostToken: string;
         hostname: string;
         expiresAt: string;
         status: "pending";
@@ -2432,6 +2479,7 @@ ElizaClient.prototype.enrollCloudRemoteHost = async function (
     },
     enrollment: {
       authKey: response.data.authKey,
+      hostToken: response.data.hostToken,
       loginServer: response.data.loginServer,
       hostname: response.data.hostname,
       expiresAt: response.data.expiresAt,
@@ -2478,10 +2526,12 @@ ElizaClient.prototype.consumeCloudRemotePairing = async function (
       success: true;
       data: {
         sessionId: string;
+        ownerId: string;
         agentId: string | null;
         hostId: string | null;
         status: "active";
         ingressUrl: string | null;
+        targetDisplayName: string | null;
         targetIdentity: {
           keyId: string;
           signingPublicKeyJwk: JsonWebKey;
@@ -2523,6 +2573,89 @@ ElizaClient.prototype.revokeCloudRemoteSession = async function (
       { method: "POST" },
     ),
   );
+};
+
+ElizaClient.prototype.enqueueCloudRemoteCommand = async function (
+  this: ElizaClient,
+  input,
+) {
+  requireRemoteControlCloudResponse(
+    await directCloudRequest<{ success: true }>(
+      this,
+      `/api/v1/remote/sessions/${encodeURIComponent(input.sessionId)}/commands`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          commandId: input.commandId,
+          sequence: input.sequence,
+          expiresAt: input.expiresAt,
+          envelope: input.envelope,
+        }),
+      },
+    ),
+  );
+};
+
+ElizaClient.prototype.claimCloudRemoteCommand = async function (
+  this: ElizaClient,
+  input,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: CloudClaimedRemoteCommand | null;
+    }>(
+      this,
+      `/api/v1/remote/sessions/${encodeURIComponent(input.sessionId)}/commands`,
+      {
+        headers: {
+          "X-Eliza-Remote-Host-Id": input.hostId,
+          "X-Eliza-Remote-Host-Token": input.hostToken,
+        },
+      },
+    ),
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.completeCloudRemoteCommand = async function (
+  this: ElizaClient,
+  input,
+) {
+  requireRemoteControlCloudResponse(
+    await directCloudRequest<{ success: true }>(
+      this,
+      `/api/v1/remote/sessions/${encodeURIComponent(input.sessionId)}/commands/${encodeURIComponent(input.commandId)}`,
+      {
+        method: "POST",
+        headers: {
+          "X-Eliza-Remote-Host-Id": input.hostId,
+          "X-Eliza-Remote-Host-Token": input.hostToken,
+        },
+        body: JSON.stringify({ resultEnvelope: input.resultEnvelope }),
+      },
+    ),
+  );
+};
+
+ElizaClient.prototype.readCloudRemoteCommandResult = async function (
+  this: ElizaClient,
+  input,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: {
+        status: "pending" | "claimed" | "completed" | "expired";
+        resultEnvelope: EncryptedRemoteCommand | null;
+        completedAt: string | null;
+      };
+    }>(
+      this,
+      `/api/v1/remote/sessions/${encodeURIComponent(input.sessionId)}/commands/${encodeURIComponent(input.commandId)}`,
+    ),
+  );
+  return response.data;
 };
 
 ElizaClient.prototype.createCloudCompatAgent = async function (

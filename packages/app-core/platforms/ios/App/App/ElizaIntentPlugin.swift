@@ -1,4 +1,5 @@
 import Capacitor
+import CryptoKit
 import Foundation
 import MetricKit
 import Security
@@ -45,6 +46,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "deleteRuntimeCredential", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getOrCreateControllerIdentity", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "signRemoteCommand", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "decryptRemoteEnvelope", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDeviceCapabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getResourceSnapshot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getMetricKitPayloads", returnType: CAPPluginReturnPromise),
@@ -72,6 +74,14 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func base64UrlData(_ value: String) -> Data? {
+        var base64 = value.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder != 0 { base64 += String(repeating: "=", count: 4 - remainder) }
+        return Data(base64Encoded: base64)
     }
 
     private static func controllerKeyTag(_ deviceId: String, purpose: String) -> Data {
@@ -490,6 +500,90 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["signature": ElizaIntentPlugin.base64Url(signature)])
         } catch {
             call.reject("Remote command signing failed: \(error.localizedDescription)")
+        }
+    }
+
+    @objc public func decryptRemoteEnvelope(_ call: CAPPluginCall) {
+        guard let deviceId = call.getString("deviceId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !deviceId.isEmpty,
+              let expectedRecipientKeyId = call.getString("expectedRecipientKeyId"),
+              let envelope = call.getObject("envelope"),
+              envelope["version"] as? Int == 1,
+              envelope["algorithm"] as? String == "ECDH-P256-HKDF-SHA256+A256GCM",
+              envelope["recipientKeyId"] as? String == expectedRecipientKeyId,
+              let senderKeyId = envelope["senderKeyId"] as? String,
+              let ephemeral = envelope["ephemeralPublicKeyJwk"] as? [String: Any],
+              ephemeral["kty"] as? String == "EC",
+              ephemeral["crv"] as? String == "P-256",
+              let xValue = ephemeral["x"] as? String,
+              let yValue = ephemeral["y"] as? String,
+              let x = ElizaIntentPlugin.base64UrlData(xValue), x.count == 32,
+              let y = ElizaIntentPlugin.base64UrlData(yValue), y.count == 32,
+              let saltValue = envelope["salt"] as? String,
+              let salt = ElizaIntentPlugin.base64UrlData(saltValue), salt.count == 32,
+              let ivValue = envelope["iv"] as? String,
+              let iv = ElizaIntentPlugin.base64UrlData(ivValue), iv.count == 12,
+              let ciphertextValue = envelope["ciphertext"] as? String,
+              let combined = ElizaIntentPlugin.base64UrlData(ciphertextValue), combined.count > 16,
+              let privateKey = ElizaIntentPlugin.loadControllerPrivateKey(deviceId, purpose: "encryption") else {
+            call.reject("Remote envelope is invalid or its device key is unavailable")
+            return
+        }
+        var publicBytes = Data([0x04])
+        publicBytes.append(x)
+        publicBytes.append(y)
+        let publicAttributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+            kSecAttrKeySizeInBits as String: 256,
+        ]
+        var publicError: Unmanaged<CFError>?
+        guard let publicKey = SecKeyCreateWithData(
+            publicBytes as CFData,
+            publicAttributes as CFDictionary,
+            &publicError
+        ) else {
+            call.reject("Remote ephemeral key is invalid")
+            return
+        }
+        var exchangeError: Unmanaged<CFError>?
+        guard let shared = SecKeyCopyKeyExchangeResult(
+            privateKey,
+            .ecdhKeyExchangeStandard,
+            publicKey,
+            [:] as CFDictionary,
+            &exchangeError
+        ) as Data? else {
+            call.reject("Remote key agreement failed")
+            return
+        }
+        do {
+            let key = HKDF<SHA256>.deriveKey(
+                inputKeyMaterial: SymmetricKey(data: shared),
+                salt: salt,
+                info: Data("eliza-remote-command-v1".utf8),
+                outputByteCount: 32
+            )
+            let encrypted = combined.dropLast(16)
+            let tag = combined.suffix(16)
+            let nonce = try AES.GCM.Nonce(data: iv)
+            let sealedBox = try AES.GCM.SealedBox(
+                nonce: nonce,
+                ciphertext: encrypted,
+                tag: tag
+            )
+            // canonicalizeRemoteControlValue sorts object keys alphabetically.
+            let aad = Data(
+                "{\"algorithm\":\"ECDH-P256-HKDF-SHA256+A256GCM\",\"recipientKeyId\":\"\(expectedRecipientKeyId)\",\"senderKeyId\":\"\(senderKeyId)\",\"version\":1}".utf8
+            )
+            let plaintext = try AES.GCM.open(sealedBox, using: key, authenticating: aad)
+            guard let value = String(data: plaintext, encoding: .utf8) else {
+                call.reject("Remote plaintext is not UTF-8")
+                return
+            }
+            call.resolve(["plaintext": value])
+        } catch {
+            call.reject("Remote envelope authentication failed")
         }
     }
 
