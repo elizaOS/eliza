@@ -155,7 +155,9 @@ function loadSkillFromFile(
       filePath,
       baseDir: skillDir,
       source,
-      disableModelInvocation: frontmatter["disable-model-invocation"] === true,
+      disableModelInvocation:
+        resolveSkillInvocationPolicy(frontmatter).disableModelInvocation ===
+        true,
       ...(provenance ? { provenance } : {}),
     },
     diagnostics,
