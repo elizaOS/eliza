@@ -17,16 +17,21 @@ Execution requires all six protected-environment capabilities up front:
 1. account-scoped credential and capability verification;
 2. authenticated ingress to the deployed agent;
 3. authenticated provider readback correlated to both signed operation hashes;
-4. authenticated replay with an unchanged provider-state snapshot;
+4. authenticated replay bound to the signed scenario/run/nonce and hashes of
+   the original ingress, provider event, observed effect, and operation, with
+   an unchanged provider-state snapshot;
 5. independent execution of the authorization-denial and provider-rejection
-   probes, including unchanged before/after state; and
-6. export of the deployed run's canonical trajectory set.
+   probes from their immutable validated request material, including unchanged
+   before/after state and echoed request, scope, grant, and response hashes; and
+6. the freshly isolated deployed run directory and scenario interval, which
+   the controller passes through `verifyScenarioTrajectories` itself.
 
 The controller refuses a partial capability set before credential inspection
 or ingress. It also rejects unknown fields, a copied preflight object, account
 or scope drift, target/input hash substitution, provider non-acceptance,
 duplicate replay effects, missing or duplicated probes, the wrong signed error
-or HTTP result, state-changing failure probes, and empty trajectory exports.
+or HTTP result, state-changing failure probes, stale or reordered receipts,
+and arbitrary trajectory export metadata.
 
 Provider-specific capability implementations belong in the protected operator
 environment. For example, a Signal implementation may use an authenticated

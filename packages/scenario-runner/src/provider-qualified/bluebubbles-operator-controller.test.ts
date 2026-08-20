@@ -24,6 +24,7 @@ import {
   createProviderFailureProbeHashBinding,
 } from "./operator-authorization.ts";
 import { providerObserverKeyId } from "./qualification.ts";
+import { createRawControllerTrajectoryMaterial } from "./raw-controller-test-fixtures.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
@@ -34,6 +35,9 @@ const runNonce = "b".repeat(64);
 const chatGuid = "iMessage;-;+15551230001";
 const text = "iMessage provider canary delivery";
 const operationInput = { text, replyToMessageGuid: null } as const;
+const baseMs = Date.now();
+const at = (offsetMs: number): string =>
+  new Date(baseMs + offsetMs).toISOString();
 const providerTarget = { chatGuid };
 const failureProbeMaterials = [
   {
@@ -218,7 +222,7 @@ async function boundary(
   return authenticateBlueBubblesBoundary({
     preflight,
     serverPassword: "a-long-dedicated-server-password",
-    checkedAt: new Date("2026-08-20T12:00:00.000Z"),
+    checkedAt: new Date(baseMs),
     fetchImpl: async (request) => {
       const url = new URL(String(request));
       expect(url.origin).toBe(preflight.plan.serverOrigin);
@@ -243,13 +247,10 @@ function capabilities(
   overrides: Partial<BlueBubblesExternalCapabilities> = {},
 ): BlueBubblesExternalCapabilities {
   const state = hash("provider-state-after-one-message");
-  const [authorizationDenied, providerRejected] = failureProbeMaterials.map(
-    createProviderFailureProbeHashBinding,
-  );
   return {
     sendAuthenticatedIngress: vi.fn(async () => ({
       requestId: "ingress-request-1",
-      acceptedAtIso: "2026-08-20T12:00:01.000Z",
+      acceptedAtIso: at(1),
       scenarioId: "provider.bluebubbles-imessage.confirmed-send",
       runNonce,
     })),
@@ -259,45 +260,55 @@ function capabilities(
       text,
       isFromMe: true,
       threadOriginatorGuid: null,
-      observedAtIso: "2026-08-20T12:00:02.000Z",
+      observedAtIso: at(2),
       rawProviderResponseSha256: hash("raw-provider-readback"),
       qualificationClaimed: false,
     })),
-    replayAuthenticatedIngress: vi.fn(async () => ({
+    replayAuthenticatedIngress: vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: "replay-request-1",
-      observedAtIso: "2026-08-20T12:00:03.000Z",
+      observedAtIso: at(3),
       duplicateEffectCount: 0,
       providerStateBeforeSha256: state,
       providerStateAfterSha256: state,
     })),
-    executeIndependentFailureProbes: vi.fn(async () => [
+    executeIndependentFailureProbes: vi.fn(async ({ probes }) => [
       {
-        probeId: authorizationDenied.probeId,
+        probeId: probes[0].binding.probeId,
         failureClass: "authorization-denied",
-        observedAtIso: "2026-08-20T12:00:04.000Z",
+        observedAtIso: at(4),
         statusCode: 401,
-        errorCodeSha256: authorizationDenied.expectedErrorCodeSha256,
+        errorCodeSha256: probes[0].binding.expectedErrorCodeSha256,
+        requestPayloadSha256: probes[0].binding.requestPayloadSha256,
+        scopeSha256: probes[0].binding.scopeSha256,
+        authorizationGrantSha256: probes[0].binding.authorizationGrantSha256,
+        responsePayloadSha256: hash("authorization-denied-response"),
         providerRequestIdSha256: null,
         providerStateBeforeSha256: state,
         providerStateAfterSha256: state,
       },
       {
-        probeId: providerRejected.probeId,
+        probeId: probes[1].binding.probeId,
         failureClass: "provider-rejected",
-        observedAtIso: "2026-08-20T12:00:05.000Z",
+        observedAtIso: at(5),
         statusCode: 400,
-        errorCodeSha256: providerRejected.expectedErrorCodeSha256,
+        errorCodeSha256: probes[1].binding.expectedErrorCodeSha256,
+        requestPayloadSha256: probes[1].binding.requestPayloadSha256,
+        scopeSha256: probes[1].binding.scopeSha256,
+        authorizationGrantSha256: probes[1].binding.authorizationGrantSha256,
+        responsePayloadSha256: hash("provider-rejected-response"),
         providerRequestIdSha256: hash("provider-request-1"),
         providerStateBeforeSha256: state,
         providerStateAfterSha256: state,
       },
     ]),
-    exportDeployedTrajectory: vi.fn(async () => ({
-      exportId: "trajectory-export-1",
-      exportedAtIso: "2026-08-20T12:00:06.000Z",
-      trajectoryCount: 1,
-      exportSha256: hash("deployed-trajectory"),
-    })),
+    exportDeployedTrajectory: vi.fn(async () =>
+      createRawControllerTrajectoryMaterial({
+        runId: "bluebubbles-operator-run-001",
+        scenarioId: scenario.id,
+        baseMs: baseMs + 6,
+      }),
+    ),
     ...overrides,
   };
 }
@@ -352,17 +363,29 @@ describe("BlueBubbles provider-canary operator", () => {
 
   it("returns only correlated unsigned source receipts", async () => {
     const preflight = preflightBlueBubblesOperatorCanary(fixture());
+    const external = capabilities();
     const result = await executeBlueBubblesOperatorCanary({
       preflight,
       boundary: await boundary(preflight),
-      capabilities: capabilities(),
-      now: () => Date.parse("2026-08-20T12:00:07.000Z"),
+      capabilities: external,
+      now: () => baseMs + 6,
     });
     expect(result).toMatchObject({
       schema: "eliza.bluebubbles-provider-canary-raw-receipt.v1",
       operationKind: "bluebubbles.message-send",
       qualificationClaimed: false,
       readback: { chatGuid, isFromMe: true, threadOriginatorGuid: null },
+    });
+    expect(result.trajectory.runId).toBe("bluebubbles-operator-run-001");
+    expect(result.replay.binding).toMatchObject({
+      scenarioId: scenario.id,
+      runId: "bluebubbles-operator-run-001",
+      runNonce,
+    });
+    expect(external.executeIndependentFailureProbes).toHaveBeenCalledWith({
+      scenarioId: scenario.id,
+      operation: preflight.operation,
+      probes: preflight.failureProbeExecutions,
     });
   });
 
@@ -425,7 +448,8 @@ describe("BlueBubbles provider-canary operator", () => {
         preflight,
         boundary: authenticated,
         capabilities: capabilities({
-          replayAuthenticatedIngress: async () => ({
+          replayAuthenticatedIngress: async ({ binding }) => ({
+            binding,
             replayRequestId: "replay-request-1",
             observedAtIso: "2026-08-20T12:00:03.000Z",
             duplicateEffectCount: 1,

@@ -24,12 +24,15 @@ import {
   createProviderFailureProbeHashBinding,
 } from "./operator-authorization.ts";
 import { providerObserverKeyId } from "./qualification.ts";
+import type { ValidatedProviderFailureProbeExecution } from "./raw-controller-contracts.ts";
+import { createRawControllerTrajectoryMaterial } from "./raw-controller-test-fixtures.ts";
 
 const digest = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 const connectionRefSha256 = digest("operator-google-workspace-connection");
 const runNonce = "g".repeat(64);
-const timestamp = "2026-08-20T18:00:00.000Z";
+const baseMs = Date.now();
+const timestamp = new Date(baseMs).toISOString();
 
 const CASES = {
   "gmail.email-send": {
@@ -295,34 +298,48 @@ function capabilities(
       providerPayloadSha256: digest(`${kind}-provider-payload`),
       providerAccepted: true,
     })),
-    replayAuthenticatedIngress: vi.fn(async () => ({
+    replayAuthenticatedIngress: vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: `${kind}-replay-request`,
       observedAtIso: timestamp,
       duplicateEffectCount: 0,
       providerStateBeforeSha256: state,
       providerStateAfterSha256: state,
     })),
-    executeIndependentFailureProbes: vi.fn(async () =>
-      probeMaterials(kind).map((probe, index) => ({
-        probeId: probe.probeId,
-        failureClass:
-          index === 0 ? "authorization-denied" : "provider-rejected",
-        observedAtIso: timestamp,
-        statusCode: index === 0 ? 403 : 400,
-        errorCodeSha256:
-          createProviderFailureProbeHashBinding(probe).expectedErrorCodeSha256,
-        providerRequestIdSha256:
-          index === 0 ? null : digest(`${kind}-provider-rejection-request`),
-        providerStateBeforeSha256: state,
-        providerStateAfterSha256: state,
-      })),
+    executeIndependentFailureProbes: vi.fn(async ({ probes }) =>
+      probes.map(
+        (execution: ValidatedProviderFailureProbeExecution, index: number) => ({
+          ...(() => {
+            const { binding } = execution;
+            return {
+              probeId: binding.probeId,
+              failureClass:
+                index === 0 ? "authorization-denied" : "provider-rejected",
+              observedAtIso: timestamp,
+              statusCode: index === 0 ? 403 : 400,
+              errorCodeSha256: binding.expectedErrorCodeSha256,
+              requestPayloadSha256: binding.requestPayloadSha256,
+              scopeSha256: binding.scopeSha256,
+              authorizationGrantSha256: binding.authorizationGrantSha256,
+              responsePayloadSha256: digest(`${kind}-probe-response-${index}`),
+              providerRequestIdSha256:
+                index === 0
+                  ? null
+                  : digest(`${kind}-provider-rejection-request`),
+              providerStateBeforeSha256: state,
+              providerStateAfterSha256: state,
+            };
+          })(),
+        }),
+      ),
     ),
-    exportDeployedTrajectory: vi.fn(async () => ({
-      exportId: `${kind}-trajectory-export`,
-      exportedAtIso: timestamp,
-      trajectoryCount: 1,
-      exportSha256: digest(`${kind}-trajectory`),
-    })),
+    exportDeployedTrajectory: vi.fn(async () =>
+      createRawControllerTrajectoryMaterial({
+        runId: `google-operator-${kind.replaceAll(".", "-")}`,
+        scenarioId: item.scenario.id,
+        baseMs,
+      }),
+    ),
   };
 }
 
@@ -330,15 +347,32 @@ describe("Google Workspace provider-canary operator", () => {
   it.each(Object.keys(CASES) as GoogleWorkspaceCanaryKind[])(
     "validates and collects a complete unsigned %s receipt",
     async (kind) => {
+      const ready = preflight(kind);
       const input = capabilities(kind);
       const receipt = await executeGoogleWorkspaceOperatorCanary({
-        preflight: preflight(kind),
+        preflight: ready,
         capabilities: input,
         now: () => Date.parse(timestamp),
       });
       expect(receipt.operationKind).toBe(kind);
       expect(receipt.qualificationClaimed).toBe(false);
       expect(receipt.failureProbes).toHaveLength(2);
+      expect(receipt.trajectory.runId).toBe(
+        ready.authorization.manifest.run.runId,
+      );
+      expect(receipt.replay.binding).toMatchObject({
+        scenarioId: ready.scenarioId,
+        runId: ready.authorization.manifest.run.runId,
+        runNonce,
+      });
+      expect(input.executeIndependentFailureProbes).toHaveBeenCalledWith({
+        scenarioId: ready.scenarioId,
+        operation: ready.operation,
+        probes: ready.failureProbeExecutions,
+      });
+      expect(
+        Object.isFrozen(ready.failureProbeExecutions[0].material.scope),
+      ).toBe(true);
       expect(input.sendAuthenticatedIngress).toHaveBeenCalledOnce();
       expect(input.collectIndependentReadback).toHaveBeenCalledOnce();
       expect(input.replayAuthenticatedIngress).toHaveBeenCalledOnce();
@@ -391,7 +425,8 @@ describe("Google Workspace provider-canary operator", () => {
 
   it("rejects replay state changes instead of claiming idempotency", async () => {
     const external = capabilities("google-sheets.spreadsheet-create");
-    external.replayAuthenticatedIngress = vi.fn(async () => ({
+    external.replayAuthenticatedIngress = vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: "unsafe-replay",
       observedAtIso: timestamp,
       duplicateEffectCount: 0,

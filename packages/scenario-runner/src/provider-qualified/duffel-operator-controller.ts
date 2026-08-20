@@ -16,6 +16,16 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import {
+  assertRawReceiptChronology,
+  bindValidatedFailureProbeExecutions,
+  buildProviderReplayBinding,
+  type DeployedTrajectoryRunMaterial,
+  type ProviderReplayBinding,
+  type ValidatedProviderFailureProbeExecution,
+  verifyDeployedTrajectoryRun,
+} from "./raw-controller-contracts.ts";
+import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 export const DUFFEL_OPERATOR_PLAN_SCHEMA =
   "eliza.duffel-provider-canary-operator-plan.v1" as const;
@@ -51,6 +61,7 @@ export interface DuffelOperatorPreflight {
   operation: DuffelRawOperation;
   approvalPayloadSha256: string;
   noEffectScopeSha256: string;
+  failureProbeExecutions: readonly ValidatedProviderFailureProbeExecution[];
 }
 
 export interface DuffelSandboxCredentialReceipt {
@@ -101,6 +112,7 @@ export interface DuffelSandboxReadbackReceipt {
 }
 
 export interface DuffelReplayReceipt {
+  binding: ProviderReplayBinding;
   replayRequestId: string;
   observedAtIso: string;
   duplicateOrderCount: 0;
@@ -115,17 +127,16 @@ export interface DuffelFailureProbeReceipt {
   observedAtIso: string;
   statusCode: number;
   errorCodeSha256: string;
+  requestPayloadSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  responsePayloadSha256: string;
   providerRequestIdSha256: string | null;
   providerStateBeforeSha256: string;
   providerStateAfterSha256: string;
 }
 
-export interface DuffelTrajectoryExportReceipt {
-  exportId: string;
-  exportedAtIso: string;
-  trajectoryCount: number;
-  exportSha256: string;
-}
+export type DuffelTrajectoryExportReceipt = VerifiedScenarioTrajectorySet;
 
 export interface DuffelRawReceipt {
   schema: typeof DUFFEL_RAW_RECEIPT_SCHEMA;
@@ -178,21 +189,18 @@ export interface DuffelExternalCapabilities {
     orderId: string;
   }): Promise<unknown>;
   replayAuthenticatedApproval(input: {
-    scenarioId: typeof SCENARIO_ID;
-    runNonce: string;
-    approvalRequestId: string;
-    approvalIdSha256: string;
+    binding: Readonly<ProviderReplayBinding>;
   }): Promise<unknown>;
   executeIndependentFailureProbes(input: {
     operation: DuffelRawOperation;
-    probeIds: readonly string[];
+    probes: readonly ValidatedProviderFailureProbeExecution[];
   }): Promise<unknown>;
   exportDeployedTrajectory(input: {
     scenarioId: typeof SCENARIO_ID;
     runNonce: string;
     proposalRequestId: string;
     approvalRequestId: string;
-  }): Promise<unknown>;
+  }): Promise<DeployedTrajectoryRunMaterial>;
 }
 
 function fail(message: string): never {
@@ -391,6 +399,10 @@ export function preflightDuffelOperatorCanary(input: {
     operation,
     approvalPayloadSha256,
     noEffectScopeSha256: noEffect[0].scopeSha256,
+    failureProbeExecutions: bindValidatedFailureProbeExecutions({
+      materials: input.failureProbes,
+      bindings: execution.failureProbeBindings,
+    }),
   }) satisfies DuffelOperatorPreflight;
   validatedPreflights.add(result);
   return result;
@@ -628,16 +640,26 @@ function parseReadback(
   });
 }
 
-function parseReplay(value: unknown): DuffelReplayReceipt {
+function parseReplay(
+  value: unknown,
+  expectedBinding: Readonly<ProviderReplayBinding>,
+): DuffelReplayReceipt {
   const receipt = record(value, "replayReceipt");
   exactKeys(receipt, "replayReceipt", [
     "replayRequestId",
+    "binding",
     "observedAtIso",
     "duplicateOrderCount",
     "duplicatePaymentCount",
     "providerStateBeforeSha256",
     "providerStateAfterSha256",
   ]);
+  const binding = record(receipt.binding, "replayReceipt.binding");
+  exactKeys(binding, "replayReceipt.binding", Object.keys(expectedBinding));
+  for (const [key, expected] of Object.entries(expectedBinding)) {
+    if (binding[key] !== expected)
+      fail(`replayReceipt.binding.${key} mismatch`);
+  }
   const before = hash(
     receipt.providerStateBeforeSha256,
     "replayReceipt.providerStateBeforeSha256",
@@ -654,6 +676,7 @@ function parseReplay(value: unknown): DuffelReplayReceipt {
     fail("authenticated replay changed Duffel state");
   }
   return Object.freeze({
+    binding: expectedBinding,
     replayRequestId: string(
       receipt.replayRequestId,
       "replayReceipt.replayRequestId",
@@ -684,6 +707,10 @@ function parseFailureProbes(
       "observedAtIso",
       "statusCode",
       "errorCodeSha256",
+      "requestPayloadSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+      "responsePayloadSha256",
       "providerRequestIdSha256",
       "providerStateBeforeSha256",
       "providerStateAfterSha256",
@@ -724,12 +751,36 @@ function parseFailureProbes(
     ) {
       fail(`${path} changed state or has invalid provider correlation`);
     }
+    const requestPayloadSha256 = hash(
+      receipt.requestPayloadSha256,
+      `${path}.requestPayloadSha256`,
+    );
+    const scopeSha256 = hash(receipt.scopeSha256, `${path}.scopeSha256`);
+    const authorizationGrantSha256 = hash(
+      receipt.authorizationGrantSha256,
+      `${path}.authorizationGrantSha256`,
+    );
+    if (
+      requestPayloadSha256 !== contract.requestPayloadSha256 ||
+      scopeSha256 !== contract.scopeSha256 ||
+      authorizationGrantSha256 !== contract.authorizationGrantSha256
+    ) {
+      fail(`${path} hash bindings do not match the signed probe`);
+    }
+    const responsePayloadSha256 = hash(
+      receipt.responsePayloadSha256,
+      `${path}.responsePayloadSha256`,
+    );
     return Object.freeze({
       probeId: contract.probeId,
       failureClass: contract.failureClass,
       observedAtIso: iso(receipt.observedAtIso, `${path}.observedAtIso`),
       statusCode: positiveInteger(receipt.statusCode, `${path}.statusCode`),
       errorCodeSha256: contract.expectedErrorCodeSha256,
+      requestPayloadSha256,
+      scopeSha256,
+      authorizationGrantSha256,
+      responsePayloadSha256,
       providerRequestIdSha256,
       providerStateBeforeSha256: before,
       providerStateAfterSha256: after,
@@ -738,28 +789,6 @@ function parseFailureProbes(
   if (seen.size !== expected.length)
     fail("failure probes do not cover manifest exactly once");
   return Object.freeze(parsed);
-}
-
-function parseTrajectory(value: unknown): DuffelTrajectoryExportReceipt {
-  const receipt = record(value, "trajectoryReceipt");
-  exactKeys(receipt, "trajectoryReceipt", [
-    "exportId",
-    "exportedAtIso",
-    "trajectoryCount",
-    "exportSha256",
-  ]);
-  return Object.freeze({
-    exportId: string(receipt.exportId, "trajectoryReceipt.exportId"),
-    exportedAtIso: iso(
-      receipt.exportedAtIso,
-      "trajectoryReceipt.exportedAtIso",
-    ),
-    trajectoryCount: positiveInteger(
-      receipt.trajectoryCount,
-      "trajectoryReceipt.trajectoryCount",
-    ),
-    exportSha256: hash(receipt.exportSha256, "trajectoryReceipt.exportSha256"),
-  });
 }
 
 /** Execute the sandbox canary and collect raw material without claiming qualification. */
@@ -848,36 +877,68 @@ export async function executeDuffelOperatorCanary(input: {
     input.preflight,
     approval.providerOrderId as string,
   );
+  const replayBinding = buildProviderReplayBinding({
+    scenarioId: SCENARIO_ID,
+    runId: input.preflight.authorization.manifest.run.runId,
+    runNonce: input.preflight.plan.runNonce,
+    ingressRequestId: approval.requestId,
+    providerEventId: readback.orderId,
+    effectSha256: readback.providerPayloadSha256,
+    operation: input.preflight.operation,
+  });
   const replay = parseReplay(
     await capabilities.replayAuthenticatedApproval({
-      scenarioId: SCENARIO_ID,
-      runNonce: input.preflight.plan.runNonce,
-      approvalRequestId: approval.requestId,
-      approvalIdSha256: approval.approvalIdSha256,
+      binding: replayBinding,
     }),
+    replayBinding,
   );
   const failureProbes = parseFailureProbes(
     await capabilities.executeIndependentFailureProbes({
       operation: input.preflight.operation,
-      probeIds:
-        input.preflight.authorization.manifest.requiredFailureProbes.map(
-          (probe) => probe.probeId,
-        ),
+      probes: input.preflight.failureProbeExecutions,
     }),
     input.preflight,
   );
-  const trajectory = parseTrajectory(
-    await capabilities.exportDeployedTrajectory({
-      scenarioId: SCENARIO_ID,
-      runNonce: input.preflight.plan.runNonce,
-      proposalRequestId: proposal.requestId,
-      approvalRequestId: approval.requestId,
-    }),
-  );
+  const trajectoryMaterial = await capabilities.exportDeployedTrajectory({
+    scenarioId: SCENARIO_ID,
+    runNonce: input.preflight.plan.runNonce,
+    proposalRequestId: proposal.requestId,
+    approvalRequestId: approval.requestId,
+  });
+  const collectedAtMs = (input.now ?? Date.now)();
+  const trajectory = verifyDeployedTrajectoryRun({
+    material: trajectoryMaterial,
+    expectedRunId: input.preflight.authorization.manifest.run.runId,
+    expectedScenarioId: SCENARIO_ID,
+    now: new Date(collectedAtMs),
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      credential.checkedAtIso,
+      preapprovalNoEffect.observationStartedAtIso,
+      proposal.acceptedAtIso,
+      preapprovalNoEffect.observationEndedAtIso,
+      approval.acceptedAtIso,
+      approval.approvedAtIso as string,
+      approval.doneAtIso as string,
+      readback.observedAtIso,
+      replay.observedAtIso,
+      ...failureProbes.map((probe) => probe.observedAtIso),
+    ],
+    collectedAtMs,
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      trajectory.scenarioStartedAtIso,
+      trajectory.scenarioEndedAtIso,
+      trajectory.verifiedAtIso,
+    ],
+    collectedAtMs,
+  });
   return Object.freeze({
     schema: DUFFEL_RAW_RECEIPT_SCHEMA,
     scenarioId: SCENARIO_ID,
-    collectedAtIso: new Date((input.now ?? Date.now)()).toISOString(),
+    collectedAtIso: new Date(collectedAtMs).toISOString(),
     credential,
     proposal,
     preapprovalNoEffect,

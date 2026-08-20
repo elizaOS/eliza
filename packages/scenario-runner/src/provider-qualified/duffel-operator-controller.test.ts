@@ -20,6 +20,8 @@ import {
   createProviderFailureProbeHashBinding,
 } from "./operator-authorization.ts";
 import { providerObserverKeyId } from "./qualification.ts";
+import type { ValidatedProviderFailureProbeExecution } from "./raw-controller-contracts.ts";
+import { createRawControllerTrajectoryMaterial } from "./raw-controller-test-fixtures.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
@@ -33,13 +35,14 @@ const runNonce = "d".repeat(64);
 const scopeSha256 = hash("duffel-preapproval-effects");
 const stateSha256 = hash("duffel-sandbox-state");
 const approvalIdSha256 = hash("duffel-approval-id");
+const baseMs = Date.now();
 const timestamp = {
-  observerStart: "2026-08-20T18:00:00.000Z",
-  proposal: "2026-08-20T18:00:01.000Z",
-  observerEnd: "2026-08-20T18:00:02.000Z",
-  approvalIngress: "2026-08-20T18:00:03.000Z",
-  approved: "2026-08-20T18:00:04.000Z",
-  done: "2026-08-20T18:00:05.000Z",
+  observerStart: new Date(baseMs).toISOString(),
+  proposal: new Date(baseMs + 1).toISOString(),
+  observerEnd: new Date(baseMs + 2).toISOString(),
+  approvalIngress: new Date(baseMs + 3).toISOString(),
+  approved: new Date(baseMs + 4).toISOString(),
+  done: new Date(baseMs + 5).toISOString(),
 };
 
 const providerTarget = {
@@ -395,9 +398,10 @@ function capabilities(
         providerPayloadSha256: hash("duffel-order-payload"),
       };
     }),
-    replayAuthenticatedApproval: vi.fn(async () => {
+    replayAuthenticatedApproval: vi.fn(async ({ binding }) => {
       calls.push("replay");
       return {
+        binding,
         replayRequestId: "duffel-replay-request",
         observedAtIso: timestamp.done,
         duplicateOrderCount: 0,
@@ -406,30 +410,37 @@ function capabilities(
         providerStateAfterSha256: stateSha256,
       };
     }),
-    executeIndependentFailureProbes: vi.fn(async () => {
+    executeIndependentFailureProbes: vi.fn(async ({ probes: executions }) => {
       calls.push("probes");
-      return probes.map((probe, index) => ({
-        probeId: probe.probeId,
-        failureClass:
-          index === 0 ? "authorization-denied" : "provider-rejected",
-        observedAtIso: timestamp.done,
-        statusCode: index === 0 ? 401 : 422,
-        errorCodeSha256:
-          createProviderFailureProbeHashBinding(probe).expectedErrorCodeSha256,
-        providerRequestIdSha256:
-          index === 0 ? null : hash("duffel-rejected-request-id"),
-        providerStateBeforeSha256: stateSha256,
-        providerStateAfterSha256: stateSha256,
-      }));
+      return executions.map(
+        (execution: ValidatedProviderFailureProbeExecution, index: number) => {
+          const { binding } = execution;
+          return {
+            probeId: binding.probeId,
+            failureClass:
+              index === 0 ? "authorization-denied" : "provider-rejected",
+            observedAtIso: timestamp.done,
+            statusCode: index === 0 ? 401 : 422,
+            errorCodeSha256: binding.expectedErrorCodeSha256,
+            requestPayloadSha256: binding.requestPayloadSha256,
+            scopeSha256: binding.scopeSha256,
+            authorizationGrantSha256: binding.authorizationGrantSha256,
+            responsePayloadSha256: hash(`duffel-probe-response-${index}`),
+            providerRequestIdSha256:
+              index === 0 ? null : hash("duffel-rejected-request-id"),
+            providerStateBeforeSha256: stateSha256,
+            providerStateAfterSha256: stateSha256,
+          };
+        },
+      );
     }),
     exportDeployedTrajectory: vi.fn(async () => {
       calls.push("trajectory");
-      return {
-        exportId: "duffel-trajectory-export",
-        exportedAtIso: timestamp.done,
-        trajectoryCount: 2,
-        exportSha256: hash("duffel-trajectory"),
-      };
+      return createRawControllerTrajectoryMaterial({
+        runId: "duffel-sandbox-operator-run",
+        scenarioId: scenario.id,
+        baseMs: baseMs + 6,
+      });
     }),
   };
   Object.defineProperty(capability, "calls", {
@@ -446,7 +457,7 @@ describe("Duffel provider-canary operator", () => {
     const receipt = await executeDuffelOperatorCanary({
       preflight: ready,
       capabilities: external,
-      now: () => Date.parse(timestamp.done),
+      now: () => baseMs + 6,
     });
     expect(receipt.qualificationClaimed).toBe(false);
     expect(receipt.readback).toMatchObject({
@@ -455,6 +466,16 @@ describe("Duffel provider-canary operator", () => {
       awaitingPayment: true,
       paymentCount: 0,
       calendarMutationCount: 0,
+    });
+    expect(receipt.trajectory.runId).toBe("duffel-sandbox-operator-run");
+    expect(receipt.replay.binding).toMatchObject({
+      scenarioId: scenario.id,
+      runId: "duffel-sandbox-operator-run",
+      runNonce,
+    });
+    expect(external.executeIndependentFailureProbes).toHaveBeenCalledWith({
+      operation: ready.operation,
+      probes: ready.failureProbeExecutions,
     });
     expect(external.calls).toEqual([
       "credential",
@@ -548,7 +569,8 @@ describe("Duffel provider-canary operator", () => {
   it("rejects replay-created orders instead of claiming idempotency", async () => {
     const ready = preflight();
     const external = capabilities(ready.approvalPayloadSha256);
-    external.replayAuthenticatedApproval = vi.fn(async () => ({
+    external.replayAuthenticatedApproval = vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: "unsafe-replay",
       observedAtIso: timestamp.done,
       duplicateOrderCount: 1,

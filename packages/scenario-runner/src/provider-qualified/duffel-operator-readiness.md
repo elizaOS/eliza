@@ -21,10 +21,17 @@ Execution requires all of these external capabilities up front:
    and canonical payload hash;
 6. read the created order from Duffel sandbox and prove it is the exact held,
    awaiting-payment, unpaid order with no calendar mutation;
-7. replay authenticated approval and prove no additional order or payment;
-8. execute the exact authorization-denied and provider-rejected probes without
-   state change; and
-9. export the deployed trajectories for both turns.
+7. replay authenticated approval with the exact scenario/run/nonce and hashes
+   of the original approval ingress, order event, effect, and operation, then
+   prove no additional order or payment;
+8. execute immutable copies of the exact authorization-denied and
+   provider-rejected probe material without state change, and echo each
+   request, scope, grant, and response hash; and
+9. return the freshly isolated deployed run directory and scenario interval so
+   the controller can run `verifyScenarioTrajectories` for both turns.
+
+All receipt timestamps must be fresh and monotonic through final verification.
+An export ID, count, or caller-supplied digest is not trajectory evidence.
 
 The returned document is deliberately unsigned and contains
 `qualificationClaimed: false`. Provider qualification still requires the

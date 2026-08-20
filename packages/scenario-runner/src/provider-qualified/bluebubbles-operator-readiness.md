@@ -17,13 +17,18 @@ Execution also requires all five external capabilities up front:
 
 - authenticated deployed ingress for the exact authorized operation;
 - independent provider readback of the exact outgoing message;
-- authenticated replay with unchanged before/after provider state;
-- independent execution of every signed negative probe; and
-- deployed trajectory export correlated to the ingress request.
+- authenticated replay that echoes the signed scenario/run/nonce plus hashes
+  of the original ingress, provider message, observed effect, and operation;
+- independent execution of every exact immutable signed negative-probe input,
+  with receipts echoing its request, scope, grant, and response hashes; and
+- a freshly isolated deployed run directory and immutable scenario interval,
+  which the controller passes to `verifyScenarioTrajectories` itself.
 
 The controller refuses before ingress if any capability is absent. Boundary,
-readback, replay, probe, and trajectory results are strictly parsed as closed
-shapes. Every returned artifact is unsigned raw source material and carries
+readback, replay, and probe results are strictly parsed as closed shapes. Their
+timestamps must be fresh and monotonic. Arbitrary trajectory-export metadata
+is rejected because only recomputed canonical artifact and stage hashes are
+retained. Every returned artifact is unsigned raw source material and carries
 `qualificationClaimed: false`; qualification still requires independent
 observer signatures, trajectory verification, semantic judging, and offline
 artifact assembly/reverification.

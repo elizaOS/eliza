@@ -20,6 +20,16 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import {
+  assertRawReceiptChronology,
+  bindValidatedFailureProbeExecutions,
+  buildProviderReplayBinding,
+  type DeployedTrajectoryRunMaterial,
+  type ProviderReplayBinding,
+  type ValidatedProviderFailureProbeExecution,
+  verifyDeployedTrajectoryRun,
+} from "./raw-controller-contracts.ts";
+import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 export const GOOGLE_WORKSPACE_OPERATOR_PLAN_SCHEMA =
   "eliza.google-workspace-provider-canary-operator-plan.v1" as const;
@@ -69,6 +79,7 @@ export interface GoogleWorkspaceOperatorPreflight {
   execution: AuthorizedProviderCanaryExecutionPreflight;
   plan: GoogleWorkspaceOperatorPlan;
   operation: GoogleRawOperation;
+  failureProbeExecutions: readonly ValidatedProviderFailureProbeExecution[];
 }
 
 export interface GoogleCredentialReceipt {
@@ -93,6 +104,7 @@ export interface GoogleProviderReadbackReceipt {
 }
 
 export interface GoogleReplayReceipt {
+  binding: ProviderReplayBinding;
   replayRequestId: string;
   observedAtIso: string;
   duplicateEffectCount: 0;
@@ -106,17 +118,16 @@ export interface GoogleFailureProbeReceipt {
   observedAtIso: string;
   statusCode: number;
   errorCodeSha256: string;
+  requestPayloadSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  responsePayloadSha256: string;
   providerRequestIdSha256: string | null;
   providerStateBeforeSha256: string;
   providerStateAfterSha256: string;
 }
 
-export interface GoogleTrajectoryExportReceipt {
-  exportId: string;
-  exportedAtIso: string;
-  trajectoryCount: number;
-  exportSha256: string;
-}
+export type GoogleTrajectoryExportReceipt = VerifiedScenarioTrajectorySet;
 
 export interface GoogleWorkspaceRawReceipt {
   schema: typeof GOOGLE_WORKSPACE_RAW_RECEIPT_SCHEMA;
@@ -146,21 +157,19 @@ export interface GoogleWorkspaceExternalCapabilities {
     scenarioId: string;
     runNonce: string;
     ingressRequestId: string;
-  }): Promise<unknown>;
+  }): Promise<DeployedTrajectoryRunMaterial>;
   collectIndependentReadback(input: {
     scenarioId: string;
     operation: GoogleRawOperation;
     ingressRequestId: string;
   }): Promise<unknown>;
   replayAuthenticatedIngress(input: {
-    scenarioId: string;
-    runNonce: string;
-    ingressRequestId: string;
+    binding: Readonly<ProviderReplayBinding>;
   }): Promise<unknown>;
   executeIndependentFailureProbes(input: {
     scenarioId: string;
     operation: GoogleRawOperation;
-    probeIds: readonly string[];
+    probes: readonly ValidatedProviderFailureProbeExecution[];
   }): Promise<unknown>;
 }
 
@@ -363,6 +372,10 @@ export function preflightGoogleWorkspaceOperatorCanary(input: {
     execution,
     plan,
     operation,
+    failureProbeExecutions: bindValidatedFailureProbeExecutions({
+      materials: input.failureProbes,
+      bindings: execution.failureProbeBindings,
+    }),
   }) satisfies GoogleWorkspaceOperatorPreflight;
   validatedPreflights.add(result);
   return result;
@@ -472,15 +485,25 @@ function parseReadback(value: unknown): GoogleProviderReadbackReceipt {
   });
 }
 
-function parseReplay(value: unknown): GoogleReplayReceipt {
+function parseReplay(
+  value: unknown,
+  expectedBinding: Readonly<ProviderReplayBinding>,
+): GoogleReplayReceipt {
   const receipt = record(value, "replayReceipt");
   exactKeys(receipt, "replayReceipt", [
     "replayRequestId",
+    "binding",
     "observedAtIso",
     "duplicateEffectCount",
     "providerStateBeforeSha256",
     "providerStateAfterSha256",
   ]);
+  const binding = record(receipt.binding, "replayReceipt.binding");
+  exactKeys(binding, "replayReceipt.binding", Object.keys(expectedBinding));
+  for (const [key, expected] of Object.entries(expectedBinding)) {
+    if (binding[key] !== expected)
+      fail(`replayReceipt.binding.${key} mismatch`);
+  }
   if (receipt.duplicateEffectCount !== 0) {
     fail("authenticated replay produced a duplicate provider effect");
   }
@@ -494,6 +517,7 @@ function parseReplay(value: unknown): GoogleReplayReceipt {
   );
   if (before !== after) fail("authenticated replay changed provider state");
   return Object.freeze({
+    binding: expectedBinding,
     replayRequestId: string(
       receipt.replayRequestId,
       "replayReceipt.replayRequestId",
@@ -524,6 +548,10 @@ function parseFailureProbes(
         "observedAtIso",
         "statusCode",
         "errorCodeSha256",
+        "requestPayloadSha256",
+        "scopeSha256",
+        "authorizationGrantSha256",
+        "responsePayloadSha256",
         "providerRequestIdSha256",
         "providerStateBeforeSha256",
         "providerStateAfterSha256",
@@ -579,6 +607,31 @@ function parseFailureProbes(
           `failureProbeReceipts[${index}] error does not match the signed probe`,
         );
       }
+      const requestPayloadSha256 = hash(
+        receipt.requestPayloadSha256,
+        `failureProbeReceipts[${index}].requestPayloadSha256`,
+      );
+      const scopeSha256 = hash(
+        receipt.scopeSha256,
+        `failureProbeReceipts[${index}].scopeSha256`,
+      );
+      const authorizationGrantSha256 = hash(
+        receipt.authorizationGrantSha256,
+        `failureProbeReceipts[${index}].authorizationGrantSha256`,
+      );
+      if (
+        requestPayloadSha256 !== contract.requestPayloadSha256 ||
+        scopeSha256 !== contract.scopeSha256 ||
+        authorizationGrantSha256 !== contract.authorizationGrantSha256
+      ) {
+        fail(
+          `failureProbeReceipts[${index}] hash bindings do not match the signed probe`,
+        );
+      }
+      const responsePayloadSha256 = hash(
+        receipt.responsePayloadSha256,
+        `failureProbeReceipts[${index}].responsePayloadSha256`,
+      );
       return Object.freeze({
         probeId: contract.probeId,
         failureClass: contract.failureClass,
@@ -591,6 +644,10 @@ function parseFailureProbes(
           `failureProbeReceipts[${index}].statusCode`,
         ),
         errorCodeSha256,
+        requestPayloadSha256,
+        scopeSha256,
+        authorizationGrantSha256,
+        responsePayloadSha256,
         providerRequestIdSha256,
         providerStateBeforeSha256: before,
         providerStateAfterSha256: after,
@@ -601,28 +658,6 @@ function parseFailureProbes(
     fail("failure probe receipts do not cover every signed probe exactly once");
   }
   return parsed;
-}
-
-function parseTrajectory(value: unknown): GoogleTrajectoryExportReceipt {
-  const receipt = record(value, "trajectoryReceipt");
-  exactKeys(receipt, "trajectoryReceipt", [
-    "exportId",
-    "exportedAtIso",
-    "trajectoryCount",
-    "exportSha256",
-  ]);
-  return Object.freeze({
-    exportId: string(receipt.exportId, "trajectoryReceipt.exportId"),
-    exportedAtIso: iso(
-      receipt.exportedAtIso,
-      "trajectoryReceipt.exportedAtIso",
-    ),
-    trajectoryCount: positiveInteger(
-      receipt.trajectoryCount,
-      "trajectoryReceipt.trajectoryCount",
-    ),
-    exportSha256: hash(receipt.exportSha256, "trajectoryReceipt.exportSha256"),
-  });
 }
 
 /**
@@ -665,36 +700,64 @@ export async function executeGoogleWorkspaceOperatorCanary(input: {
       ingressRequestId: ingress.requestId,
     }),
   );
+  const replayBinding = buildProviderReplayBinding({
+    scenarioId: input.preflight.scenarioId,
+    runId: input.preflight.authorization.manifest.run.runId,
+    runNonce: input.preflight.plan.runNonce,
+    ingressRequestId: ingress.requestId,
+    providerEventId: readback.providerResourceId,
+    effectSha256: readback.providerPayloadSha256,
+    operation: input.preflight.operation,
+  });
   const replay = parseReplay(
     await capabilities.replayAuthenticatedIngress({
-      scenarioId: input.preflight.scenarioId,
-      runNonce: input.preflight.plan.runNonce,
-      ingressRequestId: ingress.requestId,
+      binding: replayBinding,
     }),
+    replayBinding,
   );
   const failureProbes = parseFailureProbes(
     await capabilities.executeIndependentFailureProbes({
       scenarioId: input.preflight.scenarioId,
       operation: input.preflight.operation,
-      probeIds:
-        input.preflight.authorization.manifest.requiredFailureProbes.map(
-          (probe) => probe.probeId,
-        ),
+      probes: input.preflight.failureProbeExecutions,
     }),
     input.preflight,
   );
-  const trajectory = parseTrajectory(
-    await capabilities.exportDeployedTrajectory({
-      scenarioId: input.preflight.scenarioId,
-      runNonce: input.preflight.plan.runNonce,
-      ingressRequestId: ingress.requestId,
-    }),
-  );
+  const trajectoryMaterial = await capabilities.exportDeployedTrajectory({
+    scenarioId: input.preflight.scenarioId,
+    runNonce: input.preflight.plan.runNonce,
+    ingressRequestId: ingress.requestId,
+  });
+  const collectedAtMs = (input.now ?? Date.now)();
+  const trajectory = verifyDeployedTrajectoryRun({
+    material: trajectoryMaterial,
+    expectedRunId: input.preflight.authorization.manifest.run.runId,
+    expectedScenarioId: input.preflight.scenarioId,
+    now: new Date(collectedAtMs),
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      credential.checkedAtIso,
+      ingress.acceptedAtIso,
+      readback.observedAtIso,
+      replay.observedAtIso,
+      ...failureProbes.map((probe) => probe.observedAtIso),
+    ],
+    collectedAtMs,
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      trajectory.scenarioStartedAtIso,
+      trajectory.scenarioEndedAtIso,
+      trajectory.verifiedAtIso,
+    ],
+    collectedAtMs,
+  });
   return Object.freeze({
     schema: GOOGLE_WORKSPACE_RAW_RECEIPT_SCHEMA,
     scenarioId: input.preflight.scenarioId,
     operationKind: input.preflight.plan.operationKind,
-    collectedAtIso: new Date((input.now ?? Date.now)()).toISOString(),
+    collectedAtIso: new Date(collectedAtMs).toISOString(),
     credential,
     ingress,
     readback,

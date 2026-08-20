@@ -15,6 +15,16 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import {
+  assertRawReceiptChronology,
+  bindValidatedFailureProbeExecutions,
+  buildProviderReplayBinding,
+  type DeployedTrajectoryRunMaterial,
+  type ProviderReplayBinding,
+  type ValidatedProviderFailureProbeExecution,
+  verifyDeployedTrajectoryRun,
+} from "./raw-controller-contracts.ts";
+import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 export const MESSAGING_OPERATOR_PLAN_SCHEMA =
   "eliza.messaging-provider-canary-operator-plan.v1" as const;
@@ -83,6 +93,7 @@ export interface MessagingOperatorPreflight {
   execution: AuthorizedProviderCanaryExecutionPreflight;
   plan: MessagingOperatorPlan;
   operation: MessagingRawOperation;
+  failureProbeExecutions: readonly ValidatedProviderFailureProbeExecution[];
 }
 
 export interface MessagingCredentialReceipt {
@@ -111,6 +122,7 @@ export interface MessagingReadbackReceipt {
 }
 
 export interface MessagingReplayReceipt {
+  binding: ProviderReplayBinding;
   replayRequestId: string;
   observedAtIso: string;
   duplicateEffectCount: 0;
@@ -124,17 +136,16 @@ export interface MessagingFailureProbeReceipt {
   observedAtIso: string;
   statusCode: number;
   errorCodeSha256: string;
+  requestPayloadSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  responsePayloadSha256: string;
   providerRequestIdSha256: string | null;
   providerStateBeforeSha256: string;
   providerStateAfterSha256: string;
 }
 
-export interface MessagingTrajectoryReceipt {
-  exportId: string;
-  exportedAtIso: string;
-  trajectoryCount: number;
-  exportSha256: string;
-}
+export type MessagingTrajectoryReceipt = VerifiedScenarioTrajectorySet;
 
 export interface MessagingRawReceipt {
   schema: typeof MESSAGING_RAW_RECEIPT_SCHEMA;
@@ -166,21 +177,19 @@ export interface MessagingExternalCapabilities {
     scenarioId: string;
     runNonce: string;
     ingressRequestId: string;
-  }): Promise<unknown>;
+  }): Promise<DeployedTrajectoryRunMaterial>;
   collectAuthenticatedProviderReadback(input: {
     scenarioId: string;
     operation: MessagingRawOperation;
     ingressRequestId: string;
   }): Promise<unknown>;
   replayAuthenticatedIngress(input: {
-    scenarioId: string;
-    runNonce: string;
-    ingressRequestId: string;
+    binding: Readonly<ProviderReplayBinding>;
   }): Promise<unknown>;
   executeIndependentFailureProbes(input: {
     scenarioId: string;
     operation: MessagingRawOperation;
-    probeIds: readonly string[];
+    probes: readonly ValidatedProviderFailureProbeExecution[];
   }): Promise<unknown>;
 }
 
@@ -349,6 +358,10 @@ export function preflightMessagingOperatorCanary(input: {
     execution,
     plan,
     operation,
+    failureProbeExecutions: bindValidatedFailureProbeExecutions({
+      materials: input.failureProbes,
+      bindings: execution.failureProbeBindings,
+    }),
   }) satisfies MessagingOperatorPreflight;
   validatedPreflights.add(result);
   return result;
@@ -489,15 +502,25 @@ function parseReadback(
   });
 }
 
-function parseReplay(value: unknown): MessagingReplayReceipt {
+function parseReplay(
+  value: unknown,
+  expectedBinding: Readonly<ProviderReplayBinding>,
+): MessagingReplayReceipt {
   const receipt = record(value, "replayReceipt");
   exactKeys(receipt, "replayReceipt", [
     "replayRequestId",
+    "binding",
     "observedAtIso",
     "duplicateEffectCount",
     "providerStateBeforeSha256",
     "providerStateAfterSha256",
   ]);
+  const binding = record(receipt.binding, "replayReceipt.binding");
+  exactKeys(binding, "replayReceipt.binding", Object.keys(expectedBinding));
+  for (const [key, expected] of Object.entries(expectedBinding)) {
+    if (binding[key] !== expected)
+      fail(`replayReceipt.binding.${key} mismatch`);
+  }
   if (receipt.duplicateEffectCount !== 0)
     fail("authenticated replay produced a duplicate provider effect");
   const before = hash(
@@ -510,6 +533,7 @@ function parseReplay(value: unknown): MessagingReplayReceipt {
   );
   if (before !== after) fail("authenticated replay changed provider state");
   return Object.freeze({
+    binding: expectedBinding,
     replayRequestId: string(
       receipt.replayRequestId,
       "replayReceipt.replayRequestId",
@@ -539,6 +563,10 @@ function parseFailureProbes(
       "observedAtIso",
       "statusCode",
       "errorCodeSha256",
+      "requestPayloadSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+      "responsePayloadSha256",
       "providerRequestIdSha256",
       "providerStateBeforeSha256",
       "providerStateAfterSha256",
@@ -578,12 +606,36 @@ function parseFailureProbes(
     const errorHash = hash(receipt.errorCodeSha256, `${path}.errorCodeSha256`);
     if (errorHash !== contract.expectedErrorCodeSha256)
       fail(`${path} error does not match the signed probe`);
+    const requestPayloadSha256 = hash(
+      receipt.requestPayloadSha256,
+      `${path}.requestPayloadSha256`,
+    );
+    const scopeSha256 = hash(receipt.scopeSha256, `${path}.scopeSha256`);
+    const authorizationGrantSha256 = hash(
+      receipt.authorizationGrantSha256,
+      `${path}.authorizationGrantSha256`,
+    );
+    if (
+      requestPayloadSha256 !== contract.requestPayloadSha256 ||
+      scopeSha256 !== contract.scopeSha256 ||
+      authorizationGrantSha256 !== contract.authorizationGrantSha256
+    ) {
+      fail(`${path} hash bindings do not match the signed probe`);
+    }
+    const responsePayloadSha256 = hash(
+      receipt.responsePayloadSha256,
+      `${path}.responsePayloadSha256`,
+    );
     return Object.freeze({
       probeId: contract.probeId,
       failureClass: contract.failureClass,
       observedAtIso: iso(receipt.observedAtIso, `${path}.observedAtIso`),
       statusCode: positiveInteger(receipt.statusCode, `${path}.statusCode`),
       errorCodeSha256: errorHash,
+      requestPayloadSha256,
+      scopeSha256,
+      authorizationGrantSha256,
+      responsePayloadSha256,
       providerRequestIdSha256: requestHash,
       providerStateBeforeSha256: before,
       providerStateAfterSha256: after,
@@ -592,28 +644,6 @@ function parseFailureProbes(
   if (seen.size !== expected.length)
     fail("failure probe receipts do not cover every signed probe exactly once");
   return Object.freeze(receipts);
-}
-
-function parseTrajectory(value: unknown): MessagingTrajectoryReceipt {
-  const receipt = record(value, "trajectoryReceipt");
-  exactKeys(receipt, "trajectoryReceipt", [
-    "exportId",
-    "exportedAtIso",
-    "trajectoryCount",
-    "exportSha256",
-  ]);
-  return Object.freeze({
-    exportId: string(receipt.exportId, "trajectoryReceipt.exportId"),
-    exportedAtIso: iso(
-      receipt.exportedAtIso,
-      "trajectoryReceipt.exportedAtIso",
-    ),
-    trajectoryCount: positiveInteger(
-      receipt.trajectoryCount,
-      "trajectoryReceipt.trajectoryCount",
-    ),
-    exportSha256: hash(receipt.exportSha256, "trajectoryReceipt.exportSha256"),
-  });
 }
 
 /**
@@ -656,36 +686,64 @@ export async function executeMessagingOperatorCanary(input: {
     }),
     input.preflight,
   );
+  const replayBinding = buildProviderReplayBinding({
+    scenarioId: input.preflight.scenarioId,
+    runId: input.preflight.authorization.manifest.run.runId,
+    runNonce: input.preflight.plan.runNonce,
+    ingressRequestId: ingress.requestId,
+    providerEventId: readback.providerMessageId,
+    effectSha256: readback.providerPayloadSha256,
+    operation: input.preflight.operation,
+  });
   const replay = parseReplay(
     await capabilities.replayAuthenticatedIngress({
-      scenarioId: input.preflight.scenarioId,
-      runNonce: input.preflight.plan.runNonce,
-      ingressRequestId: ingress.requestId,
+      binding: replayBinding,
     }),
+    replayBinding,
   );
   const failureProbes = parseFailureProbes(
     await capabilities.executeIndependentFailureProbes({
       scenarioId: input.preflight.scenarioId,
       operation: input.preflight.operation,
-      probeIds:
-        input.preflight.authorization.manifest.requiredFailureProbes.map(
-          (probe) => probe.probeId,
-        ),
+      probes: input.preflight.failureProbeExecutions,
     }),
     input.preflight,
   );
-  const trajectory = parseTrajectory(
-    await capabilities.exportDeployedTrajectory({
-      scenarioId: input.preflight.scenarioId,
-      runNonce: input.preflight.plan.runNonce,
-      ingressRequestId: ingress.requestId,
-    }),
-  );
+  const trajectoryMaterial = await capabilities.exportDeployedTrajectory({
+    scenarioId: input.preflight.scenarioId,
+    runNonce: input.preflight.plan.runNonce,
+    ingressRequestId: ingress.requestId,
+  });
+  const collectedAtMs = (input.now ?? Date.now)();
+  const trajectory = verifyDeployedTrajectoryRun({
+    material: trajectoryMaterial,
+    expectedRunId: input.preflight.authorization.manifest.run.runId,
+    expectedScenarioId: input.preflight.scenarioId,
+    now: new Date(collectedAtMs),
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      credential.checkedAtIso,
+      ingress.acceptedAtIso,
+      readback.observedAtIso,
+      replay.observedAtIso,
+      ...failureProbes.map((probe) => probe.observedAtIso),
+    ],
+    collectedAtMs,
+  });
+  assertRawReceiptChronology({
+    timestamps: [
+      trajectory.scenarioStartedAtIso,
+      trajectory.scenarioEndedAtIso,
+      trajectory.verifiedAtIso,
+    ],
+    collectedAtMs,
+  });
   return Object.freeze({
     schema: MESSAGING_RAW_RECEIPT_SCHEMA,
     scenarioId: input.preflight.scenarioId,
     operationKind: input.preflight.plan.operationKind,
-    collectedAtIso: new Date((input.now ?? Date.now)()).toISOString(),
+    collectedAtIso: new Date(collectedAtMs).toISOString(),
     credential,
     ingress,
     readback,

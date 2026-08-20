@@ -24,12 +24,15 @@ import {
   createProviderFailureProbeHashBinding,
 } from "./operator-authorization.ts";
 import { providerObserverKeyId } from "./qualification.ts";
+import type { ValidatedProviderFailureProbeExecution } from "./raw-controller-contracts.ts";
+import { createRawControllerTrajectoryMaterial } from "./raw-controller-test-fixtures.ts";
 
 const digest = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 const connectionRefSha256 = digest("operator-messaging-connection");
 const runNonce = "m".repeat(64);
-const timestamp = "2026-08-20T19:00:00.000Z";
+const baseMs = Date.now();
+const timestamp = new Date(baseMs).toISOString();
 
 const CASES = {
   "signal.message-send": {
@@ -285,34 +288,46 @@ function capabilities(
       operationInputSha256: operation.operationInputSha256,
       providerAccepted: true,
     })),
-    replayAuthenticatedIngress: vi.fn(async () => ({
+    replayAuthenticatedIngress: vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: `${kind}-replay`,
       observedAtIso: timestamp,
       duplicateEffectCount: 0,
       providerStateBeforeSha256: state,
       providerStateAfterSha256: state,
     })),
-    executeIndependentFailureProbes: vi.fn(async () =>
-      probeMaterials(kind).map((probe, index) => ({
-        probeId: probe.probeId,
-        failureClass:
-          index === 0 ? "authorization-denied" : "provider-rejected",
-        observedAtIso: timestamp,
-        statusCode: index === 0 ? 403 : 400,
-        errorCodeSha256:
-          createProviderFailureProbeHashBinding(probe).expectedErrorCodeSha256,
-        providerRequestIdSha256:
-          index === 0 ? null : digest(`${kind}:provider-rejection`),
-        providerStateBeforeSha256: state,
-        providerStateAfterSha256: state,
-      })),
+    executeIndependentFailureProbes: vi.fn(async ({ probes }) =>
+      probes.map(
+        (execution: ValidatedProviderFailureProbeExecution, index: number) => ({
+          ...(() => {
+            const { binding } = execution;
+            return {
+              probeId: binding.probeId,
+              failureClass:
+                index === 0 ? "authorization-denied" : "provider-rejected",
+              observedAtIso: timestamp,
+              statusCode: index === 0 ? 403 : 400,
+              errorCodeSha256: binding.expectedErrorCodeSha256,
+              requestPayloadSha256: binding.requestPayloadSha256,
+              scopeSha256: binding.scopeSha256,
+              authorizationGrantSha256: binding.authorizationGrantSha256,
+              responsePayloadSha256: digest(`${kind}:probe-response:${index}`),
+              providerRequestIdSha256:
+                index === 0 ? null : digest(`${kind}:provider-rejection`),
+              providerStateBeforeSha256: state,
+              providerStateAfterSha256: state,
+            };
+          })(),
+        }),
+      ),
     ),
-    exportDeployedTrajectory: vi.fn(async () => ({
-      exportId: `${kind}-trajectory`,
-      exportedAtIso: timestamp,
-      trajectoryCount: 1,
-      exportSha256: digest(`${kind}:trajectory-export`),
-    })),
+    exportDeployedTrajectory: vi.fn(async () =>
+      createRawControllerTrajectoryMaterial({
+        runId: `messaging-operator-${kind.replaceAll(".", "-")}`,
+        scenarioId: item.scenario.id,
+        baseMs,
+      }),
+    ),
   };
 }
 
@@ -330,6 +345,19 @@ describe("messaging provider-canary operator", () => {
       expect(receipt.operationKind).toBe(kind);
       expect(receipt.failureProbes).toHaveLength(2);
       expect(receipt.qualificationClaimed).toBe(false);
+      expect(receipt.trajectory.runId).toBe(
+        pre.authorization.manifest.run.runId,
+      );
+      expect(receipt.replay.binding).toMatchObject({
+        scenarioId: pre.scenarioId,
+        runId: pre.authorization.manifest.run.runId,
+        runNonce,
+      });
+      expect(external.executeIndependentFailureProbes).toHaveBeenCalledWith({
+        scenarioId: pre.scenarioId,
+        operation: pre.operation,
+        probes: pre.failureProbeExecutions,
+      });
       expect(external.assertCredentialReady).toHaveBeenCalledTimes(1);
       expect(external.sendAuthenticatedIngress).toHaveBeenCalledTimes(1);
     },
@@ -421,7 +449,8 @@ describe("messaging provider-canary operator", () => {
   it("rejects replay duplication and failure-probe state mutation", async () => {
     const pre = preflight("telegram.message-send");
     const duplicate = capabilities("telegram.message-send");
-    duplicate.replayAuthenticatedIngress = vi.fn(async () => ({
+    duplicate.replayAuthenticatedIngress = vi.fn(async ({ binding }) => ({
+      binding,
       replayRequestId: "duplicate-replay",
       observedAtIso: timestamp,
       duplicateEffectCount: 1,
