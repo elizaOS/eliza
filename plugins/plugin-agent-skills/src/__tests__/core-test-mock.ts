@@ -6,13 +6,7 @@
 
 import { vi } from "vitest";
 
-vi.mock("@elizaos/core", async () => {
-	// The REAL spawn-env policy, not a double. Tests that assert injection
-	// primitives are stripped would prove nothing against a stub, so this one
-	// export is passed through from source rather than faked.
-	const { sanitizeSpawnEnv } = await import(
-		"../../../../packages/core/src/security/spawn-env-policy"
-	);
+vi.mock("@elizaos/core", () => {
 	const logger = {
 		debug: vi.fn(),
 		error: vi.fn(),
@@ -158,7 +152,6 @@ vi.mock("@elizaos/core", async () => {
 			}
 			async stop() {}
 		},
-		sanitizeSpawnEnv,
 		resolveStateDir: vi.fn(() => "/tmp/elizaos-test-state"),
 		formatError: vi.fn((err: unknown) =>
 			err instanceof Error ? err.message : String(err),
