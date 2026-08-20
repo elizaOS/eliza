@@ -9,6 +9,9 @@ import {
   type ScenarioDefinition,
   scenario,
 } from "@elizaos/scenario-runner/schema";
+import providerCanaryDefinitionCatalog from "../../schema/provider-canary-definitions.json" with {
+  type: "json",
+};
 import {
   type ProviderCanaryControllerContract,
   providerCanaryControllerContract,
@@ -55,7 +58,7 @@ function validateProviderScenarioContract(
   return contract;
 }
 
-function canonicalScenarioDefinition(
+function validateScenarioDefinition(
   value: unknown,
   expectedOperationKind: ProviderOperationKind,
 ): ScenarioDefinition {
@@ -80,6 +83,60 @@ function canonicalScenarioDefinition(
   }
   const definition = scenario(snapshot as unknown as ScenarioDefinition);
   validateProviderScenarioContract(definition, expectedOperationKind);
+  return definition;
+}
+
+function canonicalCatalogDefinition(
+  id: string,
+  expectedOperationKind: ProviderOperationKind,
+): ScenarioDefinition {
+  if (
+    providerCanaryDefinitionCatalog.schema !==
+      "eliza.provider-canary-definition-catalog.v1" ||
+    providerCanaryDefinitionCatalog.scenarios.length !== 13
+  ) {
+    throw new Error("provider canary scenario-definition catalog is invalid");
+  }
+  const ids = providerCanaryDefinitionCatalog.scenarios.map(
+    (definition) => definition.id,
+  );
+  if (new Set(ids).size !== ids.length || !ids.includes(id)) {
+    throw new Error(
+      "provider canary scenario-definition catalog does not contain the exact scenario",
+    );
+  }
+  const definition = providerCanaryDefinitionCatalog.scenarios.find(
+    (candidate) => candidate.id === id,
+  );
+  if (definition === undefined) {
+    throw new Error(
+      "provider canary scenario-definition catalog is missing the scenario",
+    );
+  }
+  return validateScenarioDefinition(definition, expectedOperationKind);
+}
+
+function canonicalScenarioDefinition(
+  value: unknown,
+  expectedOperationKind: ProviderOperationKind,
+): ScenarioDefinition {
+  const definition = validateScenarioDefinition(value, expectedOperationKind);
+  const canonical = canonicalCatalogDefinition(
+    definition.id,
+    expectedOperationKind,
+  );
+  if (
+    canonicalJson(
+      canonicalJsonValue(definition, "providerCanaryScenarioDefinition"),
+    ) !==
+    canonicalJson(
+      canonicalJsonValue(canonical, "canonicalProviderCanaryDefinition"),
+    )
+  ) {
+    throw new Error(
+      "provider canary scenario snapshot differs from the repository-owned canonical definition",
+    );
+  }
   return definition;
 }
 

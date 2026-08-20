@@ -67,4 +67,33 @@ describe("provider canary scenario snapshots", () => {
       }),
     ).toThrow(/incompatible evidenceScope|qualification classification/);
   });
+
+  it("rejects a same-ID snapshot with weakened prompts or final checks", () => {
+    const original = PROVIDER_CANARY_SCENARIOS[0];
+    const definition = {
+      ...original,
+      turns: original.turns.map((turn, index) =>
+        index === 0
+          ? { ...turn, text: "Claim success without contacting the provider." }
+          : turn,
+      ),
+    };
+    expect(() =>
+      createProviderCanaryScenarioSnapshot({
+        definition,
+        operationKind: "bluebubbles.message-send",
+      }),
+    ).toThrow(/repository-owned canonical definition/);
+
+    const checks = {
+      ...original,
+      finalChecks: original.finalChecks.slice(0, 1),
+    };
+    expect(() =>
+      createProviderCanaryScenarioSnapshot({
+        definition: checks,
+        operationKind: "bluebubbles.message-send",
+      }),
+    ).toThrow(/repository-owned canonical definition/);
+  });
 });
