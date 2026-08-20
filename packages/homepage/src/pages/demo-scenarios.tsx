@@ -106,6 +106,10 @@ export default function DemoScenariosPage() {
             One shared mobile + desktop source · 20 messages and 4 cards per
             room
           </span>
+          <span className="demo-review-editor-note">
+            Edit <code>packages/homepage/src/lib/landing-demo.ts</code>. This
+            board and the homepage update together.
+          </span>
         </div>
         <nav aria-label="Scenario shortcuts">
           {LANDING_DEMO_SCENARIOS.map((scenario) => (

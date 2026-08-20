@@ -46,6 +46,21 @@
   font-size: 0.84rem;
 }
 
+.demo-review-editor-note {
+  display: block;
+  max-width: 42rem;
+  margin-top: 0.65rem;
+  color: #3a3a3c;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.demo-review-editor-note code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
 .demo-review-header nav {
   display: flex;
   flex-wrap: wrap;

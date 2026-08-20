@@ -72,6 +72,26 @@ bun run --cwd packages/homepage test
 bun run --cwd packages/app build:web
 ```
 
+### Review and edit the homepage scenarios
+
+The optional source harness exposes a development-only script board at
+`/demo-scenarios`, with anchors for `#household`, `#co-parenting`, `#friends`,
+`#trip`, and `#community`. In the current local review environment, for
+example, the Trip room is available at
+`http://127.0.0.1:24446/demo-scenarios#trip`.
+
+The board and the animated desktop/mobile homepage both import
+`src/lib/landing-demo.ts`; never duplicate scenario copy in the review page.
+Edit that shared file, then run:
+
+```bash
+bun run --cwd packages/homepage test
+bun run --cwd packages/homepage test:e2e -- tests/e2e/demo-scenarios.spec.ts --project=chromium
+```
+
+The route is intentionally excluded from production builds. It is a team
+editing and review tool, not a public `eliza.app` page.
+
 ## Deploy
 
 `packages/app` imports the approved embedded surfaces and syncs their public

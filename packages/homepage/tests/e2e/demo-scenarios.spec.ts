@@ -9,6 +9,11 @@ test("shows all five rooms, 24 beats each, with distinct casts", async ({
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Group chat demo scripts",
   );
+  await expect(
+    page.getByText(
+      "Edit packages/homepage/src/lib/landing-demo.ts. This board and the homepage update together.",
+    ),
+  ).toBeVisible();
   const rooms = page.locator("[data-demo-review-room]");
   await expect(rooms).toHaveCount(5);
 
