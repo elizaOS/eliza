@@ -1488,21 +1488,34 @@ async function handleMemoriesBrowseRoute(
 async function handleMemoriesStatsRoute(
 	runtime: IAgentRuntime,
 ): Promise<BufferedHttpResponse> {
-	const counts: Record<string, number> = {};
-	let total = 0;
-
-	for (const tableName of MEMORY_TABLE_NAMES) {
-		const memories = await runtime.getMemories({
-			agentId: runtime.agentId as UUID,
-			tableName,
-			limit: 10000,
-			includeEmbedding: false,
+	// `countMemories` is a required IAgentRuntime contract and maps to SQL COUNT
+	// in production. Do not hide an adapter failure behind a bulk row read: that
+	// would both mask the outage and reintroduce the resource problem this route
+	// is meant to remove.
+	const entries = await Promise.all(
+		MEMORY_TABLE_NAMES.map(async (tableName) => {
+			const count = await runtime.countMemories({
+				tableName,
+				agentId: runtime.agentId as UUID,
+			});
+			if (!Number.isSafeInteger(count) || count < 0) {
+				throw new ElizaError("Memory adapter returned an invalid count", {
+					code: "MEMORY_STATS_INVALID_COUNT",
+					context: { tableName, count },
+				});
+			}
+			return [tableName, count] as const;
+		}),
+	);
+	const byType = Object.fromEntries(entries) as Record<string, number>;
+	const total = entries.reduce((sum, [, count]) => sum + count, 0);
+	if (!Number.isSafeInteger(total)) {
+		throw new ElizaError("Memory total exceeds the safe integer range", {
+			code: "MEMORY_STATS_INVALID_COUNT",
+			context: { total },
 		});
-		counts[tableName] = memories.length;
-		total += memories.length;
 	}
-
-	return jsonResponse(200, { total, byType: counts });
+	return jsonResponse(200, { total, byType });
 }
 
 // ── Transcript routes (mirror plugin-local-inference TranscriptStore) ─────────
