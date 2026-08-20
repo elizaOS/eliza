@@ -999,6 +999,7 @@ function ContactSheet({
 }
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
+const COPY_CONFIRMATION_MS = 2_200;
 
 export default function LandingPage() {
   const t = useT();
@@ -1014,6 +1015,16 @@ export default function LandingPage() {
     browserWindow?.location.hostname ?? "",
   );
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (phoneCopyState !== "copied") return;
+    const timeout = window.setTimeout(
+      () => setPhoneCopyState("idle"),
+      COPY_CONFIRMATION_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [phoneCopyState]);
+
   const channels = [
     {
       key: "telegram",

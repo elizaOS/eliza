@@ -343,7 +343,9 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await expect(
     page.getByText("Friends · Co-parenting · Households · Trips · Communities"),
   ).toHaveCount(0);
-  await expect(page.getByText("Friday people", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Tonight is split evenly", { exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
   await expect(page.locator(".landing-iphone")).toHaveAttribute(
     "data-demo-scenarios",
@@ -357,8 +359,9 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("+18087881821");
-  await page.waitForTimeout(2_250);
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(page.locator(".landing-copy-notice")).toHaveCount(0, {
+    timeout: 3_000,
+  });
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
     "href",
