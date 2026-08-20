@@ -2322,7 +2322,7 @@ export class OrchestratorTaskService extends Service {
    * flag is ALWAYS set explicitly ("1"/"0") so the broad ELIZA_ env forwarding
    * in AcpService never leaks the parent's value ambiguously.
    */
-  private buildChildTraceEnv(taskId: string): Record<string, string> {
+  buildChildTraceEnv(taskId: string): Record<string, string> {
     const ctx = getTrajectoryContext();
     const env: Record<string, string> = {
       [TRACE_ENV.TRACE_ID]: ctx?.traceId ?? randomUUID(),

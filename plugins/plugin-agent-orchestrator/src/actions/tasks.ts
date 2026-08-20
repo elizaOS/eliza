@@ -1474,6 +1474,16 @@ async function runCreateLegacy(
         approvalPreset,
         model,
         timeoutMs,
+        // Trace correlation + per-task child trajectory dir (#13775). The
+        // task-service spawn path stamps this env, but THIS chat-create path
+        // spawned bare — children recorded their trajectories into the shared
+        // state-dir root under their own agent id, the per-task dir never
+        // existed, and task_complete ingest silently attached nothing (live
+        // 2026-08-20: every chat-built app task carried zero child
+        // trajectories).
+        ...(threadId && taskService
+          ? { env: taskService.buildChildTraceEnv(threadId) }
+          : {}),
         metadata: {
           ...extraMetadata,
           ...(createProvisionedWorkspaceId
