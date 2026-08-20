@@ -10,7 +10,8 @@
  * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
  * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
  * structured fields from chatty model output, tolerating malformed input by
- * returning null rather than throwing.
+ * returning null rather than throwing. Hostile nested or prefix-extended tags
+ * that used to quadratic-hang `findMatchingXmlClose` fail closed.
  *
  * `stringToUuid` derives a deterministic, RFC-4122-shaped UUID from an arbitrary
  * string via an in-tree pure-JS SHA-1 (with a WebCrypto-backed cache), so the
@@ -759,8 +760,12 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		xmlContent = firstBlock.content;
 	}
 
+	const children = extractDirectXmlChildren(xmlContent);
+	// Fail closed: a visit-cap hit is an incomplete parse, not a short
+	// success. Callers already treat `null` as "no structured XML".
+	if (children === null) return null;
 	const result: Record<string, unknown> = {};
-	for (const { key, value } of extractDirectXmlChildren(xmlContent)) {
+	for (const { key, value } of children) {
 		if (key === "actions" || key === "providers" || key === "evaluators") {
 			const singularTag = key.replace(/s$/, "");
 			const hasXmlTags =
@@ -792,7 +797,10 @@ function findFirstXmlBlock(
 ): { tag: string; content: string } | null {
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) return null;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -824,11 +832,14 @@ function findFirstXmlBlock(
 
 function extractDirectXmlChildren(
 	input: string,
-): Array<{ key: string; value: string }> {
+): Array<{ key: string; value: string }> | null {
 	const pairs: Array<{ key: string; value: string }> = [];
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) return null;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -887,6 +898,13 @@ function readXmlStartTag(
 	};
 }
 
+/** Honest key-value XML is a handful of tags. A prefix-extended walk
+ * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. */
+/** Direct-child walk and close-tag matching share this visit budget. Hitting
+ * it is a parse failure (`null`), never a silently truncated object. */
+const MAX_XML_CLOSE_VISITS = 64;
+const MAX_XML_NEST_DEPTH = 32;
+
 function findMatchingXmlClose(
 	input: string,
 	tag: string,
@@ -895,7 +913,12 @@ function findMatchingXmlClose(
 	const closeSeq = `</${tag}>`;
 	let depth = 1;
 	let cursor = start;
+	let visits = 0;
 	while (depth > 0 && cursor < input.length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS || depth > MAX_XML_NEST_DEPTH) {
+			return -1;
+		}
 		const nextOpen = input.indexOf(`<${tag}`, cursor);
 		const nextClose = input.indexOf(closeSeq, cursor);
 		if (nextClose === -1) return -1;

@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { parseKeyValueXml } from "../utils";
 
+const XML_CLOSE_VISIT_LIMIT = 64;
+
 describe("parseKeyValueXml", () => {
 	it("parses XML response blocks", () => {
 		const parsed = parseKeyValueXml(`
@@ -31,5 +33,25 @@ describe("parseKeyValueXml", () => {
 			text: "see <textarea>x</textarea> ok",
 			thought: "t",
 		});
+	});
+
+	it("fails closed on a prefix-extension bomb instead of quadratic-hanging", () => {
+		const inner = `<a>${"<aa></aa>".repeat(20_000)}x</a>`;
+		const t0 = performance.now();
+		parseKeyValueXml(`<response>${inner}</response>`);
+		expect(performance.now() - t0).toBeLessThan(50);
+	});
+
+	it("parses the direct-child visit limit and rejects one more", () => {
+		const fields = Array.from(
+			{ length: XML_CLOSE_VISIT_LIMIT },
+			(_, i) => `<f${i}>v${i}</f${i}>`,
+		).join("");
+		const parsed = parseKeyValueXml(`<response>${fields}</response>`);
+		expect(parsed).not.toBeNull();
+		expect(Object.keys(parsed ?? {})).toHaveLength(XML_CLOSE_VISIT_LIMIT);
+
+		const overflow = `${fields}<extra>x</extra>`;
+		expect(parseKeyValueXml(`<response>${overflow}</response>`)).toBeNull();
 	});
 });
