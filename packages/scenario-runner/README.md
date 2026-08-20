@@ -181,6 +181,16 @@ ingress boundary. Provider qualification still requires the normal independent
 signing, trajectory verification, semantic judge, and offline artifact
 verification flow.
 
+The Slack operator boundary validates the signed workspace, root channel,
+payload, run nonce, and two negative probes before making any network request.
+Its read-only observer authenticates a distinct Slack principal with
+`auth.test`, then uses `conversations.history` to require the exact human
+ingress followed by a strictly later exact bot effect. The observer polling
+floor respects Slack's current one-request-per-minute limit for affected apps.
+The returned receipts remain unsigned and carry `qualificationClaimed: false`;
+execution still refuses until deployed trajectory export, authenticated event
+replay, and independent failure-probe capabilities exist.
+
 ### Operator manifest authorization
 
 Before provisioning a target or sending authenticated ingress, authorize the
