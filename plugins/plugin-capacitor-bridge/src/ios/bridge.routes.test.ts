@@ -86,6 +86,9 @@ function createFakeRuntime(): IAgentRuntime {
 				? rows.slice(offset, offset + cap)
 				: rows.slice(offset);
 		},
+		async countMemories(params: { tableName?: string }): Promise<number> {
+			return (tables.get(params.tableName ?? "messages") ?? []).length;
+		},
 		async getMemoryById(id: UUID): Promise<Memory | null> {
 			for (const rows of tables.values()) {
 				const found = rows.find((m) => m.id === id);
@@ -375,6 +378,34 @@ describe("iOS bridge — memories view routes", () => {
 			total: 3,
 			byType: { messages: 2, memories: 0, facts: 1, documents: 0 },
 		});
+	});
+
+	it("stats uses exact counts without materializing capped row windows", async () => {
+		runtime.getMemories = vi.fn(async () => {
+			throw new Error("stats must not read rows");
+		});
+		const values: Record<string, number> = {
+			messages: 25_000,
+			memories: 4,
+			facts: 3,
+			documents: 2,
+		};
+		runtime.countMemories = vi.fn(
+			async ({ tableName }) => values[tableName ?? "messages"] ?? 0,
+		);
+
+		const { status, json } = await call(backend, "GET", "/api/memories/stats");
+		expect(status).toBe(200);
+		expect(json).toEqual({ total: 25_009, byType: values });
+		expect(runtime.countMemories).toHaveBeenCalledTimes(4);
+		expect(runtime.getMemories).not.toHaveBeenCalled();
+	});
+
+	it("stats fails closed on an invalid adapter count", async () => {
+		runtime.countMemories = vi.fn(async () => Number.NaN);
+		await expect(
+			call(backend, "GET", "/api/memories/stats"),
+		).rejects.toMatchObject({ code: "MEMORY_STATS_INVALID_COUNT" });
 	});
 });
 
