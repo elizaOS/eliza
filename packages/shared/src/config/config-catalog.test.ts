@@ -3,7 +3,7 @@
  * validation. The deterministic harness exercises the exported helpers and
  * validation runner directly without UI or network dependencies.
  */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   builtInValidators,
@@ -11,9 +11,12 @@ import {
   evaluateLogicExpression,
   getByPath,
   isConfigKeySatisfied,
+  LOGIC_EXPRESSION_INVALID,
   LOGIC_EXPRESSION_UNBOUNDED,
   MAX_LOGIC_EXPRESSION_DEPTH,
   MAX_LOGIC_EXPRESSION_NODES,
+  MAX_LOGIC_EXPRESSION_PATH_LENGTH,
+  MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
   runValidation,
   setByPath,
 } from "./config-catalog.js";
@@ -118,6 +121,15 @@ describe("config-catalog field visibility gates", () => {
       }),
     ).toBe(true);
   });
+
+  it("enforces visibility path bounds through the production field gate", () => {
+    expect(() =>
+      evaluateFieldVisibility({
+        visible: { path: "x".repeat(MAX_LOGIC_EXPRESSION_PATH_LENGTH + 1) },
+        values: {},
+      }),
+    ).toThrowError(ElizaError);
+  });
 });
 
 describe("config-catalog built-in validators", () => {
@@ -194,9 +206,27 @@ describe("evaluateLogicExpression budget", () => {
       })),
     };
     // Truthy children so `and.every` cannot short-circuit before the cap.
-    expect(() =>
-      evaluateLogicExpression(expr, { x: true }),
-    ).toThrowError(ElizaError);
+    expect(() => evaluateLogicExpression(expr, { x: true })).toThrowError(
+      ElizaError,
+    );
+  });
+
+  it(`accepts exactly ${MAX_LOGIC_EXPRESSION_NODES} visited nodes`, () => {
+    const expr = {
+      and: Array.from({ length: MAX_LOGIC_EXPRESSION_NODES - 1 }, () => ({
+        path: "/x",
+      })),
+    };
+
+    expect(evaluateLogicExpression(expr, { x: true })).toBe(true);
+  });
+
+  it("allows a shared acyclic node while rejecting only ancestor cycles", () => {
+    const shared = { path: "/x" };
+
+    expect(
+      evaluateLogicExpression({ and: [shared, shared] }, { x: true }),
+    ).toBe(true);
   });
 
   it("throws LOGIC_EXPRESSION_UNBOUNDED on a cyclic and graph, not RangeError", () => {
@@ -211,5 +241,65 @@ describe("evaluateLogicExpression budget", () => {
       expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_UNBOUNDED);
       expect(error).not.toBeInstanceOf(RangeError);
     }
+  });
+
+  it.each([
+    ["non-object node", null],
+    ["non-array and", { and: "not-an-array" }],
+    ["short comparison tuple", { eq: [1] }],
+    ["multiple operators", { path: "/x", not: { path: "/y" } }],
+  ])(
+    "rejects malformed %s with a typed invalid-expression error",
+    (_case, expr) => {
+      try {
+        evaluateLogicExpression(expr as never, {});
+        throw new Error("expected malformed expression to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_INVALID);
+        expect(error).not.toBeInstanceOf(TypeError);
+      }
+    },
+  );
+
+  it("bounds direct path character work at the exact limit", () => {
+    const acceptedPath = "x".repeat(MAX_LOGIC_EXPRESSION_PATH_LENGTH);
+    expect(
+      evaluateLogicExpression({ path: acceptedPath }, { [acceptedPath]: true }),
+    ).toBe(true);
+
+    expect(() =>
+      evaluateLogicExpression(
+        { path: "x".repeat(MAX_LOGIC_EXPRESSION_PATH_LENGTH + 1) },
+        {},
+      ),
+    ).toThrowError(ElizaError);
+  });
+
+  it("bounds direct path traversal at the exact segment limit", () => {
+    const acceptedPath = Array.from(
+      { length: MAX_LOGIC_EXPRESSION_PATH_SEGMENTS },
+      () => "x",
+    ).join("/");
+    expect(evaluateLogicExpression({ path: acceptedPath }, {})).toBe(false);
+
+    const oversizedPath = `${acceptedPath}/x`;
+    expect(() =>
+      evaluateLogicExpression({ path: oversizedPath }, {}),
+    ).toThrowError(ElizaError);
+  });
+
+  it("applies the path bound to dynamic comparison operands", () => {
+    expect(() =>
+      evaluateLogicExpression(
+        {
+          eq: [
+            { path: "x".repeat(MAX_LOGIC_EXPRESSION_PATH_LENGTH + 1) },
+            true,
+          ],
+        },
+        {},
+      ),
+    ).toThrowError(ElizaError);
   });
 });

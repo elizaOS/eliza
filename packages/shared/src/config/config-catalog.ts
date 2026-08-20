@@ -25,7 +25,7 @@
  * @module config-catalog
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import type { ReactNode } from "react";
 import z from "zod";
 import type {
@@ -41,7 +41,12 @@ import type {
 export const MAX_LOGIC_EXPRESSION_DEPTH = 32;
 /** Node ceiling across the whole visibility walk. */
 export const MAX_LOGIC_EXPRESSION_NODES = 2048;
+/** Bounds one JSON Pointer leaf before segment parsing or state traversal. */
+export const MAX_LOGIC_EXPRESSION_PATH_LENGTH = 2_048;
+/** Bounds nested state reads even when every segment is one character. */
+export const MAX_LOGIC_EXPRESSION_PATH_SEGMENTS = 64;
 export const LOGIC_EXPRESSION_UNBOUNDED = "LOGIC_EXPRESSION_UNBOUNDED";
+export const LOGIC_EXPRESSION_INVALID = "LOGIC_EXPRESSION_INVALID";
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
 
@@ -213,20 +218,95 @@ type LogicWalkContext = {
 };
 
 function failLogicUnbounded(
-  axis: "depth" | "visits" | "cycle",
+  axis: "depth" | "visits" | "cycle" | "path-length" | "path-segments",
   context: Record<string, unknown>,
 ): never {
   const message =
-    axis === "depth"
-      ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
-      : axis === "visits"
-        ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
-        : "logic expression contains a cycle";
+    axis === "path-length"
+      ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_LENGTH} characters`
+      : axis === "path-segments"
+        ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_SEGMENTS} segments`
+        : axis === "depth"
+          ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
+          : axis === "visits"
+            ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
+            : "logic expression contains a cycle";
   throw new ElizaError(message, {
     code: LOGIC_EXPRESSION_UNBOUNDED,
     context,
     severity: "fatal",
   });
+}
+
+function failLogicInvalid(
+  reason: string,
+  context: Record<string, unknown>,
+): never {
+  throw new ElizaError(`logic expression is invalid: ${reason}`, {
+    code: LOGIC_EXPRESSION_INVALID,
+    context,
+    severity: "fatal",
+  });
+}
+
+const LOGIC_OPERATORS = [
+  "and",
+  "or",
+  "not",
+  "path",
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+] as const;
+
+function requireLogicPath(path: unknown): string {
+  if (typeof path !== "string") {
+    failLogicInvalid("path requires a string", { valueType: typeof path });
+  }
+  if (path.length > MAX_LOGIC_EXPRESSION_PATH_LENGTH) {
+    failLogicUnbounded("path-length", {
+      actual: path.length,
+      max: MAX_LOGIC_EXPRESSION_PATH_LENGTH,
+    });
+  }
+  const segmentCount = parsePathSegments(path).length;
+  if (segmentCount > MAX_LOGIC_EXPRESSION_PATH_SEGMENTS) {
+    failLogicUnbounded("path-segments", {
+      actual: segmentCount,
+      max: MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
+    });
+  }
+  return path;
+}
+
+function resolveLogicDynamic(
+  value: DynamicValue,
+  state: Record<string, unknown>,
+): unknown {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    Object.hasOwn(value, "path")
+  ) {
+    return getByPath(
+      state,
+      requireLogicPath((value as { path?: unknown }).path),
+    );
+  }
+  return value;
+}
+
+function requireLogicTuple(
+  value: unknown,
+  operator: string,
+): [DynamicValue, DynamicValue] {
+  if (!Array.isArray(value) || value.length !== 2) {
+    failLogicInvalid(`${operator} requires exactly two operands`, { operator });
+  }
+  return value as [DynamicValue, DynamicValue];
 }
 
 /**
@@ -255,28 +335,49 @@ function evalLogic(
   if (depth > MAX_LOGIC_EXPRESSION_DEPTH) {
     failLogicUnbounded("depth", { depth, max: MAX_LOGIC_EXPRESSION_DEPTH });
   }
-  if (expr !== null && typeof expr === "object") {
-    if (ctx.visiting.has(expr)) {
-      failLogicUnbounded("cycle", { depth });
-    }
-    ctx.visits += 1;
-    if (ctx.visits > MAX_LOGIC_EXPRESSION_NODES) {
-      failLogicUnbounded("visits", {
-        visits: ctx.visits,
-        max: MAX_LOGIC_EXPRESSION_NODES,
-      });
-    }
-    ctx.visiting.add(expr);
+  if (expr === null || typeof expr !== "object" || Array.isArray(expr)) {
+    failLogicInvalid("a node must be an object", {
+      depth,
+      valueType: typeof expr,
+    });
+  }
+  if (ctx.visiting.has(expr)) {
+    failLogicUnbounded("cycle", { depth });
+  }
+  ctx.visits += 1;
+  if (ctx.visits > MAX_LOGIC_EXPRESSION_NODES) {
+    failLogicUnbounded("visits", {
+      visits: ctx.visits,
+      max: MAX_LOGIC_EXPRESSION_NODES,
+    });
+  }
+  ctx.visiting.add(expr);
+  const operators = LOGIC_OPERATORS.filter((operator) =>
+    Object.hasOwn(expr, operator),
+  );
+  if (operators.length !== 1) {
+    failLogicInvalid("a node must contain exactly one logic operator", {
+      depth,
+      operators,
+    });
   }
   try {
-    if ("and" in expr)
-      return (expr as { and: LogicExpression[] }).and.every((e) =>
-        evalLogic(e, state, depth + 1, ctx),
+    if ("and" in expr) {
+      if (!Array.isArray(expr.and)) {
+        failLogicInvalid("and requires an array", { depth });
+      }
+      return (expr.and as LogicExpression[]).every((child) =>
+        evalLogic(child, state, depth + 1, ctx),
       );
-    if ("or" in expr)
-      return (expr as { or: LogicExpression[] }).or.some((e) =>
-        evalLogic(e, state, depth + 1, ctx),
+    }
+    if ("or" in expr) {
+      if (!Array.isArray(expr.or)) {
+        failLogicInvalid("or requires an array", { depth });
+      }
+      return (expr.or as LogicExpression[]).some((child) =>
+        evalLogic(child, state, depth + 1, ctx),
       );
+    }
     if ("not" in expr)
       return !evalLogic(
         (expr as { not: LogicExpression }).not,
@@ -285,52 +386,42 @@ function evalLogic(
         ctx,
       );
     if ("path" in expr)
-      return Boolean(getByPath(state, (expr as { path: string }).path));
+      return Boolean(getByPath(state, requireLogicPath(expr.path)));
     if ("eq" in expr) {
-      const [l, r] = (expr as { eq: [DynamicValue, DynamicValue] }).eq;
-      return resolveDynamic(l, state) === resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.eq, "eq");
+      return resolveLogicDynamic(l, state) === resolveLogicDynamic(r, state);
     }
     if ("neq" in expr) {
-      const [l, r] = (expr as { neq: [DynamicValue, DynamicValue] }).neq;
-      return resolveDynamic(l, state) !== resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.neq, "neq");
+      return resolveLogicDynamic(l, state) !== resolveLogicDynamic(r, state);
     }
     if ("gt" in expr) {
-      const [l, r] = (
-        expr as { gt: [DynamicValue<number>, DynamicValue<number>] }
-      ).gt;
-      const lv = resolveDynamic(l, state),
-        rv = resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.gt, "gt");
+      const lv = resolveLogicDynamic(l, state),
+        rv = resolveLogicDynamic(r, state);
       return typeof lv === "number" && typeof rv === "number" && lv > rv;
     }
     if ("gte" in expr) {
-      const [l, r] = (
-        expr as { gte: [DynamicValue<number>, DynamicValue<number>] }
-      ).gte;
-      const lv = resolveDynamic(l, state),
-        rv = resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.gte, "gte");
+      const lv = resolveLogicDynamic(l, state),
+        rv = resolveLogicDynamic(r, state);
       return typeof lv === "number" && typeof rv === "number" && lv >= rv;
     }
     if ("lt" in expr) {
-      const [l, r] = (
-        expr as { lt: [DynamicValue<number>, DynamicValue<number>] }
-      ).lt;
-      const lv = resolveDynamic(l, state),
-        rv = resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.lt, "lt");
+      const lv = resolveLogicDynamic(l, state),
+        rv = resolveLogicDynamic(r, state);
       return typeof lv === "number" && typeof rv === "number" && lv < rv;
     }
     if ("lte" in expr) {
-      const [l, r] = (
-        expr as { lte: [DynamicValue<number>, DynamicValue<number>] }
-      ).lte;
-      const lv = resolveDynamic(l, state),
-        rv = resolveDynamic(r, state);
+      const [l, r] = requireLogicTuple(expr.lte, "lte");
+      const lv = resolveLogicDynamic(l, state),
+        rv = resolveLogicDynamic(r, state);
       return typeof lv === "number" && typeof rv === "number" && lv <= rv;
     }
-    return false;
+    return failLogicInvalid("unsupported operator", { depth });
   } finally {
-    if (expr !== null && typeof expr === "object") {
-      ctx.visiting.delete(expr);
-    }
+    ctx.visiting.delete(expr);
   }
 }
 
@@ -343,9 +434,6 @@ export function evaluateVisibility(
 ): boolean {
   if (condition === undefined) return true;
   if (typeof condition === "boolean") return condition;
-  if ("path" in condition && !("and" in condition) && !("or" in condition)) {
-    return Boolean(getByPath(state, (condition as { path: string }).path));
-  }
   return evaluateLogicExpression(condition as LogicExpression, state);
 }
 
