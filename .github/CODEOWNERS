@@ -47,6 +47,7 @@
 # feature PR must not adjust them without an explicit owner review.
 /packages/scripts/type-duplication-audit.baseline.json @elizaos/security-team @elizaos/platform-team
 /packages/scripts/ui-determinism-baseline.json         @elizaos/security-team @elizaos/platform-team
+/packages/scripts/e2e-coverage/runtime-surface-baseline.json @elizaos/security-team @elizaos/platform-team
 /packages/app/test/ui-smoke/.pr-deny-list.json         @elizaos/security-team @elizaos/platform-team
 
 # Documentation only — lighter review.
