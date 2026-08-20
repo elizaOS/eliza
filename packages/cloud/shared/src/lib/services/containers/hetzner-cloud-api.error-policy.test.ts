@@ -136,7 +136,10 @@ describe("hetzner-cloud-api fail-closed on internal failure", () => {
 describe("hetzner-cloud-api designed-empty stays distinct from failure", () => {
   test("listServers on a 200 empty list returns [] (empty, no throw)", async () => {
     const { HetznerCloudClient } = await load();
-    queueJson({ servers: [] });
+    queueJson({
+      servers: [],
+      meta: { pagination: { next_page: null } },
+    });
 
     const servers = await HetznerCloudClient.withToken(TOKEN).listServers();
     expect(servers).toEqual([]);
