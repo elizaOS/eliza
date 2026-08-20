@@ -120,11 +120,19 @@ function normalizeExtractionOptions(
 } {
   const requestedStartPage = validatePageOption(options.startPage, "startPage") ?? 1;
   const requestedEndPage = validatePageOption(options.endPage, "endPage") ?? numPages;
+  // Reject a range that begins past the document rather than clamping startPage
+  // down to the last page, which would return a different page's text as a
+  // success and hide the mismatch behind the full-document pageCount.
+  if (requestedStartPage > numPages) {
+    throw new RangeError(`startPage ${requestedStartPage} exceeds document page count ${numPages}`);
+  }
   if (requestedEndPage < requestedStartPage) {
     throw new RangeError("endPage must be greater than or equal to startPage");
   }
+  // startPage is now known in-range; only endPage needs the benign "up to end"
+  // clamp so an oversized endPage still extracts through the final page.
   return {
-    startPage: Math.min(requestedStartPage, numPages),
+    startPage: requestedStartPage,
     endPage: Math.min(requestedEndPage, numPages),
   };
 }
