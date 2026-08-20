@@ -69,12 +69,8 @@ describe("character-history fail-closed walk", () => {
   });
 
   it("fail-closed after JSON.parse accepts a 20k-deep passthrough extra", () => {
-    const raw = JSON.stringify({
-      name: "Ada",
-      messageExamples: [
-        [{ name: "Ada", content: { text: "hi", extra: nestArr(20_000) } }],
-      ],
-    });
+    const extra = `${"[".repeat(20_000)}"leaf"${"]".repeat(20_000)}`;
+    const raw = `{"name":"Ada","messageExamples":[[{"name":"Ada","content":{"text":"hi","extra":${extra}}}]]}`;
     const parsed = JSON.parse(raw) as {
       name: string;
       messageExamples: unknown;
