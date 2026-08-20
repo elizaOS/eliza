@@ -1,17 +1,16 @@
 /**
  * Exercises the fail-closed settlement contract of CreditsService.reconcile.
  *
- * Real PGlite-backed coverage verifies two security-sensitive paths:
+ * Real PGlite-backed coverage verifies three security-sensitive paths:
  *
  *  1. A reconcile call naming a `reservation_transaction_id` that matches no
  *     reservation row used to fall through to the legacy lane and mint a
  *     refund keyed only on the caller-supplied `reservedAmount` — credit with
  *     no corresponding debit. It must now throw ReservationNotFoundError and
  *     write nothing.
- *  2. The legacy (no-reservation-id) lane's retry loop used to swallow a
- *     persistent settlement failure and return a success-shaped result
- *     (`adjustmentType: "none"`), making a lost refund indistinguishable from
- *     a clean settle. It must now surface the failure.
+ *  2. The legacy (no-reservation-id) lane must not mint caller-number-backed
+ *     refunds, including under serial replay or concurrent execution. Its
+ *     charge-only compatibility remains covered.
  *  3. Negative/non-finite settlement costs must fail before any ledger read or
  *     write, so provider sentinel values cannot become unbacked refunds.
  *
@@ -152,7 +151,7 @@ describe("reconcile with a reservation id that matches no row", () => {
   );
 });
 
-describe("legacy-lane persistent settlement failure", () => {
+describe("legacy-lane settlement boundaries", () => {
   test("classifies a refund larger than its backing reservation as a fatal invariant failure", () => {
     let thrown: unknown;
     try {
@@ -207,11 +206,8 @@ describe("legacy-lane persistent settlement failure", () => {
   });
 
   test(
-    "surfaces the failure instead of returning a success-shaped result",
+    "rejects an unbacked refund before looking up the target organization",
     async () => {
-      // No reservation_transaction_id → legacy lane. The org row does not
-      // exist, so refundCredits fails on every retry. The old catch returned
-      // `adjustmentType: "none"` here — a fabricated clean settle.
       await expect(
         creditsService.reconcile({
           organizationId: MISSING_ORG_ID,
@@ -219,23 +215,61 @@ describe("legacy-lane persistent settlement failure", () => {
           actualCost: 5,
           description: "legacy settle against missing org",
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({ code: "CREDIT_REFUND_REQUIRES_RESERVATION" });
       expect(await countTransactions(MISSING_ORG_ID)).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "still settles a healthy legacy refund (regression guard)",
+    "rejects serial and concurrent unbacked refunds without mutating the ledger",
     async () => {
-      const result = await creditsService.reconcile({
+      const args = {
         organizationId: ORG_ID,
         reservedAmount: 10,
         actualCost: 4,
-        description: "legacy refund settle",
+        description: "unbacked legacy refund",
+      };
+
+      await expect(creditsService.reconcile(args)).rejects.toMatchObject({
+        code: "CREDIT_REFUND_REQUIRES_RESERVATION",
       });
-      expect(result.adjustmentType).toBe("refund");
-      expect(await getBalance()).toBe(106);
+      await expect(creditsService.reconcile(args)).rejects.toMatchObject({
+        code: "CREDIT_REFUND_REQUIRES_RESERVATION",
+      });
+      const concurrent = await Promise.allSettled([
+        creditsService.reconcile(args),
+        creditsService.reconcile(args),
+      ]);
+      expect(concurrent).toHaveLength(2);
+      for (const result of concurrent) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected") {
+          expect(result.reason).toMatchObject({
+            code: "CREDIT_REFUND_REQUIRES_RESERVATION",
+          });
+        }
+      }
+
+      expect(await getBalance()).toBe(100);
+      expect(await countTransactions(ORG_ID)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "preserves charge-only legacy reconciliation without creating credit",
+    async () => {
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 4,
+        actualCost: 10,
+        description: "legacy overage settle",
+      });
+
+      expect(result.adjustmentType).toBe("overage");
+      expect(await getBalance()).toBe(94);
+      expect(await countTransactions(ORG_ID)).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

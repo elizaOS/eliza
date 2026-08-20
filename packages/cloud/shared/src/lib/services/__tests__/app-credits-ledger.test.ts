@@ -68,6 +68,10 @@ class MockInsufficientCreditsError extends Error {
   }
 }
 
+class MockUnbackedCreditRefundError extends Error {
+  readonly code = "CREDIT_REFUND_REQUIRES_RESERVATION";
+}
+
 mock.module("../credits", () => ({
   assertCreditRefundWithinReservation: ({
     reservedAmount,
@@ -93,6 +97,7 @@ mock.module("../credits", () => ({
     }
   },
   InsufficientCreditsError: MockInsufficientCreditsError,
+  UnbackedCreditRefundError: MockUnbackedCreditRefundError,
   // Must mirror the real export — app-credits.ts imports it for the $0-estimate
   // floor; a missing export would break the module link under this mock.
   MIN_RESERVATION: 0.000001,
@@ -609,20 +614,38 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
-  test("refunds the markup'd overcharge to the org when actual is below estimated", async () => {
-    const result = await freshService().reconcileCredits({
+  test("rejects serial and concurrent refunds without an authoritative app hold", async () => {
+    const service = freshService();
+    const args = {
       appId: APP_ID,
       userId: USER_ID,
       estimatedBaseCost: 2,
       actualBaseCost: 1,
       description: "recon",
+    };
+
+    await expect(service.reconcileCredits(args)).rejects.toMatchObject({
+      code: "CREDIT_REFUND_REQUIRES_RESERVATION",
     });
-    expect(result.reconciled).toBe(true);
-    expect(result.action).toBe("refund");
-    expect(result.adjustedAmount).toBeCloseTo(1.1, 10);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
+    await expect(service.reconcileCredits(args)).rejects.toMatchObject({
+      code: "CREDIT_REFUND_REQUIRES_RESERVATION",
+    });
+    const concurrent = await Promise.allSettled([
+      service.reconcileCredits(args),
+      service.reconcileCredits(args),
+    ]);
+    expect(concurrent).toHaveLength(2);
+    for (const result of concurrent) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(result.reason).toMatchObject({ code: "CREDIT_REFUND_REQUIRES_RESERVATION" });
+      }
+    }
+
+    expect(refundCredits).not.toHaveBeenCalled();
     expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+    expect(reduceEarnings).not.toHaveBeenCalled();
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
   });
 
   test("does not reconcile when the user has no organization", async () => {

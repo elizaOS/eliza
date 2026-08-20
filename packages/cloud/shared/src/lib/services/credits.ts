@@ -158,6 +158,19 @@ export class ReservationNotFoundError extends ElizaError {
   }
 }
 
+/** Refuses a refund that is not tied to an authoritative reservation row. */
+export class UnbackedCreditRefundError extends ElizaError {
+  override readonly name = "UnbackedCreditRefundError";
+
+  constructor(scope: string) {
+    super(`${scope} cannot refund without an authoritative reservation`, {
+      code: "CREDIT_REFUND_REQUIRES_RESERVATION",
+      context: { scope },
+      severity: "fatal",
+    });
+  }
+}
+
 /** Refuses malformed amounts before they can reach a credit-ledger mutation. */
 export class InvalidCreditAmountError extends ElizaError {
   override readonly name = "InvalidCreditAmountError";
@@ -2158,7 +2171,7 @@ export class CreditsService {
           // error-policy:J2 retry the same transaction-scoped settlement, then
           // surface its failure so a durable reservation remains recoverable.
           if (error instanceof ReservationNotFoundError) {
-            // Not transient: the row is absent, not busy. Retrying cannot help.
+            // The row is absent, not busy. Retrying cannot help.
             throw error;
           }
           if (attempt === MAX_RETRIES) {
@@ -2199,46 +2212,22 @@ export class CreditsService {
       actual: actualCost,
     };
 
-    // Stable per-(reservation, phase) idempotency key. Threaded into
-    // refund/deduct as `stripePaymentIntentId` so a retry of an already-committed
-    // reconcile (commit-then-ack-loss) is a no-op instead of a second refund
-    // (platform loss) or a second overage charge (consumer double-charge).
-    // Without a reservation id there is nothing stable to key on, so we keep the
-    // prior non-idempotent behavior. (#10846 finding 2)
-    const reconKey = (phase: "refund" | "overage"): string | undefined =>
-      reservationTxId ? `recon:${reservationTxId}:${phase}` : undefined;
+    // The reservation-backed lane returns above. This legacy lane remains only
+    // for charge-only compatibility and therefore has no authoritative
+    // transaction from which to derive a stable key.
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (difference > 0) {
-          assertCreditRefundWithinReservation({
-            reservedAmount,
-            refundAmount: difference,
-            scope: "CreditsService.reconcile",
-          });
-          const refund = await this.refundCredits({
-            organizationId,
-            amount: difference,
-            description: `${description} (refund)`,
-            metadata: { ...baseMetadata, type: "reconciliation_refund" },
-            stripePaymentIntentId: reconKey("refund"),
-          });
-          logger.info("[Credits] Reconciled - refunded excess", {
+          const error = new UnbackedCreditRefundError("CreditsService.reconcile");
+          logger.error("[Credits] Refusing refund without an authoritative reservation", {
             organizationId,
             reserved: reservedAmount,
             actual: actualCost,
-            refunded: difference,
+            refund: difference,
+            code: error.code,
           });
-          return {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId:
-              typeof metadata?.reservation_transaction_id === "string"
-                ? metadata.reservation_transaction_id
-                : null,
-            settlementTransactionIds: [refund.transaction.id],
-            adjustmentType: "refund",
-          };
+          throw error;
         }
 
         const overage = -difference;
@@ -2247,7 +2236,6 @@ export class CreditsService {
           amount: overage,
           description: `${description} (overage)`,
           metadata: { ...baseMetadata, type: "reconciliation_overage" },
-          stripePaymentIntentId: reconKey("overage"),
         });
         if (!overageResult.success || !overageResult.transaction) {
           logger.warn("[Credits] Reconciled - overage uncollected", {
@@ -2286,6 +2274,10 @@ export class CreditsService {
           adjustmentType: "overage",
         };
       } catch (error) {
+        if (error instanceof UnbackedCreditRefundError) {
+          // Contract failures cannot become backed through a retry.
+          throw error;
+        }
         if (attempt === MAX_RETRIES) {
           logger.error("[Credits] Reconciliation failed after retries", {
             organizationId,

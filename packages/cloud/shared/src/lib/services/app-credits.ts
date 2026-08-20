@@ -39,6 +39,7 @@ import {
   creditsService,
   InsufficientCreditsError,
   MIN_RESERVATION,
+  UnbackedCreditRefundError,
 } from "./credits";
 import {
   getAppByIdHydrationGeneration,
@@ -1348,97 +1349,19 @@ export class AppCreditsService {
       });
 
     if (baseCostDifference < 0) {
-      // A creator withdrawal can race settlement. Reverse the cashable creator
-      // amount in full before refunding the consumer; otherwise a failed or
-      // partial clawback would leave both parties holding the same money.
-      const refundAmount = Math.abs(totalCostDifference);
-      const creatorEarningsReduction = Math.abs(creatorMarkupDifference);
-      const maximumRefund = computeInferenceCharge(estimatedBaseCost, {
-        monetizationEnabled: monetizationActive,
-        platformOffsetAmount: app.platform_offset_amount,
-        purchaseSharePercentage: app.purchase_share_percentage,
-        inferenceMarkupPercentage: app.inference_markup_percentage,
-      }).totalCost;
-      assertCreditRefundWithinReservation({
-        reservedAmount: maximumRefund,
-        refundAmount,
-        scope: "AppCreditsService.reconcileCredits",
-      });
-
-      if (monetizationActive && creatorEarningsReduction > 0) {
-        try {
-          await this.reverseCreatorEarnings(
-            appId,
-            userId,
-            creatorEarningsReduction,
-            Math.abs(baseCostDifference),
-            "reconcile_refund",
-            earningsLegMetadata({
-              type: "reconciliation_refund",
-              baseCostDifference,
-              estimatedBaseCost,
-              actualBaseCost,
-              description,
-            }),
-            app,
-          );
-        } catch (reversalError) {
-          // error-policy:J2 a failed clawback must retain the consumer charge;
-          // log the money context and rethrow.
-          logger.error(
-            "[AppCredits] Creator-earnings reversal failed; retaining the consumer charge",
-            {
-              appId,
-              userId,
-              organizationId,
-              refundAmount,
-              creatorEarningsReduction,
-              error: reversalError instanceof Error ? reversalError.message : String(reversalError),
-            },
-          );
-          throw reversalError;
-        }
-      }
-
-      const { newBalance } = await creditsService.refundCredits({
-        organizationId,
-        amount: refundAmount,
-        description: `App reconciliation refund (${app.name ?? appId})`,
-        // Idempotent per reservation (#11512): a re-invoked reconcile must not
-        // credit the org a second refund (2×reserved − actual = minted,
-        // cashable credit).
-        stripePaymentIntentId: chargeKey ? `reconcile-refund:${chargeKey}` : undefined,
-        metadata: {
-          appId,
-          userId,
-          baseCostDifference,
-          estimatedBaseCost,
-          actualBaseCost,
-          markupPercentage,
-          ...settlementMetadata,
-        },
-      });
-
-      logger.info("[AppCredits] Reconciliation: Refunded overcharge to org balance", {
+      // A marked app-chat reservation returns through settleAppReservation
+      // above. Reaching this legacy branch means no immutable hold facts were
+      // verified, even if the caller supplied some unrelated transaction id.
+      const error = new UnbackedCreditRefundError("AppCreditsService.reconcileCredits");
+      logger.error("[AppCredits] Refusing refund without an authoritative reservation", {
         appId,
         userId,
         organizationId,
         estimatedBaseCost,
         actualBaseCost,
-        refundAmount,
-        creatorEarningsReduction,
-        newBalance,
+        code: error.code,
       });
-
-      await markReservationSettled();
-
-      return {
-        reconciled: true,
-        difference: baseCostDifference,
-        action: "refund",
-        adjustedAmount: refundAmount,
-        newBalance,
-      };
+      throw error;
     }
 
     // CHARGE: Actual exceeded estimated — debit the delta from the org balance.
