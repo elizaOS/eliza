@@ -98,15 +98,25 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
 const INITIAL_RENDERED_ITEMS = 4;
-const USER_KEYSTROKE_MS = 12;
-const ELIZA_TYPING_MS = 400;
+const USER_KEYSTROKE_MS = 28;
+const HUMAN_REPLY_BASE_MS = 650;
+const HUMAN_REPLY_PER_CHARACTER_MS = 14;
+const HUMAN_REPLY_MAX_MS = 1_250;
+const ELIZA_TYPING_MS = 360;
 const BEAT_PAUSE_MS = 180;
-const PRE_USER_MS = 140;
-const PRE_ELIZA_MS = 170;
+const PRE_USER_MS = 500;
+const PRE_ELIZA_MS = 120;
 const PRE_CARD_MS = 240;
-const SEND_HOLD_MS = 140;
-const SCENARIO_SETTLE_MS = 700;
-const SCENARIO_SWITCH_MS = 240;
+const SEND_HOLD_MS = 240;
+const SCENARIO_READING_HOLD_MS = 5_500;
+const SCENARIO_SWITCH_MS = 320;
+
+function humanReplyDelay(text: string): number {
+  return Math.min(
+    HUMAN_REPLY_MAX_MS,
+    HUMAN_REPLY_BASE_MS + text.length * HUMAN_REPLY_PER_CHARACTER_MS,
+  );
+}
 
 const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -275,7 +285,7 @@ function PhoneMockup() {
             { id, from: "user", kind: "text", text: step.text },
           ]);
         } else if (step.kind === "member") {
-          await sleep(PRE_ELIZA_MS);
+          await sleep(humanReplyDelay(step.text));
           if (cancelled) return;
           setItems((previous) => [
             ...previous,
@@ -344,7 +354,8 @@ function PhoneMockup() {
           }
           await play(nextScenario.steps.slice(INITIAL_RENDERED_ITEMS), index);
           if (cancelled) return;
-          await sleep(SCENARIO_SETTLE_MS);
+          setPhase("settled");
+          await sleep(SCENARIO_READING_HOLD_MS);
           if (cancelled) return;
         }
         completedCycles += 1;

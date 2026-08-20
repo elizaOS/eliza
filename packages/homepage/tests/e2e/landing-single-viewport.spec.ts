@@ -87,14 +87,14 @@ for (const viewport of VIEWPORTS) {
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(130_000);
+  test.setTimeout(170_000);
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
-    timeout: 110_000,
+    timeout: 150_000,
   });
   await expect(phone).toHaveAttribute("data-demo-scenario", "friends", {
     timeout: 5_000,
