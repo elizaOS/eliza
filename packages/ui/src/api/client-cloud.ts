@@ -72,7 +72,6 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
   DEFAULT_DIRECT_CLOUD_BASE_URL,
@@ -80,7 +79,6 @@ import {
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
 } from "./direct-cloud-endpoints";
-import { fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Module-level constants

@@ -19,6 +19,10 @@ import {
 } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  incrementalScopeRequest,
+  readConnectorAccountCapabilityAccess,
+} from "../capabilities/connected-capability-presentation";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
@@ -148,14 +152,17 @@ export function ConnectorAccountList({
   const connectorAccounts = externalAccounts ?? internalAccounts;
   const setConnectorSelectedAccountId = connectorAccounts.setSelectedAccountId;
   const effectiveTitle = title ?? defaultTitleForRole(accountRole);
-  const oauthCapabilities =
-    (
-      getConnectorPluginManagedAccountOption(connectorId) ??
-      getConnectorPluginManagedAccountOption(provider)
-    )?.oauthCapabilities ?? [];
+  const managedOption =
+    getConnectorPluginManagedAccountOption(connectorId) ??
+    getConnectorPluginManagedAccountOption(provider);
+  const supportsOAuth = managedOption?.supportsOAuth === true;
+  const oauthCapabilities = managedOption?.oauthCapabilities ?? [];
   const [selectedOAuthCapabilities, setSelectedOAuthCapabilities] = useState(
     () => new Set<string>(),
   );
+  // "<accountId>:<capabilityId>" while an incremental-scope grant is pending,
+  // or "<accountId>:reconnect" while an account reauth restart is pending.
+  const [scopeFlowBusyKey, setScopeFlowBusyKey] = useState<string | null>(null);
   // Rejection of a wire-supplied OAuth URL surfaces here — the hook-level
   // `error` only covers fetch/mutation failures.
   const [authUrlError, setAuthUrlError] = useState<string | null>(null);
@@ -220,6 +227,61 @@ export function ConnectorAccountList({
         "The sign-in link returned by the server is not a valid URL.",
       );
     }
+  };
+
+  /**
+   * Restarts OAuth for an existing account with an explicit scope set — the
+   * shared path behind per-account Reconnect and incremental-scope Grant.
+   * Returning from the provider lands on the normal OAuth completion route;
+   * the account list poll then reflects the refreshed grants.
+   */
+  const startAccountScopeFlow = async (
+    account: ConnectorAccountRecord,
+    scopes: string[],
+    busyKey: string,
+  ) => {
+    setAuthUrlError(null);
+    setScopeFlowBusyKey(busyKey);
+    try {
+      const result = await connectorAccounts.startOAuth({
+        accountId: account.id,
+        scopes,
+        metadata: {
+          requestedCapabilities: scopes,
+          requestedRole: account.role ?? "OWNER",
+          privacy: account.privacy ?? "owner_only",
+        },
+      });
+      if (result.authUrl && !openConnectorAuthUrl(result.authUrl)) {
+        setAuthUrlError(
+          "The sign-in link returned by the server is not a valid URL.",
+        );
+      }
+    } finally {
+      setScopeFlowBusyKey(null);
+    }
+  };
+
+  const handleGrantCapability = (
+    account: ConnectorAccountRecord,
+    capabilityId: string,
+  ) =>
+    startAccountScopeFlow(
+      account,
+      incrementalScopeRequest(
+        readConnectorAccountCapabilityAccess(account),
+        oauthCapabilities,
+        capabilityId,
+      ),
+      `${account.id}:${capabilityId}`,
+    );
+
+  const handleReconnect = (account: ConnectorAccountRecord) => {
+    const access = readConnectorAccountCapabilityAccess(account);
+    const scopes = access.reported
+      ? [...access.granted].sort()
+      : oauthCapabilities.map((capability) => capability.id);
+    return startAccountScopeFlow(account, scopes, `${account.id}:reconnect`);
   };
 
   const addBusy =
@@ -332,6 +394,26 @@ export function ConnectorAccountList({
                 onMakeDefault={async () => {
                   await connectorAccounts.makeDefault(account.id);
                 }}
+                declaredCapabilities={
+                  supportsOAuth ? oauthCapabilities : undefined
+                }
+                onGrantCapability={
+                  supportsOAuth
+                    ? (capabilityId) =>
+                        void handleGrantCapability(account, capabilityId)
+                    : undefined
+                }
+                grantBusyCapabilityId={
+                  scopeFlowBusyKey?.startsWith(`${account.id}:`)
+                    ? scopeFlowBusyKey.slice(account.id.length + 1)
+                    : null
+                }
+                onReconnect={
+                  supportsOAuth
+                    ? () => void handleReconnect(account)
+                    : undefined
+                }
+                reconnectBusy={scopeFlowBusyKey === `${account.id}:reconnect`}
               />
             );
           })}
