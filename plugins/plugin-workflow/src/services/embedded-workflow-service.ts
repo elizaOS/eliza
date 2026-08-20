@@ -41,6 +41,7 @@ import {
   runSmithersWorkflow,
   validateSmithersSource,
 } from './smithers-runtime';
+import { cloneJson } from './workflow-json';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 export const WORKFLOW_TASK_KIND = 'workflow';
@@ -66,10 +67,6 @@ type RunListener = (event: WorkflowRunEvent) => void;
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function approvalPrompt(payload: Record<string, unknown>): string | undefined {
