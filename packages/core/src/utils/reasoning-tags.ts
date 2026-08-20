@@ -2,6 +2,7 @@
 export const REASONING_TAG_NAMES = [
 	"think",
 	"thinking",
+	"analysis",
 	"reasoning",
 	"reflection",
 	"thought",

@@ -11,6 +11,7 @@
  * inline code-span protection. Each delta has a dedicated test naming it.
  */
 import { describe, expect, it } from "vitest";
+import { REASONING_TAG_NAMES } from "../../utils/reasoning-tags";
 import { sanitizeOutboundText } from "./outbound-sanitize";
 
 describe("sanitizeOutboundText — reasoning tags (Discord characterization)", () => {
@@ -29,13 +30,7 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 	});
 
 	it("strips every reasoning tag family", () => {
-		for (const tag of [
-			"thinking",
-			"reasoning",
-			"reflection",
-			"thought",
-			"antthinking",
-		]) {
+		for (const tag of REASONING_TAG_NAMES) {
 			expect(
 				sanitizeOutboundText(`Before.<${tag}>hidden</${tag}>After.`),
 				`paired <${tag}> is stripped`,

@@ -19,6 +19,7 @@ describe("evaluator reasoning-residue stripping", () => {
 	it.each([
 		["think", "private</think>"],
 		["thinking", "<thinking>private</thinking>"],
+		["analysis", "<analysis>private</analysis>"],
 		["reasoning", "<reasoning>private</reasoning>"],
 		["reflection", "<reflection>private</reflection>"],
 		["thought", "<thought>private</thought>"],
