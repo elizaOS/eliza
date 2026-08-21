@@ -27,7 +27,7 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
     ).toEqual({ workdir: existing });
   });
 
-  it("ignores a typo'd explicit workdir that does not exist, falling back to cwd", () => {
+  it("flags a typo'd explicit workdir while retaining a safe fallback", () => {
     const missing = path.join(
       os.tmpdir(),
       "planner-workdir-typo-does-not-exist",
@@ -38,7 +38,10 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
       NO_ROUTE_TASK,
       missing,
     );
-    expect(result).toEqual({ workdir: process.cwd() });
+    expect(result).toEqual({
+      workdir: process.cwd(),
+      rejectedExplicitWorkdir: missing,
+    });
   });
 
   it("falls back to cwd when no workdir is supplied at all", () => {
@@ -47,7 +50,7 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
     ).toEqual({ workdir: process.cwd() });
   });
 
-  it("ignores a locked workdir that does not exist", () => {
+  it("does not trust a locked workdir that does not exist", () => {
     // `lockWorkdir` is only trusted after a scaffold-aware caller has created
     // the exact target directory. Planner-guessed typo paths must still fall
     // through to route/default resolution.
@@ -59,7 +62,10 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
       resolveSpawnWorkdir(undefined, NO_ROUTE_TASK, NO_ROUTE_TASK, locked, {
         lockWorkdir: true,
       }),
-    ).toEqual({ workdir: process.cwd() });
+    ).toEqual({
+      workdir: process.cwd(),
+      rejectedExplicitWorkdir: locked,
+    });
   });
 });
 

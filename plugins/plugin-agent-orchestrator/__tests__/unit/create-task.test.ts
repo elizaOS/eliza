@@ -206,13 +206,40 @@ describe("TASKS:create", () => {
     );
   });
 
+  it("drops a planner-guessed missing workdir for an ordinary coding request", async () => {
+    const svc = serviceMock();
+    const guessed = `${os.tmpdir()}/planner-guessed-site-${Date.now()}`;
+
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({ text: "make me a personal website" }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "Create a personal website",
+          workdir: guessed,
+        },
+      },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        agents: [expect.objectContaining({ workdir: process.cwd() })],
+      },
+    });
+    expect(svc.spawnSession).toHaveBeenCalled();
+  });
+
   it("refuses a missing planner workdir instead of falling back to another repo", async () => {
     const svc = serviceMock();
     const missing = `${os.tmpdir()}/eliza-missing-workdir-${Date.now()}`;
 
     const result = await createTaskAction.handler(
       runtimeWith(svc),
-      memory({ text: "make me a website" }),
+      memory({ text: `make me a website in ${missing}` }),
       state,
       {
         parameters: {

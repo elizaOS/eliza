@@ -223,7 +223,9 @@ describe("orchestrator routes — dispatch", () => {
     expect(result.matched).toBe(true);
     expect(result.status).toBe(200);
     expect(result.json.deleted).toBe(true);
-    expect(cache.get(BUILT_APPS_CACHE_KEY)).toEqual([cloudApp]);
+    // Mutating the custom-only registry also scrubs legacy mirrored Cloud
+    // rows. The Cloud apps API owns that app identity now.
+    expect(cache.get(BUILT_APPS_CACHE_KEY)).toEqual([]);
   });
 
   it("404s a missing built app without requiring the task service", async () => {
