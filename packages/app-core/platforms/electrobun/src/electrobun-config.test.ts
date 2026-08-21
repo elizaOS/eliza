@@ -18,7 +18,7 @@ describe("Electrobun Store packaging", () => {
     });
   });
 
-  it("renders the concrete Safari-matching Keychain group for signed macOS builds", () => {
+  it("renders the exact Safari-matching App Group for provisioned macOS builds", () => {
     const previousTeamId = process.env.ELECTROBUN_TEAMID;
     const previousSafariTeam = process.env.ELIZA_SAFARI_SIGNING_TEAM;
     try {
@@ -29,10 +29,10 @@ describe("Electrobun Store packaging", () => {
         "com.apple.security.application-groups": [
           "group.ai.elizaos.browserbridge",
         ],
-        "keychain-access-groups": [
-          "ABCDEFGHIJ.ai.elizaos.browserbridge.shared",
-        ],
       });
+      expect(config.build?.mac?.entitlements).not.toHaveProperty(
+        "keychain-access-groups",
+      );
     } finally {
       if (previousTeamId === undefined) delete process.env.ELECTROBUN_TEAMID;
       else process.env.ELECTROBUN_TEAMID = previousTeamId;

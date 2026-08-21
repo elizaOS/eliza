@@ -19,11 +19,10 @@ import {
 } from "./browser-bridge-broker-transport";
 import { BrowserBridgeEnrollmentBroker } from "./browser-bridge-enrollment-broker";
 import {
-  loadOrCreateMacSharedKeychainSecret,
+  loadOrCreateMacBrowserBridgeSharedSecret,
   resolveMacBrowserBridgeAppGroupContainer,
-  resolveMacBrowserBridgeKeychainHelper,
 } from "./browser-bridge-mac-shared-secret";
-import { resolvePackagedBrowserBridgeAccessGroup } from "./browser-bridge-mac-signing";
+import { resolvePackagedBrowserBridgeAppGroup } from "./browser-bridge-mac-signing";
 import { browserBridgeCallerAllowlistFromEnv } from "./browser-bridge-native-host-entry";
 import {
   type BrowserBridgeRegistrationPlan,
@@ -111,10 +110,9 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
   executablePath?: string;
   registrationPlan?: BrowserBridgeRegistrationPlan;
   installRegistration?: (plan: BrowserBridgeRegistrationPlan) => void;
-  macSafariKeychainHelperPath?: string;
   macSafariAppGroupContainerPath?: string;
-  macSafariAccessGroup?: string;
-  loadMacSafariSecret?: (helperPath: string, accessGroup: string) => Buffer;
+  macSafariProvisionedAppGroup?: string;
+  loadMacSafariSecret?: (containerPath: string) => Buffer;
 }): Promise<boolean> {
   if (!isBrowserBridgeLoopbackApiBase(options.apiBase)) {
     throw new Error("browser bridge desktop lifecycle requires a loopback API");
@@ -151,31 +149,28 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
     process.platform === "darwin" &&
     allowlist.safariExtensionIds.length > 0
   ) {
-    const accessGroup =
-      options.macSafariAccessGroup ??
-      resolvePackagedBrowserBridgeAccessGroup(import.meta.dir, env);
-    // Unsigned development builds cannot share a Keychain item with Safari,
-    // so no Safari listener is created until concrete signing metadata exists.
-    if (accessGroup) {
-      const helperPath =
-        options.macSafariKeychainHelperPath ??
-        env.ELIZA_BROWSER_BRIDGE_KEYCHAIN_HELPER?.trim() ??
-        resolveMacBrowserBridgeKeychainHelper(import.meta.dir);
+    const provisionedAppGroup =
+      options.macSafariProvisionedAppGroup ??
+      resolvePackagedBrowserBridgeAppGroup(import.meta.dir);
+    // Safari sharing stays disabled until packaging proves the exact App Group profile.
+    if (provisionedAppGroup) {
+      const appGroupContainer =
+        options.macSafariAppGroupContainerPath ??
+        resolveMacBrowserBridgeAppGroupContainer();
       const safariBroker = new BrowserBridgeEnrollmentBroker({
         apiBase: options.apiBase,
         ownerSession: async () =>
           resolveDesktopOwnerSession(options.apiBase, env),
         brokerSecret: (
-          options.loadMacSafariSecret ?? loadOrCreateMacSharedKeychainSecret
-        )(helperPath, accessGroup),
+          options.loadMacSafariSecret ??
+          loadOrCreateMacBrowserBridgeSharedSecret
+        )(appGroupContainer),
         callerAllowlist: allowlist,
       });
       additionalServers.push(
         await startBrowserBridgeBrokerServer({
-          descriptor: createMacAppGroupBrokerTransportDescriptor(
-            options.macSafariAppGroupContainerPath ??
-              resolveMacBrowserBridgeAppGroupContainer(),
-          ),
+          descriptor:
+            createMacAppGroupBrokerTransportDescriptor(appGroupContainer),
           broker: safariBroker,
         }),
       );
