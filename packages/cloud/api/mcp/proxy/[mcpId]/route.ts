@@ -176,6 +176,7 @@ app.get("/", async (c) => {
       type: mcp.pricing_type,
       creditUnit: apiMcp.credit_unit,
       priceUsd: apiMcp.price_usd,
+      priceAvailable: apiMcp.price_available,
       /** @deprecated Legacy MCP pricing points (100 points = $1). */
       creditsPerRequest: mcp.credits_per_request,
       x402PriceUsd: mcp.x402_price_usd,

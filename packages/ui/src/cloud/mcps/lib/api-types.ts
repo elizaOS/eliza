@@ -86,8 +86,13 @@ export interface UserMcpRecord {
   pricing_type: McpPricingType;
   /** Canonical organization cloud-credit denomination. */
   credit_unit?: "USD";
-  /** Canonical per-request price in USD-denominated organization credits. */
+  /**
+   * Canonical per-request price in USD-denominated organization credits, or
+   * `null` when the server could not read the stored price for this row.
+   */
   price_usd?: string | null;
+  /** False when the server degraded this row's price to unavailable. */
+  price_available?: boolean;
   /** @deprecated Legacy MCP pricing points (100 points = $1). */
   credits_per_request: string | null;
   /** Explicit compatibility mirror of credits_per_request. */

@@ -133,12 +133,21 @@ export type PublicUserMcp = Omit<UserMcp, "external_endpoint" | "created_by_user
 export type ApiUserMcp = (UserMcp | PublicUserMcp) & {
   /** Canonical external denomination. One organization cloud credit is $1 USD. */
   credit_unit: typeof ORGANIZATION_CREDIT_UNIT;
-  /** Canonical per-request price for every pricing mode. */
-  price_usd: string;
+  /**
+   * Canonical per-request price for every pricing mode, or `null` when the
+   * stored price column is unusable. `price_available` discriminates the two;
+   * a corrupt row must never render as a healthy `"0"`.
+   */
+  price_usd: string | null;
+  /** False when the stored price could not be read for this row. */
+  price_available: boolean;
   /** Explicit compatibility mirror of the historical cent-like storage field. */
   legacy_credits_per_request: string | null;
-  /** Canonical creator revenue represented by the legacy earned-points total. */
-  total_creator_revenue_usd: string;
+  /**
+   * Canonical creator revenue represented by the legacy earned-points total,
+   * or `null` when the stored earnings total is unusable.
+   */
+  total_creator_revenue_usd: string | null;
 };
 
 // ============================================================================
@@ -257,12 +266,17 @@ function resolveStoredMcpPricePoints(params: {
   return convertedCanonical ?? legacyPrice ?? params.fallback;
 }
 
-/**
- * Render the stored price as canonical cloud-credit USD. Quantizing here is
- * what keeps a fractional legacy point value such as `1.1` from serializing as
- * `0.011000000000000001` into the API, registry, and public description.
- */
-function formatCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
+/** Presentation price for one stored MCP row, or an explicit unavailable price. */
+export type CanonicalMcpPrice =
+  | { priceAvailable: true; priceUsd: string }
+  | { priceAvailable: false; priceUsd: null };
+
+const UNAVAILABLE_MCP_PRICE: CanonicalMcpPrice = Object.freeze({
+  priceAvailable: false,
+  priceUsd: null,
+});
+
+function renderCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
   if (mcp.pricing_type === "credits") {
     const legacyPoints = parseNonNegativeMcpBillingNumber(
       mcp.credits_per_request,
@@ -277,6 +291,59 @@ function formatCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
     return parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0).toString();
   }
   return "0";
+}
+
+/**
+ * Resolve the stored price as canonical cloud-credit USD. Quantizing here is
+ * what keeps a fractional legacy point value such as `1.1` from serializing as
+ * `0.011000000000000001` into the API, registry, and public description.
+ *
+ * This is a presentation boundary, not a charge boundary: `toApiMcp` runs once
+ * per row of the owner listing and once for the anonymous proxy-info endpoint,
+ * so a single corrupt price column must degrade to an explicit unavailable
+ * price rather than fail the whole response. The charge path keeps its
+ * fail-closed read in `recordUsage`. This matches the discovery price boundary
+ * in `packages/cloud/api/v1/discovery/pricing.ts`.
+ */
+function resolveCanonicalMcpPrice(mcp: UserMcp | PublicUserMcp): CanonicalMcpPrice {
+  try {
+    return { priceAvailable: true, priceUsd: renderCanonicalMcpPriceUsd(mcp) };
+  } catch (error) {
+    // error-policy:J3 untrusted stored price; one corrupt row becomes an
+    // explicit unavailable price instead of a fake $0 or a failed listing.
+    logger.warn("[UserMcps] unusable stored MCP price", {
+      mcpId: mcp.id,
+      pricingType: mcp.pricing_type,
+      creditsPerRequest: String(mcp.credits_per_request),
+      x402PriceUsd: String(mcp.x402_price_usd),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return UNAVAILABLE_MCP_PRICE;
+  }
+}
+
+/**
+ * Render lifetime creator revenue for a listed row, or `null` when the stored
+ * earnings total is unusable. Same listing-wide blast radius as the price
+ * column, so it degrades the same way instead of failing the response.
+ */
+function resolveCreatorRevenueUsd(mcp: UserMcp | PublicUserMcp): string | null {
+  try {
+    return formatOrganizationCreditUsd(
+      legacyMcpPointsToOrganizationCredits(
+        parseNonNegativeMcpBillingNumber(mcp.total_credits_earned, "total_credits_earned", 0),
+      ),
+    );
+  } catch (error) {
+    // error-policy:J3 untrusted stored earnings total; the row reports an
+    // explicit unavailable revenue instead of a fake $0 or a failed listing.
+    logger.warn("[UserMcps] unusable stored MCP earnings total", {
+      mcpId: mcp.id,
+      totalCreditsEarned: String(mcp.total_credits_earned),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 // ============================================================================
@@ -1007,16 +1074,14 @@ class UserMcpsService {
 
   /** Add the canonical USD price while retaining explicit legacy point fields. */
   toApiMcp(mcp: UserMcp | PublicUserMcp): ApiUserMcp {
+    const price = resolveCanonicalMcpPrice(mcp);
     return {
       ...mcp,
       credit_unit: ORGANIZATION_CREDIT_UNIT,
-      price_usd: formatCanonicalMcpPriceUsd(mcp),
+      price_usd: price.priceUsd,
+      price_available: price.priceAvailable,
       legacy_credits_per_request: mcp.pricing_type === "credits" ? mcp.credits_per_request : null,
-      total_creator_revenue_usd: formatOrganizationCreditUsd(
-        legacyMcpPointsToOrganizationCredits(
-          parseNonNegativeMcpBillingNumber(mcp.total_credits_earned, "total_credits_earned", 0),
-        ),
-      ),
+      total_creator_revenue_usd: resolveCreatorRevenueUsd(mcp),
     };
   }
 
@@ -1068,9 +1133,11 @@ class UserMcpsService {
     const endpoint = this.getPublicProxyUrl(mcp, baseUrl);
 
     let pricingDescription = "Free to use";
-    const priceUsd = formatCanonicalMcpPriceUsd(mcp);
-    if (mcp.pricing_type === "credits") {
-      pricingDescription = `$${priceUsd} in cloud credit per request`;
+    const price = resolveCanonicalMcpPrice(mcp);
+    if (!price.priceAvailable) {
+      pricingDescription = "Price unavailable";
+    } else if (mcp.pricing_type === "credits") {
+      pricingDescription = `$${price.priceUsd} in cloud credit per request`;
     } else if (mcp.pricing_type === "x402") {
       pricingDescription = `$${mcp.x402_price_usd} per request`;
     }
@@ -1092,7 +1159,7 @@ class UserMcpsService {
         type: mcp.pricing_type ?? "free",
         description: pricingDescription,
         creditUnit: ORGANIZATION_CREDIT_UNIT,
-        priceUsd,
+        priceUsd: price.priceUsd ?? undefined,
         pricePerRequest:
           mcp.pricing_type === "credits"
             ? mcp.credits_per_request?.toString()

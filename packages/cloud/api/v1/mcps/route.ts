@@ -5,6 +5,7 @@
  */
 
 import { isIP } from "node:net";
+import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -71,13 +72,16 @@ const createMcpSchema = z
     if (
       value.priceUsd !== undefined &&
       value.creditsPerRequest !== undefined &&
-      Math.abs(value.priceUsd * 100 - value.creditsPerRequest) > 1e-9
+      Math.abs(
+        organizationCreditsToLegacyMcpPoints(value.priceUsd) -
+          value.creditsPerRequest,
+      ) > 1e-9
     ) {
       ctx.addIssue({
         code: "custom",
         path: ["creditsPerRequest"],
         message:
-          "creditsPerRequest must equal priceUsd × 100 when both are supplied",
+          "creditsPerRequest must equal priceUsd converted onto the stored legacy point grid when both are supplied",
       });
     }
   });

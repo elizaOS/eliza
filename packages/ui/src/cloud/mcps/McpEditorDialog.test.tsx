@@ -114,6 +114,30 @@ describe("McpEditorDialog canonical credit pricing", () => {
     ).toBe("2.5");
   });
 
+  it("quantizes a fractional legacy point price instead of seeding a float artifact", () => {
+    const legacyRecord = {
+      ...EDITING_MCP,
+      price_usd: undefined,
+      credits_per_request: "1.1",
+      legacy_credits_per_request: undefined,
+    } as unknown as UserMcpRecord;
+
+    // A bare `points / 100` renders "0.011000000000000001" here.
+    expect(resolveEditorPriceUsd(legacyRecord)).toBe("0.011");
+
+    render(
+      <McpEditorDialog open onOpenChange={vi.fn()} editing={legacyRecord} />,
+    );
+
+    expect(
+      (
+        screen.getByLabelText(
+          "Price per request (USD cloud credit)",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("0.011");
+  });
+
   it("refuses to submit a malformed price instead of publishing it as free", async () => {
     render(
       <McpEditorDialog open onOpenChange={vi.fn()} editing={EDITING_MCP} />,

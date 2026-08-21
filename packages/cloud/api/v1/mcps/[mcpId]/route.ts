@@ -11,6 +11,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * DELETE /api/v1/mcps/[mcpId] - Delete MCP
  */
 
+import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/billing";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { userMcpsService } from "@/lib/services/user-mcps";
@@ -71,13 +72,16 @@ const updateMcpSchema = z
     if (
       value.priceUsd !== undefined &&
       value.creditsPerRequest !== undefined &&
-      Math.abs(value.priceUsd * 100 - value.creditsPerRequest) > 1e-9
+      Math.abs(
+        organizationCreditsToLegacyMcpPoints(value.priceUsd) -
+          value.creditsPerRequest,
+      ) > 1e-9
     ) {
       ctx.addIssue({
         code: "custom",
         path: ["creditsPerRequest"],
         message:
-          "creditsPerRequest must equal priceUsd × 100 when both are supplied",
+          "creditsPerRequest must equal priceUsd converted onto the stored legacy point grid when both are supplied",
       });
     }
   });

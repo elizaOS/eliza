@@ -307,6 +307,22 @@ describe("userMcpsService.create", () => {
       ),
     ).rejects.toMatchObject({ code: "MCP_PRICE_UNIT_CONFLICT" });
   });
+
+  test("rejects a dual-unit price that only agrees before legacy-grid quantization", async () => {
+    // 0.0000151 USD is 0.00151 legacy points in raw float arithmetic but
+    // 0.0015 on the four-digit stored grid, so the service refuses it. The
+    // route boundary must reject the same body (see the cloud-api contract
+    // suite mcps-price-unit-boundary.test.ts) instead of forwarding a 500.
+    await expect(
+      userMcpsService.create(
+        baseCreateParams({
+          slug: "quantization-divergent-price",
+          priceUsd: 0.0000151,
+          creditsPerRequest: 0.00151,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "MCP_PRICE_UNIT_CONFLICT" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -350,6 +366,45 @@ describe("userMcpsService.listByOrganization", () => {
 
     const draftOnly = await userMcpsService.listByOrganization(ORG, { status: "draft" });
     expect(draftOnly.map((m) => m.id)).toEqual([draft.id]);
+  });
+});
+
+describe("userMcpsService.toApiMcp corrupt-row degrade", () => {
+  test("degrades only the corrupt row while the rest of the listing still returns", async () => {
+    const healthy = await userMcpsService.create(
+      baseCreateParams({ slug: "healthy", priceUsd: 0.011 }),
+    );
+    const corrupt = await userMcpsService.create(baseCreateParams({ slug: "corrupt" }));
+    // `'NaN'::numeric` is a valid stored value, so the read boundary must
+    // survive it; the whole owner listing used to throw on this single row.
+    store.set(corrupt.id, { ...corrupt, credits_per_request: "NaN" });
+
+    const listed = await userMcpsService.listByOrganization(ORG);
+    const mapped = listed.map((row) => userMcpsService.toApiMcp(row));
+    const byId = new Map(mapped.map((row) => [row.id, row]));
+
+    expect(mapped).toHaveLength(2);
+    expect(byId.get(healthy.id)).toMatchObject({
+      price_available: true,
+      price_usd: "0.011",
+    });
+    const degraded = byId.get(corrupt.id);
+    expect(degraded?.price_available).toBe(false);
+    // An unavailable price must never render as a healthy free price.
+    expect(degraded?.price_usd).toBeNull();
+    expect(degraded?.price_usd).not.toBe("0");
+  });
+
+  test("degrades a corrupt lifetime earnings total without failing the row", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ slug: "bad-earnings" }));
+    store.set(mcp.id, { ...mcp, total_credits_earned: "NaN" });
+
+    const stored = await userMcpsService.getById(mcp.id);
+    if (!stored) throw new Error("expected the stored MCP row");
+    const api = userMcpsService.toApiMcp(stored);
+
+    expect(api.total_creator_revenue_usd).toBeNull();
+    expect(api.price_available).toBe(true);
   });
 });
 

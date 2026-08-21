@@ -11,6 +11,10 @@
  * selection here (a `containerId` picker is a follow-up tied to that surface).
  */
 
+import {
+  formatOrganizationCreditUsd,
+  legacyMcpPointsToOrganizationCredits,
+} from "@elizaos/cloud-shared/billing";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
@@ -127,7 +131,13 @@ export function resolveEditorPriceUsd(mcp: UserMcpRecord): string {
   const legacyPoints = parseEditorPriceUsd(
     String(mcp.credits_per_request ?? ""),
   );
-  if (legacyPoints !== null) return String(legacyPoints / 100);
+  // Quantize through the shared credit authority: a bare `points / 100` seeds
+  // the field with a float artifact such as "0.011000000000000001".
+  if (legacyPoints !== null) {
+    return formatOrganizationCreditUsd(
+      legacyMcpPointsToOrganizationCredits(legacyPoints),
+    );
+  }
 
   return DEFAULT_CREDIT_PRICE_USD;
 }
