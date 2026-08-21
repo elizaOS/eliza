@@ -192,15 +192,22 @@ function normalizePlatform(value: unknown): string | undefined {
 	return trimmed ? trimmed.toLowerCase() : undefined;
 }
 
-function normalizeDurationMinutes(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-		return Math.floor(value);
+/**
+ * Parse a caller-supplied mute duration.
+ *
+ * Returns `undefined` when nothing was supplied (an untimed mute is intended)
+ * and `null` when a value was supplied but is not a usable duration. The two
+ * cases must stay distinct: flooring a sub-minute value to `0` made it falsy,
+ * and a falsy duration is how this action encodes "mute with no expiry" — so a
+ * request to mute for 30 seconds silently became a permanent mute.
+ */
+function normalizeDurationMinutes(value: unknown): number | undefined | null {
+	if (value === undefined || value === null) return undefined;
+	const parsed = typeof value === "string" ? Number(value) : value;
+	if (typeof parsed !== "number" || !Number.isInteger(parsed) || parsed <= 0) {
+		return null;
 	}
-	if (typeof value === "string") {
-		const parsed = Number(value);
-		if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
-	}
-	return undefined;
+	return parsed;
 }
 
 function getMessageText(message: Memory): string {
@@ -789,6 +796,18 @@ export const roomOpAction: Action = {
 		const explicitRoomId = normalizeString(params.roomId);
 		const chatName = normalizeString(params.chatName);
 		const durationMinutes = normalizeDurationMinutes(params.durationMinutes);
+		if (durationMinutes === null) {
+			return {
+				text: "durationMinutes must be a positive whole number of minutes.",
+				values: { success: false, error: "ROOM_DURATION_INVALID" },
+				data: {
+					actionName: "ROOM",
+					error: "ROOM_DURATION_INVALID",
+					durationMinutes: params.durationMinutes,
+				},
+				success: false,
+			};
+		}
 		const scope = normalizeScope(params.scope);
 
 		if (scope === "server") {
