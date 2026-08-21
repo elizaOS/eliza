@@ -27,6 +27,20 @@ mock.module("../apps", () => ({
       appStore.current = { ...appStore.current, ...data };
       return appStore.current;
     },
+    claimDeploymentStart: async (id: string, data: Partial<AppRow>) => {
+      if (
+        id !== APP_ID ||
+        !appStore.current ||
+        appStore.current.deployment_status === "building" ||
+        appStore.current.deployment_status === "deploying"
+      ) {
+        return undefined;
+      }
+      const update = { ...data, deployment_status: "building" as const };
+      updates.push(update);
+      appStore.current = { ...appStore.current, ...update };
+      return appStore.current;
+    },
   },
 }));
 
@@ -103,5 +117,21 @@ describe("AppDeploymentsService", () => {
       error: null,
       startedAt: "2026-05-19T15:00:00.000Z",
     });
+  });
+
+  test("only one concurrent request claims and enqueues the active deployment", async () => {
+    const service = new AppDeploymentsService();
+    const enqueued: unknown[] = [];
+    service.setDeployEnqueuer(async (payload) => void enqueued.push(payload));
+
+    const settled = await Promise.allSettled([
+      service.createDeployment({ appId: APP_ID, organizationId: ORG_ID, userId: USER_ID }),
+      service.createDeployment({ appId: APP_ID, organizationId: ORG_ID, userId: USER_ID }),
+    ]);
+
+    expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(settled.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(enqueued).toHaveLength(1);
+    expect(updates).toHaveLength(1);
   });
 });
