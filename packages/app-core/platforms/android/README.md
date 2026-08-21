@@ -34,7 +34,6 @@ Install-time normal permissions:
 
 - `android.permission.INTERNET`
 - `android.permission.ACCESS_NETWORK_STATE`
-- `android.permission.MODIFY_AUDIO_SETTINGS`
 - AndroidX's app-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` signature
   permission.
 
