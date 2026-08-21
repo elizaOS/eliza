@@ -3983,6 +3983,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/exchange/route.ts",
   },
+  "POST /api/v1/eliza/plaid/item-connection": {
+    method: "POST",
+    path: "/api/v1/eliza/plaid/item-connection",
+    methodName: "postApiV1ElizaPlaidItemConnection",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/plaid/item-connection/route.ts",
+  },
+  "POST /api/v1/eliza/plaid/item-status": {
+    method: "POST",
+    path: "/api/v1/eliza/plaid/item-status",
+    methodName: "postApiV1ElizaPlaidItemStatus",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/plaid/item-status/route.ts",
+  },
   "POST /api/v1/eliza/plaid/link-token": {
     method: "POST",
     path: "/api/v1/eliza/plaid/link-token",
@@ -4009,6 +4027,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/sync/route.ts",
+  },
+  "POST /api/v1/eliza/plaid/verification-key": {
+    method: "POST",
+    path: "/api/v1/eliza/plaid/verification-key",
+    methodName: "postApiV1ElizaPlaidVerificationKey",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/plaid/verification-key/route.ts",
   },
   "POST /api/v1/embeddings": {
     method: "POST",
@@ -5597,9 +5624,12 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/paypal/refresh": Record<never, never>;
   "POST /api/v1/eliza/paypal/transactions": Record<never, never>;
   "POST /api/v1/eliza/plaid/exchange": Record<never, never>;
+  "POST /api/v1/eliza/plaid/item-connection": Record<never, never>;
+  "POST /api/v1/eliza/plaid/item-status": Record<never, never>;
   "POST /api/v1/eliza/plaid/link-token": Record<never, never>;
   "POST /api/v1/eliza/plaid/revoke": Record<never, never>;
   "POST /api/v1/eliza/plaid/sync": Record<never, never>;
+  "POST /api/v1/eliza/plaid/verification-key": Record<never, never>;
   "POST /api/v1/embeddings": Record<never, never>;
   "POST /api/v1/extract": Record<never, never>;
   "POST /api/v1/files": Record<never, never>;
@@ -6196,9 +6226,12 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/paypal/refresh": never;
   "POST /api/v1/eliza/paypal/transactions": never;
   "POST /api/v1/eliza/plaid/exchange": never;
+  "POST /api/v1/eliza/plaid/item-connection": never;
+  "POST /api/v1/eliza/plaid/item-status": never;
   "POST /api/v1/eliza/plaid/link-token": never;
   "POST /api/v1/eliza/plaid/revoke": never;
   "POST /api/v1/eliza/plaid/sync": never;
+  "POST /api/v1/eliza/plaid/verification-key": never;
   "POST /api/v1/embeddings": never;
   "POST /api/v1/extract": never;
   "POST /api/v1/files": never;
@@ -10444,6 +10477,24 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaPlaidItemConnection<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/item-connection"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/plaid/item-connection", TResponse>(
+      "POST /api/v1/eliza/plaid/item-connection",
+      options,
+    );
+  }
+
+  postApiV1ElizaPlaidItemStatus<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/item-status"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/plaid/item-status", TResponse>(
+      "POST /api/v1/eliza/plaid/item-status",
+      options,
+    );
+  }
+
   postApiV1ElizaPlaidLinkToken<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/link-token"> = {},
   ): Promise<TResponse> {
@@ -10467,6 +10518,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/eliza/plaid/sync", TResponse>(
       "POST /api/v1/eliza/plaid/sync",
+      options,
+    );
+  }
+
+  postApiV1ElizaPlaidVerificationKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/verification-key"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/plaid/verification-key", TResponse>(
+      "POST /api/v1/eliza/plaid/verification-key",
       options,
     );
   }
@@ -14329,6 +14389,18 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/eliza/plaid/exchange", options);
   }
 
+  postApiV1ElizaPlaidItemConnectionRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/item-connection"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/plaid/item-connection", options);
+  }
+
+  postApiV1ElizaPlaidItemStatusRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/item-status"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/plaid/item-status", options);
+  }
+
   postApiV1ElizaPlaidLinkTokenRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/link-token"> = {},
   ): Promise<Response> {
@@ -14345,6 +14417,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/eliza/plaid/sync", options);
+  }
+
+  postApiV1ElizaPlaidVerificationKeyRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/verification-key"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/plaid/verification-key", options);
   }
 
   postApiV1EmbeddingsRaw(

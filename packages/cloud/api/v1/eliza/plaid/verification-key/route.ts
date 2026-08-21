@@ -1,11 +1,6 @@
 /**
- * POST /api/v1/eliza/plaid/webhook-key
- *
- * Returns the JWK for a Plaid webhook-verification key id so the Agent
- * runtime can verify the ES256 `Plaid-Verification` JWT on webhooks it
- * receives directly. Only the key *lookup* requires the Plaid client
- * credentials held by this deployment; the signature check happens at the
- * webhook receiver.
+ * Returns an authenticated Plaid JWK for local verification of a signed
+ * webhook delivery; expired upstream keys are rejected before this boundary.
  */
 
 import { Hono } from "hono";
@@ -16,32 +11,32 @@ import {
   AgentPlaidConnectorError,
   getPlaidWebhookVerificationKey,
 } from "@/lib/services/agent-plaid-connector";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-const requestSchema = z.object({
-  keyId: z.string().trim().min(1),
-});
+const requestSchema = z.object({ keyId: z.string().trim().min(1) }).strict();
 
 app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    const decoded = await decodeRequestJson(c.req);
+    if (!decoded.ok) {
+      // error-policy:J3 malformed JSON is explicit invalid request input.
+      return c.json({ error: "Invalid JSON body." }, 400);
+    }
+    const parsed = requestSchema.safeParse(decoded.value);
     if (!parsed.success) {
       return c.json(
         { error: "keyId is required.", details: parsed.error.issues },
         400,
       );
     }
-    const result = await getPlaidWebhookVerificationKey(parsed.data);
-    return c.json(result);
+    return c.json(await getPlaidWebhookVerificationKey(parsed.data));
   } catch (error) {
     if (error instanceof AgentPlaidConnectorError) {
       return c.json(
-        { error: error.message, errorCode: error.errorCode },
+        { error: error.message, code: error.code },
         error.status as 400,
       );
     }

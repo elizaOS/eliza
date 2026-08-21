@@ -351,6 +351,9 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/money/recurring" },
   { type: "POST", path: "/api/lifeops/money/plaid/link-token" },
   { type: "POST", path: "/api/lifeops/money/plaid/complete" },
+  { type: "POST", path: "/api/lifeops/money/plaid/update-link-token" },
+  { type: "POST", path: "/api/lifeops/money/plaid/update-complete" },
+  { type: "POST", path: "/api/lifeops/money/plaid/disconnect" },
   { type: "POST", path: "/api/lifeops/money/plaid/sync" },
   {
     type: "POST",

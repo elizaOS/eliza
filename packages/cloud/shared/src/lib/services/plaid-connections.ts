@@ -11,10 +11,13 @@ import type {
 import { logger } from "../utils/logger";
 import {
   AgentPlaidConnectorError,
+  createPlaidLinkToken,
   exchangePlaidPublicToken,
   getPlaidEnvironment,
   getPlaidItemInfo,
+  getPlaidItemStatus,
   type PlaidInstitutionInfo,
+  type PlaidItemStatus,
   type PlaidTransactionDelta,
   removePlaidItem,
   syncPlaidTransactions,
@@ -44,6 +47,11 @@ interface PlaidConnectionStore {
     organizationId: string,
     vendor: string,
   ): Promise<VendorConnection | null>;
+  findActiveByVendorLabelForOrganization(
+    organizationId: string,
+    vendor: string,
+    label: string,
+  ): Promise<VendorConnection | null>;
   getOrgBoundAccessToken(connection: VendorConnection): Promise<string>;
   deleteActiveByIdForOrganization(
     id: string,
@@ -53,8 +61,15 @@ interface PlaidConnectionStore {
 }
 
 interface PlaidProtocol {
+  createLinkToken(args: {
+    organizationId: string;
+    userId: string;
+    accessToken?: string;
+    webhookUrl?: string;
+  }): Promise<{ linkToken: string; expiration: string; environment: PlaidEnvironment }>;
   exchange(publicToken: string): Promise<{ accessToken: string; itemId: string }>;
   itemInfo(accessToken: string): Promise<PlaidInstitutionInfo>;
+  itemStatus(accessToken: string): Promise<PlaidItemStatus>;
   sync(args: {
     accessToken: string;
     cursor?: string;
@@ -75,8 +90,10 @@ export class PlaidConnectionError extends Error {
 }
 
 const defaultProtocol: PlaidProtocol = {
+  createLinkToken: (args) => createPlaidLinkToken(args),
   exchange: (publicToken) => exchangePlaidPublicToken({ publicToken }),
   itemInfo: (accessToken) => getPlaidItemInfo({ accessToken }),
+  itemStatus: (accessToken) => getPlaidItemStatus({ accessToken }),
   sync: (args) => syncPlaidTransactions(args),
   remove: (accessToken, environment) => removePlaidItem({ accessToken, environment }),
   environment: getPlaidEnvironment,
@@ -88,8 +105,46 @@ export class PlaidConnectionService {
     private readonly protocol: PlaidProtocol = defaultProtocol,
   ) {}
 
+  async createUpdateLinkToken(args: {
+    organizationId: string;
+    connectionId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<{ linkToken: string; expiration: string; environment: PlaidEnvironment }> {
+    const connection = await this.requireConnection(args.organizationId, args.connectionId);
+    const accessToken = await this.getAccessToken(connection);
+    return this.protocol.createLinkToken({ ...args, accessToken });
+  }
+
+  async status(args: {
+    organizationId: string;
+    connectionId: string;
+  }): Promise<PlaidItemStatus & { connectionId: string }> {
+    const connection = await this.requireConnection(args.organizationId, args.connectionId);
+    const status = await this.protocol.itemStatus(await this.getAccessToken(connection));
+    return { ...status, connectionId: connection.id };
+  }
+
+  /** Resolves Plaid's signed webhook Item id without contacting Plaid or exposing it locally. */
+  async resolveItem(args: {
+    organizationId: string;
+    itemId: string;
+  }): Promise<{ connectionId: string }> {
+    const connection = await this.store.findActiveByVendorLabelForOrganization(
+      args.organizationId,
+      PLAID_VENDOR,
+      args.itemId,
+    );
+    if (!connection) {
+      throw new PlaidConnectionError(404, "Plaid connection not found.");
+    }
+    this.requireStoredEnvironment(connection);
+    return { connectionId: connection.id };
+  }
+
   async exchange(args: { organizationId: string; publicToken: string }): Promise<{
     connectionId: string;
+    connectionCreated: boolean;
     institution: PlaidInstitutionInfo;
     environment: PlaidEnvironment;
   }> {
@@ -97,6 +152,11 @@ export class PlaidConnectionService {
     const exchanged = await this.protocol.exchange(args.publicToken);
     try {
       const institution = await this.protocol.itemInfo(exchanged.accessToken);
+      const existing = await this.store.findActiveByVendorLabelForOrganization(
+        args.organizationId,
+        PLAID_VENDOR,
+        exchanged.itemId,
+      );
       const connection = await this.store.upsertOrgBoundAccessToken({
         organizationId: args.organizationId,
         vendor: PLAID_VENDOR,
@@ -110,7 +170,12 @@ export class PlaidConnectionService {
           plaid_institution: institution,
         },
       });
-      return { connectionId: connection.id, institution, environment };
+      return {
+        connectionId: connection.id,
+        connectionCreated: existing === null,
+        institution,
+        environment,
+      };
     } catch (error) {
       try {
         await this.protocol.remove(exchanged.accessToken);

@@ -116,6 +116,19 @@ describe("verifyPlaidWebhook", () => {
     ).rejects.toMatchObject({ status: 401 });
   });
 
+  it("rejects a correctly signed webhook when Plaid marks the JWK expired", async () => {
+    const signed = await signWebhook({ body: SYNC_BODY });
+    await expect(
+      verifyPlaidWebhook({
+        rawBody: signed.rawBody,
+        verificationJwt: signed.verificationJwt,
+        getKey: async () => ({
+          key: { ...signed.jwk, expired_at: Math.floor(Date.now() / 1000) },
+        }),
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
   it("rejects a stale (replayed) webhook with 401", async () => {
     const signed = await signWebhook({
       body: SYNC_BODY,
@@ -211,7 +224,8 @@ describe("classifyPlaidWebhook", () => {
     ["ITEM", "PENDING_EXPIRATION", "reauth"],
     ["ITEM", "LOGIN_REPAIRED", "reauth"],
     ["ITEM", "USER_PERMISSION_REVOKED", "disconnect"],
-    ["ITEM", "PENDING_DISCONNECT", "disconnect"],
+    ["ITEM", "PENDING_DISCONNECT", "reauth"],
+    ["ITEM", "NEW_ACCOUNTS_AVAILABLE", "none"],
     ["ITEM", "WEBHOOK_UPDATE_ACKNOWLEDGED", "none"],
     ["ASSETS", "PRODUCT_READY", "none"],
   ];

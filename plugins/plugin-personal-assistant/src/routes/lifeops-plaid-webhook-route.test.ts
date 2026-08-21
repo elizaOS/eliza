@@ -55,10 +55,15 @@ async function initSigningKey(): Promise<void> {
     ["sign", "verify"],
   );
   privateKey = keyPair.privateKey;
-  publicJwk = (await subtle.exportKey("jwk", keyPair.publicKey)) as Record<
-    string,
-    unknown
-  >;
+  publicJwk = {
+    ...((await subtle.exportKey("jwk", keyPair.publicKey)) as Record<
+      string,
+      unknown
+    >),
+    alg: "ES256",
+    kid: "route-test-key",
+    use: "sig",
+  };
 }
 
 async function signWebhook(
@@ -110,18 +115,19 @@ async function startCloudStub(): Promise<CloudStub> {
     req.on("end", () => {
       const path = req.url ?? "";
       calls.push(path);
-      const respond = (payload: unknown): void => {
-        res.writeHead(200, { "content-type": "application/json" });
+      const respond = (payload: unknown, status = 200): void => {
+        res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(payload));
       };
-      if (path.endsWith("/eliza/plaid/webhook-key")) {
-        respond({ key: publicJwk });
+      if (path.endsWith("/eliza/plaid/verification-key")) {
+        respond(publicJwk);
         return;
       }
       if (path.endsWith("/eliza/plaid/exchange")) {
         respond({
-          accessToken: "access-route-item",
-          itemId: "route-item-1",
+          connectionId: "11111111-1111-4111-8111-111111111111",
+          connectionCreated: true,
+          environment: "sandbox",
           institution: {
             institutionId: "ins_route",
             institutionName: "Route Test Bank",
@@ -136,6 +142,19 @@ async function startCloudStub(): Promise<CloudStub> {
               },
             ],
           },
+        });
+        return;
+      }
+      if (path.endsWith("/eliza/plaid/item-connection")) {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          itemId?: string;
+        };
+        if (body.itemId !== "route-item-1") {
+          respond({ error: "Plaid connection not found." }, 404);
+          return;
+        }
+        respond({
+          connectionId: "11111111-1111-4111-8111-111111111111",
         });
         return;
       }
@@ -313,10 +332,11 @@ describe("Plaid webhook production route (real runtime + HTTP key lookup)", () =
       sourceId,
     });
     // Verification key lookup happened, then exactly one sync dispatch. The
-    // exact path pins the client's URL join: base ends at /api, the client
-    // contributes the single /v1 segment.
+    // Exact path pins the generated SDK client's canonical /api/v1 join.
     expect(
-      stub.calls.filter((path) => path === "/api/v1/eliza/plaid/webhook-key"),
+      stub.calls.filter(
+        (path) => path === "/api/v1/eliza/plaid/verification-key",
+      ),
     ).toHaveLength(1);
     expect(
       stub.calls.filter((path) => path.endsWith("/eliza/plaid/sync")),

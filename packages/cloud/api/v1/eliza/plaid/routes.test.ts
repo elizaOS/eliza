@@ -30,6 +30,33 @@ const sync = mock(async () => ({
   hasMore: false,
 }));
 const revoke = mock(async () => ({ revoked: true as const }));
+const createUpdateLinkToken = mock(async () => ({
+  linkToken: "update-link-token",
+  expiration: "2026-08-22T00:00:00.000Z",
+  environment: "sandbox" as const,
+}));
+const status = mock(async () => ({
+  connectionId: CONNECTION_ID,
+  itemId: "item-1",
+  institutionId: "ins-1",
+  error: null,
+  consentExpirationTime: null,
+}));
+const resolveItem = mock(async () => ({ connectionId: CONNECTION_ID }));
+const createPlaidLinkToken = mock(async () => ({
+  linkToken: "new-link-token",
+  expiration: "2026-08-22T00:00:00.000Z",
+  environment: "sandbox" as const,
+}));
+const getPlaidWebhookVerificationKey = mock(async () => ({
+  alg: "ES256" as const,
+  crv: "P-256" as const,
+  kid: "kid-1",
+  kty: "EC" as const,
+  use: "sig" as const,
+  x: "x-coordinate",
+  y: "y-coordinate",
+}));
 
 class PlaidConnectionError extends Error {
   constructor(
@@ -55,20 +82,37 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 }));
 mock.module("@/lib/services/plaid-connections", () => ({
   PlaidConnectionError,
-  plaidConnectionService: { exchange, sync, revoke },
+  plaidConnectionService: {
+    createUpdateLinkToken,
+    exchange,
+    resolveItem,
+    revoke,
+    status,
+    sync,
+  },
 }));
 mock.module("@/lib/services/agent-plaid-connector", () => ({
   AgentPlaidConnectorError,
+  createPlaidLinkToken,
+  getPlaidWebhookVerificationKey,
 }));
 
 const [
   { default: exchangeRoute },
   { default: syncRoute },
   { default: revokeRoute },
+  { default: linkTokenRoute },
+  { default: itemStatusRoute },
+  { default: itemConnectionRoute },
+  { default: verificationKeyRoute },
 ] = await Promise.all([
   import("./exchange/route"),
   import("./sync/route"),
   import("./revoke/route"),
+  import("./link-token/route"),
+  import("./item-status/route"),
+  import("./item-connection/route"),
+  import("./verification-key/route"),
 ]);
 
 describe("Plaid credential-opaque routes", () => {
@@ -77,6 +121,11 @@ describe("Plaid credential-opaque routes", () => {
     exchange.mockClear();
     sync.mockClear();
     revoke.mockClear();
+    createUpdateLinkToken.mockClear();
+    status.mockClear();
+    resolveItem.mockClear();
+    createPlaidLinkToken.mockClear();
+    getPlaidWebhookVerificationKey.mockClear();
   });
 
   test("exchange returns no Item credential and passes authenticated org scope", async () => {
@@ -109,7 +158,15 @@ describe("Plaid credential-opaque routes", () => {
   });
 
   test("rejects malformed JSON explicitly without invoking Plaid", async () => {
-    for (const route of [exchangeRoute, syncRoute, revokeRoute]) {
+    for (const route of [
+      exchangeRoute,
+      syncRoute,
+      revokeRoute,
+      linkTokenRoute,
+      itemStatusRoute,
+      itemConnectionRoute,
+      verificationKeyRoute,
+    ]) {
       const response = await route.request("/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -123,6 +180,63 @@ describe("Plaid credential-opaque routes", () => {
     expect(exchange).not.toHaveBeenCalled();
     expect(sync).not.toHaveBeenCalled();
     expect(revoke).not.toHaveBeenCalled();
+    expect(createUpdateLinkToken).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(resolveItem).not.toHaveBeenCalled();
+    expect(getPlaidWebhookVerificationKey).not.toHaveBeenCalled();
+  });
+
+  test("scopes update, status, and webhook Item resolution to the authenticated org", async () => {
+    const updateResponse = await linkTokenRoute.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        connectionId: CONNECTION_ID,
+        webhookUrl: "https://agent.example/plaid/webhook",
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+    expect(createUpdateLinkToken).toHaveBeenCalledWith({
+      organizationId: ORGANIZATION_ID,
+      userId: "00000000-0000-4000-8000-000000000002",
+      connectionId: CONNECTION_ID,
+      webhookUrl: "https://agent.example/plaid/webhook",
+    });
+
+    const statusResponse = await itemStatusRoute.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectionId: CONNECTION_ID }),
+    });
+    expect(statusResponse.status).toBe(200);
+    expect(status).toHaveBeenCalledWith({
+      organizationId: ORGANIZATION_ID,
+      connectionId: CONNECTION_ID,
+    });
+
+    const resolveResponse = await itemConnectionRoute.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId: "item-1" }),
+    });
+    expect(resolveResponse.status).toBe(200);
+    expect(resolveItem).toHaveBeenCalledWith({
+      organizationId: ORGANIZATION_ID,
+      itemId: "item-1",
+    });
+  });
+
+  test("returns only a non-expired verification key through the authenticated route", async () => {
+    const response = await verificationKeyRoute.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyId: "kid-1" }),
+    });
+    expect(response.status).toBe(200);
+    expect(getPlaidWebhookVerificationKey).toHaveBeenCalledWith({
+      keyId: "kid-1",
+    });
+    expect(await response.json()).toMatchObject({ kid: "kid-1", alg: "ES256" });
   });
 
   test("sync and revoke pass only opaque id plus authenticated org scope", async () => {

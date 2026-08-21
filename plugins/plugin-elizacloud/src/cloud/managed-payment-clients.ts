@@ -142,6 +142,7 @@ export interface PlaidLinkTokenResponse {
 
 export interface PlaidExchangeResponse {
   connectionId: string;
+  connectionCreated: boolean;
   environment: "sandbox" | "development" | "production";
   institution: {
     institutionId: string;
@@ -163,6 +164,29 @@ export interface PlaidSyncResponse {
   removed: Array<{ transaction_id: string }>;
   nextCursor: string;
   hasMore: boolean;
+}
+
+export interface PlaidItemStatusResponse {
+  connectionId: string;
+  itemId: string;
+  institutionId: string | null;
+  error: { code: string; message: string | null } | null;
+  consentExpirationTime: string | null;
+}
+
+export interface PlaidItemConnectionResponse {
+  connectionId: string;
+}
+
+export interface PlaidWebhookVerificationKey {
+  [key: string]: unknown;
+  alg: "ES256";
+  crv: "P-256";
+  kid: string;
+  kty: "EC";
+  use: "sig";
+  x: string;
+  y: string;
 }
 
 export interface PlaidTransactionDto {
@@ -199,6 +223,7 @@ const plaidLinkTokenResponseSchema: z.ZodType<PlaidLinkTokenResponse> = z.object
 
 const plaidExchangeResponseSchema: z.ZodType<PlaidExchangeResponse> = z.object({
   connectionId: z.string().uuid(),
+  connectionCreated: z.boolean(),
   environment: z.enum(["sandbox", "development", "production"]),
   institution: z.object({
     institutionId: z.string().min(1),
@@ -234,6 +259,25 @@ const plaidSyncResponseSchema: z.ZodType<PlaidSyncResponse> = z.object({
 });
 
 const plaidRevokeResponseSchema = z.object({ revoked: z.literal(true) });
+const plaidItemConnectionResponseSchema: z.ZodType<PlaidItemConnectionResponse> = z.object({
+  connectionId: z.string().uuid(),
+});
+const plaidItemStatusResponseSchema: z.ZodType<PlaidItemStatusResponse> = z.object({
+  connectionId: z.string().uuid(),
+  itemId: z.string().min(1),
+  institutionId: z.string().nullable(),
+  error: z.object({ code: z.string().min(1), message: z.string().nullable() }).nullable(),
+  consentExpirationTime: z.string().nullable(),
+});
+const plaidWebhookVerificationKeySchema: z.ZodType<PlaidWebhookVerificationKey> = z.object({
+  alg: z.literal("ES256"),
+  crv: z.literal("P-256"),
+  kid: z.string().min(1),
+  kty: z.literal("EC"),
+  use: z.literal("sig"),
+  x: z.string().min(1),
+  y: z.string().min(1),
+});
 
 export class PlaidManagedClient {
   constructor(
@@ -253,10 +297,13 @@ export class PlaidManagedClient {
     return this.configSource().configured;
   }
 
-  async createLinkToken(): Promise<PlaidLinkTokenResponse> {
+  async createLinkToken(args: {
+    connectionId?: string;
+    webhookUrl?: string;
+  } = {}): Promise<PlaidLinkTokenResponse> {
     const config = this.requireConfig();
     const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidLinkTokenRaw({
-      json: {},
+      json: args,
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
     });
     return readPlaidJson(response, plaidLinkTokenResponseSchema, [config.apiKey]);
@@ -302,6 +349,45 @@ export class PlaidManagedClient {
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
     });
     return readPlaidJson(response, plaidRevokeResponseSchema, [config.apiKey]);
+  }
+
+  async getItemStatus(args: {
+    connectionId: string;
+  }): Promise<PlaidItemStatusResponse> {
+    const config = this.requireConfig();
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidItemStatusRaw({
+      json: args,
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return readPlaidJson(response, plaidItemStatusResponseSchema, [config.apiKey]);
+  }
+
+  async resolveItemConnection(args: {
+    itemId: string;
+  }): Promise<PlaidItemConnectionResponse> {
+    const config = this.requireConfig();
+    const response = await this.cloudClient(
+      config,
+    ).routes.postApiV1ElizaPlaidItemConnectionRaw({
+      json: args,
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return readPlaidJson(response, plaidItemConnectionResponseSchema, [
+      config.apiKey,
+    ]);
+  }
+
+  async getWebhookVerificationKey(args: {
+    keyId: string;
+  }): Promise<{ key: PlaidWebhookVerificationKey }> {
+    const config = this.requireConfig();
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidVerificationKeyRaw({
+      json: args,
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return {
+      key: await readPlaidJson(response, plaidWebhookVerificationKeySchema, [config.apiKey]),
+    };
   }
 
   private cloudClient(

@@ -725,7 +725,13 @@ export class FinancesRepository {
     added: LifeOpsPaymentTransaction[];
     modified: LifeOpsPaymentTransaction[];
     removedExternalIds: string[];
-  }): Promise<{ inserted: number; skipped: number; transactionCount: number }> {
+  }): Promise<{
+    inserted: number;
+    skipped: number;
+    modified: number;
+    removed: number;
+    transactionCount: number;
+  }> {
     return withTransaction(this.runtime, async (tx) => {
       const sourceRows = await executeRawSqlTx(
         tx,
@@ -759,21 +765,37 @@ export class FinancesRepository {
       }
       let inserted = 0;
       let skipped = 0;
+      let modified = 0;
+      const removedIds = new Set(args.removedExternalIds);
+      const removedAppliedIds = new Set<string>();
       // Plaid may replace a transaction with a new id while retaining the
       // same local uniqueness tuple. Remove tombstoned rows first so their
       // replacements can be inserted in this same atomic cursor window.
-      for (const externalId of new Set(args.removedExternalIds)) {
-        await executeRawSqlTx(
+      for (const externalId of removedIds) {
+        const deleted = await executeRawSqlTx(
           tx,
           `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
             WHERE agent_id = ${sqlQuote(args.source.agentId)}
               AND source_id = ${sqlQuote(args.source.id)}
-              AND external_id = ${sqlQuote(externalId)}`,
+              AND external_id = ${sqlQuote(externalId)}
+            RETURNING id`,
         );
+        if (deleted.length > 0) {
+          removedAppliedIds.add(externalId);
+        }
       }
       for (const transaction of [...args.added, ...args.modified]) {
         if (!transaction.externalId) {
           throw new Error("Plaid transaction is missing its external id.");
+        }
+        // A removal in the same cursor window is the terminal state. Do not
+        // resurrect an earlier added/modified representation collected from a
+        // preceding pagination page.
+        if (removedIds.has(transaction.externalId)) {
+          if (args.added.includes(transaction)) {
+            removedAppliedIds.add(transaction.externalId);
+          }
+          continue;
         }
         const existing = await executeRawSqlTx(
           tx,
@@ -794,6 +816,10 @@ export class FinancesRepository {
         if (args.added.includes(transaction)) {
           if (existing.length === 0) inserted += 1;
           else skipped += 1;
+        } else if (existing.length === 0) {
+          inserted += 1;
+        } else {
+          modified += 1;
         }
       }
       const countRows = await executeRawSqlTx(
@@ -807,7 +833,13 @@ export class FinancesRepository {
         tx,
         paymentSourceUpsertSql({ ...args.source, transactionCount }),
       );
-      return { inserted, skipped, transactionCount };
+      return {
+        inserted,
+        skipped,
+        modified,
+        removed: removedAppliedIds.size,
+        transactionCount,
+      };
     });
   }
 

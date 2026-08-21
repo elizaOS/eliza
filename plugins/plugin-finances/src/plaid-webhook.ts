@@ -14,7 +14,7 @@
  * sync, needs_attention marking, disconnect cleanup) are idempotent.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { fail } from "./finance-normalize.ts";
 
 const WEBHOOK_MAX_AGE_SECONDS = 5 * 60;
@@ -57,14 +57,13 @@ const SYNC_CODES = new Set([
 const REAUTH_CODES = new Set([
   "ERROR",
   "PENDING_EXPIRATION",
+  "PENDING_DISCONNECT",
   "LOGIN_REPAIRED",
-  "NEW_ACCOUNTS_AVAILABLE",
 ]);
 
 const DISCONNECT_CODES = new Set([
   "USER_PERMISSION_REVOKED",
   "USER_ACCOUNT_REVOKED",
-  "PENDING_DISCONNECT",
 ]);
 
 /** Maps a verified webhook onto the action the finance back-end should take. */
@@ -132,7 +131,9 @@ export interface VerifyPlaidWebhookArgs {
   /** The `Plaid-Verification` request header (compact ES256 JWT). */
   verificationJwt: string;
   /** Key lookup by JWT `kid`, normally PlaidManagedClient.getWebhookVerificationKey. */
-  getKey: (keyId: string) => Promise<{ key: Record<string, unknown> }>;
+  getKey: (keyId: string) => Promise<{
+    key: Record<string, unknown> & { expired_at?: number | null };
+  }>;
   /** Injected clock for deterministic tests. */
   nowMs?: number;
 }
@@ -158,6 +159,9 @@ export async function verifyPlaidWebhook(
     fail(401, "Plaid webhook JWT is missing a key id.");
   }
   const { key } = await args.getKey(header.kid);
+  if (key.expired_at !== undefined && key.expired_at !== null) {
+    fail(401, "Plaid webhook verification key is expired.");
+  }
   let cryptoKey: CryptoKey;
   try {
     cryptoKey = await globalThis.crypto.subtle.importKey(
@@ -200,7 +204,12 @@ export async function verifyPlaidWebhook(
   const actualBodyHash = createHash("sha256")
     .update(rawBodyBytes)
     .digest("hex");
-  if (actualBodyHash !== expectedBodyHash) {
+  const actualHashBytes = Buffer.from(actualBodyHash, "utf8");
+  const expectedHashBytes = Buffer.from(expectedBodyHash, "utf8");
+  if (
+    actualHashBytes.length !== expectedHashBytes.length ||
+    !timingSafeEqual(actualHashBytes, expectedHashBytes)
+  ) {
     fail(401, "Plaid webhook body hash does not match the signed hash.");
   }
   return parsePayloadBody(rawBodyBytes.toString("utf8"));

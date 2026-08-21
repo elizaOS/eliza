@@ -74,7 +74,18 @@ const syncResponseSchema = z.object({
 });
 
 const itemResponseSchema = z.object({
-  item: z.object({ institution_id: z.string().min(1).nullable() }),
+  item: z.object({
+    item_id: z.string().min(1),
+    institution_id: z.string().min(1).nullable(),
+    error: z
+      .object({
+        error_code: z.string().min(1),
+        error_message: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+    consent_expiration_time: z.string().nullable().optional(),
+  }),
 });
 
 const institutionResponseSchema = z.object({
@@ -94,6 +105,20 @@ const accountsResponseSchema = z.object({
 });
 
 const removeResponseSchema = z.object({ request_id: z.string().min(1) });
+
+const webhookKeyResponseSchema = z.object({
+  key: z.object({
+    alg: z.literal("ES256"),
+    crv: z.literal("P-256"),
+    kid: z.string().min(1),
+    kty: z.literal("EC"),
+    use: z.literal("sig"),
+    x: z.string().min(1),
+    y: z.string().min(1),
+    created_at: z.number().int(),
+    expired_at: z.number().int().nullable(),
+  }),
+});
 
 const plaidErrorResponseSchema = z.object({
   error_code: z.string().optional(),
@@ -240,6 +265,10 @@ export interface CreateLinkTokenRequest {
   language?: string;
   /** ISO 3166-1 alpha-2 country list. Defaults to ["US"]. */
   countryCodes?: string[];
+  /** Existing Item credential for Plaid Link update mode. */
+  accessToken?: string;
+  /** Public webhook receiver registered on the Item. */
+  webhookUrl?: string;
 }
 
 export interface CreateLinkTokenResult {
@@ -253,19 +282,20 @@ export async function createPlaidLinkToken(
   request: CreateLinkTokenRequest,
 ): Promise<CreateLinkTokenResult> {
   const config = requireConfig();
-  const data = await plaidPost(
-    config,
-    "/link/token/create",
-    {
-      user: { client_user_id: request.userId },
-      client_name: request.clientName ?? "Agent",
-      products: ["transactions"],
-      transactions: { days_requested: 730 },
-      country_codes: request.countryCodes ?? ["US"],
-      language: request.language ?? "en",
-    },
-    linkTokenResponseSchema,
-  );
+  const requestBody: Record<string, unknown> = {
+    user: { client_user_id: request.userId },
+    client_name: request.clientName ?? "Agent",
+    country_codes: request.countryCodes ?? ["US"],
+    language: request.language ?? "en",
+  };
+  if (request.accessToken) {
+    requestBody.access_token = request.accessToken;
+  } else {
+    requestBody.products = ["transactions"];
+    requestBody.transactions = { days_requested: 730 };
+  }
+  if (request.webhookUrl) requestBody.webhook = request.webhookUrl;
+  const data = await plaidPost(config, "/link/token/create", requestBody, linkTokenResponseSchema);
   return {
     linkToken: data.link_token,
     expiration: data.expiration,
@@ -425,6 +455,61 @@ export async function getPlaidItemInfo(args: {
       subtype: account.subtype,
     })),
   };
+}
+
+export interface PlaidItemStatus {
+  itemId: string;
+  institutionId: string | null;
+  error: { code: string; message: string | null } | null;
+  consentExpirationTime: string | null;
+}
+
+export async function getPlaidItemStatus(args: { accessToken: string }): Promise<PlaidItemStatus> {
+  const config = requireConfig();
+  const result = await plaidPost(
+    config,
+    "/item/get",
+    { access_token: args.accessToken },
+    itemResponseSchema,
+  );
+  return {
+    itemId: result.item.item_id,
+    institutionId: result.item.institution_id,
+    error: result.item.error
+      ? {
+          code: result.item.error.error_code,
+          message: result.item.error.error_message ?? null,
+        }
+      : null,
+    consentExpirationTime: result.item.consent_expiration_time ?? null,
+  };
+}
+
+export interface PlaidWebhookVerificationKey {
+  alg: "ES256";
+  crv: "P-256";
+  kid: string;
+  kty: "EC";
+  use: "sig";
+  x: string;
+  y: string;
+}
+
+export async function getPlaidWebhookVerificationKey(args: {
+  keyId: string;
+}): Promise<PlaidWebhookVerificationKey> {
+  const config = requireConfig();
+  const result = await plaidPost(
+    config,
+    "/webhook_verification_key/get",
+    { key_id: args.keyId },
+    webhookKeyResponseSchema,
+  );
+  if (result.key.expired_at !== null) {
+    throw new AgentPlaidConnectorError(401, "Plaid webhook key is expired.", "EXPIRED_KEY");
+  }
+  const { created_at: _createdAt, expired_at: _expiredAt, ...key } = result.key;
+  return key;
 }
 
 export function isPlaidConfigured(): boolean {

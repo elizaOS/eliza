@@ -18,7 +18,6 @@ import {
   type PlaidLinkTokenResponse,
   PlaidManagedClient,
   PlaidManagedClientError,
-  type PlaidRemoveItemResponse,
   type PlaidSyncResponse,
   type PlaidTransactionDto,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
@@ -70,24 +69,23 @@ class FakePlaidClient extends PlaidManagedClient {
   pages = new Map<string, PlaidSyncResponse>();
   failNextSyncWith: PlaidManagedClientError | null = null;
   itemStatus: PlaidItemStatusResponse | null = null;
-  removeCalls: string[] = [];
-  removeResult: PlaidRemoveItemResponse | PlaidManagedClientError = {
-    removed: true,
-    alreadyRemoved: false,
-  };
-  lastLinkTokenArgs: { accessToken?: string } | null = null;
+  revokeCalls: string[] = [];
+  revokeResult: { revoked: true } | PlaidManagedClientError = { revoked: true };
+  lastLinkTokenArgs: { connectionId?: string; webhookUrl?: string } | null =
+    null;
   exchangeResult: PlaidExchangeResponse | null = null;
+  itemConnections = new Map<string, string>();
 
   constructor() {
     super(() => STUB_CONFIG);
   }
 
   override async createLinkToken(
-    args: { accessToken?: string } = {},
+    args: { connectionId?: string; webhookUrl?: string } = {},
   ): Promise<PlaidLinkTokenResponse> {
     this.lastLinkTokenArgs = args;
     return {
-      linkToken: args.accessToken ? "link-update-1" : "link-new-1",
+      linkToken: args.connectionId ? "link-update-1" : "link-new-1",
       expiration: new Date(Date.now() + 600_000).toISOString(),
       environment: "sandbox",
     };
@@ -103,7 +101,7 @@ class FakePlaidClient extends PlaidManagedClient {
   }
 
   override async syncTransactions(args: {
-    accessToken: string;
+    connectionId: string;
     cursor?: string;
     count?: number;
   }): Promise<PlaidSyncResponse> {
@@ -124,7 +122,7 @@ class FakePlaidClient extends PlaidManagedClient {
   }
 
   override async getItemStatus(_args: {
-    accessToken: string;
+    connectionId: string;
   }): Promise<PlaidItemStatusResponse> {
     if (!this.itemStatus) {
       throw new Error("itemStatus not scripted");
@@ -132,31 +130,44 @@ class FakePlaidClient extends PlaidManagedClient {
     return this.itemStatus;
   }
 
-  override async removeItem(args: {
-    accessToken: string;
-  }): Promise<PlaidRemoveItemResponse> {
-    this.removeCalls.push(args.accessToken);
-    if (this.removeResult instanceof PlaidManagedClientError) {
-      throw this.removeResult;
+  override async resolveItemConnection(args: {
+    itemId: string;
+  }): Promise<{ connectionId: string }> {
+    const connectionId = this.itemConnections.get(args.itemId);
+    if (!connectionId) {
+      throw new PlaidManagedClientError(404, "Plaid connection not found.");
     }
-    return this.removeResult;
+    return { connectionId };
+  }
+
+  override async revokeConnection(args: {
+    connectionId: string;
+  }): Promise<{ revoked: true }> {
+    this.revokeCalls.push(args.connectionId);
+    if (this.revokeResult instanceof PlaidManagedClientError) {
+      throw this.revokeResult;
+    }
+    return this.revokeResult;
   }
 }
 
 function exchange(
   itemId: string,
   institutionId = "ins_1",
+  accountId = `${itemId}-acct-1`,
 ): PlaidExchangeResponse {
+  const connectionId = crypto.randomUUID();
   return {
-    accessToken: `access-${itemId}`,
-    itemId,
+    connectionId,
+    connectionCreated: true,
+    environment: "sandbox",
     institution: {
       institutionId,
       institutionName: "First Test Bank",
       primaryAccountMask: "4321",
       accounts: [
         {
-          accountId: `${itemId}-acct-1`,
+          accountId,
           name: "Checking",
           mask: "4321",
           type: "depository",
@@ -190,8 +201,19 @@ describe("Plaid item lifecycle — real PGLite", () => {
     await testResult?.cleanup();
   });
 
-  async function linkFreshSource(itemId: string, institutionId?: string) {
-    fake.exchangeResult = exchange(itemId, institutionId);
+  async function linkFreshSource(
+    itemId: string,
+    institutionId?: string,
+    accountId?: string,
+  ) {
+    const result = exchange(itemId, institutionId, accountId);
+    const priorConnectionId = fake.itemConnections.get(itemId);
+    if (priorConnectionId) {
+      result.connectionId = priorConnectionId;
+      result.connectionCreated = false;
+    }
+    fake.itemConnections.set(itemId, result.connectionId);
+    fake.exchangeResult = result;
     return service.completePlaidLink({ publicToken: `public-${itemId}` });
   }
 
@@ -216,7 +238,7 @@ describe("Plaid item lifecycle — real PGLite", () => {
 
     const first = await service.syncPlaidTransactions({ sourceId: source.id });
     expect(first).toMatchObject({
-      inserted: 3,
+      inserted: 2,
       modified: 1,
       removed: 1,
       nextCursor: "c2",
@@ -259,11 +281,18 @@ describe("Plaid item lifecycle — real PGLite", () => {
 
   it("reconsent minting a new item_id for the same accounts does not double-list", async () => {
     const before = await repository.listPaymentSources(runtime.agentId);
-    const relinked = await linkFreshSource("item-sync-v2");
+    const relinked = await linkFreshSource(
+      "item-sync-v2",
+      "ins_1",
+      "item-sync-acct-1",
+    );
     const after = await repository.listPaymentSources(runtime.agentId);
     expect(after.length).toBe(before.length);
-    const plaid = relinked.metadata.plaid as { cursor: string; itemId: string };
-    expect(plaid.itemId).toBe("item-sync-v2");
+    const plaid = relinked.metadata.plaid as {
+      cursor: string;
+      connectionId: string;
+    };
+    expect(plaid.connectionId).toBe(fake.itemConnections.get("item-sync-v2"));
     // New Item → cursor resets; existing transactions are retained.
     expect(plaid.cursor).toBe("");
   });
@@ -285,19 +314,23 @@ describe("Plaid item lifecycle — real PGLite", () => {
     );
     expect(flagged?.status).toBe("needs_attention");
     const flaggedPlaid = flagged?.metadata.plaid as {
-      itemError: { errorCode: string };
+      itemError: { code: string };
     };
-    expect(flaggedPlaid.itemError.errorCode).toBe("ITEM_LOGIN_REQUIRED");
+    expect(flaggedPlaid.itemError.code).toBe("ITEM_LOGIN_REQUIRED");
 
-    // Update-mode Link token is created against the stored access token.
+    // Update-mode Link token is created against the opaque Cloud connection.
     const token = await service.createPlaidUpdateLinkToken({
       sourceId: source.id,
     });
     expect(token.linkToken).toBe("link-update-1");
-    expect(fake.lastLinkTokenArgs?.accessToken).toBe("access-item-reauth");
+    expect(fake.lastLinkTokenArgs?.connectionId).toBe(
+      (source.metadata.plaid as { connectionId: string }).connectionId,
+    );
 
     // After Link update mode succeeds, item health is clean → active again.
     fake.itemStatus = {
+      connectionId: (source.metadata.plaid as { connectionId: string })
+        .connectionId,
       itemId: "item-reauth",
       institutionId: "ins_reauth",
       error: null,
@@ -398,6 +431,43 @@ describe("Plaid item lifecycle — real PGLite", () => {
       (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
     ).toBe("active");
 
+    const revokesBeforePendingDisconnect = fake.revokeCalls.length;
+    const pendingDisconnect = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_DISCONNECT",
+      item_id: "item-hook",
+    });
+    expect(pendingDisconnect.action).toBe("reauth");
+    expect(
+      (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
+    ).toBe("needs_attention");
+    expect(fake.revokeCalls).toHaveLength(revokesBeforePendingDisconnect);
+    await expect(
+      service.createPlaidUpdateLinkToken({ sourceId: source.id }),
+    ).resolves.toMatchObject({ linkToken: "link-update-1" });
+
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "LOGIN_REPAIRED",
+      item_id: "item-hook",
+    });
+    const newAccounts = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "NEW_ACCOUNTS_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(newAccounts.action).toBe("none");
+    const healthy = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(healthy).not.toBeNull();
+    expect(healthy?.status).toBe("active");
+    const healthyPlaid = healthy?.metadata.plaid as
+      | { itemError: unknown }
+      | undefined;
+    expect(healthyPlaid?.itemError).toBeNull();
+
     const revoked = await service.processPlaidWebhook({
       webhook_type: "ITEM",
       webhook_code: "USER_PERMISSION_REVOKED",
@@ -406,8 +476,9 @@ describe("Plaid item lifecycle — real PGLite", () => {
     expect(revoked.action).toBe("disconnect");
     const dead = await repository.getPaymentSource(runtime.agentId, source.id);
     expect(dead?.status).toBe("disconnected");
-    const deadPlaid = dead?.metadata.plaid as { accessToken: unknown };
-    expect(deadPlaid.accessToken).toBeNull();
+    expect(fake.revokeCalls).toContain(
+      (source.metadata.plaid as { connectionId: string }).connectionId,
+    );
 
     // A sync webhook for a disconnected source is recorded but not synced.
     const late = await service.processPlaidWebhook({
@@ -438,15 +509,17 @@ describe("Plaid item lifecycle — real PGLite", () => {
     });
     await service.syncPlaidTransactions({ sourceId: source.id });
 
-    fake.removeCalls = [];
+    fake.revokeCalls = [];
     const first = await service.disconnectPlaidSource({ sourceId: source.id });
     expect(first.alreadyDisconnected).toBe(false);
     expect(first.source.status).toBe("disconnected");
-    expect(fake.removeCalls).toEqual(["access-item-bye"]);
+    expect(fake.revokeCalls).toEqual([
+      (source.metadata.plaid as { connectionId: string }).connectionId,
+    ]);
 
     const second = await service.disconnectPlaidSource({ sourceId: source.id });
     expect(second.alreadyDisconnected).toBe(true);
-    expect(fake.removeCalls).toHaveLength(1);
+    expect(fake.revokeCalls).toHaveLength(1);
 
     // History is retained after disconnect.
     expect(
@@ -458,7 +531,7 @@ describe("Plaid item lifecycle — real PGLite", () => {
 
   it("disconnect converges when the item is already gone upstream", async () => {
     const source = await linkFreshSource("item-gone", "ins_gone");
-    fake.removeResult = new PlaidManagedClientError(
+    fake.revokeResult = new PlaidManagedClientError(
       400,
       "item not found",
       "ITEM_NOT_FOUND",
@@ -467,7 +540,7 @@ describe("Plaid item lifecycle — real PGLite", () => {
       sourceId: source.id,
     });
     expect(result.source.status).toBe("disconnected");
-    fake.removeResult = { removed: true, alreadyRemoved: false };
+    fake.revokeResult = { revoked: true };
   });
 
   it("rejects sync for a non-Plaid source and a missing source", async () => {

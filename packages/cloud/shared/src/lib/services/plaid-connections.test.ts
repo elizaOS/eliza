@@ -57,15 +57,27 @@ function harness(existing: VendorConnection | null = connection()) {
   const store = {
     upsertOrgBoundAccessToken: mock(async () => connection()),
     findActiveByIdForOrganization: mock(async () => existing),
+    findActiveByVendorLabelForOrganization: mock(async () => null),
     getOrgBoundAccessToken: mock(async () => "plaid-secret-token"),
     deleteActiveByIdForOrganization: mock(async () => true),
   };
   const protocol = {
+    createLinkToken: mock(async () => ({
+      linkToken: "link-update",
+      expiration: "2026-08-22T00:00:00.000Z",
+      environment: "sandbox" as const,
+    })),
     exchange: mock(async () => ({
       accessToken: "plaid-secret-token",
       itemId: "item-1",
     })),
     itemInfo: mock(async () => INSTITUTION),
+    itemStatus: mock(async () => ({
+      itemId: "item-1",
+      institutionId: "ins_1",
+      error: null,
+      consentExpirationTime: null,
+    })),
     sync: mock(async () => ({
       added: [],
       modified: [],
@@ -98,6 +110,7 @@ describe("PlaidConnectionService", () => {
 
     expect(result).toEqual({
       connectionId: "11111111-1111-4111-8111-111111111111",
+      connectionCreated: true,
       institution: INSTITUTION,
       environment: "sandbox",
     });
@@ -183,6 +196,69 @@ describe("PlaidConnectionService", () => {
       cursor: "cursor-1",
       count: undefined,
     });
+  });
+
+  test("creates update-mode Link tokens only after organization-scoped lookup", async () => {
+    const allowed = harness();
+    await expect(
+      allowed.service.createUpdateLinkToken({
+        organizationId: "org-a",
+        connectionId: connection().id,
+        userId: "user-a",
+        webhookUrl: "https://agent.example/plaid/webhook",
+      }),
+    ).resolves.toMatchObject({ linkToken: "link-update" });
+    expect(allowed.protocol.createLinkToken).toHaveBeenCalledWith({
+      organizationId: "org-a",
+      connectionId: connection().id,
+      userId: "user-a",
+      webhookUrl: "https://agent.example/plaid/webhook",
+      accessToken: "plaid-secret-token",
+    });
+
+    const denied = harness(null);
+    await expect(
+      denied.service.createUpdateLinkToken({
+        organizationId: "org-b",
+        connectionId: connection().id,
+        userId: "user-b",
+      }),
+    ).rejects.toMatchObject({ status: 404 } satisfies Partial<PlaidConnectionError>);
+    expect(denied.protocol.createLinkToken).not.toHaveBeenCalled();
+  });
+
+  test("resolves signed webhook Item ids inside the authenticated organization", async () => {
+    const allowed = harness();
+    allowed.store.findActiveByVendorLabelForOrganization.mockResolvedValueOnce(connection());
+    await expect(
+      allowed.service.resolveItem({ organizationId: "org-a", itemId: "item-1" }),
+    ).resolves.toEqual({ connectionId: connection().id });
+    expect(allowed.store.findActiveByVendorLabelForOrganization).toHaveBeenCalledWith(
+      "org-a",
+      "plaid",
+      "item-1",
+    );
+    expect(allowed.store.getOrgBoundAccessToken).not.toHaveBeenCalled();
+    expect(allowed.protocol.itemStatus).not.toHaveBeenCalled();
+
+    const denied = harness(null);
+    await expect(
+      denied.service.resolveItem({ organizationId: "org-b", itemId: "item-1" }),
+    ).rejects.toMatchObject({ status: 404 } satisfies Partial<PlaidConnectionError>);
+  });
+
+  test("reads Item status through the organization-bound Cloud credential", async () => {
+    const { service, protocol } = harness();
+    await expect(
+      service.status({ organizationId: "org-a", connectionId: connection().id }),
+    ).resolves.toEqual({
+      connectionId: connection().id,
+      itemId: "item-1",
+      institutionId: "ins_1",
+      error: null,
+      consentExpirationTime: null,
+    });
+    expect(protocol.itemStatus).toHaveBeenCalledWith("plaid-secret-token");
   });
 
   test("makes revoke idempotent for absent and already-removed Items", async () => {
