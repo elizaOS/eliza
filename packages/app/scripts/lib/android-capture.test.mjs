@@ -7,7 +7,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isFinalizedMp4 } from "./android-capture.mjs";
+import {
+  isFinalizedMp4,
+  waitForCompleteAndroidSegments,
+} from "./android-capture.mjs";
 
 const files = [];
 
@@ -50,5 +53,22 @@ describe("Android screenrecord finalization", () => {
     ]);
     const file = writeRecording(box("ftyp"), box("mdat"), partialMovie);
     expect(isFinalizedMp4(file)).toBe(false);
+  });
+
+  test("waits for final-segment collection before packaging evidence", async () => {
+    let releaseSegment;
+    const segmentLoop = new Promise((resolve) => {
+      releaseSegment = resolve;
+    });
+    let collectionFinished = false;
+    const collection = waitForCompleteAndroidSegments(segmentLoop).then(() => {
+      collectionFinished = true;
+    });
+
+    await Promise.resolve();
+    expect(collectionFinished).toBe(false);
+    releaseSegment();
+    await collection;
+    expect(collectionFinished).toBe(true);
   });
 });
