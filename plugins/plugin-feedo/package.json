@@ -1,0 +1,28 @@
+{
+  "name": "@elizaos/plugin-feedo",
+  "version": "0.1.9",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "feedo-protocol-sdk": "0.1.22"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "vitest": "^2.0.0",
+    "typescript": "^5.0.0",
+    "@biomejs/biome": "^1.8.0"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-feedo",
+  "version": "0.1.0",
+  "description": "Decentralized E2EE long-term memory for ElizaOS using the Feedo Protocol.",
+  "author": "Ashixi",
+  "license": "Apache-2.0",
+  "keywords": ["elizaos", "plugin", "memory", "feedo", "decentralized"]
+}
