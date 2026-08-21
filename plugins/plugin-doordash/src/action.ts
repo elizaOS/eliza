@@ -13,10 +13,6 @@ import type {
 } from "@elizaos/core";
 import { ElizaError, gateDestructiveConfirmation, logger } from "@elizaos/core";
 import { createHash } from "@elizaos/core/utils/crypto-compat";
-import {
-  BROWSER_SERVICE_TYPE,
-  type BrowserService,
-} from "@elizaos/plugin-browser";
 import { callDoorDashOperation, hasDoorDashCapability } from "./adapter.js";
 import {
   DOORDASH_OPERATIONS,
@@ -25,7 +21,15 @@ import {
 } from "./types.js";
 
 const MCP_SERVICE_NAME = "mcp";
+const BROWSER_SERVICE_NAME = "browser";
 const APP_MESSAGE_SOURCES = new Set(["client_chat", "client-ambient"]);
+
+interface InAppBrowserService {
+  resolveTarget(
+    preferredId: string,
+    command: { subaction: "state" },
+  ): Promise<{ id: string; kind?: string } | null>;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -203,8 +207,8 @@ async function hasInAppBrowser(
 ): Promise<boolean> {
   if (!isAppBrowserTurn(message)) return false;
   const browser = runtime.getService(
-    BROWSER_SERVICE_TYPE,
-  ) as BrowserService | null;
+    BROWSER_SERVICE_NAME,
+  ) as InAppBrowserService | null;
   if (!browser) return false;
   try {
     const target = await browser.resolveTarget("workspace", {
