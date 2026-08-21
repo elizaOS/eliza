@@ -87,4 +87,17 @@ export class ObservationLedger {
     this.entries = [];
     this.sequence = 0;
   }
+
+  public snapshot(): {
+    readonly policy: { readonly excludedTargets: readonly string[] };
+    readonly entries: readonly LedgerEntry[];
+  } {
+    const excludedTargets = ["world.boot"];
+    return {
+      policy: { excludedTargets },
+      entries: this.all().filter(
+        (entry) => !excludedTargets.includes(entry.target),
+      ),
+    };
+  }
 }

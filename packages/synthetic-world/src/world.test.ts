@@ -35,6 +35,57 @@ describe("SyntheticWorld", () => {
     world.teardown();
   });
 
+  it("distinguishes execution progression while preserving the data-only hash", async () => {
+    const manifest = testManifest();
+    manifest.faults = [
+      {
+        id: "execution-hash-fault",
+        boundary: "execution.hash",
+        steps: [{ onAttempt: 1, effect: { kind: "disconnect" } }],
+      },
+    ];
+    const world = bootInProcessWorld(manifest, {
+      namespace: "world:execution-hash",
+    });
+    const stateHash = world.stateHash;
+    const initial = world.executionStateHash;
+    const expectProgression = () => {
+      expect(world.stateHash).toBe(stateHash);
+      expect(world.executionStateHash).not.toBe(initial);
+      world.reset();
+      expect(world.executionStateHash).toBe(initial);
+    };
+
+    await world.clock.advanceBy(1);
+    expectProgression();
+    world.clock.setTimeout(() => undefined, 10);
+    expectProgression();
+    world.random.next();
+    expectProgression();
+    await expect(
+      world.executeBoundary("execution.hash", {
+        input: {},
+        execute: () => ({ ok: true }),
+      }),
+    ).rejects.toBeInstanceOf(SyntheticFaultError);
+    world.ledger.clear();
+    expectProgression();
+    world.ledger.append({
+      kind: "model",
+      status: "observed",
+      target: "fixture.best-case.consume",
+      attempt: 1,
+      payloadHash: "fixture-one",
+      metadata: { fixtureIndex: 1 },
+    });
+    expectProgression();
+
+    const snapshot = world.executionSnapshot();
+    expect(snapshot.clock.timers).toEqual([]);
+    expect(snapshot.ledger.policy.excludedTargets).toEqual(["world.boot"]);
+    world.teardown();
+  });
+
   it("rejects namespace sharing until teardown releases the lease", () => {
     const first = bootInProcessWorld(testManifest(), {
       namespace: "world:isolation:one",
