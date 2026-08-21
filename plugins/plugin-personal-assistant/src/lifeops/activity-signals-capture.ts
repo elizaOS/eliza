@@ -312,12 +312,6 @@ export function startLifeOpsActivitySignalCapture(
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
-  const isUnavailableNativePluginError = (error: unknown): boolean =>
-    error instanceof Error &&
-    /["']?MobileSignals["']? plugin is not implemented on (?:android|ios)/i.test(
-      error.message,
-    );
-
   // A 401/403 is the designed signed-out state, not a capture defect. It also
   // means the canonical snapshot was stale relative to the protected request,
   // so fail closed and wait for a later auth publication instead of polling.
@@ -349,10 +343,6 @@ export function startLifeOpsActivitySignalCapture(
       return;
     }
     if (isRuntimeUnavailableError(error)) {
-      standDownActivitySignals();
-      return;
-    }
-    if (isUnavailableNativePluginError(error)) {
       standDownActivitySignals();
       return;
     }
@@ -569,7 +559,11 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const mobileSignals =
-    isNativeCapacitorRuntime() && !isElectrobunRuntime() ? MobileSignals : null;
+    isNativeCapacitorRuntime() &&
+    !isElectrobunRuntime() &&
+    Capacitor.isPluginAvailable("MobileSignals")
+      ? MobileSignals
+      : null;
   let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
   let mobileSignalsStarted = false;
   let mobileSignalsStarting = false;
