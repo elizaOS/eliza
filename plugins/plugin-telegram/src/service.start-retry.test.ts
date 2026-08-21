@@ -135,7 +135,8 @@ function accountBot(service: TelegramService): {
   return states.get("default")?.bot as never;
 }
 
-const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const settle = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("TelegramService.start retry does not strand a long-poll loop", () => {
   it("stops polling on stop() after a transient failure retried the init sequence", async () => {
