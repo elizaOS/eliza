@@ -1,17 +1,80 @@
 /**
- * Payout Alerting Service
- *
- * Sends alerts for critical payout events to Slack/PagerDuty.
- *
- * ALERT TYPES:
- * - CRITICAL: System paused, security breach suspected
- * - HIGH: Hot wallet low, repeated failures
- * - MEDIUM: High volume, unusual patterns
- * - LOW: Informational
+ * Delivers security-critical payout alerts to the configured Slack webhook and
+ * the fixed PagerDuty Events API without allowing an alert hop to pin payout
+ * processing or redirect its payload to an unintended endpoint.
  */
 
 import { MONITORING } from "../config/redemption-security";
 import { logger } from "../utils/logger";
+
+const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_ALERT_REQUEST_BODY_BYTES = 64 * 1024;
+const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
+
+function assertAllowedAlertEndpoint(input: string | URL): URL {
+  const url = new URL(input.toString());
+  const isSlackWebhook =
+    url.hostname === "hooks.slack.com" &&
+    url.pathname.startsWith("/services/") &&
+    url.pathname.split("/").filter(Boolean).length === 4;
+  const isPagerDutyEventsApi = url.toString() === PAGERDUTY_EVENTS_URL;
+
+  if (
+    url.protocol !== "https:" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    (!isSlackWebhook && !isPagerDutyEventsApi)
+  ) {
+    throw new Error("Payout alert endpoint is not an approved Slack or PagerDuty URL");
+  }
+
+  return url;
+}
+
+/**
+ * Sends one bounded payout-alert request. Only the two owned alert endpoints
+ * are accepted, redirects are rejected, and caller cancellation is composed
+ * with (rather than substituted for) the per-hop deadline.
+ */
+export async function alertFetch(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new RangeError("Payout alert timeout must be a positive integer");
+  }
+
+  const url = assertAllowedAlertEndpoint(input);
+  if (init.body != null && typeof init.body !== "string") {
+    throw new TypeError("Payout alert request body must be a JSON string");
+  }
+  if (
+    typeof init.body === "string" &&
+    new TextEncoder().encode(init.body).byteLength > MAX_ALERT_REQUEST_BODY_BYTES
+  ) {
+    throw new RangeError("Payout alert request body exceeds the 64 KiB limit");
+  }
+
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return await fetch(url, {
+    ...init,
+    redirect: "error",
+    signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
+async function releaseAlertResponse(response: Response, channel: string): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch (error) {
+    // error-policy:J6 Response disposal is best-effort after delivery completed.
+    logger.warn(`[PayoutAlerts] Failed to release ${channel} response body`, { error });
+  }
+}
 
 // ============================================================================
 // TYPES
@@ -127,8 +190,9 @@ export class PayoutAlertsService {
       ],
     };
 
+    let response: Response | undefined;
     try {
-      const response = await fetch(this.slackWebhookUrl!, {
+      response = await alertFetch(this.slackWebhookUrl!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(slackPayload),
@@ -140,7 +204,10 @@ export class PayoutAlertsService {
         });
       }
     } catch (error) {
+      // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send Slack alert", { error });
+    } finally {
+      if (response) await releaseAlertResponse(response, "Slack");
     }
   }
 
@@ -168,8 +235,9 @@ export class PayoutAlertsService {
       },
     };
 
+    let response: Response | undefined;
     try {
-      const response = await fetch("https://events.pagerduty.com/v2/enqueue", {
+      response = await alertFetch(PAGERDUTY_EVENTS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pagerDutyPayload),
@@ -181,7 +249,10 @@ export class PayoutAlertsService {
         });
       }
     } catch (error) {
+      // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send PagerDuty alert", { error });
+    } finally {
+      if (response) await releaseAlertResponse(response, "PagerDuty");
     }
   }
 
