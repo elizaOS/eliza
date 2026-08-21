@@ -26,6 +26,10 @@ import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../../utils/well-formed.ts";
 import { validateUuid } from "../../../../utils.ts";
 import type { ExperienceService } from "../service.ts";
 import type { Experience } from "../types.ts";
@@ -199,7 +203,7 @@ async function doUpdate(
 
 	return {
 		success: true,
-		text: `Updated experience ${experienceId}: ${updated.learning.slice(0, 120)}`,
+		text: `Updated experience ${experienceId}: ${truncateWellFormed(toWellFormedUnicode(updated.learning), 120)}`,
 		values: { experienceId },
 		data: {
 			actionName: EXPERIENCE,
@@ -264,7 +268,10 @@ async function doDelete(
 	if (matched.length > 1) {
 		const lines = matched
 			.slice(0, 10)
-			.map((e) => `- ${e.id}: ${e.learning.slice(0, 120)}`);
+			.map(
+				(e) =>
+					`- ${e.id}: ${truncateWellFormed(toWellFormedUnicode(e.learning), 120)}`,
+			);
 		return {
 			success: false,
 			text: [
@@ -285,7 +292,7 @@ async function doDelete(
 	}
 	return {
 		success: true,
-		text: `Deleted experience ${target.id}: ${target.learning.slice(0, 120)}`,
+		text: `Deleted experience ${target.id}: ${truncateWellFormed(toWellFormedUnicode(target.learning), 120)}`,
 		values: { experienceId: target.id },
 		data: {
 			actionName: EXPERIENCE,
@@ -475,7 +482,7 @@ export const manageExperienceAction: Action = {
 		}
 
 		logger.info(
-			`[ManageExperienceAction] ${op} ${result.success ? "succeeded" : "failed"}: ${result.text?.slice(0, 200) ?? ""}`,
+			`[ManageExperienceAction] ${op} ${result.success ? "succeeded" : "failed"}: ${truncateWellFormed(toWellFormedUnicode(result.text ?? ""), 200)}`,
 		);
 		return result;
 	},
