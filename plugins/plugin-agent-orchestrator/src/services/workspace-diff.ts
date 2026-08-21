@@ -67,6 +67,17 @@ export interface WorkspaceArtifactVerification {
   verified: boolean;
   files: WorkspaceChangedFileVerification[];
   missingFiles: string[];
+  /** Regular files that existed but contained no bytes at completion. */
+  emptyFiles: string[];
+}
+
+export interface WorkspaceArtifactVerificationOptions {
+  /**
+   * Treat zero-byte regular files as incomplete artifacts. This is opt-in:
+   * creating an empty file can be a legitimate coding task, but an app build
+   * cannot be accepted because a placeholder path happens to exist.
+   */
+  requireNonEmptyFiles?: boolean;
 }
 
 async function git(
@@ -513,6 +524,7 @@ export async function capturePrGateChangeSet(
 export function verifyChangedFilesOnDisk(
   workdir: string,
   changedFiles: readonly string[],
+  options: WorkspaceArtifactVerificationOptions = {},
 ): WorkspaceArtifactVerification {
   const files = changedFiles.map((file) => {
     const rel = toWorkdirRelative(workdir, file) || file;
@@ -543,11 +555,19 @@ export function verifyChangedFilesOnDisk(
   const missingFiles = files
     .filter((file) => !file.exists)
     .map((file) => file.path);
+  const emptyFiles = files
+    .filter(
+      (file) => file.exists && file.kind === "file" && file.sizeBytes === 0,
+    )
+    .map((file) => file.path);
   return {
     workdir,
-    verified: missingFiles.length === 0,
+    verified:
+      missingFiles.length === 0 &&
+      (!options.requireNonEmptyFiles || emptyFiles.length === 0),
     files,
     missingFiles,
+    emptyFiles,
   };
 }
 
@@ -563,7 +583,14 @@ export function summarizeChangeSet(
   const verifiedSuffix = verification
     ? verification.verified
       ? " (verified on disk)"
-      : ` (UNVERIFIED: missing ${verification.missingFiles.join(", ")})`
+      : ` (UNVERIFIED: ${[
+          ...(verification.missingFiles.length > 0
+            ? [`missing ${verification.missingFiles.join(", ")}`]
+            : []),
+          ...(verification.emptyFiles.length > 0
+            ? [`empty ${verification.emptyFiles.join(", ")}`]
+            : []),
+        ].join("; ")})`
     : "";
   return `Changed ${count} ${noun}: ${shown}${more}${verifiedSuffix}`;
 }

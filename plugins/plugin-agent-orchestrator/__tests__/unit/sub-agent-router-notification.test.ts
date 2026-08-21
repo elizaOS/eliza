@@ -231,6 +231,50 @@ describe("SubAgentRouter notification emission", () => {
     await router.stop();
   });
 
+  it("labels a kept-alive durable completion as ready for validation, not finished", async () => {
+    session = makeSession({
+      metadata: {
+        label: "build-personal-site",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "chat",
+        keepAliveAfterComplete: true,
+      },
+    });
+    acp = makeAcpService(session);
+    const notify = vi.fn(async () => undefined);
+    const { runtime, handleMessage } = makeRuntime({
+      acp: acp.service,
+      notify,
+    });
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "The site files are ready.",
+    });
+    await flush();
+
+    const notification = notify.mock.calls[0]?.[0] as
+      | Record<string, unknown>
+      | undefined;
+    expect(notification?.title).toBe(
+      "build-personal-site ready for validation",
+    );
+    expect(String(notification?.title)).not.toContain("finished");
+
+    const synthetic = handleMessage.mock.calls[0]?.[1] as Memory | undefined;
+    expect(synthetic?.content.text).toContain(
+      "the worker reported completion and independent validation now owns the durable task",
+    );
+    expect(synthetic?.content.text).not.toContain(
+      "this delegated task is DONE",
+    );
+
+    await router.stop();
+  });
+
   it("does NOT emit a notification for an error event", async () => {
     const notify = vi.fn(async () => undefined);
     const { runtime } = makeRuntime({ acp: acp.service, notify });

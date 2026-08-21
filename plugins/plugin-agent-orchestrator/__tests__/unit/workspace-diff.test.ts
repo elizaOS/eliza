@@ -260,6 +260,7 @@ describe("workspace-diff — real git capture", () => {
       ]),
     );
     expect(verification.missingFiles).toEqual(["missing.txt"]);
+    expect(verification.emptyFiles).toEqual([]);
     expect(
       summarizeChangeSet(
         {
@@ -272,6 +273,28 @@ describe("workspace-diff — real git capture", () => {
         verification,
       ),
     ).toContain("UNVERIFIED: missing missing.txt");
+  });
+
+  it("rejects an empty app artifact when substantive files are required", () => {
+    writeFileSync(join(dir, "placeholder.html"), "");
+    const verification = verifyChangedFilesOnDisk(dir, ["placeholder.html"], {
+      requireNonEmptyFiles: true,
+    });
+    expect(verification.verified).toBe(false);
+    expect(verification.missingFiles).toEqual([]);
+    expect(verification.emptyFiles).toEqual(["placeholder.html"]);
+    expect(
+      summarizeChangeSet(
+        {
+          changedFiles: ["placeholder.html"],
+          diffStat: "1 file changed",
+          diff: "",
+          truncated: false,
+          capturedAt: 0,
+        },
+        verification,
+      ),
+    ).toContain("UNVERIFIED: empty placeholder.html");
   });
 });
 

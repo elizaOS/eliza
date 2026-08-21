@@ -32,6 +32,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { detectTaskType } from "./acceptance-criteria.js";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
@@ -1454,9 +1455,17 @@ export class SubAgentRouter extends Service {
         // so the provider — which selects the most-recently-completed session
         // and reads ITS change set — can't bleed an older task's diff.
         if (changeSet) {
+          const completionGoal =
+            pickPlainString(meta?.initialTask) ??
+            pickPlainString(meta?.goal) ??
+            "";
           artifactVerification = verifyChangedFilesOnDisk(
             session.workdir,
             changeSet.changedFiles,
+            {
+              requireNonEmptyFiles:
+                detectTaskType(completionGoal) === "app-build",
+            },
           );
           await this.acp.updateSessionMetadata(sessionId, {
             lastChangeSet: changeSet,
@@ -1669,9 +1678,14 @@ export class SubAgentRouter extends Service {
         deliverable ?? stripSubAgentHeaderLine(text)
       ).trim();
       const preview = previewSource.slice(0, 200);
+      const awaitsDurableValidation =
+        (session.metadata as Record<string, unknown> | undefined)
+          ?.keepAliveAfterComplete === true;
       void getNotifier(this.runtime)
         ?.notify({
-          title: `${origin.label || "Agent task"} finished`,
+          title: `${origin.label || "Agent task"} ${
+            awaitsDurableValidation ? "ready for validation" : "finished"
+          }`,
           ...(preview ? { body: preview } : {}),
           category: "agent",
           priority: "normal",
@@ -3531,6 +3545,7 @@ function composeNarration(
     requestedType !== session.agentType
       ? ` Requested agent type was ${requestedType}; actual agent type was ${session.agentType}.`
       : "";
+  const awaitsDurableValidation = meta?.keepAliveAfterComplete === true;
   // The header is the planner's operating instruction for this turn, and the
   // planner echoes what it is told into its user-facing reply. An earlier
   // revision said "state the actual workdir (<abs path>)" to stop the planner
@@ -3540,7 +3555,11 @@ function composeNarration(
   // anti-substitution intent: files by bare name, never a claimed location.
   const header =
     event === "task_complete"
-      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}]`
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — ${
+          awaitsDurableValidation
+            ? "the worker reported completion and independent validation now owns the durable task; relay the result as provisional and do NOT start another sub-agent for it"
+            : "this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it"
+        }. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}]`
       : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
@@ -3599,11 +3618,15 @@ function composeNarration(
     // the user-facing body; the actual workdir stays out of both header and
     // body — it is internal infrastructure available in session metadata.
     const missing = artifactVerification?.missingFiles ?? [];
+    const empty = artifactVerification?.emptyFiles ?? [];
     const unverifiedLine =
       artifactVerification &&
       !artifactVerification.verified &&
-      missing.length > 0
-        ? `Artifact verification: UNVERIFIED at completion; missing ${missing.join(", ")}.`
+      (missing.length > 0 || empty.length > 0)
+        ? `Artifact verification: UNVERIFIED at completion; ${[
+            ...(missing.length > 0 ? [`missing ${missing.join(", ")}`] : []),
+            ...(empty.length > 0 ? [`empty ${empty.join(", ")}`] : []),
+          ].join("; ")}.`
         : undefined;
     const lines = [
       ...(capturedDeliverable ? [capturedDeliverable] : []),
@@ -3658,6 +3681,7 @@ function artifactVerificationMetadata(
     workdir: verification.workdir,
     verified: verification.verified,
     missingFiles: [...verification.missingFiles],
+    emptyFiles: [...verification.emptyFiles],
     files: verification.files.map((file) => ({
       path: file.path,
       absolutePath: file.absolutePath,
