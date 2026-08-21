@@ -15,7 +15,10 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { invalidateBoundPersonalDeliveryProjection } from "./eliza-app/personal-delivery-projection-contract";
+import {
+  type PersonalDeliveryProjectionIdentity,
+  runWithBoundPersonalDeliveryProjectionFences,
+} from "./eliza-app/personal-delivery-projection-contract";
 import {
   invalidateInferenceAuthContextsByKeyHashes,
   invalidateInferenceSessionAuthContexts,
@@ -26,15 +29,9 @@ import {
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
 
-type PersonalDeliveryIdentitySource = Pick<
-  User | UserIdentity,
-  "telegram_id" | "discord_id" | "phone_number"
+type PersonalDeliveryIdentitySource = Partial<
+  Pick<User | UserIdentity, "telegram_id" | "discord_id" | "phone_number">
 >;
-
-type PersonalDeliveryRoutingIdentity = {
-  platform: "telegram" | "discord" | "phone";
-  platformUserId: string;
-};
 
 const PERSONAL_DELIVERY_ROUTING_FIELDS = [
   "organization_id",
@@ -46,11 +43,11 @@ const PERSONAL_DELIVERY_ROUTING_FIELDS = [
 
 function personalDeliveryRoutingIdentities(
   ...sources: Array<PersonalDeliveryIdentitySource | undefined>
-): PersonalDeliveryRoutingIdentity[] {
-  const identities = new Map<string, PersonalDeliveryRoutingIdentity>();
+): PersonalDeliveryProjectionIdentity[] {
+  const identities = new Map<string, PersonalDeliveryProjectionIdentity>();
   for (const source of sources) {
     if (!source) continue;
-    const candidates: PersonalDeliveryRoutingIdentity[] = [
+    const candidates: PersonalDeliveryProjectionIdentity[] = [
       { platform: "telegram", platformUserId: source.telegram_id?.trim() ?? "" },
       { platform: "discord", platformUserId: source.discord_id?.trim() ?? "" },
       { platform: "phone", platformUserId: source.phone_number?.trim() ?? "" },
@@ -100,22 +97,9 @@ export class UsersService {
   private async capturePersonalDeliveryRoutingIdentities(
     userId: string,
     canonicalUser: User | undefined,
-  ): Promise<PersonalDeliveryRoutingIdentity[]> {
+  ): Promise<PersonalDeliveryProjectionIdentity[]> {
     const projectedIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
     return personalDeliveryRoutingIdentities(canonicalUser, projectedIdentity);
-  }
-
-  private async invalidatePersonalDeliveryRoutingIdentities(
-    identities: readonly PersonalDeliveryRoutingIdentity[],
-  ): Promise<void> {
-    const unique = new Map(
-      identities.map((identity) => [`${identity.platform}:${identity.platformUserId}`, identity]),
-    );
-    await Promise.all(
-      [...unique.values()].map(({ platform, platformUserId }) =>
-        invalidateBoundPersonalDeliveryProjection(platform, platformUserId),
-      ),
-    );
   }
 
   async invalidateCache(user: User | UserWithOrganization): Promise<void> {
@@ -356,83 +340,89 @@ export class UsersService {
     const previousRoutingIdentities = personalDeliveryRoutingChanged
       ? await this.capturePersonalDeliveryRoutingIdentities(id, existing)
       : [];
-    const movingOrganizations =
-      typeof data.organization_id === "string" &&
-      data.organization_id !== existing?.organization_id;
-    const sessionAuthorityChanged =
-      (typeof data.role === "string" && data.role !== existing?.role) ||
-      (typeof data.steward_user_id === "string" &&
-        data.steward_user_id !== existing?.steward_user_id);
-    const sessionRevocationCutoff =
-      movingOrganizations || sessionAuthorityChanged ? Math.floor(Date.now() / 1000) : null;
-    if (movingOrganizations && existing?.organization_id) {
-      await setInferenceSubjectActive(existing.organization_id, id, false, "membership");
-    }
-    if (
-      typeof data.steward_user_id === "string" &&
-      existing?.organization_id &&
-      existing.steward_user_id &&
-      data.steward_user_id !== existing.steward_user_id
-    ) {
-      await setInferenceSessionBindingActive(
-        existing.organization_id,
-        id,
-        existing.steward_user_id,
-        false,
-      );
-    }
-    if (movingOrganizations && typeof data.organization_id === "string") {
-      await setInferenceSubjectActive(data.organization_id, id, false, "membership");
-      if (sessionRevocationCutoff !== null) {
-        await revokeInferenceSessionsThrough(data.organization_id, id, sessionRevocationCutoff);
-      }
-    }
-    if (data.is_active === false && existing?.organization_id) {
-      await setInferenceSubjectActive(existing.organization_id, id, false, "account");
-    }
-    if (sessionRevocationCutoff !== null && existing?.organization_id) {
-      await revokeInferenceSessionsThrough(existing.organization_id, id, sessionRevocationCutoff);
-    }
-    const result = await usersRepository.update(id, data);
-    if (result?.organization_id && typeof data.steward_user_id === "string") {
-      // Repeat the activation even when the row already has this binding. A
-      // prior attempt can commit the database update and then fail while
-      // clearing the durable fence; the retry must finish that recovery.
-      await setInferenceSessionBindingActive(
-        result.organization_id,
-        id,
-        data.steward_user_id,
-        true,
-      );
-    }
-    if (existing) {
-      await this.invalidateCache(existing);
-    }
-    if (result) {
-      await this.invalidateCache(result);
-    }
-    // Deactivation: when is_active flips to false, evict the user's warm IAC
-    // entries so the now-inactive account can no longer fast-path inference.
-    if (data.is_active === false) {
-      await this.invalidateInferenceAuthForUser(id);
-    }
-    if (data.is_active === true && result?.organization_id && !movingOrganizations) {
-      await setInferenceSubjectActive(result.organization_id, id, true, "account");
-    }
-    if (typeof data.organization_id === "string" && result?.organization_id) {
-      // Establish the account fence before clearing the move fence so an
-      // inactive account is never briefly admitted between serialized writes.
-      await setInferenceSubjectActive(result.organization_id, id, result.is_active, "account");
-      await setInferenceSubjectActive(result.organization_id, id, true, "membership");
-    }
-    if (personalDeliveryRoutingChanged && result) {
-      const nextRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, result);
-      await this.invalidatePersonalDeliveryRoutingIdentities([
-        ...previousRoutingIdentities,
-        ...nextRoutingIdentities,
-      ]);
-    }
-    return result;
+    const requestedRoutingIdentities = personalDeliveryRoutingChanged
+      ? personalDeliveryRoutingIdentities(data)
+      : [];
+
+    return runWithBoundPersonalDeliveryProjectionFences(
+      [...previousRoutingIdentities, ...requestedRoutingIdentities],
+      async () => {
+        const movingOrganizations =
+          typeof data.organization_id === "string" &&
+          data.organization_id !== existing?.organization_id;
+        const sessionAuthorityChanged =
+          (typeof data.role === "string" && data.role !== existing?.role) ||
+          (typeof data.steward_user_id === "string" &&
+            data.steward_user_id !== existing?.steward_user_id);
+        const sessionRevocationCutoff =
+          movingOrganizations || sessionAuthorityChanged ? Math.floor(Date.now() / 1000) : null;
+        if (movingOrganizations && existing?.organization_id) {
+          await setInferenceSubjectActive(existing.organization_id, id, false, "membership");
+        }
+        if (
+          typeof data.steward_user_id === "string" &&
+          existing?.organization_id &&
+          existing.steward_user_id &&
+          data.steward_user_id !== existing.steward_user_id
+        ) {
+          await setInferenceSessionBindingActive(
+            existing.organization_id,
+            id,
+            existing.steward_user_id,
+            false,
+          );
+        }
+        if (movingOrganizations && typeof data.organization_id === "string") {
+          await setInferenceSubjectActive(data.organization_id, id, false, "membership");
+          if (sessionRevocationCutoff !== null) {
+            await revokeInferenceSessionsThrough(data.organization_id, id, sessionRevocationCutoff);
+          }
+        }
+        if (data.is_active === false && existing?.organization_id) {
+          await setInferenceSubjectActive(existing.organization_id, id, false, "account");
+        }
+        if (sessionRevocationCutoff !== null && existing?.organization_id) {
+          await revokeInferenceSessionsThrough(
+            existing.organization_id,
+            id,
+            sessionRevocationCutoff,
+          );
+        }
+        const result = await usersRepository.update(id, data);
+        if (result?.organization_id && typeof data.steward_user_id === "string") {
+          // Repeat the activation even when the row already has this binding. A
+          // prior attempt can commit the database update and then fail while
+          // clearing the durable fence; the retry must finish that recovery.
+          await setInferenceSessionBindingActive(
+            result.organization_id,
+            id,
+            data.steward_user_id,
+            true,
+          );
+        }
+        if (existing) {
+          await this.invalidateCache(existing);
+        }
+        if (result) {
+          await this.invalidateCache(result);
+        }
+        // Deactivation: when is_active flips to false, evict the user's warm IAC
+        // entries so the now-inactive account can no longer fast-path inference.
+        if (data.is_active === false) {
+          await this.invalidateInferenceAuthForUser(id);
+        }
+        if (data.is_active === true && result?.organization_id && !movingOrganizations) {
+          await setInferenceSubjectActive(result.organization_id, id, true, "account");
+        }
+        if (typeof data.organization_id === "string" && result?.organization_id) {
+          // Establish the account fence before clearing the move fence so an
+          // inactive account is never briefly admitted between serialized writes.
+          await setInferenceSubjectActive(result.organization_id, id, result.is_active, "account");
+          await setInferenceSubjectActive(result.organization_id, id, true, "membership");
+        }
+        return result;
+      },
+    );
   }
 
   async upsertStewardIdentity(userId: string, stewardUserId: string): Promise<void> {
@@ -544,67 +534,64 @@ export class UsersService {
       throw new Error(`User ${id} not found`);
     }
     const previousRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
-    if (user.organization_id) {
-      await setInferenceSubjectActive(user.organization_id, id, false, "membership");
-    }
-
-    let slug = generatePersonalOrgSlug(user);
-    let attempts = 0;
-    while (await organizationsRepository.findBySlug(slug)) {
-      attempts++;
-      if (attempts > 10) {
-        throw new Error(`Failed to generate unique organization slug for user ${id}`);
+    return runWithBoundPersonalDeliveryProjectionFences(previousRoutingIdentities, async () => {
+      if (user.organization_id) {
+        await setInferenceSubjectActive(user.organization_id, id, false, "membership");
       }
-      slug = generatePersonalOrgSlug(user);
-    }
 
-    const organization = await organizationsRepository.create({
-      name: `${user.name || user.email || "User"}'s Organization`,
-      slug,
-      credit_balance: "0.00",
-    });
+      let slug = generatePersonalOrgSlug(user);
+      let attempts = 0;
+      while (await organizationsRepository.findBySlug(slug)) {
+        attempts++;
+        if (attempts > 10) {
+          throw new Error(`Failed to generate unique organization slug for user ${id}`);
+        }
+        slug = generatePersonalOrgSlug(user);
+      }
 
-    let updated: User | undefined;
-    try {
-      updated = await usersRepository.update(id, {
-        organization_id: organization.id,
-        role: "owner",
+      const organization = await organizationsRepository.create({
+        name: `${user.name || user.email || "User"}'s Organization`,
+        slug,
+        credit_balance: "0.00",
       });
-      if (!updated) {
-        throw new Error(`Failed to move user ${id} to personal organization ${organization.id}`);
-      }
-    } catch (error) {
-      // Don't strand an empty org when the move fails.
+
+      let updated: User | undefined;
       try {
-        await organizationsRepository.delete(organization.id);
-      } catch (rollbackError) {
-        // error-policy:J6 best-effort rollback of the just-created empty org; log and
-        // fall through to rethrow the original move failure (never masks it).
-        logger.error("[UsersService] Failed to roll back personal org after detach failure", {
-          userId: id,
-          organizationId: organization.id,
-          ...getErrorDetails(rollbackError),
+        updated = await usersRepository.update(id, {
+          organization_id: organization.id,
+          role: "owner",
         });
+        if (!updated) {
+          throw new Error(`Failed to move user ${id} to personal organization ${organization.id}`);
+        }
+      } catch (error) {
+        // Don't strand an empty org when the move fails.
+        try {
+          await organizationsRepository.delete(organization.id);
+        } catch (rollbackError) {
+          // error-policy:J6 best-effort rollback of the just-created empty org; log and
+          // fall through to rethrow the original move failure (never masks it).
+          logger.error("[UsersService] Failed to roll back personal org after detach failure", {
+            userId: id,
+            organizationId: organization.id,
+            ...getErrorDetails(rollbackError),
+          });
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    if (user.organization_id) {
-      await apiKeysRepository.deactivateByUserAndOrganization(id, user.organization_id);
-    }
+      if (user.organization_id) {
+        await apiKeysRepository.deactivateByUserAndOrganization(id, user.organization_id);
+      }
 
-    await this.invalidateCache(user);
-    await this.invalidateCache(updated);
-    // The revoked keys may still be warm in the inference-auth cache under the
-    // old org's identity — evict them so they stop fast-pathing immediately.
-    await this.invalidateInferenceAuthForUser(id);
-    const nextRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, updated);
-    await this.invalidatePersonalDeliveryRoutingIdentities([
-      ...previousRoutingIdentities,
-      ...nextRoutingIdentities,
-    ]);
+      await this.invalidateCache(user);
+      await this.invalidateCache(updated);
+      // The revoked keys may still be warm in the inference-auth cache under the
+      // old org's identity — evict them so they stop fast-pathing immediately.
+      await this.invalidateInferenceAuthForUser(id);
 
-    return updated;
+      return updated;
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -614,30 +601,30 @@ export class UsersService {
       throw new Error(`User ${id} not found`);
     }
     const routingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
+    await runWithBoundPersonalDeliveryProjectionFences(routingIdentities, async () => {
+      const organizationId = user.organization_id;
 
-    const organizationId = user.organization_id;
-
-    if (organizationId) {
-      await setInferenceSubjectActive(organizationId, id, false, "account");
-    }
-
-    await this.invalidateCache(user);
-    // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:
-    // at delete time the user is still active, so an is_active gate can't fire and
-    // the key_hash set must be read while the keys still exist.
-    await this.invalidateInferenceAuthForUser(id);
-    await usersRepository.delete(id);
-    await this.invalidatePersonalDeliveryRoutingIdentities(routingIdentities);
-
-    // Check if this was the last user in the organization
-    if (organizationId) {
-      const remainingUsers = await usersRepository.listByOrganization(organizationId);
-
-      // If no users remain, delete the organization
-      if (remainingUsers.length === 0) {
-        await organizationsRepository.delete(organizationId);
+      if (organizationId) {
+        await setInferenceSubjectActive(organizationId, id, false, "account");
       }
-    }
+
+      await this.invalidateCache(user);
+      // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:
+      // at delete time the user is still active, so an is_active gate can't fire and
+      // the key_hash set must be read while the keys still exist.
+      await this.invalidateInferenceAuthForUser(id);
+      await usersRepository.delete(id);
+
+      // Check if this was the last user in the organization
+      if (organizationId) {
+        const remainingUsers = await usersRepository.listByOrganization(organizationId);
+
+        // If no users remain, delete the organization
+        if (remainingUsers.length === 0) {
+          await organizationsRepository.delete(organizationId);
+        }
+      }
+    });
   }
 }
 
