@@ -27,6 +27,11 @@ import {
 } from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveVendoredOpencodeShim } from "./opencode-config.js";
+import {
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTERS,
+} from "./subscription-coding-adapters.js";
 
 type AgentMetricsSummary = {
   spawned: number;
@@ -201,6 +206,26 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
     repoWork: 0.95,
     fastIteration: 0.95,
   },
+  kimi: {
+    implementation: 0.85,
+    research: 0.75,
+    planning: 0.75,
+    ops: 0.7,
+    verification: 0.8,
+    coordination: 0.7,
+    repoWork: 0.85,
+    fastIteration: 0.85,
+  },
+  grok: {
+    implementation: 0.85,
+    research: 0.75,
+    planning: 0.75,
+    ops: 0.7,
+    verification: 0.8,
+    coordination: 0.7,
+    repoWork: 0.85,
+    fastIteration: 0.85,
+  },
 };
 
 const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
@@ -209,6 +234,8 @@ const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   claude: "Claude Code",
   codex: "Codex",
   opencode: "OpenCode",
+  kimi: "Kimi Code",
+  grok: "Grok Build",
 };
 
 const STANDARD_FRAMEWORKS: readonly SupportedTaskAgentAdapter[] =
@@ -285,6 +312,14 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
     powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
     fast: "ELIZA_OPENCODE_MODEL_FAST",
   },
+  kimi: {
+    powerful: "ELIZA_KIMI_MODEL_POWERFUL",
+    fast: "ELIZA_KIMI_MODEL_FAST",
+  },
+  grok: {
+    powerful: "ELIZA_GROK_MODEL_POWERFUL",
+    fast: "ELIZA_GROK_MODEL_FAST",
+  },
 };
 
 export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
@@ -298,6 +333,8 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
   claude: { powerful: "claude-opus-4-8", fast: "claude-sonnet-5" },
   codex: { powerful: "gpt-5.6-sol", fast: "gpt-5.6-luna" },
   opencode: {},
+  kimi: {},
+  grok: {},
 };
 
 type FrameworkInventory = {
@@ -356,6 +393,12 @@ function normalizePreflightAdapterId(
     case "opencode":
     case "open code":
       return "opencode";
+    case "kimi":
+    case "kimi code":
+      return "kimi";
+    case "grok":
+    case "grok build":
+      return "grok";
     default:
       return null;
   }
@@ -439,6 +482,14 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "open-code":
     case "open code":
       return "opencode";
+    case "kimi":
+    case "kimi-code":
+    case "kimi code":
+      return "kimi";
+    case "grok":
+    case "grok-build":
+    case "grok build":
+      return "grok";
     default:
       return undefined;
   }
@@ -655,6 +706,12 @@ function isCommandExecutableAvailable(command: string | undefined): boolean {
 }
 
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
+  if (isSubscriptionCodingAdapter(id)) {
+    const descriptor = SUBSCRIPTION_CODING_ADAPTERS[id];
+    return probeSubscriptionCodingAdapter(id, {
+      command: readConfigEnvKey(descriptor.commandSetting),
+    }).installed;
+  }
   const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[id];
   const configured = readConfigEnvKey(preflight.commandConfigKey);
   if (configured) return isCommandExecutableAvailable(configured);
@@ -722,6 +779,12 @@ async function computeTaskAgentFrameworkState(
   const opencodePreflightAuth = getPreflightAuthStatus(
     preflightByAdapter.get("opencode"),
   );
+  const kimiPreflightAuth = getPreflightAuthStatus(
+    preflightByAdapter.get("kimi"),
+  );
+  const grokPreflightAuth = getPreflightAuthStatus(
+    preflightByAdapter.get("grok"),
+  );
 
   const claudeSubscriptionReady =
     claudePreflightAuth === "authenticated" || hasClaudeSubscriptionAuth();
@@ -741,6 +804,16 @@ async function computeTaskAgentFrameworkState(
         readConfigEnvKey("ELIZA_OPENCODE_API_KEY"),
     ) ||
     Boolean(readConfigEnvKey("CEREBRAS_API_KEY"));
+  const kimiProbe = probeSubscriptionCodingAdapter("kimi", {
+    command: readConfigEnvKey(SUBSCRIPTION_CODING_ADAPTERS.kimi.commandSetting),
+  });
+  const grokProbe = probeSubscriptionCodingAdapter("grok", {
+    command: readConfigEnvKey(SUBSCRIPTION_CODING_ADAPTERS.grok.commandSetting),
+  });
+  const kimiSubscriptionReady =
+    kimiPreflightAuth === "authenticated" || kimiProbe.authenticated;
+  const grokSubscriptionReady =
+    grokPreflightAuth === "authenticated" || grokProbe.authenticated;
 
   const providerPrefersClaude =
     configuredSubscriptionProvider === "anthropic-subscription" ||
@@ -774,7 +847,11 @@ async function computeTaskAgentFrameworkState(
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
-            : false;
+            : id === "kimi"
+              ? kimiSubscriptionReady
+              : id === "grok"
+                ? grokSubscriptionReady
+                : false;
       const preflightAuth = getPreflightAuthStatus(preflight);
       const credentialsReady =
         id === "elizaos" || id === "pi-agent"
@@ -785,7 +862,11 @@ async function computeTaskAgentFrameworkState(
             ? claudeAuthReady
             : id === "codex"
               ? codexAuthReady
-              : opencodeAuthReady;
+              : id === "kimi"
+                ? kimiSubscriptionReady
+                : id === "grok"
+                  ? grokSubscriptionReady
+                  : opencodeAuthReady;
       const authReady = installed && credentialsReady;
       const reason =
         id === "elizaos" && installed
@@ -796,15 +877,19 @@ async function computeTaskAgentFrameworkState(
               ? "ready to use the user's Claude subscription"
               : id === "codex" && subscriptionReady
                 ? "ready to use the user's OpenAI subscription"
-                : id === "opencode" && installed && opencodeLocalMode
-                  ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
-                  : id === "opencode" && installed && authReady
-                    ? "ready to use the configured OpenCode provider"
-                    : installed
-                      ? authReady
-                        ? "installed with credentials available"
-                        : "installed but credentials were not detected"
-                      : "CLI not detected";
+                : id === "kimi" && subscriptionReady
+                  ? "ready to use the user's Kimi Code included plan in a user-attended session"
+                  : id === "grok" && subscriptionReady
+                    ? "ready to use the user's Grok included plan"
+                    : id === "opencode" && installed && opencodeLocalMode
+                      ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
+                      : id === "opencode" && installed && authReady
+                        ? "ready to use the configured OpenCode provider"
+                        : installed
+                          ? authReady
+                            ? "installed with credentials available"
+                            : "installed but credentials were not detected"
+                          : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -821,10 +906,16 @@ async function computeTaskAgentFrameworkState(
               ? "Configure ELIZA_PI_AGENT_ACP_COMMAND or install pi-agent on PATH"
               : id === "opencode"
                 ? "curl -fsSL https://opencode.ai/install | bash"
-                : undefined),
+                : isSubscriptionCodingAdapter(id)
+                  ? `Install ${SUBSCRIPTION_CODING_ADAPTERS[id].label} from its official documentation`
+                  : undefined),
         docsUrl:
           preflight?.docsUrl ??
-          (id === "opencode" ? "https://opencode.ai/docs/" : undefined),
+          (id === "opencode"
+            ? "https://opencode.ai/docs/"
+            : isSubscriptionCodingAdapter(id)
+              ? SUBSCRIPTION_CODING_ADAPTERS[id].docsUrl
+              : undefined),
       };
     },
   );
@@ -835,7 +926,9 @@ async function computeTaskAgentFrameworkState(
   }));
   const metrics = probe?.getAgentMetrics?.() ?? {};
   const profile = buildTaskAgentTaskProfile(profileInput);
-  const candidates = frameworks.filter((framework) => framework.installed);
+  const candidates = frameworks.filter(
+    (framework) => framework.installed && framework.id !== "kimi",
+  );
 
   const scoredCandidates = candidates.map((framework) => {
     const explicitOverride =

@@ -11,6 +11,8 @@ export const CODING_AGENT_BACKENDS = [
   "claude",
   "codex",
   "opencode",
+  "kimi",
+  "grok",
 ] as const;
 
 export type CodingAgentBackend = (typeof CODING_AGENT_BACKENDS)[number];
@@ -92,6 +94,20 @@ export const CODING_AGENT_BACKEND_PREFLIGHTS = {
     commandConfigKey: "ELIZA_OPENCODE_ACP_COMMAND",
     commandResolution: "vendored-opencode",
     defaultCommand: "opencode acp",
+  },
+  kimi: {
+    requiredRuntime: "kimi-cli",
+    discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_KIMI_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "kimi acp",
+  },
+  grok: {
+    requiredRuntime: "grok-build-cli",
+    discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "grok agent stdio",
   },
 } as const satisfies Readonly<
   Record<CodingAgentBackend, CodingAgentBackendPreflight>
@@ -207,7 +223,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "subscription-coding-plan",
     true,
     null,
-    "The Kimi coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
+    "The saved Kimi coding-plan key can serve API inference, but the Kimi ACP backend uses its official CLI OAuth session and does not consume that key.",
   ),
   "deepseek-coding": descriptor(
     "deepseek-coding",

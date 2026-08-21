@@ -51,11 +51,11 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "kimi-coding",
-    name: "Kimi Code",
+    name: "Kimi Coding Endpoint Key",
     category: "coding",
     description:
-      "Dedicated Kimi coding-endpoint credential; no coding-agent spawn backend is wired yet.",
-    eligibility: ["model inference", "spawn unavailable"],
+      "Dedicated coding-endpoint key for model inference. Kimi ACP uses a separate kimi login OAuth session and never receives this key.",
+    eligibility: ["model inference", "endpoint key", "not ACP login"],
   },
   {
     id: "deepseek-coding",

@@ -101,6 +101,20 @@ describe("coding-agent capability mapping", () => {
         commandResolution: "vendored-opencode",
         defaultCommand: "opencode acp",
       },
+      kimi: {
+        requiredRuntime: "kimi-cli",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_KIMI_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "kimi acp",
+      },
+      grok: {
+        requiredRuntime: "grok-build-cli",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "grok agent stdio",
+      },
     });
     for (const backend of CODING_AGENT_BACKENDS) {
       const providers = CODING_AGENT_BACKEND_PROVIDERS[backend];
@@ -204,6 +218,24 @@ describe("coding-agent capability mapping", () => {
     });
     expect(JSON.parse(JSON.stringify(CODING_PROVIDER_SUPPORT_MATRIX))).toEqual(
       CODING_PROVIDER_SUPPORT_MATRIX,
+    );
+  });
+
+  it("keeps native Kimi and Grok OAuth outside API-key account routing", () => {
+    expect(CODING_AGENT_BACKENDS).toEqual(
+      expect.arrayContaining(["kimi", "grok"]),
+    );
+    expect(CODING_AGENT_BACKEND_PROVIDERS.kimi).toEqual([]);
+    expect(CODING_AGENT_BACKEND_PROVIDERS.grok).toEqual([]);
+    expect(codingAgentSpawnCapabilityForProvider("kimi-coding")).toMatchObject({
+      available: false,
+      unavailableReason: expect.stringContaining("CLI OAuth"),
+    });
+    expect(codingAgentSpawnCapabilityForProvider("moonshot-api")).toMatchObject(
+      {
+        available: false,
+        unavailableReason: expect.stringContaining("direct API"),
+      },
     );
   });
 });

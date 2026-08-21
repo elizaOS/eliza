@@ -121,6 +121,8 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * it as their executable backend. Provider-specific endpoint/model policy is
  * applied later by the orchestrator's typed route; this bridge owns only
  * account selection and the isolated canonical environment patch.
+ * Native Kimi and Grok adapters use their CLI-owned OAuth state and therefore
+ * remain absent from this pooled credential bridge.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>

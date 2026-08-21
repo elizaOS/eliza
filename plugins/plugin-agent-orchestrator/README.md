@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for elizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for elizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude, Kimi Code, and Grok Build) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
@@ -24,7 +24,7 @@ The plugin combines three concerns:
 npm install @elizaos/plugin-agent-orchestrator
 ```
 
-Native TypeScript ACP is the default transport. Set the default coding agent with `ELIZA_ACP_DEFAULT_AGENT` (`elizaos`, `pi-agent`, or `opencode` are the primary supported defaults):
+Native TypeScript ACP is the default transport. Set the default coding agent with `ELIZA_ACP_DEFAULT_AGENT`:
 
 ```bash
 export ELIZA_ACP_TRANSPORT=native
@@ -36,6 +36,10 @@ export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.
 ```
 
 Authenticate the underlying agent you plan to use before spawning sessions. Native Codex and Claude defaults use `npx`, so pin or replace those commands in production if you do not want runtime downloads.
+
+Subscription-backed Kimi and Grok sessions use only their official CLI OAuth state and native ACP commands. Run `kimi login` before Kimi Code, or `grok login`/`grok login --device-auth` before Grok Build. Kimi Code has no top-level status/logout command: the adapter probes its local OAuth state, ACP verifies it during session creation, and logout remains the interactive `/logout` command. Grok supports `grok models` for status/model discovery and `grok logout`. Kimi subscription spawns must set `SpawnOptions.subscriptionExecutionMode` to `user-attended`; scheduled, unattended, and unspecified Kimi modes fail before a workspace or task is created.
+
+Both adapters label their billing source as an included plan and remove direct API settings from the child environment. Kimi strips Kimi/Moonshot API keys and base URLs; Grok strips `XAI_API_KEY` and API proxy overrides. This prevents a saved subscription login from silently becoming pay-as-you-go API usage.
 
 The legacy command-wrapper path remains available for compatibility:
 
@@ -157,6 +161,8 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
+| `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Requires an explicit user-attended execution mode. |
+| `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP stdio command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic OpenCode direct-API route selector: Cerebras, DeepSeek, Z.AI general API, Moonshot, xAI, or OpenRouter. |
 | `ELIZA_OPENCODE_MODEL_POWERFUL` / `OPENCODE_MODEL` | provider default; required for OpenRouter | Model id; OpenRouter accepts arbitrary catalog slugs. |
