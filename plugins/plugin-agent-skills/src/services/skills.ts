@@ -10,10 +10,11 @@
  *
  * Skill source precedence (highest to lowest):
  * 1. workspace - Skills in workspace directory
- * 2. managed - Installed/downloaded skills
- * 3. bundled - Read-only bundled skills
- * 4. plugin - Plugin-contributed skills
- * 5. extra - Extra directories from config
+ * 2. marketplace - Workspace-local repository installs
+ * 3. managed - Installed/downloaded skills
+ * 4. bundled - Read-only bundled skills
+ * 5. plugin - Plugin-contributed skills
+ * 6. extra - Extra directories from config
  *
  * Zip / SKILL.md downloads are read through {@link readCappedSkillPackage}
  * so a lying or missing Content-Length cannot force an unbounded allocation
@@ -23,6 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
 	estimateTokens,
@@ -84,6 +86,8 @@ import {
 
 /** Default ClawHub API base URL */
 const CLAWHUB_API = "https://clawhub.ai";
+const SKILL_PREFS_CACHE_KEY = "eliza:skill-preferences";
+const SKILL_ACK_CACHE_KEY = "eliza:skill-scan-acknowledgments";
 
 /** Cache TTL defaults (in milliseconds) */
 const CACHE_TTL = {
@@ -304,6 +308,8 @@ export class AgentSkillsService extends Service {
 	// Additional skill source directories
 	private workspaceSkillsDir: string | null = null;
 	private workspaceStorage: FileSystemSkillStore | null = null;
+	private marketplaceSkillsDir: string | null = null;
+	private marketplaceStorage: FileSystemSkillStore | null = null;
 	private pluginSkillsDirs: string[] = [];
 	private pluginStorages: Map<string, FileSystemSkillStore> = new Map();
 	private extraDirs: string[] = [];
@@ -586,7 +592,9 @@ export class AgentSkillsService extends Service {
 			await this.loadSkillsFromSource(this.pluginStorages, "plugin");
 			await this.loadBundledSkills();
 			await this.loadInstalledSkills();
+			await this.loadMarketplaceSkills();
 			await this.loadWorkspaceSkills();
+			await this.hydrateStartupScanGates();
 		}
 
 		// Load cached catalog from disk (filesystem mode only)
@@ -603,7 +611,7 @@ export class AgentSkillsService extends Service {
 		const counts = this.getSkillCountsBySource();
 		this.runtime.logger.info(
 			`AgentSkills: Initialized with ${this.loadedSkills.size} skills ` +
-				`(workspace: ${counts.workspace}, managed: ${counts.managed}, ` +
+				`(workspace: ${counts.workspace}, marketplace: ${counts.marketplace}, managed: ${counts.managed}, ` +
 				`bundled: ${counts.bundled}, plugin: ${counts.plugin}, extra: ${counts.extra})`,
 		);
 
@@ -644,6 +652,18 @@ export class AgentSkillsService extends Service {
 					`AgentSkills: Workspace skills directory not accessible: ${this.workspaceSkillsDir}`,
 				);
 				this.workspaceStorage = null;
+			}
+			this.marketplaceSkillsDir = path.join(
+				this.workspaceSkillsDir,
+				".marketplace",
+			);
+			try {
+				this.marketplaceStorage = new FileSystemSkillStore(
+					this.marketplaceSkillsDir,
+				);
+				await this.marketplaceStorage.initialize();
+			} catch (_error) {
+				this.marketplaceStorage = null;
 			}
 		}
 
@@ -702,6 +722,7 @@ export class AgentSkillsService extends Service {
 	private getSkillCountsBySource(): Record<SkillSource, number> {
 		const counts: Record<SkillSource, number> = {
 			workspace: 0,
+			marketplace: 0,
 			managed: 0,
 			bundled: 0,
 			plugin: 0,
@@ -713,6 +734,137 @@ export class AgentSkillsService extends Service {
 		}
 
 		return counts;
+	}
+
+	private async loadMarketplaceSkills(): Promise<void> {
+		if (!this.marketplaceStorage || !this.marketplaceSkillsDir) return;
+		for (const slug of await this.marketplaceStorage.listSkills()) {
+			await this.refreshMarketplaceSkill(slug);
+		}
+	}
+
+	private async hydrateStartupScanGates(): Promise<void> {
+		for (const [slug, skill] of [...this.loadedSkills]) {
+			const report = await loadScanReport(skill.path);
+			if (!report) continue;
+			if (report.status === "blocked") {
+				await this.refreshMarketplaceSkill(slug);
+				continue;
+			}
+			this.applyScanGate(slug, report);
+		}
+
+		try {
+			const acknowledgments = await this.runtime.getCache<Record<
+				string,
+				{ reportDigest?: unknown }
+			>>(SKILL_ACK_CACHE_KEY);
+			const preferences = await this.runtime.getCache<Record<string, boolean>>(
+				SKILL_PREFS_CACHE_KEY,
+			);
+			for (const [slug, digest] of this.currentScanDigests) {
+				const persistedDigest = acknowledgments?.[slug]?.reportDigest;
+				if (
+					typeof persistedDigest === "string" &&
+					persistedDigest === digest &&
+					this.acknowledgeSkillScan(slug, persistedDigest) &&
+					preferences?.[slug] === true
+				) {
+					this.setSkillEnabled(slug, true, { reportDigest: persistedDigest });
+				}
+			}
+		} catch (error) {
+			// error-policy:J7 Persisted authorization is optional startup state; a
+			// read failure leaves every scanned skill disabled and is diagnostic.
+			this.runtime.reportError?.("AgentSkills.scanGateHydration", error);
+		}
+	}
+
+	private skillSourceCandidates(): Array<{
+		source: SkillSource;
+		sourceDir: string;
+		storage: ISkillStorage;
+	}> {
+		const candidates: Array<{
+			source: SkillSource;
+			sourceDir: string;
+			storage: ISkillStorage;
+		}> = [];
+		if (this.workspaceStorage && this.workspaceSkillsDir) {
+			candidates.push({
+				source: "workspace",
+				sourceDir: this.workspaceSkillsDir,
+				storage: this.workspaceStorage,
+			});
+		}
+		if (this.marketplaceStorage && this.marketplaceSkillsDir) {
+			candidates.push({
+				source: "marketplace",
+				sourceDir: this.marketplaceSkillsDir,
+				storage: this.marketplaceStorage,
+			});
+		}
+		candidates.push({
+			source: "managed",
+			sourceDir:
+				this.storage instanceof FileSystemSkillStore
+					? this.storage.basePath
+					: "./skills",
+			storage: this.storage,
+		});
+		for (const [source, storages] of [
+			["bundled", this.bundledStorages],
+			["plugin", this.pluginStorages],
+			["extra", this.extraStorages],
+		] as const) {
+			for (const [sourceDir, storage] of storages) {
+				candidates.push({ source, sourceDir, storage });
+			}
+		}
+		return candidates;
+	}
+
+	/** Reconcile a committed marketplace filesystem mutation into runtime state. */
+	async refreshMarketplaceSkill(
+		slug: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<void> {
+		const safeSlug = sanitizeSlug(slug);
+		await this.withSkillInstallMutex(safeSlug, options.signal, async () => {
+			options.signal?.throwIfAborted();
+			let replacement: LoadedSkillWithSource | null = null;
+			let replacementReport: SkillScanReport | null = null;
+			for (const candidate of this.skillSourceCandidates()) {
+				if (!(await candidate.storage.hasSkill(safeSlug))) continue;
+				const report =
+					candidate.storage instanceof FileSystemSkillStore
+						? await loadScanReport(candidate.storage.getSkillPath(safeSlug))
+						: null;
+				if (candidate.source === "marketplace" && !report) continue;
+				if (report?.status === "blocked") continue;
+				const skill = await this.loadSkillFromStorageWithSource(
+					candidate.storage,
+					safeSlug,
+					candidate.source,
+					candidate.sourceDir,
+				);
+				if (skill) {
+					replacement = skill;
+					replacementReport = report;
+					break;
+				}
+			}
+			options.signal?.throwIfAborted();
+			this.acknowledgedScanDigests.delete(safeSlug);
+			this.eligibilityCache.delete(safeSlug);
+			if (replacement) this.loadedSkills.set(safeSlug, replacement);
+			else this.loadedSkills.delete(safeSlug);
+			if (replacementReport) this.applyScanGate(safeSlug, replacementReport);
+			else {
+				this.scanStatusMap.delete(safeSlug);
+				this.currentScanDigests.delete(safeSlug);
+			}
+		});
 	}
 
 	/**
@@ -1387,6 +1539,7 @@ export class AgentSkillsService extends Service {
 	isSkillEnabled(skillName: string): boolean {
 		const entry = this.skillEntries.get(skillName);
 		const scanStatus = this.scanStatusMap.get(skillName);
+		if (scanStatus === "blocked") return false;
 		if (scanStatus === "warning" || scanStatus === "critical") {
 			const digest = this.currentScanDigests.get(skillName);
 			return (
@@ -1590,6 +1743,30 @@ export class AgentSkillsService extends Service {
 		}
 
 		// 2. Managed storage
+		if (
+			this.marketplaceStorage &&
+			this.marketplaceSkillsDir &&
+			(await this.marketplaceStorage.hasSkill(slug))
+		) {
+			const report = await loadScanReport(
+				this.marketplaceStorage.getSkillPath(slug),
+			);
+			if (report && report.status !== "blocked") {
+				const skill = await this.loadSkillFromStorageWithSource(
+					this.marketplaceStorage,
+					slug,
+					"marketplace",
+					this.marketplaceSkillsDir,
+				);
+				if (skill) {
+					this.loadedSkills.set(slug, skill);
+					if (report) this.applyScanGate(slug, report);
+					return skill;
+				}
+			}
+		}
+
+		// 3. Managed storage
 		if (await this.storage.hasSkill(slug)) {
 			const skillsDir =
 				this.storage.type === "filesystem"
@@ -1709,6 +1886,9 @@ export class AgentSkillsService extends Service {
 		switch (skill.source) {
 			case "workspace":
 				if (this.workspaceStorage) return this.workspaceStorage;
+				break;
+			case "marketplace":
+				if (this.marketplaceStorage) return this.marketplaceStorage;
 				break;
 			case "bundled":
 				if (skill.bundledDir) {
@@ -2232,13 +2412,15 @@ export class AgentSkillsService extends Service {
 	 * Load a persisted scan report from storage.
 	 */
 	async getSkillScanReport(slug: string): Promise<SkillScanReport | null> {
-		if (this.storage instanceof FileSystemSkillStore) {
+		const loaded = this.loadedSkills.get(sanitizeSlug(slug));
+		const storage = loaded ? this.getStorageForSkill(loaded) : this.storage;
+		if (storage instanceof FileSystemSkillStore) {
 			const { loadScanReport } = await import("../security/index");
-			return loadScanReport(this.storage.getSkillPath(slug));
+			return loadScanReport(storage.getSkillPath(slug));
 		}
 
 		// Memory mode: read from in-memory package files
-		const pkg = (this.storage as MemorySkillStore).getPackage(slug);
+		const pkg = (storage as MemorySkillStore).getPackage(slug);
 		const reportFile = pkg?.files.get(".scan-results.json");
 		if (!reportFile?.isText) return null;
 
@@ -2266,6 +2448,7 @@ export class AgentSkillsService extends Service {
 		// Block enabling skills with unacknowledged scan findings
 		if (enabled) {
 			const scanStatus = this.scanStatusMap.get(slug);
+			if (scanStatus === "blocked") return false;
 			if (
 				(scanStatus === "critical" || scanStatus === "warning") &&
 				(!options.reportDigest ||
@@ -2517,7 +2700,11 @@ export class AgentSkillsService extends Service {
 				update.finalize();
 			});
 			const active = this.loadedSkills.get(candidate.slug);
-			if (active?.source !== "workspace") {
+			if (
+				!active ||
+				SKILL_SOURCE_PRECEDENCE[active.source] <=
+					SKILL_SOURCE_PRECEDENCE.managed
+			) {
 				this.acknowledgedScanDigests.delete(candidate.slug);
 				this.loadedSkills.set(candidate.slug, loadedCandidate);
 				this.applyScanGate(candidate.slug, scanReport);
@@ -2556,7 +2743,10 @@ export class AgentSkillsService extends Service {
 					lockfileUpdate.publish();
 					signal?.throwIfAborted();
 
-					const managedCandidateIsActive = previousLoaded?.source !== "workspace";
+					const managedCandidateIsActive =
+						!previousLoaded ||
+						SKILL_SOURCE_PRECEDENCE[previousLoaded.source] <=
+							SKILL_SOURCE_PRECEDENCE.managed;
 					if (managedCandidateIsActive) {
 						this.acknowledgedScanDigests.delete(candidate.slug);
 						if (previousLoaded) {
@@ -3071,6 +3261,19 @@ export class AgentSkillsService extends Service {
 	): Promise<boolean> {
 		const safeSlug = sanitizeSlug(slug);
 		try {
+			if (this.loadedSkills.get(safeSlug)?.source === "marketplace") {
+				if (!this.workspaceSkillsDir) return false;
+				const { uninstallMarketplaceSkill } = await import(
+					"./skill-marketplace"
+				);
+				await uninstallMarketplaceSkill(
+					path.dirname(this.workspaceSkillsDir),
+					safeSlug,
+					{ signal: options.signal },
+				);
+				await this.refreshMarketplaceSkill(safeSlug);
+				return true;
+			}
 			return await this.withSkillInstallMutex(safeSlug, options.signal, async () => {
 			options.signal?.throwIfAborted();
 			const active = this.loadedSkills.get(safeSlug);

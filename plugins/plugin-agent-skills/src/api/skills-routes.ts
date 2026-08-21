@@ -346,7 +346,7 @@ async function refreshAfterCommittedSkillMutation(
   workspaceDir: string,
   scope: string,
 	discover: SkillsRouteContext["discoverSkills"],
-	signal?: AbortSignal,
+	_signal?: AbortSignal,
 ): Promise<void> {
   try {
 		const nextSkills = await discover(
@@ -354,7 +354,7 @@ async function refreshAfterCommittedSkillMutation(
       state.config,
       state.runtime,
     );
-		if (!signal?.aborted) state.skills = nextSkills;
+		state.skills = nextSkills;
   } catch (error) {
     // error-policy:J7 A committed mutation remains successful when its
     // post-commit view refresh fails; diagnostics make the stale view visible.
@@ -362,6 +362,24 @@ async function refreshAfterCommittedSkillMutation(
     logger.warn(
       `[skills-api] Post-commit skill refresh failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  }
+}
+
+async function refreshMarketplaceRuntimeSkill(
+  state: SkillsServerState,
+  slug: string,
+): Promise<void> {
+  try {
+    const service = state.runtime?.getService("AGENT_SKILLS_SERVICE") as
+      | { refreshMarketplaceSkill?: (slug: string) => Promise<void> }
+      | undefined;
+    await service?.refreshMarketplaceSkill?.(slug);
+  } catch (error) {
+    // error-policy:J7 The marketplace filesystem commit is authoritative;
+    // runtime reconciliation failure is diagnostic and must not invite retry.
+    state.runtime?.reportError("SkillsRoute.marketplaceRuntimeRefresh", error, {
+      slug,
+    });
   }
 }
 
@@ -1706,6 +1724,7 @@ export async function handleSkillsRoutes(
 				await uninstallMp(workspaceDir, skillId, {
 					signal: requestLifecycle.signal,
 				});
+				await refreshMarketplaceRuntimeSkill(state, skillId);
         deleted = true;
 				externallyCommitted = true;
         source = "marketplace";
@@ -2003,6 +2022,7 @@ export async function handleSkillsRoutes(
             },
             { signal: requestLifecycle.signal },
           );
+					await refreshMarketplaceRuntimeSkill(state, result.id);
 					await refreshAfterCommittedSkillMutation(
 						state,
 						workspaceDir,
@@ -2057,6 +2077,7 @@ export async function handleSkillsRoutes(
       const result = await uninstallMarketplaceSkill(workspaceDir, uninstallId, {
         signal: requestLifecycle.signal,
       });
+		await refreshMarketplaceRuntimeSkill(state, uninstallId);
 
 			await refreshAfterCommittedSkillMutation(
 				state,

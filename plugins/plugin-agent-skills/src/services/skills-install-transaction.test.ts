@@ -29,6 +29,8 @@ async function temporaryDirectory(prefix: string): Promise<string> {
 function runtime(): IAgentRuntime {
 	return {
 		getSetting: vi.fn(() => undefined),
+		getCache: vi.fn(async () => undefined),
+		setCache: vi.fn(async () => true),
 		reportError: vi.fn(),
 		logger: {
 			debug: vi.fn(),
@@ -102,6 +104,140 @@ afterEach(async () => {
 });
 
 describe("managed skill install transactions", () => {
+	it("hydrates the exact persisted scan authorization before direct runtime use", async () => {
+		const skillsDir = await temporaryDirectory("managed-skill-restart-gate-");
+		const storage = new FileSystemSkillStore(skillsDir);
+		await storage.initialize();
+		await storage.saveSkill(
+			createSkillPackage("restart-warning", [
+				{
+					name: "SKILL.md",
+					content: skillMarkdown("restart-warning", "Visit https://evil.example"),
+				},
+			]),
+		);
+		const report = {
+			scannedAt: "2026-08-20T00:00:00.000Z",
+			status: "warning" as const,
+			summary: { scannedFiles: 1, critical: 0, warn: 1, info: 0 },
+			findings: [
+				{
+					ruleId: "external-url",
+					severity: "warn" as const,
+					file: "SKILL.md",
+					line: 6,
+					message: "External URL",
+					evidence: "example",
+				},
+			],
+			manifestFindings: [],
+			skillPath: storage.getSkillPath("restart-warning"),
+		};
+		await fs.writeFile(
+			path.join(storage.getSkillPath("restart-warning"), ".scan-results.json"),
+			JSON.stringify(report),
+		);
+		const first = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage,
+			skillsDir,
+		});
+		expect(first.isSkillEnabled("restart-warning")).toBe(false);
+		expect(first.setSkillEnabled("restart-warning", true)).toBe(false);
+		const digest = (
+			first as unknown as { currentScanDigests: Map<string, string> }
+		).currentScanDigests.get("restart-warning") as string;
+
+		const restartRuntime = runtime();
+		vi.mocked(restartRuntime.getCache).mockImplementation(async (key: string) => {
+			if (key === "eliza:skill-scan-acknowledgments") {
+				return { "restart-warning": { reportDigest: digest } } as never;
+			}
+			if (key === "eliza:skill-preferences") {
+				return { "restart-warning": true } as never;
+			}
+			return undefined;
+		});
+		const restarted = await AgentSkillsService.start(restartRuntime, {
+			autoLoad: true,
+			storage,
+			skillsDir,
+		});
+		expect(restarted.isSkillEnabled("restart-warning")).toBe(true);
+		expect(restarted.getSkillInstructions("restart-warning")?.body).toContain(
+			"evil.example",
+		);
+	});
+
+	it("loads live marketplace skills for runtime use and reveals managed fallback", async () => {
+		const workspaceDir = await temporaryDirectory("marketplace-runtime-");
+		const skillsDir = path.join(workspaceDir, "skills");
+		const managedDir = await temporaryDirectory("marketplace-managed-");
+		const storage = new FileSystemSkillStore(managedDir);
+		await storage.initialize();
+		await storage.saveSkill(
+			createSkillPackage("shared", [
+				{ name: "SKILL.md", content: skillMarkdown("shared", "managed body") },
+			]),
+		);
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage,
+			skillsDir: managedDir,
+			workspaceSkillsDir: skillsDir,
+		});
+		const marketplaceDir = path.join(skillsDir, ".marketplace", "shared");
+		await fs.mkdir(path.join(marketplaceDir, "references"), { recursive: true });
+		await fs.writeFile(
+			path.join(marketplaceDir, "SKILL.md"),
+			skillMarkdown("shared", "marketplace body"),
+		);
+		await fs.writeFile(
+			path.join(marketplaceDir, "references", "proof.md"),
+			"marketplace reference",
+		);
+		await fs.writeFile(
+			path.join(marketplaceDir, ".scan-results.json"),
+			JSON.stringify({
+				scannedAt: "2026-08-20T00:00:00.000Z",
+				status: "clean",
+				summary: { scannedFiles: 2, critical: 0, warn: 0, info: 0 },
+				findings: [],
+				manifestFindings: [],
+				skillPath: marketplaceDir,
+			}),
+		);
+		await service.refreshMarketplaceSkill("shared");
+		expect(service.getLoadedSkill("shared")?.source).toBe("marketplace");
+		expect(service.getSkillInstructions("shared")?.body).toContain(
+			"marketplace body",
+		);
+		expect(
+			(await service.getEligibleSkills()).some(
+				(skill) => skill.slug === "shared" && skill.source === "marketplace",
+			),
+		).toBe(true);
+		expect(await service.readReference("shared", "proof.md")).toBe(
+			"marketplace reference",
+		);
+		const directWorkspaceDir = path.join(skillsDir, "shared");
+		await fs.mkdir(directWorkspaceDir, { recursive: true });
+		await fs.writeFile(
+			path.join(directWorkspaceDir, "SKILL.md"),
+			skillMarkdown("shared", "workspace body"),
+		);
+		await service.refreshMarketplaceSkill("shared");
+		expect(service.getLoadedSkill("shared")?.source).toBe("workspace");
+		await fs.rm(directWorkspaceDir, { recursive: true });
+		await service.refreshMarketplaceSkill("shared");
+		expect(service.getLoadedSkill("shared")?.source).toBe("marketplace");
+
+		await fs.rm(marketplaceDir, { recursive: true });
+		await service.refreshMarketplaceSkill("shared");
+		expect(service.getLoadedSkill("shared")?.source).toBe("managed");
+		expect(service.getSkillInstructions("shared")?.body).toContain("managed body");
+	});
+
 	it("keeps finding-bearing skills disabled until the exact report is acknowledged and enabled", async () => {
 		const storage = new MemorySkillStore();
 		const service = await AgentSkillsService.start(runtime(), {

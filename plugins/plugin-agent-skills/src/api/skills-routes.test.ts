@@ -585,7 +585,8 @@ describe("skill install request lifecycle", () => {
     await expect(handled).resolves.toBe(true);
     expect(json).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
-    expect(state.skills).toBe(initialSkills);
+    expect(state.skills).not.toBe(initialSkills);
+    expect(state.skills).toEqual([]);
     expect(req.listenerCount("aborted")).toBe(0);
     expect(res.listenerCount("close")).toBe(0);
     expect(socket.listenerCount("close")).toBe(0);
@@ -643,7 +644,8 @@ describe("skill install request lifecycle", () => {
     await expect(handled).resolves.toBe(true);
     expect(json).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
-    expect(state.skills).toBe(initialSkills);
+    expect(state.skills).not.toBe(initialSkills);
+    expect(state.skills).toEqual([]);
     expect(req.listenerCount("aborted")).toBe(0);
     expect(res.listenerCount("close")).toBe(0);
     expect(socket.listenerCount("close")).toBe(0);
