@@ -3,7 +3,7 @@
  * that runs an isolated user container on a node. It composes the pure builders
  * (network ensure + docker-create + isolation flags) and drives them over an
  * injected SSH seam, so the orchestration is unit-testable with a fake SSH and
- * the real `ssh.exec` is the only IO.
+ * arbitrary environment bytes cross the real transport only via stdin.
  *
  * Deliberately NOT a subclass of DockerSandboxProvider and NOT coupled to the
  * `containers` table here — recording the row is the job executor's concern
@@ -20,7 +20,7 @@ import {
   parseDsnEndpoint,
   rewriteDsnToAmbassador,
 } from "./app-db-ambassador";
-import { buildAppDockerCreateCmd } from "./app-docker-cmd";
+import { buildAppDockerCreateCmd, validateAppDockerEnvironment } from "./app-docker-cmd";
 import { appNetworkName, buildEnsureAppNetworkCmd } from "./app-network-utils";
 import type { CreateContainerInput } from "./containers/hetzner-client/types";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -28,6 +28,7 @@ import { shellQuote } from "./docker-sandbox-utils";
 /** Minimal SSH seam — runs a command on the target node and returns stdout. */
 export interface AppContainerSsh {
   exec(command: string, timeoutMs?: number): Promise<string>;
+  execStdin(command: string, input: Buffer | string, timeoutMs?: number): Promise<string>;
 }
 
 export interface AppContainerProviderDeps {
@@ -146,27 +147,10 @@ export class AppContainerProvider {
   /** Ensure the per-app `--internal` network, create the container, start it. */
   async provision(params: ProvisionAppContainerParams): Promise<ProvisionedAppContainer> {
     const network = appNetworkName(params.appId);
-    await this.deps.ssh.exec(buildEnsureAppNetworkCmd(network));
-
-    // DB ambassador: the app is on an `--internal` net (no egress at all), so it
-    // can't reach its tenant DB directly. Stand up a per-app socat forwarder on
-    // the app net that reaches ONLY the tenant DB, and point the app's
-    // DATABASE_URL at it. The app keeps zero general egress; REVOKE-CONNECT still
-    // isolates the actual database. No DSN -> no ambassador (nothing to reach).
     let input = params.input;
     const dsn = input.environmentVars?.DATABASE_URL;
     const endpoint = dsn ? parseDsnEndpoint(dsn) : null;
     if (dsn && endpoint) {
-      const cmds = buildEnsureAmbassadorCmds({
-        appId: params.appId,
-        network,
-        db: endpoint,
-        egressNetwork: this.deps.dbEgressNetwork,
-        image: this.deps.ambassadorImage,
-      });
-      for (const cmd of cmds) {
-        await this.deps.ssh.exec(cmd);
-      }
       // Rewrite EVERY injected DSN var (DATABASE_URL + POSTGRES_URL) to the
       // ambassador host. They carry the same tenant DSN; an un-rewritten
       // POSTGRES_URL would point at the real cluster host, which is unreachable
@@ -179,6 +163,10 @@ export class AppContainerProvider {
       }
       input = { ...input, environmentVars: rewritten };
     }
+
+    // Validate the exact post-rewrite frame before port allocation or any
+    // remote mutation. Rewriting a DSN can itself cross a transport bound.
+    validateAppDockerEnvironment(input, this.deps.egressProxyUrl);
 
     // Collision-safe host port: avoid ports already published on the node. The
     // `docker ps` probe is best-effort — on failure we fall back to the blind
@@ -198,7 +186,7 @@ export class AppContainerProvider {
     for (let attempt = 0; attempt < 20 && usedPorts.has(hostPort); attempt++) {
       hostPort = await this.deps.allocateHostPort();
     }
-    const createCmd = buildAppDockerCreateCmd({
+    const createTransport = buildAppDockerCreateCmd({
       appId: params.appId,
       containerName: params.containerName,
       input,
@@ -207,6 +195,28 @@ export class AppContainerProvider {
       pidsLimit: this.deps.pidsLimit,
     });
 
+    // Build the complete stdin plan before the first SSH mutation, then preserve
+    // the existing network -> ambassador -> stale-container -> create order.
+    await this.deps.ssh.exec(buildEnsureAppNetworkCmd(network));
+
+    // DB ambassador: the app is on an `--internal` net (no egress at all), so it
+    // can't reach its tenant DB directly. Stand up a per-app socat forwarder on
+    // the app net that reaches ONLY the tenant DB, and point the app's
+    // DATABASE_URL at it. The app keeps zero general egress; REVOKE-CONNECT still
+    // isolates the actual database. No DSN -> no ambassador (nothing to reach).
+    if (endpoint) {
+      const cmds = buildEnsureAmbassadorCmds({
+        appId: params.appId,
+        network,
+        db: endpoint,
+        egressNetwork: this.deps.dbEgressNetwork,
+        image: this.deps.ambassadorImage,
+      });
+      for (const cmd of cmds) {
+        await this.deps.ssh.exec(cmd);
+      }
+    }
+
     // A redeploy reuses the deterministic `app-<slug>`
     // name, so a still-present container from a prior deploy makes `docker
     // create --name` fail with 'name already in use'. Remove it first (no-op when
@@ -214,7 +224,11 @@ export class AppContainerProvider {
     // regardless of which deploy route enqueued this provision.
     await this.removeContainerAndConfirmAbsent(params.containerName);
 
-    const stdout = await this.deps.ssh.exec(createCmd);
+    const stdout = await this.deps.ssh.execStdin(
+      createTransport.command,
+      createTransport.input,
+      60_000,
+    );
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
     await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
 

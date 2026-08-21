@@ -288,7 +288,246 @@ export interface DockerContainerEnvTransport {
   secretInput: string;
 }
 
+export interface DockerEnvFileStdinTransport {
+  /** Shell command whose environment-related argv contains only the temporary env-file path. */
+  command: string;
+  /** Versioned, bounded frame that must be delivered through an stdin-capable executor. */
+  input: string;
+}
+
+export interface DockerEnvFileStdinTransportOptions {
+  /** Override for isolated tests; production callers use restrictive files under `/tmp`. */
+  temporaryDirectory?: string;
+}
+
 const CONTAINER_SECRET_ENV_STDIN_SENTINEL = "ELIZA_SECRET_ENV_STDIN_V1_END";
+const DOCKER_ENV_FILE_STDIN_VERSION = "ELIZA_DOCKER_ENV_FILE_STDIN_V1";
+const DOCKER_ENV_FILE_STDIN_END = "ELIZA_DOCKER_ENV_FILE_STDIN_V1_END";
+const DOCKER_ENV_FILE_STDIN_LENGTH_DIGITS = 6;
+const DOCKER_ENV_FILE_STDIN_HEADER_BYTES = Buffer.byteLength(
+  `${DOCKER_ENV_FILE_STDIN_VERSION} ${"0".repeat(DOCKER_ENV_FILE_STDIN_LENGTH_DIGITS)}\n`,
+);
+const DOCKER_ENV_FILE_STDIN_END_BYTES = Buffer.byteLength(`${DOCKER_ENV_FILE_STDIN_END}\n`);
+const MAX_DOCKER_ENV_TRANSPORT_BYTES = 256 * 1024;
+const MAX_DOCKER_PROCESS_ENV_ENTRY_BYTES = 120 * 1024;
+const MAX_DOCKER_ENV_FILE_LINE_BYTES = 60 * 1024;
+const RESERVED_DOCKER_ENV_TRANSPORT_KEYS = new Set(["env_file", "env_frame_file", "env_end_file"]);
+const DOCKER_CLIENT_CONTROL_ENV_KEYS = new Set([
+  "ALL_PROXY",
+  "BASHOPTS",
+  "BASH_ENV",
+  "CDPATH",
+  "ENV",
+  "EUID",
+  "GLOBIGNORE",
+  "HOME",
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "IFS",
+  "LANG",
+  "LINENO",
+  "LOGNAME",
+  "NO_PROXY",
+  "OLDPWD",
+  "OPTARG",
+  "OPTIND",
+  "PATH",
+  "POSIXLY_CORRECT",
+  "PPID",
+  "PROMPT_COMMAND",
+  "PS1",
+  "PS2",
+  "PS3",
+  "PS4",
+  "PWD",
+  "RANDOM",
+  "SECONDS",
+  "SHELL",
+  "SHELLOPTS",
+  "SHLVL",
+  "SSH_AUTH_SOCK",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "UID",
+  "USER",
+  "_",
+  "all_proxy",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+]);
+
+function isDockerClientControlEnvKey(key: string): boolean {
+  if (
+    /^(?:DOCKER_|LD_|DYLD_|XDG_|LC_|MALLOC_)/.test(key) ||
+    /^(?:GODEBUG|GOMAXPROCS|GOMEMLIMIT|GOTRACEBACK)$/.test(key)
+  ) {
+    return true;
+  }
+  return DOCKER_CLIENT_CONTROL_ENV_KEYS.has(key);
+}
+
+interface DockerEnvironmentPartition {
+  processEnvironment: Record<string, string>;
+  envFileBody: string;
+}
+
+/**
+ * Partition an arbitrary container environment without allowing it to steer
+ * the shell wrapper or Docker client. Ordinary values are exported only so a
+ * key-only env-file entry can copy them into the container. Docker/shell
+ * control variables remain explicit env-file records and never reach the
+ * provisioning process environment.
+ */
+function partitionDockerEnvironment(
+  environment: Readonly<Record<string, string>>,
+): DockerEnvironmentPartition {
+  // A valid POSIX env key may be `__proto__`; a null-prototype record keeps it
+  // as data instead of invoking Object.prototype's legacy setter.
+  const processEnvironment = Object.create(null) as Record<string, string>;
+  const envFileLines: string[] = [];
+  let rawBytes = 0;
+
+  for (const [key, value] of Object.entries(environment)) {
+    validateEnvKey(key);
+    if (RESERVED_DOCKER_ENV_TRANSPORT_KEYS.has(key)) {
+      throw new Error(`Environment variable "${key}" is reserved by the Docker stdin transport.`);
+    }
+    if (value.includes("\0")) {
+      throw new Error(`Invalid environment variable value for key "${key}": contains NUL.`);
+    }
+
+    const entryBytes = Buffer.byteLength(`${key}=${value}`);
+    if (entryBytes > MAX_DOCKER_PROCESS_ENV_ENTRY_BYTES) {
+      throw new Error(
+        `Environment variable "${key}" exceeds the ${MAX_DOCKER_PROCESS_ENV_ENTRY_BYTES}-byte process entry limit.`,
+      );
+    }
+    rawBytes += entryBytes + 1;
+    if (rawBytes > MAX_DOCKER_ENV_TRANSPORT_BYTES) {
+      throw new Error(
+        `Container environment exceeds the ${MAX_DOCKER_ENV_TRANSPORT_BYTES}-byte transport limit.`,
+      );
+    }
+
+    if (isDockerClientControlEnvKey(key)) {
+      if (value.includes("\n") || value.includes("\r")) {
+        throw new Error(
+          `Docker client control variable "${key}" must be single-line so it cannot alter the provisioning client.`,
+        );
+      }
+      if (entryBytes > MAX_DOCKER_ENV_FILE_LINE_BYTES) {
+        throw new Error(
+          `Docker client control variable "${key}" exceeds the ${MAX_DOCKER_ENV_FILE_LINE_BYTES}-byte env-file line limit.`,
+        );
+      }
+      envFileLines.push(`${key}=${value}`);
+      continue;
+    }
+
+    processEnvironment[key] = value;
+    envFileLines.push(key);
+  }
+
+  return {
+    processEnvironment,
+    envFileBody: envFileLines.length > 0 ? `${envFileLines.join("\n")}\n` : "",
+  };
+}
+
+function buildDockerEnvironmentFrame(environment: Readonly<Record<string, string>>): string {
+  const partition = partitionDockerEnvironment(environment);
+  const exportLines = Object.entries(partition.processEnvironment).map(
+    ([key, value]) => `export ${key}=${shellQuote(value)}`,
+  );
+  const envScript = [
+    ...exportLines,
+    `printf '%s' ${shellQuote(partition.envFileBody)} > "$env_file"`,
+  ].join("\n");
+  const framedScript = `${envScript}\n`;
+  const framedScriptBytes = Buffer.byteLength(framedScript);
+  if (framedScriptBytes > MAX_DOCKER_ENV_TRANSPORT_BYTES) {
+    throw new Error(
+      `Container environment frame exceeds the ${MAX_DOCKER_ENV_TRANSPORT_BYTES}-byte transport limit.`,
+    );
+  }
+  const encodedLength = String(framedScriptBytes).padStart(
+    DOCKER_ENV_FILE_STDIN_LENGTH_DIGITS,
+    "0",
+  );
+  return `${DOCKER_ENV_FILE_STDIN_VERSION} ${encodedLength}\n${framedScript}${DOCKER_ENV_FILE_STDIN_END}\n`;
+}
+
+/** Validate the exact bounded stdin frame before callers mutate container state. */
+export function validateDockerEnvFileStdinEnvironment(
+  environment: Readonly<Record<string, string>>,
+): void {
+  buildDockerEnvironmentFrame(environment);
+}
+
+/**
+ * Build a one-shot, stdin-only Docker environment transport. The remote shell
+ * accepts exactly one bounded frame, creates restrictive temporary files,
+ * verifies the terminal sentinel and EOF, and removes every file on success,
+ * failure, timeout-driven HUP, or another handled signal.
+ */
+export function buildDockerEnvFileStdinTransport(
+  environment: Readonly<Record<string, string>>,
+  buildDockerCommand: (envFilePath: string) => string,
+  options: DockerEnvFileStdinTransportOptions = {},
+): DockerEnvFileStdinTransport {
+  const input = buildDockerEnvironmentFrame(environment);
+  const temporaryDirectory = options.temporaryDirectory ?? "/tmp";
+  validateVolumePath(temporaryDirectory);
+
+  const envFrameTemplate = shellQuote(`${temporaryDirectory}/eliza-docker-env-frame.XXXXXX`);
+  const envFileTemplate = shellQuote(`${temporaryDirectory}/eliza-docker-env.XXXXXX`);
+  const envEndFileTemplate = shellQuote(`${temporaryDirectory}/eliza-docker-env-end.XXXXXX`);
+  const dockerCommand = buildDockerCommand('"$env_file"');
+  if (!dockerCommand.trim()) {
+    throw new Error("Docker env-file stdin transport requires a non-empty command.");
+  }
+
+  return {
+    input,
+    command: [
+      "set -eu",
+      "env_frame_file=",
+      "env_file=",
+      "env_end_file=",
+      'cleanup_env_files() { test -z "$env_frame_file" || rm -f "$env_frame_file"; test -z "$env_end_file" || rm -f "$env_end_file"; test -z "$env_file" || rm -f "$env_file"; }',
+      "trap cleanup_env_files EXIT",
+      "trap 'exit 1' HUP INT TERM",
+      "umask 077",
+      `env_frame_file=$(mktemp ${envFrameTemplate})`,
+      `env_file=$(mktemp ${envFileTemplate})`,
+      `env_end_file=$(mktemp ${envEndFileTemplate})`,
+      'chmod 600 "$env_frame_file" "$env_end_file" "$env_file"',
+      `dd bs=1 count=${DOCKER_ENV_FILE_STDIN_HEADER_BYTES} of="$env_frame_file" status=none`,
+      `test "$(wc -c < "$env_frame_file" | tr -d ' ')" = ${DOCKER_ENV_FILE_STDIN_HEADER_BYTES}`,
+      'env_header=$(cat "$env_frame_file")',
+      `case "$env_header" in ${shellQuote(`${DOCKER_ENV_FILE_STDIN_VERSION} `)}??????) ;; *) exit 44 ;; esac`,
+      `env_length_padded=\${env_header#${DOCKER_ENV_FILE_STDIN_VERSION} }`,
+      "case \"$env_length_padded\" in ''|*[!0-9]*) exit 44 ;; esac",
+      "env_length=$(printf %s \"$env_length_padded\" | sed 's/^0*//')",
+      'test -n "$env_length" || env_length=0',
+      `test "$env_length" -le ${MAX_DOCKER_ENV_TRANSPORT_BYTES}`,
+      'if test "$env_length" -gt 0; then dd bs=1 count="$env_length" of="$env_frame_file" status=none; else : > "$env_frame_file"; fi',
+      "env_actual_length=$(wc -c < \"$env_frame_file\" | tr -d ' ')",
+      'test "$env_actual_length" = "$env_length"',
+      `dd bs=1 count=${DOCKER_ENV_FILE_STDIN_END_BYTES} of="$env_end_file" status=none`,
+      `test "$(wc -c < "$env_end_file" | tr -d ' ')" = ${DOCKER_ENV_FILE_STDIN_END_BYTES}`,
+      `test "$(cat "$env_end_file")" = ${shellQuote(DOCKER_ENV_FILE_STDIN_END)}`,
+      "test \"$(dd bs=1 count=1 status=none | wc -c | tr -d ' ')\" = 0",
+      '. "$env_frame_file"',
+      'chmod 600 "$env_file"',
+      dockerCommand,
+    ].join("; "),
+  };
+}
 
 /** Split validated container env into visible flags and stdin-only entries. */
 export function buildDockerContainerEnvTransport(
