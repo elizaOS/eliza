@@ -60,7 +60,7 @@ import {
 } from "./models/text";
 import { getApiBase, getBaseURL } from "./utils/config";
 
-const OLLAMA_INIT_PROBE_TIMEOUT_MS = 5_000;
+export const OLLAMA_INIT_PROBE_TIMEOUT_MS = 5_000;
 const OLLAMA_PREWARM_TIMEOUT_MS = 120_000;
 
 function readTruthyEnv(name: string): boolean {
@@ -303,7 +303,9 @@ export const ollamaPlugin: Plugin = {
           fn: async (runtime: IAgentRuntime) => {
             try {
               const apiBase = getApiBase(runtime);
-              const response = await fetch(`${apiBase}/api/tags`);
+              const response = await fetch(`${apiBase}/api/tags`, {
+                signal: AbortSignal.timeout(OLLAMA_INIT_PROBE_TIMEOUT_MS),
+              });
               if (!response.ok) {
                 logger.error(`Failed to validate Ollama API: ${response.statusText}`);
               }

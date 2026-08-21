@@ -2,7 +2,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
-import { ollamaPlugin } from "../plugin";
+import { OLLAMA_INIT_PROBE_TIMEOUT_MS, ollamaPlugin } from "../plugin";
 import { getApiBase, getBaseURL, getSetting } from "../utils/config";
 
 function runtime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
@@ -111,5 +111,31 @@ describe("Ollama config and init plumbing", () => {
       "http://remote:11434/api/version",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  it("exports OLLAMA_INIT_PROBE_TIMEOUT_MS and attaches signal to self-test url validation probe", async () => {
+    expect(OLLAMA_INIT_PROBE_TIMEOUT_MS).toBe(5_000);
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ models: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const urlTest = ollamaPlugin.tests?.[0]?.tests?.find(
+        (t) => t.name === "ollama_test_url_validation"
+      );
+      expect(urlTest).toBeDefined();
+
+      const testRuntime = runtime({ OLLAMA_BASE_URL: "http://remote:11434" });
+      await urlTest?.fn(testRuntime);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://remote:11434/api/tags",
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        })
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
