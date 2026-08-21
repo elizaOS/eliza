@@ -30,6 +30,25 @@ export function stripSqlBlockComments(sql: string): string {
   return result;
 }
 
+/** Strip double-dash comments through the next line ending in one forward pass. */
+export function stripSqlLineComments(sql: string): string {
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (cursor < sql.length) {
+    const open = sql.indexOf("--", cursor);
+    if (open < 0) {
+      chunks.push(sql.slice(cursor));
+      break;
+    }
+    chunks.push(sql.slice(cursor, open));
+    const newline = sql.indexOf("\n", open + 2);
+    if (newline < 0) break;
+    chunks.push("\n");
+    cursor = newline + 1;
+  }
+  return chunks.join("");
+}
+
 /**
  * Strip PostgreSQL dollar-quoted literals (`$$...$$`, `$tag$...$tag$`) in a
  * single pass. Unterminated literals are left intact so the read-only guard

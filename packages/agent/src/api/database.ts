@@ -47,11 +47,13 @@ import { decodePathComponent } from "./server-helpers.ts";
 export {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
 // ---------------------------------------------------------------------------
@@ -1103,9 +1105,9 @@ async function handleQuery(
     // Use empty-string replacement (not space) to mirror how PostgreSQL
     // concatenates tokens across comments — e.g. DE/* */LETE → DELETE.
     // A space replacement would turn it into "DE LETE", hiding the keyword.
-    const stripped = stripSqlBlockComments(sqlText)
-      .replace(/--.*$/gm, "")
-      .trim();
+    const stripped = stripSqlLineComments(
+      stripSqlBlockComments(sqlText),
+    ).trim();
 
     // Strip string literals so that mutation keywords/functions inside quoted
     // strings are ignored. Handles single-quoted ('...'), dollar-quoted

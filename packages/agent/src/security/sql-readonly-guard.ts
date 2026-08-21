@@ -7,6 +7,7 @@
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
 // Mirrors the server-side allowlist in api/database.ts. The scanner removes
@@ -83,7 +84,7 @@ const DANGEROUS_FUNCTIONS = [
 export function checkReadOnly(
   sqlText: string,
 ): { ok: true } | { ok: false; reason: string } {
-  const stripped = stripSqlBlockComments(sqlText).replace(/--.*$/gm, "").trim();
+  const stripped = stripSqlLineComments(stripSqlBlockComments(sqlText)).trim();
   const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
     /'(?:[^']|'')*'/g,
     " ",

@@ -7,6 +7,14 @@ import { describe, expect, it } from "vitest";
 import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
 
 describe("sanitizeReplyTextAfterMediaDelivery", () => {
+	it("scans a 100k-character failed URL candidate without backtracking", () => {
+		const text = `http://${"http://".repeat(14_285)} tail`;
+		expect(sanitizeReplyTextAfterMediaDelivery(text, [])).toBe(text);
+		const manyCandidates = "http ".repeat(20_000);
+		expect(sanitizeReplyTextAfterMediaDelivery(manyCandidates, [])).toBe(
+			manyCandidates.trim(),
+		);
+	});
 	const url = "http://192.168.255.164:8080/v1/videos/50a2f4c2/content";
 
 	it("strips known media URLs and zerollama content paths", () => {

@@ -1498,6 +1498,12 @@ describe("classifyExplicitContinuationTurn", () => {
 		expect(classifyExplicitContinuationTurn("yes")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("sounds good")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("that works")).toBe("approval");
+		expect(
+			classifyExplicitContinuationTurn("sure, that's great, go ahead"),
+		).toBe("approval");
+		expect(classifyExplicitContinuationTurn("please this is fine")).toBe(
+			"approval",
+		);
 	});
 
 	it("rejects ordinary chat, topic switches, and questions", () => {

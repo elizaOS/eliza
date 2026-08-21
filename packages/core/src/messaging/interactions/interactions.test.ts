@@ -40,6 +40,20 @@ import {
 import { appendInteractionBlock, serializeInteractionBlock } from "./serialize";
 
 describe("parse", () => {
+	it("scans a 100k-character unterminated block without backtracking", () => {
+		const text = `[FORM]\n${"[FORM]a".repeat(12_500)}`;
+		expect(findInteractionRegions(text)).toEqual([]);
+	});
+
+	it("skips an invalid opener without hiding a later valid block", () => {
+		const text = `[FORM extra]\nignored\n[FORM]\n${JSON.stringify({
+			fields: [{ name: "ok", type: "text" }],
+		})}\n[/FORM]`;
+		expect(parseInteractionBlocks(text).blocks).toMatchObject([
+			{ kind: "form", fields: [{ name: "ok", type: "text" }] },
+		]);
+	});
+
 	it("parses a choice block with scope and id", () => {
 		const text =
 			"Pick one:\n[CHOICE:approve id=abc]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]";
@@ -961,6 +975,11 @@ describe("unclaimed interaction markers never ship as prose", () => {
 });
 
 describe("stripDashboardOnlyMarkers", () => {
+	it("scans a 100k-character unterminated widget without backtracking", () => {
+		const input = `[CHECKLIST]\n${"[CHECKLIST]a".repeat(8_334)}`;
+		expect(stripDashboardOnlyMarkers(input)).toBe(input);
+	});
+
 	it("removes CONFIG plugin-card markers and tidies the gap they leave", () => {
 		const input =
 			"You'll need to connect Google Calendar first.\n\n[CONFIG:google_calendars]\n\nThen I can list your events.";

@@ -33,16 +33,6 @@ export const MAX_FORM_FIELDS = 20;
 export const MAX_FOLLOWUPS = 4;
 export const MAX_TASK_TITLE_LEN = 200;
 
-// Group 2 captures the header attributes (`id=…`, `allow_custom`) in any order.
-const CHOICE_RE =
-	/\[[ \t]*CHOICE[ \t]*:[ \t]*([\w-]+)([^\]]*)\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHOICE[ \t]*\]/g;
-const FOLLOWUPS_RE =
-	/\[[ \t]*FOLLOWUPS(?:[ \t]+id=([^\s\]]+))?[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FOLLOWUPS[ \t]*\]/g;
-const FORM_RE =
-	/\[[ \t]*FORM[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*FORM[ \t]*\]/g;
-const TASK_RE =
-	/\[[ \t]*TASK[ \t]*:[ \t]*([a-f0-9-]{8,64})[ \t]*\]([\s\S]*?)\[[ \t]*\/[ \t]*TASK[ \t]*\]/g;
-
 const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
 	"text",
 	"number",
@@ -204,76 +194,181 @@ function parseFormBody(body: string): FormInteraction | null {
 	return form;
 }
 
-function pushMatches(
+type MarkerKind = "CHOICE" | "FOLLOWUPS" | "FORM" | "TASK";
+
+interface ParsedMarker {
+	kind: MarkerKind;
+	closing: boolean;
+	rest: string;
+}
+
+interface RawInteractionRegion {
+	start: number;
+	end: number;
+	kind: MarkerKind;
+	header: string;
+	body: string;
+}
+
+interface ActiveMarker {
+	start: number;
+	bodyStart: number;
+	marker: ParsedMarker;
+}
+
+function scanMarkerEnd(
 	text: string,
-	re: RegExp,
-	build: (m: RegExpExecArray) => InteractionBlock | null,
-	out: InteractionRegion[],
-): void {
-	re.lastIndex = 0;
-	let m: RegExpExecArray | null = re.exec(text);
-	while (m !== null) {
-		const block = build(m);
-		if (block) out.push({ start: m.index, end: m.index + m[0].length, block });
-		m = re.exec(text);
+	start: number,
+): { end: number } | { nested: number } | null {
+	for (let cursor = start + 1; cursor < text.length; cursor += 1) {
+		if (text[cursor] === "[") return { nested: cursor };
+		if (text[cursor] === "]") return { end: cursor };
 	}
+	return null;
+}
+
+function parseMarker(value: string): ParsedMarker | null {
+	let cursor = 0;
+	while (cursor < value.length && /[ \t]/.test(value[cursor])) cursor += 1;
+	let closing = false;
+	if (value[cursor] === "/") {
+		closing = true;
+		cursor += 1;
+		while (cursor < value.length && /[ \t]/.test(value[cursor])) cursor += 1;
+	}
+	const nameStart = cursor;
+	while (cursor < value.length && /[A-Za-z]/.test(value[cursor])) cursor += 1;
+	const kind = value.slice(nameStart, cursor).toUpperCase() as MarkerKind;
+	if (!["CHOICE", "FOLLOWUPS", "FORM", "TASK"].includes(kind)) return null;
+	return { kind, closing, rest: value.slice(cursor).trim() };
+}
+
+function isValidOpeningMarker(marker: ParsedMarker): boolean {
+	if (marker.closing) return false;
+	if (marker.kind === "FORM") return marker.rest === "";
+	if (marker.kind === "FOLLOWUPS") {
+		if (marker.rest === "") return true;
+		if (!marker.rest.startsWith("id=") || marker.rest.length === 3)
+			return false;
+		for (let cursor = 3; cursor < marker.rest.length; cursor += 1) {
+			if (/\s/u.test(marker.rest[cursor])) return false;
+		}
+		return true;
+	}
+	if (!marker.rest.startsWith(":")) return false;
+	const header = marker.rest.slice(1).trim();
+	if (marker.kind === "TASK") return /^[a-f0-9-]{8,64}$/.test(header);
+	const space = header.search(/[ \t]/);
+	const scope = space < 0 ? header : header.slice(0, space);
+	return scope.length > 0 && /^[\w-]+$/.test(scope);
+}
+
+function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
+	const regions: RawInteractionRegion[] = [];
+	const active = new Map<MarkerKind, ActiveMarker>();
+	let cursor = 0;
+	while (cursor < text.length) {
+		const start = text.indexOf("[", cursor);
+		if (start < 0) break;
+		const scanned = scanMarkerEnd(text, start);
+		if (!scanned) break;
+		if ("nested" in scanned) {
+			cursor = scanned.nested;
+			continue;
+		}
+		const bracketEnd = scanned.end;
+		const marker = parseMarker(text.slice(start + 1, bracketEnd));
+		cursor = bracketEnd + 1;
+		if (!marker) {
+			continue;
+		}
+		if (!marker.closing) {
+			if (!isValidOpeningMarker(marker) || active.has(marker.kind)) continue;
+			let bodyStart = bracketEnd + 1;
+			if (marker.kind !== "TASK") {
+				while (bodyStart < text.length && /[ \t]/.test(text[bodyStart]))
+					bodyStart += 1;
+				if (text[bodyStart] === "\r") bodyStart += 1;
+				if (text[bodyStart] !== "\n") continue;
+				bodyStart += 1;
+			}
+			active.set(marker.kind, { start, bodyStart, marker });
+			continue;
+		}
+		if (marker.rest !== "") continue;
+		const opening = active.get(marker.kind);
+		if (!opening) continue;
+		active.delete(marker.kind);
+		let bodyEnd = start;
+		if (marker.kind !== "TASK" && text[bodyEnd - 1] === "\n") {
+			bodyEnd -= 1;
+			if (text[bodyEnd - 1] === "\r") bodyEnd -= 1;
+		}
+		regions.push({
+			start: opening.start,
+			end: bracketEnd + 1,
+			kind: marker.kind,
+			header: opening.marker.rest,
+			body: text.slice(opening.bodyStart, bodyEnd),
+		});
+	}
+	return regions;
 }
 
 /** Find every interaction-block region in `text`, sorted by position, de-overlapped. */
 export function findInteractionRegions(text: string): InteractionRegion[] {
 	if (!text) return [];
 	const regions: InteractionRegion[] = [];
-
-	pushMatches(
-		text,
-		CHOICE_RE,
-		(m): ChoiceInteraction | null => {
-			const options = parseOptionLines(m[3]);
-			if (options.length === 0) return null;
-			const attrs = m[2] ?? "";
+	for (const raw of scanRawInteractionRegions(text)) {
+		let block: InteractionBlock | null = null;
+		if (raw.kind === "CHOICE") {
+			const header = raw.header.startsWith(":")
+				? raw.header.slice(1).trim()
+				: "";
+			const space = header.search(/[ \t]/);
+			const scope = space < 0 ? header : header.slice(0, space);
+			const attrs = space < 0 ? "" : header.slice(space + 1);
+			if (!scope || !/^[\w-]+$/.test(scope)) continue;
+			const options = parseOptionLines(raw.body);
+			if (options.length === 0) continue;
 			const id = attrs.match(/\bid=(\S+)/)?.[1] ?? randomId("choice");
-			const block: ChoiceInteraction = {
+			const choice: ChoiceInteraction = {
 				kind: "choice",
 				id,
-				scope: m[1],
+				scope,
 				options,
 			};
-			if (/\ballow_custom\b/.test(attrs)) block.allowCustom = true;
-			return block;
-		},
-		regions,
-	);
-	pushMatches(
-		text,
-		FOLLOWUPS_RE,
-		(m): FollowupsInteraction | null => {
-			const options = parseFollowupLines(m[2]);
-			if (options.length === 0) return null;
-			return { kind: "followups", id: m[1] || randomId("followups"), options };
-		},
-		regions,
-	);
-	pushMatches(
-		text,
-		FORM_RE,
-		(m): FormInteraction | null => parseFormBody(m[1]),
-		regions,
-	);
-	pushMatches(
-		text,
-		TASK_RE,
-		(m): TaskInteraction | null => {
-			const threadId = m[1];
-			const rawTitle = (m[2] ?? "").trim();
-			if (!threadId || !rawTitle) return null;
+			if (attrs.split(/\s+/).includes("allow_custom"))
+				choice.allowCustom = true;
+			block = choice;
+		} else if (raw.kind === "FOLLOWUPS") {
+			const options = parseFollowupLines(raw.body);
+			if (options.length === 0) continue;
+			const idPart = raw.header
+				.split(/\s+/)
+				.find((part) => part.startsWith("id="));
+			block = {
+				kind: "followups",
+				id: idPart?.slice(3) || randomId("followups"),
+				options,
+			} satisfies FollowupsInteraction;
+		} else if (raw.kind === "FORM") {
+			if (raw.header !== "") continue;
+			block = parseFormBody(raw.body);
+		} else {
+			const threadId = raw.header.startsWith(":")
+				? raw.header.slice(1).trim()
+				: "";
+			const rawTitle = raw.body.trim();
+			if (!/^[a-f0-9-]{8,64}$/.test(threadId) || !rawTitle) continue;
 			const title =
 				rawTitle.length > MAX_TASK_TITLE_LEN
 					? `${rawTitle.slice(0, MAX_TASK_TITLE_LEN - 1)}…`
 					: rawTitle;
-			return { kind: "task", threadId, title };
-		},
-		regions,
-	);
+			block = { kind: "task", threadId, title } satisfies TaskInteraction;
+		}
+		if (block) regions.push({ start: raw.start, end: raw.end, block });
+	}
 
 	regions.sort((a, b) => a.start - b.start);
 	// Drop any region that overlaps one already accepted (left-to-right wins).
@@ -294,13 +389,52 @@ export interface ParsedInteractions {
 	cleanedText: string;
 }
 
-const UNCLAIMED_BLOCK_OPEN_RE =
-	/^[ \t]*\[[ \t]*(?:FOLLOWUPS|CHOICE)\b[^\]]*\][ \t]*\r?$/i;
-const UNCLAIMED_TASK_RE = /^[ \t]*\[[ \t]*TASK\b[^\]]*\][^\r\n]*\r?$/i;
-const UNCLAIMED_MARKER_RE =
-	/^[ \t]*\[[ \t]*\/?[ \t]*[A-Z][A-Z_-]*(?:\s*:[^\]]*)?[ \t]*\][ \t]*\r?$/;
-const UNCLAIMED_OPTION_RE =
-	/^[ \t]*(?:(?:reply|navigate|prompt|value|action|url)[ \t]*:)?[^=\r\n]{1,256}=.+\r?$/i;
+function isUnclaimedMarkerLine(line: string): boolean {
+	const value = line.trim();
+	if (!value.startsWith("[") || !value.endsWith("]")) return false;
+	let cursor = 1;
+	while (/[ \t]/.test(value[cursor] ?? "")) cursor += 1;
+	if (value[cursor] === "/") cursor += 1;
+	while (/[ \t]/.test(value[cursor] ?? "")) cursor += 1;
+	const nameStart = cursor;
+	while (/[A-Z_-]/.test(value[cursor] ?? "")) cursor += 1;
+	if (cursor === nameStart || !/[A-Z]/.test(value[nameStart])) return false;
+	while (cursor < value.length - 1 && value[cursor] !== ":") {
+		if (!/[ \t]/.test(value[cursor])) return false;
+		cursor += 1;
+	}
+	return value[cursor] === ":" || cursor === value.length - 1;
+}
+
+function isUnclaimedOptionLine(line: string): boolean {
+	const value = line.trim();
+	const equals = value.indexOf("=");
+	if (equals < 1 || equals > 256 || equals === value.length - 1) return false;
+	const colon = value.indexOf(":");
+	if (colon >= 0 && colon < equals) {
+		const kind = value.slice(0, colon).trim().toLowerCase();
+		if (
+			!["reply", "navigate", "prompt", "value", "action", "url"].includes(kind)
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function isUnclaimedOpeningLine(line: string): boolean {
+	const value = line.trim();
+	if (!value.startsWith("[")) return false;
+	const end = value.indexOf("]");
+	if (end < 0) return false;
+	const marker = parseMarker(value.slice(1, end));
+	if (!marker || marker.closing) return false;
+	if (marker.kind === "TASK") return true;
+	return (
+		(marker.kind === "FOLLOWUPS" || marker.kind === "CHOICE") &&
+		value.slice(end + 1).trim() === ""
+	);
+}
 
 interface SourceLine {
 	start: number;
@@ -311,24 +445,25 @@ interface SourceLine {
 
 function sourceLines(text: string): SourceLine[] {
 	const lines: SourceLine[] = [];
-	const lineRe = /[^\n]*(?:\n|$)/g;
 	let fence: "`" | "~" | null = null;
-	let match: RegExpExecArray | null = lineRe.exec(text);
-	while (match !== null && match[0].length > 0) {
-		const line = match[0].endsWith("\n") ? match[0].slice(0, -1) : match[0];
+	let start = 0;
+	while (start < text.length) {
+		const newline = text.indexOf("\n", start);
+		const end = newline < 0 ? text.length : newline + 1;
+		const line = text.slice(start, newline < 0 ? text.length : newline);
 		const fenceMatch = line.match(/^[ \t]*(`{3,}|~{3,})/);
 		const marker = fenceMatch?.[1]?.[0] as "`" | "~" | undefined;
 		const inFence = fence !== null || marker !== undefined;
 		lines.push({
-			start: match.index,
-			end: match.index + match[0].length,
+			start,
+			end,
 			text: line,
 			inFence,
 		});
 		if (marker !== undefined) {
 			fence = fence === null ? marker : fence === marker ? null : fence;
 		}
-		match = lineRe.exec(text);
+		start = end;
 	}
 	return lines;
 }
@@ -339,7 +474,13 @@ function sourceLines(text: string): SourceLine[] {
  * because it can contain user data, and fenced examples are never rewritten.
  */
 function stripUnclaimedInteractionMarkupTail(text: string): string {
-	if (!/\[[ \t]*(?:FOLLOWUPS|CHOICE|TASK)\b/i.test(text)) return text;
+	const upper = text.toUpperCase();
+	if (
+		!upper.includes("FOLLOWUPS") &&
+		!upper.includes("CHOICE") &&
+		!upper.includes("TASK")
+	)
+		return text;
 	const lines = sourceLines(text);
 	let suffixStart = lines.length;
 	for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -347,8 +488,8 @@ function stripUnclaimedInteractionMarkupTail(text: string): string {
 		if (line.inFence) break;
 		if (
 			line.text.trim().length === 0 ||
-			UNCLAIMED_OPTION_RE.test(line.text) ||
-			UNCLAIMED_MARKER_RE.test(line.text)
+			isUnclaimedOptionLine(line.text) ||
+			isUnclaimedMarkerLine(line.text)
 		) {
 			suffixStart = index;
 			continue;
@@ -359,11 +500,7 @@ function stripUnclaimedInteractionMarkupTail(text: string): string {
 	let opening = -1;
 	for (let index = suffixStart; index < lines.length; index += 1) {
 		const line = lines[index];
-		if (
-			!line.inFence &&
-			(UNCLAIMED_BLOCK_OPEN_RE.test(line.text) ||
-				UNCLAIMED_TASK_RE.test(line.text))
-		) {
+		if (!line.inFence && isUnclaimedOpeningLine(line.text)) {
 			opening = index;
 			break;
 		}
@@ -374,7 +511,13 @@ function stripUnclaimedInteractionMarkupTail(text: string): string {
 
 /** Preserve claimable controls while removing a terminal unclaimed suffix. */
 export function stripUnclaimedInteractionMarkup(text: string): string {
-	if (!/\[[ \t]*(?:FOLLOWUPS|CHOICE|TASK)\b/i.test(text)) return text;
+	const upper = text.toUpperCase();
+	if (
+		!upper.includes("FOLLOWUPS") &&
+		!upper.includes("CHOICE") &&
+		!upper.includes("TASK")
+	)
+		return text;
 	const terminalClaim = findInteractionRegions(text).some(
 		(region) => text.slice(region.end).trim().length === 0,
 	);
