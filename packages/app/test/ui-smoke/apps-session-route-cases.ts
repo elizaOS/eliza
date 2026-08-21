@@ -59,7 +59,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "plugins app window",
     path: "/apps/plugins",
-    selector: '[data-testid="plugins-shell"]',
+    // A content check, not the shell container: [data-testid="plugins-shell"]
+    // is the unconditional top-level frame of PluginsView, so it appears the
+    // instant the component mounts and the route would pass on an empty or
+    // failed catalog. "AI Providers" is a live group label
+    // (plugin-list-utils.ts:759), so it only renders once data actually loaded.
+    readyChecks: [{ text: "AI Providers" }],
     timeoutMs: 90_000,
   },
   {
