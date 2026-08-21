@@ -31,6 +31,7 @@ import {
   type ProviderObserverServiceAdapter,
   type ProviderSecretBrokerAdapter,
   type ProviderSemanticJudgeServiceAdapter,
+  type ProviderServiceAdapterContext,
   type ProviderServiceEd25519Signer,
   type ProviderServiceRole,
   type StaticProviderServiceAuthorization,
@@ -704,7 +705,7 @@ function controllerRouter(
       fail(`controller adapter ${family} is missing execute`);
   }
   return Object.freeze({
-    async execute(context, payload) {
+    async execute(context: ProviderServiceAdapterContext, payload: unknown) {
       const contract = providerCanaryControllerContract(context.scenarioId);
       if (
         contract.operationKind !== context.operationKind ||

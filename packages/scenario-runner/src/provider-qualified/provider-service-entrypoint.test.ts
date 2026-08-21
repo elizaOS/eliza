@@ -35,7 +35,10 @@ import {
   readProviderServiceDeploymentConfig,
   runProviderServiceDeploymentCli,
 } from "./provider-service-entrypoint.ts";
-import type { ProviderServiceEd25519Signer } from "./provider-service-host.ts";
+import type {
+  ProviderServiceAdapterContext,
+  ProviderServiceEd25519Signer,
+} from "./provider-service-host.ts";
 import { providerObserverKeyId } from "./qualification.ts";
 import { REFERENCE_OPERATOR_SERVICE_REQUEST_SCHEMA } from "./reference-operator-bundle.ts";
 
@@ -334,7 +337,11 @@ describe("provider service deployment entrypoint", () => {
     const token = "authorization-first-token";
     const setup = config(token);
     const files = await protectedFiles(setup.value);
-    const execute = vi.fn(async () => ({ providerReceipt: "unsigned" }));
+    const execute = vi.fn(
+      async (_context: ProviderServiceAdapterContext, _payload: unknown) => ({
+        providerReceipt: "unsigned",
+      }),
+    );
     const controllerAdapters = Object.fromEntries(
       PROVIDER_CONTROLLER_FAMILIES.map((family) => [family, { execute }]),
     );

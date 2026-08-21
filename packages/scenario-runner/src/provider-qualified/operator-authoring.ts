@@ -1122,9 +1122,9 @@ export async function preflightProviderCanaryInventory(
         filename: filename as `${ProviderCanaryScenarioId}.scenario.ts`,
         operationKind:
           providerCanaryControllerContract(scenarioId).operationKind,
-        lane: metadata.lane,
-        executionProfile: metadata.executionProfile,
-        evidenceScope: metadata.evidenceScope,
+        lane: "live-only" as const,
+        executionProfile: "provider-qualified" as const,
+        evidenceScope: "provider-certification" as const,
       };
     }),
   );

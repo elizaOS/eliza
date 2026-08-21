@@ -55,6 +55,10 @@ export interface ScenarioMetadata {
   tier?: string;
   /** CI lane as declared in the file; absent means the default lane. */
   lane?: string;
+  /** Execution boundary declared by the scenario without importing its module. */
+  executionProfile?: string;
+  /** Evidence classification declared by the scenario without importing it. */
+  evidenceScope?: string;
   edgeVariant?: string;
   baseScenarioId?: string;
 }
@@ -392,6 +396,11 @@ export async function loadScenarioMetadataFile(
     status: getStaticStringProperty(objectLiteral, "status"),
     tier: getStaticStringProperty(objectLiteral, "tier"),
     lane: getStaticStringProperty(objectLiteral, "lane"),
+    executionProfile: getStaticStringProperty(
+      objectLiteral,
+      "executionProfile",
+    ),
+    evidenceScope: getStaticStringProperty(objectLiteral, "evidenceScope"),
   };
 }
 

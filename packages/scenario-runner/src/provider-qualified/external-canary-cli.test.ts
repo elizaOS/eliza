@@ -335,7 +335,17 @@ describe("external provider-canary CLI", () => {
         scenarioId: "provider.discord.confirmed-send",
         runId: "run-1",
         status: "in-progress" as const,
+        phase: "reserved" as const,
+        effectDisposition: "proven-pre-ingress" as const,
         updatedAtIso: "2026-08-20T00:00:00.000Z",
+        transitions: [
+          {
+            status: "in-progress" as const,
+            phase: "reserved" as const,
+            effectDisposition: "proven-pre-ingress" as const,
+            atIso: "2026-08-20T00:00:00.000Z",
+          },
+        ] as const,
       },
     };
     expect(() =>

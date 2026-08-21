@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "exclusions": {
+    "browser-portal-upload": {
+      "reason": "The product uses computer-use intervention flow; it has no connector provider receipt contract to qualify generically.",
+      "sourceEvidence": "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ea.docs.portal-upload-from-chat.scenario.ts"
+    },
+    "calendly": {
+      "reason": "The Calendly connector was deliberately removed from the production default connector pack.",
+      "sourceEvidence": "plugins/plugin-personal-assistant/test/package-boundaries.test.ts"
+    },
+    "native-notifications": {
+      "reason": "In-app/native scheduling is device-local and has no generic external provider account or provider API observer boundary.",
+      "sourceEvidence": "plugins/plugin-personal-assistant/test/scenarios/notification-delivery-multichannel-outcome.scenario.ts"
+    }
+  }
+}
