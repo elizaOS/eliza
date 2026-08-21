@@ -290,4 +290,53 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
       await pg.close();
     }
   }, 15_000);
+
+  // A guarded write must not resurrect a row a concurrent writer deleted.
+  // Reusing the upsert here took the INSERT branch on a missing row and
+  // reported a won CAS — the opposite of the in-memory store, on exactly the
+  // race this guard exists to close. Deletion is a live path
+  // (deleteCodingAgentSchedule).
+  it("reports a loss instead of resurrecting a deleted task", async () => {
+    const pg = new PGlite();
+    try {
+      await migrateSchedulingTables(async (sql) => {
+        const result = await pg.query<Record<string, unknown>>(sql);
+        return result.rows;
+      });
+      const runtime = {
+        agentId: "agent-guard",
+        adapter: {
+          db: {
+            execute: (query: RawSqlQuery) => pg.query(rawQueryText(query)),
+          },
+        },
+        reportError: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const store = createSchedulingSqlScheduledTaskStore({
+        runtime,
+        agentId: runtime.agentId,
+      });
+      const scheduled = {
+        taskId: "guard-task-deleted",
+        ...baseInput,
+        trigger: { kind: "once" as const, atIso: "2026-05-09T13:00:00.000Z" },
+        state: { status: "fired" as const, followupCount: 0 },
+      } as ScheduledTask;
+      await store.upsert(scheduled, { nextFireAtIso: null });
+
+      // A concurrent writer removes the task mid-dispatch.
+      await store.delete("guard-task-deleted");
+
+      expect(
+        await store.upsertIfStatus(scheduled, {
+          nextFireAtIso: null,
+          expectedStatus: "fired",
+        }),
+      ).toBe(false);
+      // And it must stay gone, not be re-created by the guarded write.
+      expect(await store.get("guard-task-deleted")).toBeNull();
+    } finally {
+      await pg.close();
+    }
+  }, 15_000);
 });
