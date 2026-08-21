@@ -206,6 +206,21 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
 ];
 
 let previousEvaluators: unknown[] | null = null;
+let previousCodingToolsEnvironment: {
+  blockedPaths: string | undefined;
+  workspaceRoots: string | undefined;
+} | null = null;
+
+function restoreEnvironmentVariable(
+  name: "CODING_TOOLS_BLOCKED_PATHS" | "CODING_TOOLS_WORKSPACE_ROOTS",
+  value: string | undefined,
+): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
 
 type JsonRecord = Record<string, unknown>;
 
@@ -473,7 +488,6 @@ async function finalLedgerCheck(
   } catch {
     // missing is expected after WORKTREE exit cleanup.
   }
-  await fs.rm(tmpRoot, { force: true, recursive: true });
   return undefined;
 }
 
@@ -497,6 +511,10 @@ export default scenario({
       name: "seed isolated coding-tools git workspace",
       apply: async (ctx) => {
         await seedGitRepo();
+        previousCodingToolsEnvironment = {
+          blockedPaths: process.env.CODING_TOOLS_BLOCKED_PATHS,
+          workspaceRoots: process.env.CODING_TOOLS_WORKSPACE_ROOTS,
+        };
         process.env.CODING_TOOLS_WORKSPACE_ROOTS = tmpRoot;
         process.env.CODING_TOOLS_BLOCKED_PATHS = blockedRoot;
 
@@ -571,13 +589,25 @@ export default scenario({
   cleanup: [
     {
       type: "custom",
-      name: "restore shared runtime evaluators",
-      apply: (ctx) => {
+      name: "restore shared runtime and remove coding-tools workspace",
+      apply: async (ctx) => {
         const runtime = ctx.runtime as { evaluators: unknown[] };
         if (previousEvaluators !== null) {
           runtime.evaluators = previousEvaluators;
           previousEvaluators = null;
         }
+        if (previousCodingToolsEnvironment !== null) {
+          restoreEnvironmentVariable(
+            "CODING_TOOLS_WORKSPACE_ROOTS",
+            previousCodingToolsEnvironment.workspaceRoots,
+          );
+          restoreEnvironmentVariable(
+            "CODING_TOOLS_BLOCKED_PATHS",
+            previousCodingToolsEnvironment.blockedPaths,
+          );
+          previousCodingToolsEnvironment = null;
+        }
+        await fs.rm(tmpRoot, { force: true, recursive: true });
       },
     },
   ],
