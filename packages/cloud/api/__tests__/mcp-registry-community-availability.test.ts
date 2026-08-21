@@ -31,7 +31,7 @@ mock.module("@/lib/utils/logger", () => ({
 
 const registryRoute = (await import("../mcp/registry/route")).default;
 
-async function getRegistry(path = "/", env: Record<string, string> = {}) {
+async function getRegistry(path = "/", env: Record<string, unknown> = {}) {
   return await registryRoute.request(path, undefined, {
     NEXT_PUBLIC_APP_URL: "https://app.example.test",
     ...env,
@@ -58,7 +58,7 @@ test("reports DoorDash live when either managed browser or Cloud upstream is con
   ]);
 
   const managedResponse = await getRegistry("/?search=DoorDash", {
-    FIRECRAWL_API_KEY: "firecrawl-test-key",
+    BROWSER: { fetch: mock() },
   });
   const managed = (await managedResponse.json()) as {
     registry: Array<{ id: string; status: string }>;
@@ -72,7 +72,7 @@ test("advertises every managed DoorDash tool", async () => {
   listPublic.mockResolvedValue([]);
 
   const response = await getRegistry("/?search=DoorDash", {
-    FIRECRAWL_API_KEY: "firecrawl-test-key",
+    BROWSER: { fetch: mock() },
   });
   const body = (await response.json()) as {
     registry: Array<{ id: string; toolCount: number; features: string[] }>;

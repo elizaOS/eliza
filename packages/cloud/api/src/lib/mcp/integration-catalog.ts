@@ -143,7 +143,7 @@ export const INTEGRATION_TRUST: Readonly<Record<string, IntegrationTrust>> =
         publisher: "elizaOS",
         provenance: "first-party",
         authMode: "api-key",
-        domains: ["api.firecrawl.dev", "www.doordash.com"],
+        domains: ["www.doordash.com", "live.browser.run"],
         reviewedAt: "2026-08-21",
         capabilities: [
           read("doordash_auth_check"),
