@@ -475,4 +475,42 @@ describe("shared conversation coordinator", () => {
     });
     expect(seen).toBe(controller.signal);
   });
+
+  test("coordinateSharedStream keeps the caller abort signal on the DO hop", async () => {
+    let seen: AbortSignal | undefined;
+    const controller = new AbortController();
+    const namespace = {
+      getByName: () => ({
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          seen = init?.signal;
+          return new Response("event: done\ndata: {}\n\n", {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      }),
+    };
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    await (
+      await coordinateSharedStream(
+        {
+          id: "agent-1",
+          organization_id: "org-1",
+          user_id: "user-1",
+          execution_tier: "shared",
+        } as never,
+        rpc,
+        {
+          abortSignal: controller.signal,
+          namespace,
+          executionCtx: { waitUntil() {} },
+        },
+      )
+    )?.text();
+    expect(seen).toBe(controller.signal);
+  });
 });
