@@ -34,9 +34,11 @@ import {
   type RuntimeSurfaceRow,
   type RuntimeSurfaceStatus,
   reachableProductionFiles,
+  runtimeSurfaceId,
   scenarioMetadataFromSource,
   scenarioOwnsSurface,
   servedCloudRouteFiles,
+  workerBindingsFromSource,
 } from "./runtime-surface-inventory.ts";
 
 function row(
@@ -142,7 +144,6 @@ describe("runtime-surface production inventory", () => {
       "connector-ingress",
       "connector-egress",
       "scheduled-worker",
-      "queue",
       "native-bridge",
       "cloud-service",
     ];
@@ -155,7 +156,11 @@ describe("runtime-surface production inventory", () => {
       ).toBe(true);
       expect(surface.owner.length).toBeGreaterThan(0);
       expect(surface.reason.length).toBeGreaterThan(23);
+      expect(surface.id).not.toMatch(/:(?:packages|plugins)\//);
     }
+    expect(new Set(realInventory.rows.map((surface) => surface.id)).size).toBe(
+      realInventory.rows.length,
+    );
   });
 
   test("accounts for every maintained plugin and host package, including packages with no registration", () => {
@@ -175,6 +180,35 @@ describe("runtime-surface production inventory", () => {
         (entry) => entry.packageName === "@elizaos/plugin-google-genai",
       ),
     ).toMatchObject({ registrationState: "registered-surfaces" });
+    expect(
+      realInventory.packages.find(
+        (entry) => entry.packageName === "@elizaos/cloud-api",
+      ),
+    ).toMatchObject({ registrationState: "registered-surfaces" });
+    const maintainedCloudServices = readdirSync(
+      path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/services"),
+    ).filter(
+      (entry) =>
+        !entry.startsWith("_") &&
+        existsSync(
+          path.join(
+            RUNTIME_SURFACE_REPO_ROOT,
+            "packages/cloud/services",
+            entry,
+            "package.json",
+          ),
+        ),
+    );
+    for (const service of maintainedCloudServices) {
+      expect(
+        realInventory.packages.some(
+          (entry) =>
+            entry.packageDir === `packages/cloud/services/${service}` &&
+            entry.registrationState === "registered-surfaces",
+        ),
+        `missing Cloud service package ${service}`,
+      ).toBe(true);
+    }
     expect(
       realInventory.packages.find(
         (entry) => entry.packageName === "@elizaos/native-plugin-shared-types",
@@ -200,13 +234,30 @@ describe("runtime-surface production inventory", () => {
       ),
     ).toBe(true);
     expect(
-      has(
-        (entry) =>
-          entry.packageName === "@elizaos/plugin-cli-inference" &&
-          entry.kind === "model-handler" &&
-          entry.surfaceName === "ACTION_PLANNER",
-      ),
+      realInventory.rows
+        .filter((entry) => entry.kind === "model-handler")
+        .every((entry) => !/_MODEL_TYPE$/.test(entry.surfaceName)),
     ).toBe(true);
+    const cliInferenceModels = new Set(
+      realInventory.rows
+        .filter(
+          (entry) =>
+            entry.packageName === "@elizaos/plugin-cli-inference" &&
+            entry.kind === "model-handler",
+        )
+        .map((entry) => entry.surfaceName),
+    );
+    expect(cliInferenceModels).toEqual(
+      new Set([
+        "ACTION_PLANNER",
+        "RESPONSE_HANDLER",
+        "TEXT_LARGE",
+        "TEXT_MEDIUM",
+        "TEXT_MEGA",
+        "TEXT_NANO",
+        "TEXT_SMALL",
+      ]),
+    );
     expect(
       has(
         (entry) =>
@@ -236,7 +287,7 @@ describe("runtime-surface production inventory", () => {
         (entry) =>
           entry.packageName === "@elizaos/plugin-google-genai" &&
           entry.kind === "model-handler" &&
-          entry.surfaceName === "TEXT_SMALL_MODEL_TYPE",
+          entry.surfaceName === "TEXT_SMALL",
       ),
     ).toBe(true);
     expect(
@@ -324,7 +375,10 @@ describe("runtime-surface production inventory", () => {
       (entry) => entry.status === "covered",
     )) {
       expect(surface.boundaryArtifacts.length).toBeGreaterThan(0);
-      expect(surface.boundarySignals).toEqual([surface.surfaceName]);
+      expect(surface.boundarySignals).toEqual([
+        surface.id,
+        surface.surfaceName,
+      ]);
       expect(
         surface.deterministicScenarioIds.length + surface.cloudE2eCells.length,
       ).toBeGreaterThan(0);
@@ -375,6 +429,7 @@ describe("runtime-surface adversarial ratchet", () => {
     ).toEqual({
       id: "real-scenario",
       plugins: ["@elizaos/plugin-real"],
+      runtimeSurfaceIds: [],
       lane: null,
     });
     expect(
@@ -405,62 +460,178 @@ describe("runtime-surface adversarial ratchet", () => {
         export const decoy = { id: 'decoy', lane: 'pr-deterministic' };
         export default { id: 'canonical', lane: 'live-only' };
       `),
-    ).toEqual({ id: "canonical", plugins: [], lane: "live-only" });
+    ).toEqual({
+      id: "canonical",
+      plugins: [],
+      runtimeSurfaceIds: [],
+      lane: "live-only",
+    });
   });
 
-  test("rejects name-only comments, fixture setup, and unasserted calls as coverage", () => {
+  test("requires an explicit full id and exact executable boundary signal", () => {
     const action = { kind: "action" as const, name: "SEND_MESSAGE" };
+    const actionId = "@elizaos/plugin-test:action:send_message";
+    const actionScenario = (body: string, id = actionId): string => `
+      export default {
+        id: 'send-message',
+        lane: 'pr-deterministic',
+        runtimeSurfaceIds: ['${id}'],
+        finalChecks() { ${body} },
+      };
+    `;
     expect(
-      isExecutableBoundaryEvidence(action, "// actionName: 'SEND_MESSAGE'"),
+      isExecutableBoundaryEvidence(
+        action,
+        actionScenario("// actionName: 'SEND_MESSAGE'"),
+        actionId,
+      ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         action,
-        "const fixture = { actionName: 'SEND_MESSAGE' };",
+        actionScenario("const fixture = { actionName: 'SEND_MESSAGE' };"),
+        actionId,
       ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         { kind: "route", name: "GET /api/messages" },
-        "const routeFixture = '/api/messages';",
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', () => { const routeFixture = '/api/messages'; });",
+        "@elizaos/cloud-api:route:get-/api/messages",
       ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         action,
-        "assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' });",
+        actionScenario(
+          "assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' });",
+        ),
+        actionId,
       ),
     ).toBe(true);
     expect(
       isExecutableBoundaryEvidence(
         { kind: "route", name: "GET /api/messages" },
-        "expect(await request.get('/api/messages')).toBeDefined();",
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', async () => { expect(await request.get('/api/messages')).toBeDefined(); });",
+        "@elizaos/cloud-api:route:get-/api/messages",
       ),
     ).toBe(true);
     expect(
       isExecutableBoundaryEvidence(
         action,
-        "const payload = `assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' })`;",
+        actionScenario(
+          "const payload = `assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' })`;",
+        ),
+        actionId,
       ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         action,
-        "function unused() { assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' }); }",
+        actionScenario(
+          "function unused() { assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' }); }",
+        ),
+        actionId,
       ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         { kind: "route", name: "GET /api/messages" },
-        "request.get('/api/messages'); expect(true).toBe(true);",
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', () => { request.get('/api/messages'); expect(true).toBe(true); });",
+        "@elizaos/cloud-api:route:get-/api/messages",
       ),
     ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         { kind: "route", name: "GET /api/messages" },
-        "expect(request.get('/wrong', { note: '/api/messages' })).toBeDefined();",
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', () => { expect(request.get('/wrong', { note: '/api/messages' })).toBeDefined(); });",
+        "@elizaos/cloud-api:route:get-/api/messages",
       ),
     ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        actionScenario(
+          "assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE_LONG' });",
+        ),
+        actionId,
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        actionScenario(
+          "assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' });",
+          `${actionId}:decoy`,
+        ),
+        actionId,
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        `
+          test('runtime-surface:${actionId}', () => { expect(true).toBe(true); });
+          test('unrelated', () => { assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' }); });
+        `,
+        actionId,
+      ),
+    ).toBe(false);
+  });
+
+  test("keeps canonical ids stable when implementation files move", () => {
+    const first = runtimeSurfaceId({
+      kind: "action",
+      name: "SEND_MESSAGE",
+      package: { packageName: "@elizaos/plugin-test" },
+    });
+    const second = runtimeSurfaceId({
+      kind: "action",
+      name: "SEND_MESSAGE",
+      package: { packageName: "@elizaos/plugin-test" },
+    });
+    expect(first).toBe("@elizaos/plugin-test:action:send_message");
+    expect(second).toBe(first);
+  });
+
+  test("extracts queue and cron bindings from JSONC and TOML syntax", () => {
+    expect(
+      workerBindingsFromSource(
+        "wrangler.jsonc",
+        `{
+          // production bindings
+          "queues": {
+            "producers": [{ "binding": "OUTBOUND", "queue": "outbound-jobs" }],
+            "consumers": [{ "queue": "inbound-jobs" }],
+          },
+          "triggers": { "crons": ["*/5 * * * *"] },
+        }`,
+      ),
+    ).toEqual([
+      { kind: "queue", name: "OUTBOUND" },
+      { kind: "queue", name: "inbound-jobs" },
+      { kind: "scheduled-worker", name: "*/5 * * * *" },
+    ]);
+    expect(
+      workerBindingsFromSource(
+        "wrangler.toml",
+        `[[queues.producers]]
+binding = "OUTBOUND"
+queue = "outbound-jobs"
+
+[[queues.consumers]]
+queue = "inbound-jobs"
+
+[triggers]
+crons = ["0 * * * *", "30 * * * *"]
+`,
+      ),
+    ).toEqual([
+      { kind: "queue", name: "OUTBOUND" },
+      { kind: "queue", name: "inbound-jobs" },
+      { kind: "scheduled-worker", name: "0 * * * *" },
+      { kind: "scheduled-worker", name: "30 * * * *" },
+    ]);
   });
 
   test("uses package exports and import reachability instead of scanning dead files", () => {
@@ -468,8 +639,12 @@ describe("runtime-surface adversarial ratchet", () => {
     try {
       writeFileSync(
         path.join(root, "package.json"),
-        JSON.stringify({ exports: { ".": "./index.ts" } }),
+        JSON.stringify({
+          exports: { ".": "./index.ts", "./entry": "./dist/entry.js" },
+          bin: { fixture: "./src/bin.ts" },
+        }),
       );
+      mkdirSync(path.join(root, "src"));
       writeFileSync(
         path.join(root, "index.ts"),
         "export * from './runtime.ts';\n",
@@ -479,7 +654,21 @@ describe("runtime-surface adversarial ratchet", () => {
         "export const live = true;\n",
       );
       writeFileSync(path.join(root, "dead.ts"), "export const dead = true;\n");
+      writeFileSync(
+        path.join(root, "src", "entry.ts"),
+        "export const entry = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "bin.ts"),
+        "export const bin = true;\n",
+      );
       expect(packageEntryPoints(root)).toContain(path.join(root, "index.ts"));
+      expect(packageEntryPoints(root)).toContain(
+        path.join(root, "src", "entry.ts"),
+      );
+      expect(packageEntryPoints(root)).toContain(
+        path.join(root, "src", "bin.ts"),
+      );
       expect(reachableProductionFiles(root)).toEqual(
         expect.arrayContaining([
           path.join(root, "index.ts"),
@@ -605,6 +794,40 @@ describe("runtime-surface adversarial ratchet", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.overbroadClassificationReasons).toHaveLength(1);
+  });
+
+  test("allows only contraction relative to the develop baseline", () => {
+    const parent = baseline([
+      ["existing", "uncovered"],
+      ["implemented", "uncovered"],
+    ]);
+    const contracted = baseline([["existing", "uncovered"]]);
+    expect(
+      evaluateRuntimeSurfaceCoverage(
+        inventory([row("existing", "uncovered")]),
+        contracted,
+        parent,
+      ).ok,
+    ).toBe(true);
+    const expanded = baseline([
+      ["existing", "uncovered"],
+      ["new", "uncovered"],
+    ]);
+    const expansionResult = evaluateRuntimeSurfaceCoverage(
+      inventory([row("existing", "uncovered"), row("new", "uncovered")]),
+      expanded,
+      parent,
+    );
+    expect(expansionResult.ok).toBe(false);
+    expect(expansionResult.expandedFromParent).toEqual(["new"]);
+    const changed = baseline([["existing", "platform-deferred"]]);
+    const changeResult = evaluateRuntimeSurfaceCoverage(
+      inventory([row("existing", "platform-deferred")]),
+      changed,
+      parent,
+    );
+    expect(changeResult.ok).toBe(false);
+    expect(changeResult.changedFromParent).toEqual(["existing"]);
   });
 
   test("fails closed for zero-surface packages and rejects stale dispositions", () => {

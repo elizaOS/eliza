@@ -6,6 +6,7 @@
  * stale, silently covered, malformed, or duplicate rows fail the gate.
  */
 
+import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +32,8 @@ export interface RuntimeSurfaceGateResult {
   stalePackageClassifications: string[];
   invalidPackageClassifications: string[];
   overbroadClassificationReasons: string[];
+  expandedFromParent: string[];
+  changedFromParent: string[];
   ok: boolean;
 }
 
@@ -45,6 +48,7 @@ function validReason(reason: string): boolean {
 export function evaluateRuntimeSurfaceCoverage(
   inventory: RuntimeSurfaceInventory,
   baseline: RuntimeSurfaceBaseline,
+  parentBaseline?: RuntimeSurfaceBaseline | null,
 ): RuntimeSurfaceGateResult {
   const rowIds = new Set<string>();
   const duplicateRows: string[] = [];
@@ -126,6 +130,24 @@ export function evaluateRuntimeSurfaceCoverage(
     .filter(([, count]) => count > 8)
     .map(([reason, count]) => `${count}x ${reason}`)
     .sort();
+  const expandedFromParent = parentBaseline
+    ? Object.keys(baseline.classifications)
+        .filter((id) => !parentBaseline.classifications[id])
+        .sort()
+    : [];
+  const changedFromParent = parentBaseline
+    ? Object.entries(baseline.classifications)
+        .filter(([id, classification]) => {
+          const parent = parentBaseline.classifications[id];
+          return Boolean(
+            parent &&
+              (parent.status !== classification.status ||
+                parent.reason !== classification.reason),
+          );
+        })
+        .map(([id]) => id)
+        .sort()
+    : [];
 
   return {
     newlyUnclassified,
@@ -138,6 +160,8 @@ export function evaluateRuntimeSurfaceCoverage(
     stalePackageClassifications,
     invalidPackageClassifications,
     overbroadClassificationReasons,
+    expandedFromParent,
+    changedFromParent,
     ok:
       newlyUnclassified.length === 0 &&
       staleClassifications.length === 0 &&
@@ -148,8 +172,56 @@ export function evaluateRuntimeSurfaceCoverage(
       unclassifiedPackages.length === 0 &&
       stalePackageClassifications.length === 0 &&
       invalidPackageClassifications.length === 0 &&
-      overbroadClassificationReasons.length === 0,
+      overbroadClassificationReasons.length === 0 &&
+      expandedFromParent.length === 0 &&
+      changedFromParent.length === 0,
   };
+}
+
+function loadDevelopBaseline(
+  baselineFile: string,
+): RuntimeSurfaceBaseline | null {
+  const relative = path
+    .relative(
+      path.resolve(path.dirname(baselineFile), "../../.."),
+      baselineFile,
+    )
+    .split(path.sep)
+    .join("/");
+  const baseRef = "origin/develop";
+  const baseCommit = spawnSync(
+    "git",
+    ["cat-file", "-e", `${baseRef}^{commit}`],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (baseCommit.status !== 0) {
+    throw new Error(
+      `Cannot enforce the shrinking runtime-surface baseline because ${baseRef} is unavailable; fetch develop before running the gate.`,
+    );
+  }
+  const baseFile = spawnSync(
+    "git",
+    ["cat-file", "-e", `${baseRef}:${relative}`],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (baseFile.status !== 0) return null;
+  const result = spawnSync("git", ["show", `${baseRef}:${relative}`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `Cannot read the parent runtime-surface baseline from ${baseRef}: ${result.stderr.trim()}`,
+    );
+  }
+  const parsed = JSON.parse(result.stdout) as RuntimeSurfaceBaseline;
+  if (parsed.schema !== RUNTIME_SURFACE_SCHEMA) {
+    throw new Error(`Invalid parent runtime-surface baseline at ${baseRef}`);
+  }
+  return parsed;
 }
 
 export function candidateClassification(
@@ -297,6 +369,14 @@ function printFailures(result: RuntimeSurfaceGateResult): void {
       "overbroadClassificationReasons",
       "one disposition reason was reused across too many surfaces",
     ],
+    [
+      "expandedFromParent",
+      "the classification baseline expanded relative to develop",
+    ],
+    [
+      "changedFromParent",
+      "classification entries changed instead of being implemented and removed",
+    ],
   ];
   for (const [key, description] of groups) {
     const values = result[key];
@@ -329,7 +409,12 @@ function main(): number {
   }
   const baseline = loadRuntimeSurfaceBaseline(baselineFile);
   const inventory = buildRuntimeSurfaceInventory({ baseline });
-  const result = evaluateRuntimeSurfaceCoverage(inventory, baseline);
+  const parentBaseline = loadDevelopBaseline(baselineFile);
+  const result = evaluateRuntimeSurfaceCoverage(
+    inventory,
+    baseline,
+    parentBaseline,
+  );
   if (args.includes("--json")) {
     process.stdout.write(`${JSON.stringify({ result, inventory }, null, 2)}\n`);
   } else if (result.ok) {

@@ -21,9 +21,10 @@ provider or importing plugin side effects.
 
 `runtime-surface-inventory.ts` follows typed `Plugin` registrations, imported
 spreads and arrays, factories, promoted subactions, platform exports, host
-registration calls, Cloud route modules and service entry points, Worker queue
-and cron bindings, and Capacitor bridge registrations. It does not infer a
-surface from a directory name such as `actions/` or import application code.
+registration calls, generated-router-mounted Cloud route modules and service
+entry points, JSONC/TOML Worker queue and cron bindings, and Capacitor bridge
+registrations. It does not infer a surface from a directory name such as
+`actions/` or import application code.
 
 Each generated row records:
 
@@ -40,17 +41,24 @@ simulate but has no executable boundary proof yet. It is intentionally distinct
 from `exempt`, which requires a reviewed reason that the surface does not belong
 in the synthetic-world product contract.
 
-The same artifact includes a census of every maintained plugin plus the core,
-agent, and app-core hosts. A package with no production runtime registration is
-retained as `no-runtime-registration` with a written reason instead of silently
-disappearing from the inventory.
+The same artifact includes a census of every maintained plugin, the core,
+agent, and app-core hosts, Cloud API, and every production Cloud service
+package. A package with no production runtime registration is retained as
+`no-runtime-registration` with a written reason instead of silently
+disappearing from the inventory. Canonical row ids use package, kind, and the
+registered boundary name; moving an implementation file does not expand or
+invalidate the baseline.
 
-`covered` is derived, never baselined: an executable keyless scenario or Cloud
-E2E cell must both own the package and contain the exact registered boundary
-signal. Shape-only tests do not count. All other current rows live in
-`runtime-surface-baseline.json`; a new row, a removed row, a now-covered row
+`covered` is derived, never baselined. A deterministic scenario declares the
+full canonical id in its exported `runtimeSurfaceIds` array and exercises the
+exact registered boundary in an executable scenario callback. A Cloud E2E test
+uses the exact title `runtime-surface:<canonical-id>` and asserts the matching
+request or runtime call in that same test callback. Package ownership, an id,
+or a boundary-name substring alone never counts. All other current rows live
+in `runtime-surface-baseline.json`; a new row, a removed row, a now-covered row
 left in the baseline, a placeholder reason, or an artifact-free covered claim
-fails the ratchet. The baseline may only shrink.
+fails the ratchet. The gate compares with `origin/develop`: classifications may
+only be removed, never added or moved to another status in the same change.
 
 Run the canonical gate and generate its machine-readable and reviewer-readable
 artifacts with:
@@ -62,9 +70,11 @@ bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir r
 ```
 
 The report command writes `runtime-surfaces.json`, `runtime-surfaces.md`, and
-`runtime-surfaces.html` beside the #8802 matrix. The unchanged scenario PR
-workflow uploads that directory, making the same generated inventory available
-to the Cloud test matrix and the parent #22896 workstreams.
+`runtime-surfaces.html` beside the #8802 matrix. Its timestamp comes from the
+source commit rather than wall-clock time, so repeated generation at one SHA is
+byte-for-byte deterministic. The unchanged scenario PR workflow uploads that
+directory, making the same generated inventory available to the Cloud test
+matrix and the parent #22896 workstreams.
 
 ### #8801/#8802 compatibility
 

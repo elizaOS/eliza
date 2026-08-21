@@ -249,15 +249,21 @@ function renderRuntimeHtml(
 
 function main(): number {
   const options = parseArgs(process.argv.slice(2));
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  }).trim();
+  const generatedAt = execFileSync(
+    "git",
+    ["show", "-s", "--format=%cI", sourceRevision],
+    { cwd: REPO_ROOT, encoding: "utf8" },
+  ).trim();
   const matrix = buildCoverageMatrix({
-    generatedAt: new Date().toISOString(),
+    generatedAt,
   });
   const runtimeInventory = buildRuntimeSurfaceInventory({
     generatedAt: matrix.generatedAt,
-    sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    }).trim(),
+    sourceRevision,
   });
 
   mkdirSync(options.reportDir, { recursive: true });
