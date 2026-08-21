@@ -677,6 +677,41 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
   });
 
+  test("carries the server-attested lifecycle history cutoff in the internal body", async () => {
+    let seenBody: Record<string, unknown> | null = null;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seenBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return sseResponse(["data: [DONE]\n\n"]);
+    }) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer server-held",
+        model: "m",
+        transcript: "generate a greeting",
+        messageRole: "system",
+        clientMessageId: "twilio-call:CA1:opening",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "cutoff-trace",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(seenBody).toMatchObject({
+      text: "generate a greeting",
+      messageRole: "system",
+      clientMessageId: "twilio-call:CA1:opening",
+      historyCutoffAt: 1_725_000_000_000,
+      transientInput: true,
+    });
+  });
+
   test("returns the originating-client VIEWS handoff from the local runtime done frame", async () => {
     const fetchImpl = (async () =>
       sseResponse([

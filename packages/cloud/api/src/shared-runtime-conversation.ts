@@ -46,6 +46,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -55,6 +57,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -64,6 +68,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -73,6 +79,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -1681,6 +1689,8 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+          transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
           mobilePushDispatch: personal
@@ -1697,6 +1707,8 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+        transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
         mobilePushDispatch: personal

@@ -171,8 +171,10 @@ describe("shared conversation coordinator", () => {
       executionCtx,
       agentKind: "personal",
       trustedMessageRole: "system",
+      trustedHistoryCutoffAt: 1_725_000_000_000,
       trustedUserUtterance: "email Bob now",
       channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+      transientInput: true,
     });
     await coordinateSharedLifecycleEvent(
       agent.id,
@@ -187,8 +189,10 @@ describe("shared conversation coordinator", () => {
         agent,
         rpc,
         trustedMessageRole: "system",
+        trustedHistoryCutoffAt: 1_725_000_000_000,
         trustedUserUtterance: "email Bob now",
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+        transientInput: true,
       },
       {
         operation: "lifecycle",

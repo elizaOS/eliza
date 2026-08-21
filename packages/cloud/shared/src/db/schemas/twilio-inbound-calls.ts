@@ -6,8 +6,8 @@
  * routes recognized caller text to the mapped agent.
  */
 
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
+import { boolean, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const twilioInboundCalls = pgTable(
   "twilio_inbound_calls",
@@ -22,6 +22,11 @@ export const twilioInboundCalls = pgTable(
     raw_payload: jsonb("raw_payload").notNull().default({}),
     raw_payload_storage: text("raw_payload_storage").notNull().default("inline"),
     raw_payload_key: text("raw_payload_key"),
+    // Null is the rollout/unclaimed sentinel; false is a claimed first contact.
+    opening_returning_caller: boolean("opening_returning_caller"),
+    opening_previous_interaction_at: timestamp("opening_previous_interaction_at", {
+      withTimezone: true,
+    }),
     received_at: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -31,6 +36,10 @@ export const twilioInboundCalls = pgTable(
       table.received_at,
     ),
     receivedIdx: index("twilio_inbound_calls_received_idx").on(table.received_at),
+    openingContextShape: check(
+      "twilio_inbound_calls_opening_context_shape_check",
+      sql`(${table.opening_returning_caller} IS TRUE OR ${table.opening_previous_interaction_at} IS NULL) IS TRUE`,
+    ),
   }),
 );
 
