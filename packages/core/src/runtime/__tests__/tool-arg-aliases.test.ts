@@ -111,6 +111,23 @@ describe("resolveEntityAliasRefs", () => {
 		);
 		expect(resolved.entityId).toBe(ADMIN_PLACEHOLDER);
 	});
+
+	it("copies a JSON-parsed own __proto__ key without swapping the prototype", () => {
+		const args = JSON.parse(
+			`{"entityId":"${ADMIN_PLACEHOLDER}","__proto__":{"polluted":"yes","ref":"${ADMIN_PLACEHOLDER}"}}`,
+		) as Record<string, unknown>;
+		const resolved = resolveEntityAliasRefs(OWNER_ALIASES, args);
+		expect(resolved.entityId).toBe(OWNER_ID);
+		expect(Object.getPrototypeOf(resolved)).toBe(Object.prototype);
+		expect(Object.hasOwn(resolved, "__proto__")).toBe(true);
+		const protoEntry = Object.getOwnPropertyDescriptor(resolved, "__proto__")
+			?.value as Record<string, unknown>;
+		expect(protoEntry.polluted).toBe("yes");
+		expect(protoEntry.ref).toBe(OWNER_ID);
+		expect(
+			(resolved as Record<string, unknown> & { polluted?: unknown }).polluted,
+		).toBeUndefined();
+	});
 });
 
 describe("buildTurnEntityAliases", () => {

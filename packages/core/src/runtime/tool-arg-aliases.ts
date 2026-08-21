@@ -166,7 +166,15 @@ function resolveNode(
 		for (const [key, entry] of Object.entries(record)) {
 			const resolved = resolveNode(aliases, entry, depth + 1, budget);
 			if (resolved !== entry) changed = true;
-			next[key] = resolved;
+			// JSON.parse can hand us an own "__proto__" key; plain assignment
+			// would invoke the prototype setter on the copy instead of defining
+			// an own property, silently swapping the copy's prototype.
+			Object.defineProperty(next, key, {
+				value: resolved,
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 		return changed ? next : value;
 	}
