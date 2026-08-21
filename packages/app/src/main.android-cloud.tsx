@@ -366,6 +366,30 @@ interface PlayVoicePlugin {
 
 const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
 
+function playVoiceError(code: number): Error {
+  const message =
+    code === 1
+      ? "Voice recognition timed out. Check your connection and try again."
+      : code === 2
+        ? "Voice recognition lost its network connection. Try again."
+        : code === 3
+          ? "The microphone audio could not be recorded. Try again."
+          : code === 6
+            ? "No speech was heard. Try speaking again."
+            : code === 7
+              ? "No speech was recognized. Try again."
+              : code === 8
+                ? "Voice recognition is busy. Wait a moment and try again."
+                : code === 9
+                  ? "Microphone permission is required for voice dictation."
+                  : code === 10
+                    ? "Voice recognition received too many requests. Wait and try again."
+                    : code === 12 || code === 13
+                      ? "Voice recognition does not support this language on this device."
+                      : "Voice recognition failed. Try again.";
+  return new Error(message);
+}
+
 function stopVoiceAfterNativeEvent(): void {
   void androidCloudVoice.stop().catch((error) => {
     // error-policy:J6 native-event teardown is best effort after the UI has
@@ -450,11 +474,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
       await retainVoiceListener(generation, transcriptListener);
       const errorListener = await PlayVoice.addListener("error", (event) => {
         if (voiceGeneration !== generation) return;
-        onError(
-          new Error(
-            `Voice dictation stopped unexpectedly (code ${event.code}).`,
-          ),
-        );
+        onError(playVoiceError(event.code));
         stopVoiceAfterNativeEvent();
       });
       await retainVoiceListener(generation, errorListener);

@@ -246,7 +246,7 @@ describe("Android Cloud renderer behavior", () => {
 
     expect(onError).toHaveBeenCalledOnce();
     expect(onError.mock.calls[0]?.[0]).toMatchObject({
-      message: "Voice dictation stopped unexpectedly (code 7).",
+      message: "No speech was recognized. Try again.",
     });
   });
 
