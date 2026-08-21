@@ -3887,9 +3887,18 @@ export function ChatOverlay({
       setMaximized(false);
       return;
     }
-    if (was || releaseFirstRunToFull) {
+    if (releaseFirstRunToFull) {
       goToDetent("full");
       onFirstRunReleaseHandled?.();
+      return;
+    }
+    if (was) {
+      // A bare false -> true status probe is not onboarding completion. Until
+      // the shell supplies mounted transcript-epoch authority, return to the
+      // regular compact composer instead of manufacturing a FULL release.
+      setFreeH(null);
+      setMode("input");
+      setMaximized(false);
     }
   }, [
     cloudLoginWaiting,
