@@ -264,17 +264,46 @@ export function browserOriginFromUrl(url: string): string | null {
   }
 }
 
+function browserUrlMatchesBlockedEntry(url: URL, entry: string): boolean {
+  const candidate = entry.trim().toLowerCase();
+  if (!candidate) return false;
+  try {
+    const parsed = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//.test(candidate)
+        ? candidate
+        : `https://${candidate.replace(/^\*\./, "")}`,
+    );
+    const blockedHost = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+    const targetHost = url.hostname.toLowerCase().replace(/\.+$/, "");
+    return (
+      blockedHost.length > 0 &&
+      (targetHost === blockedHost || targetHost.endsWith(`.${blockedHost}`))
+    );
+  } catch {
+    // error-policy:J3 Invalid persisted block entries do not match a URL.
+    return false;
+  }
+}
+
 export function browserUrlAllowedBySettings(
   url: string,
   settings: BrowserBridgeSettings,
 ): boolean {
-  const origin = browserOriginFromUrl(url);
-  if (!origin) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // error-policy:J3 Invalid browser URLs are not allowed by policy.
     return false;
   }
-  if (settings.blockedOrigins.includes(origin)) {
+  if (
+    settings.blockedOrigins.some((entry) =>
+      browserUrlMatchesBlockedEntry(parsed, entry),
+    )
+  ) {
     return false;
   }
+  const origin = parsed.origin;
   if (settings.siteAccessMode === "granted_sites") {
     return settings.grantedOrigins.includes(origin);
   }

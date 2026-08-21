@@ -27,13 +27,15 @@ Once installed and paired, the extension:
 The extension ships with a scoped host allowlist instead of a blanket `<all_urls>` grant. The default-install hosts are:
 
 - `http://127.0.0.1/*` and `http://localhost/*` for the local agent API
-- `https://eliza.how/*` and subdomains
-- `https://eliza.dev/*` and subdomains
 
 The page-capture content script auto-injects only on these origins. No wallet
 shim ships in the store artifact: a signing token must never be injected into
 every allowlisted origin or child frame. Wallet injection remains out of scope
 until an explicit top-frame origin grant is wired and reviewed end to end.
+
+Blocked-site entries are host-scoped: blocking a host also blocks its
+subdomains across HTTP(S) schemes and ports. Website grants remain exact
+origins and still require the browser's own effective host permission.
 
 **Optional hosts**
 
@@ -75,8 +77,11 @@ bun run --cwd packages/browser-bridge-extension build:firefox
 
 # Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select dist/chrome/
 
-# Run unit tests plus installed Chrome and Firefox smokes
+# Run CI-safe unit tests
 bun run --cwd packages/browser-bridge-extension test
+
+# Explicitly run the installed Chrome and Firefox acceptance lanes
+bun run --cwd packages/browser-bridge-extension test:smoke:installed
 
 # Smoke-check an installed Chrome-family extension
 bun run --cwd packages/browser-bridge-extension test:smoke

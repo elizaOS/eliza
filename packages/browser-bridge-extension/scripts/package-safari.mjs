@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 /**
  * Wraps dist/safari into a Safari Web Extension via xcrun, producing the
- * versioned app bundle for the Safari release. Release/source packaging is
- * unsigned and reproducible by default; the installed-browser smoke supplies
- * an exact Apple Development identity and team for a trusted local build.
+ * versioned app bundle for the Safari release. Release/source archives are
+ * unsigned and deterministic for a fixed converter/build output; the
+ * installed-browser smoke supplies an exact Apple Development identity and
+ * team for a trusted local build.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createDeterministicDirectoryArchive } from "./package-webextension.mjs";
 import {
   buildBrowserBridgeReleaseMetadata,
   buildSafariExtensionVersions,
@@ -64,6 +66,11 @@ async function patchGeneratedSafariProjectVersions(projectPath) {
     /PRODUCT_BUNDLE_IDENTIFIER = "ai\.elizaos\.browserbridge\.Agent-Browser-Bridge\.Extension";/g,
     `PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier}.Extension;`,
   );
+  const projectIds = [...new Set(source.match(/\b[A-F0-9]{24}\b/g) ?? [])];
+  for (const [index, projectId] of projectIds.entries()) {
+    const deterministicId = index.toString(16).toUpperCase().padStart(24, "0");
+    source = source.replaceAll(projectId, deterministicId);
+  }
   await fs.writeFile(projectFile, source);
 }
 
@@ -160,21 +167,17 @@ await fs.rm(versionedArtifactZipPath, { force: true });
 await fs.rm(versionedProjectZipPath, { force: true });
 await fs.cp(builtAppPath, artifactAppPath, { recursive: true });
 
-await run("ditto", [
-  "-c",
-  "-k",
-  "--keepParent",
-  artifactAppPath,
-  artifactZipPath,
-]);
+await createDeterministicDirectoryArchive({
+  sourceDir: artifactAppPath,
+  outputPath: artifactZipPath,
+  rootName: path.basename(artifactAppPath),
+});
 await fs.copyFile(artifactZipPath, versionedArtifactZipPath);
-await run("ditto", [
-  "-c",
-  "-k",
-  "--keepParent",
-  generatedProjectDir,
-  versionedProjectZipPath,
-]);
+await createDeterministicDirectoryArchive({
+  sourceDir: generatedProjectDir,
+  outputPath: versionedProjectZipPath,
+  rootName: path.basename(generatedProjectDir),
+});
 
 console.log(
   `Packaged Safari app ${metadata.releaseVersion} at ${artifactAppPath}`,

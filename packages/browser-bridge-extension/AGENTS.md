@@ -42,7 +42,7 @@ packages/browser-bridge-extension/
   public/
     popup.html / popup.css    Extension popup page
     blocked.html              Website-blocker redirect page
-    icons/                    Optional development overrides; release icons come from packages/shared assets
+    icons                     Release icons copied from packages/shared assets
   safari/                     Xcode project wrapper for Safari Web Extension packaging
   vitest.extension.config.ts  Vitest config for src/ unit tests
   dist/                       Build output (gitignored); dist/chrome/, dist/safari/

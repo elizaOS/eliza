@@ -78,6 +78,24 @@ describe("browserActionAuthorizationError", () => {
     );
   });
 
+  it("matches the visible host block across schemes, ports, and subdomains", () => {
+    expect(authorize({ blockedOrigins: ["allowed.example"] })).toMatch(
+      /blocked/i,
+    );
+    expect(
+      browserActionAuthorizationError({
+        settings: { ...settings, blockedOrigins: ["https://example"] },
+        target: {
+          url: "http://pay.example:8443/account",
+          incognito: false,
+          focusedActive: true,
+        },
+        grantedOrigins: ["<all_urls>"],
+        currentFocusedUrl: "http://pay.example:8443/account",
+      }),
+    ).toMatch(/blocked/i);
+  });
+
   it("does not let current-site mode navigate the focused tab cross-origin", () => {
     expect(
       browserActionAuthorizationError({

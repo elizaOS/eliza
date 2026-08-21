@@ -87,6 +87,7 @@ function browserSession(
 
 function harness(args: {
   action?: BrowserBridgeAction;
+  beginResult?: "leased" | "blocked";
   sessionMetadata?: Record<string, unknown>;
   settings?: BrowserBridgeSettings;
 }) {
@@ -97,13 +98,17 @@ function harness(args: {
     status: "awaiting_confirmation" as const,
     awaitingConfirmationForActionId: action.id,
   }));
-  const begin = vi.fn(async () => ({
-    ...session,
-    metadata: {
-      ...session.metadata,
-      browserActionAttempt: { actionId: action.id },
-    },
-  }));
+  const begin = vi.fn(async () =>
+    args.beginResult === "blocked"
+      ? null
+      : {
+          ...session,
+          metadata: {
+            ...session.metadata,
+            browserActionAttempt: { actionId: action.id },
+          },
+        },
+  );
   const context = {
     agentId: () => "agent-1",
     repository: {
@@ -112,6 +117,7 @@ function harness(args: {
     },
   } as unknown as LifeOpsContext;
   const deps = {
+    recordBrowserAudit: vi.fn(async () => undefined),
     requireBrowserAvailableForActions: vi.fn(
       async () => args.settings ?? settings,
     ),
@@ -121,7 +127,14 @@ function harness(args: {
   vi.spyOn(domain, "requireBrowserSessionForCompanion").mockResolvedValue(
     session,
   );
-  return { action, begin, domain, requireConfirmation, session };
+  return {
+    action,
+    audit: deps.recordBrowserAudit,
+    begin,
+    domain,
+    requireConfirmation,
+    session,
+  };
 }
 
 const beginRequest = {
@@ -189,5 +202,25 @@ describe("BrowserDomain action begin", () => {
     ).rejects.toMatchObject({ status: 409 });
     expect(requireConfirmation).toHaveBeenCalledOnce();
     expect(begin).not.toHaveBeenCalled();
+  });
+
+  it("records the authenticated companion when an action lease is blocked", async () => {
+    const action = browserAction({ accountAffecting: false });
+    const { audit, domain } = harness({ action, beginResult: "blocked" });
+    await expect(
+      domain.beginBrowserSessionActionFromCompanion(
+        companion.id,
+        "token",
+        "session-1",
+        beginRequest,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(audit).toHaveBeenCalledWith(
+      "browser_session_updated",
+      "session-1",
+      expect.any(String),
+      expect.objectContaining({ companionId: companion.id }),
+      expect.objectContaining({ requiresOwnerRelease: true }),
+    );
   });
 });

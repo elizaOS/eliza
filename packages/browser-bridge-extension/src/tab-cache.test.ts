@@ -8,6 +8,7 @@ import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
 import {
   type RememberedTab,
   selectTabsForSync,
+  urlMatchesBlockedOrigins,
   urlMatchesGrantedOrigins,
 } from "./tab-cache";
 
@@ -79,5 +80,32 @@ describe("browser host grant enforcement", () => {
         fallbackMaxRememberedTabs: 10,
       }).map((candidate) => candidate.url),
     ).toEqual([allowed.url]);
+  });
+
+  it("applies host-scoped blocks across schemes, ports, and subdomains", () => {
+    const blocked = ["https://example.com"];
+    expect(urlMatchesBlockedOrigins("http://example.com/path", blocked)).toBe(
+      true,
+    );
+    expect(
+      urlMatchesBlockedOrigins("https://pay.example.com:8443/", blocked),
+    ).toBe(true);
+    expect(urlMatchesBlockedOrigins("https://evil-example.com/", blocked)).toBe(
+      false,
+    );
+
+    const visible = selectTabsForSync({
+      previous: [],
+      snapshot: [
+        tab("https://pay.example.com/account"),
+        tab("https://allowed.example/account"),
+      ],
+      settings: { ...settings, blockedOrigins: blocked },
+      grantedOrigins: ["<all_urls>"],
+      fallbackMaxRememberedTabs: 10,
+    });
+    expect(visible.map((candidate) => candidate.url)).toEqual([
+      "https://allowed.example/account",
+    ]);
   });
 });

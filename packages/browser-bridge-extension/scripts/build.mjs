@@ -83,7 +83,9 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
     outdir: outputDir,
     target: "browser",
     format: "iife",
-    sourcemap: "external",
+    // Store archives ship executable bundles only. External maps are not
+    // referenced by the manifest and unnecessarily expose source paths.
+    sourcemap: "none",
     minify: false,
     naming: "[name].js",
     define,
@@ -161,9 +163,9 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
         matches: ["http://*/*", "https://*/*"],
         // Without this the interstitial has a stable chrome-extension://<id>/
         // URL that every page on the web can probe, which makes the extension
-        // trivially fingerprintable. Chrome 106+ rotates the token per session;
-        // Firefox ignores the key rather than rejecting the manifest.
-        use_dynamic_url: true,
+        // trivially fingerprintable. Chrome 106+ rotates the token per session.
+        // Safari's converter warns on this Chrome-only manifest key.
+        ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
       },
     ],
     icons: {

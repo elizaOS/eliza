@@ -41,6 +41,25 @@ function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/\/+$/, "").toLowerCase();
 }
 
+function normalizeBlockedHost(value: string): string | null {
+  const candidate = value.trim().toLowerCase();
+  if (!candidate) return null;
+  try {
+    const parsed = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//.test(candidate)
+        ? candidate
+        : `https://${candidate.replace(/^\*\./, "")}`,
+    );
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.hostname.toLowerCase().replace(/\.+$/, "") || null;
+  } catch {
+    // error-policy:J3 Invalid block entries cannot match a tab.
+    return null;
+  }
+}
+
 function tabOrigin(tab: Pick<RememberedTab, "url">): string | null {
   try {
     return normalizeOrigin(new URL(tab.url).origin);
@@ -89,6 +108,34 @@ export function urlMatchesGrantedOrigins(
   });
 }
 
+/**
+ * Applies the host-scoped block policy shown by the app: a stored host or URL
+ * blocks that host and its subdomains regardless of scheme or port.
+ */
+export function urlMatchesBlockedOrigins(
+  url: string,
+  blockedOrigins: readonly string[],
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // error-policy:J3 Invalid target URLs never match a block entry.
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+  return blockedOrigins.some((entry) => {
+    const blockedHost = normalizeBlockedHost(entry);
+    return (
+      blockedHost !== null &&
+      (hostname === blockedHost || hostname.endsWith(`.${blockedHost}`))
+    );
+  });
+}
+
 function isTrackingPaused(settings: BrowserBridgeSettings, now: Date): boolean {
   return (
     typeof settings.pauseUntil === "string" &&
@@ -112,8 +159,7 @@ function isAllowedBySiteAccess(
   if (!urlMatchesGrantedOrigins(tab.url, grantedOrigins)) {
     return false;
   }
-  const blockedOrigins = new Set(settings.blockedOrigins.map(normalizeOrigin));
-  if (blockedOrigins.has(origin)) {
+  if (urlMatchesBlockedOrigins(tab.url, settings.blockedOrigins)) {
     return false;
   }
   switch (settings.siteAccessMode) {

@@ -9,7 +9,10 @@ import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { parseBrowserBridgeBuildKind } from "../scripts/build.mjs";
-import { createDeterministicWebExtensionArchive } from "../scripts/package-webextension.mjs";
+import {
+  createDeterministicDirectoryArchive,
+  createDeterministicWebExtensionArchive,
+} from "../scripts/package-webextension.mjs";
 import { resolveSourceDateIso } from "../scripts/release-version.mjs";
 import { run } from "../scripts/script-utils.mjs";
 
@@ -77,7 +80,10 @@ describe("cross-browser extension build", () => {
     const chrome = await readManifest("chrome");
     const firefox = await readManifest("firefox");
 
-    for (const manifest of [chrome, firefox]) {
+    for (const [kind, manifest] of [
+      ["chrome", chrome],
+      ["firefox", firefox],
+    ] as const) {
       expect(manifest.manifest_version).toBe(3);
       expect(manifest.host_permissions).not.toContain("<all_urls>");
       expect(manifest.host_permissions).toEqual([
@@ -108,7 +114,7 @@ describe("cross-browser extension build", () => {
         {
           resources: ["blocked.html", "blocked.js"],
           matches: ["http://*/*", "https://*/*"],
-          use_dynamic_url: true,
+          ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
         },
       ]);
     }
@@ -147,4 +153,22 @@ describe("cross-browser extension build", () => {
       ),
     ).toBe(false);
   }, 30_000);
+
+  it("preserves executable modes in deterministic directory archives", async () => {
+    const sourceDir = path.join(packageRoot, "dist", "test-app");
+    const executablePath = path.join(sourceDir, "Contents", "MacOS", "bridge");
+    await fs.mkdir(path.dirname(executablePath), { recursive: true });
+    await fs.writeFile(executablePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const first = await createDeterministicDirectoryArchive({
+      sourceDir,
+      outputPath: path.join(packageRoot, "dist", "test-app-1.zip"),
+      rootName: "Test.app",
+    });
+    const second = await createDeterministicDirectoryArchive({
+      sourceDir,
+      outputPath: path.join(packageRoot, "dist", "test-app-2.zip"),
+      rootName: "Test.app",
+    });
+    expect(first.sha256).toBe(second.sha256);
+  });
 });

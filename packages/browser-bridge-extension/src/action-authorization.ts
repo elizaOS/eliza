@@ -4,7 +4,10 @@
  * browser's current effective host grants immediately before every action.
  */
 import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
-import { urlMatchesGrantedOrigins } from "./tab-cache";
+import {
+  urlMatchesBlockedOrigins,
+  urlMatchesGrantedOrigins,
+} from "./tab-cache";
 
 export interface ActionAuthorizationTarget {
   url: string;
@@ -58,7 +61,7 @@ export function browserActionAuthorizationError(args: {
   if (!targetOrigin || !urlMatchesGrantedOrigins(target.url, grantedOrigins)) {
     return "The browser has not granted access to the target site.";
   }
-  if (new Set(settings.blockedOrigins.map(normalizeOrigin)).has(targetOrigin)) {
+  if (urlMatchesBlockedOrigins(target.url, settings.blockedOrigins)) {
     return "The target site is blocked by browser bridge settings.";
   }
   if (settings.siteAccessMode === "granted_sites") {

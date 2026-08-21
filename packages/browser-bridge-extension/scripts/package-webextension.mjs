@@ -33,24 +33,29 @@ async function collectFiles(root, current = root) {
     files.push({
       absolute,
       relative: path.relative(root, absolute).split(path.sep).join("/"),
+      mode: (await fs.stat(absolute)).mode & 0o777,
     });
   }
   return files;
 }
 
-export async function createDeterministicWebExtensionArchive({
+export async function createDeterministicDirectoryArchive({
   sourceDir,
   outputPath,
+  rootName,
 }) {
-  const manifestPath = path.join(sourceDir, "manifest.json");
-  await fs.access(manifestPath);
   const files = await collectFiles(sourceDir);
   const input = {};
   for (const file of files) {
-    input[file.relative] = [
+    const archivePath = rootName
+      ? `${rootName.replace(/\/$/, "")}/${file.relative}`
+      : file.relative;
+    input[archivePath] = [
       new Uint8Array(await fs.readFile(file.absolute)),
       {
+        attrs: file.mode << 16,
         mtime: ZIP_EPOCH,
+        os: 3,
       },
     ];
   }
@@ -63,4 +68,13 @@ export async function createDeterministicWebExtensionArchive({
     sha256: createHash("sha256").update(archive).digest("hex"),
     files: files.map((file) => file.relative),
   };
+}
+
+export async function createDeterministicWebExtensionArchive({
+  sourceDir,
+  outputPath,
+}) {
+  const manifestPath = path.join(sourceDir, "manifest.json");
+  await fs.access(manifestPath);
+  return createDeterministicDirectoryArchive({ sourceDir, outputPath });
 }

@@ -1428,7 +1428,7 @@ export class BrowserDomain {
         "browser action lease blocked by an unresolved execution attempt",
         {
           sessionId: session.id,
-          companionId: companion.companionId,
+          companionId: companion.id,
           currentActionIndex,
           actionId,
         },
