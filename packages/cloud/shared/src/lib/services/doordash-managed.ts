@@ -347,14 +347,16 @@ export async function callManagedDoorDashTool(
     return await completeCheckout(auth, checkoutDigest, result);
   }
   if (name === "doordash_auth_check" && result.loggedIn !== true) {
+    const securityVerificationRequired = result.securityVerificationRequired === true;
     return {
       ...result,
       success: true,
       authRequired: true,
       loginUrl: session.interactiveLiveViewUrl,
       appBrowserPath: `/browser?browse=${encodeURIComponent(session.interactiveLiveViewUrl)}`,
-      instructions:
-        "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), sign in to DoorDash, then ask the agent to check DoorDash status again.",
+      instructions: securityVerificationRequired
+        ? "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), complete DoorDash's security verification and sign in, then ask the agent to check DoorDash status again."
+        : "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), sign in to DoorDash, then ask the agent to check DoorDash status again.",
     };
   }
   return { success: true, ...result };

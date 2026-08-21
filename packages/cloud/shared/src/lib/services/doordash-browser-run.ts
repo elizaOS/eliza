@@ -124,6 +124,17 @@ async function bodyText(page: Page): Promise<string> {
     .catch(() => "");
 }
 
+async function hasDoorDashSecurityChallenge(page: Page): Promise<boolean> {
+  const title = (await page.title().catch(() => "")).toLowerCase();
+  const text = (await bodyText(page)).toLowerCase();
+  return (
+    title.includes("just a moment") ||
+    text.includes("performing security verification") ||
+    text.includes("protect against malicious bots") ||
+    text.includes("verify you are human")
+  );
+}
+
 function money(text: string, label: string): number | null {
   const match = text.match(new RegExp(`${label}[:\\s]*\\$(\\d+(?:\\.\\d{1,2})?)`, "i"));
   return match ? Number(match[1]) : null;
@@ -137,10 +148,26 @@ async function runDoorDashOperation(
   if (op === "doordash_auth_check") {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2_000);
+    if (await hasDoorDashSecurityChallenge(page)) {
+      return {
+        loggedIn: false,
+        securityVerificationRequired: true,
+        url: page.url(),
+      };
+    }
     const login = page
       .locator('a[href*="consumer/login"], button:has-text("Sign In"), a:has-text("Sign In")')
       .first();
-    return { loggedIn: !(await visible(login)), url: page.url() };
+    const account = page
+      .locator(
+        'a[href*="consumer/account"], a[href*="orders"], button[aria-label*="account" i], button[aria-label*="profile" i]',
+      )
+      .first();
+    return {
+      loggedIn: await visible(account),
+      loginVisible: await visible(login),
+      url: page.url(),
+    };
   }
   if (op === "doordash_set_address") {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
@@ -383,7 +410,19 @@ export async function executeDoorDashBrowserOperation(
   const { connect } = await browserRunSdk();
   const browser = await connect(browserBinding(), sessionId);
   try {
-    return await runDoorDashOperation(await pageFor(browser), name, args);
+    const page = await pageFor(browser);
+    if (name !== "doordash_auth_check" && (await hasDoorDashSecurityChallenge(page))) {
+      throw new Error(
+        "DoorDash requires human security verification in the active Cloudflare Live View",
+      );
+    }
+    const result = await runDoorDashOperation(page, name, args);
+    if (name !== "doordash_auth_check" && (await hasDoorDashSecurityChallenge(page))) {
+      throw new Error(
+        "DoorDash requires human security verification in the active Cloudflare Live View",
+      );
+    }
+    return result;
   } finally {
     await disconnect(browser);
   }

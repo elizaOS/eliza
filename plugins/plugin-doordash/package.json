@@ -51,6 +51,7 @@
   "license": "MIT",
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*"
   },
   "devDependencies": {

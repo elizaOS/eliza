@@ -13,6 +13,10 @@ import type {
 } from "@elizaos/core";
 import { ElizaError, gateDestructiveConfirmation, logger } from "@elizaos/core";
 import { createHash } from "@elizaos/core/utils/crypto-compat";
+import {
+  BROWSER_SERVICE_TYPE,
+  type BrowserService,
+} from "@elizaos/plugin-browser";
 import { callDoorDashOperation, hasDoorDashCapability } from "./adapter.js";
 import {
   DOORDASH_OPERATIONS,
@@ -21,6 +25,7 @@ import {
 } from "./types.js";
 
 const MCP_SERVICE_NAME = "mcp";
+const APP_MESSAGE_SOURCES = new Set(["client_chat", "client-ambient"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -178,6 +183,44 @@ async function reply(
 
 function service(runtime: IAgentRuntime): DoorDashMcpService | null {
   return runtime.getService(MCP_SERVICE_NAME) as DoorDashMcpService | null;
+}
+
+function isAppBrowserTurn(message: Memory): boolean {
+  const source = message.content.source?.trim().toLowerCase();
+  if (source && APP_MESSAGE_SOURCES.has(source)) return true;
+  const metadata = isRecord(message.content.metadata)
+    ? message.content.metadata
+    : null;
+  return (
+    typeof metadata?.viewClientId === "string" &&
+    metadata.viewClientId.trim().length > 0
+  );
+}
+
+async function hasInAppBrowser(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  if (!isAppBrowserTurn(message)) return false;
+  const browser = runtime.getService(
+    BROWSER_SERVICE_TYPE,
+  ) as BrowserService | null;
+  if (!browser) return false;
+  try {
+    const target = await browser.resolveTarget("workspace", {
+      subaction: "state",
+    });
+    return target?.id === "workspace" && target.kind === "app";
+  } catch (error) {
+    // error-policy:J4 An unavailable app target degrades to the isolated
+    // Cloudflare browser path without claiming that the local browser worked.
+    logger.debug(
+      `[DOORDASH] In-app browser availability check failed; using Cloudflare fallback: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return false;
+  }
 }
 
 async function execute(
@@ -379,11 +422,11 @@ export const doorDashAction: Action = {
     "TRACK_DOORDASH_ORDER",
   ],
   description:
-    "Search DoorDash restaurants, browse menus, manage the cart, preview checkout, explicitly confirm an order, inspect history, and track delivery through a connected DoorDash MCP adapter.",
+    "Cloudflare Browser Run fallback for DoorDash restaurant search, menus, cart, preview-bound checkout, history, and delivery tracking when the user is not in the Eliza app or its Browser workspace is unavailable. App turns use BROWSER so the user can see and authenticate in the built-in browser.",
   descriptionCompressed:
     "DoorDash restaurant search, menus, cart, confirmed checkout, history, order tracking.",
   routingHint:
-    "DoorDash restaurant, menu, cart, food delivery checkout, or order tracking -> DOORDASH.",
+    "DoorDash from iMessage or another connector without an app browser -> DOORDASH using Cloudflare Browser Run; DoorDash from the Eliza app with its Browser workspace -> BROWSER.",
   contexts: ["general", "connectors", "shopping", "food", "automation"],
   roleGate: { minRole: "USER" },
   tags: ["domain:shopping", "capability:external-side-effect"],
@@ -487,6 +530,8 @@ export const doorDashAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (runtime) => hasDoorDashCapability(service(runtime)),
+  validate: async (runtime, message) =>
+    hasDoorDashCapability(service(runtime)) &&
+    !(await hasInAppBrowser(runtime, message)),
   handler: execute,
 };

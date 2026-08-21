@@ -126,6 +126,23 @@ describe("managed DoorDash", () => {
     });
   });
 
+  test("explains the human handoff when DoorDash challenges Browser Run", async () => {
+    executionOutputs = [
+      {
+        loggedIn: false,
+        securityVerificationRequired: true,
+        url: "https://www.doordash.com/",
+      },
+    ];
+    const result = await callManagedDoorDashTool("doordash_auth_check", {}, auth("user-1"));
+    expect(result).toMatchObject({
+      success: true,
+      authRequired: true,
+      securityVerificationRequired: true,
+    });
+    expect(result.instructions).toContain("complete DoorDash's security verification");
+  });
+
   test("keeps same-organization users in distinct hosted sessions", async () => {
     executionOutputs = [
       { loggedIn: true, url: "https://www.doordash.com/" },

@@ -1748,6 +1748,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
       },
       "devDependencies": {

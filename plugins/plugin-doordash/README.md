@@ -4,6 +4,12 @@ DoorDash consumer-ordering capabilities for Eliza agents through a configured
 MCP adapter. The agent gets one stable `DOORDASH` action even when the backing
 server uses a different tool vocabulary.
 
+Eliza app turns prefer the app's built-in `BROWSER` workspace so authentication
+and browsing stay visible on the user's phone or computer. Turns from iMessage
+and other connectors without that workspace use the isolated Cloudflare Browser
+Run session behind `DOORDASH`. If an app turn cannot resolve its workspace
+target, it safely falls back to Cloudflare.
+
 ## Capabilities
 
 - Check authentication status

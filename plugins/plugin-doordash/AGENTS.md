@@ -4,6 +4,11 @@ First-party agent facade for DoorDash consumer ordering. It requires
 `@elizaos/plugin-mcp` and normalizes the managed Cloud service or a connected
 self-hosted MCP adapter into the stable `DOORDASH` action.
 
+For app-originated turns, prefer `@elizaos/plugin-browser`'s `workspace` target
+and leave `DOORDASH` unavailable so the planner selects `BROWSER`. Connector
+turns such as iMessage use the Cloudflare Browser Run-backed MCP adapter. An app
+turn may fall back to Cloudflare only when no workspace target is available.
+
 ## Boundaries
 
 - The plugin never stores DoorDash credentials, passwords, browser profiles, or

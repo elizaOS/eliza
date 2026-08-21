@@ -66,6 +66,46 @@ describe("DoorDash checkout safety", () => {
     ).not.toThrow();
   });
 
+  it("prefers the built-in Browser workspace for app turns", async () => {
+    const runtime = routingRuntime(true);
+    const available = await doorDashAction.validate?.(
+      runtime,
+      {
+        content: {
+          text: "find ramen",
+          source: "client_chat",
+          metadata: { viewClientId: "app-device-1" },
+        },
+      } as Memory,
+      undefined,
+    );
+    expect(available).toBe(false);
+  });
+
+  it("uses Cloudflare DoorDash for connector turns", async () => {
+    const available = await doorDashAction.validate?.(
+      routingRuntime(true),
+      { content: { text: "find ramen", source: "imessage" } } as Memory,
+      undefined,
+    );
+    expect(available).toBe(true);
+  });
+
+  it("falls back to Cloudflare when an app has no Browser workspace", async () => {
+    const available = await doorDashAction.validate?.(
+      routingRuntime(false),
+      {
+        content: {
+          text: "find ramen",
+          source: "client_chat",
+          metadata: { viewClientId: "app-device-1" },
+        },
+      } as Memory,
+      undefined,
+    );
+    expect(available).toBe(true);
+  });
+
   it("ignores a model confirmation flag and purchases only after the user's next yes", async () => {
     const cache = new Map<string, unknown>();
     const calls: Array<{
@@ -192,3 +232,24 @@ describe("DoorDash checkout safety", () => {
     expect(clearCalls).toBe(1);
   });
 });
+
+function routingRuntime(hasBrowser: boolean): IAgentRuntime {
+  return {
+    getService: (name: string) =>
+      name === "browser"
+        ? hasBrowser
+          ? {
+              resolveTarget: async () => ({ id: "workspace", kind: "app" }),
+            }
+          : null
+        : {
+            getServers: () => [
+              {
+                name: "doordash",
+                status: "connected",
+                tools: [{ name: "doordash_search" }],
+              },
+            ],
+          },
+  } as unknown as IAgentRuntime;
+}
