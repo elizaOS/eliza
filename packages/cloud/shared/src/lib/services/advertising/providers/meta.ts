@@ -24,16 +24,17 @@ const META_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Bound every Meta Graph API hop so a hung or rate-limited API cannot pin the
- * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ * ad-provider worker indefinitely while preserving caller cancellation.
  */
 export function metaFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = META_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

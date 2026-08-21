@@ -1,10 +1,8 @@
-// Pins the error-surfacing contract of the Meta ad provider: a failed provider
-// fetch must surface as a structured {success:false}/{valid:false} failure (the
-// shape the advertising service reads to REFUND credits and to reject invalid
-// credentials), and must stay distinct from a legitimately-empty result (valid
-// account with no insights → success with zero spend). Deterministic — global
-// fetch is mocked; no live Meta Graph API call and no monetary value is asserted
-// beyond the zero the source already fixes for the empty-insights case.
+/**
+ * Pins the Meta ad provider's error-surfacing and bounded-request contracts.
+ * Deterministic fetch mocks distinguish provider failures from legitimate
+ * empty results and verify that deadlines compose with caller cancellation.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("../../../utils/logger", () => ({
@@ -128,7 +126,8 @@ describe("metaAdsProvider.getCampaignMetrics failure vs legitimately-empty", () 
 });
 
 describe("metaFetch — bounded hops fail closed and keep caller signals", () => {
-  test("aborts a hung Meta Graph API hop at the timeout", async () => {
+  test("aborts a hung hop at the deadline while the caller signal remains active", async () => {
+    const caller = new AbortController();
     globalThis.fetch = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -139,23 +138,29 @@ describe("metaFetch — bounded hops fail closed and keep caller signals", () =>
     ) as typeof fetch;
 
     const start = Date.now();
-    await expect(metaFetch("https://graph.facebook.com/v24.0/me", undefined, 100)).rejects.toThrow(
-      /aborted/i,
-    );
+    await expect(
+      metaFetch("https://graph.facebook.com/v24.0/me", { signal: caller.signal }, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(caller.signal.aborted).toBe(false);
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
-    let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
-      return new Response("{}", { status: 200 });
-    }) as typeof fetch;
+  test("aborts a hung hop when the caller cancels before the deadline", async () => {
+    const caller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
 
-    const controller = new AbortController();
-    await metaFetch("https://graph.facebook.com/v24.0/me", {
-      signal: controller.signal,
+    const pending = metaFetch("https://graph.facebook.com/v24.0/me", {
+      signal: caller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    caller.abort();
+
+    await expect(pending).rejects.toThrow(/aborted/i);
   });
 });
