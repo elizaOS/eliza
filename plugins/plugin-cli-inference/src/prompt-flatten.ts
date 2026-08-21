@@ -89,6 +89,20 @@ function chargeChars(budget: PayloadBudget, text: string): string {
   return text;
 }
 
+/**
+ * Charge a property name against the character budget. Nested *values* are
+ * charged as they are projected, but the serialized output also carries every
+ * key, and #23891 removed the terminal charge that used to account for them —
+ * so without this a payload made of megabyte-sized keys is free forever.
+ * Same check-before-charge rule as `chargeChars`; false means the container
+ * must collapse to the budget marker.
+ */
+function chargeKeyChars(budget: PayloadBudget, key: string): boolean {
+  if (budget.chars > MAX_TOOL_PAYLOAD_CHARS) return false;
+  budget.chars += key.length;
+  return true;
+}
+
 /** Charge container width before allocating anything for its elements. */
 function chargeWidth(budget: PayloadBudget, width: number): boolean {
   budget.nodes += width;
@@ -201,6 +215,7 @@ function toBoundedJsonValue(
     for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
       if (!descriptor || !("value" in descriptor)) continue;
+      if (!chargeKeyChars(budget, key)) return TOOL_PAYLOAD_BUDGET_MARKER;
       const nested = toBoundedJsonValue(descriptor.value, budget, depth + 1);
       if (nested === undefined) continue;
       projected[key] = nested;

@@ -213,6 +213,20 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     expect(out.length).toBeLessThan(9 * MiB);
   });
 
+  it("charges property names, so sibling objects with huge keys are bounded", () => {
+    // #23891 charged nested values and dropped the terminal charge that used to
+    // account for keys and serialization syntax, which made property names free
+    // forever. Reported on that PR by @lalalune; this pins the fix.
+    const bigKey = (char: string): Record<string, number> => {
+      const object: Record<string, number> = {};
+      object[char.repeat(3 * MiB)] = 1;
+      return object;
+    };
+    const out = contentToText([toolResult([bigKey("a"), bigKey("b"), bigKey("c")])]);
+    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(out.length).toBeLessThan(9 * MiB);
+  });
+
   it("cannot be made to throw by a getTime override on a Date-shaped payload", () => {
     // `JSON.stringify` reaches the internal slot via the builtin `valueOf`, so
     // the parent path survived this. Direct `object.getTime()` dispatch made it
