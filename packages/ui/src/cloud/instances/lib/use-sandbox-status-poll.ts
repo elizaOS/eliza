@@ -9,7 +9,7 @@
  */
 
 import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api-client";
 import { parseAgentsResponse } from "./data/eliza-agents";
 
@@ -53,28 +53,35 @@ export function useSandboxStatusPoll(
     isLoading: false,
   });
 
-  const cancelledRef = useRef(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusRef = useRef<SandboxStatus>("pending");
-  const consecutiveErrorsRef = useRef(0);
-
-  const cleanup = useCallback(() => {
-    cancelledRef.current = true;
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
+  const effectGenerationRef = useRef(0);
 
   useEffect(() => {
+    const effectGeneration = ++effectGenerationRef.current;
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let status: SandboxStatus = "pending";
+    let consecutiveErrors = 0;
+    let requestGeneration = 0;
+    let requestController: AbortController | null = null;
+
+    const isCurrentEffect = () =>
+      !cancelled && effectGenerationRef.current === effectGeneration;
+    const stop = () => {
+      cancelled = true;
+      requestGeneration++;
+      requestController?.abort();
+      requestController = null;
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
     if (!agentId || !enabled) {
-      cleanup();
-      return;
+      stop();
+      return stop;
     }
 
-    cancelledRef.current = false;
-    statusRef.current = "pending";
-    consecutiveErrorsRef.current = 0;
     // Reset the visible result too, not just the ref. Otherwise the previous
     // agent's terminal status stays on screen and is attributed to the new one
     // — and if the new agent's first fetch fails, the catch only bumps an error
@@ -88,9 +95,9 @@ export function useSandboxStatusPoll(
     });
 
     const poll = async () => {
-      if (cancelledRef.current) return;
-      if (TERMINAL_STATES.has(statusRef.current)) {
-        cleanup();
+      if (!isCurrentEffect()) return;
+      if (TERMINAL_STATES.has(status)) {
+        stop();
         return;
       }
       if (
@@ -100,17 +107,24 @@ export function useSandboxStatusPoll(
         return;
 
       setResult((prev) => ({ ...prev, isLoading: true }));
+      const generation = ++requestGeneration;
+      requestController?.abort();
+      const controller = new AbortController();
+      requestController = controller;
+      const timeoutSignal = AbortSignal.timeout(10_000);
+      const abortForTimeout = () => controller.abort(timeoutSignal.reason);
+      timeoutSignal.addEventListener("abort", abortForTimeout, { once: true });
 
       try {
         // Bound each poll hop so a hung status endpoint cannot leave
         // isLoading pinned forever (the error path only fires on rejection).
         const res = await fetch(`/api/v1/eliza/agents/${agentId}`, {
-          signal: AbortSignal.timeout(10_000),
+          signal: controller.signal,
         });
-        if (cancelledRef.current) return;
+        if (!isCurrentEffect() || generation !== requestGeneration) return;
 
         if (!res.ok) {
-          consecutiveErrorsRef.current++;
+          consecutiveErrors++;
           setResult((prev) => ({
             ...prev,
             isLoading: false,
@@ -118,21 +132,22 @@ export function useSandboxStatusPoll(
           }));
           if (
             (res.status >= 400 && res.status < 500) ||
-            consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS
+            consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
           ) {
-            cleanup();
+            stop();
           }
           return;
         }
 
-        consecutiveErrorsRef.current = 0;
+        consecutiveErrors = 0;
 
         const json = await res.json();
+        if (!isCurrentEffect() || generation !== requestGeneration) return;
         const data = json?.data;
         if (!data) return;
 
         const newStatus = (data.status as SandboxStatus) ?? "pending";
-        statusRef.current = newStatus;
+        status = newStatus;
 
         setResult({
           status: newStatus,
@@ -142,25 +157,30 @@ export function useSandboxStatusPoll(
         });
 
         if (TERMINAL_STATES.has(newStatus)) {
-          cleanup();
+          stop();
         }
       } catch {
-        if (!cancelledRef.current) {
-          consecutiveErrorsRef.current++;
+        // error-policy:J4 A failed status poll clears loading and retries until
+        // the explicit error limit, while superseded requests stay invisible.
+        if (isCurrentEffect() && generation === requestGeneration) {
+          consecutiveErrors++;
           setResult((prev) => ({ ...prev, isLoading: false }));
-          if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
-            cleanup();
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            stop();
           }
         }
+      } finally {
+        timeoutSignal.removeEventListener("abort", abortForTimeout);
+        if (requestController === controller) requestController = null;
       }
     };
 
     void poll();
 
-    intervalRef.current = setInterval(() => void poll(), intervalMs);
+    interval = setInterval(() => void poll(), intervalMs);
 
-    return cleanup;
-  }, [agentId, enabled, intervalMs, cleanup]);
+    return stop;
+  }, [agentId, enabled, intervalMs]);
 
   return result;
 }
