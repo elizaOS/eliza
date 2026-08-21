@@ -78,7 +78,7 @@ test("syntactically valid mobile keys hit a non-secret credential limiter before
   const globalKeys: string[] = [];
   const mobileKeys: string[] = [];
   const mobileSecret = `eliza_mobile_${"a".repeat(64)}`;
-  const app = createApp();
+  const app = await createApp();
   const response = await app.fetch(
     new Request("https://api.example.test/api/v1/models", {
       headers: {
@@ -113,7 +113,7 @@ test("different mobile credentials on one carrier NAT have independent buckets",
   const mobileA = `eliza_mobile_${"a".repeat(64)}`;
   const mobileB = `eliza_mobile_${"b".repeat(64)}`;
   const blockedKey = mobileApiKeyIngressRateLimitKey(mobileA);
-  const app = createApp();
+  const app = await createApp();
   const env = environment(
     {
       async limit() {
@@ -152,7 +152,7 @@ test("different mobile credentials on one carrier NAT have independent buckets",
 test("one mobile credential shares its bucket when the client's IP changes", async () => {
   const mobileKeys: string[] = [];
   const mobileSecret = `eliza_mobile_${"c".repeat(64)}`;
-  const app = createApp();
+  const app = await createApp();
   const env = environment(
     {
       async limit() {
@@ -187,7 +187,7 @@ test("one mobile credential shares its bucket when the client's IP changes", asy
 
 test("the global IP backstop rejects mobile key spray before credential limiting", async () => {
   let mobileLimitCalls = 0;
-  const app = createApp();
+  const app = await createApp();
   const response = await app.fetch(
     new Request("https://api.example.test/api/v1/models", {
       headers: {
@@ -215,7 +215,7 @@ test("the global IP backstop rejects mobile key spray before credential limiting
 });
 
 test("mobile ingress fails closed when its native limiter binding is absent", async () => {
-  const app = createApp();
+  const app = await createApp();
   const response = await app.fetch(
     new Request("https://api.example.test/api/v1/models", {
       headers: {

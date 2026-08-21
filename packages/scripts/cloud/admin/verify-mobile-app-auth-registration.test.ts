@@ -270,10 +270,10 @@ describe("mobile App Auth deployment preflight", () => {
 
   test("builds only canonical staging and production public config probes", () => {
     expect(mobileAppAuthConfigUrl("staging").toString()).toBe(
-      "https://api-staging.elizacloud.ai/api/v1/app-auth/mobile/config?clientId=ai.elizaos.app&environment=staging&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
+      "https://api-staging.eliza.app/api/v1/app-auth/mobile/config?clientId=ai.elizaos.app&environment=staging&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
     );
     expect(mobileAppAuthConfigUrl("production").origin).toBe(
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
     );
   });
 
@@ -340,7 +340,7 @@ describe("mobile App Auth deployment preflight", () => {
       },
     );
     expect(requestedUrls).toEqual([
-      "https://api.elizacloud.ai/api/v1/app-auth/mobile/config?clientId=ai.elizaos.app&environment=production&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
+      "https://api.eliza.app/api/v1/app-auth/mobile/config?clientId=ai.elizaos.app&environment=production&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
     ]);
     expect(requestInits[0]?.redirect).toBe("manual");
     expect(new Headers(requestInits[0]?.headers).get("Accept")).toBe(

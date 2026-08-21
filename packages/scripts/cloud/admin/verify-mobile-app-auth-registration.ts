@@ -278,10 +278,16 @@ export async function queryMobileAppAuthRegistration(
 export function mobileAppAuthConfigUrl(
   environment: MobileAppAuthDeploymentEnvironment,
 ): URL {
+  // `wrangler.toml`'s `[env.production]`/`[env.staging]` route tables route
+  // the legacy `elizacloud.ai` API hosts only to emit a deterministic 308 to
+  // the canonical `eliza.app` zone — `redirect: "manual"` in
+  // verifyLiveMobileAppAuthConfig means probing a legacy host would observe
+  // that redirect (not the config payload) and fail before ever exercising
+  // the endpoint. Probe the canonical host directly.
   const apiOrigin =
     environment === "production"
-      ? "https://api.elizacloud.ai"
-      : "https://api-staging.elizacloud.ai";
+      ? "https://api.eliza.app"
+      : "https://api-staging.eliza.app";
   const url = new URL("/api/v1/app-auth/mobile/config", apiOrigin);
   url.searchParams.set("clientId", MOBILE_APP_AUTH_CLIENT_ID);
   url.searchParams.set("environment", environment);

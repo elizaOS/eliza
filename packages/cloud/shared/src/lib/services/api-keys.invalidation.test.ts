@@ -195,7 +195,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     ]);
   });
 
-  test("ordinary API-key validation uses cache, replica, primary fallback, and negative cache", async () => {
+  test("ordinary API-key validation uses cache, primary-consistent lookup, and negative cache", async () => {
     const ordinary = {
       ...fakeKey(),
       id: "55555555-5555-4555-8555-555555555555",
@@ -212,20 +212,19 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
       }),
     );
     const del = track(spyOn(cache, "del").mockResolvedValue(undefined));
-    const replica = track(
-      spyOn(apiKeysRepository, "findActiveByHash").mockResolvedValueOnce(undefined),
-    );
+    // A cache miss is a lifecycle boundary, not an eventually-consistent
+    // read (see the class doc above and validateApiKey's own comment): there
+    // is no replica tier on the ordinary-key path, only the primary-confirmed
+    // lookup a stale replica could not repopulate positively.
     const primary = track(
       spyOn(apiKeysRepository, "findActiveByHashConsistent").mockResolvedValueOnce(ordinary),
     );
 
     await expect(apiKeysService.validateApiKey("eliza_ordinary")).resolves.toBe(ordinary);
     await expect(apiKeysService.validateApiKey("eliza_ordinary")).resolves.toBe(ordinary);
-    expect(replica).toHaveBeenCalledTimes(1);
     expect(primary).toHaveBeenCalledTimes(1);
 
     cacheValue = { id: "not-a-uuid", key_hash: 123 };
-    replica.mockResolvedValueOnce(undefined);
     primary.mockResolvedValueOnce(undefined);
     await expect(apiKeysService.validateApiKey("eliza_missing")).resolves.toBeNull();
     expect(del).toHaveBeenCalled();
@@ -369,14 +368,22 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
       is_active: true,
     } as ApiKey;
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
+    // The service reads through the *Consistent (primary) lookups before
+    // deactivating — see the class doc's primary-confirmed contract — not
+    // the plain findByUserAndName/listByUser replica reads.
     const findNamed = track(
-      spyOn(apiKeysRepository, "findByUserAndName").mockResolvedValue([userKey]),
+      spyOn(apiKeysRepository, "findActiveByUserAndNameConsistent").mockResolvedValue([userKey]),
     );
     const deactivateNamed = track(
       spyOn(apiKeysRepository, "deactivateUserKeysByName").mockResolvedValue(),
     );
     const listByUser = track(
-      spyOn(apiKeysRepository, "listByUser").mockResolvedValue([userKey, otherOrgKey]),
+      // The repository query itself filters to (userId, organizationId,
+      // is_active) — a real call could never return a different org's key,
+      // unlike the old client-side-filtered listByUser(userId) this replaced.
+      spyOn(apiKeysRepository, "listActiveByUserAndOrganizationConsistent").mockResolvedValue([
+        userKey,
+      ]),
     );
     const deactivateOrg = track(
       spyOn(apiKeysRepository, "deactivateByUserAndOrganization").mockResolvedValue(),
@@ -405,7 +412,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
 
     expect(findNamed).toHaveBeenCalledWith("user-1", "Default API Key");
     expect(deactivateNamed).toHaveBeenCalledWith("user-1", "Default API Key");
-    expect(listByUser).toHaveBeenCalledWith("user-1");
+    expect(listByUser).toHaveBeenCalledWith("user-1", MOBILE_ORG_ID);
     expect(deactivateOrg).toHaveBeenCalledWith("user-1", MOBILE_ORG_ID);
     expect(invalidate).toHaveBeenCalledWith(userKey.key_hash);
     expect(invalidate).not.toHaveBeenCalledWith(otherOrgKey.key_hash);

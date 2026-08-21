@@ -18,6 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 // This suite drives an ISOLATED in-process PGlite (see docstring). When the
 // ambient DATABASE_URL is a real shared Postgres (e.g. CI's
@@ -58,6 +59,8 @@ import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
 import { apiKeysRepository } from "../api-keys";
 import { type App, appsRepository } from "../apps";
+import { organizationsRepository } from "../organizations";
+import { usersRepository } from "../users";
 
 const PGLITE_TIMEOUT = 60_000;
 
@@ -139,6 +142,23 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+
+    // pushSchema only derives DDL from the Drizzle schema objects above — it
+    // never runs hand-written SQL migrations. The credential-tombstone
+    // trigger (0279) lives only in a raw migration file (Drizzle has no
+    // trigger primitive), so it must be applied here explicitly for the
+    // cascade-deletion tests below to exercise the real trigger rather than
+    // asserting against a DB that doesn't have it installed.
+    const tombstoneTriggerMigration = readFileSync(
+      new URL(
+        "../../migrations/0280_mobile_app_auth_credential_tombstone_trigger.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    for (const statement of tombstoneTriggerMigration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(statement);
+    }
   } catch (error) {
     // error-policy:J4 — a missing PGlite/schema capability is retained as an
     // explicit failed fixture state that every integration assertion checks.
@@ -1614,5 +1634,93 @@ describe("AppsRepository request analytics", () => {
       expect.objectContaining({ ip: "203.0.113.10", requestCount: 1 }),
       expect.objectContaining({ ip: "unknown", requestCount: 1 }),
     ]);
+  });
+});
+
+describe("Mobile credential tombstone on app deletion (defect: credentials outliving their app)", () => {
+  /**
+   * Mobile credentials belong to the END USER who authenticated through the
+   * app (`api_keys.organization_id`/`user_id`), NOT the developer org that
+   * registered and owns the app (`apps.organization_id`/`created_by_user_id`
+   * — captured separately on the credential as `source_app_id`, see
+   * `mobile-app-auth.ts`). Those are ordinarily unrelated tenants: deleting
+   * the developer's org/user cascades to the `apps` row but does nothing to
+   * the end user's own org/user/api_keys rows, since api_keys' only FKs
+   * (`organization_id`, `user_id`) point at the END USER's tenant. This
+   * fixture seeds the two tenants separately so the tests below delete only
+   * the app owner and prove the credential is unaffected by any FK cascade
+   * OTHER than the one this PR must guarantee (the tombstone trigger).
+   */
+  async function seedUsableMobileCredential(): Promise<{
+    appOwnerOrgId: string;
+    appOwnerUserId: string;
+    credentialOrgId: string;
+    credentialUserId: string;
+    appId: string;
+    credentialId: string;
+    plainSecret: string;
+  }> {
+    const { organizationId: appOwnerOrgId, userId: appOwnerUserId } = await seedOrgAndUser();
+    const { organizationId: credentialOrgId, userId: credentialUserId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Mobile Credential Owner",
+      organization_id: appOwnerOrgId,
+      created_by_user_id: appOwnerUserId,
+    });
+    const generated = apiKeysService.generateMobileApiKey();
+    const credentialId = crypto.randomUUID();
+    await apiKeysRepository.create({
+      id: credentialId,
+      name: "Mobile credential",
+      key_hash: generated.hash,
+      key_prefix: generated.prefix,
+      organization_id: credentialOrgId,
+      user_id: credentialUserId,
+      is_active: true,
+      source_app_id: created.id,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    // Prove the credential is live BEFORE deletion by driving the real
+    // authentication entry point, not a row inspection.
+    const preDelete = await apiKeysService.validateApiKey(generated.key);
+    expect(preDelete?.id).toBe(credentialId);
+
+    return {
+      appOwnerOrgId,
+      appOwnerUserId,
+      credentialOrgId,
+      credentialUserId,
+      appId: created.id,
+      credentialId,
+      plainSecret: generated.key,
+    };
+  }
+
+  test("app owner organization deletion cascade-deletes the app; the credential (a different tenant) can no longer authenticate", async () => {
+    expect(pgliteReady).toBe(true);
+    const { appOwnerOrgId, plainSecret } = await seedUsableMobileCredential();
+
+    // The organization-deletion path is a raw repository delete that relies
+    // entirely on ON DELETE CASCADE — it never calls
+    // AppsService.delete()/prepareDeleteWithMobileAuthRevocation(). The
+    // credential's own organization_id/user_id point at an UNRELATED tenant
+    // (the end user), so api_keys' own cascades never touch this row —
+    // without the 0279 trigger this leaves it active and orphaned forever.
+    await organizationsRepository.delete(appOwnerOrgId);
+
+    expect(await apiKeysService.validateApiKey(plainSecret)).toBeNull();
+  });
+
+  test("app owner user deletion cascade-deletes the app; the credential (a different tenant) can no longer authenticate", async () => {
+    expect(pgliteReady).toBe(true);
+    const { appOwnerUserId, plainSecret } = await seedUsableMobileCredential();
+
+    // Same fail-open shape as the organization path: apps.created_by_user_id
+    // also cascades on user deletion, bypassing the app-level revocation
+    // flow, and again never touches the credential's own (different) tenant.
+    await usersRepository.delete(appOwnerUserId);
+
+    expect(await apiKeysService.validateApiKey(plainSecret)).toBeNull();
   });
 });

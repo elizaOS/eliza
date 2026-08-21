@@ -1919,6 +1919,13 @@
       "when": 1793072800002,
       "tag": "0279_mobile_app_auth_device_name",
       "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1793072800003,
+      "tag": "0280_mobile_app_auth_credential_tombstone_trigger",
+      "breakpoints": true
     }
   ]
 }
