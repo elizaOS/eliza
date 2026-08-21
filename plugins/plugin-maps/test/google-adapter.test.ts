@@ -488,13 +488,7 @@ describe("GoogleMapsAdapter provider contract (api-key mode)", () => {
   });
 
   it("rejects route durations that would escape the RoutePlan contract", async () => {
-    for (const duration of [
-      `${"9".repeat(320)}s`,
-      "9e999s",
-      "-5s",
-      "5",
-      "s",
-    ]) {
+    for (const duration of [`${"9".repeat(320)}s`, "9e999s", "-5s", "5", "s"]) {
       upstream.enqueueFault("POST", ROUTES_PATH, {
         type: "schema-drift",
         body: { routes: [{ distanceMeters: 10, duration }] },
