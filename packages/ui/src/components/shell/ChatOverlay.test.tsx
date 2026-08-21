@@ -4347,6 +4347,29 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
+  it("gives the detached resting pill one visible forgiving hit target", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 80 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 80 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 80 });
+
+    expect(sheet.dataset.detent).toBe("pill");
+    const pill = screen.getByTestId("chat-pill");
+    expect(pill.style.width).toBe("64px");
+    expect(pill.style.height).toBe("24px");
+    expect(pill.className).toContain("border-white/20");
+    expect(pill.className).toContain("bg-[rgba(22,22,26,0.96)]");
+    expect(screen.getByTestId("chat-pill-mark").className).toContain("w-9");
+  });
+
   it("opens detached Mac chat before showing the composer actions menu", () => {
     render(
       <ChatOverlay

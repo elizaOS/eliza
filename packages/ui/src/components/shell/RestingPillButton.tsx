@@ -12,8 +12,9 @@ type RestingPillButtonProps = React.ComponentProps<typeof Button> & {
 };
 
 /**
- * The resting control is exactly the visible 48x6 bar. The detached NSWindow
- * uses the same dimensions, so no transparent capsule can steal nearby clicks.
+ * Embedded surfaces use the compact 48x6 bar. The detached desktop caller
+ * paints a larger capsule and gives its NSWindow those same exact dimensions,
+ * so there is never an invisible click-blocking halo around either form.
  */
 export function RestingPillButton({
   breathing = false,

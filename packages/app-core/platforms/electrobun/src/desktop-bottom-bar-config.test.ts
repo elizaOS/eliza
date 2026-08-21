@@ -45,8 +45,8 @@ describe("desktop bottom-bar config", () => {
   describe("resolveBottomBarMaterialCornerRadius", () => {
     it("matches the capsule at rest and the 32px panel radius when open", () => {
       expect(
-        resolveBottomBarMaterialCornerRadius({ width: 48, height: 6 }),
-      ).toBe(3);
+        resolveBottomBarMaterialCornerRadius({ width: 64, height: 24 }),
+      ).toBe(12);
       expect(
         resolveBottomBarMaterialCornerRadius({ width: 576, height: 64 }),
       ).toBe(32);

@@ -152,6 +152,8 @@ import {
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
   type ChatOverlayMaterialSize,
   type ChatOverlayWindowSizeClass,
   readChatOverlayStageSize,
@@ -1079,38 +1081,57 @@ function SheetGrabber({
   );
 }
 
-/** The canonical 48x6 resting bar used by every chat surface. */
+/** Resting bar: compact on embedded surfaces, forgiving capsule on desktop. */
 function PillHandle({
   binding,
   counterScale,
   onOpen,
   breathing,
   pilled,
+  desktopOverlayHost,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It wraps the complete painted
-  // target so the visible 48x6 surface and hit geometry remain identical.
+  // target so the visible surface and hit geometry remain identical.
   counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
-  // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
-  // and wide and sits directly over the composer textarea; if it kept
+  // Interactive ONLY while pilled. The handle sits directly over the composer
+  // textarea; if it kept
   // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
   // the input (the parent's `pointer-events:none` can't override a child that
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  desktopOverlayHost: boolean;
 }): React.JSX.Element {
   return (
     <motion.div
       className="h-1.5 w-12 origin-bottom"
-      style={{ scale: counterScale }}
+      style={{
+        scale: counterScale,
+        ...(desktopOverlayHost
+          ? {
+              width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+              height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+            }
+          : {}),
+      }}
     >
       <RestingPillButton
         data-testid="chat-pill"
         markTestId="chat-pill-mark"
         aria-label="open chat"
         breathing={breathing}
+        markClassName={desktopOverlayHost ? "h-1 w-9" : undefined}
+        style={
+          desktopOverlayHost
+            ? {
+                width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+                height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+              }
+            : undefined
+        }
         // Pointer taps stay owned by the pull gesture's pointerup so one gesture
         // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
         // click with detail=0 and no pointer sequence, so admit only that semantic
@@ -1147,6 +1168,8 @@ function PillHandle({
         aria-hidden={pilled ? undefined : true}
         className={cn(
           "cursor-grab touch-none select-none active:cursor-grabbing",
+          desktopOverlayHost &&
+            "border border-white/20 bg-[rgba(22,22,26,0.96)] shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
           pilled ? "pointer-events-auto" : "pointer-events-none",
         )}
       />
@@ -1783,7 +1806,7 @@ export function ChatOverlay({
       openProgressAnimationRef.current = controls;
       // Springs converge asymptotically. Leaving their final fractional value
       // behind kept `morphExpanded` true after a completed close, so the native
-      // host remained input-width while only the 48x6 resting bar was painted.
+      // host remained input-width while only the compact rest control painted.
       // Snap the completed transition to its semantic endpoint; interrupted
       // controls are ignored because the replacement owns the ref.
       void controls.finished
@@ -5609,7 +5632,7 @@ export function ChatOverlay({
       }
       // The detached host's handle is also its always-visible put-away action.
       // Use the staged thread -> composer -> pill close so one tap reaches the
-      // complete 48x6 rest without skipping transition frames. Embedded/browser
+      // complete compact rest without skipping transition frames. Embedded/browser
       // surfaces retain their established detent tap behavior.
       if (desktopOverlayHost) {
         collapseToPill();
@@ -6008,7 +6031,7 @@ export function ChatOverlay({
         // home-indicator clearance contract is exact.
         // The detached macOS host already seats its exact native frame above
         // the display edge. Reapplying the shared mobile 0.5rem rest gap here
-        // moved the 48x6 button eight pixels ABOVE its own 48x6 NSWindow: it
+        // moved the resting button eight pixels ABOVE its exact NSWindow: it
         // could appear clipped or visible-but-unclickable while the actual host
         // intercepted a different strip. Keep renderer and native coordinates
         // identical; mobile/inline surfaces retain their safe-area clearance.
@@ -6149,7 +6172,7 @@ export function ChatOverlay({
             onOpen={openFromGrabber}
             // The detached Mac grabber is also its complete put-away action;
             // collapseToPill stages an open thread through the composer before
-            // landing on the exact 48x6 pill.
+            // landing on the exact visible resting pill.
             onClose={desktopOverlayHost ? collapseToPill : collapse}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
@@ -7354,6 +7377,7 @@ export function ChatOverlay({
               // deliberately does not (the composer glyphs carry that cue).
               breathing={listening || responding || recording}
               pilled={pilled}
+              desktopOverlayHost={desktopOverlayHost}
             />
           </motion.div>
         </motion.fieldset>
