@@ -7,8 +7,14 @@
  * serialization must survive without value drift.
  */
 import { describe, expect, test } from "bun:test";
+import {
+  REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS,
+  REDEMPTION_MAX_POINTS,
+  REDEMPTION_MIN_POINTS,
+  REDEMPTION_POINTS_PER_USD as SDK_REDEMPTION_POINTS_PER_USD,
+} from "@elizaos/cloud-sdk/redemption-contract";
+import { ElizaError } from "@elizaos/core";
 import { Decimal } from "decimal.js";
-import { REDEMPTION_MAX_POINTS, REDEMPTION_MIN_POINTS } from "../../../types/redemption-contract";
 import { pointsFromUsd, REDEMPTION_POINTS_PER_USD, usdFromPoints } from "../earnings-units";
 
 describe("usdFromPoints (API boundary -> canonical USD)", () => {
@@ -57,29 +63,28 @@ describe("pointsFromUsd (canonical USD -> API boundary)", () => {
     expect(pointsFromUsd(new Decimal("0.0001"))).toBeNull();
   });
 
-  test("rejects negative, non-finite, and malformed inputs without throwing", () => {
-    expect(pointsFromUsd(new Decimal("-1"))).toBeNull();
-    expect(pointsFromUsd(new Decimal("NaN"))).toBeNull();
-    expect(pointsFromUsd(new Decimal("Infinity"))).toBeNull();
-    expect(pointsFromUsd(Number.NaN)).toBeNull();
-    expect(pointsFromUsd(Number.POSITIVE_INFINITY)).toBeNull();
+  // Malformed money is a caller bug, not an unrepresentable amount. Keeping
+  // it distinct from the null above matters because callers branch on null:
+  // collapsing the two would let a NaN amount read as "just not on the grid".
+  test("throws on negative, non-finite, and malformed inputs", () => {
+    expect(() => pointsFromUsd(new Decimal("-1"))).toThrow(ElizaError);
+    expect(() => pointsFromUsd(new Decimal("NaN"))).toThrow(ElizaError);
+    expect(() => pointsFromUsd(new Decimal("Infinity"))).toThrow(ElizaError);
+    expect(() => pointsFromUsd(Number.NaN)).toThrow(ElizaError);
+    expect(() => pointsFromUsd(Number.POSITIVE_INFINITY)).toThrow(ElizaError);
   });
 
   test("round-trips exactly for the full redemption range", () => {
     for (const pts of [
       REDEMPTION_MIN_POINTS,
       1_234,
-      REDEMPTION_EVM_THRESHOLD_FOR_TEST(),
+      REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS,
       REDEMPTION_MAX_POINTS,
     ]) {
       expect(pointsFromUsd(usdFromPoints(pts))).toBe(pts);
     }
   });
 });
-
-function REDEMPTION_EVM_THRESHOLD_FOR_TEST() {
-  return 10_000;
-}
 
 describe("serialization: NUMERIC(18,4) string round-trip", () => {
   test("USD Decimal survives the NUMERIC string round-trip without drift", () => {
@@ -113,7 +118,11 @@ describe("serialization: NUMERIC(18,4) string round-trip", () => {
 });
 
 describe("conversion contract: single source of truth", () => {
-  test("ratio is exactly 100 and matches the SDK contract constant", () => {
-    expect(REDEMPTION_POINTS_PER_USD).toBe(100);
+  // Comparing the re-export against a literal would only check the literal.
+  // The claim worth pinning is that the value this module hands out is the
+  // SDK's, so both are imported and compared to each other.
+  test("the exported ratio is the SDK contract constant", () => {
+    expect(REDEMPTION_POINTS_PER_USD).toBe(SDK_REDEMPTION_POINTS_PER_USD);
+    expect(SDK_REDEMPTION_POINTS_PER_USD).toBe(100);
   });
 });

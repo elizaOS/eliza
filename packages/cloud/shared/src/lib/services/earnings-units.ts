@@ -52,9 +52,12 @@ export function usdFromPoints(points: number): Decimal {
 
 /**
  * Convert canonical USD to integer redemption points.
- * Returns null when the input is malformed, non-finite, negative, or cannot
- * map to an integer number of points (sub-cent precision beyond $0.01).
- * Never throws.
+ *
+ * `null` means one thing only: the amount is valid money but does not land on
+ * the integer-points grid (anything finer than $0.01 has no points
+ * representation). Malformed, non-finite, or negative input is a caller bug
+ * and throws, so a broken amount can never be mistaken for an unrepresentable
+ * one — the distinction matters because callers legitimately branch on `null`.
  */
 export function pointsFromUsd(usd: Decimal | number): number | null {
   let d: Decimal;
@@ -63,9 +66,17 @@ export function pointsFromUsd(usd: Decimal | number): number | null {
   } else if (typeof usd === "number" && Number.isFinite(usd)) {
     d = new Decimal(usd);
   } else {
-    return null;
+    throw new ElizaError(`usd must be a finite Decimal or number, received: ${String(usd)}`, {
+      code: "INVALID_REDEMPTION_USD",
+      context: { received: String(usd) },
+    });
   }
-  if (!d.isFinite() || d.isNegative()) return null;
+  if (!d.isFinite() || d.isNegative()) {
+    throw new ElizaError(`usd must be finite and non-negative, received: ${d.toString()}`, {
+      code: "INVALID_REDEMPTION_USD",
+      context: { received: d.toString() },
+    });
+  }
   const points = d.mul(REDEMPTION_POINTS_PER_USD);
   if (!points.isInteger()) return null;
   const n = points.toNumber();
