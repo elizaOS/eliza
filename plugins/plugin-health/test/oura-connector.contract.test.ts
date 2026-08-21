@@ -204,4 +204,55 @@ describe("Oura connector — recorded real API contract", () => {
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
   });
+
+  it("follows collection cursors beyond the former five-page ceiling", async () => {
+    let activityPages = 0;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/usercollection/personal_info")) {
+        return jsonResponse({ id: "oura-user" });
+      }
+      if (url.includes("/usercollection/daily_activity")) {
+        activityPages += 1;
+        return jsonResponse({
+          data: [],
+          next_token:
+            activityPages === 6 ? null : `activity-page-${activityPages + 1}`,
+        });
+      }
+      return jsonResponse({ data: [], next_token: null });
+    });
+
+    await expect(
+      syncHealthConnectorData({
+        token,
+        grantId: "grant-oura",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      }),
+    ).resolves.toMatchObject({ samples: [], workouts: [] });
+    expect(activityPages).toBe(6);
+  });
+
+  it("rejects a repeated Oura collection cursor", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/usercollection/personal_info")) {
+        return jsonResponse({ id: "oura-user" });
+      }
+      if (url.includes("/usercollection/daily_activity")) {
+        return jsonResponse({ data: [], next_token: "repeated-token" });
+      }
+      return jsonResponse({ data: [], next_token: null });
+    });
+
+    await expect(
+      syncHealthConnectorData({
+        token,
+        grantId: "grant-oura",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      }),
+    ).rejects.toThrow("Oura pagination repeated a next_token");
+  });
 });

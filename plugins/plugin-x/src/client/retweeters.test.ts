@@ -1,8 +1,8 @@
 /**
  * Unit tests for `fetchRetweetersPage` (Twitter API v2 retweeter payload
  * mapping) and `getAllRetweeters` (pagination termination, including
- * repeated-cursor and page-cap guards against an API that never stops
- * paginating); mocked API.
+ * repeated-cursor rejection and traversal beyond the former fixed ceiling);
+ * mocked API.
  */
 import { describe, expect, it, vi } from "vitest";
 import { fetchRetweetersPage, getAllRetweeters } from "./tweets";
@@ -186,11 +186,13 @@ describe("getAllRetweeters", () => {
     );
   });
 
-  it("caps total pages so a provider that never repeats but never stops still terminates", async () => {
+  it("accepts a valid result beyond the former 1000-page ceiling", async () => {
     let page = 0;
     const tweetRetweetedBy = vi.fn().mockImplementation(async () => {
       page += 1;
-      return retweeterPage(`user-${page}`, `cursor-${page}`);
+      return page === 1001
+        ? terminalPage(`user-${page}`)
+        : retweeterPage(`user-${page}`, `cursor-${page}`);
     });
     const auth = {
       getV2Client: async () => ({ v2: { tweetRetweetedBy } }),
@@ -198,7 +200,7 @@ describe("getAllRetweeters", () => {
 
     await expect(
       getAllRetweeters("tweet-1", auth as never),
-    ).rejects.toMatchObject({ code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED" });
-    expect(tweetRetweetedBy).toHaveBeenCalledTimes(1000);
+    ).resolves.toHaveLength(1001);
+    expect(tweetRetweetedBy).toHaveBeenCalledTimes(1001);
   });
 });

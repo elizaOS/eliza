@@ -1446,7 +1446,7 @@ export class FinancesService {
     let inserted = 0;
     let skipped = 0;
     let page = 1;
-    let totalPages = 1;
+    let totalPages: number | null = null;
     try {
       do {
         const result = await this.getPaypalManagedClient().searchTransactions({
@@ -1455,7 +1455,9 @@ export class FinancesService {
           endDate,
           page,
         });
-        totalPages = result.totalPages;
+        if (totalPages === null) {
+          totalPages = result.totalPages;
+        }
         for (const transaction of result.transactions) {
           const wasInserted = await this.upsertPaypalTransaction({
             sourceId,
@@ -1468,7 +1470,7 @@ export class FinancesService {
           }
         }
         page += 1;
-      } while (page <= totalPages && page <= 50);
+      } while (page <= (totalPages ?? 0));
     } catch (error) {
       if (
         error instanceof PaypalManagedClientError &&

@@ -29,8 +29,6 @@ const NOTION_MAX_JSON_BYTES = 4_000_000;
 const NOTION_MAX_ERROR_BYTES = 64_000;
 
 const MAX_PAGE_SIZE = 100;
-/** Cap block-children pagination so one pathological page cannot spin forever. */
-const MAX_CONTENT_PAGES = 20;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -91,8 +89,9 @@ export class NotionClient {
     const page = await this.getPage(params);
     const lines: string[] = [];
     const unsupported = new Set<string>();
+    const seenCursors = new Set<string>();
     let cursor: string | null = null;
-    for (let fetched = 0; fetched < MAX_CONTENT_PAGES; fetched += 1) {
+    while (true) {
       const query = cursor
         ? `?page_size=${MAX_PAGE_SIZE}&start_cursor=${encodeURIComponent(cursor)}`
         : `?page_size=${MAX_PAGE_SIZE}`;
@@ -109,8 +108,25 @@ export class NotionClient {
           unsupported.add(typeof block.type === "string" ? block.type : "unknown");
         }
       }
-      cursor = payload.has_more === true ? readNullableString(payload, "next_cursor") : null;
-      if (!cursor) break;
+      if (payload.has_more !== true) break;
+      const nextCursor = readNullableString(payload, "next_cursor");
+      if (!nextCursor) {
+        throw new ElizaError(
+          "NotionClient: block pagination claimed more results without a continuation cursor.",
+          {
+            code: "NOTION_MALFORMED_RESPONSE",
+            context: { pageId: params.pageId, accountId: params.accountId },
+          }
+        );
+      }
+      if (seenCursors.has(nextCursor)) {
+        throw new ElizaError("NotionClient: block pagination repeated a continuation cursor.", {
+          code: "NOTION_MALFORMED_RESPONSE",
+          context: { pageId: params.pageId, accountId: params.accountId, cursor: nextCursor },
+        });
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
     }
     return {
       id: page.id,

@@ -21,7 +21,6 @@ import {
 } from "./health-records.js";
 
 const HEALTH_CONNECTOR_TIMEOUT_MS = 15_000;
-const MAX_PAGINATION_PAGES = 5;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -711,8 +710,9 @@ async function fetchOuraCollection(args: {
   query: Record<string, string>;
 }): Promise<Record<string, unknown>[]> {
   const items: Record<string, unknown>[] = [];
+  const seenTokens = new Set<string>();
   let nextToken: string | null = null;
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+  for (;;) {
     const json = await fetchHealthJson({
       token: args.token,
       path: args.path,
@@ -720,9 +720,15 @@ async function fetchOuraCollection(args: {
     });
     items.push(...getArray(json, "data"));
     nextToken = getText(json, "next_token");
-    if (!nextToken) {
-      break;
+    if (!nextToken) break;
+    if (seenTokens.has(nextToken)) {
+      throw new HealthConnectorApiError(
+        502,
+        args.token.provider,
+        "Oura pagination repeated a next_token",
+      );
     }
+    seenTokens.add(nextToken);
   }
   return items;
 }

@@ -1370,11 +1370,6 @@ export async function fetchRetweetersPage(
   };
 }
 
-// Bounds `getAllRetweeters` against a provider that never stops paginating
-// (repeated or perpetually-novel cursors) — 1,000 pages * 40/page covers even
-// a very viral tweet while keeping worst-case requests/memory finite.
-const MAX_RETWEETER_PAGES = 1000;
-
 /**
  * Retrieves *all* retweeters by chaining requests until no next cursor is found.
  * @param tweetId The ID of the tweet.
@@ -1392,16 +1387,6 @@ export async function getAllRetweeters(
 
   while (true) {
     pageCount += 1;
-    if (pageCount > MAX_RETWEETER_PAGES) {
-      throw new ElizaError(
-        `Retweeter pagination for tweet ${tweetId} exceeded ${MAX_RETWEETER_PAGES} pages`,
-        {
-          code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED",
-          context: { tweetId, pageCount },
-        },
-      );
-    }
-
     const { retweeters, bottomCursor } = await fetchRetweetersPage(
       tweetId,
       auth,

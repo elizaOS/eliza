@@ -436,7 +436,8 @@ async function findCheckoutSessionForOrder(
   }
   const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
   let startingAfter: string | undefined;
-  for (let page = 0; page < 10; page += 1) {
+  const seenCursors = new Set<string>();
+  while (true) {
     const sessions = await stripe.checkout.sessions.list({
       customer: order.stripe_customer_id,
       created: {
@@ -452,10 +453,19 @@ async function findCheckoutSessionForOrder(
         session.metadata?.checkout_order_id === order.id,
     );
     if (match) return match;
-    if (!sessions.has_more || sessions.data.length === 0) return null;
-    startingAfter = sessions.data.at(-1)?.id;
+    if (!sessions.has_more) return null;
+    if (sessions.data.length === 0) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned an empty continuation page",
+      );
+    }
+    const nextCursor = sessions.data.at(-1)?.id;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned invalid pagination",
+      );
+    }
+    seenCursors.add(nextCursor);
+    startingAfter = nextCursor;
   }
-  throw new Error(
-    "Stripe Checkout reconciliation exceeded its safe search bound",
-  );
 }
