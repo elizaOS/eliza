@@ -24,6 +24,10 @@ import {
 	type ProviderResult,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { addHeader } from "../../../utils.ts";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
@@ -50,7 +54,9 @@ function formatAttachmentUrlForPrompt(url: string | undefined): string {
 		const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? "binary";
 		return `[inline ${mime} data, ${url.length} chars]`;
 	}
-	return url.length > 512 ? `${url.slice(0, 511)}…` : url;
+	return url.length > 512
+		? `${truncateWellFormed(toWellFormedUnicode(url), 511)}…`
+		: toWellFormedUnicode(url);
 }
 
 function contentString(message: Memory, key: string): string {
