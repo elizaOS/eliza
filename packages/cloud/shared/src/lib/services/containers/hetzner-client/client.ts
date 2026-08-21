@@ -21,8 +21,10 @@ import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
   allocatePort,
+  buildDockerEnvFileStdinTransport,
   buildEnsureNetworkCmd,
   shellQuote,
+  validateDockerEnvFileStdinEnvironment,
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
 } from "../../docker-sandbox-utils";
@@ -43,7 +45,6 @@ import {
   derivePublicHostname,
   deriveVolumePath,
   validateContainerMountPath,
-  validateEnvKey,
 } from "./paths";
 import { buildContainerPortPublishFlag } from "./port-publish";
 import { ensureRegistryAccess, readPulledImageDigest } from "./registry";
@@ -75,6 +76,20 @@ function cpuUnitsToDockerCpus(cpuUnits: number): string {
   return (Math.round(vcpus * 1000) / 1000).toString();
 }
 
+function validateContainerEnvironment(environment: Readonly<Record<string, string>>): void {
+  try {
+    validateDockerEnvFileStdinEnvironment(environment);
+  } catch (error) {
+    // error-policy:J2 boundary translation — the public Hetzner route maps
+    // invalid_input to 400, so transport validation must not escape as a 500.
+    throw new HetznerClientError(
+      "invalid_input",
+      `Invalid container environment: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
+}
+
 export class HetznerContainersClient {
   // ----------------------------------------------------------------------
   // CRUD
@@ -98,9 +113,7 @@ export class HetznerContainersClient {
         `desiredCount must be 1; multi-replica containers are not supported on the Hetzner-Docker pool.`,
       );
     }
-    if (input.environmentVars) {
-      for (const key of Object.keys(input.environmentVars)) validateEnvKey(key);
-    }
+    validateContainerEnvironment(input.environmentVars ?? {});
     const volumeMountPath = validateContainerMountPath(input.volumeMountPath);
 
     // 1. Pre-create the DB row in `pending` so the rest of the flow has an id.
@@ -267,33 +280,36 @@ export class HetznerContainersClient {
         bootstrapStats = await hydrateBootstrapSource(ssh, volumePath, input.bootstrapSource);
       }
 
-      const envFlags = Object.entries(input.environmentVars ?? {})
-        .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
-        .join(" ");
-
       let hostPort: number | undefined;
       const maxPortAttempts = 5;
       for (let attempt = 1; attempt <= maxPortAttempts; attempt++) {
-        hostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
-        const dockerCreateCmd = [
-          "docker create",
-          `--name ${shellQuote(containerName)}`,
-          "--restart unless-stopped",
-          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-          `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
-          `--memory ${input.memoryMb}m`,
-          ...buildAppContainerSecurityFlags(),
-          ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
-          buildContainerPortPublishFlag(hostPort, input.port),
-          envFlags,
-          shellQuote(input.image),
-        ]
-          .filter((part) => part.length > 0)
-          .join(" ");
+        const candidateHostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
+        hostPort = candidateHostPort;
+        const createTransport = buildDockerEnvFileStdinTransport(
+          input.environmentVars ?? {},
+          (envFilePath) =>
+            [
+              "docker create",
+              `--name ${shellQuote(containerName)}`,
+              "--restart unless-stopped",
+              `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+              `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
+              `--memory ${input.memoryMb}m`,
+              ...buildAppContainerSecurityFlags(),
+              ...(volumePath
+                ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`]
+                : []),
+              buildContainerPortPublishFlag(candidateHostPort, input.port),
+              `--env-file ${envFilePath}`,
+              shellQuote(input.image),
+            ]
+              .filter((part) => part.length > 0)
+              .join(" "),
+        );
 
         try {
           await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-          await ssh.exec(dockerCreateCmd, 60_000);
+          await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
           break;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -707,10 +723,35 @@ export class HetznerContainersClient {
     organizationId: string,
     environmentVars: Record<string, string>,
   ): Promise<ContainerSummary> {
-    for (const key of Object.keys(environmentVars)) validateEnvKey(key);
+    // Validate the complete frame before funding state or the existing
+    // container is touched. Invalid input must not turn setEnv into a
+    // destructive stop/remove followed by an impossible replacement.
+    validateContainerEnvironment(environmentVars);
     await containersRepository.prepareFundedRestart(containerId, organizationId, new Date());
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
+
+    const createTransport = buildDockerEnvFileStdinTransport(environmentVars, (envFilePath) =>
+      [
+        "docker create",
+        `--name ${shellQuote(meta.containerName)}`,
+        "--restart unless-stopped",
+        `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+        `--cpus ${cpuUnitsToDockerCpus(row.row.cpu)}`,
+        `--memory ${row.row.memory}m`,
+        ...buildAppContainerSecurityFlags(),
+        ...(meta.volumePath
+          ? [
+              `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
+            ]
+          : []),
+        buildContainerPortPublishFlag(meta.hostPort, meta.containerPort),
+        `--env-file ${envFilePath}`,
+        shellQuote(meta.image),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
 
     await this.execOnNode(meta, async (ssh) => {
       // error-policy:J6 best-effort stop before the authoritative rm -f below;
@@ -725,33 +766,8 @@ export class HetznerContainersClient {
         );
       await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
-      const envFlags = Object.entries(environmentVars)
-        .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
-        .join(" ");
-
       await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-      await ssh.exec(
-        [
-          "docker create",
-          `--name ${shellQuote(meta.containerName)}`,
-          "--restart unless-stopped",
-          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-          `--cpus ${cpuUnitsToDockerCpus(row.row.cpu)}`,
-          `--memory ${row.row.memory}m`,
-          ...buildAppContainerSecurityFlags(),
-          ...(meta.volumePath
-            ? [
-                `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
-              ]
-            : []),
-          buildContainerPortPublishFlag(meta.hostPort, meta.containerPort),
-          envFlags,
-          shellQuote(meta.image),
-        ]
-          .filter(Boolean)
-          .join(" "),
-        60_000,
-      );
+      await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
       await ssh.exec(`docker start ${shellQuote(meta.containerName)}`, 60_000);
     });
 
