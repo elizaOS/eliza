@@ -283,6 +283,23 @@ const SPLIT_VERBS =
 	/\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b/i;
 const TILE_VERBS =
 	/\b(tile|grid|arrange|layout)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(tile|grid|arrange|layout)\b/i;
+const VIEW_SURFACE_TOKENS = new Set([
+	"app",
+	"apps",
+	"desktop",
+	"manager",
+	"panel",
+	"panels",
+	"screen",
+	"screens",
+	"tab",
+	"tabs",
+	"ui",
+	"view",
+	"views",
+	"window",
+	"windows",
+]);
 const USER_REQUEST_OPEN_TAG = "<user_request>";
 const USER_REQUEST_CLOSE_TAG = "</user_request>";
 
@@ -1526,16 +1543,14 @@ function extractClockTime(intent: string): string | null {
 }
 
 function isCloseAllRequest(
-	text: string,
+	_text: string,
 	options?: Record<string, unknown>,
 ): boolean {
-	const requestText = viewRequestText(text);
 	const explicit = readViewTargetOption(options)?.trim().toLowerCase();
 	return (
 		readBooleanOption(options, "all") ||
 		explicit === "all" ||
-		explicit === "__all__" ||
-		CLOSE_ALL_VERBS.test(requestText)
+		explicit === "__all__"
 	);
 }
 

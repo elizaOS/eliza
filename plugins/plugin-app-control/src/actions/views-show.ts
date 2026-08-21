@@ -83,7 +83,11 @@ function resolveView(
 	| { kind: "match"; view: ViewSummary }
 	| { kind: "ambiguous"; candidates: ViewSummary[] }
 	| { kind: "none" } {
-	const q = target.toLowerCase();
+	// `home` is the platform-level name for the canonical chat Workspace. The
+	// planner owns the intent and supplies this structured target; the action
+	// boundary owns translating that stable product alias to the registry id.
+	const requested = target.toLowerCase();
+	const q = requested === "home" ? "chat" : requested;
 
 	// Exact id match.
 	const byId = views.find((v) => v.id.toLowerCase() === q);
@@ -349,7 +353,8 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const navigationLabel = view.label;
+	const navigationLabel =
+		target.trim().toLowerCase() === "home" ? "Home" : view.label;
 	const completedActionDelivery =
 		!isRealtimeVoiceTurn(message) && Boolean(originatingClientId);
 	const completedActionHandoffId = completedActionDelivery
