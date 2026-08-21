@@ -2,12 +2,36 @@
  * Exercises the character-history pagination boundary with a pure parser and
  * a mocked route context; no HTTP server, database, or live model is used.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_CHARACTER_HISTORY_WALK_DEPTH } from "../services/character-history.ts";
 import {
   handleCharacterRoutes,
   parseCharacterHistoryLimit,
 } from "./character-routes.ts";
+import { invalidateConversationConnectionTopology } from "./conversation-connection-readiness.ts";
+
+// Instrument the real invalidation collaborator: the spy still delegates to the
+// live implementation, so call counts are observed on the actual code path.
+vi.mock("./conversation-connection-readiness.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("./conversation-connection-readiness.ts")
+    >();
+  return {
+    ...actual,
+    invalidateConversationConnectionTopology: vi.fn(
+      actual.invalidateConversationConnectionTopology,
+    ),
+  };
+});
+
+const invalidateTopologySpy = vi.mocked(
+  invalidateConversationConnectionTopology,
+);
+
+beforeEach(() => {
+  invalidateTopologySpy.mockClear();
+});
 
 describe("parseCharacterHistoryLimit", () => {
   it("keeps the default and accepts complete safe decimals", () => {
@@ -134,7 +158,6 @@ function makePutRuntime(character: Record<string, unknown>) {
 }
 
 describe("PUT /api/character stage-then-commit", () => {
-
   it("keeps runtime/update/history/topology untouched when the second bound fails", async () => {
     const character = {
       name: "Ada",
@@ -182,6 +205,7 @@ describe("PUT /api/character stage-then-commit", () => {
     expect(updateAgent).not.toHaveBeenCalled();
     expect(createMemory).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
+    expect(invalidateTopologySpy).not.toHaveBeenCalled();
   });
 
   it("does not mutate runtime when a revoked Array Proxy is submitted", async () => {
@@ -222,6 +246,7 @@ describe("PUT /api/character stage-then-commit", () => {
     expect(character).toEqual(original);
     expect(updateAgent).not.toHaveBeenCalled();
     expect(createMemory).not.toHaveBeenCalled();
+    expect(invalidateTopologySpy).not.toHaveBeenCalled();
   });
 
   it("commits runtime mutation only after both history bounds succeed", async () => {
@@ -259,5 +284,171 @@ describe("PUT /api/character stage-then-commit", () => {
       {},
       expect.objectContaining({ ok: true, agentName: "Eve" }),
     );
+    expect(invalidateTopologySpy).toHaveBeenCalledTimes(1);
+    expect(invalidateTopologySpy).toHaveBeenCalledWith(runtime);
+  });
+});
+
+describe("PUT /api/character descriptor-only staging", () => {
+  it("never runs submitted Proxy get/has traps while renaming examples", async () => {
+    let trapCalls = 0;
+    const trapHandler = {
+      get(target: object, key: PropertyKey, receiver: unknown) {
+        trapCalls += 1;
+        return Reflect.get(target, key, receiver);
+      },
+      has(target: object, key: PropertyKey) {
+        trapCalls += 1;
+        return Reflect.has(target, key);
+      },
+    };
+    const submittedExamples = new Proxy(
+      [
+        {
+          examples: [
+            { name: "{{agentName}}", content: { text: "hi from {{name}}" } },
+          ],
+        },
+      ],
+      trapHandler,
+    );
+    const submittedBio = new Proxy(["staged bio"], trapHandler);
+
+    const character = {
+      name: "Ada",
+      bio: ["old"],
+      messageExamples: [
+        { examples: [{ name: "Ada", content: { text: "hi" } }] },
+      ],
+    };
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const json = vi.fn();
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime },
+      json,
+      error,
+      readJsonBody: vi.fn(async () => ({
+        name: "Eve",
+        bio: submittedBio,
+        messageExamples: submittedExamples,
+      })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(trapCalls).toBe(0);
+    expect(character.name).toBe("Eve");
+    expect(character.bio).toEqual(["staged bio"]);
+    expect(character.messageExamples).toEqual([
+      { examples: [{ name: "Eve", content: { text: "hi from Eve" } }] },
+    ]);
+    expect(updateAgent).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(invalidateTopologySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a submitted accessor without invoking it or mutating anything", async () => {
+    const hostileContent: Record<string, unknown> = { text: "hi" };
+    let accessorCalls = 0;
+    Object.defineProperty(hostileContent, "leak", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        accessorCalls += 1;
+        throw new Error("ACCESSOR_INVOKED");
+      },
+    });
+    const hostileBio: string[] = ["kept"];
+    Object.defineProperty(hostileBio, "0", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        accessorCalls += 1;
+        throw new Error("BIO_ACCESSOR_INVOKED");
+      },
+    });
+
+    const character = {
+      name: "Ada",
+      bio: ["old"],
+      messageExamples: [
+        { examples: [{ name: "Ada", content: { text: "hi" } }] },
+      ],
+    };
+    const original = structuredClone(character);
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const json = vi.fn();
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime },
+      json,
+      error,
+      readJsonBody: vi.fn(async () => ({
+        name: "Eve",
+        bio: hostileBio,
+        messageExamples: [
+          { examples: [{ name: "Eve", content: hostileContent }] },
+        ],
+      })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(accessorCalls).toBe(0);
+    expect(error).toHaveBeenCalledWith(
+      {},
+      "Character payload exceeds the history walk budget",
+      400,
+    );
+    expect(character).toEqual(original);
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+    expect(invalidateTopologySpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unbounded submitted bio before any runtime mutation", async () => {
+    const character = { name: "Ada", bio: ["old"] };
+    const original = structuredClone(character);
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime },
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(async () => ({
+        name: "Eve",
+        bio: [nestArr(MAX_CHARACTER_HISTORY_WALK_DEPTH + 4)],
+      })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      {},
+      "Character payload exceeds the history walk budget",
+      400,
+    );
+    expect(character).toEqual(original);
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(invalidateTopologySpy).not.toHaveBeenCalled();
   });
 });

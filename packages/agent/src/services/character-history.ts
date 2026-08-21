@@ -5,7 +5,13 @@
  * agent / restore). Also parses those memory rows back into typed history
  * entries and lists them newest-first for the character-history surface.
  */
-import { type IAgentRuntime, type Memory, MemoryType } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  isElizaError,
+  type Memory,
+  MemoryType,
+} from "@elizaos/core";
 
 export const CHARACTER_HISTORY_TABLE = "character_modifications";
 export const MAX_CHARACTER_HISTORY_LIMIT = 100;
@@ -19,40 +25,32 @@ export const MAX_CHARACTER_HISTORY_WALK_DEPTH = 64;
 export const MAX_CHARACTER_HISTORY_WALK_NODES = 100_000;
 export const CHARACTER_HISTORY_UNBOUNDED = "CHARACTER_HISTORY_UNBOUNDED";
 
-export class CharacterHistoryError extends Error {
-  readonly code?: string;
-  constructor(message: string, code?: string) {
-    super(message);
-    this.name = "CharacterHistoryError";
-    if (code) this.code = code;
-  }
-}
-
+/** True when `error` is the typed unbounded-walk domain failure. */
 export function isCharacterHistoryUnbounded(error: unknown): boolean {
-  return (
-    error instanceof CharacterHistoryError &&
-    error.code === CHARACTER_HISTORY_UNBOUNDED
-  );
+  return isElizaError(error) && error.code === CHARACTER_HISTORY_UNBOUNDED;
 }
 
-type HistoryWalkContext = {
+/** Shared budget/cycle state for one bounded character walk. */
+export type HistoryWalkContext = {
   visits: number;
   visiting: WeakSet<object>;
 };
 
+/**
+ * The one domain failure this module raises. `ElizaError` carries the typed
+ * `code`, the structured `context`, and the preserved `cause` chain the
+ * fast-fail error policy requires of new/rewritten throw sites.
+ */
 function failHistoryUnbounded(
   context: Record<string, unknown>,
   cause?: unknown,
 ): never {
-  const error = new CharacterHistoryError(
-    "Character history value exceeds the walk budget",
-    CHARACTER_HISTORY_UNBOUNDED,
-  );
-  if (cause !== undefined) {
-    (error as Error & { cause?: unknown }).cause = cause;
-  }
-  (error as Error & { context?: Record<string, unknown> }).context = context;
-  throw error;
+  throw new ElizaError("Character history value exceeds the walk budget", {
+    code: CHARACTER_HISTORY_UNBOUNDED,
+    severity: "fatal",
+    context,
+    ...(cause !== undefined ? { cause } : {}),
+  });
 }
 
 function reserveHistoryVisits(ctx: HistoryWalkContext, count: number): void {
@@ -81,17 +79,38 @@ function inspectHistory<T>(operation: string, inspect: () => T): T {
   }
 }
 
-function ownEnumerableStringKeys(value: object): string[] {
-  const keys: string[] = [];
+/** One enumerable own *data* property, captured by a single descriptor read. */
+type HistoryDataEntry = { key: string; value: unknown };
+
+/**
+ * Capture every enumerable own string-keyed data property in ONE descriptor
+ * read per key. Reading the descriptor twice (once to filter keys, once to take
+ * the value) lets a Proxy drift between a benign descriptor and a different one,
+ * so the walkers consume this stable snapshot and never re-reflect on the
+ * source object.
+ */
+function ownEnumerableDataEntries(value: object): HistoryDataEntry[] {
+  const entries: HistoryDataEntry[] = [];
   for (const key of inspectHistory("ownKeys", () => Reflect.ownKeys(value))) {
     if (typeof key !== "string") continue;
     const descriptor = inspectHistory("getOwnPropertyDescriptor", () =>
       Object.getOwnPropertyDescriptor(value, key),
     );
     if (!descriptor?.enumerable) continue;
-    keys.push(key);
+    if (!("value" in descriptor)) {
+      failHistoryUnbounded({ accessor: true, key });
+    }
+    entries.push({ key, value: descriptor.value });
   }
-  return keys;
+  return entries;
+}
+
+function sortHistoryEntriesByKey(
+  entries: HistoryDataEntry[],
+): HistoryDataEntry[] {
+  return entries.sort((left, right) =>
+    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+  );
 }
 
 function ownValueDescriptor(
@@ -108,6 +127,15 @@ function ownValueDescriptor(
   return descriptor;
 }
 
+/**
+ * Descriptor-only single-property read. Returns `undefined` when the key is not
+ * an own property and fails closed when it is an accessor, so callers can stage
+ * submitted/live values without running getters or Proxy `get`/`has` traps.
+ */
+export function readOwnDataValue(value: unknown, key: string): unknown {
+  if (value === null || typeof value !== "object") return undefined;
+  return ownValueDescriptor(value, key)?.value;
+}
 
 function isArrayValue(value: object): boolean {
   return inspectHistory("isArray", () => Array.isArray(value));
@@ -131,11 +159,22 @@ function ownArrayLength(value: object): number {
   return length;
 }
 
+/**
+ * Map an array's own numeric data properties, holes preserved.
+ *
+ * The whole *logical* length is reserved in the walk budget BEFORE the output
+ * is sized and before any index descriptor is probed. Charging only for the
+ * present elements let a graph of nested 100k-slot sparse arrays spend one
+ * visit per container while performing millions of descriptor probes and
+ * allocating millions of output slots.
+ */
 function mapOwnArrayData<T>(
   value: object,
+  ctx: HistoryWalkContext,
   mapEntry: (entry: unknown) => T,
 ): T[] {
   const length = ownArrayLength(value);
+  reserveHistoryVisits(ctx, length);
   const mapped: T[] = [];
   mapped.length = length;
   for (let index = 0; index < length; index += 1) {
@@ -267,10 +306,16 @@ function cloneIfDefined<T>(value: T): T {
   return value === undefined ? value : cloneJson(value);
 }
 
+/**
+ * `reserved` is set by container walks that already charged this value's slot
+ * to the budget (every array slot and every object entry is reserved up front),
+ * so a node is never counted twice.
+ */
 function normalizeForCompare(
   value: unknown,
   depth = 0,
   ctx: HistoryWalkContext = createHistoryWalkContext(),
+  reserved = false,
 ): unknown {
   if (depth > MAX_CHARACTER_HISTORY_WALK_DEPTH) {
     failHistoryUnbounded({
@@ -278,22 +323,27 @@ function normalizeForCompare(
       max: MAX_CHARACTER_HISTORY_WALK_DEPTH,
     });
   }
-  reserveHistoryVisits(ctx, 1);
+  if (!reserved) reserveHistoryVisits(ctx, 1);
   if (value === null || typeof value !== "object") {
     return value;
   }
   enterHistoryContainer(value, ctx);
   try {
     if (isArrayValue(value)) {
-      return mapOwnArrayData(value, (entry) =>
-        normalizeForCompare(entry, depth + 1, ctx),
+      return mapOwnArrayData(value, ctx, (entry) =>
+        normalizeForCompare(entry, depth + 1, ctx, true),
       );
     }
+    const entries = sortHistoryEntriesByKey(ownEnumerableDataEntries(value));
+    reserveHistoryVisits(ctx, entries.length);
     const normalized = createHistoryRecord<unknown>();
-    for (const key of ownEnumerableStringKeys(value).sort()) {
-      const descriptor = ownValueDescriptor(value, key);
-      if (!descriptor) continue;
-      normalized[key] = normalizeForCompare(descriptor.value, depth + 1, ctx);
+    for (const entry of entries) {
+      normalized[entry.key] = normalizeForCompare(
+        entry.value,
+        depth + 1,
+        ctx,
+        true,
+      );
     }
     return normalized;
   } finally {
@@ -348,6 +398,7 @@ function toCharacterHistoryValue(
   value: unknown,
   depth = 0,
   ctx: HistoryWalkContext = createHistoryWalkContext(),
+  reserved = false,
 ): CharacterHistoryValue | undefined {
   if (depth > MAX_CHARACTER_HISTORY_WALK_DEPTH) {
     failHistoryUnbounded({
@@ -355,7 +406,7 @@ function toCharacterHistoryValue(
       max: MAX_CHARACTER_HISTORY_WALK_DEPTH,
     });
   }
-  reserveHistoryVisits(ctx, 1);
+  if (!reserved) reserveHistoryVisits(ctx, 1);
   if (
     value === null ||
     typeof value === "string" ||
@@ -374,20 +425,22 @@ function toCharacterHistoryValue(
     if (isArrayValue(value)) {
       return mapOwnArrayData(
         value,
-        (entry) => toCharacterHistoryValue(entry, depth + 1, ctx) ?? null,
+        ctx,
+        (entry) => toCharacterHistoryValue(entry, depth + 1, ctx, true) ?? null,
       ) as CharacterHistoryValue[];
     }
+    const entries = ownEnumerableDataEntries(value);
+    reserveHistoryVisits(ctx, entries.length);
     const normalized = createHistoryRecord<CharacterHistoryValue | undefined>();
-    for (const key of ownEnumerableStringKeys(value)) {
-      const descriptor = ownValueDescriptor(value, key);
-      if (!descriptor) continue;
+    for (const entry of entries) {
       const normalizedEntry = toCharacterHistoryValue(
-        descriptor.value,
+        entry.value,
         depth + 1,
         ctx,
+        true,
       );
       if (normalizedEntry !== undefined) {
-        normalized[key] = normalizedEntry;
+        normalized[entry.key] = normalizedEntry;
       }
     }
     return normalized;
@@ -396,60 +449,91 @@ function toCharacterHistoryValue(
   }
 }
 
+/** Descriptor-only, budget-charged array field read. */
+function snapshotArrayField(
+  value: unknown,
+  ctx: HistoryWalkContext,
+): CharacterHistoryValue[] | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  if (!isArrayValue(value)) return undefined;
+  const walked = toCharacterHistoryValue(value, 0, ctx);
+  return Array.isArray(walked) ? walked : undefined;
+}
+
+const CHARACTER_STYLE_KEYS = ["all", "chat", "post"] as const;
+
+/**
+ * Build the bounded snapshot of a character.
+ *
+ * Every field is read through own *data* descriptors and walked with a single
+ * shared budget, so this is the one trusted, descriptor-only projection of a
+ * live or submitted character: no accessor, no Proxy `get`/`has` trap, and no
+ * unwrapped `Array.isArray` runs on caller-supplied values, and one hostile
+ * field cannot spend an independent walk budget.
+ */
 export function buildCharacterHistorySnapshot(
   character: RuntimeCharacterLike,
+  ctx: HistoryWalkContext = createHistoryWalkContext(),
 ): CharacterHistorySnapshot {
   const snapshot: CharacterHistorySnapshot = {};
+  if (character === null || typeof character !== "object") return snapshot;
+  reserveHistoryVisits(ctx, 1);
 
-  if (typeof character.name === "string" && character.name.trim()) {
-    snapshot.name = character.name.trim();
+  const name = readOwnDataValue(character, "name");
+  if (typeof name === "string" && name.trim()) {
+    snapshot.name = name.trim();
   }
-  if (typeof character.username === "string" && character.username.trim()) {
-    snapshot.username = character.username.trim();
+  const username = readOwnDataValue(character, "username");
+  if (typeof username === "string" && username.trim()) {
+    snapshot.username = username.trim();
   }
-  if (Array.isArray(character.bio)) {
-    snapshot.bio = [...character.bio];
-  } else if (typeof character.bio === "string" && character.bio.trim()) {
-    snapshot.bio = [character.bio];
+  const bio = readOwnDataValue(character, "bio");
+  const bioArray = snapshotArrayField(bio, ctx);
+  if (bioArray) {
+    snapshot.bio = bioArray as string[];
+  } else if (typeof bio === "string" && bio.trim()) {
+    snapshot.bio = [bio];
   }
-  if (typeof character.system === "string") {
-    snapshot.system = character.system;
+  const system = readOwnDataValue(character, "system");
+  if (typeof system === "string") {
+    snapshot.system = system;
   }
-  if (Array.isArray(character.adjectives)) {
-    snapshot.adjectives = [...character.adjectives];
-  }
-  if (Array.isArray(character.topics)) {
-    snapshot.topics = [...character.topics];
-  }
-  if (character.style) {
-    const style = {
-      ...(Array.isArray(character.style.all)
-        ? { all: [...character.style.all] }
-        : {}),
-      ...(Array.isArray(character.style.chat)
-        ? { chat: [...character.style.chat] }
-        : {}),
-      ...(Array.isArray(character.style.post)
-        ? { post: [...character.style.post] }
-        : {}),
-    };
-    if (Object.keys(style).length > 0) {
-      snapshot.style = style;
+  const adjectives = snapshotArrayField(
+    readOwnDataValue(character, "adjectives"),
+    ctx,
+  );
+  if (adjectives) snapshot.adjectives = adjectives as string[];
+  const topics = snapshotArrayField(readOwnDataValue(character, "topics"), ctx);
+  if (topics) snapshot.topics = topics as string[];
+
+  const styleValue = readOwnDataValue(character, "style");
+  if (styleValue !== null && typeof styleValue === "object") {
+    const walkedStyle = toCharacterHistoryValue(styleValue, 0, ctx);
+    if (walkedStyle !== null && typeof walkedStyle === "object") {
+      const style: NonNullable<CharacterHistorySnapshot["style"]> = {};
+      for (const key of CHARACTER_STYLE_KEYS) {
+        const entry = Object.hasOwn(walkedStyle, key)
+          ? (walkedStyle as Record<string, CharacterHistoryValue>)[key]
+          : undefined;
+        if (Array.isArray(entry)) style[key] = entry as string[];
+      }
+      if (Object.keys(style).length > 0) {
+        snapshot.style = style;
+      }
     }
   }
-  if (
-    character.messageExamples !== null &&
-    typeof character.messageExamples === "object" &&
-    isArrayValue(character.messageExamples)
-  ) {
-    const messageExamples = toCharacterHistoryValue(character.messageExamples);
-    if (Array.isArray(messageExamples)) {
-      snapshot.messageExamples = messageExamples;
-    }
-  }
-  if (Array.isArray(character.postExamples)) {
-    snapshot.postExamples = [...character.postExamples];
-  }
+
+  const messageExamples = snapshotArrayField(
+    readOwnDataValue(character, "messageExamples"),
+    ctx,
+  );
+  if (messageExamples) snapshot.messageExamples = messageExamples;
+
+  const postExamples = snapshotArrayField(
+    readOwnDataValue(character, "postExamples"),
+    ctx,
+  );
+  if (postExamples) snapshot.postExamples = postExamples as string[];
 
   return snapshot;
 }
@@ -626,12 +710,8 @@ export function parseCharacterHistoryEntry(
           ),
     fieldsChanged,
     changes,
-    before: isRecord(metadata.before)
-      ? safeCloneSnapshot(metadata.before)
-      : {},
-    after: isRecord(metadata.after)
-      ? safeCloneSnapshot(metadata.after)
-      : {},
+    before: isRecord(metadata.before) ? safeCloneSnapshot(metadata.before) : {},
+    after: isRecord(metadata.after) ? safeCloneSnapshot(metadata.after) : {},
   };
 }
 

@@ -13,12 +13,12 @@ import { ModelType } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
 import {
-  CHARACTER_HISTORY_UNBOUNDED,
-  CharacterHistoryError,
   buildCharacterHistorySnapshot,
+  type CharacterHistorySnapshot,
   isCharacterHistoryUnbounded,
   listCharacterHistory,
   type RuntimeCharacterLike,
+  readOwnDataValue,
   recordCharacterHistory,
 } from "../services/character-history.ts";
 import { invalidateConversationConnectionTopology } from "./conversation-connection-readiness.ts";
@@ -144,50 +144,62 @@ function shouldRewriteExampleSpeakerName(
   return false;
 }
 
-function normalizeCharacterMessageExamplesForName(
+function isSnapshotRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Rewrite one already-snapshotted example. The input comes from
+ * `buildCharacterHistorySnapshot`, so it is inert own data — plain reads,
+ * spreads and `.map` here cannot run an accessor or a Proxy trap.
+ */
+function rewriteSnapshotExample(
+  example: unknown,
+  nextName: string,
+  previousName?: string,
+): CharacterMessageExample {
+  const base = isSnapshotRecord(example) ? example : {};
+  const speakerName = typeof base.name === "string" ? base.name : "";
+  const content = isSnapshotRecord(base.content) ? base.content : {};
+  const text = typeof content.text === "string" ? content.text : "";
+
+  return {
+    ...base,
+    name: shouldRewriteExampleSpeakerName(speakerName, previousName)
+      ? nextName
+      : replaceCharacterNameTokens(speakerName, nextName),
+    content: {
+      ...content,
+      text: replaceCharacterNameTokens(text, nextName),
+    },
+  } as CharacterMessageExample;
+}
+
+/**
+ * Rewrite speaker names / name tokens on the trusted snapshot only. Staging
+ * snapshots first and rewriting second is what keeps the PUT path
+ * descriptor-only: nothing here ever touches the submitted graph.
+ */
+function rewriteSnapshotMessageExamplesForName(
   messageExamples: unknown,
   nextName: string,
   previousName?: string,
 ): CharacterMessageExampleGroup[] | undefined {
-  if (!isArrayOrUnbounded(messageExamples)) {
+  if (!Array.isArray(messageExamples)) {
     return undefined;
   }
 
   return messageExamples.map((group) => {
-    const examples = isArrayOrUnbounded(
-      (group as CharacterMessageExampleGroup | null)?.examples,
-    )
-      ? (group as CharacterMessageExampleGroup).examples
-      : [];
-
+    const examples =
+      isSnapshotRecord(group) && Array.isArray(group.examples)
+        ? group.examples
+        : [];
     return {
-      examples: examples.map((example) => ({
-        ...example,
-        name: shouldRewriteExampleSpeakerName(example.name, previousName)
-          ? nextName
-          : replaceCharacterNameTokens(example.name, nextName),
-        content: {
-          ...example.content,
-          text: replaceCharacterNameTokens(example.content.text, nextName),
-        },
-      })),
+      examples: examples.map((example) =>
+        rewriteSnapshotExample(example, nextName, previousName),
+      ),
     };
   });
-}
-
-
-
-function isArrayOrUnbounded(value: unknown): value is unknown[] {
-  try {
-    return Array.isArray(value);
-  } catch (cause) {
-    const error = new CharacterHistoryError(
-      "Character history value exceeds the walk budget",
-      CHARACTER_HISTORY_UNBOUNDED,
-    );
-    (error as Error & { cause?: unknown }).cause = cause;
-    throw error;
-  }
 }
 
 type CharacterPutTarget = {
@@ -202,47 +214,86 @@ type CharacterPutTarget = {
   postExamples?: string[];
 };
 
-function overlayCharacterPutBody(
+/** Character fields `PUT /api/character` may overlay. */
+const CHARACTER_PUT_FIELDS = [
+  "name",
+  "username",
+  "bio",
+  "system",
+  "adjectives",
+  "topics",
+  "style",
+  "messageExamples",
+  "postExamples",
+] as const;
+
+type CharacterPutField = (typeof CHARACTER_PUT_FIELDS)[number];
+
+/**
+ * Stage the next character by *reference* only: every field is taken from a
+ * single own-data-descriptor read of the submitted body, falling back to the
+ * live character. No submitted value is traversed here — that happens once, in
+ * `buildCharacterHistorySnapshot`, under the walk budget.
+ */
+function stageCharacterPut(
+  character: unknown,
+  body: Record<string, unknown>,
+): RuntimeCharacterLike {
+  const staged: Record<string, unknown> = {};
+  for (const field of CHARACTER_PUT_FIELDS) {
+    const submitted = readOwnDataValue(body, field);
+    staged[field] =
+      submitted != null ? submitted : readOwnDataValue(character, field);
+  }
+  return staged as RuntimeCharacterLike;
+}
+
+/**
+ * Commit the validated snapshot onto the live character. Only fields the body
+ * actually submitted are overwritten (plus message examples on a rename), and
+ * every committed value comes from the bounded snapshot rather than the raw
+ * request graph.
+ */
+function commitCharacterSnapshot(
   target: CharacterPutTarget,
   body: Record<string, unknown>,
-  nextCharacterName: string,
-  previousCharacterName?: string,
+  snapshot: CharacterHistorySnapshot,
+  messageExamples: CharacterMessageExampleGroup[] | undefined,
 ): void {
-  if (body.name != null) target.name = String(body.name);
-  if (body.username != null) target.username = String(body.username);
-  if (body.bio != null) {
-    target.bio = Array.isArray(body.bio)
-      ? (body.bio as string[])
-      : [String(body.bio)];
+  const submitted = new Set<CharacterPutField>();
+  for (const field of CHARACTER_PUT_FIELDS) {
+    if (readOwnDataValue(body, field) != null) submitted.add(field);
   }
-  if (body.system != null) target.system = String(body.system);
-  if (body.adjectives != null) {
-    target.adjectives = body.adjectives as string[];
+
+  if (submitted.has("name") && snapshot.name !== undefined) {
+    target.name = snapshot.name;
   }
-  if (body.topics != null) {
-    target.topics = body.topics as string[];
+  if (submitted.has("username") && snapshot.username !== undefined) {
+    target.username = snapshot.username;
   }
-  if (body.style != null) {
-    target.style = body.style;
+  if (submitted.has("bio") && snapshot.bio !== undefined) {
+    target.bio = snapshot.bio;
   }
-  if (body.messageExamples != null) {
-    target.messageExamples = normalizeCharacterMessageExamplesForName(
-      body.messageExamples,
-      nextCharacterName,
-      previousCharacterName,
-    );
-  } else if (body.name != null) {
-    const normalizedExamples = normalizeCharacterMessageExamplesForName(
-      target.messageExamples,
-      nextCharacterName,
-      previousCharacterName,
-    );
-    if (normalizedExamples) {
-      target.messageExamples = normalizedExamples;
-    }
+  if (submitted.has("system") && snapshot.system !== undefined) {
+    target.system = snapshot.system;
   }
-  if (body.postExamples != null) {
-    target.postExamples = body.postExamples as string[];
+  if (submitted.has("adjectives") && snapshot.adjectives !== undefined) {
+    target.adjectives = snapshot.adjectives;
+  }
+  if (submitted.has("topics") && snapshot.topics !== undefined) {
+    target.topics = snapshot.topics;
+  }
+  if (submitted.has("style") && snapshot.style !== undefined) {
+    target.style = snapshot.style;
+  }
+  if (submitted.has("postExamples") && snapshot.postExamples !== undefined) {
+    target.postExamples = snapshot.postExamples;
+  }
+  if (
+    (submitted.has("messageExamples") || submitted.has("name")) &&
+    messageExamples !== undefined
+  ) {
+    target.messageExamples = messageExamples;
   }
 }
 
@@ -509,7 +560,7 @@ export async function handleCharacterRoutes(
     const runtime = state.runtime;
     if (runtime) {
       const character = runtime.character;
-      let previousCharacter;
+      let previousCharacter: CharacterHistorySnapshot;
       try {
         previousCharacter = buildCharacterHistorySnapshot(
           character as RuntimeCharacterLike,
@@ -522,41 +573,44 @@ export async function handleCharacterRoutes(
         }
         throw err;
       }
+      const liveCharacterName = readOwnDataValue(character, "name");
       const previousCharacterName =
-        typeof character.name === "string" ? character.name : undefined;
+        typeof liveCharacterName === "string" ? liveCharacterName : undefined;
+      const submittedName = readOwnDataValue(body, "name");
       const nextStoredCharacterName =
-        body.name != null ? String(body.name) : previousCharacterName;
+        submittedName != null ? String(submittedName) : previousCharacterName;
       const nextCharacterName =
-        typeof body.name === "string" && body.name.trim()
-          ? body.name.trim()
-          : typeof character.name === "string" && character.name.trim()
-            ? character.name.trim()
+        typeof submittedName === "string" && submittedName.trim()
+          ? submittedName.trim()
+          : previousCharacterName?.trim()
+            ? previousCharacterName.trim()
             : state.agentName;
 
-      const stagedCharacter: RuntimeCharacterLike = {
-        name: typeof character.name === "string" ? character.name : undefined,
-        username:
-          typeof character.username === "string"
-            ? character.username
-            : undefined,
-        bio: character.bio as RuntimeCharacterLike["bio"],
-        system:
-          typeof character.system === "string" ? character.system : undefined,
-        adjectives: character.adjectives,
-        topics: (character as { topics?: string[] }).topics,
-        style: character.style,
-        messageExamples: character.messageExamples,
-        postExamples: character.postExamples,
-      };
-      let charData;
+      // One bounded, descriptor-only snapshot of the whole next character; the
+      // submitted graph is never traversed outside this call.
+      let charData: CharacterHistorySnapshot;
+      let nextMessageExamples: CharacterMessageExampleGroup[] | undefined;
       try {
-        overlayCharacterPutBody(
-          stagedCharacter,
-          body,
-          nextCharacterName,
-          previousCharacterName,
+        charData = buildCharacterHistorySnapshot(
+          stageCharacterPut(character, body),
         );
-        charData = buildCharacterHistorySnapshot(stagedCharacter);
+        const rewritesExamples =
+          submittedName != null ||
+          readOwnDataValue(body, "messageExamples") != null;
+        nextMessageExamples = rewritesExamples
+          ? rewriteSnapshotMessageExamplesForName(
+              charData.messageExamples,
+              nextCharacterName,
+              previousCharacterName,
+            )
+          : undefined;
+        if (nextMessageExamples !== undefined) {
+          charData = {
+            ...charData,
+            messageExamples:
+              nextMessageExamples as unknown as CharacterHistorySnapshot["messageExamples"],
+          };
+        }
       } catch (err) {
         // error-policy:J3 Zod-accepted passthrough extras can still overflow.
         if (isCharacterHistoryUnbounded(err)) {
@@ -572,11 +626,11 @@ export async function handleCharacterRoutes(
       ) {
         invalidateConversationConnectionTopology(runtime);
       }
-      overlayCharacterPutBody(
+      commitCharacterSnapshot(
         character as CharacterPutTarget,
         body,
-        nextCharacterName,
-        previousCharacterName,
+        charData,
+        nextMessageExamples,
       );
 
       // Persist character fields to DB so edits survive restarts
@@ -606,7 +660,8 @@ export async function handleCharacterRoutes(
 
     syncRuntimeCharacterToConfig(state, saveConfig);
 
-    if (body.name) state.agentName = String(body.name);
+    const submittedAgentName = readOwnDataValue(body, "name");
+    if (submittedAgentName) state.agentName = String(submittedAgentName);
     json(res, {
       ok: true,
       character: state.runtime?.character ?? body,

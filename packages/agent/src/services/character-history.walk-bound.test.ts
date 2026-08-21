@@ -5,15 +5,16 @@
  * extra keys, including a 20k-deep nest (~40 KiB) and cyclic in-memory
  * graphs, then RangeError'd in toCharacterHistoryValue during
  * buildCharacterHistorySnapshot. Depth/node/cycle fail-closed replaces
- * that with CharacterHistoryError CHARACTER_HISTORY_UNBOUNDED.
+ * that with a typed ElizaError CHARACTER_HISTORY_UNBOUNDED, and every array
+ * reserves its whole logical length in the shared aggregate walk budget.
  */
-import { MemoryType } from "@elizaos/core";
+import { ElizaError, isElizaError, MemoryType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
-  CHARACTER_HISTORY_UNBOUNDED,
-  CharacterHistoryError,
-  MAX_CHARACTER_HISTORY_WALK_DEPTH,
   buildCharacterHistorySnapshot,
+  CHARACTER_HISTORY_UNBOUNDED,
+  MAX_CHARACTER_HISTORY_WALK_DEPTH,
+  MAX_CHARACTER_HISTORY_WALK_NODES,
   parseCharacterHistoryEntry,
 } from "./character-history.ts";
 
@@ -23,15 +24,19 @@ function nestArr(depth: number): unknown {
   return value;
 }
 
+function sparse(length: number): unknown[] {
+  const value: unknown[] = [];
+  value.length = length;
+  return value;
+}
+
 function expectUnbounded(fn: () => unknown): void {
   try {
     fn();
     throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
   } catch (error) {
-    expect(error).toBeInstanceOf(CharacterHistoryError);
-    expect((error as CharacterHistoryError).code).toBe(
-      CHARACTER_HISTORY_UNBOUNDED,
-    );
+    expect(error).toBeInstanceOf(ElizaError);
+    expect((error as ElizaError).code).toBe(CHARACTER_HISTORY_UNBOUNDED);
     expect(error).not.toBeInstanceOf(RangeError);
   }
 }
@@ -94,12 +99,148 @@ describe("character-history fail-closed walk", () => {
       });
       throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
     } catch (error) {
-      expect(error).toBeInstanceOf(CharacterHistoryError);
-      expect((error as CharacterHistoryError).code).toBe(
-        CHARACTER_HISTORY_UNBOUNDED,
-      );
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CHARACTER_HISTORY_UNBOUNDED);
       expect(String(error)).not.toContain("GETTER_INVOKED");
     }
+  });
+
+  it("raises a typed ElizaError carrying code, severity, context and cause", () => {
+    const cyclic: Record<string, unknown> = { text: "hi" };
+    cyclic.self = cyclic;
+    try {
+      buildCharacterHistorySnapshot({
+        name: "Ada",
+        messageExamples: [[{ name: "Ada", content: cyclic }]],
+      });
+      throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
+    } catch (error) {
+      expect(isElizaError(error)).toBe(true);
+      const typed = error as ElizaError;
+      expect(typed.code).toBe(CHARACTER_HISTORY_UNBOUNDED);
+      expect(typed.severity).toBe("fatal");
+      expect(typed.context).toMatchObject({ cycle: true });
+    }
+
+    const { proxy, revoke } = Proxy.revocable(["leaf"], {});
+    revoke();
+    try {
+      buildCharacterHistorySnapshot({ name: "Ada", messageExamples: proxy });
+      throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
+    } catch (error) {
+      expect(isElizaError(error)).toBe(true);
+      const typed = error as ElizaError;
+      expect(typed.code).toBe(CHARACTER_HISTORY_UNBOUNDED);
+      expect(typed.context).toMatchObject({ inspection: "isArray" });
+      expect(typed.cause).toBeInstanceOf(TypeError);
+    }
+  });
+
+  it("reserves every logical array slot in the aggregate walk budget", () => {
+    // character + outer array + 2 outer slots + 2 * childLength == budget.
+    const childLength = Math.floor((MAX_CHARACTER_HISTORY_WALK_NODES - 4) / 2);
+    expect(childLength).toBe(49_998);
+    expect(1 + 1 + 2 + childLength * 2).toBe(MAX_CHARACTER_HISTORY_WALK_NODES);
+
+    const snapshot = buildCharacterHistorySnapshot({
+      name: "Ada",
+      messageExamples: [sparse(childLength), sparse(childLength)],
+    });
+    const walked = snapshot.messageExamples as unknown[];
+    expect(walked).toHaveLength(2);
+    expect((walked[0] as unknown[]).length).toBe(childLength);
+
+    // One extra slot per nested array crosses the aggregate boundary even
+    // though the graph still holds only three array containers.
+    expectUnbounded(() =>
+      buildCharacterHistorySnapshot({
+        name: "Ada",
+        messageExamples: [sparse(childLength + 1), sparse(childLength + 1)],
+      }),
+    );
+  });
+
+  it("charges a single sparse array its exact logical length", () => {
+    // character + array container leaves exactly budget - 2 logical slots.
+    const exact = MAX_CHARACTER_HISTORY_WALK_NODES - 2;
+    expect(
+      (
+        buildCharacterHistorySnapshot({ messageExamples: sparse(exact) })
+          .messageExamples as unknown[]
+      ).length,
+    ).toBe(exact);
+    expectUnbounded(() =>
+      buildCharacterHistorySnapshot({ messageExamples: sparse(exact + 1) }),
+    );
+  });
+
+  it("charges sparse slots across sibling character fields", () => {
+    const half = Math.floor(MAX_CHARACTER_HISTORY_WALK_NODES / 2);
+    expectUnbounded(() =>
+      buildCharacterHistorySnapshot({
+        bio: sparse(half) as string[],
+        topics: sparse(half) as string[],
+        postExamples: sparse(half) as string[],
+      }),
+    );
+  });
+
+  it("reads each enumerable own descriptor exactly once", () => {
+    const target = { text: "first" };
+    let descriptorReads = 0;
+    const drifting = new Proxy(target, {
+      getOwnPropertyDescriptor(inner, key) {
+        if (key === "text") {
+          descriptorReads += 1;
+          return {
+            value: descriptorReads === 1 ? "first" : "drifted",
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          };
+        }
+        return Reflect.getOwnPropertyDescriptor(inner, key);
+      },
+    });
+
+    const snapshot = buildCharacterHistorySnapshot({
+      name: "Ada",
+      messageExamples: [{ examples: [{ name: "Ada", content: drifting }] }],
+    });
+    const walked = snapshot.messageExamples as Array<{
+      examples: Array<{ content: Record<string, unknown> }>;
+    }>;
+    expect(descriptorReads).toBe(1);
+    expect(walked[0].examples[0].content.text).toBe("first");
+  });
+
+  it("fail-closed when a drifting descriptor turns into an accessor", () => {
+    let descriptorReads = 0;
+    const drifting = new Proxy(
+      { text: "first" },
+      {
+        getOwnPropertyDescriptor(inner, key) {
+          if (key === "text") {
+            descriptorReads += 1;
+            if (descriptorReads > 1) {
+              return {
+                get() {
+                  throw new Error("ACCESSOR_INVOKED");
+                },
+                enumerable: true,
+                configurable: true,
+              };
+            }
+          }
+          return Reflect.getOwnPropertyDescriptor(inner, key);
+        },
+      },
+    );
+    const snapshot = buildCharacterHistorySnapshot({
+      messageExamples: [{ examples: [{ name: "Ada", content: drifting }] }],
+    });
+    expect(descriptorReads).toBe(1);
+    expect(String(JSON.stringify(snapshot))).toContain("first");
   });
 
   it("parseCharacterHistoryEntry skips a cyclic stored change instead of throwing", () => {
@@ -114,7 +255,9 @@ describe("character-history fail-closed walk", () => {
         timestamp: 1,
         historySource: "manual",
         fieldsChanged: ["messageExamples"],
-        changes: [{ field: "messageExamples", before: cyclic, after: { name: "b" } }],
+        changes: [
+          { field: "messageExamples", before: cyclic, after: { name: "b" } },
+        ],
         before: { name: "a" },
         after: { name: "b" },
       },
@@ -132,10 +275,8 @@ describe("character-history fail-closed walk", () => {
       });
       throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
     } catch (error) {
-      expect(error).toBeInstanceOf(CharacterHistoryError);
-      expect((error as CharacterHistoryError).code).toBe(
-        CHARACTER_HISTORY_UNBOUNDED,
-      );
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CHARACTER_HISTORY_UNBOUNDED);
       expect(error).not.toBeInstanceOf(TypeError);
     }
   });
@@ -176,10 +317,8 @@ describe("character-history fail-closed walk", () => {
       });
       throw new Error("expected CHARACTER_HISTORY_UNBOUNDED");
     } catch (error) {
-      expect(error).toBeInstanceOf(CharacterHistoryError);
-      expect((error as CharacterHistoryError).code).toBe(
-        CHARACTER_HISTORY_UNBOUNDED,
-      );
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CHARACTER_HISTORY_UNBOUNDED);
       expect(String(error)).not.toContain("ACCESSOR_INVOKED");
     }
   });
@@ -223,7 +362,9 @@ describe("character-history fail-closed walk", () => {
       });
       const snapshot = buildCharacterHistorySnapshot({
         name: "Ada",
-        messageExamples: [[{ name: "Ada", content: { text: "top", child: nested } }]],
+        messageExamples: [
+          [{ name: "Ada", content: { text: "top", child: nested } }],
+        ],
       });
       // attach top-level __proto__ on the first example content via a dedicated object
       const topSnapshot = buildCharacterHistorySnapshot({
@@ -246,9 +387,7 @@ describe("character-history fail-closed walk", () => {
       expect(Object.hasOwn(walkedNested, "__proto__")).toBe(true);
       expect(walkedTop["__proto__"]).toEqual({ [pollutedKey]: "top" });
       expect(walkedNested["__proto__"]).toEqual({ [pollutedKey]: "nested" });
-      expect(
-        Object.prototype.hasOwnProperty.call(Object.prototype, pollutedKey),
-      ).toBe(false);
+      expect(Object.hasOwn(Object.prototype, pollutedKey)).toBe(false);
     } finally {
       if (protoDesc) {
         Object.defineProperty(Object.prototype, pollutedKey, protoDesc);
