@@ -65,7 +65,6 @@ import {
 import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import { useNativeGlassDiag } from "../../glass/native-backdrop";
 import {
-  GLASS_DESKTOP_SHEET_FILL,
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
@@ -5936,6 +5935,7 @@ export function ChatOverlay({
   // keeps its bespoke masking. iOS-only inside the hook (see its header).
   const nativeSheetTier = useNativeGlassAnchor(glassSurfaceRef, {
     enabled:
+      !desktopOverlayHost &&
       sheetOpen &&
       sheetSettled &&
       !isDragging &&
@@ -5952,6 +5952,7 @@ export function ChatOverlay({
     tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
+  const visibleSurfaceTier = desktopOverlayHost ? "solid" : nativeSheetTier;
   // Keep the CSS material identity stable through fullscreen and its restore.
   // Toggling backdrop-filter on at the first downward frame forces a new
   // compositor surface exactly when the finger needs the frame budget. The
@@ -5961,6 +5962,9 @@ export function ChatOverlay({
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
+  const visibleSurfaceDiag = desktopOverlayHost
+    ? "detached-non-glass"
+    : nativeGlassDiag;
 
   return (
     <motion.div
@@ -6227,7 +6231,7 @@ export function ChatOverlay({
             ref={glassSurfaceRef}
             aria-hidden="true"
             data-testid="chat-sheet-surface"
-            data-glass-tier={nativeSheetTier}
+            data-glass-tier={visibleSurfaceTier}
             className="pointer-events-none absolute inset-0 z-0 bg-card"
             style={{
               opacity: glassOpacity,
@@ -6247,12 +6251,11 @@ export function ChatOverlay({
               // the orange app theme behind. Full-bleed stays fully opaque (it
               // covers the whole screen — there is nothing to see through, and
               // the blur would be wasted battery).
-              // The detached macOS companion is always glass. Do not black it
-              // out at taller detents: doing so made the same panel alternate
-              // between transparent and opaque after drags and interrupted
-              // settles. The full workstation/mobile contract remains unchanged.
+              // Today's detached macOS candidate deliberately uses one solid
+              // surface at every detent. Browser/mobile retain their existing
+              // shared glass-to-opaque contract.
               backgroundColor: desktopOverlayHost
-                ? GLASS_DESKTOP_SHEET_FILL
+                ? "var(--card)"
                 : firstRunOpen || nativeInsetSheet
                   ? "var(--bg)"
                   : GLASS_SHEET_FILL,
@@ -6330,7 +6333,7 @@ export function ChatOverlay({
               says WHY a css tier is showing (the observable half of the
               tier system's silent J4 degrades). */}
           <span className="sr-only" data-testid="chat-glass-tier-probe">
-            {`chat-glass-tier:${nativeSheetTier} chat-glass-diag:${nativeGlassDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
+            {`chat-glass-tier:${visibleSurfaceTier} chat-glass-diag:${visibleSurfaceDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
           </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">
