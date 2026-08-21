@@ -32,8 +32,13 @@ Each generated row records:
 - mock availability/fidelity and reset support;
 - deterministic and live-model scenario ids and Cloud E2E cells;
 - evidence class, exact boundary artifacts/signals and owning #22896 workstream;
-- one of `covered`, `exempt`, `platform-deferred`,
+- one of `covered`, `uncovered`, `exempt`, `platform-deferred`,
   `provider-qualified-only`, or `unsupported-product`, with a written reason.
+
+`uncovered` is the fail-closed default for a production surface that is safe to
+simulate but has no executable boundary proof yet. It is intentionally distinct
+from `exempt`, which requires a reviewed reason that the surface does not belong
+in the synthetic-world product contract.
 
 The same artifact includes a census of every maintained plugin plus the core,
 agent, and app-core hosts. A package with no production runtime registration is
