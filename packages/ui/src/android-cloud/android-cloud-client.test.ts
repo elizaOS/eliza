@@ -269,6 +269,20 @@ describe("AndroidCloudClient", () => {
     );
   });
 
+  it.each(["null", '"authenticated"', "[]"])(
+    "rejects a non-object JSON response (%s) instead of reading it as pending",
+    async (body) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(body, { status: 200 }));
+      const client = new AndroidCloudClient({ fetchImpl });
+
+      await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
+        /could not be read/,
+      );
+    },
+  );
+
   it("treats a genuinely empty body as empty rather than unreadable", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

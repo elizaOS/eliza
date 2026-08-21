@@ -83,7 +83,11 @@ async function responseJson(response: Response): Promise<JsonRecord> {
       cause: error,
     });
   }
-  return record(parsed) ?? {};
+  const body = record(parsed);
+  if (!body) {
+    throw new Error("Eliza Cloud returned a response that could not be read.");
+  }
+  return body;
 }
 
 function responseError(body: JsonRecord, fallback: string): string {
