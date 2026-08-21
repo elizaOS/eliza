@@ -1,9 +1,37 @@
+export function formatAddressShort(
+  address: string | null | undefined,
+  headChars: number,
+  tailChars: number,
+): string | null {
+  if (!address) return null;
+  const wellFormed = toWellFormedUnicode(address);
+  if (wellFormed.length < 12) return wellFormed;
+  const head = truncateWellFormed(wellFormed, headChars);
+  let tailStart = wellFormed.length - tailChars;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
+}
+
 /**
  * Agent self-status and ERC-8004 registry inline routes.
  */
 
 import type http from "node:http";
-import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type ReadJsonBodyOptions,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,
@@ -225,15 +253,9 @@ export async function handleAgentStatusRoutes(
         hasEvm: capability.hasEvm,
         hasSolana: Boolean(addrs.solanaAddress),
         evmAddress,
-        evmAddressShort:
-          evmAddress && evmAddress.length >= 12
-            ? `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`
-            : evmAddress,
+        evmAddressShort: formatAddressShort(evmAddress, 6, 4),
         solanaAddress: addrs.solanaAddress ?? null,
-        solanaAddressShort:
-          addrs.solanaAddress && addrs.solanaAddress.length >= 12
-            ? `${addrs.solanaAddress.slice(0, 4)}...${addrs.solanaAddress.slice(-4)}`
-            : (addrs.solanaAddress ?? null),
+        solanaAddressShort: formatAddressShort(addrs.solanaAddress, 4, 4),
         localSignerAvailable: capability.localSignerAvailable,
         managedBscRpcReady: bscRpcReady,
         rpcReady: capability.rpcReady,
