@@ -554,7 +554,7 @@ export function truncateText(
  * Strips Slack mrkdwn formatting from text
  */
 export function stripSlackFormatting(text: string): string {
-  return text
+  const withoutMarkup = text
     .replace(/```[\s\S]*?```/g, "") // Code blocks (must be before inline code)
     .replace(/\*([^*]+)\*/g, "$1") // Bold
     .replace(/_([^_]+)_/g, "$1") // Italic
@@ -565,10 +565,13 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
     .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
-    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1") // Plain links → URL
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1"); // Plain links → URL
+  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">" };
+  return withoutMarkup
+    .replace(
+      /&(amp|lt|gt);/g,
+      (entity, name: string) => entities[name] ?? entity,
+    )
     .trim();
 }
 

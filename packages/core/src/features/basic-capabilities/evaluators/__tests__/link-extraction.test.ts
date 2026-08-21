@@ -194,6 +194,30 @@ describe("linkExtractionEvaluator", () => {
 		);
 	});
 
+	it("decodes title entities once and strips script/style tags with spaced closers", async () => {
+		stubPreviewFetch(
+			makeFetchResponse(
+				"<title>&amp;lt;literal&amp;gt;</title><body>safe<script>steal()</script ><style>hidden{}</style ></body>",
+			),
+		);
+		const runtime = makeRuntime(async (_modelType, params) => {
+			const prompt = (params as { prompt: string }).prompt;
+			expect(prompt).toContain("Title: &lt;literal&gt;");
+			expect(prompt).toContain("safe");
+			expect(prompt).not.toContain("steal()");
+			expect(prompt).not.toContain("hidden{}");
+			return "summary";
+		});
+		const context = {
+			...makeContext(runtime, makeMessage("see https://example.com/hostile")),
+			state: { values: {}, data: {}, text: "" } as State,
+		};
+
+		const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+		expect(prepared?.links[0]?.title).toBe("&lt;literal&gt;");
+	});
+
 	it("prepare dedupes repeated URLs and strips trailing punctuation", async () => {
 		stubPreviewFetch(
 			makeFetchResponse("<html><title>doc</title><body>x</body></html>"),

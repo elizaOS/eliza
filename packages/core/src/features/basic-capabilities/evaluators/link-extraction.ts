@@ -128,19 +128,24 @@ function extractTitle(html: string): string {
 }
 
 function decodeHtmlEntities(value: string): string {
-	return value
-		.replace(/&amp;/gi, "&")
-		.replace(/&lt;/gi, "<")
-		.replace(/&gt;/gi, ">")
-		.replace(/&quot;/gi, '"')
-		.replace(/&#39;/gi, "'")
-		.replace(/&nbsp;/gi, " ");
+	const namedEntities: Record<string, string> = {
+		amp: "&",
+		gt: ">",
+		lt: "<",
+		nbsp: " ",
+		quot: '"',
+		"#39": "'",
+	};
+	return value.replace(
+		/&(amp|lt|gt|quot|#39|nbsp);/gi,
+		(entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
+	);
 }
 
 function stripTags(html: string): string {
 	return html
-		.replace(/<script[\s\S]*?<\/script>/gi, " ")
-		.replace(/<style[\s\S]*?<\/style>/gi, " ")
+		.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+		.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
 		.replace(/<[^>]+>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();

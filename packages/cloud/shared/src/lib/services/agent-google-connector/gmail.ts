@@ -166,20 +166,24 @@ function normalizeSnippet(value: string | undefined): string {
 }
 
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+    "#39": "'",
+  };
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => {
+    return namedEntities[name.toLowerCase()] ?? entity;
+  });
 }
 
 function htmlToPlainText(value: string): string {
   return decodeHtmlEntities(
     value
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
       .replace(/<(?:li)[^>]*>/gi, "- ")

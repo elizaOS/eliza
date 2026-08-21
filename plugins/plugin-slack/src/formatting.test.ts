@@ -87,6 +87,10 @@ describe("stripSlackFormatting", () => {
     expect(stripSlackFormatting("a &amp; b")).toBe("a & b");
   });
 
+  it("decodes each Slack entity exactly once", () => {
+    expect(stripSlackFormatting("&amp;lt;tag&amp;gt;")).toBe("&lt;tag&gt;");
+  });
+
   it("unwraps plain links to their URL instead of deleting them", () => {
     expect(stripSlackFormatting("see <https://a.com> ok")).toBe(
       "see https://a.com ok",
