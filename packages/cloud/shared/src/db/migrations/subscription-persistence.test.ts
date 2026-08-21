@@ -110,7 +110,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0269-0276 subscription persistence migrations", () => {
+describe("0275-0282 subscription persistence migrations", () => {
   test("apply in journal order with every authority table present", async () => {
     const db = await database();
     const tables = await db.query<{ table_name: string }>(`
@@ -139,7 +139,7 @@ describe("0269-0276 subscription persistence migrations", () => {
     expect(
       journal.entries.slice(-migrationNames.length).map(({ idx, tag }) => ({ idx, tag })),
     ).toEqual(
-      migrationNames.map((name, offset) => ({ idx: 268 + offset, tag: name.slice(0, -4) })),
+      migrationNames.map((name, offset) => ({ idx: 269 + offset, tag: name.slice(0, -4) })),
     );
   });
 
