@@ -13,6 +13,7 @@ import {
   patchGeneratedSafariProject,
   resolveSafariNativeConfiguration,
   safariNativeDefaults,
+  validateSafariSignedBundleContracts,
 } from "./safari-project.mjs";
 
 const temporaryDirectories = [];
@@ -127,7 +128,17 @@ describe("Safari native configuration", () => {
     expect(handler).not.toContain('"echo"');
     expect(handler).not.toContain('"brokerAuth"');
     expect(handler).not.toContain('response["message"]');
-    expect(handler).toContain("kSecAttrAccessGroup: accessGroup");
+    expect(handler).not.toMatch(/Keychain|kSecAttr/);
+    expect(handler).toContain('sharedSecretName = "s"');
+    expect(handler).toContain("Darwin.open(path, O_RDONLY | O_NOFOLLOW)");
+    expect(handler).toContain(
+      "descriptorMetadata.st_dev == pathMetadata.st_dev",
+    );
+    expect(handler).toContain(
+      "descriptorMetadata.st_ino == pathMetadata.st_ino",
+    );
+    expect(handler).toContain("descriptorMetadata.st_uid == expectedUid");
+    expect(handler).toContain("descriptorMetadata.st_size == 32");
     expect(handler).toContain("lstat(socketPath, &socketMetadata) == 0");
     expect(handler).toContain("socketMetadata.st_uid == getuid()");
     expect(handler).toContain("(socketMetadata.st_mode & 0o777) == 0o600");
@@ -178,13 +189,93 @@ struct HmacHarness {
         harnessPath,
         "-framework",
         "SafariServices",
-        "-framework",
-        "Security",
         "-o",
         executablePath,
       ]);
       const { stdout } = await execFileAsync(executablePath);
       expect(stdout.trim()).toBe("flk7dxI31fluBOnI6VeU45TGFie5SZuQ-5b10f_2m7I");
+    },
+    30_000,
+  );
+
+  macOsIt(
+    "accepts only the broker's exact private App Group secret file",
+    async () => {
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), "browser-bridge-safari-secret-"),
+      );
+      temporaryDirectories.push(directory);
+      const harnessPath = path.join(directory, "SecretHarness.swift");
+      const executablePath = path.join(directory, "secret-harness");
+      await fs.writeFile(
+        harnessPath,
+        `import Darwin
+import Foundation
+
+@main
+struct SecretHarness {
+    static func accepted(_ path: String, uid: uid_t = getuid()) -> Bool {
+        do {
+            let value = try DesktopBrokerRelay.readBrokerCredential(path: path, expectedUid: uid)
+            return value == Data(repeating: 7, count: 32)
+        } catch {
+            return false
+        }
+    }
+
+    static func write(_ path: String, count: Int, mode: mode_t) {
+        FileManager.default.createFile(
+            atPath: path,
+            contents: Data(repeating: 7, count: count),
+            attributes: [.posixPermissions: NSNumber(value: mode)]
+        )
+        precondition(chmod(path, mode) == 0)
+    }
+
+    static func main() throws {
+        let root = CommandLine.arguments[1]
+        let valid = root + "/valid"
+        write(valid, count: 32, mode: 0o600)
+        precondition(accepted(valid))
+
+        let short = root + "/short"
+        write(short, count: 31, mode: 0o600)
+        precondition(!accepted(short))
+
+        let long = root + "/long"
+        write(long, count: 33, mode: 0o600)
+        precondition(!accepted(long))
+
+        let publicFile = root + "/public"
+        write(publicFile, count: 32, mode: 0o644)
+        precondition(!accepted(publicFile))
+
+        let link = root + "/link"
+        precondition(symlink(valid, link) == 0)
+        precondition(!accepted(link))
+        precondition(!accepted(valid, uid: getuid() &+ 1))
+        precondition(!accepted(root))
+        print("shared-secret-validation-ok")
+    }
+}
+`,
+      );
+      await execFileAsync("xcrun", [
+        "swiftc",
+        path.join(
+          extensionRoot,
+          "safari",
+          "native",
+          "SafariWebExtensionHandler.swift",
+        ),
+        harnessPath,
+        "-framework",
+        "SafariServices",
+        "-o",
+        executablePath,
+      ]);
+      const { stdout } = await execFileAsync(executablePath, [directory]);
+      expect(stdout.trim()).toBe("shared-secret-validation-ok");
     },
     30_000,
   );
@@ -283,8 +374,6 @@ struct ResponseHarness {
         harnessPath,
         "-framework",
         "SafariServices",
-        "-framework",
-        "Security",
         "-o",
         executablePath,
       ]);
@@ -300,8 +389,6 @@ struct ResponseHarness {
       signingTeam: null,
       signingIdentity: null,
       appGroup: safariNativeDefaults.appGroup,
-      keychainGroup: safariNativeDefaults.keychainGroup,
-      keychainService: safariNativeDefaults.keychainService,
       socketName: safariNativeDefaults.socketName,
     });
   });
@@ -320,6 +407,63 @@ struct ResponseHarness {
         ELIZA_SAFARI_APP_GROUP: "../../unsafe",
       }),
     ).toThrow(/invalid value/);
+  });
+
+  it("validates both embedded profiles and both signed App Group entitlements", () => {
+    const configuration = resolveSafariNativeConfiguration({
+      ELIZA_SAFARI_RELEASE: "1",
+      ELIZA_SAFARI_SIGNING_TEAM: "ABCDEFGHIJ",
+      ELIZA_SAFARI_SIGNING_IDENTITY: "Apple Distribution",
+      ELIZA_SAFARI_APP_GROUP: safariNativeDefaults.appGroup,
+      ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER: "App Profile",
+      ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER:
+        "Extension Profile",
+    });
+    const entitlements = (bundleIdentifier) => ({
+      "com.apple.application-identifier": `ABCDEFGHIJ.${bundleIdentifier}`,
+      "com.apple.security.application-groups": [safariNativeDefaults.appGroup],
+    });
+    const profile = (bundleIdentifier, name) => ({
+      Name: name,
+      TeamIdentifier: ["ABCDEFGHIJ"],
+      ExpirationDate: "2030-01-01T00:00:00.000Z",
+      Entitlements: {
+        "application-identifier": `ABCDEFGHIJ.${bundleIdentifier}`,
+        "com.apple.security.application-groups": [
+          safariNativeDefaults.appGroup,
+        ],
+      },
+    });
+    const contract = {
+      configuration,
+      appEntitlements: entitlements("ai.elizaos.browserbridge.app"),
+      extensionEntitlements: entitlements(
+        "ai.elizaos.browserbridge.app.Extension",
+      ),
+      appProfile: profile("ai.elizaos.browserbridge.app", "App Profile"),
+      extensionProfile: profile(
+        "ai.elizaos.browserbridge.app.Extension",
+        "Extension Profile",
+      ),
+      bundleIdentifier: "ai.elizaos.browserbridge.app",
+      now: Date.parse("2029-01-01T00:00:00.000Z"),
+    };
+    expect(() => validateSafariSignedBundleContracts(contract)).not.toThrow();
+    expect(() =>
+      validateSafariSignedBundleContracts({
+        ...contract,
+        extensionEntitlements: {
+          ...contract.extensionEntitlements,
+          "com.apple.security.application-groups": ["group.attacker"],
+        },
+      }),
+    ).toThrow(/exact App Group/);
+    expect(() =>
+      validateSafariSignedBundleContracts({
+        ...contract,
+        appProfile: { ...contract.appProfile, Name: "Wrong Profile" },
+      }),
+    ).toThrow(/embedded provisioning profile/);
   });
 });
 
@@ -358,21 +502,14 @@ describe("Safari converter project patch", () => {
     expect(extensionInfo).toContain(
       `<string>${safariNativeDefaults.appGroup}</string>`,
     );
-    expect(extensionInfo).toContain(
-      `<string>${safariNativeDefaults.keychainService}</string>`,
-    );
-    expect(extensionInfo).toContain(
-      `<string>$(AppIdentifierPrefix)${safariNativeDefaults.keychainGroup}</string>`,
-    );
+    expect(extensionInfo).not.toMatch(/Keychain|keychain/);
     for (const entitlementPath of [
       result.appEntitlements,
       result.extensionEntitlements,
     ]) {
       const entitlements = await fs.readFile(entitlementPath, "utf8");
       expect(entitlements).toContain(safariNativeDefaults.appGroup);
-      expect(entitlements).toContain(
-        `$(AppIdentifierPrefix)${safariNativeDefaults.keychainGroup}`,
-      );
+      expect(entitlements).not.toContain("keychain-access-groups");
     }
   });
 

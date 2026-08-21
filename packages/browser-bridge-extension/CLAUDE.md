@@ -150,15 +150,14 @@ Default `apiBaseUrl` is `http://127.0.0.1:31337`. Auto-discovery also probes `ht
 
 Safari packaging replaces the converter echo handler with
 `safari/native/SafariWebExtensionHandler.swift`. Unsigned development packages
-use deterministic app-group, Keychain-group, Keychain-service, and broker-socket
-defaults. A development-signed package supplies
+use deterministic App Group and broker-socket defaults. A development-signed package supplies
 `ELIZA_SAFARI_SIGNING_TEAM` and `ELIZA_SAFARI_SIGNING_IDENTITY` together. A
 distribution package sets `ELIZA_SAFARI_RELEASE=1` and must explicitly supply
-both signing values, `ELIZA_SAFARI_APP_GROUP`, `ELIZA_SAFARI_KEYCHAIN_GROUP`,
+both signing values, `ELIZA_SAFARI_APP_GROUP`,
 `ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER`, and
-`ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`. Optional
-`ELIZA_SAFARI_KEYCHAIN_SERVICE` and `ELIZA_SAFARI_BROKER_SOCKET_NAME` overrides
-must match the desktop broker configuration.
+`ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`. The App Group must be
+registered for both profiles and must match the desktop broker. The optional
+`ELIZA_SAFARI_BROKER_SOCKET_NAME` override must match the desktop broker.
 
 ## How to extend
 

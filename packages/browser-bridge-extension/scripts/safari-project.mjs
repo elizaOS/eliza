@@ -6,8 +6,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const DEFAULT_APP_GROUP = "group.ai.elizaos.browserbridge";
-const DEFAULT_KEYCHAIN_GROUP = "ai.elizaos.browserbridge.shared";
-const DEFAULT_KEYCHAIN_SERVICE = "ai.elizaos.browserbridge.native-enrollment";
 const DEFAULT_SOCKET_NAME = "b.sock";
 
 function requiredTrimmed(value) {
@@ -47,11 +45,6 @@ export function resolveSafariNativeConfiguration(env = process.env) {
   );
   const appGroup =
     requiredTrimmed(env.ELIZA_SAFARI_APP_GROUP) ?? DEFAULT_APP_GROUP;
-  const keychainGroup =
-    requiredTrimmed(env.ELIZA_SAFARI_KEYCHAIN_GROUP) ?? DEFAULT_KEYCHAIN_GROUP;
-  const keychainService =
-    requiredTrimmed(env.ELIZA_SAFARI_KEYCHAIN_SERVICE) ??
-    DEFAULT_KEYCHAIN_SERVICE;
   const socketName =
     requiredTrimmed(env.ELIZA_SAFARI_BROKER_SOCKET_NAME) ?? DEFAULT_SOCKET_NAME;
   const release = parseReleaseFlag(env.ELIZA_SAFARI_RELEASE);
@@ -73,16 +66,11 @@ export function resolveSafariNativeConfiguration(env = process.env) {
     appGroup,
     /^group\.[A-Za-z0-9.-]{3,200}$/,
   );
-  assertIdentifier(
-    "ELIZA_SAFARI_KEYCHAIN_GROUP",
-    keychainGroup,
-    /^[A-Za-z0-9.-]{3,200}$/,
-  );
-  assertIdentifier(
-    "ELIZA_SAFARI_KEYCHAIN_SERVICE",
-    keychainService,
-    /^[A-Za-z0-9.-]{3,200}$/,
-  );
+  if (appGroup !== DEFAULT_APP_GROUP) {
+    throw new Error(
+      `ELIZA_SAFARI_APP_GROUP must match the desktop broker App Group ${DEFAULT_APP_GROUP}.`,
+    );
+  }
   assertIdentifier(
     "ELIZA_SAFARI_BROKER_SOCKET_NAME",
     socketName,
@@ -98,10 +86,6 @@ export function resolveSafariNativeConfiguration(env = process.env) {
       ["ELIZA_SAFARI_SIGNING_TEAM", signingTeam],
       ["ELIZA_SAFARI_SIGNING_IDENTITY", signingIdentity],
       ["ELIZA_SAFARI_APP_GROUP", requiredTrimmed(env.ELIZA_SAFARI_APP_GROUP)],
-      [
-        "ELIZA_SAFARI_KEYCHAIN_GROUP",
-        requiredTrimmed(env.ELIZA_SAFARI_KEYCHAIN_GROUP),
-      ],
       [
         "ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER",
         appProvisioningProfile,
@@ -127,10 +111,96 @@ export function resolveSafariNativeConfiguration(env = process.env) {
     appProvisioningProfile,
     extensionProvisioningProfile,
     appGroup,
-    keychainGroup,
-    keychainService,
     socketName,
   };
+}
+
+function assertProvisionedCodeItem({
+  label,
+  entitlements,
+  profile,
+  bundleIdentifier,
+  profileSpecifier,
+  configuration,
+  now,
+}) {
+  const expectedApplicationIdentifier = `${configuration.signingTeam}.${bundleIdentifier}`;
+  const signedGroups = entitlements["com.apple.security.application-groups"];
+  const profileEntitlements = profile.Entitlements;
+  const profileGroups =
+    profileEntitlements?.["com.apple.security.application-groups"];
+  const expiresAt = Date.parse(String(profile.ExpirationDate ?? ""));
+  if (
+    entitlements["com.apple.application-identifier"] !==
+      expectedApplicationIdentifier &&
+    entitlements["application-identifier"] !== expectedApplicationIdentifier
+  ) {
+    throw new Error(`${label} signed identity does not match its bundle ID.`);
+  }
+  if (
+    !Array.isArray(signedGroups) ||
+    signedGroups.length !== 1 ||
+    signedGroups[0] !== configuration.appGroup
+  ) {
+    throw new Error(
+      `${label} signature does not authorize the exact App Group.`,
+    );
+  }
+  if (
+    !Array.isArray(profile.TeamIdentifier) ||
+    profile.TeamIdentifier.length !== 1 ||
+    profile.TeamIdentifier[0] !== configuration.signingTeam ||
+    (profile.Name !== profileSpecifier && profile.UUID !== profileSpecifier) ||
+    profileEntitlements?.["application-identifier"] !==
+      expectedApplicationIdentifier ||
+    !Array.isArray(profileGroups) ||
+    !profileGroups.includes(configuration.appGroup) ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= now
+  ) {
+    throw new Error(
+      `${label} embedded provisioning profile does not authorize the exact identity and App Group.`,
+    );
+  }
+}
+
+export function validateSafariSignedBundleContracts({
+  configuration,
+  appEntitlements,
+  extensionEntitlements,
+  appProfile,
+  extensionProfile,
+  bundleIdentifier,
+  now = Date.now(),
+}) {
+  if (
+    !configuration.release ||
+    !configuration.signingTeam ||
+    !configuration.appProvisioningProfile ||
+    !configuration.extensionProvisioningProfile
+  ) {
+    throw new Error(
+      "Safari signed-bundle validation requires complete release provisioning configuration.",
+    );
+  }
+  assertProvisionedCodeItem({
+    label: "Safari containing app",
+    entitlements: appEntitlements,
+    profile: appProfile,
+    bundleIdentifier,
+    profileSpecifier: configuration.appProvisioningProfile,
+    configuration,
+    now,
+  });
+  assertProvisionedCodeItem({
+    label: "Safari extension",
+    entitlements: extensionEntitlements,
+    profile: extensionProfile,
+    bundleIdentifier: `${bundleIdentifier}.Extension`,
+    profileSpecifier: configuration.extensionProvisioningProfile,
+    configuration,
+    now,
+  });
 }
 
 function escapeXml(value) {
@@ -150,10 +220,6 @@ function entitlementPlist(configuration) {
 \t<key>com.apple.security.application-groups</key>
 \t<array>
 \t\t<string>${escapeXml(configuration.appGroup)}</string>
-\t</array>
-\t<key>keychain-access-groups</key>
-\t<array>
-\t\t<string>$(AppIdentifierPrefix)${escapeXml(configuration.keychainGroup)}</string>
 \t</array>
 </dict>
 </plist>
@@ -229,11 +295,6 @@ export async function patchGeneratedSafariProject({
   infoSource = injectRootPlistStrings(infoSource, [
     ["BrowserBridgeAppGroup", configuration.appGroup],
     ["BrowserBridgeBrokerSocketName", configuration.socketName],
-    [
-      "BrowserBridgeKeychainAccessGroup",
-      `$(AppIdentifierPrefix)${configuration.keychainGroup}`,
-    ],
-    ["BrowserBridgeKeychainService", configuration.keychainService],
   ]);
   await fs.writeFile(extensionInfoPlist, infoSource);
 
@@ -328,7 +389,5 @@ export async function patchGeneratedSafariProject({
 
 export const safariNativeDefaults = Object.freeze({
   appGroup: DEFAULT_APP_GROUP,
-  keychainGroup: DEFAULT_KEYCHAIN_GROUP,
-  keychainService: DEFAULT_KEYCHAIN_SERVICE,
   socketName: DEFAULT_SOCKET_NAME,
 });
