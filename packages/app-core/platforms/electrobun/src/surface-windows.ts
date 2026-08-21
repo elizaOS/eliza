@@ -27,7 +27,13 @@ export interface ManagedWindowFrame {
   height: number;
 }
 
+export interface WorkspaceDismissResult {
+  closed: boolean;
+  reason: "closed" | "already-closed";
+}
+
 export interface ManagedWindowLike {
+  close(): void;
   focus(): void;
   maximize?: () => void;
   setAlwaysOnTop(flag: boolean): void;
@@ -297,6 +303,18 @@ export class SurfaceWindowManager {
       }
       return left.surface.localeCompare(right.surface);
     });
+  }
+
+  dismissWorkspaceWindow(): WorkspaceDismissResult {
+    const workspace = Array.from(this.windows.values()).find(
+      (entry) => entry.surface === "workspace",
+    );
+    if (!workspace) {
+      return { closed: false, reason: "already-closed" };
+    }
+
+    workspace.window.close();
+    return { closed: true, reason: "closed" };
   }
 
   async openSettingsWindow(tabHint?: string): Promise<ManagedWindowSnapshot> {

@@ -32,6 +32,10 @@ interface WindowRpcDesktop {
     maximize?: boolean;
     presentation?: "standard" | "content";
   }): void;
+  dismissWorkspace(): {
+    closed: boolean;
+    reason: "closed" | "already-closed";
+  };
   openSettings(tabHint?: string): void;
   openSurfaceWindow(
     surface: DetachedWindowSurface,
@@ -100,6 +104,7 @@ export function buildWindowRpcHandlers({
         presentation: params?.presentation ?? "standard",
       });
     },
+    desktopDismissWorkspaceWindow: async () => desktop.dismissWorkspace(),
     desktopOpenSettingsWindow: async (
       params: { tabHint?: string } | undefined,
     ) => {

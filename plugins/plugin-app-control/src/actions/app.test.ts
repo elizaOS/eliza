@@ -140,6 +140,122 @@ describe("APP delete refusal", () => {
 });
 
 describe("APP stop mode", () => {
+	it.each(["close Eliza app", "hide Eliza", "quit Eliza"])(
+		"dismisses only the Workspace for %j and never touches registered apps",
+		async (text) => {
+			const client: AppControlClient = {
+				listInstalledApps: vi.fn(),
+				listAppRuns: vi.fn(),
+				launchApp: vi.fn(),
+				stopApp: vi.fn(),
+				stopAppRun: vi.fn(),
+			};
+			const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+				if (String(input).endsWith("/api/views/current")) {
+					return new Response(
+						JSON.stringify({
+							currentView: {
+								viewId: "notes",
+								viewPath: "/notes",
+								viewLabel: "Notes",
+								viewType: "gui",
+								updatedAt: "2026-08-20T00:00:00.000Z",
+							},
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					);
+				}
+				return new Response(JSON.stringify({ ok: true }), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				});
+			});
+			vi.stubGlobal("fetch", fetchMock);
+			try {
+				const action = createAppAction({
+					client,
+					hasOwnerAccess: async () => true,
+				});
+				const result = await action.handler(
+					{ agentId: "agent-1" } as IAgentRuntime,
+					{
+						entityId: "owner-1",
+						content: {
+							text,
+							metadata: { viewClientId: "desktop-pill-1" },
+						},
+					} as Memory,
+					undefined,
+					undefined,
+					undefined,
+				);
+
+				expect(result).toMatchObject({
+					success: true,
+					text: "Closed the Workspace.",
+					data: { target: "workspace", closed: true },
+				});
+				expect(client.listInstalledApps).not.toHaveBeenCalled();
+				expect(client.stopApp).not.toHaveBeenCalled();
+				expect(fetchMock).toHaveBeenLastCalledWith(
+					expect.stringMatching(
+						/^http:\/\/127\.0\.0\.1:\d+\/api\/views\/__workspace__\/navigate$/,
+					),
+					expect.objectContaining({
+						method: "POST",
+						body: JSON.stringify({
+							action: "close",
+							alwaysOnTop: false,
+							delivery: "completed-action",
+							clientId: "desktop-pill-1",
+						}),
+					}),
+				);
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		},
+	);
+
+	it("answers accurately when the Workspace is already closed", async () => {
+		const client: AppControlClient = {
+			listInstalledApps: vi.fn(),
+			listAppRuns: vi.fn(),
+			launchApp: vi.fn(),
+			stopApp: vi.fn(),
+			stopAppRun: vi.fn(),
+		};
+		const fetchMock = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ currentView: null }), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			const result = await createAppAction({
+				client,
+				hasOwnerAccess: async () => true,
+			}).handler(
+				{ agentId: "agent-1" } as IAgentRuntime,
+				{ entityId: "owner-1", content: { text: "quit Eliza" } } as Memory,
+				undefined,
+				undefined,
+				undefined,
+			);
+
+			expect(result).toMatchObject({
+				success: true,
+				text: "The Workspace is already closed.",
+				data: { target: "workspace", closed: false },
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("advertises stop as a typed planner operation", () => {
 		const actionParameter = createAppAction().parameters?.find(
 			(parameter) => parameter.name === "action",

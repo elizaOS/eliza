@@ -64,6 +64,7 @@ import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
 import { resolveIntentView, runViewsShow } from "./views-show.js";
+import { requestWorkspaceDismissal } from "./workspace-dismiss.js";
 
 export type ViewsMode =
 	| "list"
@@ -2173,16 +2174,36 @@ async function runViewsClose({
 	options,
 	viewType,
 	callback,
+	originatingClientId,
 }: {
 	client: ViewsClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	originatingClientId?: string;
 }): Promise<ActionResult> {
 	// Security-unwrapped user words — never the raw (possibly enveloped)
 	// content.text; the envelope's warning contains verbs the extractors match.
 	const text = userRequestMessageText(message);
+	if (originatingClientId) {
+		const currentView = await client.getCurrentView().catch(() => null);
+		const workspaceResult = await requestWorkspaceDismissal({
+			clientId: originatingClientId,
+			currentViewExists: Boolean(currentView?.viewId),
+		});
+		await callback?.({ text: workspaceResult.text });
+		return {
+			success: workspaceResult.ok,
+			text: workspaceResult.text,
+			values: { mode: "close", scope: "workspace" },
+			data: {
+				viewId: "__workspace__",
+				action: "close",
+				closed: workspaceResult.closed,
+			},
+		};
+	}
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
 			"__all__",
@@ -3056,6 +3077,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							originatingClientId: readViewInteractionClientId(message),
 						});
 
 					case "search": {

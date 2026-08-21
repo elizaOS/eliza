@@ -17,6 +17,10 @@ function createDesktopFixture() {
   const desktop = {
     closeWindow: vi.fn(async () => {}),
     openWorkspace: vi.fn(),
+    dismissWorkspace: vi.fn(() => ({
+      closed: true,
+      reason: "closed" as const,
+    })),
     openSettings: vi.fn(),
     openSurfaceWindow: vi.fn(
       async (surface: string, _browse?: string, alwaysOnTop?: boolean) => ({
@@ -76,6 +80,17 @@ describe("window RPC handlers", () => {
     await handlers.desktopCloseWindow();
 
     expect(desktop.closeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses the Workspace without closing the pill", async () => {
+    const { desktop, handlers } = createDesktopFixture();
+
+    await expect(handlers.desktopDismissWorkspaceWindow()).resolves.toEqual({
+      closed: true,
+      reason: "closed",
+    });
+    expect(desktop.dismissWorkspace).toHaveBeenCalledTimes(1);
+    expect(desktop.closeWindow).not.toHaveBeenCalled();
   });
 
   it("maps renderer window and interactive-material sizing to distinct RPC methods", () => {

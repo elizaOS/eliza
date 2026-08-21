@@ -2273,6 +2273,71 @@ describe("view management actions", () => {
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
+	it("turns a pill Close Notes request into one Workspace dismissal", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const client = {
+			listViews: vi.fn(async () => []),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewPath: "/notes",
+				viewLabel: "Notes",
+				viewType: "gui" as const,
+				updatedAt: "2026-08-20T00:00:00.000Z",
+			})),
+		};
+		const action = createViewsAliasAction("CLOSE_VIEW", {
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			{
+				...message("close notes"),
+				content: {
+					text: "close notes",
+					metadata: { viewClientId: "desktop-pill-1" },
+				},
+			} as never,
+			undefined,
+			{ target: "notes" },
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			text: "Closed the Workspace.",
+			data: {
+				viewId: "__workspace__",
+				action: "close",
+				closed: true,
+			},
+		});
+		expect(client.listViews).not.toHaveBeenCalled();
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/__workspace__/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "close",
+					alwaysOnTop: false,
+					delivery: "completed-action",
+					clientId: "desktop-pill-1",
+				}),
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith({
+			text: "Closed the Workspace.",
+		});
+	});
+
 	it('treats VIEWS action=delete for "close all views" as close-all, not plugin deletion', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();

@@ -42,14 +42,19 @@ function setup(isDesktop = true) {
       presentation?: "standard" | "content";
     }) => Promise<void>
   >(async () => undefined);
+  const dismissWorkspace = vi.fn(async () => ({
+    closed: true,
+    reason: "closed" as const,
+  }));
   renderHook(() =>
     useBarSurfaceWindows({
       openWindow,
       openWorkspace,
+      dismissWorkspace,
       isDesktop: () => isDesktop,
     }),
   );
-  return { openWindow, openWorkspace };
+  return { dismissWorkspace, openWindow, openWorkspace };
 }
 
 describe("useBarSurfaceWindows", () => {
@@ -104,12 +109,18 @@ describe("useBarSurfaceWindows", () => {
     expect(contentHandoff).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores close actions and detail-less events", async () => {
-    const { openWindow, openWorkspace } = setup();
-    await dispatchNavigate({ action: "close", viewId: "calendar" });
+  it("dismisses the Workspace for close actions and ignores detail-less events", async () => {
+    const { dismissWorkspace, openWindow, openWorkspace } = setup();
+    const event = await dispatchNavigate({
+      action: "close",
+      viewId: "calendar",
+    });
+    await dispatchNavigate({ action: "close-all", viewId: "__all__" });
     await dispatchNavigate(undefined);
     expect(openWindow).not.toHaveBeenCalled();
     expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dismissWorkspace).toHaveBeenCalledTimes(2);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("is inert off the desktop runtime", async () => {

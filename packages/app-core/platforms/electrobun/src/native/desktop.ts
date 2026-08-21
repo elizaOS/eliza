@@ -439,6 +439,12 @@ export class DesktopManager {
     | null = null;
   private requestQuitCallback: (() => void | Promise<void>) | null = null;
   private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
+  private dismissWorkspaceCallback:
+    | (() => {
+        closed: boolean;
+        reason: "closed" | "already-closed";
+      })
+    | null = null;
   /**
    * Dockless (tray-first) mode: the Dock icon reflects the presence of FULL
    * windows only (dashboard / surface / settings / app windows), never the
@@ -531,6 +537,17 @@ export class DesktopManager {
     this.openWorkspaceCallback = cb;
   }
 
+  setDismissWorkspaceCallback(
+    cb:
+      | (() => {
+          closed: boolean;
+          reason: "closed" | "already-closed";
+        })
+      | null,
+  ): void {
+    this.dismissWorkspaceCallback = cb;
+  }
+
   /**
    * Set the callback used to open the settings window from menus.
    */
@@ -614,6 +631,18 @@ export class DesktopManager {
     presentation?: "standard" | "content";
   }): void {
     this.openWorkspaceCallback?.(options);
+  }
+
+  dismissWorkspace(): {
+    closed: boolean;
+    reason: "closed" | "already-closed";
+  } {
+    return (
+      this.dismissWorkspaceCallback?.() ?? {
+        closed: false,
+        reason: "already-closed",
+      }
+    );
   }
 
   /**

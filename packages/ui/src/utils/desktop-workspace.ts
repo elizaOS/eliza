@@ -185,6 +185,20 @@ export async function openDesktopWorkspaceWindow(options?: {
   );
 }
 
+export interface DesktopWorkspaceDismissResult {
+  closed: boolean;
+  reason: "closed" | "already-closed";
+}
+
+export async function dismissDesktopWorkspaceWindow(): Promise<DesktopWorkspaceDismissResult> {
+  return (
+    (await requestDesktopBridge<DesktopWorkspaceDismissResult>(
+      "desktopDismissWorkspaceWindow",
+      "desktop:dismissWorkspaceWindow",
+    )) ?? { closed: false, reason: "already-closed" }
+  );
+}
+
 export async function openDesktopSurfaceWindow(
   surface: DesktopWorkspaceSurface,
   options?: { browse?: string },

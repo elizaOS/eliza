@@ -3019,6 +3019,13 @@ async function main(): Promise<void> {
       );
     });
   });
+  getDesktopManager().setDismissWorkspaceCallback(
+    () =>
+      surfaceWindowManager?.dismissWorkspaceWindow() ?? {
+        closed: false,
+        reason: "already-closed",
+      },
+  );
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);
   });

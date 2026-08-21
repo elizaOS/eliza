@@ -14,11 +14,15 @@ import {
   DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   NAVIGATE_VIEW_EVENT,
 } from "../../events";
-import { openDesktopWorkspaceWindow } from "../../utils/desktop-workspace";
+import {
+  dismissDesktopWorkspaceWindow,
+  openDesktopWorkspaceWindow,
+} from "../../utils/desktop-workspace";
 
 /** Detail shape used by views/launcher whose own window should open. */
 type OpenWindowFn = typeof openDesktopAppWindow;
 type OpenWorkspaceFn = typeof openDesktopWorkspaceWindow;
+type DismissWorkspaceFn = typeof dismissDesktopWorkspaceWindow;
 
 /** View ids that resolve to the launcher/springboard rather than a single view. */
 const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
@@ -43,23 +47,32 @@ const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
 export function useBarSurfaceWindows(options?: {
   openWindow?: OpenWindowFn;
   openWorkspace?: OpenWorkspaceFn;
+  dismissWorkspace?: DismissWorkspaceFn;
   isDesktop?: () => boolean;
 }): void {
   const openWindow = options?.openWindow ?? openDesktopAppWindow;
   const openWorkspace = options?.openWorkspace ?? openDesktopWorkspaceWindow;
+  const dismissWorkspace =
+    options?.dismissWorkspace ?? dismissDesktopWorkspaceWindow;
   const isDesktop = options?.isDesktop ?? isElectrobunRuntime;
 
   const openWindowRef = React.useRef(openWindow);
   openWindowRef.current = openWindow;
   const openWorkspaceRef = React.useRef(openWorkspace);
   openWorkspaceRef.current = openWorkspace;
+  const dismissWorkspaceRef = React.useRef(dismissWorkspace);
+  dismissWorkspaceRef.current = dismissWorkspace;
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !isDesktop()) return;
     const onNavigate = (event: Event): void => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (!detail || detail.action === "close" || detail.action === "close-all")
+      if (!detail) return;
+      if (detail.action === "close" || detail.action === "close-all") {
+        event.preventDefault();
+        void dismissWorkspaceRef.current();
         return;
+      }
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
         event.preventDefault();
         window.dispatchEvent(

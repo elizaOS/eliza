@@ -274,6 +274,11 @@ export interface DesktopManagedWindowSnapshot {
   alwaysOnTop: boolean;
 }
 
+export interface DesktopWorkspaceDismissResult {
+  closed: boolean;
+  reason: "closed" | "already-closed";
+}
+
 export interface ClipboardWriteOptions {
   text?: string;
   html?: string;
@@ -1645,6 +1650,10 @@ export type ElizaDesktopRPCSchema = {
           | undefined;
         response: undefined;
       };
+      desktopDismissWorkspaceWindow: {
+        params: undefined;
+        response: DesktopWorkspaceDismissResult;
+      };
       desktopOpenSettingsWindow: {
         params: { tabHint?: string } | undefined;
         response: undefined;
@@ -2554,6 +2563,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:getWebGpuBrowserStatus": "desktopGetWebGpuBrowserStatus",
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
+  "desktop:dismissWorkspaceWindow": "desktopDismissWorkspaceWindow",
   "desktop:workspaceNavigate": "desktopWorkspaceNavigate",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",

@@ -25,6 +25,9 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly focus = vi.fn(() => {
     this.emit("focus");
   });
+  readonly close = vi.fn(() => {
+    this.emit("close");
+  });
   readonly maximize = vi.fn();
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
@@ -233,6 +236,28 @@ describe("SurfaceWindowManager app windows", () => {
       "workspace",
       "content",
     );
+  });
+
+  it("dismisses only the Workspace and reports an already-closed retry", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
+
+    expect(fixture.manager.dismissWorkspaceWindow()).toEqual({
+      closed: true,
+      reason: "closed",
+    });
+    expect(fixture.created[0]?.close).toHaveBeenCalledTimes(1);
+    expect(fixture.manager.listWindows("workspace")).toEqual([]);
+    expect(fixture.manager.dismissWorkspaceWindow()).toEqual({
+      closed: false,
+      reason: "already-closed",
+    });
   });
 
   it("tags a newly created content workspace on first paint", async () => {
