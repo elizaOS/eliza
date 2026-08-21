@@ -5607,19 +5607,18 @@ export function ChatOverlay({
         openFromPill();
         return;
       }
+      // The detached host's handle is also its always-visible put-away action.
+      // Use the staged thread -> composer -> pill close so one tap reaches the
+      // complete 48x6 rest without skipping transition frames. Embedded/browser
+      // surfaces retain their established detent tap behavior.
+      if (desktopOverlayHost) {
+        collapseToPill();
+        return;
+      }
       if (sheetOpen) {
         if (composerFocusedAtPressRef.current) {
           composerFocusedAtPressRef.current = false;
           dismissKeyboardToPriorState();
-          return;
-        }
-        // The detached pill's visible grabber is a one-stage disclosure
-        // control. A physical pointer tap must match its semantic Enter/Space
-        // activation and land on the still-visible composer; `collapse()` uses
-        // the host's initial pill mode and would skip straight to the tiny
-        // resting capsule.
-        if (desktopOverlayHost) {
-          closeSheet();
           return;
         }
         collapse();
@@ -6148,10 +6147,10 @@ export function ChatOverlay({
             open={sheetOpen}
             visuallyOpen={threadPresented}
             onOpen={openFromGrabber}
-            // A click on the detached Mac grabber closes the conversation to
-            // the still-visible composer. Reaching the tiny resting pill is a
-            // separate second gesture, never a surprise one-click dismissal.
-            onClose={desktopOverlayHost ? closeSheet : collapse}
+            // The detached Mac grabber is also its complete put-away action;
+            // collapseToPill stages an open thread through the composer before
+            // landing on the exact 48x6 pill.
+            onClose={desktopOverlayHost ? collapseToPill : collapse}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
