@@ -3265,6 +3265,58 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
+   * Wait briefly for a completion-time validation verdict so the parent chat
+   * can relay the final result instead of leaving a stale "still checking"
+   * footer after the task has already moved to `done`.
+   *
+   * The task change bus avoids polling. The read after subscription closes the
+   * race where validation finishes between the first read and listener setup.
+   * A bounded timeout preserves the existing truthful `validating` fallback
+   * for genuinely long-running or wedged verification.
+   */
+  async waitForTaskValidationResolution(
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<OrchestratorTaskRecord | null> {
+    const taskId = await this.resolveTaskId(sessionId);
+    if (!taskId) return null;
+    const readTask = async (): Promise<OrchestratorTaskRecord | null> => {
+      const doc = await this.store.getTask(taskId);
+      return doc?.task ?? null;
+    };
+    const initial = await readTask();
+    const boundedTimeout = Math.min(60_000, Math.max(0, Math.floor(timeoutMs)));
+    if (initial?.status !== "validating" || boundedTimeout === 0) {
+      return initial;
+    }
+
+    return new Promise<OrchestratorTaskRecord | null>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribe = (): void => {};
+      const finish = (task: OrchestratorTaskRecord | null): void => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        unsubscribe();
+        resolve(task);
+      };
+      const refresh = async (): Promise<void> => {
+        const task = await readTask();
+        if (task?.status !== "validating") finish(task);
+      };
+
+      unsubscribe = this.subscribeTaskChanges(taskId, () => {
+        void refresh().catch(() => undefined);
+      });
+      timer = setTimeout(() => {
+        void readTask().then(finish, () => finish(initial));
+      }, boundedTimeout);
+      void refresh().catch(() => undefined);
+    });
+  }
+
+  /**
    * Project a purpose-built APP/PLUGIN validator verdict onto the durable task
    * that owns the ACP session. The generic goal verifier deliberately stands
    * aside for these sessions; this is the single authoritative completion

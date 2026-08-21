@@ -1,9 +1,8 @@
 /**
- * Verifies the completion evaluator's verification-aware framing against the
- * REAL OrchestratorTaskService + in-memory store: a relayed completion for a
- * task still in `validating` carries a verification-pending note, a task
- * knocked back by a failed verification carries a provisional note, and a
- * verified-`done` (or record-less) completion relays exactly as before.
+ * Verifies completion framing against the REAL OrchestratorTaskService and an
+ * in-memory store: the relay waits for a fast validation verdict, retains a
+ * truthful pending note after the bounded wait, frames failed verification
+ * provisionally, and relays verified or record-less completions as before.
  */
 import {
   type Memory,
@@ -53,7 +52,13 @@ async function makeWorld(opts: {
   status: OrchestratorTaskStatus;
   autoVerifyAttempts?: number;
   disclosedRisks?: string[];
-}): Promise<{ runtime: Record<string, unknown>; sessionId: string }> {
+  validationWaitMs?: number;
+}): Promise<{
+  runtime: Record<string, unknown>;
+  sessionId: string;
+  service: OrchestratorTaskService;
+  taskId: string;
+}> {
   const store = new OrchestratorTaskStore({ backend: "memory" });
   const detail = await store.createTask({
     title: "t",
@@ -109,12 +114,15 @@ async function makeWorld(opts: {
   const runtimeBag: Record<string, unknown> = {
     character: { name: "Tester" },
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    getSetting: () => undefined,
+    getSetting: (key: string) =>
+      key === "ELIZA_COMPLETION_RELAY_VALIDATION_WAIT_MS"
+        ? String(opts.validationWaitMs ?? 0)
+        : undefined,
   };
   const service = new OrchestratorTaskService(runtimeBag as never, { store });
   runtimeBag.getService = (type: string) =>
     type === OrchestratorTaskService.serviceType ? service : undefined;
-  return { runtime: runtimeBag, sessionId };
+  return { runtime: runtimeBag, sessionId, service, taskId: detail.task.id };
 }
 
 async function relayFor(world: {
@@ -137,6 +145,22 @@ describe("sub-agent completion: verification-aware framing", () => {
     const reply = await relayFor(world);
     expect(reply).toContain("The answer is 42.");
     expect(reply).toContain("I'm doing one final check now.");
+  });
+
+  it("waits for a fast validation pass and omits the stale pending footer", async () => {
+    const world = await makeWorld({
+      status: "validating",
+      validationWaitMs: 1_000,
+    });
+    const relay = relayFor(world);
+    await world.service.validateTask(world.taskId, {
+      passed: true,
+      summary: "Verified.",
+      evidence: "The deterministic check passed.",
+      verifier: "test-verifier",
+    });
+
+    await expect(relay).resolves.toBe("The answer is 42.");
   });
 
   it("frames a relay as provisional after a failed verification (re-engage in flight)", async () => {

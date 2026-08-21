@@ -577,6 +577,8 @@ function hasVerifiedCompletionReply(
 /** Matches OrchestratorTaskService.serviceType. String-referenced so this
  * planner-path module does not pull the whole task-service dependency tree. */
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
+const DEFAULT_VALIDATION_RELAY_WAIT_MS = 15_000;
+const MAX_VALIDATION_RELAY_WAIT_MS = 60_000;
 
 const VERIFICATION_PENDING_NOTE = "I'm doing one final check now.";
 const VERIFICATION_REENGAGED_NOTE =
@@ -596,6 +598,30 @@ interface TaskRecordLookup {
     status: string;
     metadata: Record<string, unknown>;
   } | null>;
+  waitForTaskValidationResolution?(
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<{
+    status: string;
+    metadata: Record<string, unknown>;
+  } | null>;
+}
+
+function validationRelayWaitMs(runtime: IAgentRuntime): number {
+  const configured = runtime.getSetting?.(
+    "ELIZA_COMPLETION_RELAY_VALIDATION_WAIT_MS",
+  );
+  const parsed =
+    typeof configured === "number"
+      ? configured
+      : typeof configured === "string" && configured.trim().length > 0
+        ? Number(configured)
+        : DEFAULT_VALIDATION_RELAY_WAIT_MS;
+  if (!Number.isFinite(parsed)) return DEFAULT_VALIDATION_RELAY_WAIT_MS;
+  return Math.min(
+    MAX_VALIDATION_RELAY_WAIT_MS,
+    Math.max(0, Math.floor(parsed)),
+  );
 }
 
 async function verificationViewFor(
@@ -612,7 +638,12 @@ async function verificationViewFor(
     if (!service || typeof service.getTaskForSession !== "function") {
       return undefined;
     }
-    const task = await service.getTaskForSession(sessionId);
+    const task = service.waitForTaskValidationResolution
+      ? await service.waitForTaskValidationResolution(
+          sessionId,
+          validationRelayWaitMs(runtime),
+        )
+      : await service.getTaskForSession(sessionId);
     if (!task) return undefined;
     const attemptsRaw = task.metadata?.autoVerifyAttempts;
     const attempts =
