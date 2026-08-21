@@ -37,6 +37,7 @@ import {
 } from "../services/post-delivery-task-tracker.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import {
+	finalizePlannerContinuationEvidence,
 	type PlannerContinuationTrajectoryDetail,
 	readCompletedPlannerContinuationTrajectory,
 	serializePlannerContinuationEvidence,
@@ -490,5 +491,49 @@ describe("planner continuation evidence artifact — atomic write to disk", () =
 		const { readdir } = await import("node:fs/promises");
 		const entries = await readdir(dir);
 		expect(entries).toEqual(["evidence.json"]);
+	});
+});
+
+describe("planner continuation evidence finalization", () => {
+	const cleanOutcome = {
+		runId: "run-finalize",
+		harness: harnessFixture,
+		evidence: [{ caseName: "directive", executed: true }],
+		progress: { totalCases: 1, completedCases: 1 },
+	};
+
+	it("does not publish captured until cleanup completes", async () => {
+		const cleanupGate = deferred();
+		const published: string[] = [];
+		const pending = finalizePlannerContinuationEvidence(
+			cleanOutcome,
+			() => cleanupGate.promise,
+			async (body) => {
+				published.push(body);
+			},
+		);
+
+		await Promise.resolve();
+		expect(published).toEqual([]);
+		cleanupGate.resolve();
+		await pending;
+		expect(JSON.parse(published[0] ?? "{}").status).toBe("captured");
+	});
+
+	it("publishes cleanup-failed once and keeps teardown red", async () => {
+		const published: string[] = [];
+		await expect(
+			finalizePlannerContinuationEvidence(
+				cleanOutcome,
+				async () => {
+					throw new Error("cleanup failed");
+				},
+				async (body) => {
+					published.push(body);
+				},
+			),
+		).rejects.toThrow("cleanup failed");
+		expect(published).toHaveLength(1);
+		expect(JSON.parse(published[0] ?? "{}").status).toBe("cleanup-failed");
 	});
 });

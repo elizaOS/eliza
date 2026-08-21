@@ -39,6 +39,7 @@ import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { stringifyForDiagnostics } from "./json-output";
 import {
 	resolveTraceCorrelationFromEnv,
@@ -796,12 +797,13 @@ const RECORD_SANITIZE_MAX_STRING_CHARS = 64 * 1024;
 const RECORD_SANITIZE_TRUNCATION_SUFFIX = "...[truncated]";
 
 function truncateRecordString(value: string): string {
-	if (value.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return value;
+	const wellFormed = toWellFormedUnicode(value);
+	if (wellFormed.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return wellFormed;
 	const previewLength = Math.max(
 		0,
 		RECORD_SANITIZE_MAX_STRING_CHARS - RECORD_SANITIZE_TRUNCATION_SUFFIX.length,
 	);
-	return `${value.slice(0, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
+	return `${truncateWellFormed(wellFormed, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
 }
 
 function sanitizeForRecord(
@@ -967,6 +969,14 @@ const DEFAULT_FIELD_CAP_BYTES = 64 * 1024;
 const TRUNCATION_SUFFIX = "...[truncated]";
 
 /**
+ * UTF-8 continuation bytes are `0b10xxxxxx`. A byte cut that lands on one is
+ * mid-character; see {@link applyTrajectoryFieldCap}.
+ */
+function isUtf8ContinuationByte(byte: number): boolean {
+	return (byte & 0xc0) === 0x80;
+}
+
+/**
  * Resolve the per-field byte cap for `input` / `output` / `errorText`. The
  * recorder uses this for action-step capture (M12). Override with
  * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
@@ -1004,6 +1014,9 @@ export function encodeTrajectoryFieldValue(value: unknown): string {
  * string and `null` marker when no truncation is needed, or the truncated
  * preview plus a structured marker when the cap was exceeded.
  *
+ * The cut always lands on a UTF-8 character boundary, so the preview never
+ * gains a U+FFFD REPLACEMENT CHARACTER that the recorded agent did not emit.
+ *
  * The marker is the caller's responsibility to attach to the stage (see
  * `captureToolStageIO`).
  */
@@ -1012,6 +1025,15 @@ export function applyTrajectoryFieldCap(
 	value: string,
 	capBytes: number,
 ): { value: string; marker: RecordedTruncationMarker | null } {
+	if (!Number.isSafeInteger(capBytes) || capBytes < 0) {
+		throw new ElizaError(
+			"Trajectory field cap must be a non-negative safe integer",
+			{
+				code: "TRAJECTORY_FIELD_CAP_INVALID",
+				context: { capBytes: String(capBytes) },
+			},
+		);
+	}
 	const byteLength = Buffer.byteLength(value, "utf8");
 	if (byteLength <= capBytes) {
 		return { value, marker: null };
@@ -1019,15 +1041,27 @@ export function applyTrajectoryFieldCap(
 	const suffixBytes = Buffer.byteLength(TRUNCATION_SUFFIX, "utf8");
 	const sliceBudget = Math.max(0, capBytes - suffixBytes);
 	const buffer = Buffer.from(value, "utf8");
-	let preview = buffer.subarray(0, sliceBudget).toString("utf8");
-	// `toString("utf8")` discards trailing partial code points, but the
-	// resulting string can still encode to slightly more bytes than the
-	// slice budget after concatenation. Trim defensively until it fits.
+	// Node's UTF-8 decoder does NOT drop a trailing partial sequence: it
+	// substitutes U+FFFD REPLACEMENT CHARACTER for it. Decoding a raw byte
+	// slice therefore writes a character the agent never emitted into the
+	// persisted trajectory, and the `RecordedTruncationMarker` below reports
+	// only byte counts, so the corruption is served as a successful capture.
+	// Back the cut off to the start of the straddled character first so the
+	// decode is lossless for everything that survives the cap.
+	let end = Math.min(sliceBudget, buffer.length);
+	while (end > 0 && isUtf8ContinuationByte(buffer[end] ?? 0)) {
+		end--;
+	}
+	let preview = buffer.subarray(0, end).toString("utf8");
+	// Defence in depth: the boundary back-off above already keeps the preview
+	// within `sliceBudget`, but if that invariant ever regresses, trim through
+	// `truncateWellFormed` so shrinking can never split a surrogate pair the
+	// way a bare `preview.slice(0, -1)` would.
 	while (
 		Buffer.byteLength(preview, "utf8") + suffixBytes > capBytes &&
 		preview.length > 0
 	) {
-		preview = preview.slice(0, -1);
+		preview = truncateWellFormed(preview, preview.length - 1);
 	}
 	return {
 		value: `${preview}${TRUNCATION_SUFFIX}`,

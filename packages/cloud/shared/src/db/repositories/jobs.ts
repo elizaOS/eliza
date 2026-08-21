@@ -1,4 +1,7 @@
-// Persists jobs records for cloud services through the shared DB boundary.
+/**
+ * Persists background-job state, execution generations, and renewable leases
+ * through the primary and read-intent cloud database boundaries.
+ */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
@@ -14,6 +17,7 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
+  clampInlineDiagnosticText,
   hydrateJsonField,
   hydrateTextField,
   offloadJsonField,
@@ -71,6 +75,9 @@ export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
 
 /** Atomic result of attempting to renew one claimed execution generation. */
 export type ExecutionLeaseRenewal = "renewed" | "settled" | "lost";
+
+/** Outcome of terminally rejecting one exact claimed execution generation. */
+export type ClaimedExecutionRejection = "rejected" | "already-terminal" | "stale" | "lost";
 
 const SETTLED_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -445,7 +452,7 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
       ? Promise.resolve(null)
       : forceInlineError
         ? Promise.resolve({
-            value: data.error,
+            value: data.error === null ? null : clampInlineDiagnosticText(data.error),
             storage: "inline" as const,
             key: null,
           })
@@ -456,6 +463,9 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
             field: "error",
             createdAt,
             value: data.error,
+            // A failure reason is a diagnostic string: bound it rather than let
+            // a full dump land in the text column when offload is unavailable.
+            oversizeInline: "clamp",
           }),
   ]);
 
@@ -987,6 +997,107 @@ export class JobsRepository {
   }
 
   /**
+   * Terminally rejects an invalid claimed execution before it can acquire a
+   * resource fence. The exact generation and live owner lease are the only
+   * authority; no dependent-row callback or sandbox mutation participates in
+   * this pre-dispatch transition.
+   *
+   * A same-generation terminal row is classified before its lease is read so
+   * a retry after an ambiguous commit acknowledgement reconstructs success
+   * without incrementing attempts twice.
+   */
+  async rejectClaimedExecution(
+    claimedJob: Job,
+    error: string,
+    ownerId: string,
+  ): Promise<ClaimedExecutionRejection> {
+    const generation = requireExecutionGeneration(claimedJob);
+    if (!ownerId) {
+      throw new Error(`Execution owner is required to reject claimed job ${claimedJob.id}`);
+    }
+    const payload = await prepareJobPayload({ error }, claimedJob);
+
+    return await dbWrite.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, claimedJob.id))
+        .for("update")
+        .limit(1);
+      if (!current) return "lost";
+      if (current.executionGeneration !== generation) return "stale";
+      if (SETTLED_JOB_STATUSES.has(current.status)) return "already-terminal";
+      if (current.status !== "in_progress" || current.executionQuiescedAt !== null) {
+        return "stale";
+      }
+
+      const [lease] = await tx
+        .select({ jobId: jobExecutionLeases.job_id })
+        .from(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+            sql`${jobExecutionLeases.expires_at} > NOW()`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lease) return "lost";
+
+      const settledAt = new Date();
+      const [rejected] = await tx
+        .update(jobs)
+        .set({
+          status: "failed",
+          ...payload,
+          attempts: sql`${jobs.attempts} + 1`,
+          completed_at: settledAt,
+          execution_quiesced_at: settledAt,
+          updated_at: settledAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                AND ${jobExecutionLeases.execution_generation} = ${generation}
+                AND ${jobExecutionLeases.owner_id} = ${ownerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!rejected) return "lost";
+
+      const [deletedLease] = await tx
+        .delete(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+          ),
+        )
+        .returning({ jobId: jobExecutionLeases.job_id });
+      if (!deletedLease) {
+        throw new Error(`Rejected job ${claimedJob.id} lost its exact execution lease`);
+      }
+      return "rejected";
+    });
+  }
+
+  /**
    * Recovers stale jobs that have been stuck in in_progress status. Provisioning
    * jobs with a generated execution remain owned while their renewable lease
    * and takeover grace are current. Other job families retain elapsed-time
@@ -1483,7 +1594,8 @@ export class JobsRepository {
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
     executionOwnerId?: string,
-  ): Promise<void> {
+    additionalFence?: SQL,
+  ): Promise<boolean> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
@@ -1501,7 +1613,7 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, claimedJob);
     }
 
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(
@@ -1539,6 +1651,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(additionalFence ? [additionalFence] : []),
             sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
@@ -1550,7 +1663,10 @@ export class JobsRepository {
           ),
         )
         .returning({ id: jobs.id });
-      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      if (!updated) {
+        if (additionalFence) return false;
+        throw new StaleJobExecutionError(claimedJob.id);
+      }
 
       await tx
         .delete(jobExecutionLeases)
@@ -1578,6 +1694,7 @@ export class JobsRepository {
             ),
           );
       }
+      return true;
     });
   }
 
@@ -1600,6 +1717,9 @@ export class JobsRepository {
    * @param onFailedInTx - Optional callback run in-transaction when the job
    *   flips to `failed`. Receives the transaction handle and the hydrated job.
    *   Throwing rolls back BOTH the job-status flip and the dependent write.
+   * @param additionalFence - Optional caller-owned CAS predicate evaluated in
+   *   the terminal transition. It lets a stronger durable command invalidate
+   *   a stale execution failure without weakening the standard lease fences.
    * @returns Updated job record or undefined if not found.
    */
   async incrementAttempt(
@@ -1609,6 +1729,7 @@ export class JobsRepository {
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
     expectedExecutionGeneration?: string,
     expectedExecutionOwnerId?: string,
+    additionalFence?: SQL,
   ): Promise<Job | undefined> {
     if (expectedExecutionGeneration && !expectedExecutionOwnerId) {
       throw new Error(`Execution owner is required to retry claimed job ${id}`);
@@ -1679,6 +1800,7 @@ export class JobsRepository {
             eq(jobs.id, id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, job.attempts),
+            ...(additionalFence ? [additionalFence] : []),
             ...(expectedExecutionGeneration
               ? [
                   eq(jobs.execution_generation, expectedExecutionGeneration),

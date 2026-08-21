@@ -40,6 +40,8 @@ import {
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -626,7 +628,10 @@ function readAttemptReflections(
 }
 
 function truncate(text: string, max = 2000): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  const wellFormed = toWellFormedUnicode(text);
+  return wellFormed.length > max
+    ? `${truncateWellFormed(wellFormed, max)}…`
+    : wellFormed;
 }
 
 /**

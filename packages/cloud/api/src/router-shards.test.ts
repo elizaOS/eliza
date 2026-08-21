@@ -10,7 +10,8 @@ import { Hono } from "hono";
 // @ts-expect-error - plain node script without type declarations.
 import { routeShardKey as codegenRouteShardKey } from "./_generate-router.mjs";
 import { ROUTE_MOUNTS, ROUTE_SHARD_KEYS } from "./_router.generated";
-import { routeShardKey } from "./router-shards";
+import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
+import { knownRouteShardKey, routeShardKey } from "./router-shards";
 
 /** A concrete request path a mount pattern can match. */
 function concretePathFor(mountPath: string): string {
@@ -66,6 +67,24 @@ describe("routeShardKey", () => {
       expect(routeShardKey(path)).toBe(codegenRouteShardKey(path));
     }
   });
+
+  test("matches Hono for mixed valid and malformed percent runs", async () => {
+    const path = "/api/%61uth/cli-session/%zz";
+    expect(routeShardKey(path)).toBe("auth");
+
+    const fullRouter = new Hono({ strict: false });
+    fullRouter.get("/api/auth/cli-session/:id", (c) => c.text("hit"));
+    expect((await fullRouter.request(path)).status).toBe(200);
+  });
+
+  test("collapses every unknown request shard to one bounded identity", () => {
+    const known = new Set(ROUTE_SHARD_KEYS);
+    for (let index = 0; index < 1_000; index += 1) {
+      expect(knownRouteShardKey(`/api/unknown-${index}/x`, known)).toBeNull();
+    }
+    expect(knownRouteShardKey("/api/auth/x", known)).toBe("auth");
+    expect(knownRouteShardKey("/api/v1/chat/x", known)).toBe("v1/chat");
+  });
 });
 
 describe("generated mount table", () => {
@@ -84,6 +103,7 @@ describe("generated mount table", () => {
       ),
     ].sort();
     expect([...ROUTE_SHARD_KEYS]).toEqual(expected);
+    expect([...KNOWN_ROUTE_SHARD_KEYS]).toEqual(expected);
   });
 
   test("every request a mount can match resolves to that mount's shard", () => {

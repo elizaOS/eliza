@@ -111,8 +111,8 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
 | `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
 | `bun run audit:e2e-coverage:test` | `bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts` |
-| `bun run test:browser-bridge` | retired with the removed `packages/browser-extension` workspace; no replacement |
-| `bun run test:browser-bridge:safari` | retired with the removed `packages/browser-extension` workspace; no replacement |
+| `bun run test:browser-bridge` | `bun run --cwd packages/browser-bridge-extension test:smoke:installed` (requires installed browsers) |
+| `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-bridge-extension test:smoke:safari` (requires installed Safari) |
 | `bun run voice:latency-report` | `bun run --cwd packages/app-core voice:latency-report` |
 | `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
@@ -159,6 +159,7 @@ packages/
   logger/           structured logging package
   vault/            secrets and configuration storage adapters
   skills/           bundled runtime skills and loading utilities
+  browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
   registry/         first-party and community plugin registry data and validation
   scenario-runner/  real-runtime scenario execution and report generation
   test/             repository-wide scenarios and test corpus

@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  capabilityWallActionResult,
   resolveSharedCapabilityIntent,
   resolveSharedCapabilityWall,
 } from "./shared-capability-wall";
@@ -197,5 +198,59 @@ describe("Shared capability wall", () => {
       primary: expect.objectContaining({ capability: "todos" }),
       blockedSecondary: [],
     });
+  });
+
+  test("returns a bounded, review-only personal workspace handoff", () => {
+    const wall = resolveSharedCapabilityWall("email Bob the itinerary");
+    expect(wall).not.toBeNull();
+
+    const result = capabilityWallActionResult(wall!, {
+      agentId: "agent/with spaces",
+      originalIntent: "email Bob the itinerary",
+      clientMessageId: "client-123",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        actionName: "DEDICATED_CAPABILITY_REQUIRED",
+        success: false,
+        values: expect.objectContaining({
+          automatic: false,
+          capabilityHandoff: expect.objectContaining({
+            version: 1,
+            kind: "capability_handoff",
+            capabilityId: "communications",
+            requiresConfirmation: true,
+            cta: {
+              label: "Set up personal workspace",
+              href: "/cloud/agents/agent%2Fwith%20spaces",
+            },
+            continuation: {
+              originalIntent: "email Bob the itinerary",
+              clientMessageId: "client-123",
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("bounds untrusted continuation fields before returning the handoff", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(wall).not.toBeNull();
+    const handoff = capabilityWallActionResult(wall!, {
+      originalIntent: `  ${"a".repeat(4_100)}  `,
+      clientMessageId: `  ${"b".repeat(140)}  `,
+    }).values.capabilityHandoff;
+    expect(handoff.continuation?.originalIntent).toHaveLength(4_000);
+    expect(handoff.continuation?.clientMessageId).toHaveLength(128);
+  });
+
+  test("never invents continuation data when the transport did not provide it", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(wall).not.toBeNull();
+    const handoff = capabilityWallActionResult(wall!).values.capabilityHandoff;
+    expect(handoff.continuation).toBeUndefined();
+    expect(handoff.cta.href).toBe("/cloud/agents");
   });
 });

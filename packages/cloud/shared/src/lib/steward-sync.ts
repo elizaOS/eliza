@@ -385,6 +385,7 @@ async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: stri
     }
     throw error;
   }
+  await invalidateBoundPersonalDeliveryProjection("phone", phoneNumber);
 }
 
 /**
@@ -633,6 +634,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           `[StewardSync] Phone-account tenant provisioning failed for org ${promotion.organization.id}; sign-in proceeds: ${describeSyncError(error)}`,
         );
       }
+      await invalidateBoundPersonalDeliveryProjection("phone", verifiedPhone);
       return promotedUser;
     }
     if (promotion.status !== "not_found") {

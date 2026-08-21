@@ -96,7 +96,7 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | Env var | Default | Description |
 |---|---|---|
 | `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. This does not restrict paths that a SHELL command reads or writes. |
-| `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the configurable default blocklist; unconditional device and `/proc/<pid>/fd` exclusions remain enforced. |
+| `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the configurable default blocklist; unconditional device and process/thread descriptor exclusions remain enforced. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Comma-separated paths to **add** to the default blocklist. |
 | `CODING_TOOLS_SHELL` | (auto-detected) | Override the shell binary used by SHELL action. Takes priority over `SHELL`. Useful on Android/AOSP where the default shell path may not be executable. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |

@@ -25,6 +25,7 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
@@ -151,19 +152,36 @@ function readStewardToken(): string | null {
   }
 }
 
-function clearStoredStewardTokenIfCurrent(token: string): void {
+/**
+ * Delete the stored Steward JWT if it is still the one being retired, then
+ * only broadcast logout once the delete actually succeeded. `clearStoredStewardToken()`
+ * is async and can reject (a native/Electrobun protected-storage delete can be
+ * denied), so this awaits it: a denied delete must never announce "cleared" —
+ * that would tell every listener the credential is gone while it is still
+ * live in protected storage.
+ */
+async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
   if (typeof window === "undefined") return;
-  if (readStoredStewardToken() === token) {
-    clearStoredStewardToken();
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  if (readStoredStewardToken() !== token) return;
+  try {
+    await clearStoredStewardToken();
+  } catch (error) {
+    logger.error(
+      { error },
+      "[api-client] denied delete left the expired Steward JWT in storage; not broadcasting logout",
+    );
+    return;
   }
+  window.dispatchEvent(new CustomEvent("steward-token-sync"));
 }
 
-function readLiveNativeStewardToken(token: string): string | null {
+async function readLiveNativeStewardToken(
+  token: string,
+): Promise<string | null> {
   const claims = decodeJwtPayload(token);
   const expMs = typeof claims?.exp === "number" ? claims.exp * 1000 : null;
   if (!claims || expMs === null || expMs <= Date.now()) {
-    clearStoredStewardTokenIfCurrent(token);
+    await clearStoredStewardTokenIfCurrent(token);
     return null;
   }
   return token;
@@ -181,8 +199,13 @@ function readLiveNativeStewardToken(token: string): string | null {
  * API key), read here from boot config because this module has no client handle.
  * The Cloud API accepts both a Steward JWT and the owner API key. On web the
  * fallback never applies — it resolves to the steward token or nothing.
+ *
+ * Async because an expired native JWT must go through the awaited protected-
+ * storage delete (`readLiveNativeStewardToken` →
+ * `clearStoredStewardTokenIfCurrent`) before this resolves, so a denied delete
+ * is observed here rather than raced past.
  */
-export function readCloudBearerToken(): string | null {
+export async function readCloudBearerToken(): Promise<string | null> {
   const nativeRuntime = isNativeCloudRuntime();
   // Resolve the supported owner-key fallback before expiry cleanup dispatches
   // the canonical session-clear event. That event may synchronously remove the
@@ -195,7 +218,7 @@ export function readCloudBearerToken(): string | null {
   const stewardToken = readStewardToken()?.trim();
   if (stewardToken) {
     if (!nativeRuntime) return stewardToken;
-    const liveToken = readLiveNativeStewardToken(stewardToken);
+    const liveToken = await readLiveNativeStewardToken(stewardToken);
     if (liveToken) return liveToken;
   }
   return nativeCloudApiKey;
@@ -381,7 +404,7 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
   if (!skipAuth) {
-    const token = readCloudBearerToken();
+    const token = await readCloudBearerToken();
     if (token && !headers.has("Authorization")) {
       headers.set("Authorization", `Bearer ${token}`);
     }

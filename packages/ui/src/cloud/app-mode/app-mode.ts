@@ -73,13 +73,21 @@ function readAppModeDevFlag(): boolean {
 /**
  * Pure hostname decision, exposed for the test matrix. `devFlag` defaults to
  * the Vite env escape hatch; tests inject it explicitly.
+ *
+ * Normalizes here rather than at the call sites: a browser may report the
+ * hostname with a fully-qualified trailing dot or mixed case, and both are the
+ * same host. Callers pass `window.location.hostname` (or a URL hostname)
+ * straight through — this module owns the comparison so no caller has to
+ * remember the normalization.
  */
 export function isAppModeHostname(
   hostname: string,
   devFlag: boolean = readAppModeDevFlag(),
 ): boolean {
   if (devFlag) return true;
-  return APP_MODE_HOSTNAMES.has(hostname.toLowerCase());
+  return APP_MODE_HOSTNAMES.has(
+    hostname.trim().toLowerCase().replace(/\.$/, ""),
+  );
 }
 
 /** True when the current document is served in app-mode. No-DOM (SSR /

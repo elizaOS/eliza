@@ -4,6 +4,7 @@
  * execution & report state.
  */
 
+import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   ApprovalRequestState,
@@ -17,6 +18,7 @@ import type {
   ScenarioExecutionProfile,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 
 /** A tuple used where empty evidence would make a qualification claim unsound. */
 export type NonEmptyEvidenceList<T> = readonly [T, ...T[]];
@@ -298,6 +300,10 @@ export interface ScenarioReport {
   actionsCalled: CapturedAction[];
   failedAssertions: Array<{ label: string; detail: string }>;
   providerName: string | null;
+  /** Sanitized strict-fixture call and consumption ledger for this attempt. */
+  modelFixtureDiagnostics?: DeterministicModelDiagnostics;
+  /** Strict-manifest adoption marker used to ratchet away the legacy resolver. */
+  modelFixtureMode?: ScenarioModelFixtureMode;
   /**
    * Execution trust boundary used for this scenario. Optional only while
    * legacy producers migrate; aggregation reports missing values as unreported

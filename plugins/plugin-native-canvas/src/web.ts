@@ -236,7 +236,11 @@ export class CanvasWeb extends WebPlugin {
     const managed = this.canvases.get(options.canvasId);
     if (!managed) throw new Error("Canvas not found");
 
-    assertAttachElement(options.element).appendChild(managed.canvas);
+    const element = assertAttachElement(options.element);
+    element.appendChild(managed.canvas);
+    for (const layer of managed.layers.values()) {
+      element.appendChild(layer.canvas);
+    }
     this.setupTouchHandlers(managed);
   }
 
@@ -244,6 +248,9 @@ export class CanvasWeb extends WebPlugin {
     const managed = this.canvases.get(options.canvasId);
     if (!managed) throw new Error("Canvas not found");
 
+    for (const layer of managed.layers.values()) {
+      layer.canvas.remove();
+    }
     managed.canvas.remove();
   }
 

@@ -48,6 +48,10 @@ import type {
 import { ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service } from "../types/service.js";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.js";
 import { canonicalKind } from "./entity-recognizer.js";
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 
@@ -321,8 +325,9 @@ export async function assembleContextPack(
 		sections.push(`Related context:\n${lines.join("\n")}`);
 	}
 	let contextPack = sections.join("\n\n");
+	contextPack = toWellFormedUnicode(contextPack);
 	if (contextPack.length > maxChars) {
-		contextPack = contextPack.slice(0, maxChars);
+		contextPack = truncateWellFormed(contextPack, maxChars);
 	}
 
 	return {

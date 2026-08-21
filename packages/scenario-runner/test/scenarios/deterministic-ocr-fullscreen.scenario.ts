@@ -217,6 +217,11 @@ function expectGetScreen(execution: ScenarioTurnExecution): string | undefined {
 export default scenario({
   id: "deterministic-ocr-fullscreen",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "GET_SCREEN full-screen OCR readout (no image bytes)",
   domain: "computeruse",
   tags: ["pr", "deterministic", "zero-cost", "computeruse", "vision", "ocr"],

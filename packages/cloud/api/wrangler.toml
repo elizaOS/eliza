@@ -88,7 +88,7 @@ crons = [
   "*/2 * * * *",    # pool-health-check
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
   "*/10 * * * *",   # cleanup-expired-crypto-payments
-  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
+  "*/15 * * * *",   # auto-top-up + agent-budgets + cleanup-mobile-app-auth + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
   "0 */6 * * *",  # cleanup-cli-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
   "0 0 * * *",      # container-billing
@@ -120,6 +120,11 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615303"
 simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615304"
+simple = { limit = 120, period = 60 }
 
 [[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
@@ -365,6 +370,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   STRIPE_PLUS_MONTHLY_PRICE_ID       Approved recurring Plus Price binding
+#   STRIPE_PLUS_PRODUCT_ID             Approved Plus Product binding
+#   STRIPE_PRO_MONTHLY_PRICE_ID        Approved recurring Pro Price binding
+#   STRIPE_PRO_PRODUCT_ID              Approved Pro Product binding
 #   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
 #   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
 #   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override
@@ -503,9 +512,10 @@ NODE_ENV = "production"
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "1"
-# Staging exercises the strongly invalidated sender projection while default
-# and production stay on canonical resolution until the live latency matrix passes.
-PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
+# Keep every environment on the indexed canonical resolver until every
+# identity/lifecycle writer participates in the durable mutation-fence protocol.
+# The bound Durable Object remains available for exact-head isolated proof.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
 # staging plaintext binding; either binding must be exactly true to opt in.
@@ -745,6 +755,11 @@ name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615313"
 simple = { limit = 60, period = 60 }
 
+[[env.staging.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615314"
+simple = { limit = 120, period = 60 }
+
 [env.production]
 name = "eliza-cloud-api-prod"
 
@@ -789,6 +804,9 @@ __filename = '"/worker.js"'
 NODE_ENV = "production"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
+# Keep production on the indexed canonical resolver. The Durable Object cannot
+# be activated until every identity/lifecycle/cutover writer participates in
+# the durable mutation-fence protocol and adversarial staging proof is complete.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # The protected production cutover owns
@@ -988,5 +1006,10 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615323"
 simple = { limit = 60, period = 60 }
+
+[[env.production.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615324"
+simple = { limit = 120, period = 60 }
 
 # deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

@@ -75,7 +75,7 @@ export function setCloudVoiceClientFactoryForTesting(
   }
 }
 
-type CacheEntry =
+type EndpointCacheEntry =
   | { kind: "success"; fetchedAt: number; voices: CloudVoiceCatalogEntry[] }
   | { kind: "failure"; fetchedAt: number };
 
@@ -83,8 +83,14 @@ type EndpointVoiceResult =
   | { ok: true; voices: CloudVoiceCatalogEntry[] }
   | { ok: false; voices: [] };
 
-/** Module-level cache. Keyed by `${baseUrl}|${apiKey}`. */
-const cache = new Map<string, CacheEntry>();
+/** Module-level endpoint cache. Keyed by `${baseUrl}|${apiKey}|${endpoint}`. */
+const cache = new Map<string, EndpointCacheEntry>();
+
+/** Combined catalog cache used only when both endpoint reads succeeded. */
+const catalogCache = new Map<
+  string,
+  { fetchedAt: number; voices: CloudVoiceCatalogEntry[] }
+>();
 
 /**
  * Module-level singleflight. Keyed the same as {@link cache}; holds the
@@ -100,6 +106,7 @@ const inflight = new Map<string, Promise<CloudVoiceCatalogEntry[]>>();
  */
 export function resetCloudVoiceCatalogCacheForTesting(): void {
   cache.clear();
+  catalogCache.clear();
   inflight.clear();
 }
 
@@ -233,6 +240,45 @@ async function fetchEndpointVoices(
   }
 }
 
+function endpointCacheKey(
+  catalogKey: string,
+  endpoint: "premade" | "user"
+): string {
+  return `${catalogKey}|${endpoint}`;
+}
+
+/**
+ * `attempted` distinguishes a fresh upstream failure from a remembered one.
+ * The outage report is a diagnostic about the outage, not about each caller
+ * that observed it, so only a pass that actually reached upstream may report.
+ */
+type EndpointLoadResult = EndpointVoiceResult & { attempted: boolean };
+
+async function loadEndpointVoices(
+  runtime: IAgentRuntime,
+  catalogKey: string,
+  endpoint: "premade" | "user"
+): Promise<EndpointLoadResult> {
+  const key = endpointCacheKey(catalogKey, endpoint);
+  const cached = cache.get(key);
+  const age = cached ? Date.now() - cached.fetchedAt : Number.POSITIVE_INFINITY;
+  if (cached?.kind === "success" && age < CACHE_TTL_MS) {
+    return { ok: true, voices: cached.voices, attempted: false };
+  }
+  if (cached?.kind === "failure" && age < FAILURE_TTL_MS) {
+    return { ok: false, voices: [], attempted: false };
+  }
+
+  const result = await fetchEndpointVoices(runtime, endpoint);
+  cache.set(
+    key,
+    result.ok
+      ? { kind: "success", fetchedAt: Date.now(), voices: result.voices }
+      : { kind: "failure", fetchedAt: Date.now() }
+  );
+  return { ...result, attempted: true };
+}
+
 /**
  * Fetch the user-visible voice catalog from Eliza Cloud (premade + cloned).
  *
@@ -243,13 +289,12 @@ async function fetchEndpointVoices(
  *     capability-only mode too).
  *   - Both upstream endpoints fail (network, auth, etc.).
  *
- * Results are cached for {@link CACHE_TTL_MS} per runtime. Subsequent calls
- * within that window are served from memory. A total outage (both endpoints
- * fail) is remembered for {@link FAILURE_TTL_MS} instead — long enough to
- * shield upstream from a thundering herd of retries, short enough to pick up
- * a real recovery quickly — and is reported via `runtime.reportError` so the
- * outage is observable rather than indistinguishable from a genuinely empty
- * catalog.
+ * Successful endpoint results are cached independently for
+ * {@link CACHE_TTL_MS}; endpoint failures use {@link FAILURE_TTL_MS}. This
+ * keeps a healthy premade catalog warm while retrying a failed user-voice
+ * endpoint quickly instead of hiding newly available clones for an hour. A
+ * total outage is reported via `runtime.reportError` so it remains observable
+ * rather than indistinguishable from a genuinely empty catalog.
  */
 export async function fetchCloudVoiceCatalog(
   runtime: IAgentRuntime,
@@ -258,19 +303,13 @@ export async function fetchCloudVoiceCatalog(
     return [];
   }
   const key = cacheKeyFor(runtime);
-  const now = Date.now();
-  const cached = cache.get(key);
-  if (cached) {
-    if (cached.kind === "success" && now - cached.fetchedAt < CACHE_TTL_MS) {
-      return cached.voices;
-    }
-    if (cached.kind === "failure" && now - cached.fetchedAt < FAILURE_TTL_MS) {
-      return [];
-    }
+  const combined = catalogCache.get(key);
+  if (combined && Date.now() - combined.fetchedAt < CACHE_TTL_MS) {
+    return combined.voices;
   }
 
-  // Concurrent callers during a miss or a remembered outage share this one
-  // upstream fetch pair instead of each firing their own (singleflight).
+  // Concurrent callers during a miss or an endpoint retry share this one
+  // catalog load instead of racing the per-endpoint cache checks.
   const existing = inflight.get(key);
   if (existing) {
     return existing;
@@ -278,23 +317,25 @@ export async function fetchCloudVoiceCatalog(
 
   const promise = (async (): Promise<CloudVoiceCatalogEntry[]> => {
     const [premade, user] = await Promise.all([
-      fetchEndpointVoices(runtime, "premade"),
-      fetchEndpointVoices(runtime, "user"),
+      loadEndpointVoices(runtime, key, "premade"),
+      loadEndpointVoices(runtime, key, "user"),
     ]);
 
     // User voices first so cloned voices appear before the shared premade
     // list — most users care about their own clones.
     const merged = dedupeById([...user.voices, ...premade.voices]);
-    if (premade.ok || user.ok) {
-      cache.set(key, { kind: "success", fetchedAt: Date.now(), voices: merged });
+    if (premade.ok && user.ok) {
+      catalogCache.set(key, { fetchedAt: Date.now(), voices: merged });
       return merged;
     }
+    if (premade.ok || user.ok) return merged;
 
-    // Total outage: both endpoints failed. Never cache this as a genuine
-    // empty catalog — record a short-lived failure entry instead and surface
-    // the outage observably (error-policy: "not loaded" must never read as
-    // "empty").
-    cache.set(key, { kind: "failure", fetchedAt: Date.now() });
+    // Total outage: both endpoint caches carry short-lived failure entries;
+    // surface it observably (error-policy: "not loaded" must never read as
+    // "empty"). Reads served entirely from those failure entries stay silent —
+    // the next expiry re-attempts and re-reports, so a persistent outage keeps
+    // producing one diagnostic per backoff window instead of one per caller.
+    if (!premade.attempted && !user.attempted) return merged;
     runtime.reportError(
       "cloud-voice-catalog",
       new Error("cloud voice catalog: both premade and user endpoints failed"),

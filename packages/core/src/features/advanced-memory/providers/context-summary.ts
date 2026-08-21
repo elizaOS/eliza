@@ -12,6 +12,10 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed";
 import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
@@ -75,10 +79,11 @@ export const contextSummaryProvider: Provider = {
 			const messageRange = `${currentSummary.messageCount} messages`;
 			const timeRange = new Date(currentSummary.startTime).toLocaleDateString();
 
+			const wellFormedSummary = toWellFormedUnicode(currentSummary.summary);
 			const trimmedSummary =
-				currentSummary.summary.length > MAX_SUMMARY_TEXT_LENGTH
-					? `${currentSummary.summary.slice(0, MAX_SUMMARY_TEXT_LENGTH - 3)}...`
-					: currentSummary.summary;
+				wellFormedSummary.length > MAX_SUMMARY_TEXT_LENGTH
+					? `${truncateWellFormed(wellFormedSummary, MAX_SUMMARY_TEXT_LENGTH - 3)}...`
+					: wellFormedSummary;
 			const limitedTopics =
 				currentSummary.topics?.slice(0, MAX_SUMMARY_TOPICS) ?? [];
 

@@ -26,7 +26,10 @@ app.post("/", async (c) => {
     return c.json(result);
   } catch (error) {
     if (error instanceof AgentPlaidConnectorError) {
-      return c.json({ error: error.message }, error.status as 400);
+      return c.json(
+        { error: error.message, code: error.code },
+        error.status as 400,
+      );
     }
     return failureResponse(c, error);
   }

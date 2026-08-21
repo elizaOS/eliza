@@ -55,6 +55,7 @@ describe("BUILTIN_VIEWS categorization", () => {
     expect(byId.get("chat")).toBe("system");
     expect(byId.get("browser")).toBe("system");
     expect(byId.get("settings")).toBe("system");
+    expect(byId.get("vault")).toBe("system");
     expect(byId.get("character")).toBe("system");
     expect(byId.get("documents")).toBe("system");
     expect(byId.get("transcripts")).toBe("system");
@@ -82,6 +83,15 @@ describe("BUILTIN_VIEWS categorization", () => {
       path: "/browser",
       relatedActions: ["BROWSER"],
       visibleInManager: false,
+    });
+  });
+
+  it("keeps the Vault owner-gated in every discovery surface", () => {
+    expect(BUILTIN_VIEWS.find((view) => view.id === "vault")).toMatchObject({
+      path: "/vault",
+      roleGate: { minRole: "OWNER" },
+      relatedActions: ["SECRETS"],
+      visibleInManager: true,
     });
   });
 

@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { FRAME_FILE } from "@elizaos/plugin-browser";
 import type sharp from "sharp";
 
@@ -140,10 +140,10 @@ function isSharpFactory(value: unknown): value is SharpFactory {
 }
 
 function normalizeText(value: string | null | undefined): string {
-  return (value ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, HEURISTIC_TEXT_LIMIT);
+  return truncateWellFormed(
+    toWellFormedUnicode((value ?? "").replace(/\s+/g, " ").trim()),
+    HEURISTIC_TEXT_LIMIT,
+  );
 }
 
 function keywordMatches(text: string, keywords: readonly string[]): string[] {

@@ -297,6 +297,17 @@ export interface MobileSignalsPermissionStatus {
 
 export interface MobileSignalsScreenTimeStatus {
   supported: boolean;
+  hostEnvironment: "device" | "simulator" | "android" | "web";
+  availability:
+    | "report-available"
+    | "authorization-required"
+    | "host-summary-available"
+    | "usage-access-required"
+    | "extension-missing"
+    | "presenter-missing"
+    | "provisioning-missing"
+    | "simulator-unavailable"
+    | "platform-unavailable";
   requirements: {
     entitlements: {
       familyControls: string;
@@ -316,6 +327,7 @@ export interface MobileSignalsScreenTimeStatus {
   };
   provisioning: {
     satisfied: boolean;
+    status: "verified" | "unknown" | "missing";
     inspected: "code-signature" | "not-inspectable";
     reason: string | null;
   };
@@ -615,6 +627,10 @@ export interface MobileSignalsPluginLike extends NativePlugin {
   openSettings(options?: {
     target?: MobileSignalsSettingsTarget;
   }): Promise<MobileSignalsOpenSettingsResult>;
+  presentScreenTimeReport?: () => Promise<{
+    presented: boolean;
+    reason: string | null;
+  }>;
   startMonitoring(options?: { emitInitial?: boolean }): Promise<{
     enabled: boolean;
     supported: boolean;

@@ -25,6 +25,12 @@ const USER = "33333333-3333-3333-3333-333333333333";
 
 let store: Map<string, UserMcp>;
 let idCounter: number;
+let usageStats: {
+  totalRequests: number;
+  totalCreditsCharged: number;
+  totalX402Usd: number;
+  uniqueOrgs: number;
+};
 
 function nowDate(): Date {
   return new Date("2026-01-01T00:00:00.000Z");
@@ -164,14 +170,12 @@ mock.module("../../db/repositories", () => ({
   },
   mcpUsageRepository: {
     async getStats() {
-      return {
-        totalRequests: 0,
-        totalCreditsCharged: 0,
-        totalX402Usd: 0,
-        uniqueOrgs: 0,
-      };
+      return usageStats;
     },
-    async create() {
+    async create(data: { credits_charged: string }) {
+      usageStats.totalRequests += 1;
+      usageStats.totalCreditsCharged += Number(data.credits_charged);
+      usageStats.uniqueOrgs = 1;
       return { id: "usage-1" };
     },
   },
@@ -233,6 +237,12 @@ function baseCreateParams(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   store = new Map();
   idCounter = 0;
+  usageStats = {
+    totalRequests: 0,
+    totalCreditsCharged: 0,
+    totalX402Usd: 0,
+    uniqueOrgs: 0,
+  };
 });
 
 afterAll(() => {
@@ -267,6 +277,51 @@ describe("userMcpsService.create", () => {
     await userMcpsService.create(baseCreateParams());
     const other = await userMcpsService.create(baseCreateParams({ organizationId: OTHER_ORG }));
     expect(other.organization_id).toBe(OTHER_ORG);
+  });
+
+  test("stores canonical USD prices in the legacy point column without changing value", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ priceUsd: 0.0125 }));
+
+    expect(mcp.credits_per_request).toBe("1.25");
+    expect(userMcpsService.toApiMcp(mcp)).toMatchObject({
+      credit_unit: "USD",
+      price_usd: "0.0125",
+      credits_per_request: "1.25",
+      legacy_credits_per_request: "1.25",
+    });
+  });
+
+  test("keeps matching legacy pricing input but rejects conflicting units", async () => {
+    const compatible = await userMcpsService.create(
+      baseCreateParams({ priceUsd: 0.01, creditsPerRequest: 1 }),
+    );
+    expect(compatible.credits_per_request).toBe("1");
+
+    await expect(
+      userMcpsService.create(
+        baseCreateParams({
+          slug: "conflicting-price",
+          priceUsd: 1,
+          creditsPerRequest: 1,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "MCP_PRICE_UNIT_CONFLICT" });
+  });
+
+  test("rejects a dual-unit price that only agrees before legacy-grid quantization", async () => {
+    // 0.0000151 USD is 0.00151 legacy points in raw float arithmetic but
+    // 0.0015 on the four-digit stored grid, so the service refuses it. The
+    // route boundary must reject the same body (see the cloud-api contract
+    // suite mcps-price-unit-boundary.test.ts) instead of forwarding a 500.
+    await expect(
+      userMcpsService.create(
+        baseCreateParams({
+          slug: "quantization-divergent-price",
+          priceUsd: 0.0000151,
+          creditsPerRequest: 0.00151,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "MCP_PRICE_UNIT_CONFLICT" });
   });
 });
 
@@ -311,6 +366,45 @@ describe("userMcpsService.listByOrganization", () => {
 
     const draftOnly = await userMcpsService.listByOrganization(ORG, { status: "draft" });
     expect(draftOnly.map((m) => m.id)).toEqual([draft.id]);
+  });
+});
+
+describe("userMcpsService.toApiMcp corrupt-row degrade", () => {
+  test("degrades only the corrupt row while the rest of the listing still returns", async () => {
+    const healthy = await userMcpsService.create(
+      baseCreateParams({ slug: "healthy", priceUsd: 0.011 }),
+    );
+    const corrupt = await userMcpsService.create(baseCreateParams({ slug: "corrupt" }));
+    // `'NaN'::numeric` is a valid stored value, so the read boundary must
+    // survive it; the whole owner listing used to throw on this single row.
+    store.set(corrupt.id, { ...corrupt, credits_per_request: "NaN" });
+
+    const listed = await userMcpsService.listByOrganization(ORG);
+    const mapped = listed.map((row) => userMcpsService.toApiMcp(row));
+    const byId = new Map(mapped.map((row) => [row.id, row]));
+
+    expect(mapped).toHaveLength(2);
+    expect(byId.get(healthy.id)).toMatchObject({
+      price_available: true,
+      price_usd: "0.011",
+    });
+    const degraded = byId.get(corrupt.id);
+    expect(degraded?.price_available).toBe(false);
+    // An unavailable price must never render as a healthy free price.
+    expect(degraded?.price_usd).toBeNull();
+    expect(degraded?.price_usd).not.toBe("0");
+  });
+
+  test("degrades a corrupt lifetime earnings total without failing the row", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ slug: "bad-earnings" }));
+    store.set(mcp.id, { ...mcp, total_credits_earned: "NaN" });
+
+    const stored = await userMcpsService.getById(mcp.id);
+    if (!stored) throw new Error("expected the stored MCP row");
+    const api = userMcpsService.toApiMcp(stored);
+
+    expect(api.total_creator_revenue_usd).toBeNull();
+    expect(api.price_available).toBe(true);
   });
 });
 
@@ -360,6 +454,16 @@ describe("userMcpsService.update", () => {
     expect(updated.creator_share_percentage).toBe("90");
     expect(updated.platform_share_percentage).toBe("10");
     expect(updated.is_public).toBe(false);
+  });
+
+  test("updates a canonical USD price through the storage adapter", async () => {
+    const created = await userMcpsService.create(baseCreateParams());
+    const updated = await userMcpsService.update(created.id, ORG, {
+      priceUsd: 0.025,
+    });
+
+    expect(updated.credits_per_request).toBe("2.5");
+    expect(userMcpsService.toApiMcp(updated).price_usd).toBe("0.025");
   });
 
   test("rejects updates from a different organization", async () => {
@@ -464,6 +568,52 @@ describe("userMcpsService.toRegistryFormat", () => {
     });
     // The raw external_endpoint appears NOWHERE in the public entry.
     expect(JSON.stringify(entry)).not.toContain(live.external_endpoint as string);
+    expect(entry.pricing).toMatchObject({
+      creditUnit: "USD",
+      priceUsd: "0.01",
+      pricePerRequest: "1",
+      description: "$0.01 in cloud credit per request",
+    });
+  });
+
+  test("renders a fractional stored point price without a float artifact", async () => {
+    const created = await userMcpsService.create(baseCreateParams({ creditsPerRequest: 1.1 }));
+    const live = await userMcpsService.publish(created.id, ORG);
+
+    // 1.1 / 100 is 0.011000000000000001 in binary floating point.
+    expect(userMcpsService.toApiMcp(live).price_usd).toBe("0.011");
+    const entry = userMcpsService.toRegistryFormat(live, "https://www.elizacloud.ai");
+    expect(entry.pricing.priceUsd).toBe("0.011");
+    expect(entry.pricing.description).toBe("$0.011 in cloud credit per request");
+  });
+});
+
+describe("userMcpsService base-price stats", () => {
+  test("names the base amount honestly when a precharge also included surcharges", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ creatorSharePercentage: 0 }));
+
+    const result = await userMcpsService.recordUsageWithoutDeduction({
+      mcpId: mcp.id,
+      organizationId: OTHER_ORG,
+      toolName: "get_weather",
+      creditsCharged: 100,
+      affiliateFeeCredits: 25,
+      platformFeeCredits: 20,
+      metadata: { totalCreditsCharged: 145 },
+    });
+
+    expect(result).toMatchObject({
+      creditsCharged: 100,
+      basePriceUsd: 1,
+      creditUnit: "USD",
+    });
+    const stats = await userMcpsService.getStats(mcp.id, ORG);
+    expect(stats).toMatchObject({
+      totalCreditsEarned: 100,
+      baseCloudCreditsCharged: 1,
+      creditUnit: "USD",
+    });
+    expect(stats).not.toHaveProperty("totalCloudCreditsCharged");
   });
 });
 

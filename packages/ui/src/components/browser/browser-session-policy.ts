@@ -9,6 +9,8 @@
  * Domain matching fails closed: an unresolvable domain never matches a grant,
  * and a blocked origin wins over every allow mode.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { BrowserBridgeSettings } from "../../api/browser-contracts";
 import type {
   BrowserBridgeSession,
@@ -199,11 +201,12 @@ function redactNestedValue(value: unknown, depth: number): unknown {
   return value;
 }
 
-function renderReceiptValue(value: unknown): string {
+export function renderReceiptValue(value: unknown): string {
   if (typeof value === "string") {
-    return value.length > RECEIPT_VALUE_MAX_LENGTH
-      ? `${value.slice(0, RECEIPT_VALUE_MAX_LENGTH)}…`
-      : value;
+    const wellFormed = toWellFormedUnicode(value);
+    return wellFormed.length > RECEIPT_VALUE_MAX_LENGTH
+      ? `${truncateWellFormed(wellFormed, RECEIPT_VALUE_MAX_LENGTH)}…`
+      : wellFormed;
   }
   if (
     typeof value === "number" ||
@@ -213,9 +216,10 @@ function renderReceiptValue(value: unknown): string {
     return String(value);
   }
   const serialized = JSON.stringify(redactNestedValue(value, 0)) ?? "";
-  return serialized.length > RECEIPT_VALUE_MAX_LENGTH
-    ? `${serialized.slice(0, RECEIPT_VALUE_MAX_LENGTH)}…`
-    : serialized;
+  const wellFormedSerialized = toWellFormedUnicode(serialized);
+  return wellFormedSerialized.length > RECEIPT_VALUE_MAX_LENGTH
+    ? `${truncateWellFormed(wellFormedSerialized, RECEIPT_VALUE_MAX_LENGTH)}…`
+    : wellFormedSerialized;
 }
 
 /**

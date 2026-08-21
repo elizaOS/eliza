@@ -39,6 +39,8 @@ import {
   isTrajectoryRecordingEnabled,
   ModelType,
   type RecordedStage,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
@@ -422,7 +424,7 @@ export function parseJudgeResponse(
   const passed = passedRaw === true && missing.length === 0;
   const summary =
     typeof summaryRaw === "string" && summaryRaw.trim().length > 0
-      ? summaryRaw.trim().slice(0, 280)
+      ? truncateWellFormed(toWellFormedUnicode(summaryRaw.trim()), 280)
       : passed
         ? "All acceptance criteria confirmed by verifier."
         : "Verifier did not confirm every acceptance criterion.";
@@ -473,7 +475,7 @@ export async function verifyGoalCompletion(
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
-      summary: `Verifier model call failed: ${detail.slice(0, 200)}`,
+      summary: `Verifier model call failed: ${truncateWellFormed(toWellFormedUnicode(detail), 200)}`,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
     };

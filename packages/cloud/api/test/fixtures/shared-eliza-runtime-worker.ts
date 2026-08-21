@@ -143,6 +143,7 @@ function createCoordinatorProbe(agent: SharedRuntimeAgent) {
             execution: {
               channel: { type: ChannelType.DM, source: "shared-runtime" },
               agentKey: agent.id,
+              roomKey: agent.id,
               ...(serverAttestedPersonalSharedUser
                 ? { authenticatedPersonalSharedUser: true as const }
                 : {}),
@@ -393,6 +394,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000005",
+            roomKey: "personal:70000000-0000-5000-8000-000000000005",
             todos: {
               scope,
               store: createTodoProbeStore(storedTodos),
@@ -418,6 +420,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000015",
+            roomKey: "personal:70000000-0000-5000-8000-000000000015",
             reminders: {
               delivery: {
                 platform: "discord",
@@ -447,6 +450,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000025",
+            roomKey: "personal:70000000-0000-5000-8000-000000000025",
             authenticatedPersonalSharedUser: true,
             media: {
               canGenerateMedia: ({ mediaType }) => mediaType === "image",
@@ -508,6 +512,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000055",
+            roomKey: "personal:70000000-0000-5000-8000-000000000055",
             authenticatedPersonalSharedUser: true,
           },
         });
@@ -532,6 +537,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000045",
+            roomKey: "personal:70000000-0000-5000-8000-000000000045",
             authenticatedPersonalSharedUser: true,
             media: {
               canGenerateMedia: () => true,
@@ -562,6 +568,7 @@ export default {
           execution: {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+            roomKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
           },
         });
         return Response.json(result);
@@ -587,6 +594,7 @@ export default {
         execution: {
           channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
         },
       });
       return Response.json(result);

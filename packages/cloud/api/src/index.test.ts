@@ -994,6 +994,7 @@ describe("cloud-api worker entrypoint", () => {
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
       personalSharedTelegramEdge: { enabled: false },
+      schemaCompatibility: { usageQuotasTombstone: true },
     });
   });
 
@@ -1204,7 +1205,7 @@ describe("cloud-api worker entrypoint", () => {
     );
     expect(
       config.env?.staging?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
-    ).toBe("true");
+    ).toBe("false");
     expect(
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");

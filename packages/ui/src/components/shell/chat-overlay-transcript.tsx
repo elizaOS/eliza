@@ -67,6 +67,7 @@ function OverlayAssistantTurnBody({
       className="grid min-h-[1.4375rem] w-full min-w-0"
       data-testid="overlay-assistant-turn-body"
       data-phase={phase}
+      data-has-message-text={message.text.trim() ? "true" : "false"}
     >
       {pending ? (
         <div className="col-start-1 row-start-1 flex min-h-[1.4375rem] items-center">
@@ -193,6 +194,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     text: m.content,
     ...(Number.isFinite(m.createdAt) ? { timestamp: m.createdAt } : {}),
     ...(m.source ? { source: m.source } : {}),
+    ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),

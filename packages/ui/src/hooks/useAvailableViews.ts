@@ -432,12 +432,12 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   experience: "GraduationCap",
   "character-skills": "Sparkles",
   memories: "BrainCircuit",
-  "my-apps": "Boxes",
   rolodex: "UsersRound",
   runtime: "Terminal",
   database: "Database",
   desktop: "Monitor",
   settings: "Settings",
+  vault: "KeyRound",
   logs: "ScrollText",
   background: "ImageIcon",
 };
@@ -446,6 +446,7 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
   Object.fromEntries(
     [
       "settings",
+      "vault",
       "phone",
       "messages",
       "contacts",

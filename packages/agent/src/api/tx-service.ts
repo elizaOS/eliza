@@ -6,9 +6,33 @@
  * Used by the registry and drop services for on-chain operations.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import * as ethers from "ethers";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+
+/**
+ * Renders a redacted preview of a rejected private key for the constructor's
+ * error message. The head and tail keep raw characters rather than a hash, so
+ * both cuts must land on whole code points — a malformed key is exactly the
+ * input most likely to carry a stray surrogate.
+ */
+export function formatPrivateKeyPreview(privateKey: string): string {
+  const wellFormed = toWellFormedUnicode(privateKey);
+  if (wellFormed.length <= 10) return "(empty or too short)";
+  const head = truncateWellFormed(wellFormed, 6);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
+}
 
 export interface JsonRpcEndpointProbeResult {
   ok: boolean;
@@ -115,10 +139,7 @@ export class TxService {
   constructor(rpcUrl: string, privateKey: string) {
     // Validate private key before attempting to create wallet
     if (!isValidPrivateKey(privateKey)) {
-      const preview =
-        privateKey.length > 10
-          ? `${privateKey.slice(0, 6)}...${privateKey.slice(-4)}`
-          : "(empty or too short)";
+      const preview = formatPrivateKeyPreview(privateKey);
       throw new Error(
         `Invalid EVM_PRIVATE_KEY: expected 64-character hex string, got ${preview}. ` +
           `Please set a valid private key in your environment or .env file.`,

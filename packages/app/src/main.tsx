@@ -41,7 +41,6 @@ import "./renderer-build-stamp";
 
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 // #18056: desktop shell is loaded only via dynamic import / React.lazy so the
 // cold anonymous /login entry does not static-import app-core/ui browser graphs.
@@ -96,6 +95,7 @@ import {
   dispatchAppEvent,
   dispatchConnectRequest,
   dispatchNavigateViewRequest,
+  dispatchOpenNotificationCenter,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -460,7 +460,6 @@ let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileAgentTunnelListener: PluginListenerHandle | null = null;
 let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
-let keyboardListenersRegistered = false;
 let iosOnboardingSmokeStarted = false;
 let iosCloudOnboardingSmokeStarted = false;
 let iosOnboardingRelaunchSmokeStarted = false;
@@ -1847,7 +1846,7 @@ async function initializePlatform(): Promise<void> {
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();
-    await initializeKeyboard();
+    await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
@@ -1927,41 +1926,9 @@ async function initializeStatusBar(): Promise<void> {
   }
 }
 
-async function initializeKeyboard(): Promise<void> {
-  if (keyboardListenersRegistered) return;
-
-  // A Keyboard-bridge throw (pod/plugin skew) must not reject and strand the
-  // rest of bootstrap (deep links, hardware back, pause/resume, network) —
-  // guard it exactly like the sibling initializeStatusBar.
-  try {
-    if (isIOS) {
-      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-      await Keyboard.setScroll({ isDisabled: true });
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
-    }
-
-    keyboardListenersRegistered = true;
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      document.body.style.setProperty(
-        "--keyboard-height",
-        `${info.keyboardHeight}px`,
-      );
-      document.body.classList.add("keyboard-open");
-    });
-
-    Keyboard.addListener("keyboardWillHide", () => {
-      document.body.style.setProperty("--keyboard-height", "0px");
-      document.body.classList.remove("keyboard-open");
-    });
-  } catch (error) {
-    // error-policy:J4 optional native plugin — absence is a designed degrade
-    logNativePluginUnavailable("Keyboard", error);
-  }
-}
-
 /**
- * Live cross-platform lifecycle helper. `main.tsx` keeps its own
- * status-bar / keyboard wiring, but the app-lifecycle path (foreground/
+ * Live cross-platform lifecycle helper. `main.tsx` keeps its own status-bar
+ * wiring, but keyboard setup and the app-lifecycle path (foreground/
  * background events + the `visibilitychange` fallback, the hardware-back
  * contract — `dispatchBackIntent()` first, then `history.back()` /
  * `minimizeApp()` when unhandled (#9148) — and the deep-link bootstrap) and
@@ -2275,6 +2242,12 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       break;
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
+      break;
+    case "notifications":
+      // AppDelegate delivers the fallback notification URL through the native
+      // appUrlOpen lifecycle. The Home notification center is event-driven, so
+      // a hash write cannot open it on the Capacitor composition root.
+      dispatchOpenNotificationCenter();
       break;
     case "aec-loop":
       // On-device AEC acoustic-loop evidence harness (#11373): the hash route

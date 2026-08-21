@@ -5,10 +5,10 @@
  * while terminal `deleted` status is required to release organization quota.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import type { containersRepository } from "../../db/repositories/containers";
-import { containers } from "../../db/schemas/containers";
+import { containers, TERMINAL_CONTAINER_STATUS } from "../../db/schemas/containers";
 import {
   type AppContainerNodeSlotClaim,
   type AppContainerReadDatabase,
@@ -188,7 +188,27 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
     // Two writes: status (id-scoped) + metadata/url/last_deployed_at (org-scoped
     // update, which is the only metadata-writing surface the repo exposes).
-    await this.deps.repository.updateStatus(containerId, "running");
+    //
+    // The read above and this write are separate awaited round-trips with no
+    // enclosing transaction, so a CONTAINER_DELETE claimed by an overlapping
+    // worker can drive the row to the hard-terminal `deleted` in between.
+    // `updateStatus` compare-and-sets on that status and returns null when it
+    // loses; proceeding would stamp `last_deployed_at`/placement metadata onto a
+    // container whose teardown already completed. Failing here routes the
+    // provision job through `settleFailedProvision`, which removes the container
+    // we just started and releases its node slot — the correct settlement for a
+    // deploy that was overtaken by its own delete.
+    const running = await this.deps.repository.updateStatus(containerId, "running");
+    if (!running) {
+      throw this.deps.errorFactory(
+        `App container ${containerId} reached a terminal state before it became running`,
+        {
+          code: "APP_CONTAINER_TERMINALLY_DELETED",
+          context: { containerId, organizationId: row.organization_id, transition: "running" },
+          severity: "fatal",
+        },
+      );
+    }
     await this.deps.repository.update(containerId, row.organization_id, {
       metadata: nextMetadata,
       last_deployed_at: new Date(),
@@ -216,10 +236,19 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     await this.deps.repository.updateStatus(containerId, "failed", error);
   }
 
+  /**
+   * `cleanup_required` deliberately RETAINS node capacity until a retry proves
+   * Docker absence, and the orphan reconciler treats such a row as live. Writing
+   * it over a `deleted` row would therefore pin a node slot forever for a
+   * container whose teardown already completed, so this write carries the same
+   * hard-terminal compare-and-set as `updateStatus`. Losing the CAS is not an
+   * error: the delete path already released the slot and reached the state this
+   * call was trying to protect.
+   */
   async markCleanupRequired(containerId: string, error: string): Promise<void> {
     await this.deps.writeDatabase
       .update(containers)
       .set({ status: "cleanup_required", error_message: error, updated_at: new Date() })
-      .where(eq(containers.id, containerId));
+      .where(and(eq(containers.id, containerId), ne(containers.status, TERMINAL_CONTAINER_STATUS)));
   }
 }

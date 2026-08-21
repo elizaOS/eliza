@@ -26,6 +26,8 @@ import {
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -328,7 +330,8 @@ function parseAgentPrefix(
 
 function labelFrom(task: string, index: number): string {
   const cleaned = task.replace(/\s+/g, " ").trim();
-  return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed ? truncateWellFormed(wellFormed, 80) : `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -1888,7 +1891,7 @@ async function runSpawnAgent(
     const labelParam = pickString(params, content, "label");
     const label = labelParam
       ? userReferenceLogView(labelParam)
-      : task.slice(0, 80);
+      : truncateWellFormed(toWellFormedUnicode(task), 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -4139,7 +4142,11 @@ async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
+        const issueBody = truncateWellFormed(
+          toWellFormedUnicode(issue.body),
+          ISSUE_BODY_MAX_CHARS,
+        );
+        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,
           text: issueText,
@@ -4300,7 +4307,10 @@ async function runManageIssues(
   // Unwrapped: bulk-issue extraction and action/repo inference read this as
   // the user's request; a raw envelope read would mint GitHub issues out of
   // security-notice lines (and the slice could truncate the real payload).
-  const text = requestText(message).slice(0, ISSUE_BODY_MAX_CHARS);
+  const text = truncateWellFormed(
+    toWellFormedUnicode(requestText(message)),
+    ISSUE_BODY_MAX_CHARS,
+  );
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction

@@ -27,17 +27,21 @@ import {
   generateKeyPairSync,
 } from "node:crypto";
 import {
+  closeSync,
+  constants,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  readSync,
   realpathSync,
   rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -126,6 +130,109 @@ function assertRegularFile(filePath, label) {
   if (!stats.isFile()) {
     fail(`${label} must be a regular non-symlink file`);
   }
+}
+
+function openStableRegularFile(filePath, label) {
+  let fd;
+  try {
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      fail(`missing ${label}`);
+    }
+    if (error && typeof error === "object" && error.code === "ELOOP") {
+      fail(`${label} must be a regular non-symlink file`);
+    }
+    throw error;
+  }
+  try {
+    const stats = fstatSync(fd);
+    if (!stats.isFile()) {
+      fail(`${label} must be a regular non-symlink file`);
+    }
+    return { bytes: readFileSync(fd), fd, filePath, label, stats };
+  } catch (error) {
+    try {
+      closeSync(fd);
+    } catch {
+      // error-policy:J6 best-effort teardown: preserve the open/read failure.
+    }
+    throw error;
+  }
+}
+
+function assertStableFile(handle) {
+  let namedStats;
+  try {
+    namedStats = lstatSync(handle.filePath);
+  } catch (error) {
+    throw new ArtifactContractError(
+      `${handle.label} changed during verification`,
+      { cause: error },
+    );
+  }
+  const currentStats = fstatSync(handle.fd);
+  if (
+    !namedStats.isFile() ||
+    namedStats.dev !== handle.stats.dev ||
+    namedStats.ino !== handle.stats.ino ||
+    currentStats.size !== handle.stats.size ||
+    currentStats.mtimeMs !== handle.stats.mtimeMs
+  ) {
+    fail(`${handle.label} changed during verification`);
+  }
+  if (currentStats.ctimeMs === handle.stats.ctimeMs) return;
+  // Only the inode change time moved: identity, size and modification time all
+  // still match. That is either metadata-only churn that never touched the
+  // verified bytes (a release mirror hard-linking the tree, a chmod sweep, an
+  // xattr-setting scanner) or a same-size rewrite whose mtime was forged. Decide
+  // it on content rather than on the timestamp, by re-reading through the same
+  // descriptor the bytes were verified from. Comparing bytes is strictly
+  // stronger evidence than comparing ctime, so nothing a ctime check rejected
+  // on real tampering is accepted here.
+  if (!descriptorStillHoldsVerifiedBytes(handle)) {
+    fail(`${handle.label} changed during verification`);
+  }
+}
+
+/**
+ * Re-reads `handle.fd` from offset 0 and reports whether it still yields the
+ * exact bytes that were digested and signature-verified. Positional `readSync`
+ * is required because the descriptor is already at EOF from the initial read.
+ */
+function descriptorStillHoldsVerifiedBytes(handle) {
+  const expected = handle.bytes;
+  const chunk = Buffer.allocUnsafe(Math.min(expected.length, 1 << 20) || 1);
+  let position = 0;
+  while (position < expected.length) {
+    const wanted = Math.min(chunk.length, expected.length - position);
+    const read = readSync(handle.fd, chunk, 0, wanted, position);
+    if (read <= 0) return false;
+    if (
+      !chunk
+        .subarray(0, read)
+        .equals(expected.subarray(position, position + read))
+    ) {
+      return false;
+    }
+    position += read;
+  }
+  // A file that grew past the verified bytes would already have failed the
+  // size comparison above; re-check the descriptor is exhausted regardless.
+  return readSync(handle.fd, chunk, 0, 1, position) === 0;
+}
+
+/**
+ * Argument shape for a `tar` inspection of `archive`, which is either a
+ * filesystem path or the exact archive bytes. Bytes are streamed to `tar` on
+ * stdin so that inspecting them needs no temporary copy: the release path must
+ * not acquire a free-space requirement equal to the whole archive, and a full
+ * `$TMPDIR` must not surface as a verification failure on a good artifact.
+ */
+function archiveSource(archive) {
+  return Buffer.isBuffer(archive)
+    ? { input: archive, target: "-" }
+    : { input: undefined, target: archive };
 }
 
 function isWithinDirectory(rootDir, candidatePath) {
@@ -255,7 +362,7 @@ export function generateSigningKeyPair() {
 }
 
 /** Creates a signing keypair without rotating or weakening an existing key. */
-export function writeSigningKeyPair(outDir) {
+export function writeSigningKeyPair(outDir, testHooks = {}) {
   mkdirSync(outDir, { recursive: true });
   const privateKeyPath = path.join(outDir, "desktop-signing.key.pem");
   const publicKeyPath = path.join(outDir, "desktop-signing.pub.pem");
@@ -263,24 +370,15 @@ export function writeSigningKeyPair(outDir) {
     fail("refusing to overwrite an existing desktop signing keypair");
   }
   const { privateKeyPem, publicKeyPem } = generateSigningKeyPair();
-  let privateKeyCreated = false;
-  try {
-    writeFileSync(privateKeyPath, privateKeyPem, {
-      flag: "wx",
-      mode: 0o600,
-    });
-    privateKeyCreated = true;
-    writeFileSync(publicKeyPath, publicKeyPem, { flag: "wx", mode: 0o644 });
-  } catch (error) {
-    if (privateKeyCreated) {
-      try {
-        unlinkSync(privateKeyPath);
-      } catch {
-        // error-policy:J6 best-effort teardown: preserve the original write failure.
-      }
-    }
-    throw error;
-  }
+  writeFileSync(privateKeyPath, privateKeyPem, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  // If public-key publication fails, preserve the partial output rather than
+  // risk deleting a private-key pathname that another writer replaced. The
+  // next invocation fails closed until an operator inspects the pair.
+  testHooks.beforePublicKeyWrite?.({ privateKeyPath, publicKeyPath });
+  writeFileSync(publicKeyPath, publicKeyPem, { flag: "wx", mode: 0o644 });
   return { privateKeyPath, publicKeyPath };
 }
 
@@ -395,10 +493,15 @@ function runTar(args) {
   execFileSync("tar", args, { stdio: ["ignore", "pipe", "inherit"] });
 }
 
-/** Lists archive member paths, normalized without a leading "./". */
-export function listArchiveMembers(archivePath) {
-  const out = execFileSync("tar", ["--zstd", "-tf", archivePath], {
+/**
+ * Lists archive member paths, normalized without a leading "./". `archive` is
+ * either a filesystem path or the exact archive bytes.
+ */
+export function listArchiveMembers(archive) {
+  const { input, target } = archiveSource(archive);
+  const out = execFileSync("tar", ["--zstd", "-tf", target], {
     encoding: "utf8",
+    input,
   });
   return out
     .split("\n")
@@ -406,8 +509,8 @@ export function listArchiveMembers(archivePath) {
     .filter((line) => line.length > 0 && line !== ".");
 }
 
-function assertSafeArchiveMembers(archivePath) {
-  for (const member of listArchiveMembers(archivePath)) {
+function assertSafeArchiveMembers(archive) {
+  for (const member of listArchiveMembers(archive)) {
     if (
       path.posix.isAbsolute(member) ||
       member.split("/").some((segment) => segment === "..") ||
@@ -416,9 +519,11 @@ function assertSafeArchiveMembers(archivePath) {
       fail(`archive contains an unsafe member path: ${JSON.stringify(member)}`);
     }
   }
-  const verbose = execFileSync("tar", ["--zstd", "-tvf", archivePath], {
+  const { input, target } = archiveSource(archive);
+  const verbose = execFileSync("tar", ["--zstd", "-tvf", target], {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C" },
+    input,
   });
   for (const line of verbose.split("\n").filter(Boolean)) {
     const type = line[0];
@@ -441,11 +546,12 @@ function assertSafeArchiveMembers(archivePath) {
   }
 }
 
-function assertArchivedEntrypoint(archivePath, relativePath, key) {
+function assertArchivedEntrypoint(archive, relativePath, key) {
+  const { input, target } = archiveSource(archive);
   const listing = execFileSync(
     "tar",
-    ["--zstd", "-tvf", archivePath, `./${relativePath}`],
-    { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+    ["--zstd", "-tvf", target, `./${relativePath}`],
+    { encoding: "utf8", env: { ...process.env, LC_ALL: "C" }, input },
   ).trim();
   const mode = listing.split(/\s+/, 1)[0] ?? "";
   if (!/^-[rwx-]{9}$/.test(mode)) {
@@ -470,6 +576,7 @@ export function produceArtifact({
   architecture,
   sourceCommit,
   artifactBaseName = "eliza-desktop-gtk",
+  testHooks = {},
   entrypoints = {
     desktop: "bin/eliza-desktop",
     agent: "bin/eliza-agent",
@@ -521,12 +628,14 @@ export function produceArtifact({
   const stagingDir = mkdtempSync(
     path.join(canonicalOutDir, ".linux-gtk-artifact-"),
   );
-  const publishedEntries = [];
+  // Publication is manifest-last. On failure, leave any partial hard links
+  // for operator inspection instead of racing pathname replacement during
+  // rollback. A partial set cannot verify and blocks automatic overwrite.
   try {
     const stagedArchivePath = path.join(stagingDir, archiveName);
     runTar(["--zstd", "-cf", stagedArchivePath, "-C", canonicalStageDir, "."]);
-    assertSafeArchiveMembers(stagedArchivePath);
     const archiveBytes = readFileSync(stagedArchivePath);
+    assertSafeArchiveMembers(archiveBytes);
     const archiveDigest = createHash("sha256")
       .update(archiveBytes)
       .digest("hex");
@@ -567,15 +676,10 @@ export function produceArtifact({
       { flag: "wx" },
     );
 
-    for (const outputName of outputNames) {
+    for (const [index, outputName] of outputNames.entries()) {
       const publishedPath = path.join(canonicalOutDir, outputName);
       linkSync(path.join(stagingDir, outputName), publishedPath);
-      const publishedStats = lstatSync(publishedPath);
-      publishedEntries.push({
-        dev: publishedStats.dev,
-        ino: publishedStats.ino,
-        path: publishedPath,
-      });
+      testHooks.afterPublishEntry?.({ index, outputName, publishedPath });
     }
     return {
       archivePath: path.join(canonicalOutDir, archiveName),
@@ -586,18 +690,6 @@ export function produceArtifact({
         MANIFEST_SIGNATURE_NAME,
       ),
     };
-  } catch (error) {
-    for (const published of publishedEntries.reverse()) {
-      try {
-        const current = lstatSync(published.path);
-        if (current.dev === published.dev && current.ino === published.ino) {
-          unlinkSync(published.path);
-        }
-      } catch {
-        // error-policy:J6 best-effort teardown: preserve the publication failure.
-      }
-    }
-    throw error;
   } finally {
     try {
       rmSync(stagingDir, { force: true, recursive: true });
@@ -613,57 +705,75 @@ export function produceArtifact({
  * archive bytes, and presence of every declared entrypoint in the archive.
  * Throws ArtifactContractError on the first failure; returns the manifest.
  */
-export function verifyArtifactDir(outDir, publicKeyPem) {
+export function verifyArtifactDir(outDir, publicKeyPem, testHooks = {}) {
   readVendoredSchema();
+  const handles = [];
   const manifestPath = path.join(outDir, MANIFEST_NAME);
-  assertRegularFile(manifestPath, MANIFEST_NAME);
-  const manifestBytes = readFileSync(manifestPath);
-  let manifest;
   try {
-    manifest = JSON.parse(manifestBytes.toString("utf8"));
-  } catch (error) {
-    // error-policy:J2 context-adding rethrow: name the file that failed to parse.
-    throw new ArtifactContractError(
-      `${MANIFEST_NAME} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-  assertValidManifest(manifest);
-
-  const manifestSigPath = path.join(outDir, MANIFEST_SIGNATURE_NAME);
-  assertRegularFile(manifestSigPath, MANIFEST_SIGNATURE_NAME);
-  if (
-    !verifyBytes(publicKeyPem, manifestBytes, readFileSync(manifestSigPath))
-  ) {
-    fail("manifest signature does not verify over the exact manifest bytes");
-  }
-
-  const archivePath = path.join(outDir, manifest.archive);
-  assertRegularFile(archivePath, `archive ${manifest.archive}`);
-  const archiveBytes = readFileSync(archivePath);
-  const digest = createHash("sha256").update(archiveBytes).digest("hex");
-  if (digest !== manifest.sha256) {
-    fail(
-      `archive digest mismatch: manifest says ${manifest.sha256}, archive is ${digest}`,
-    );
-  }
-  const archiveSigPath = path.join(outDir, manifest.signature);
-  assertRegularFile(archiveSigPath, `archive signature ${manifest.signature}`);
-  if (!verifyBytes(publicKeyPem, archiveBytes, readFileSync(archiveSigPath))) {
-    fail("archive signature does not verify over the exact archive bytes");
-  }
-
-  const members = new Set(listArchiveMembers(archivePath));
-  assertSafeArchiveMembers(archivePath);
-  for (const key of REQUIRED_ENTRYPOINTS) {
-    if (!members.has(manifest.entrypoints[key])) {
-      fail(
-        `entrypoint ${key} (${manifest.entrypoints[key]}) is not present in the archive`,
+    const manifestFile = openStableRegularFile(manifestPath, MANIFEST_NAME);
+    handles.push(manifestFile);
+    const manifestBytes = manifestFile.bytes;
+    let manifest;
+    try {
+      manifest = JSON.parse(manifestBytes.toString("utf8"));
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow: name the file that failed to parse.
+      throw new ArtifactContractError(
+        `${MANIFEST_NAME} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
-    assertArchivedEntrypoint(archivePath, manifest.entrypoints[key], key);
+    assertValidManifest(manifest);
+
+    const manifestSigPath = path.join(outDir, MANIFEST_SIGNATURE_NAME);
+    const manifestSigFile = openStableRegularFile(
+      manifestSigPath,
+      MANIFEST_SIGNATURE_NAME,
+    );
+    handles.push(manifestSigFile);
+    if (!verifyBytes(publicKeyPem, manifestBytes, manifestSigFile.bytes)) {
+      fail("manifest signature does not verify over the exact manifest bytes");
+    }
+
+    const archivePath = path.join(outDir, manifest.archive);
+    const archiveFile = openStableRegularFile(
+      archivePath,
+      `archive ${manifest.archive}`,
+    );
+    handles.push(archiveFile);
+    const archiveBytes = archiveFile.bytes;
+    const digest = createHash("sha256").update(archiveBytes).digest("hex");
+    if (digest !== manifest.sha256) {
+      fail(
+        `archive digest mismatch: manifest says ${manifest.sha256}, archive is ${digest}`,
+      );
+    }
+    const archiveSigPath = path.join(outDir, manifest.signature);
+    const archiveSigFile = openStableRegularFile(
+      archiveSigPath,
+      `archive signature ${manifest.signature}`,
+    );
+    handles.push(archiveSigFile);
+    if (!verifyBytes(publicKeyPem, archiveBytes, archiveSigFile.bytes)) {
+      fail("archive signature does not verify over the exact archive bytes");
+    }
+
+    const members = new Set(listArchiveMembers(archiveBytes));
+    assertSafeArchiveMembers(archiveBytes);
+    for (const key of REQUIRED_ENTRYPOINTS) {
+      if (!members.has(manifest.entrypoints[key])) {
+        fail(
+          `entrypoint ${key} (${manifest.entrypoints[key]}) is not present in the archive`,
+        );
+      }
+      assertArchivedEntrypoint(archiveBytes, manifest.entrypoints[key], key);
+    }
+    testHooks.beforeFinalStableFileCheck?.({ archivePath, manifestPath });
+    for (const handle of handles) assertStableFile(handle);
+    return manifest;
+  } finally {
+    for (const handle of handles) closeSync(handle.fd);
   }
-  return manifest;
 }
 
 function parseArgs(argv) {

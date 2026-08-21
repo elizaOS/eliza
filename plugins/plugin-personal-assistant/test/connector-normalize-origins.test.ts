@@ -1,6 +1,7 @@
 // Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
 import { describe, expect, it } from "vitest";
 import {
+  normalizeBlockedOriginList,
   normalizeBrowserPermissionGrant,
   normalizeBrowserPermissionGrantList,
   normalizeOrigin,
@@ -71,5 +72,17 @@ describe("list normalizers", () => {
       normalizeOriginList(["https://a.com/1", "https://a.com/2"], "o"),
     ).toEqual(["https://a.com"]);
     expect(() => normalizeOriginList({}, "o")).toThrow();
+  });
+
+  it("normalizes block entries to host-scoped policy values", () => {
+    expect(
+      normalizeBlockedOriginList(
+        ["https://Example.com/path", "example.com", "*.sub.example.com"],
+        "blockedOrigins",
+      ),
+    ).toEqual(["example.com", "sub.example.com"]);
+    expect(() =>
+      normalizeBlockedOriginList(["file:///tmp/secret"], "blockedOrigins"),
+    ).toThrow();
   });
 });

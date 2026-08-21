@@ -14,9 +14,9 @@
  *
  * The page id is `cloud-apps` (the local installed-`AppsView` owns `apps`), the
  * route is `/cloud-apps`, and the label is "Cloud Apps". The page is NOT a
- * launcher tile: My Apps is the one apps destination in the launcher
+ * launcher tile: Projects is the one apps destination in the launcher
  * (`LAUNCHER_HIDDEN_IDS` in `@elizaos/ui`'s launcher-curation), and this route
- * is reached from the My Apps view's Eliza Cloud row and from deep links
+ * is reached from the Projects view's Apps-segment Eliza Cloud row and deep links
  * (`eliza://apps/deploy` → `/cloud-apps`).
  */
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";

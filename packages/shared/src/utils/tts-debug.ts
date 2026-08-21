@@ -26,7 +26,7 @@
  *   `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
  *   the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {
@@ -66,8 +66,9 @@ export function ttsDebugTextPreview(
   maxChars: number = DEFAULT_PREVIEW_MAX,
 ): string {
   const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
-  if (singleLine.length <= maxChars) return singleLine;
-  return `${singleLine.slice(0, maxChars)}…`;
+  const wellFormed = toWellFormedUnicode(singleLine);
+  if (wellFormed.length <= maxChars) return wellFormed;
+  return `${truncateWellFormed(wellFormed, maxChars)}…`;
 }
 
 // The logger drops entries below its LOG_LEVEL threshold, so an opted-in

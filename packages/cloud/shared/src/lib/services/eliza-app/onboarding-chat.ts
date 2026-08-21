@@ -40,9 +40,10 @@ export function onboardingFetch(
   init?: RequestInit,
   timeoutMs: number = ONBOARDING_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return stub.fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

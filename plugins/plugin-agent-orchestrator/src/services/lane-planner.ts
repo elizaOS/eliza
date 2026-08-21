@@ -6,7 +6,13 @@
  * failure.
  */
 
-import { ElizaError, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { staticAcceptanceCriteria } from "./acceptance-criteria.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { assertSafeGitRef } from "./repo-input.js";
@@ -414,7 +420,7 @@ function buildLane(
       : staticAcceptanceCriteria(laneTask);
   return {
     id: `lane-${index + 1}`,
-    title: (input.title ?? laneTask).slice(0, 80),
+    title: truncateWellFormed(toWellFormedUnicode(input.title ?? laneTask), 80),
     branchName,
     dependencies: [...dependencies],
     scopePaths: scopes,
@@ -523,7 +529,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
         ...lane,
         title:
           typeof refined.title === "string" && refined.title.trim()
-            ? refined.title.trim().slice(0, 80)
+            ? truncateWellFormed(toWellFormedUnicode(refined.title.trim()), 80)
             : lane.title,
         initialPrompt:
           typeof refined.initialPrompt === "string" &&

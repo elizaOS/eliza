@@ -10,6 +10,7 @@
  * `connectCloudCapabilitySandbox` is the end-to-end entry point.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -302,7 +303,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
         );
         const text = await response.text();
         if (!response.ok) {
-          lastError = `HTTP ${response.status}: ${text.slice(0, 500)}`;
+          lastError = `HTTP ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`;
         } else {
           const availability = JSON.parse(text) as {
             available?: unknown;
@@ -314,7 +315,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
           ) {
             return;
           }
-          lastError = `unexpected availability payload: ${text.slice(0, 500)}`;
+          lastError = `unexpected availability payload: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`;
         }
       } finally {
         clearTimeout(timeout);

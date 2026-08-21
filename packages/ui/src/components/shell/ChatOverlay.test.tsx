@@ -1050,6 +1050,16 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
+  it("collapses an open sheet when a control-heavy view requests focus", () => {
+    render(<ChatOverlay controller={makeController()} initialMode="half" />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent(window, new CustomEvent("eliza:chat:close"));
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
   it("opens a loading conversation on the first grabber tap", () => {
     render(
       <ChatOverlay
@@ -4619,6 +4629,59 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  it("exposes interrupted and widget-only rows without treating either as settled text", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "a-interrupted",
+              role: "assistant",
+              content: "Partial durable answer",
+              interrupted: true,
+              createdAt: 1,
+            },
+            {
+              id: "a-attachment-only",
+              role: "assistant",
+              content: "",
+              attachments: [
+                {
+                  id: "generated-image",
+                  url: "data:image/png;base64,iVBORw0KGgo=",
+                  contentType: "image",
+                  title: "Generated image",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const interruptedRow = screen
+      .getByText("Partial durable answer")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    expect(interruptedRow?.dataset.interrupted).toBe("true");
+    expect(
+      interruptedRow?.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      )?.dataset.hasMessageText,
+    ).toBe("true");
+
+    const attachmentRow = screen
+      .getByTestId("message-attachments")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    const attachmentBody = attachmentRow?.querySelector<HTMLElement>(
+      '[data-testid="overlay-assistant-turn-body"]',
+    );
+    expect(attachmentBody?.dataset.phase).toBe("reply");
+    expect(attachmentBody?.dataset.hasMessageText).toBe("false");
+  });
+
   it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {
     render(
       <ChatOverlay
@@ -5301,21 +5364,25 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(controller.send).toHaveBeenCalledWith("what's the weather?");
   });
 
-  it("does NOT show Retry on an unrecoverable failure (no_provider / insufficient_credits)", () => {
+  it("marks a non-retryable normal assistant failure without showing Retry", () => {
     const controller = makeController({
       messages: [
         { id: "u1", role: "user", content: "hi", createdAt: 1 },
         {
           id: "a1",
           role: "assistant",
-          content: "",
+          content: "The required capability is unavailable.",
           createdAt: 2,
-          failureKind: "insufficient_credits",
+          failureKind: "missing_capability",
         },
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} />);
     fireEvent.focus(screen.getByLabelText("message"));
+    const failedTurn = screen
+      .getByText("The required capability is unavailable.")
+      .closest('[data-testid="thread-line"]');
+    expect(failedTurn?.getAttribute("data-failure")).toBe("missing_capability");
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 

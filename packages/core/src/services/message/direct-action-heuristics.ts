@@ -1161,6 +1161,12 @@ export function inferDirectCurrentRequestCandidateInference(
 			return { names: [settingsAction], kind: "settings-write" };
 		}
 	}
+	// Ordered before the view-shell fallback: a compound or lifecycle cloud-app
+	// turn must not be narrowed to VIEWS (+ the cloud read) while the tools its
+	// other clauses asked for are dropped by candidate narrowing (#17363).
+	if (shouldDeferCloudAppTurnToPlanner(messageText)) {
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
 		// A request that names the application surface itself ("show me the
@@ -1585,13 +1591,140 @@ const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
 	"HOSTED",
 ]);
 
+// Lifecycle/mutation vocabulary that disqualifies the cloud-apps INVENTORY
+// candidate: launch/open, delete, create/deploy, settings, and money/domain
+// operations belong to their own gated actions and must go through the full
+// planner, never a deterministic read hint (#17363). Singular-normalized.
+const CLOUD_APP_LIFECYCLE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"LAUNCH",
+	"OPEN",
+	"START",
+	"RUN",
+	"RESTART",
+	"STOP",
+	"CLOSE",
+	"QUIT",
+	"KILL",
+	"DELETE",
+	"REMOVE",
+	"UNINSTALL",
+	"DESTROY",
+	"CREATE",
+	"BUILD",
+	"MAKE",
+	"DEPLOY",
+	"REDEPLOY",
+	"PUBLISH",
+	"UPDATE",
+	"EDIT",
+	"RENAME",
+	"CONFIGURE",
+	"CONFIG",
+	"SETTING",
+	"ROLLBACK",
+	"WITHDRAW",
+	"REGENERATE",
+	"ROTATE",
+	"MONETIZE",
+	"MONETIZATION",
+	"DOMAIN",
+	"BACKUP",
+]);
+
+// Structural clause separators. The compound test is closed over PUNCTUATION
+// AND CONJUNCTIONS rather than over the verbs that may follow one, because a
+// downstream verb list can never be complete: "search", "archive", "compare"
+// and "export" are all ordinary second clauses that an enumerated verb denylist
+// silently admitted, letting the deterministic hint narrow a genuine multi-tool
+// turn (#17363). Splitting here means an unrecognized continuation counts as a
+// second clause and the full planner keeps the turn.
+const CLOUD_APP_CLAUSE_SEPARATOR_PATTERN =
+	/\s*(?:[;:,!?&]+|\.(?:\s|$)|\bafter\s+that\b|\bas\s+well\s+as\b|\band\b|\balso\b|\bplus\b|\bthen\b|\bnext\b|\bafterwards?\b|\bmeanwhile\b|\bwhile\b)\s*/giu;
+
+// The only continuations a single-intent inventory read may carry: another bare
+// hosted-inventory noun phrase ("... and my deployed sites") or a politeness
+// tail. This is an allowlist, so anything it does not recognize — a pronoun, a
+// verb, a new object — is treated as a second clause.
+const CLOUD_APP_INVENTORY_CONTINUATION_PATTERN =
+	/^(?:(?:please|pls|thanks|thank\s+you|thx)|(?:(?:the|my|our|their|any|all|of)\s+)*(?:(?:eliza\s+)?(?:cloud|deployed|hosted|live|published|web)\s+)*(?:app|application|site|website|project|deployment|page)s?)$/iu;
+
+/**
+ * True when the message carries a structural second clause, so the turn may be
+ * multi-tool and must stay with the full planner.
+ */
+function isCompoundCloudAppTurn(messageText: string): boolean {
+	const trimmed = messageText
+		.trim()
+		.replace(/[.!?]+$/u, "")
+		.trim();
+	const segments = trimmed
+		.split(CLOUD_APP_CLAUSE_SEPARATOR_PATTERN)
+		.map((segment) => segment.trim())
+		.filter((segment) => segment.length > 0);
+	if (segments.length <= 1) return false;
+	return segments
+		.slice(1)
+		.some((segment) => !CLOUD_APP_INVENTORY_CONTINUATION_PATTERN.test(segment));
+}
+
+// Read-shaped inventory phrasing: the request asks WHAT hosted apps exist, not
+// to do anything to one of them.
+const CLOUD_APP_INVENTORY_READ_PATTERN =
+	/\b(?:list|show|see|view|enumerate|check|get|give\s+me|tell\s+me|what|which|how\s+many|do\s+i\s+have|have\s+i\s+got)\b/iu;
+
+/**
+ * True only for a single-clause, explicitly cloud-qualified inventory read
+ * ("list my cloud apps", "what apps do I have deployed on eliza cloud").
+ * Lifecycle/mutation verbs and compound turns disqualify the message so the
+ * full planner keeps arbitration (#17363: "delete my cloud app" and "list my
+ * cloud apps and deploy the first one" were hijacked into LIST_CLOUD_APPS).
+ */
+function looksLikeCloudAppInventoryRequest(messageText: string): boolean {
+	const trimmed = messageText.trim().replace(/[.!?]+\s*$/u, "");
+	if (isCompoundCloudAppTurn(trimmed)) return false;
+	if (!CLOUD_APP_INVENTORY_READ_PATTERN.test(trimmed)) return false;
+	const tokens = tokenizeActionMetadata(trimmed).map(normalizeSingularToken);
+	return !tokens.some((token) => CLOUD_APP_LIFECYCLE_TOKENS.has(token));
+}
+
+/**
+ * True when the message names the application surface AND pins it to the user's
+ * hosted Eliza Cloud apps. Used to decide ownership of the turn before any
+ * deterministic candidate is offered.
+ */
+function looksLikeCloudQualifiedAppRequest(messageText: string): boolean {
+	const tokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
+		return false;
+	}
+	return tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token));
+}
+
+/**
+ * A cloud-qualified app message that is not a single-clause inventory read is
+ * full-planner territory: it may be a lifecycle mutation or a multi-tool turn
+ * whose other tools (WEB_SEARCH, SEND_EMAIL, …) must stay on the candidate
+ * surface. Answering it with the view-shell fallback narrowed the catalog to
+ * VIEWS and dropped the requested second tool, so this yields NO deterministic
+ * candidate at all (#17363).
+ */
+export function shouldDeferCloudAppTurnToPlanner(messageText: string): boolean {
+	if (!looksLikeCloudQualifiedAppRequest(messageText)) return false;
+	return !looksLikeCloudAppInventoryRequest(messageText);
+}
+
 // Resolve the app action an app-shaped message targets. A cloud qualifier next
 // to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
 // the local app-control action is wrong by its own routing contract — without
 // this the cloud-apps action is never on the planner surface and the local APP
-// action wins by forfeit. Falls back to the local app-control surface when no
-// cloud-apps action is registered, so those runtimes keep their previous
-// candidates.
+// action wins by forfeit. The cloud candidate is offered only for a
+// single-clause inventory read; cloud lifecycle/mutation and compound turns
+// yield NO app candidate so the full planner arbitrates. A cloud-qualified
+// message never degrades to the local-device APP action — with no cloud-apps
+// action registered the correct answer is an honest capability gap, not the
+// installed-app list (#17363).
 function findAppActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
@@ -1603,11 +1736,8 @@ function findAppActionNameForAppRequest(
 		return undefined;
 	}
 	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
-		const cloudAppsAction = findAvailableActionName(
-			actions,
-			CLOUD_APPS_ACTION_NAMES,
-		);
-		if (cloudAppsAction) return cloudAppsAction;
+		if (!looksLikeCloudAppInventoryRequest(messageText)) return undefined;
+		return findAvailableActionName(actions, CLOUD_APPS_ACTION_NAMES);
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }

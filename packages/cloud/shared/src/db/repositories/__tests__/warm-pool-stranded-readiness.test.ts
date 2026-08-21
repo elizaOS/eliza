@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
-import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { agentSandboxes, WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import { generations } from "../../schemas/generations";
@@ -113,7 +113,6 @@ async function seedPoolEntry(
   return repository.createPoolEntry({
     agent_name: `pool-${crypto.randomUUID().slice(0, 8)}`,
     status: "running",
-    execution_tier: "dedicated-always",
     database_status: "ready",
     sandbox_id: `sandbox-${crypto.randomUUID()}`,
     node_id: "node-1",
@@ -127,7 +126,9 @@ async function seedPoolEntry(
   });
 }
 
-async function seedUserAgent(): Promise<string> {
+async function seedUserAgent(
+  executionTier: "shared" | "dedicated-always" = "dedicated-always",
+): Promise<string> {
   const [row] = await dbWrite
     .insert(agentSandboxes)
     .values({
@@ -135,7 +136,7 @@ async function seedUserAgent(): Promise<string> {
       user_id: USER_ID,
       agent_name: `claim-${crypto.randomUUID().slice(0, 8)}`,
       status: "pending",
-      execution_tier: "dedicated-always",
+      execution_tier: executionTier,
       database_status: "none",
     })
     .returning({ id: agentSandboxes.id });
@@ -148,6 +149,10 @@ describe("one claimable-capacity predicate", () => {
     "counts, image inventory, and the claim transaction agree on the exact row",
     async () => {
       const valid = await seedPoolEntry();
+      expect(valid.execution_tier).toBe("dedicated-always");
+      expect(valid.billing_status).toBe("exempt");
+      expect(valid.last_billed_at).toBeNull();
+      expect(valid.hourly_rate).toBe("0.0000");
       await seedPoolEntry({ pool_ready_at: null });
       await seedPoolEntry({ bridge_url: null });
       await seedPoolEntry({ node_id: null });
@@ -184,6 +189,82 @@ describe("one claimable-capacity predicate", () => {
       expect(claimed?.warm_pool_row_id).toBe(valid.id);
       expect(claimed?.status).toBe("provisioning");
       expect(await repository.countUnclaimedPool({ image: IMAGE })).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a legacy Shared-tier pool source remains claimable by a Dedicated target",
+    async () => {
+      const [legacyPool] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: WARM_POOL_ORG_ID,
+          user_id: WARM_POOL_USER_ID,
+          agent_name: "legacy-shared-pool",
+          status: "running",
+          execution_tier: "shared",
+          billing_status: "exempt",
+          pool_status: "unclaimed",
+          pool_ready_at: new Date("2026-07-30T00:00:00.000Z"),
+          database_status: "ready",
+          database_uri: "postgres://legacy-pool",
+          sandbox_id: "legacy-pool-sandbox",
+          node_id: "legacy-pool-node",
+          container_name: "legacy-pool-container",
+          bridge_url: "http://100.64.0.20:3000",
+          health_url: healthUrl(),
+          docker_image: IMAGE,
+          image_digest: TARGET_DIGEST,
+        })
+        .returning();
+      if (!legacyPool) throw new Error("failed to seed legacy Shared pool row");
+      const userAgentId = await seedUserAgent();
+
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "legacy-source-claim",
+      });
+
+      expect(claimed?.warm_pool_row_id).toBe(legacyPool.id);
+      expect(claimed?.execution_tier).toBe("dedicated-always");
+      expect(claimed?.pool_status).toBeNull();
+      expect(claimed?.billing_status).toBe("active");
+      expect(claimed?.container_name).toBe(legacyPool.container_name);
+      expect(await repository.findById(legacyPool.id)).toBeUndefined();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a Shared target cannot consume or inherit a ready pool container",
+    async () => {
+      const pool = await seedPoolEntry();
+      const sharedTargetId = await seedUserAgent("shared");
+
+      const claimed = await repository.claimWarmContainer({
+        userAgentId: sharedTargetId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "must-stay-shared",
+      });
+
+      expect(claimed).toBeNull();
+      expect(await repository.findById(pool.id)).toMatchObject({
+        id: pool.id,
+        pool_status: "unclaimed",
+        container_name: pool.container_name,
+      });
+      expect(await repository.findById(sharedTargetId)).toMatchObject({
+        id: sharedTargetId,
+        execution_tier: "shared",
+        status: "pending",
+        node_id: null,
+        container_name: null,
+        claimed_at: null,
+      });
     },
     PGLITE_TIMEOUT,
   );

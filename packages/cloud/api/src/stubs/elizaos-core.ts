@@ -879,6 +879,11 @@ export async function timeInferenceSpan<T>(
   return fn();
 }
 
+/** Worker-safe `getInferenceTimer`: timing context lives on the agent sidecar. */
+export function getInferenceTimer(): undefined {
+  return undefined;
+}
+
 /** Worker-safe `recordInferenceSpan`: no active timer in the Worker, so no-op. */
 export function recordInferenceSpan(
   _name: string,
@@ -1419,6 +1424,18 @@ export {
   redactSensitiveText,
 } from "../../../../core/src/security/redact";
 export type { PiiScrubResult } from "../../../../core/src/types/model";
+// Provider-integration contract pieces used by the connected-capability
+// projection routes. Re-exported from the REAL core module — the contract
+// module is a pure leaf over `errors.ts`/`types/effects.ts` and
+// `@noble/hashes`, so it is Worker-safe, and the projection must run the real
+// normalizer rather than a stub so the served DTOs stay contract-validated.
+export {
+  CONNECTED_ACCOUNT_MODES,
+  type ConnectedAccount,
+  type ConnectedAccountMode,
+  normalizeConnectedAccount,
+  PROVIDER_INTEGRATION_CONTRACT_VERSION,
+} from "../../../../core/src/types/provider-integrations";
 
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",

@@ -882,6 +882,7 @@ async function sendPersonalSharedReply(
   try {
     attemptResult = await executeResponseAttempts({
       maxAttempts,
+      authRefreshAttemptsOutsideBudget: 1,
       request: () => postMessage(authHeader),
       refreshAuth: async () => {
         authHeader = await reauth();

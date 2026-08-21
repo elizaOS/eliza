@@ -112,10 +112,17 @@ describe("redactSensitiveText (pattern detection)", () => {
 		// `\b`-anchored alphanumeric pattern because `1//` opens with a digit
 		// followed by slashes, which `\b` does not separate from what precedes
 		// it. Assembled at runtime per the fixture convention above.
-		const refreshToken = ["1//0", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join("");
-		const accessToken = ["ya29.", "AbCdEfGhIjKlMnOpQrStUvWxYz1234-5678_90"].join("");
+		const refreshToken = ["1//0", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join(
+			"",
+		);
+		const accessToken = [
+			"ya29.",
+			"AbCdEfGhIjKlMnOpQrStUvWxYz1234-5678_90",
+		].join("");
 		for (const token of [refreshToken, accessToken]) {
-			const out = redactSensitiveText(`token endpoint returned ${token} in the body`);
+			const out = redactSensitiveText(
+				`token endpoint returned ${token} in the body`,
+			);
 			expect(out, token).not.toContain(token);
 		}
 	});

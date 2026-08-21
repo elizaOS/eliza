@@ -208,6 +208,7 @@ describe("startTriggerEventBridge", () => {
     expect(registered).toContain(EventType.MESSAGE_SENT);
     expect(registered).toContain(EventType.REACTION_RECEIVED);
     expect(registered).toContain(EventType.ENTITY_JOINED);
+    expect(registered).not.toContain("workflow_run_event");
 
     bridge.stop();
     expect(handle.registeredEventTypes()).toHaveLength(0);

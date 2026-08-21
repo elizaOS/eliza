@@ -15,7 +15,12 @@
  * through `runtime.reportError`; a genuinely empty result renders a designed
  * empty brief, distinct from an unreachable one.
  */
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type {
   AppRunSummary,
   RegistryAppInfo,
@@ -36,7 +41,9 @@ async function renderCharacterLiveState(
   lines.push(`- Name: ${character.name ?? "(unnamed)"}`);
   const bio = (character as { bio?: unknown }).bio;
   if (typeof bio === "string" && bio.trim().length > 0) {
-    lines.push(`- Bio: ${bio.trim().slice(0, 200)}`);
+    lines.push(
+      `- Bio: ${truncateWellFormed(toWellFormedUnicode(bio.trim()), 200)}`,
+    );
   } else if (Array.isArray(bio) && bio.length > 0) {
     lines.push(`- Bio entries: ${bio.length}`);
   }
@@ -236,7 +243,9 @@ async function renderAppsLiveState(): Promise<string | null> {
       const viewer = run.viewerAttachment
         ? ` viewer=${run.viewerAttachment}`
         : "";
-      const summary = run.summary ? ` — ${run.summary.slice(0, 140)}` : "";
+      const summary = run.summary
+        ? ` — ${truncateWellFormed(toWellFormedUnicode(run.summary), 140)}`
+        : "";
       lines.push(
         `- ${run.displayName} (${run.appName}) status=${run.status}${health}${viewer}${summary}`,
       );
@@ -263,8 +272,21 @@ async function renderAppsLiveState(): Promise<string | null> {
 
 function shortAddress(address: string | null | undefined): string {
   if (!address) return "(not configured)";
-  if (address.length <= 14) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(address);
+  if (wellFormed.length <= 14) return wellFormed;
+  const head = truncateWellFormed(wellFormed, 6);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
 }
 
 function readyLabel(value: boolean | undefined): string {

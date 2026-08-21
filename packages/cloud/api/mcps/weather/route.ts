@@ -3,6 +3,10 @@
  * Metadata endpoint for Weather MCP server.
  */
 
+import {
+  BUILTIN_MCP_PRICING,
+  MCP_FREE_COST_LABEL,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -21,31 +25,31 @@ app.get("/", (c) =>
       {
         name: "get_current_weather",
         description: "Get current weather conditions for any city",
-        price: "1 credit",
+        price: MCP_FREE_COST_LABEL,
         example: { city: "New York", units: "fahrenheit" },
       },
       {
         name: "get_weather_forecast",
         description: "Get multi-day forecast (up to 16 days)",
-        price: "2 credits",
+        price: MCP_FREE_COST_LABEL,
         example: { city: "London", days: 7 },
       },
       {
         name: "compare_weather",
         description: "Compare weather between multiple cities",
-        price: "2 credits",
+        price: MCP_FREE_COST_LABEL,
         example: { cities: ["Tokyo", "New York", "London"] },
       },
       {
         name: "search_location",
         description: "Search for location coordinates and timezone",
-        price: "1 credit",
+        price: MCP_FREE_COST_LABEL,
         example: { query: "San Francisco" },
       },
     ],
     payment: {
-      protocol: "credits",
-      priceRange: "1-2 credits per request",
+      protocol: "free",
+      ...BUILTIN_MCP_PRICING.weather,
     },
     dataSource: {
       provider: "Open-Meteo",

@@ -172,6 +172,11 @@ async function expectRejectResolvesRow(
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "approval-queue-pending-visible-to-planner",
   title:
     "Pending approval rows surface to the planner and reject terminally resolves them",

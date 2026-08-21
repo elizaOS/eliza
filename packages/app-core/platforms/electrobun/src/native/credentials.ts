@@ -101,24 +101,6 @@ async function isCliInstalled(name: string): Promise<boolean> {
   }
 }
 
-async function readKeychainCredential(service: string): Promise<string | null> {
-  if (process.platform !== "darwin") return null;
-  try {
-    const proc = Bun.spawn(
-      ["security", "find-generic-password", "-s", service, "-w"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) return null;
-    const output = await new Response(proc.stdout).text();
-    const trimmed = output.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  } catch {
-    // error-policy:J4 keychain credential absent
-    return null;
-  }
-}
-
 async function scanCodexCredentials(
   home: string,
 ): Promise<DetectedProvider | null> {
@@ -160,39 +142,6 @@ async function scanClaudeFileCredentials(
   };
 }
 
-async function scanClaudeKeychainCredentials(): Promise<DetectedProvider | null> {
-  const keychainData = await readKeychainCredential("Claude Code-credentials");
-  if (!keychainData) return null;
-
-  // The keychain value may be a JSON blob with OAuth tokens
-  try {
-    const parsed = JSON.parse(keychainData) as Record<string, unknown>;
-    const token = extractOauthAccessToken(parsed);
-    if (!token) return null;
-
-    const cliInstalled = await isCliInstalled("claude");
-    return {
-      id: "anthropic-subscription",
-      source: "keychain",
-      apiKey: token,
-      authMode: "oauth",
-      cliInstalled,
-      status: "unchecked",
-    };
-  } catch {
-    // Not JSON — treat the raw string as the credential
-    const cliInstalled = await isCliInstalled("claude");
-    return {
-      id: "anthropic-subscription",
-      source: "keychain",
-      apiKey: keychainData,
-      authMode: "oauth",
-      cliInstalled,
-      status: "unchecked",
-    };
-  }
-}
-
 // ── Copilot (GitHub) ──────────────────────────────────────────────────
 
 interface CopilotHostsJson {
@@ -205,19 +154,7 @@ async function scanCopilotCredentials(
   // GitHub Copilot stores OAuth tokens in ~/.config/github-copilot/hosts.json
   const hostsPath = path.join(home, ".config", "github-copilot", "hosts.json");
   const data = readJsonFile<CopilotHostsJson>(hostsPath);
-  if (!data) {
-    // Try macOS keychain as fallback
-    const keychainToken = await readKeychainCredential("copilot-cli");
-    if (!keychainToken) return null;
-    return {
-      id: "openai-subscription",
-      source: "copilot-keychain",
-      apiKey: keychainToken,
-      authMode: "oauth",
-      cliInstalled: await isCliInstalled("gh"),
-      status: "unchecked",
-    };
-  }
+  if (!data) return null;
 
   // Find first host entry with an oauth_token
   for (const [, entry] of Object.entries(data)) {
@@ -233,24 +170,6 @@ async function scanCopilotCredentials(
     }
   }
   return null;
-}
-
-// ── Cursor ────────────────────────────────────────────────────────────
-
-async function scanCursorCredentials(): Promise<DetectedProvider | null> {
-  // Cursor stores auth in the macOS keychain under "Cursor Safe Storage"
-  if (process.platform !== "darwin") return null;
-  const keychainData = await readKeychainCredential("Cursor Safe Storage");
-  if (!keychainData) return null;
-
-  return {
-    id: "cursor",
-    source: "keychain",
-    apiKey: keychainData,
-    authMode: "oauth",
-    cliInstalled: await isCliInstalled("cursor"),
-    status: "unchecked",
-  };
 }
 
 // ── Ollama (local) ────────────────────────────────────────────────────
@@ -697,16 +616,6 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
     detected.set(geminiCli.id, geminiCli);
   if (ollamaLocal) detected.set(ollamaLocal.id, ollamaLocal);
 
-  // Keychain (fills gaps for providers not yet found from files)
-  if (!detected.has("anthropic-subscription")) {
-    const keychainResult = await scanClaudeKeychainCredentials();
-    if (keychainResult) detected.set(keychainResult.id, keychainResult);
-  }
-  if (!detected.has("cursor")) {
-    const cursorResult = await scanCursorCredentials();
-    if (cursorResult) detected.set(cursorResult.id, cursorResult);
-  }
-
   // Browser cookies (Eliza Cloud session import)
   if (!detected.has("elizacloud")) {
     const cloudSession = await scanElizaCloudBrowserSession();
@@ -725,8 +634,13 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
 
 /**
  * Scan all known credential sources and return detected providers.
- * Checks files → keychain → env vars, deduplicating by provider ID
+ * Checks files → browser session → env vars, deduplicating by provider ID
  * (first match wins per provider).
+ *
+ * It deliberately does not scrape third-party macOS Keychain items. Those
+ * reads can trigger consent/default-keychain dialogs and are not an
+ * App-Sandbox-safe credential integration. Providers that need Keychain-backed
+ * sign-in must expose an explicit OAuth or native integration instead.
  *
  * API keys are masked in the returned results (last 4 chars only) to
  * prevent accidental exposure via IPC or logging.

@@ -24,6 +24,10 @@ import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
 import type { ContentValue } from "../../types/primitives.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
+import {
 	AUTHORITY_KEYWORDS,
 	containsObfuscatedKeyword,
 	getKeywordPattern,
@@ -317,7 +321,7 @@ export async function adjudicateInjectionRisk(
 		"",
 		"USER MESSAGE:",
 		'"""',
-		text.slice(0, 4000),
+		truncateWellFormed(toWellFormedUnicode(text), 4000),
 		'"""',
 	].join("\n");
 
@@ -329,7 +333,7 @@ export async function adjudicateInjectionRisk(
 			runtime.logger?.warn?.(
 				{
 					src: "should-respond-risk-gate",
-					response: responseText.slice(0, 200),
+					response: truncateWellFormed(toWellFormedUnicode(responseText), 200),
 				},
 				"[ShouldRespondRiskGate] unparseable adjudication; failing closed (block)",
 			);
@@ -341,7 +345,10 @@ export async function adjudicateInjectionRisk(
 		return {
 			verdict,
 			reason:
-				reasonMatch?.[1]?.trim()?.slice(0, 300) ?? `adjudicated ${verdict}`,
+				truncateWellFormed(
+					toWellFormedUnicode(reasonMatch?.[1]?.trim() ?? ""),
+					300,
+				) || `adjudicated ${verdict}`,
 		};
 	} catch (error) {
 		// error-policy:J4 Security adjudication degrades only to an explicit blocked

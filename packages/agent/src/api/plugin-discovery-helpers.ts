@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
@@ -542,8 +542,21 @@ function mergeWorkspacePluginEntries(
 }
 
 export function maskValue(value: string): string {
-  if (value.length <= 8) return "****";
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 8) return "****";
+  const head = truncateWellFormed(wellFormed, 4);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
 }
 
 export function buildParamDefs(
@@ -636,7 +649,10 @@ export function inferDescription(key: string): string {
 
 /** Extract the plugin/service prefix label from a key by removing a known suffix. */
 export function prefixLabel(key: string, suffix: string): string {
-  const raw = key.replace(new RegExp(`${suffix}$`, "i"), "").replace(/_+$/, "");
+  const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const raw = key
+    .replace(new RegExp(`${escapedSuffix}$`, "i"), "")
+    .replace(/_+$/, "");
   if (!raw) return key;
   return raw
     .split("_")

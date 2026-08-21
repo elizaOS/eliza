@@ -64,7 +64,7 @@ export function truncate(content: string, max: number): string {
   const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
   if (max <= suffix.length) return truncateWellFormed(suffix, max);
   const budget = Math.max(0, max - suffix.length);
-  return `${truncateWellFormed(wellFormed, budget).trimEnd()}${suffix}`;
+  return `${truncateWellFormed(wellFormed, budget)}${suffix}`;
 }
 
 /** @internal Exported for testing. */

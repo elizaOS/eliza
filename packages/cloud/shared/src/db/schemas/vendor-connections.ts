@@ -1,13 +1,13 @@
 /**
  * Vendor Connections schema.
  *
- * Stores OAuth credentials for SaaS vendors that the agent connects to via the
- * `/v1/apis/oauth/{vendor}` flow. Cloud holds the OAuth client per vendor and
- * vends short-lived tokens to the agent on demand. Tokens are encrypted at rest
- * using the same AES-256-GCM envelope encryption pattern as `discord_connections`.
+ * Stores OAuth credentials and non-OAuth provider credentials that must remain
+ * inside Cloud. Tokens are encrypted at rest using the same AES-256-GCM
+ * envelope encryption pattern as `discord_connections`; provider services may
+ * additionally bind ciphertext to organization and row identity with GCM AAD.
  *
- * Vendors covered in Phase 5: `linear`, `shopify`, `calendly`. Future vendors
- * slot in via the `oauth-vendor-registry` without a schema change.
+ * OAuth vendors slot in via the `oauth-vendor-registry`. Plaid Item credentials
+ * use this table directly and expose only opaque connection ids to clients.
  */
 
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
@@ -19,12 +19,29 @@ import { organizations } from "./organizations";
  *   - shopify: `{ shop_domain: "mystore.myshopify.com" }`
  *   - linear:  `{ workspace_id: "...", workspace_name: "..." }`
  *   - calendly: `{ user_uri: "https://api.calendly.com/users/..." }`
+ *   - plaid: `{ encryption_context, plaid_item_id, plaid_environment, plaid_institution }`
  */
 export type VendorConnectionMetadata = {
   shop_domain?: string;
   workspace_id?: string;
   workspace_name?: string;
   user_uri?: string;
+  /** Marks credentials whose GCM tag is bound to organization + row identity. */
+  encryption_context?: "org_bound_v1";
+  plaid_item_id?: string;
+  plaid_environment?: "sandbox" | "development" | "production";
+  plaid_institution?: {
+    institutionId: string;
+    institutionName: string;
+    primaryAccountMask: string | null;
+    accounts: Array<{
+      accountId: string;
+      name: string;
+      mask: string | null;
+      type: string;
+      subtype: string | null;
+    }>;
+  };
 };
 
 export const vendorConnections = pgTable(

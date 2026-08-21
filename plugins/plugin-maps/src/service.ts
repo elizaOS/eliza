@@ -34,7 +34,12 @@ export type { MapsProviderDescription } from "./types.js";
 
 export interface MapsHandoff {
   kind: "share" | "navigate";
+  /** Canonical system `geo:` intent URI (Android and geo-capable handlers). */
   uri: string;
+  /** Apple Maps universal link (`share` pins, `navigate` sets a destination). */
+  appleMapsUri: string;
+  /** Provider-neutral browser fallback on OpenStreetMap. */
+  webUri: string;
   place: PlaceRef;
 }
 
@@ -462,10 +467,20 @@ export class MapsService extends Service {
       "Maps handoff place is invalid.",
     );
     const { latitude, longitude } = place.coordinates;
+    const point = `${latitude},${longitude}`;
+    const label = encodeURIComponent(place.name);
     return {
       kind,
       place,
-      uri: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${encodeURIComponent(place.name)})`,
+      uri: `geo:${point}?q=${point}(${label})`,
+      appleMapsUri:
+        kind === "navigate"
+          ? `https://maps.apple.com/?daddr=${point}&q=${label}`
+          : `https://maps.apple.com/?ll=${point}&q=${label}`,
+      webUri:
+        kind === "navigate"
+          ? `https://www.openstreetmap.org/directions?to=${encodeURIComponent(point)}`
+          : `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=17/${latitude}/${longitude}`,
     };
   }
 

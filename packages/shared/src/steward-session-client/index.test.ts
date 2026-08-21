@@ -7,6 +7,9 @@ import {
   exchangeStewardCode,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  registerStewardTokenPersistence,
+  registerStewardTokenRemoval,
+  replaceStoredStewardTokenIfCurrent,
   STEWARD_CSRF_HEADER,
   STEWARD_CSRF_HEADER_VALUE,
   STEWARD_REFRESH_TOKEN_KEY,
@@ -106,7 +109,7 @@ describe("Steward session storage transitions", () => {
     localStorage.clear();
   });
 
-  it("publishes ordered typed transitions after canonical writes and clears", () => {
+  it("publishes ordered typed transitions after canonical writes and clears", async () => {
     const transitions: StewardSessionChangeDetail[] = [];
     const listener = (event: Event) => {
       transitions.push(
@@ -116,9 +119,9 @@ describe("Steward session storage transitions", () => {
     window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
 
     try {
-      writeStoredStewardToken("steward-token");
+      await writeStoredStewardToken("steward-token");
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
-      clearStoredStewardToken();
+      await clearStoredStewardToken();
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
@@ -132,7 +135,7 @@ describe("Steward session storage transitions", () => {
     );
   });
 
-  it("does not advance authority when the same token is persisted again", () => {
+  it("does not advance authority when the same token is persisted again", async () => {
     const transitions: StewardSessionChangeDetail[] = [];
     const listener = (event: Event) => {
       transitions.push(
@@ -142,8 +145,8 @@ describe("Steward session storage transitions", () => {
     window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
 
     try {
-      writeStoredStewardToken("same-token");
-      writeStoredStewardToken("same-token");
+      await writeStoredStewardToken("same-token");
+      await writeStoredStewardToken("same-token");
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
     }
@@ -151,7 +154,34 @@ describe("Steward session storage transitions", () => {
     expect(transitions.map(({ state }) => state)).toEqual(["present"]);
   });
 
-  it("publishes canonical invalidation before stale refresh-key cleanup can fail", () => {
+  it("rejects a stale refresh replacement after canonical logout", async () => {
+    await writeStoredStewardToken("refresh-source-token");
+    await clearStoredStewardToken();
+
+    await expect(
+      replaceStoredStewardTokenIfCurrent(
+        "refresh-source-token",
+        "stale-refreshed-token",
+      ),
+    ).resolves.toBe(false);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+  });
+
+  it("revalidates a cached token through the registered durable host", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "cached-token");
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const unregister = registerStewardTokenPersistence(persist);
+
+    try {
+      await writeStoredStewardToken("cached-token");
+    } finally {
+      unregister();
+    }
+
+    expect(persist).toHaveBeenCalledWith("cached-token");
+  });
+
+  it("publishes canonical invalidation before stale refresh-key cleanup can fail", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     localStorage.setItem(STEWARD_REFRESH_TOKEN_KEY, "legacy-refresh-token");
     const storageFailure = new Error("legacy refresh storage unavailable");
@@ -171,7 +201,7 @@ describe("Steward session storage transitions", () => {
     window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
 
     try {
-      expect(() => clearStoredStewardToken()).toThrow(storageFailure);
+      await expect(clearStoredStewardToken()).rejects.toThrow(storageFailure);
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
       removeItem.mockRestore();
@@ -184,7 +214,7 @@ describe("Steward session storage transitions", () => {
     expect(transitions.map(({ state }) => state)).toEqual(["cleared"]);
   });
 
-  it("fails fast without publishing when canonical storage mutations fail", () => {
+  it("fails fast without publishing when canonical storage mutations fail", async () => {
     const storageFailure = new Error("canonical storage unavailable");
     const transitions: StewardSessionChangeDetail[] = [];
     const listener = (event: Event) => {
@@ -200,9 +230,13 @@ describe("Steward session storage transitions", () => {
       });
 
     try {
-      expect(() => writeStoredStewardToken("steward-token")).toThrow(
-        storageFailure,
-      );
+      await expect(
+        writeStoredStewardToken("steward-token"),
+      ).rejects.toMatchObject({
+        name: "StewardTokenPersistenceError",
+        message: storageFailure.message,
+        cause: storageFailure,
+      });
     } finally {
       setItem.mockRestore();
     }
@@ -213,13 +247,72 @@ describe("Steward session storage transitions", () => {
         throw storageFailure;
       });
     try {
-      expect(() => clearStoredStewardToken()).toThrow(storageFailure);
+      await expect(clearStoredStewardToken()).rejects.toMatchObject({
+        name: "StewardTokenRemovalError",
+        message: storageFailure.message,
+        cause: storageFailure,
+      });
     } finally {
       removeItem.mockRestore();
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
     }
 
     expect(transitions).toEqual([]);
+  });
+
+  it("publishes present only after the host confirms durable persistence", async () => {
+    let releasePersistence: () => void = () => {};
+    const persistence = new Promise<void>((resolve) => {
+      releasePersistence = resolve;
+    });
+    const unregister = registerStewardTokenPersistence(() => persistence);
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      const write = writeStoredStewardToken("durable-token");
+      await Promise.resolve();
+      expect(transitions).toEqual([]);
+      releasePersistence();
+      await write;
+      expect(transitions.map(({ state }) => state)).toEqual(["present"]);
+    } finally {
+      unregister();
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
+  it("does not publish cleared until the host confirms durable removal", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
+    let releaseRemoval: () => void = () => {};
+    const removal = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    const unregister = registerStewardTokenRemoval(() => removal);
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      const clear = clearStoredStewardToken();
+      await Promise.resolve();
+      expect(transitions).toEqual([]);
+      releaseRemoval();
+      await clear;
+      expect(transitions.map(({ state }) => state)).toEqual(["cleared"]);
+    } finally {
+      unregister();
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
   });
 
   it("does not disguise a failed canonical read as a missing session", () => {

@@ -163,6 +163,17 @@
   --view-pad-top: 0.5rem;
   --view-pad-bottom: 1rem;
 
+  /* Full chat sheets intentionally cover the app surface. Security-sensitive
+     workspaces can opt their controls out of that occluded layer while keeping
+     a non-interactive page header visible for orientation. The controls return
+     automatically when the sheet collapses; no parallel React state channel is
+     needed between the shell and the routed view. */
+  &:has([data-chat-overlay][data-open="true"])
+    [data-chat-occlusion-policy="hide"] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   /* Plugin UI Design Tokens */
   --plugin-field-gap: 1rem;
   --plugin-group-gap: 1.5rem;

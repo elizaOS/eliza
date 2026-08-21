@@ -22,6 +22,8 @@ import {
   type Provider,
   type ProviderResult,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   LifeOpsGmailTriageSummary,
@@ -54,7 +56,7 @@ import {
 import { LifeOpsService } from "../lifeops/service.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-const GOAL_TITLE_MAX_LENGTH = 80;
+export const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
 
@@ -111,12 +113,12 @@ async function summarizeConnectorDegradation(
   return lines;
 }
 
-function truncateGoalTitle(title: string): string {
-  const trimmed = title.trim();
-  if (trimmed.length <= GOAL_TITLE_MAX_LENGTH) {
-    return trimmed;
+export function truncateGoalTitle(title: string): string {
+  const wellFormed = toWellFormedUnicode(title.trim());
+  if (wellFormed.length <= GOAL_TITLE_MAX_LENGTH) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, GOAL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+  return `${truncateWellFormed(wellFormed, GOAL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function readGoalReviewedAt(goal: LifeOpsGoalDefinition): string | null {
@@ -224,16 +226,28 @@ function summarizeCompletedToday(
 
 function summarizeOccurrences(
   title: string,
-  occurrences: Array<{ title: string; state: string }>,
+  occurrences: Array<{
+    title: string;
+    state: string;
+    progress?: {
+      completedCount: number;
+      targetCount: number;
+      remainingCount: number;
+      unit: string;
+    } | null;
+  }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];
   }
   return [
     title,
-    ...occurrences
-      .slice(0, 3)
-      .map((occurrence) => `- ${occurrence.title} (${occurrence.state})`),
+    ...occurrences.slice(0, 3).map((occurrence) => {
+      const progress = occurrence.progress;
+      return progress
+        ? `- ${occurrence.title} (${progress.completedCount}/${progress.targetCount} ${progress.unit}${progress.targetCount === 1 ? "" : "s"}; ${progress.remainingCount} remaining)`
+        : `- ${occurrence.title} (${occurrence.state})`;
+    }),
   ];
 }
 

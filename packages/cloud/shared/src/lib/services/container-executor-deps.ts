@@ -136,7 +136,8 @@ function makeNodeSsh(): AppContainerSsh {
 function makeBuilderSsh(host: string): AppContainerSsh {
   const keyB64 = containersEnv.sshKey();
   const privateKey = keyB64 ? Buffer.from(keyB64, "base64") : undefined;
-  // DockerSSHClient.exec(command, timeoutMs?) IS the AppContainerSsh shape.
+  // Keep both command paths on the pooled client: arbitrary container env is
+  // delivered only through execStdin, never interpolated into exec argv.
   const client = privateKey
     ? new DockerSSHClient({ hostname: host, username: containersEnv.sshUser(), privateKey })
     : new DockerSSHClient({
@@ -144,7 +145,10 @@ function makeBuilderSsh(host: string): AppContainerSsh {
         username: containersEnv.sshUser(),
         privateKeyPath: containersEnv.sshKeyPath(),
       });
-  return { exec: (command, timeoutMs) => client.exec(command, timeoutMs) };
+  return {
+    exec: (command, timeoutMs) => client.exec(command, timeoutMs),
+    execStdin: (command, input, timeoutMs) => client.execStdin(command, input, timeoutMs),
+  };
 }
 
 /** Parse the docker node id from the first `CONTAINERS_DOCKER_NODES` seed entry. */

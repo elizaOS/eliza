@@ -266,6 +266,7 @@ export async function startDeviceE2eHostAgent({
     path.join(repoRoot, "packages/app-core/scripts/serve-real-local-agent.ts"),
   ],
   env = process.env,
+  pairingDisabled = true,
 } = {}) {
   if (!repoRoot) throw new Error("startDeviceE2eHostAgent requires repoRoot.");
   if (!artifactDir) {
@@ -302,7 +303,7 @@ export async function startDeviceE2eHostAgent({
       ELIZA_API_PORT: String(explicitPort ?? 0),
       ELIZA_API_STRICT_PORT: "1",
       ELIZA_E2E_PORT_FILE: portFile,
-      ELIZA_PAIRING_DISABLED: "1",
+      ELIZA_PAIRING_DISABLED: pairingDisabled ? "1" : "0",
     },
     stdio: ["ignore", logFd, logFd],
   });

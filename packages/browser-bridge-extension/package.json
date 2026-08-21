@@ -1,0 +1,51 @@
+{
+  "name": "@elizaos/browser-bridge-extension",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.mjs chrome",
+    "build:chrome": "bun scripts/build.mjs chrome",
+    "build:firefox": "bun scripts/build.mjs firefox",
+    "build:safari-webextension": "bun scripts/build.mjs safari",
+    "package:chrome": "bun scripts/package-chrome.mjs",
+    "package:firefox": "bun scripts/package-firefox.mjs",
+    "package:safari": "bun scripts/package-safari.mjs",
+    "package:stores": "bun scripts/package-store-assets.mjs",
+    "package:release": "bun scripts/package-release.mjs",
+    "test": "bun run test:unit",
+    "test:smoke:installed": "bun run test:smoke && bun run test:smoke:firefox",
+    "test:unit": "bunx vitest run --config ./vitest.extension.config.ts",
+    "test:smoke": "node scripts/extension-smoke.mjs",
+    "test:smoke:site-access": "BROWSER_BRIDGE_SMOKE_SITE_ACCESS=1 node scripts/extension-smoke.mjs",
+    "test:smoke:firefox": "node scripts/extension-smoke-firefox.mjs",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox --self-hosted",
+    "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "jsdom": "^29.1.1",
+    "@types/jsdom": "^27.0.0",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^6.0.3",
+    "web-ext": "^10.6.0",
+    "vitest": "^4.0.17"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
+  "private": true
+}

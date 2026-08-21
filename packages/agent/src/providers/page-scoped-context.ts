@@ -17,7 +17,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { stringToUuid, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
@@ -139,7 +139,7 @@ async function fetchSourceTail(
   }
   return pruned.map((mem) => ({
     speaker: formatSpeakerLabel(runtime, mem),
-    text: (mem.content.text ?? "").slice(0, 280),
+    text: truncateWellFormed(toWellFormedUnicode(mem.content.text ?? ""), 280),
     agePrefix: formatRelativeTimestampPrefix(mem.createdAt),
     role: inferRole(mem, runtime.agentId),
   }));

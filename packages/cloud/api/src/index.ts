@@ -32,11 +32,12 @@ import {
 import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
-import { routeShardKey } from "./router-shards";
+import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
@@ -61,6 +62,7 @@ export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordina
  * does not evaluate the other ~600 route modules.
  */
 const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
+const knownRouteShards = new Set(KNOWN_ROUTE_SHARD_KEYS);
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 /** Lazy thin shell for login-critical Steward GETs (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
@@ -203,13 +205,20 @@ type AgentDomainBindings = Pick<
 >;
 
 function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
-  const shard = routeShardKey(pathname);
+  const shard = knownRouteShardKey(pathname, knownRouteShards);
   let promise = fullAppPromises.get(shard);
   if (!promise) {
     promise = import("./bootstrap-app").then((m) =>
       m.createApp({ requestPath: pathname }),
     );
     fullAppPromises.set(shard, promise);
+    // error-policy:J5 The dispatch caller observes this same rejection. Evict
+    // only the failed generation so a transient import/init error can retry.
+    void promise.catch(() => {
+      if (fullAppPromises.get(shard) === promise) {
+        fullAppPromises.delete(shard);
+      }
+    });
   }
   return promise;
 }
@@ -257,7 +266,9 @@ export async function dispatchFullApp(
   const requestPathname = new URL(request.url).pathname;
   const moduleWasInitialized = loadFullApp
     ? true
-    : fullAppPromises.has(routeShardKey(requestPathname));
+    : fullAppPromises.has(
+        knownRouteShardKey(requestPathname, knownRouteShards),
+      );
   const loadApp = loadFullApp ?? (() => getAppForPath(requestPathname));
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
@@ -630,6 +641,12 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // a provider-side mutation has an ambiguous result.
       personalSharedTelegramEdge: {
         enabled: personalSharedTelegramEdgeEnabled,
+      },
+      // Value-free schema compatibility beacon. The release workflow checks
+      // the currently served Worker for this marker before the later quota
+      // table drop is allowed to run.
+      schemaCompatibility: {
+        usageQuotasTombstone: true,
       },
       // Value-free cutover receipt for the default-off staging QA bridge. The
       // deploy workflow proves exact code first, flips the secret last, then

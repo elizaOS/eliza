@@ -188,7 +188,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         // sessionStorage unavailable (e.g. private browsing on some browsers).
         // Session is still in memory for this page load; startup can advance.
       }
-      persistActiveServerCredential(result.sessionId);
+      await persistActiveServerCredential(result.sessionId);
       client.setToken(result.sessionId);
 
       setSubmitState({ phase: "success" });

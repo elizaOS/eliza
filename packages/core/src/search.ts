@@ -912,11 +912,25 @@ export class Tokenizer {
 	 * @param text - The input text string to tokenize.
 	 * @param includeStats - If true, returns tokenization statistics along with tokens. Defaults to false.
 	 * @returns A `TokenizationResult` object containing the array of tokens and optional stats.
-	 * @throws {Error} If the input text is null, undefined, or empty.
 	 */
 	tokenize(text: string, includeStats = false): TokenizationResult {
-		if (!text) {
-			throw new Error("Input text cannot be null or empty");
+		// Empty text has zero tokens; that is the answer, not a failure. This
+		// used to throw, which pushed the guard onto every caller — and the
+		// callers that forgot were the crash: one memory with empty content
+		// aborted a whole index build (#23664), and search("") crashed instead
+		// of returning no hits.
+		if (!text.trim()) {
+			return includeStats
+				? {
+						tokens: [],
+						stats: {
+							originalWordCount: 0,
+							stopWordsRemoved: 0,
+							stemmedWords: 0,
+							processingTimeMs: 0,
+						},
+					}
+				: { tokens: [] };
 		}
 		const startTime = includeStats ? Date.now() : 0;
 		const cleaned = this.cleanText(text);
@@ -1221,7 +1235,7 @@ export class BM25 {
 			// Iterate through fields of the document
 			for (const field in doc) {
 				const content = doc[field];
-				if (typeof content !== "string") continue; // Skip non-string fields
+				if (typeof content !== "string" || !content) continue; // Skip non-string and empty fields: the tokenizer rejects falsy input, so an empty field must contribute zero length and zero terms instead of throwing
 
 				const fieldBoost = this.fieldBoosts[field] || 1;
 				const { tokens } = this.tokenizer.tokenize(content);
@@ -1524,7 +1538,7 @@ export class BM25 {
 		// --- Process Fields and Tokens ---
 		for (const field in doc) {
 			const content = doc[field];
-			if (typeof content !== "string") continue;
+			if (typeof content !== "string" || !content) continue;
 
 			const fieldBoost = this.fieldBoosts[field] || 1;
 			const { tokens } = this.tokenizer.tokenize(content);

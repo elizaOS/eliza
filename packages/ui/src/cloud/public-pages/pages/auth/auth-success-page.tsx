@@ -78,7 +78,7 @@ async function fetchCloudJson<T>(
 
   const headers = new Headers({ Accept: "application/json" });
   if (!options.skipAuth) {
-    const token = readCloudBearerToken();
+    const token = await readCloudBearerToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
@@ -336,7 +336,7 @@ async function verifyProof(args: {
       if (isRetryableApiFailure(error)) {
         return { ok: false, reason: "unavailable" };
       }
-      if (error.status === 401 && readCloudBearerToken()?.trim()) {
+      if (error.status === 401 && (await readCloudBearerToken())?.trim()) {
         try {
           const data = await fetchSuccessProofVerify(args.proof, args.signal, {
             skipAuth: true,
@@ -466,7 +466,7 @@ async function resolveConnectionOwnership(args: {
     }
   | { ok: false; reason: "rejected" | "unauthorized" | "unavailable" }
 > {
-  const hadBearer = Boolean(readCloudBearerToken()?.trim());
+  const hadBearer = Boolean((await readCloudBearerToken())?.trim());
   const first = await verifyConnectionOwnership(args);
   if (first.ok || first.reason !== "unauthorized" || !hadBearer) {
     return first;

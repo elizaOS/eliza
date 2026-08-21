@@ -158,6 +158,7 @@ describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
     expect(isPublicTokenApiPath("/api/auth/pair")).toBe(true);
+    expect(isPublicTokenApiPath("/api/v1/subscriptions/plans")).toBe(true);
     // Native pairing carries a user/org Cloud bearer and must remain limited
     // to first-party app origins rather than the wildcard token-API policy.
     expect(isPublicTokenApiPath("/api/auth/pair/native")).toBe(false);
@@ -244,6 +245,29 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
 });
 
 describe("corsMiddleware — third-party app origins (open, NO credentials)", () => {
+  test("allows third-party browser reads of the public subscription catalog", async () => {
+    const res = await req(
+      "GET",
+      "https://thirdparty.example.com",
+      false,
+      "/api/v1/subscriptions/plans",
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  test("allows GET preflight for the public subscription catalog", async () => {
+    const res = await req(
+      "OPTIONS",
+      "https://thirdparty.example.com",
+      true,
+      "/api/v1/subscriptions/plans",
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+  });
+
   test("allows the origin (wildcard) WITHOUT credentials so the browser permits it", async () => {
     const res = await req("GET", "https://supakan.nubs.site", false, "/api/v1/models");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");

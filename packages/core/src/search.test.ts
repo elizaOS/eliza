@@ -103,3 +103,92 @@ describe("BM25.search result ordering", () => {
 		expect(results[0].score).toBe(results[1].score);
 	});
 });
+
+describe("BM25 empty string fields", () => {
+	// Attachment-only memories carry `content.text === ""` into rerankMemories;
+	// the tokenizer rejects falsy input, so empty fields must index as
+	// zero-length docs instead of aborting the whole index build.
+	const docs = [
+		{ title: "11111111-1111-4111-8111-111111111111", content: "" },
+		{ title: "22222222-2222-4222-8222-222222222222", content: "hello world" },
+	];
+
+	it("indexes documents containing empty string fields without throwing", () => {
+		const bm25 = new BM25(docs);
+		expect(bm25.search("hello", 10).map((r) => r.index)).toEqual([1]);
+	});
+
+	it("treats whitespace-only fields as zero-length documents", () => {
+		const bm25 = new BM25([{ content: "   " }, { content: "signal" }]);
+		expect(bm25.search("signal", 10).map((r) => r.index)).toEqual([1]);
+	});
+
+	it("accepts incremental addDocument with empty string fields", async () => {
+		const bm25 = new BM25([{ content: "seed document" }]);
+		await bm25.addDocument({ content: "", body: "later arrival" });
+		expect(bm25.search("arrival", 10).map((r) => r.index)).toEqual([1]);
+	});
+});
+
+describe("BM25 empty text at the remaining tokenize call sites", () => {
+	// Indexing guards its own call sites, but search/searchPhrase tokenize
+	// through the same path, so empty input reached the tokenizer unguarded.
+	it("returns no hits for an empty or whitespace-only query", () => {
+		const bm25 = new BM25([{ title: "a", content: "hello world" }]);
+
+		expect(bm25.search("", 10)).toEqual([]);
+		expect(bm25.search("   ", 10)).toEqual([]);
+	});
+
+	it("returns no hits for an empty phrase", () => {
+		const bm25 = new BM25([{ title: "a", content: "hello world" }]);
+
+		expect(bm25.searchPhrase("", 10)).toEqual([]);
+	});
+
+	// Two conditions have to line up before the phrase rescan reaches the
+	// tokenizer with empty text: the document must already be a phrase
+	// candidate, and the empty field must be iterated BEFORE the matching one,
+	// since the loop stops looking once it finds the phrase. An attachment-only
+	// field ahead of the title is exactly that shape.
+	it("scans a matching document with an empty field without throwing", () => {
+		const bm25 = new BM25([
+			{ attachment: "", title: "hello world again" },
+			{ attachment: "x", title: "unrelated" },
+		]);
+
+		expect(bm25.searchPhrase("hello world", 10).map((r) => r.index)).toEqual([
+			0,
+		]);
+	});
+
+	// BM25 normalizes by document length, so an empty field contributing any
+	// nonzero length would skew every other document's relative score. Not
+	// crashing is the visible bug; scoring identically is the quiet one.
+	it("scores an empty field identically to an absent field", () => {
+		const withEmpty = new BM25([
+			{ title: "hello world", content: "" },
+			{ title: "unrelated", content: "nothing here" },
+		]);
+		const withoutEmpty = new BM25([
+			{ title: "hello world" },
+			{ title: "unrelated", content: "nothing here" },
+		]);
+
+		expect(withEmpty.search("hello", 10)[0].score).toBe(
+			withoutEmpty.search("hello", 10)[0].score,
+		);
+	});
+
+	it("ranks a memory whose text is empty instead of throwing", () => {
+		const hits = rankMessageSearch(
+			[
+				{ id: "empty", content: { text: "" } },
+				{ id: "filled", content: { text: "query words here" } },
+			],
+			"query",
+		);
+
+		expect(hits.map((hit) => hit.item.id)).toEqual(["filled"]);
+	});
+});

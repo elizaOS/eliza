@@ -19,6 +19,7 @@ import {
 	type RealTestRuntimeResult,
 } from "../testing/index.ts";
 import {
+	finalizePlannerContinuationEvidence,
 	type PlannerContinuationRunProgress,
 	readCompletedPlannerContinuationTrajectory,
 	serializePlannerContinuationEvidence,
@@ -150,44 +151,15 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 	}, 180_000);
 
 	afterAll(async () => {
-		if (evidencePath) {
-			await writePlannerContinuationEvidenceArtifact(
-				evidencePath,
-				serializePlannerContinuationEvidence({
-					runId,
-					harness,
-					evidence,
-					progress,
-					setupError,
-					testError,
-				}),
-			);
-		}
-		try {
-			await harness?.cleanup();
-		} catch (cleanupError) {
-			// A would-be `captured` run whose teardown then fails is downgraded to
-			// `cleanup-failed` so the artifact does not read as a fully clean run;
-			// a run that already failed on its own terms keeps that more specific
-			// status instead of being overwritten by the later teardown failure —
-			// this is the same "don't let a second failure mask the first" defect
-			// this file exists to fix, just one step later in the sequence.
-			if (evidencePath) {
-				await writePlannerContinuationEvidenceArtifact(
-					evidencePath,
-					serializePlannerContinuationEvidence({
-						runId,
-						harness,
-						evidence,
-						progress,
-						setupError,
-						testError,
-						cleanupError,
-					}),
-				);
-			}
-			throw cleanupError;
-		}
+		await finalizePlannerContinuationEvidence(
+			{ runId, harness, evidence, progress, setupError, testError },
+			async () => harness?.cleanup(),
+			async (body) => {
+				if (evidencePath) {
+					await writePlannerContinuationEvidenceArtifact(evidencePath, body);
+				}
+			},
+		);
 	});
 
 	async function runTurn(params: {

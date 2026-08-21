@@ -33,6 +33,8 @@ import {
   logger,
   ModelType,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -245,7 +247,10 @@ async function resolveOwnerVoiceSources(args: {
     if (!document.id || !text) continue;
     byId.set(document.id, {
       id: document.id,
-      text: text.slice(0, MAX_OWNER_SOURCE_CHARS),
+      text: truncateWellFormed(
+        toWellFormedUnicode(text),
+        MAX_OWNER_SOURCE_CHARS,
+      ),
       source: ownerVoiceSourceKind(document),
     });
     if (byId.size >= MAX_OWNER_VOICE_SOURCES) break;

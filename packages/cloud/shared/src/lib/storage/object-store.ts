@@ -263,14 +263,17 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_READ_TRUNCATED"
   | "OBJECT_STORAGE_READ_OVERFLOW"
   | "OBJECT_STORAGE_READ_HASH_MISMATCH"
-  | "OBJECT_STORAGE_READ_FAILED";
+  | "OBJECT_STORAGE_READ_FAILED"
+  | "OBJECT_STORAGE_FIELD_POINTER_INVALID"
+  | "OBJECT_STORAGE_FIELD_UNAVAILABLE"
+  | "OBJECT_STORAGE_FIELD_JSON_INVALID";
 
 /** Static, key-free lifecycle failure safe to surface in structured logs. */
 export class ObjectStorageLifecycleError extends Error {
   readonly code: ObjectStorageLifecycleErrorCode;
 
-  constructor(code: ObjectStorageLifecycleErrorCode, message: string) {
-    super(message);
+  constructor(code: ObjectStorageLifecycleErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ObjectStorageLifecycleError";
     this.code = code;
   }
@@ -384,6 +387,85 @@ export function shouldUseObjectStorage(): boolean {
   return storageConfigured();
 }
 
+/**
+ * Hard ceiling on what a single field may persist inline in a SQL text or
+ * jsonb column. Without it the offload helpers degrade into unbounded inline
+ * writes whenever object storage is unconfigured, which is how quarter-gigabyte
+ * failure dumps reached the `jobs.error` column (elizaOS/eliza#22553).
+ */
+const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
+
+function maxInlineBytes(): number {
+  const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES;
+  if (!raw) return DEFAULT_MAX_INLINE_BYTES;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1024) return DEFAULT_MAX_INLINE_BYTES;
+  return Math.floor(parsed);
+}
+
+/** Raised when a payload exceeds the inline ceiling and cannot be offloaded. */
+export class InlinePayloadTooLargeError extends Error {
+  readonly code = "INLINE_PAYLOAD_TOO_LARGE";
+  readonly field: string;
+  readonly sizeBytes: number;
+  readonly maxInlineBytes: number;
+
+  constructor(input: { field: string; sizeBytes: number; maxBytes: number }) {
+    super(
+      `Inline payload for field "${input.field}" is ${input.sizeBytes} bytes, above the ` +
+        `${input.maxBytes}-byte SQL inline ceiling, and object storage is not configured to ` +
+        `offload it. Set SQL_HEAVY_PAYLOAD_STORAGE with a heavy-payload bucket, or persist a ` +
+        `bounded summary instead of the full payload.`,
+    );
+    this.name = "InlinePayloadTooLargeError";
+    this.field = input.field;
+    this.sizeBytes = input.sizeBytes;
+    this.maxInlineBytes = input.maxBytes;
+  }
+}
+
+function truncateToBytes(value: string, limit: number): string {
+  if (limit <= 0) return "";
+  if (byteLength(value) <= limit) return value;
+  let output = "";
+  let size = 0;
+  for (const char of value) {
+    const charSize = byteLength(char);
+    if (size + charSize > limit) break;
+    output += char;
+    size += charSize;
+  }
+  return output;
+}
+
+/**
+ * Bound a diagnostic string to the inline ceiling with an explicit truncation
+ * marker. Callers use this for reason/log columns, where a bounded string is
+ * the correct persisted shape when the full payload cannot be offloaded.
+ */
+export function clampInlineDiagnosticText(value: string): string {
+  const cap = maxInlineBytes();
+  const size = byteLength(value);
+  if (size <= cap) return value;
+  const marker =
+    `\n…[truncated: ${size}-byte payload exceeded the ${cap}-byte SQL inline ceiling; ` +
+    `configure object storage to retain the full payload]`;
+  return truncateToBytes(value, Math.max(0, cap - byteLength(marker))) + marker;
+}
+
+/** Byte size at which a value is refused inline storage. */
+export function inlinePayloadCeilingBytes(): number {
+  return maxInlineBytes();
+}
+
+function guardInlineSize(field: string, value: string): void {
+  const cap = maxInlineBytes();
+  const size = byteLength(value);
+  if (size > cap) {
+    throw new InlinePayloadTooLargeError({ field, sizeBytes: size, maxBytes: cap });
+  }
+}
+
 function minBytes(): number {
   const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MIN_BYTES;
   if (!raw) return 0;
@@ -401,7 +483,32 @@ function previewBytes(): number {
 }
 
 function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
+  // Count UTF-8 bytes without materializing a second payload-sized buffer.
+  // These helpers run specifically on values large enough to threaten SQL;
+  // TextEncoder.encode() would transiently duplicate a 250 MB dump before the
+  // ceiling could reject or clamp it.
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      // BMP code points and unpaired surrogates encode to three bytes; the
+      // latter matches TextEncoder's U+FFFD replacement behavior.
+      bytes += 3;
+    }
+  }
+  return bytes;
 }
 
 function shouldOffload(value: string): boolean {
@@ -427,21 +534,27 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._=-]/g, "_");
 }
 
-function objectKey(params: {
+/** Derive the immutable tenant/object/field key used by pointer-backed SQL rows. */
+export function buildObjectFieldKey(params: {
   namespace: ObjectNamespace;
   organizationId: string;
   objectId: string;
   field: string;
   createdAt: Date;
   extension: "json" | "txt";
+  /** Optional immutable write generation. Legacy callers omit it. */
+  version?: string;
 }): string {
   const day = params.createdAt.toISOString().slice(0, 10);
+  const filename = params.version
+    ? `${safeSegment(params.field)}.${safeSegment(params.version)}.${params.extension}`
+    : `${safeSegment(params.field)}.${params.extension}`;
   return [
     params.namespace,
     safeSegment(params.organizationId),
     day,
     safeSegment(params.objectId),
-    `${safeSegment(params.field)}.${params.extension}`,
+    filename,
   ].join("/");
 }
 
@@ -453,15 +566,25 @@ export async function putObjectText(params: {
   createdAt: Date;
   body: string;
   contentType: string;
+  version?: string;
+  /** Create-only write. Required for versioned SQL pointers. */
+  immutable?: boolean;
 }): Promise<string> {
   const extension = params.contentType.includes("json") ? "json" : "txt";
-  const key = objectKey({ ...params, extension });
+  const key = buildObjectFieldKey({ ...params, extension });
 
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
-    await runtimeBucket.put(key, params.body, {
+    const result = await runtimeBucket.put(key, params.body, {
+      ...(params.immutable ? { onlyIf: new Headers({ "if-none-match": "*" }) } : {}),
       httpMetadata: { contentType: params.contentType },
     });
+    if (params.immutable && result === null) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
     return key;
   }
 
@@ -471,14 +594,27 @@ export async function putObjectText(params: {
     throw new Error("Object storage requested but client or bucket is not configured");
   }
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: params.body,
+        ContentType: params.contentType,
+        ...(params.immutable ? { IfNoneMatch: "*" } : {}),
+      }),
+    );
+  } catch (error) {
+    // error-policy:J1 translate only the create-only conflict; all other
+    // provider failures retain their original authority for existing callers.
+    if (params.immutable && classifyImmutableWriteFailure(error) === "precondition") {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
+    throw error;
+  }
   return key;
 }
 
@@ -2074,9 +2210,24 @@ export async function offloadTextField(params: {
   value: string | null | undefined;
   keepPreview?: boolean;
   inlineValueWhenOffloaded?: string;
+  /**
+   * How to handle a value above the inline ceiling when object storage is
+   * unavailable: `"clamp"` persists a bounded, explicitly-marked truncation
+   * (correct for diagnostic reason/log columns), `"throw"` (default) refuses
+   * the write so the caller cannot silently bloat a text column.
+   */
+  oversizeInline?: "clamp" | "throw";
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<string>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
-  if (!shouldOffload(params.value)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(params.value)) {
+    if (params.oversizeInline === "clamp") {
+      return { value: clampInlineDiagnosticText(params.value), storage: "inline", key: null };
+    }
+    guardInlineSize(params.field, params.value);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
@@ -2086,6 +2237,8 @@ export async function offloadTextField(params: {
     createdAt: params.createdAt,
     body: params.value,
     contentType: "text/plain; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2105,10 +2258,17 @@ export async function offloadJsonField<T>(params: {
   createdAt: Date;
   value: T | null | undefined;
   inlineValueWhenOffloaded: T | null;
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<T>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   const body = JSON.stringify(params.value);
-  if (!shouldOffload(body)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(body)) {
+    // Structured payloads cannot be truncated without becoming invalid, so an
+    // oversize inline JSON write always fails rather than degrading silently.
+    guardInlineSize(params.field, body);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
@@ -2118,6 +2278,8 @@ export async function offloadJsonField<T>(params: {
     createdAt: params.createdAt,
     body,
     contentType: "application/json; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2131,18 +2293,91 @@ export async function hydrateTextField(params: {
   storage: string;
   key: string | null;
   inlineValue: string | null;
+  strict?: boolean;
 }): Promise<string | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  return (await getObjectText(params.key)) ?? params.inlineValue;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed field is missing its exact object key",
+    );
+  }
+  try {
+    const hydrated = await getObjectText(params.key);
+    if (hydrated !== null) return hydrated;
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (!params.strict) return params.inlineValue;
+  throw new ObjectStorageLifecycleError(
+    "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+    "Object-backed field is unavailable at the storage boundary",
+  );
 }
 
 export async function hydrateJsonField<T>(params: {
   storage: string;
   key: string | null;
   inlineValue: T | null;
+  strict?: boolean;
 }): Promise<T | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  const raw = await getObjectText(params.key);
-  if (!raw) return params.inlineValue;
-  return JSON.parse(raw) as T;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed JSON field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed JSON field is missing its exact object key",
+    );
+  }
+
+  let raw: string | null;
+  try {
+    raw = await getObjectText(params.key);
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (raw === null || (!params.strict && raw.length === 0)) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch (cause) {
+    // error-policy:J2 preserve the parse failure without exposing object content.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_JSON_INVALID",
+      "Object-backed JSON field contains malformed JSON",
+      { cause },
+    );
+  }
 }

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Start the elizaOS application launcher (home surface).
+# Waits for the local agent's /api/health before launching so the UI
+# never sees a "no backend" flash on cold boot.
+#
+# Surface selection:
+#   - amd64/arm64: the Electrobun app (/opt/elizaos/app/elizaos), launched
+#     with --shell-mode=launcher.
+#   - riscv64 (and any arch lacking the Electrobun prebuild): a WebKitGTK
+#     kiosk (epiphany-browser) rendering the same agent home web UI the
+#     Electrobun app embeds, served by the agent at the root path.
+set -eu
+
+AGENT_URL="${ELIZAOS_AGENT_URL:-http://127.0.0.1:31337}"
+
+for _ in $(seq 1 60); do
+    if curl -fsS "${AGENT_URL}/api/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+if [ -x /opt/elizaos/app/elizaos ]; then
+    exec /opt/elizaos/app/elizaos --shell-mode=launcher
+fi
+
+# Kiosk fallback: GNOME Web in application mode renders the home UI fullscreen
+# with no browser chrome. A dedicated profile keeps it isolated from any
+# interactive browsing session.
+exec epiphany-browser --application-mode \
+    --profile=/tmp/elizaos-kiosk-launcher "${AGENT_URL}/"

@@ -22,20 +22,25 @@ import {
   type WorkflowStepExecuteContext,
   type WorkflowStepRegistry,
 } from "../registries/workflow-step-registry.js";
+import { LifeOpsWorkflowRunFailedUncompensatedError } from "../service-types.js";
 import { type WorkflowsDeps, WorkflowsDomain } from "./workflows-service.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+const SECOND_AGENT_ID = "00000000-0000-0000-0000-0000000000bb";
 const NOW = "2026-08-20T09:00:00.000Z";
+const LATER = "2026-08-20T09:01:00.000Z";
 
 function makeDefinition(
   steps: Array<Record<string, unknown>>,
+  options: { agentId?: string; workflowId?: string } = {},
 ): LifeOpsWorkflowDefinition {
+  const agentId = options.agentId ?? AGENT_ID;
   return {
-    id: "wf-1",
-    agentId: AGENT_ID,
+    id: options.workflowId ?? "wf-1",
+    agentId,
     domain: "personal",
     subjectType: "owner",
-    subjectId: "owner-1",
+    subjectId: `owner-${agentId}`,
     visibilityScope: "owner_private",
     contextPolicy: "always",
     title: "cross-domain test workflow",
@@ -65,30 +70,113 @@ type Harness = {
   domain: WorkflowsDomain;
   registry: WorkflowStepRegistry;
   runs: LifeOpsWorkflowRun[];
-  logLifeOpsError: ReturnType<typeof vi.fn>;
+  repository: {
+    claimWorkflowRun: ReturnType<typeof vi.fn>;
+    completeWorkflowRun: ReturnType<typeof vi.fn>;
+    createWorkflowRun: ReturnType<typeof vi.fn>;
+    getWorkflowRunByIdempotencyKey: ReturnType<typeof vi.fn>;
+    listWorkflows: ReturnType<typeof vi.fn>;
+    listWorkflowRuns: ReturnType<typeof vi.fn>;
+    updateWorkflow: ReturnType<typeof vi.fn>;
+  };
+  emitWorkflowRunNudge: ReturnType<typeof vi.fn>;
+  logLifeOpsWarn: ReturnType<typeof vi.fn>;
+  reportError: ReturnType<typeof vi.fn>;
   getWorkflowDefinition: ReturnType<typeof vi.fn>;
+  setAgentId(agentId: string): void;
 };
 
 function makeHarness(): Harness {
-  const runtime = { agentId: AGENT_ID };
+  let currentAgentId = AGENT_ID;
+  const reportError = vi.fn();
+  const runtime = { agentId: currentAgentId, reportError };
   const registry = createWorkflowStepRegistry();
   registerWorkflowStepRegistry(
     runtime as unknown as Parameters<typeof registerWorkflowStepRegistry>[0],
     registry,
   );
   const runs: LifeOpsWorkflowRun[] = [];
-  const logLifeOpsError = vi.fn();
+
+  const cloneRun = (run: LifeOpsWorkflowRun): LifeOpsWorkflowRun =>
+    structuredClone(run);
+  const claimWorkflowRun = vi.fn(async (run: LifeOpsWorkflowRun) => {
+    if (run.status !== "running" || run.finishedAt !== null) {
+      throw new Error("workflow claims must start in running state");
+    }
+    const conflicts = runs.some(
+      (current) =>
+        current.id === run.id ||
+        (run.idempotencyKey !== null &&
+          current.agentId === run.agentId &&
+          current.workflowId === run.workflowId &&
+          current.idempotencyKey === run.idempotencyKey),
+    );
+    if (conflicts) return false;
+    runs.push(cloneRun(run));
+    return true;
+  });
+  const getWorkflowRunByIdempotencyKey = vi.fn(
+    async (agentId: string, workflowId: string, idempotencyKey: string) => {
+      const run = runs.find(
+        (current) =>
+          current.agentId === agentId &&
+          current.workflowId === workflowId &&
+          current.idempotencyKey === idempotencyKey,
+      );
+      return run ? cloneRun(run) : null;
+    },
+  );
+  const completeWorkflowRun = vi.fn(async (run: LifeOpsWorkflowRun) => {
+    if (
+      run.finishedAt === null ||
+      run.status === "queued" ||
+      run.status === "running"
+    ) {
+      throw new Error("workflow completions must be terminal");
+    }
+    const index = runs.findIndex(
+      (current) =>
+        current.id === run.id &&
+        current.agentId === run.agentId &&
+        current.workflowId === run.workflowId &&
+        current.idempotencyKey === run.idempotencyKey &&
+        current.status === "running" &&
+        current.finishedAt === null,
+    );
+    if (index < 0) return false;
+    runs[index] = cloneRun(run);
+    return true;
+  });
+  const createWorkflowRun = vi.fn(async (run: LifeOpsWorkflowRun) => {
+    if (runs.some((current) => current.id === run.id)) {
+      throw new Error("duplicate workflow run id");
+    }
+    runs.push(cloneRun(run));
+  });
+  const listWorkflowRuns = vi.fn(async (agentId: string, workflowId: string) =>
+    runs
+      .filter((run) => run.agentId === agentId && run.workflowId === workflowId)
+      .map(cloneRun),
+  );
+  const listWorkflows = vi.fn(async () => [] as LifeOpsWorkflowDefinition[]);
+  const updateWorkflow = vi.fn(async () => undefined);
+  const repository = {
+    claimWorkflowRun,
+    completeWorkflowRun,
+    createWorkflowRun,
+    getWorkflowRunByIdempotencyKey,
+    listWorkflows,
+    listWorkflowRuns,
+    updateWorkflow,
+  };
+  const logLifeOpsWarn = vi.fn();
   const ctx = {
     runtime,
-    repository: {
-      createWorkflowRun: vi.fn(async (run: LifeOpsWorkflowRun) => {
-        runs.push(run);
-      }),
-      listWorkflowRuns: vi.fn(async () => [...runs]),
-    },
-    agentId: () => AGENT_ID,
-    logLifeOpsError,
+    repository,
+    agentId: () => currentAgentId,
+    logLifeOpsWarn,
   };
+  const emitWorkflowRunNudge = vi.fn(async () => undefined);
   const deps = {
     recordWorkflowAudit: vi.fn(
       async (): Promise<LifeOpsAuditEvent> =>
@@ -96,7 +184,7 @@ function makeHarness(): Harness {
     ),
     getWorkflowDefinition: vi.fn(),
     readEffectiveScheduleState: vi.fn(async () => null),
-    emitWorkflowRunNudge: vi.fn(async () => undefined),
+    emitWorkflowRunNudge,
     workflowStepContext: {} as WorkflowStepExecuteContext,
   };
   const domain = new WorkflowsDomain(
@@ -107,8 +195,40 @@ function makeHarness(): Harness {
     domain,
     registry,
     runs,
-    logLifeOpsError,
+    repository,
+    emitWorkflowRunNudge,
+    logLifeOpsWarn,
+    reportError,
     getWorkflowDefinition: deps.getWorkflowDefinition,
+    setAgentId(agentId: string) {
+      currentAgentId = agentId;
+      runtime.agentId = agentId;
+    },
+  };
+}
+
+function storedRun(args: {
+  id: string;
+  idempotencyKey: string;
+  status: LifeOpsWorkflowRun["status"];
+  agentId?: string;
+  workflowId?: string;
+  result?: Record<string, unknown>;
+}): LifeOpsWorkflowRun {
+  const terminal = args.status !== "queued" && args.status !== "running";
+  return {
+    id: args.id,
+    agentId: args.agentId ?? AGENT_ID,
+    workflowId: args.workflowId ?? "wf-1",
+    idempotencyKey: args.idempotencyKey,
+    startedAt: NOW,
+    finishedAt: terminal ? LATER : null,
+    status: args.status,
+    result: {
+      idempotencyKey: args.idempotencyKey,
+      ...(args.result ?? {}),
+    },
+    auditRef: terminal ? `audit-${args.id}` : null,
   };
 }
 
@@ -176,6 +296,7 @@ describe("WorkflowsDomain execution contract", () => {
 
   it("compensates executed steps in reverse order when a later step fails", async () => {
     const order: string[] = [];
+    const workflowFailure = new Error("upstream unavailable");
     harness.registry.register(
       contribution(
         "create_reminder",
@@ -200,7 +321,7 @@ describe("WorkflowsDomain execution contract", () => {
     );
     harness.registry.register(
       contribution("notify", "inbox", async () => {
-        throw new Error("upstream unavailable");
+        throw workflowFailure;
       }),
     );
     const definition = makeDefinition([
@@ -216,16 +337,23 @@ describe("WorkflowsDomain execution contract", () => {
     });
 
     expect(result.run.status).toBe("failed");
-    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error).toBe(workflowFailure);
+    expect(result.disposition).toBe("executed");
     expect(order).toEqual(["undo_event", "undo_reminder:r-1"]);
     expect(result.run.result.compensations).toEqual([
       { kind: "create_event", status: "compensated" },
       { kind: "create_reminder", status: "compensated" },
     ]);
+    expect(harness.reportError).not.toHaveBeenCalled();
+    expect(harness.runs).toEqual([
+      expect.objectContaining({ id: result.run.id, status: "failed" }),
+    ]);
   });
 
-  it("records a compensation failure without aborting remaining compensations", async () => {
+  it("marks a partial compensation failure, reports it, and continues reverse unwind", async () => {
     const order: string[] = [];
+    const compensationFailure = new Error("undo failed");
+    const workflowFailure = new Error("boom");
     harness.registry.register(
       contribution(
         "step_a",
@@ -242,13 +370,14 @@ describe("WorkflowsDomain execution contract", () => {
         "inbox",
         async () => "b",
         async () => {
-          throw new Error("undo failed");
+          order.push("undo_b");
+          throw compensationFailure;
         },
       ),
     );
     harness.registry.register(
       contribution("step_c", "finance", async () => {
-        throw new Error("boom");
+        throw workflowFailure;
       }),
     );
     const definition = makeDefinition([
@@ -263,20 +392,93 @@ describe("WorkflowsDomain execution contract", () => {
       request: {},
     });
 
-    expect(order).toEqual(["undo_a"]);
+    expect(order).toEqual(["undo_b", "undo_a"]);
+    expect(result.disposition).toBe("executed");
+    expect(result.run.status).toBe("failed_uncompensated");
     expect(result.run.result.compensations).toEqual([
       { kind: "step_b", status: "compensation_failed", error: "undo failed" },
       { kind: "step_a", status: "compensated" },
     ]);
-    expect(harness.logLifeOpsError).toHaveBeenCalledWith(
-      "workflow_step_compensation",
-      expect.any(Error),
-      expect.objectContaining({ stepKind: "step_b" }),
+    expect(result.error).toBeInstanceOf(
+      LifeOpsWorkflowRunFailedUncompensatedError,
     );
+    expect(result.error).toMatchObject({
+      status: 500,
+      code: "WORKFLOW_RUN_FAILED_UNCOMPENSATED",
+      cause: workflowFailure,
+      failedCompensationKinds: ["step_b"],
+      run: expect.objectContaining({
+        id: result.run.id,
+        status: "failed_uncompensated",
+      }),
+    });
+    expect(harness.reportError).toHaveBeenCalledWith(
+      "workflow_step_compensation",
+      compensationFailure,
+      expect.objectContaining({
+        workflowId: "wf-1",
+        stepKind: "step_b",
+      }),
+    );
+    expect(harness.runs).toEqual([
+      expect.objectContaining({
+        id: result.run.id,
+        status: "failed_uncompensated",
+      }),
+    ]);
+  });
+
+  it("surfaces the typed partial-compensation error through runWorkflow", async () => {
+    const workflowFailure = new Error("step failed");
+    harness.registry.register(
+      contribution(
+        "reversible",
+        "calendar",
+        async () => "created",
+        async () => {
+          throw new Error("rollback failed");
+        },
+      ),
+    );
+    harness.registry.register(
+      contribution("fails", "finance", async () => {
+        throw workflowFailure;
+      }),
+    );
+    const definition = makeDefinition([
+      { kind: "reversible" },
+      { kind: "fails" },
+    ]);
+    harness.getWorkflowDefinition.mockResolvedValue(definition);
+
+    await expect(harness.domain.runWorkflow("wf-1")).rejects.toMatchObject({
+      status: 500,
+      code: "WORKFLOW_RUN_FAILED_UNCOMPENSATED",
+      cause: workflowFailure,
+      failedCompensationKinds: ["reversible"],
+      run: expect.objectContaining({ status: "failed_uncompensated" }),
+    });
+    expect(harness.runs).toEqual([
+      expect.objectContaining({ status: "failed_uncompensated" }),
+    ]);
   });
 
   it("replays a run instead of re-executing when the idempotency key matches", async () => {
-    const execute = vi.fn(async () => ({ ok: true }));
+    const idempotencyKey = "schedule:wf-1:2026-08-20T09:00:00.000Z";
+    const execute = vi.fn(async () => {
+      expect(harness.runs).toEqual([
+        expect.objectContaining({
+          agentId: AGENT_ID,
+          workflowId: "wf-1",
+          idempotencyKey,
+          status: "running",
+          finishedAt: null,
+        }),
+      ]);
+      expect(harness.repository.claimWorkflowRun).toHaveBeenCalledTimes(1);
+      expect(harness.repository.completeWorkflowRun).not.toHaveBeenCalled();
+      return { ok: true };
+    });
     harness.registry.register(contribution("side_effect", "finance", execute));
     const definition = makeDefinition([
       { kind: "side_effect", resultKey: "out" },
@@ -286,22 +488,29 @@ describe("WorkflowsDomain execution contract", () => {
       startedAt: NOW,
       confirmBrowserActions: false,
       request: {},
-      idempotencyKey: "schedule:wf-1:2026-08-20T09:00:00.000Z",
+      idempotencyKey,
     });
     const second = await harness.domain.executeWorkflowDefinition(definition, {
       startedAt: NOW,
       confirmBrowserActions: false,
       request: {},
-      idempotencyKey: "schedule:wf-1:2026-08-20T09:00:00.000Z",
+      idempotencyKey,
     });
 
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(
+      harness.repository.claimWorkflowRun.mock.invocationCallOrder[0],
+    ).toBeLessThan(execute.mock.invocationCallOrder[0] as number);
     expect(second.run.id).toBe(first.run.id);
     expect(second.error).toBeNull();
+    expect(second.disposition).toBe("replayed");
     expect(harness.runs).toHaveLength(1);
-    expect(first.run.result.idempotencyKey).toBe(
-      "schedule:wf-1:2026-08-20T09:00:00.000Z",
-    );
+    expect(first.run.idempotencyKey).toBe(idempotencyKey);
+    expect(first.run.result.idempotencyKey).toBe(idempotencyKey);
+    expect(
+      harness.repository.getWorkflowRunByIdempotencyKey,
+    ).toHaveBeenCalledWith(AGENT_ID, "wf-1", idempotencyKey);
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
   });
 
   it("surfaces a prior failed run under the same key as a typed error without re-executing", async () => {
@@ -328,11 +537,278 @@ describe("WorkflowsDomain execution contract", () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(second.run.id).toBe(first.run.id);
     expect(second.error).toBeInstanceOf(Error);
-    expect((second.error as Error).message).toContain("already failed");
+    expect(second.error).toMatchObject({
+      status: 409,
+      code: "WORKFLOW_RUN_ALREADY_FAILED",
+    });
+    expect(second.disposition).toBe("replayed");
     expect(harness.runs).toHaveLength(1);
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
   });
 
-  it("rejects an oversized public idempotency key", async () => {
+  it("replays a partially compensated run with its typed terminal error", async () => {
+    const idempotencyKey = "schedule:wf-1:partial";
+    const prior = storedRun({
+      id: "partial-run",
+      idempotencyKey,
+      status: "failed_uncompensated",
+      result: {
+        compensations: [
+          {
+            kind: "calendar_create",
+            status: "compensation_failed",
+            error: "delete failed",
+          },
+          { kind: "reminder_create", status: "compensated" },
+        ],
+      },
+    });
+    harness.runs.push(prior);
+    const execute = vi.fn(async () => "must not execute");
+    harness.registry.register(contribution("side_effect", "calendar", execute));
+
+    const result = await harness.domain.executeWorkflowDefinition(
+      makeDefinition([{ kind: "side_effect" }]),
+      {
+        startedAt: LATER,
+        confirmBrowserActions: false,
+        request: {},
+        idempotencyKey,
+      },
+    );
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.run).toEqual(prior);
+    expect(result.disposition).toBe("replayed");
+    expect(result.error).toBeInstanceOf(
+      LifeOpsWorkflowRunFailedUncompensatedError,
+    );
+    expect(result.error).toMatchObject({
+      status: 409,
+      code: "WORKFLOW_RUN_FAILED_UNCOMPENSATED",
+      failedCompensationKinds: ["calendar_create"],
+      run: prior,
+    });
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
+  });
+
+  it.each(["running", "queued"] as const)(
+    "does not re-execute a %s keyed run",
+    async (status) => {
+      const idempotencyKey = `schedule:wf-1:${status}`;
+      const prior = storedRun({
+        id: `${status}-run`,
+        idempotencyKey,
+        status,
+      });
+      harness.runs.push(prior);
+      const execute = vi.fn(async () => "must not execute");
+      harness.registry.register(
+        contribution("side_effect", "calendar", execute),
+      );
+
+      const result = await harness.domain.executeWorkflowDefinition(
+        makeDefinition([{ kind: "side_effect" }]),
+        {
+          startedAt: LATER,
+          confirmBrowserActions: false,
+          request: {},
+          idempotencyKey,
+        },
+      );
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(result.run).toEqual(prior);
+      expect(result.disposition).toBe("in_progress");
+      expect(result.error).toMatchObject({
+        status: 409,
+        code: "WORKFLOW_RUN_IN_PROGRESS",
+      });
+      expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not advance a due scheduler cursor while its keyed run is already running", async () => {
+    const previousDueAt = "2026-08-20T08:00:00.000Z";
+    const previousRunId = "previous-scheduled-run";
+    const schedulerState = {
+      managedBy: "task_worker" as const,
+      nextDueAt: NOW,
+      lastDueAt: previousDueAt,
+      lastRunId: previousRunId,
+      lastRunStatus: "success" as const,
+      updatedAt: previousDueAt,
+    };
+    const definition: LifeOpsWorkflowDefinition = {
+      ...makeDefinition([{ kind: "side_effect" }]),
+      triggerType: "schedule",
+      schedule: { kind: "interval", everyMinutes: 60, timezone: "UTC" },
+      metadata: { lifeopsScheduler: schedulerState },
+    };
+    const idempotencyKey = `schedule:wf-1:${NOW}`;
+    harness.runs.push(
+      storedRun({
+        id: "already-running-scheduled-run",
+        idempotencyKey,
+        status: "running",
+      }),
+    );
+    harness.repository.listWorkflows.mockResolvedValue([definition]);
+    const execute = vi.fn(async () => "must not execute");
+    harness.registry.register(contribution("side_effect", "calendar", execute));
+
+    const runs = await harness.domain.runDueWorkflows({ now: NOW, limit: 1 });
+
+    expect(runs).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(harness.emitWorkflowRunNudge).not.toHaveBeenCalled();
+    expect(harness.repository.updateWorkflow).not.toHaveBeenCalled();
+    expect(definition.metadata.lifeopsScheduler).toMatchObject({
+      nextDueAt: NOW,
+      lastDueAt: previousDueAt,
+      lastRunId: previousRunId,
+    });
+    // Escalated, not merely logged: the claim can never be re-taken, so the
+    // cursor is stuck until an operator intervenes. reportError is what
+    // reaches RECENT_ERRORS and owner escalation.
+    expect(harness.reportError).toHaveBeenCalledWith(
+      "workflow_scheduled_execution",
+      expect.objectContaining({ code: "WORKFLOW_RUN_CLAIM_WEDGED" }),
+      {
+        workflowId: "wf-1",
+        workflowRunId: "already-running-scheduled-run",
+        dueAt: NOW,
+      },
+    );
+    expect(
+      harness.repository.getWorkflowRunByIdempotencyKey,
+    ).toHaveBeenCalledWith(AGENT_ID, "wf-1", idempotencyKey);
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
+  });
+
+  it("does not advance an event cursor while its keyed run is already running", async () => {
+    const previousEventAt = "2026-08-20T08:00:00.000Z";
+    const schedulerState = {
+      managedBy: "task_worker" as const,
+      nextDueAt: null,
+      lastDueAt: previousEventAt,
+      lastRunId: "previous-event-run",
+      lastRunStatus: "success" as const,
+      updatedAt: previousEventAt,
+      lastFiredEventEndAt: previousEventAt,
+      lastFiredEventId: "previous-event",
+    };
+    const originalSchedulerState = structuredClone(schedulerState);
+    const definition: LifeOpsWorkflowDefinition = {
+      ...makeDefinition([{ kind: "side_effect" }]),
+      triggerType: "event",
+      schedule: { kind: "event", eventKind: "lifeops.wake.confirmed" },
+      metadata: { lifeopsScheduler: schedulerState },
+    };
+    const eventId = "wake-confirmed-event";
+    const idempotencyKey = `event:wf-1:${eventId}:${NOW}`;
+    harness.runs.push(
+      storedRun({
+        id: "already-running-event-run",
+        idempotencyKey,
+        status: "running",
+      }),
+    );
+    harness.repository.listWorkflows.mockResolvedValue([definition]);
+    const execute = vi.fn(async () => "must not execute");
+    harness.registry.register(contribution("side_effect", "calendar", execute));
+
+    const runs = await harness.domain.runDueEventWorkflows({
+      now: NOW,
+      limit: 1,
+      lifeOpsEvents: [
+        {
+          id: eventId,
+          kind: "lifeops.wake.confirmed",
+          occurredAt: NOW,
+          confidence: 0.98,
+          payload: { source: "wearable" },
+        },
+      ],
+    });
+
+    expect(runs).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(harness.repository.claimWorkflowRun).toHaveBeenCalledTimes(1);
+    expect(harness.runs).toEqual([
+      expect.objectContaining({
+        id: "already-running-event-run",
+        idempotencyKey,
+        status: "running",
+      }),
+    ]);
+    expect(harness.emitWorkflowRunNudge).not.toHaveBeenCalled();
+    expect(harness.repository.updateWorkflow).not.toHaveBeenCalled();
+    expect(definition.metadata.lifeopsScheduler).toEqual(
+      originalSchedulerState,
+    );
+    expect(harness.reportError).toHaveBeenCalledWith(
+      "workflow_event_execution",
+      expect.objectContaining({ code: "WORKFLOW_RUN_CLAIM_WEDGED" }),
+      {
+        workflowId: "wf-1",
+        workflowRunId: "already-running-event-run",
+        eventId,
+        eventEndAt: NOW,
+      },
+    );
+    expect(
+      harness.repository.getWorkflowRunByIdempotencyKey,
+    ).toHaveBeenCalledWith(AGENT_ID, "wf-1", idempotencyKey);
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a cancelled keyed run as terminal without re-executing", async () => {
+    const idempotencyKey = "schedule:wf-1:cancelled";
+    const prior = storedRun({
+      id: "cancelled-run",
+      idempotencyKey,
+      status: "cancelled",
+    });
+    harness.runs.push(prior);
+    const execute = vi.fn(async () => "must not execute");
+    harness.registry.register(contribution("side_effect", "calendar", execute));
+
+    const result = await harness.domain.executeWorkflowDefinition(
+      makeDefinition([{ kind: "side_effect" }]),
+      {
+        startedAt: LATER,
+        confirmBrowserActions: false,
+        request: {},
+        idempotencyKey,
+      },
+    );
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.run).toEqual(prior);
+    expect(result.disposition).toBe("replayed");
+    expect(result.error).toMatchObject({
+      status: 409,
+      code: "WORKFLOW_RUN_CANCELLED",
+    });
+  });
+
+  it("accepts a 256-character public idempotency key", async () => {
+    harness.registry.register(
+      contribution("noop", "calendar", async () => null),
+    );
+    const definition = makeDefinition([{ kind: "noop" }]);
+    harness.getWorkflowDefinition.mockResolvedValue(definition);
+
+    const run = await harness.domain.runWorkflow("wf-1", {
+      idempotencyKey: "k".repeat(256),
+    });
+
+    expect(run.status).toBe("success");
+    expect(run.idempotencyKey).toBe("k".repeat(256));
+  });
+
+  it("rejects a 257-character public idempotency key before claiming a run", async () => {
     harness.registry.register(
       contribution("noop", "calendar", async () => null),
     );
@@ -344,6 +820,22 @@ describe("WorkflowsDomain execution contract", () => {
         idempotencyKey: "k".repeat(257),
       }),
     ).rejects.toMatchObject({ status: 400 });
+    expect(harness.repository.claimWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it("rejects a NUL idempotency key before claiming a run", async () => {
+    harness.registry.register(
+      contribution("noop", "calendar", async () => null),
+    );
+    const definition = makeDefinition([{ kind: "noop" }]);
+    harness.getWorkflowDefinition.mockResolvedValue(definition);
+
+    await expect(
+      harness.domain.runWorkflow("wf-1", {
+        idempotencyKey: "unsafe\0key",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(harness.repository.claimWorkflowRun).not.toHaveBeenCalled();
   });
 
   it("executes a distinct idempotency key as a new run", async () => {
@@ -366,6 +858,79 @@ describe("WorkflowsDomain execution contract", () => {
 
     expect(execute).toHaveBeenCalledTimes(2);
     expect(harness.runs).toHaveLength(2);
+    expect(harness.repository.listWorkflowRuns).not.toHaveBeenCalled();
+  });
+
+  it("runs the same workflow id independently across agents and preserves the captured agent", async () => {
+    const events: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    harness.registry.register(
+      contribution("agent_a_slow", "calendar", async () => {
+        events.push("agent-a:start");
+        await gate;
+        events.push("agent-a:end");
+        return null;
+      }),
+    );
+    harness.registry.register(
+      contribution("agent_b_fast", "inbox", async () => {
+        events.push("agent-b:run");
+        return null;
+      }),
+    );
+
+    harness.setAgentId(AGENT_ID);
+    const firstRun = harness.domain.executeWorkflowDefinition(
+      makeDefinition([{ kind: "agent_a_slow" }], { agentId: AGENT_ID }),
+      {
+        startedAt: NOW,
+        confirmBrowserActions: false,
+        request: {},
+      },
+    );
+    harness.setAgentId(SECOND_AGENT_ID);
+    const secondRun = harness.domain.executeWorkflowDefinition(
+      makeDefinition([{ kind: "agent_b_fast" }], {
+        agentId: SECOND_AGENT_ID,
+      }),
+      {
+        startedAt: NOW,
+        confirmBrowserActions: false,
+        request: {},
+      },
+    );
+
+    try {
+      await vi.waitFor(
+        () => {
+          expect(events).toContain("agent-a:start");
+          expect(events).toContain("agent-b:run");
+          expect(events).not.toContain("agent-a:end");
+        },
+        { timeout: 250 },
+      );
+    } finally {
+      release();
+    }
+    const [first, second] = await Promise.all([firstRun, secondRun]);
+
+    expect(first.run.agentId).toBe(AGENT_ID);
+    expect(second.run.agentId).toBe(SECOND_AGENT_ID);
+    expect(events.indexOf("agent-b:run")).toBeLessThan(
+      events.indexOf("agent-a:end"),
+    );
+    expect(harness.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ agentId: AGENT_ID, workflowId: "wf-1" }),
+        expect.objectContaining({
+          agentId: SECOND_AGENT_ID,
+          workflowId: "wf-1",
+        }),
+      ]),
+    );
   });
 
   it("serializes concurrent executions of the same workflow", async () => {

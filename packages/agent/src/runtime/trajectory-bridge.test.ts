@@ -217,6 +217,82 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(typeof logger.logLlmCall).toBe("function");
   });
 
+  it("persists semantic decision stages through the patched logSemanticStage", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    expect(typeof patched.logSemanticStage).toBe("function");
+    await logger.startTrajectory?.("step-semantic-1", {
+      agentId: runtime.agentId,
+      source: "test",
+    });
+    await flushTrajectoryWrites(runtime);
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-1",
+      stage: {
+        stageId: "stage-tool-search-1",
+        kind: "toolSearch",
+        iteration: 1,
+        startedAt: 100,
+        endedAt: 112,
+        latencyMs: 12,
+        toolSearch: {
+          query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+          results: [
+            { name: "OWNER_ROUTINES", score: 0.91, rank: 1 },
+            { name: "VIEWS", score: 0.22, rank: 2 },
+          ],
+          selectedActions: ["OWNER_ROUTINES"],
+        },
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    const persistenceSql = trajectoryPersistenceSql(execute);
+    expect(persistenceSql.length).toBeGreaterThan(0);
+    const stageWrite = persistenceSql.find((query) =>
+      query.includes("semanticStages"),
+    );
+    expect(stageWrite).toBeDefined();
+    expect(stageWrite).toContain("stage-tool-search-1");
+    expect(stageWrite).toContain("OWNER_ROUTINES");
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed semantic stage as an invalid capture without a write", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-2",
+      stage: {
+        stageId: "bad-stage",
+        kind: "toolSearch",
+        startedAt: 10,
+        endedAt: 5,
+        latencyMs: -5,
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    expect(trajectoryPersistenceSql(execute)).toHaveLength(0);
+    expect(reportError).toHaveBeenCalledWith(
+      "TrajectoryStorage.captureValidation",
+      expect.anything(),
+      expect.objectContaining({ captureType: "semanticStage" }),
+    );
+  });
+
   it("honors live enablement across patched lifecycle and legacy helpers", async () => {
     const { runtime, logger, execute } = makeRuntime({
       statefulEnablement: true,

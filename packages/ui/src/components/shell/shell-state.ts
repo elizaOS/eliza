@@ -51,6 +51,8 @@ export interface ShellMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  /** True when the assistant stream ended before a completed turn. */
+  interrupted?: boolean;
   /**
    * Message origin (e.g. "client_chat", "proactive-interaction"). Assistant
    * turns with source "proactive-interaction" render as dismissible/acceptable

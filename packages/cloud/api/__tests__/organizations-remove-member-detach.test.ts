@@ -163,6 +163,7 @@ beforeAll(async () => {
         key_kms_key_id text, key_kms_key_version integer,
         organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_app_id uuid,
         rate_limit integer NOT NULL DEFAULT 1000,
         is_active boolean NOT NULL DEFAULT true,
         usage_count integer NOT NULL DEFAULT 0,
@@ -171,6 +172,33 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now(),
         deleted_at timestamp
+      )`,
+      // usersService.detachFromOrganization reads this via
+      // capturePersonalDeliveryRoutingIdentities before moving the member —
+      // develop split identity columns off `users` after this suite was
+      // authored, so the fixture needs the table even though these tests
+      // never seed a row into it.
+      `CREATE TABLE IF NOT EXISTS user_identities (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        steward_user_id text NOT NULL UNIQUE,
+        is_anonymous boolean NOT NULL DEFAULT false,
+        anonymous_session_id text UNIQUE,
+        expires_at timestamp,
+        telegram_id text UNIQUE,
+        telegram_username text,
+        telegram_first_name text,
+        telegram_photo_url text,
+        phone_number text UNIQUE,
+        phone_verified boolean DEFAULT false,
+        discord_id text UNIQUE,
+        discord_username text,
+        discord_global_name text,
+        discord_avatar_url text,
+        whatsapp_id text UNIQUE,
+        whatsapp_name text,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
       )`,
     ];
     for (const stmt of ddl) await dbWrite.execute(stmt);

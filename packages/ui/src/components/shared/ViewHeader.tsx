@@ -12,7 +12,8 @@ import { shellHistory } from "../../surface-realm-channel";
 /**
  * Return to the combined home/apps surface — the default "back" for any
  * top-level view. `/views` keeps the launcher route stable while rendering the
- * same inline apps region used by chat; `/apps` remains My Apps management.
+ * same inline apps region used by chat; `/apps` deep-links into the Projects
+ * surface's Apps segment (#17031).
  */
 export function navigateBackToLauncher(): void {
   if (typeof window === "undefined") return;

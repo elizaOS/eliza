@@ -14,6 +14,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { usdFromPoints } from "@/lib/services/earnings-units";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import { normalizeRedemptionClientIp } from "@/lib/services/redemption-client-ip";
 import {
@@ -33,7 +34,6 @@ import {
   REDEMPTION_MAX_POINTS,
   REDEMPTION_MIN_POINTS,
   REDEMPTION_NETWORKS,
-  REDEMPTION_POINTS_PER_USD,
 } from "@/types/redemption-contract";
 
 const CreateRedemptionSchema = z.object({
@@ -249,7 +249,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
       userId: `${user.id.slice(0, 8)}...`,
       appId,
       pointsAmount,
-      usdValue: (pointsAmount / REDEMPTION_POINTS_PER_USD).toFixed(2),
+      usdValue: usdFromPoints(pointsAmount).toFixed(2),
       network,
       payoutAddress: maskedAddress,
       hasSignature: !!signature,

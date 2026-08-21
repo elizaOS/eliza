@@ -20,6 +20,7 @@ import {
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
+import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
 export {
   // Agent / bridge
@@ -155,6 +156,8 @@ export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
  * mounted {@link ChatOverlay} is the one listener.
  */
 export const CHAT_OPEN_EVENT = "eliza:chat:open" as const;
+/** Collapse the floating chat so a control-heavy surface can take focus. */
+export const CHAT_CLOSE_EVENT = "eliza:chat:close" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
 export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
 /**
@@ -186,10 +189,19 @@ export function dispatchChatOpen(): void {
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
 }
 
+/** Request the floating chat to collapse. Onboarding may deliberately ignore it. */
+export function dispatchChatClose(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_CLOSE_EVENT));
+}
+
 /** Request the notification center to open (surface-agnostic — see
  * {@link OPEN_NOTIFICATION_CENTER_EVENT}). */
 export function dispatchOpenNotificationCenter(): void {
   if (typeof window === "undefined") return;
+  // Retain before dispatch: iOS can replay a cold appUrlOpen while React has
+  // mounted but before NotificationsShellBoot's effect attaches its listener.
+  requestNotificationCenterOpen();
   window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
 }
 

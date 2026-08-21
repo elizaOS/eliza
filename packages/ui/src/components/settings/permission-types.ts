@@ -6,6 +6,7 @@
  */
 
 import type { PermissionId, PermissionStatus } from "../../api";
+import type { CapabilityTone } from "../capabilities/connected-capability-presentation";
 
 /** Permission definition for UI rendering. */
 export interface PermissionDef {
@@ -362,7 +363,7 @@ export const PERMISSION_BADGE_LABELS: Record<
   {
     defaultLabel: string;
     labelKey: string;
-    tone: "success" | "danger" | "warning" | "muted";
+    tone: CapabilityTone;
   }
 > = {
   granted: {
@@ -543,7 +544,7 @@ export function getPermissionBadge(
   id: PermissionId,
   status: PermissionStatus,
   platform: string,
-): { tone: "success" | "danger" | "warning" | "muted"; label: string } {
+): { tone: CapabilityTone; label: string } {
   if (status === "denied") {
     if (id === "shell") {
       return {

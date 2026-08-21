@@ -27,6 +27,26 @@ export const DESKTOP_BRIDGE_UNAVAILABLE_MESSAGE =
   "Eliza browser workspace desktop bridge is unavailable.";
 export const browserWorkspacePageFetch = globalThis.fetch.bind(globalThis);
 
+/**
+ * Page fetch with a hop deadline, so a host that accepts the connection and
+ * never answers cannot pin a browser workspace command indefinitely.
+ *
+ * A caller-provided abort signal composes with the deadline rather than
+ * replacing it: the caller can still cancel early, and the bound still applies
+ * when the caller's signal never fires.
+ */
+export async function browserWorkspaceBoundedPageFetch(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return browserWorkspacePageFetch(url, {
+    ...init,
+    signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 export function normalizeEnvValue(value: string | undefined): string | null {
   if (typeof value !== "string") {
     return null;

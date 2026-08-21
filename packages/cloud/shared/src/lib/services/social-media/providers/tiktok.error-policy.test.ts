@@ -38,7 +38,7 @@ mock.module("../rate-limit", () => ({
   },
 }));
 
-const { tiktokProvider } = await import("./tiktok");
+const { tiktokProvider, tiktokFetch } = await import("./tiktok");
 
 const CREDS = { accessToken: "tok" } as SocialCredentials;
 
@@ -153,5 +153,40 @@ describe("tiktokProvider J1 boundaries — upstream failure becomes a structured
     const result = await tiktokProvider.validateCredentials(CREDS);
     expect(result.valid).toBe(false);
     expect(result.error).toContain("bad token");
+  });
+});
+
+describe("tiktokFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung TikTok API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      tiktokFetch("https://open.tiktokapis.com/v2/post/publish", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await tiktokFetch("https://open.tiktokapis.com/v2/post/publish", {
+      signal: controller.signal,
+    });
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
   });
 });

@@ -32,6 +32,10 @@
 
 import type { Media } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.js";
 import { containsExternalEnvelopeMaterial } from "./external-content.js";
 
 /**
@@ -60,7 +64,13 @@ export function reportOutboundEnvelopeBlock(
 		new Error(
 			"blocked outbound message carrying external-content envelope material",
 		),
-		{ seam, blockedPreview: blockedText.slice(0, REPORT_PREVIEW_CHARS) },
+		{
+			seam,
+			blockedPreview: truncateWellFormed(
+				toWellFormedUnicode(blockedText),
+				REPORT_PREVIEW_CHARS,
+			),
+		},
 	);
 }
 

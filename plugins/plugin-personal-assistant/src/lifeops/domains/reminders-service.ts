@@ -239,7 +239,13 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "../telemetry-retention.js";
-import { addMinutes, getLocalDateKey, getZonedDateParts } from "../time.js";
+import {
+  addDaysToLocalDate,
+  addMinutes,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../time.js";
 import {
   callerDefinitionScopes,
   getCallerDefinition,
@@ -2416,12 +2422,149 @@ export class RemindersDomain {
     for (const occurrence of materialized) {
       await this.ctx.repository.upsertOccurrence(occurrence);
     }
+    await this.syncQuotaProgressCheckIn(definition, materialized, now);
     await this.ctx.repository.pruneNonTerminalOccurrences(
       definition.agentId,
       definition.id,
       materialized.map((occurrence) => occurrence.occurrenceKey),
     );
     return materialized;
+  }
+
+  /**
+   * Materialize today's optional quota check-in on the canonical scheduled-task
+   * spine. The stable occurrence-scoped idempotency key makes scheduler ticks
+   * replay-safe; the quota gate suppresses a fire after completion or day end.
+   */
+  private async syncQuotaProgressCheckIn(
+    definition: LifeOpsTaskDefinition,
+    occurrences: LifeOpsOccurrence[],
+    now: Date,
+  ): Promise<void> {
+    const policy = definition.checkInPolicy;
+    if (
+      definition.cadence.kind !== "count_per_day" ||
+      !policy ||
+      definition.status !== "active"
+    ) {
+      return;
+    }
+    const todayKey = getLocalDateKey(
+      getZonedDateParts(now, definition.timezone),
+    );
+    const occurrence = occurrences.find(
+      (candidate) => candidate.metadata.localDateKey === todayKey,
+    );
+    if (
+      !occurrence ||
+      ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
+    ) {
+      return;
+    }
+    const [year, month, day] = todayKey.split("-").map(Number);
+    if (![year, month, day].every(Number.isInteger)) return;
+    const localNow = getZonedDateParts(now, definition.timezone);
+    const nowMinute = localNow.hour * 60 + localNow.minute;
+    let fireAt: Date | null = null;
+    for (const windowName of policy.windows) {
+      const window = definition.windowPolicy.windows.find(
+        (candidate) => candidate.name === windowName,
+      );
+      if (!window) continue;
+      const endMinute =
+        window.endMinute <= window.startMinute
+          ? window.endMinute + 24 * 60
+          : window.endMinute;
+      const localNowComparable =
+        nowMinute < window.startMinute && endMinute >= 24 * 60
+          ? nowMinute + 24 * 60
+          : nowMinute;
+      const isInside =
+        localNowComparable >= window.startMinute &&
+        localNowComparable < endMinute;
+      if (isInside) {
+        const immediateCandidate = new Date(now.getTime() + 1_000);
+        if (
+          immediateCandidate.getTime() <= Date.parse(occurrence.relevanceEndAt)
+        ) {
+          fireAt = immediateCandidate;
+          break;
+        }
+        continue;
+      }
+      const candidateMinute = window.startMinute;
+      if (candidateMinute <= localNowComparable) continue;
+      const localDate = addDaysToLocalDate(
+        { year, month, day },
+        Math.floor(candidateMinute / (24 * 60)),
+      );
+      const minuteOfDay = candidateMinute % (24 * 60);
+      const candidate = buildUtcDateFromLocalParts(definition.timezone, {
+        ...localDate,
+        hour: Math.floor(minuteOfDay / 60),
+        minute: minuteOfDay % 60,
+        second: 0,
+      });
+      if (
+        candidate.getTime() > now.getTime() &&
+        candidate.getTime() <= Date.parse(occurrence.relevanceEndAt)
+      ) {
+        fireAt = candidate;
+        break;
+      }
+    }
+    if (!fireAt) return;
+    const runner = getScheduledTaskRunner(this.ctx.runtime, {
+      agentId: definition.agentId,
+      now: () => now,
+    });
+    await runner.schedule({
+      kind: "checkin",
+      promptInstructions:
+        "Render the structurally projected quota progress and ask one concise progress question.",
+      trigger: { kind: "once", atIso: fireAt.toISOString() },
+      priority:
+        definition.priority <= 2
+          ? "high"
+          : definition.priority >= 4
+            ? "low"
+            : "medium",
+      shouldFire: {
+        compose: "all",
+        gates: [
+          { kind: "quota_incomplete" },
+          { kind: "quiet_hours", params: { highPriorityBypass: false } },
+        ],
+      },
+      completionCheck: {
+        kind: "quota_complete",
+        followupAfterMinutes: policy.followupAfterMinutes,
+      },
+      output: {
+        destination: "in_app_card",
+        fallback: {
+          title: definition.title,
+          body: "Quota progress check-in",
+        },
+      },
+      idempotencyKey: `quota-checkin:${occurrence.id}:${definition.updatedAt}`,
+      respectsGlobalPause: true,
+      source: "plugin",
+      createdBy: "lifeops:quota-progress",
+      ownerVisible: true,
+      metadata: {
+        quotaDefinitionId: definition.id,
+        quotaDefinitionRevision: definition.updatedAt,
+        quotaOccurrenceId: occurrence.id,
+        quotaLocalDateKey: todayKey,
+        noReplyPolicy: {
+          ...policy.noReplyPolicy,
+          sensitive: false,
+          allowCrossChannel: false,
+          allowNonOwnerNotification: false,
+        },
+      },
+    });
   }
 
   public async getFreshOccurrence(

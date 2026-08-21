@@ -606,9 +606,9 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
   return clientToken || null;
 }
 
-function clearStoredStewardTokenIfCurrent(token: string): void {
+async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
   if (readStoredStewardToken()?.trim() !== token) return;
-  clearStoredStewardToken();
+  await clearStoredStewardToken();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
@@ -1026,7 +1026,7 @@ async function directCloudRequest<T>(
       { method, url },
     );
     if (res.status === 401) {
-      clearStoredStewardTokenIfCurrent(token);
+      await clearStoredStewardTokenIfCurrent(token);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
@@ -1050,7 +1050,7 @@ async function directCloudRequest<T>(
     { method, url },
   );
   if (res.status === 401) {
-    clearStoredStewardTokenIfCurrent(token);
+    await clearStoredStewardTokenIfCurrent(token);
   }
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),
@@ -4330,7 +4330,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // dedicated agent, the caller's fallback may be that agent's bearer, which
   // must never be relabeled as a control-plane credential.
   if (authToken && !isDedicatedCloudAgentClient(this)) {
-    writeStoredStewardToken(authToken);
+    await writeStoredStewardToken(authToken);
   }
 
   // Reuse an existing agent unless the caller explicitly forces a new one. This

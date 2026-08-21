@@ -20,6 +20,8 @@ import {
   aliasRecallQuery,
   buildAccessContext,
   embedRecallQuery,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
@@ -438,10 +440,10 @@ export async function maybeAugmentChatMessageWithDocuments(
               metadata.title.trim().length > 0
             ? metadata.title.trim()
             : `source-${index + 1}`;
-      const text = (match.content.text ?? "").trim();
+      const text = toWellFormedUnicode((match.content.text ?? "").trim());
       const snippet =
         text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
-          ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS - 3)}...`
+          ? `${truncateWellFormed(text, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS - 3)}...`
           : text;
       return [
         `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(

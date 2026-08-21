@@ -53,6 +53,10 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -2167,10 +2171,11 @@ function applyContentShaping(
 	connector: ConnectorWithHooks,
 	content: Content,
 ): Content {
-	let text = typeof content.text === "string" ? content.text : "";
+	let text =
+		typeof content.text === "string" ? toWellFormedUnicode(content.text) : "";
 	const shaping = connector.contentShaping;
 	if (text && typeof shaping?.postProcess === "function")
-		text = shaping.postProcess(text);
+		text = toWellFormedUnicode(shaping.postProcess(text));
 	const maxLength = shaping?.constraints?.maxLength;
 	if (
 		text &&
@@ -2179,7 +2184,7 @@ function applyContentShaping(
 		maxLength > 0 &&
 		text.length > maxLength
 	) {
-		text = text.slice(0, Math.floor(maxLength));
+		text = truncateWellFormed(text, Math.floor(maxLength));
 	}
 	return text === content.text ? content : { ...content, text };
 }

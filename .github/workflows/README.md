@@ -11,6 +11,10 @@ workflow. Pull requests targeting `develop` or `main` and every `merge_group`
 candidate run the same fail-closed job graph. Branch rules require only its stable
 `CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
 succeeds; individual lane names may evolve without silently weakening admission.
+Manual diagnostics use independent concurrency groups, PR and merge candidates
+supersede stale runs, and `develop` pushes share a never-cancelled terminal group.
+GitHub's default single-pending queue therefore lets the running push finish while
+retaining only the newest waiting tip instead of accumulating every merge-wave run.
 
 `merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
 GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
@@ -50,9 +54,10 @@ force-push/deletion bans remain active here.
 core smoke tests. It never publishes packages or creates releases.
 
 `develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
-Push-triggered develop runs supersede each other during merge waves, so this
-lane runs the repository verify gate on the live develop tip four times a day
-(and on manual dispatch) from a single hosted runner, in a fixed
+Pending push-triggered develop runs can still supersede each other during merge
+waves and hosted capacity can delay their start. This lane independently runs
+the repository verify gate on the live develop tip four times a day (and on
+manual dispatch) from a single hosted runner, in a fixed
 never-cancelled concurrency group, and publishes the outcome as a
 `develop-health` commit status on the exact SHA it measured. A missing status
 means no measurement concluded; a red status means develop is actually red —
@@ -162,6 +167,33 @@ Representative examples:
   `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
   upload still depends on the corresponding organization account, application
   record, agreements, and roles already existing in each publisher portal.
+
+  The authored inventory of those names, together with the prerequisite,
+  owner, rotation cadence, and revocation path for each lane, lives in
+  `packages/scripts/lib/store-release-credentials.mjs`.
+  `bun run release:store-credentials` prints it and fails on drift between the
+  contract and the names these workflows reference.
+  `bun run release:store-credentials:audit` additionally reads the live
+  `production-release` environment through `gh api`: the credential-name
+  inventory a repository owner still has to provision, plus the resolved
+  required-reviewer principals, `prevent_self_review`, and the custom
+  deployment branch/tag policy patterns, validated against the repo-owned
+  `RELEASE_ENVIRONMENT_POLICY` (reviewer allowlist, self-review prevention,
+  and only the `develop` branch and `v*` tag deployment patterns). Any
+  protection setting the API cannot prove is reported as an owner-verification
+  blocker, never a pass, and the reviewer allowlist ships empty so the audit
+  cannot report READY until an owner verifies and commits it. Both operations
+  compare names and policy metadata only; the GitHub API never exposes secret
+  values and the preflight never reads, prints, or stores one. Name presence
+  cannot prove a credential value is valid — only a real protected store
+  publish proves that. Exit codes are `0` ready, `1` contract drift or
+  unreadable live state, `2` live environment not provisioned or its
+  protection policy unproven or in violation.
+
+  Creating `production-release`, selecting its required reviewers and
+  deployment branch/tag policy, and adding any credential are owner-only
+  actions taken in the GitHub UI with authorized confirmation at action time.
+  No automation in this repository creates them.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

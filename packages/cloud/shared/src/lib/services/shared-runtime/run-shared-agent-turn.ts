@@ -30,9 +30,16 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
+import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+  type SharedCapabilityFlags,
+  sharedCapabilityTransportForSource,
+} from "./shared-capability-catalog";
 import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
@@ -40,7 +47,10 @@ import {
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
-import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
+import type {
+  SharedProviderTimingReceipt,
+  SharedRuntimeTimingReceipt,
+} from "./shared-runtime-timing";
 
 export type { SharedRuntimeChannel } from "./shared-runtime-channel";
 export {
@@ -60,6 +70,8 @@ export interface SharedTurnMessage {
    * stream. Model history keeps the text but annotates it as incomplete.
    */
   interrupted?: boolean;
+  /** Bounded public-read authority retained for relevant follow-up turns. */
+  grounding?: SharedRuntimePublicGrounding;
 }
 
 export interface SharedAgentCharacter {
@@ -131,6 +143,8 @@ export interface RunSharedAgentTurnInput {
   /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
     agentKey: string;
+    /** Trusted canonical conversation identity used for runtime room/world projection. */
+    roomKey: string;
     /** Trusted transport semantics projected into the runtime connection and memories. */
     channel: SharedRuntimeChannel;
     /**
@@ -161,6 +175,7 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
   return (
     input.execution ?? {
       agentKey: `shared:${input.character.name}`,
+      roomKey: `shared:${input.character.name}`,
       channel: { type: "DM", source: "shared-runtime" },
     }
   );
@@ -188,6 +203,8 @@ export interface RunSharedAgentTurnResult {
   actionResults?: ActionResult[];
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
+  /** Privacy-bounded provider timing exposed to Shared transports. */
+  timing?: SharedProviderTimingReceipt;
   /** Unsupported clauses that follow an enabled primary reminder or Todo. */
   blockedSecondaryCapabilities?: SharedCapabilityWall[];
 }
@@ -201,6 +218,8 @@ export type SharedAgentTurnStreamPart =
       usage?: SharedAgentTurnUsage;
       /** Applied plugin effects that must land with the terminal turn. */
       actionResults?: ActionResult[];
+      /** Privacy-bounded provider timing exposed on the terminal stream frame. */
+      timing?: SharedProviderTimingReceipt;
     };
 
 export interface RunSharedAgentTurnStreamResult {
@@ -288,7 +307,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
-  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  capabilities: SharedCapabilityFlags,
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
   requiredAction?: "REMINDERS" | "TODO",
@@ -296,24 +315,11 @@ function buildSharedRuntimeSystem(
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
-    "Shared runtime boundaries:\n" +
-      (capabilities.webSearch
-        ? "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-          "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n"
-        : "- You can converse, reason, draft, and help the user plan; public web search is unavailable for this turn.\n") +
-      (capabilities.reminders
-        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
-        : "- Reminders are unavailable on this transport.\n") +
-      (capabilities.todos
-        ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
-        : "- Persistent todos are unavailable on this chat path.\n") +
-      (capabilities.media
-        ? "- GENERATE_MEDIA can create one organization-credit-funded image and return its public artifact URL.\n"
-        : "- Image generation is unavailable on this chat path.\n") +
-      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
+    `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
-      "- When an ambiguous follow-up asks you to execute a prior external action, explain the actual limitation naturally and offer useful planning or drafting help.",
+      "- When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
   if (blockedCapabilities.length) {
     parts.push(
@@ -360,12 +366,19 @@ export function appendSharedTurn(
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
   messageRole: "system" | "user" = "user",
+  grounding?: SharedRuntimePublicGrounding,
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
     { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
-    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
+    {
+      id: messageIds?.assistant,
+      role: "assistant",
+      content: reply,
+      createdAt: sentAt + 1,
+      ...(grounding ? { grounding } : {}),
+    },
   ];
 }
 
@@ -497,6 +510,7 @@ export async function runSharedAgentTurn(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(execution.channel.source),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
@@ -580,6 +594,7 @@ export async function runSharedAgentTurnStream(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(execution.channel.source),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,

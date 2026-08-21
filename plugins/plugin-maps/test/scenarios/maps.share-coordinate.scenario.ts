@@ -16,6 +16,11 @@ const LONGITUDE = -122.4194;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "maps.share-coordinate",
   title: "Maps: share a coordinate-defined place",
   domain: "maps",

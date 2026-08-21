@@ -15,10 +15,12 @@ import type {
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 
 export interface SharedConversationCoordinatorOptions {
   /** Standard request correlation identity; never accepted from RPC params. */
@@ -30,6 +32,10 @@ export interface SharedConversationCoordinatorOptions {
   agentKind?: "sandbox" | "personal";
   /** Authenticated server-only role override; never accepted from RPC params. */
   trustedMessageRole?: "system";
+  /** Authenticated epoch-ms history ceiling; never accepted from RPC params. */
+  trustedHistoryCutoffAt?: number;
+  /** Authenticated control input is excluded from durable conversation history. */
+  transientInput?: true;
   /** Authenticated raw utterance when RPC text also contains server-composed context. */
   trustedUserUtterance?: string;
   /** Authenticated transport semantics; never accepted from bridge RPC params. */
@@ -193,47 +199,27 @@ export async function coordinateSharedLifecycleEvent(
  * One normalization for the Durable Object instance name. Turn dispatch and
  * history reads MUST agree — a whitespace/empty variant addressing a second
  * object would migrate the same Postgres row twice and serve a frozen copy.
- * Mirrors the room precedence in shared-runtime-chat's `channelId`.
+ * The authenticated caller may select a logical room, but this normalization
+ * is the server-owned boundary used by both Durable Object addressing and the
+ * hashed runtime channel identity. A caller-provided storage uuid is never
+ * accepted as the memory scope.
  */
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
-  const room = typeof roomId === "string" && roomId.trim() ? roomId.trim() : undefined;
-  const user = typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
-  return room ?? user ?? "default";
+  return normalizeSharedRuntimeRoom(roomId, userId);
 }
 
 function coordinatorName(agentId: string, rpc: BridgeRequest): string {
   return `${agentId}:${coordinatorRoom(rpc.params?.roomId, rpc.params?.userId)}`;
 }
 
-const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
-
-/**
- * Bound every shared-runtime Durable Object hop so a hung or overloaded
- * coordinator cannot pin the calling worker indefinitely. Caller cancellation
- * and the hop deadline are composed so whichever fires first aborts the fetch.
- */
-export function coordinatorFetch(
-  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
-  url: string | URL,
-  init?: RequestInit,
-  timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
-): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return stub.fetch(url, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
-  });
-}
+export { coordinatorFetch };
 
 function coordinatorStub(
   namespace: RuntimeDurableObjectNamespace,
   agentId: string,
   roomId: string,
 ) {
-  const stub = namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
-  return {
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => coordinatorFetch(stub, input, init),
-  };
+  return deadlineBoundCoordinatorStub(namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`));
 }
 
 function cacheContextUnavailable(): SharedRuntimeCacheWarmingError {
@@ -322,6 +308,10 @@ export async function coordinateSharedBridge(
         rpc,
         ...(options.traceId ? { traceId: options.traceId } : {}),
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.trustedHistoryCutoffAt !== undefined
+          ? { trustedHistoryCutoffAt: options.trustedHistoryCutoffAt }
+          : {}),
+        ...(options.transientInput ? { transientInput: true } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
@@ -351,6 +341,10 @@ export async function coordinateSharedStream(
         rpc,
         ...(options.traceId ? { traceId: options.traceId } : {}),
         ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
+        ...(options.trustedHistoryCutoffAt !== undefined
+          ? { trustedHistoryCutoffAt: options.trustedHistoryCutoffAt }
+          : {}),
+        ...(options.transientInput ? { transientInput: true } : {}),
         ...(options.trustedUserUtterance
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),

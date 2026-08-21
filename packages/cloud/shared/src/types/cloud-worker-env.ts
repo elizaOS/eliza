@@ -63,6 +63,10 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
+  ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -121,6 +125,7 @@ export interface Bindings {
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
   DASHBOARD_CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -305,6 +310,12 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
+  /**
+   * Hard ceiling, in bytes, on a single field persisted inline in a SQL text or
+   * jsonb column when object storage is unavailable. Defaults to 1 MiB; values
+   * below 1024 are ignored.
+   */
+  SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- Steward (auth provider) ----
@@ -410,6 +421,14 @@ export interface Bindings {
    */
   STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
+  /** Server-only recurring Plus plan Stripe Price binding. */
+  STRIPE_PLUS_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Plus plan. */
+  STRIPE_PLUS_PRODUCT_ID?: string;
+  /** Server-only recurring Pro plan Stripe Price binding. */
+  STRIPE_PRO_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Pro plan. */
+  STRIPE_PRO_PRODUCT_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;
@@ -568,6 +587,8 @@ export interface Variables {
   traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
+  /** Registered app that issued a mobile lifecycle credential. */
+  apiKeySourceAppId?: string;
 }
 
 export type AppEnv = {

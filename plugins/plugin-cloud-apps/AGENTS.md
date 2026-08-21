@@ -16,9 +16,10 @@ is specific to the plugin.
 
 Reads `ELIZAOS_CLOUD_API_KEY` (+ optional `ELIZAOS_CLOUD_BASE_URL`, defaults to
 `https://api.eliza.app/api/v1`) via `runtime.getSetting` — the same
-credentials `plugin-elizacloud` uses. With no key, `validate` returns false,
-every action degrades gracefully with a "no key" message, and the provider
-stays empty. Construction lives in `src/client.ts` (`getCloudClient`).
+credentials `plugin-elizacloud` uses. With no key, `validate` returns false for
+every action except `LIST_CLOUD_APPS` (which stays reachable so its handler can
+own the truthful capability failure), each handler degrades gracefully with a
+"no key" message, and the provider stays empty. Construction lives in `src/client.ts` (`getCloudClient`).
 
 ## Layout
 
@@ -134,9 +135,14 @@ bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
   writes that change `apps` rows must evict `appsService` caches too (the app row
   is cached ~5 min via `getById`; a missed eviction was a real payment-gate
   staleness bug — #11213).
-- **`validate` is only the API-key check.** All real validation lives in the
-  handler; every exit calls `callback` AND returns an `ActionResult` with
-  `userFacingText` (and `verifiedUserFacing: true` on truthful outcomes).
+- **`validate` is only the API-key check — except `LIST_CLOUD_APPS`.** All real
+  validation lives in the handler; every exit calls `callback` AND returns an
+  `ActionResult` with `userFacingText` (and `verifiedUserFacing: true` on
+  truthful outcomes). `LIST_CLOUD_APPS` validates unconditionally: it is the
+  read a cloud-qualified ask lands on, and key-gating it removed the action from
+  the catalog so the truthful "no Cloud API key is configured" reply was
+  unreachable and the turn degraded to the local installed-app answer (#17363).
+  Its handler owns that capability failure and delivers it once.
 - **Deploy "done" ≠ 202-accepted.** It is READY status + a live reachability
   probe of the authoritative `production_url` (`deploy-gate.ts`).
 - **Tests fake ONLY the SDK.** `__tests__/helpers.ts` provides `FakeElizaCloudClient`

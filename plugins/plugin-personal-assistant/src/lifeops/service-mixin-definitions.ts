@@ -8,6 +8,8 @@ import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsDefinitionRecord,
   LifeOpsOccurrenceView,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
 } from "../contracts/index.js";
@@ -28,6 +30,11 @@ export interface LifeOpsDefinitionService {
     request: CompleteLifeOpsOccurrenceRequest,
     now?: Date,
   ): Promise<LifeOpsOccurrenceView>;
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult>;
   skipOccurrence(
     occurrenceId: string,
     now?: Date,

@@ -19,6 +19,8 @@ import {
   getRelatedEntityIds,
   logger,
   ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
   validateUuid,
 } from "@elizaos/core";
 
@@ -378,13 +380,19 @@ async function doSearch(
   // complete records remain machine data for state and trajectory consumers.
   const lines = items
     .slice(0, 25)
-    .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 300)}`);
+    .map(
+      (m) =>
+        `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 300)}`,
+    );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
         ...items
           .slice(0, 25)
-          .map((item) => `- [${item.type}] ${item.text.slice(0, 300)}`),
+          .map(
+            (item) =>
+              `- [${item.type}] ${truncateWellFormed(toWellFormedUnicode(item.text), 300)}`,
+          ),
       ].join("\n")
     : undefined;
 
@@ -600,7 +608,10 @@ async function doDeleteByQuery(
     const lines = matched
       .slice(0, 10)
       .map((c) => toListItem(c.memory, c.type))
-      .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
+      .map(
+        (m) =>
+          `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 120)}`,
+      );
     return {
       success: false,
       text: [
@@ -621,9 +632,10 @@ async function doDeleteByQuery(
 
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${
-      deleted[0]?.text.slice(0, 120) ?? ""
-    }`,
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${truncateWellFormed(
+      toWellFormedUnicode(deleted[0]?.text ?? ""),
+      120,
+    )}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",

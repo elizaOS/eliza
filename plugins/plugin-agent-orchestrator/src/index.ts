@@ -25,6 +25,8 @@ import {
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -853,7 +855,11 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
 export function buildSpawnAckUserPrompt(task: string): string {
   const trimmed = task.trim();
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
-  const clipped = what.length > 400 ? `${what.slice(0, 397)}…` : what;
+  const wellFormed = toWellFormedUnicode(what);
+  const clipped =
+    wellFormed.length > 400
+      ? `${truncateWellFormed(wellFormed, 397)}…`
+      : wellFormed;
   return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
 }
 
@@ -898,9 +904,10 @@ export function sanitizeSpawnAck(raw: string): string {
   }
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   if (!cleaned) return "";
-  return cleaned.length > SPAWN_ACK_MAX_CHARS
-    ? `${cleaned.slice(0, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
-    : cleaned;
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed.length > SPAWN_ACK_MAX_CHARS
+    ? `${truncateWellFormed(wellFormed, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
+    : wellFormed;
 }
 
 function stripToolTranscripts(raw: string): string {
@@ -940,7 +947,10 @@ export function extractCompletionSummary(raw: string): string {
     .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
   const last = lines[lines.length - 1] ?? "";
   if (!last) return "done";
-  return last.length > 300 ? `${last.slice(0, 297).trimEnd()}…` : last;
+  const wellFormed = toWellFormedUnicode(last);
+  return wellFormed.length > 300
+    ? `${truncateWellFormed(wellFormed, 297).trimEnd()}…`
+    : wellFormed;
 }
 
 /**
@@ -1021,8 +1031,12 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
     const parts = p.split("/").filter(Boolean);
     return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
   };
-  const trimCmd = (c: string): string =>
-    c.length > 80 ? `${c.slice(0, 77)}...` : c;
+  const trimCmd = (c: string): string => {
+    const wellFormed = toWellFormedUnicode(c);
+    return wellFormed.length > 80
+      ? `${truncateWellFormed(wellFormed, 77)}...`
+      : wellFormed;
+  };
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1404,7 +1418,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const prevSummary = lastHeartbeatSummary.get(sessionId);
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
-        const text = `⏳ [${label}] ${trimmedSummary.length > 200 ? `${trimmedSummary.slice(0, 197)}...` : trimmedSummary}`;
+        const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
+        const text = `⏳ [${label}] ${wellFormedSummary.length > 200 ? `${truncateWellFormed(wellFormedSummary, 197)}...` : wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -2050,7 +2065,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // duplicates the final summary the response evaluator builds. A 800-char
     // window fits short tables and a few bullet points; longer dumps get
     // truncated and the canonical version lands via the summary.
-    const text = `💬 [${label}] ${trimmed.length > 800 ? `${trimmed.slice(0, 793)}…[+]` : trimmed}`;
+    const wellFormed = toWellFormedUnicode(trimmed);
+    const text = `💬 [${label}] ${wellFormed.length > 800 ? `${truncateWellFormed(wellFormed, 793)}…[+]` : wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());

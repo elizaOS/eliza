@@ -214,9 +214,10 @@ describe("ChatOverlay first-run gating", () => {
 
   it("uses the same visible half-height shell as post-onboarding chat", () => {
     const onStateChange = vi.fn();
-    render(
+    const controller = makeController();
+    const { rerender } = render(
       <ChatOverlay
-        controller={makeController()}
+        controller={controller}
         firstRunOpen
         onStateChange={onStateChange}
       />,
@@ -230,6 +231,18 @@ describe("ChatOverlay first-run gating", () => {
     expect(grabber.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
+    // Onboarding owns the first card at the top of the transcript, so the
+    // ordinary-chat dissolve must not obscure its choice controls. Once the
+    // gate clears, the regular transcript owns that decorative fade again.
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        onStateChange={onStateChange}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
@@ -631,6 +644,7 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={waitingController}
         firstRunOpen={false}
+        releaseFirstRunToFull
         onStateChange={onStateChange}
       />,
     );
@@ -701,8 +715,14 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
-    // Onboarding completes: firstRunOpen falls true → false.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    // Onboarding completes with the parent's mounted transcript-epoch proof.
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        releaseFirstRunToFull
+      />,
+    );
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(overlay.getAttribute("data-open")).toBe("true");
@@ -727,6 +747,19 @@ describe("ChatOverlay first-run gating", () => {
     // The collapse gate is released: Escape closes the sheet again.
     fireEvent.keyDown(input, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("returns to INPUT when a false probe clears without mounted transcript authority", () => {
+    const controller = makeController();
+    const { rerender } = render(
+      <ChatOverlay controller={controller} firstRunOpen />,
+    );
+
+    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
   it("never auto-collapses a session where onboarding was not active", () => {

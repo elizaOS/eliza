@@ -34,7 +34,7 @@ import {
 /**
  * Targets are the registered browser backends. The agent uses what is
  * available; specifying a target overrides automatic routing. `workspace`
- * is the app-owned browser surface, `bridge` is the paired Chrome/Safari
+ * is the app-owned browser surface, `bridge` is the paired Chrome, Firefox, or Safari
  * companion, `stagehand` is the Playwright/Stagehand fallback, and other
  * plugins may register additional target ids.
  */
@@ -799,7 +799,7 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
     "Browser open|navigate|click|type|fill|clear|scroll|hover|drag|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:

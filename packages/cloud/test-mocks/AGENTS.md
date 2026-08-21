@@ -23,6 +23,8 @@ exits.
   returns `{ url, port, store, stop, tick, processDbBackedJobs, cleanupStuck }`.
   Also exports `buildControlPlaneApp`, `ControlPlaneStore`, and the
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
+- `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
+  Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.

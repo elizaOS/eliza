@@ -250,11 +250,29 @@ export class McpService extends Service {
     await Promise.all(connectionPromises);
   }
 
-  private async initializeConnection(name: string, config: McpServerConfig): Promise<void> {
+  /**
+   * Builds (or rebuilds) one server's connection.
+   *
+   * `deleteConnection` drops this server's `ConnectionState`, so the retry
+   * ladder in `handleDisconnection` only survives when the caller asks for it:
+   * a reconnect passes `preserveReconnectAttempts` so the count keeps climbing
+   * toward `MAX_RECONNECT_ATTEMPTS` and the backoff keeps doubling, while a
+   * config change or an operator-driven `restartConnection` starts a fresh
+   * ladder. The count is reset to 0 below on every successful connect, so a
+   * server that comes back is never penalised for an earlier outage.
+   */
+  private async initializeConnection(
+    name: string,
+    config: McpServerConfig,
+    options: { readonly preserveReconnectAttempts?: boolean } = {}
+  ): Promise<void> {
+    const carriedReconnectAttempts = options.preserveReconnectAttempts
+      ? (this.connectionStates.get(name)?.reconnectAttempts ?? 0)
+      : 0;
     await this.deleteConnection(name);
     const state: ConnectionState = {
       status: "connecting",
-      reconnectAttempts: 0,
+      reconnectAttempts: carriedReconnectAttempts,
       consecutivePingFailures: 0,
     };
     this.connectionStates.set(name, state);
@@ -402,6 +420,14 @@ export class McpService extends Service {
     if (state.pingInterval) clearInterval(state.pingInterval);
     if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      logger.error(
+        { serverName: name, attempts: state.reconnectAttempts, error: state.lastError?.message },
+        `Giving up on MCP server "${name}" after ${MAX_RECONNECT_ATTEMPTS} failed reconnect attempts`
+      );
+      this.runtime.reportError("mcp.reconnect", state.lastError, {
+        serverName: name,
+        attempts: state.reconnectAttempts,
+      });
       return;
     }
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
@@ -411,7 +437,9 @@ export class McpService extends Service {
       const config = connection?.server?.config;
       if (config) {
         try {
-          await this.initializeConnection(name, JSON.parse(config));
+          await this.initializeConnection(name, JSON.parse(config), {
+            preserveReconnectAttempts: true,
+          });
         } catch (err) {
           // error-policy:J5 background reconnect; failure is observed in
           // handleDisconnection, which records lastError and backs off (capped).

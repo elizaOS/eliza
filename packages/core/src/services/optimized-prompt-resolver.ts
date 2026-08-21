@@ -18,6 +18,11 @@
  */
 
 import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
+import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptFewShotExample,
 	type OptimizedPromptService,
@@ -72,21 +77,23 @@ export function resolveOptimizedPrompt(
  * tool catalog (often ~30K chars); for ICL we only need the user's
  * current-turn request.
  */
-function trimDemonstrationInput(rawInput: string): string {
+export function trimDemonstrationInput(rawInput: string): string {
 	const userMatch =
 		rawInput.match(
 			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
 		) ??
 		rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
 	const candidate = userMatch?.[1]?.trim();
-	if (candidate && candidate.length > 0 && candidate.length <= 600) {
-		return candidate;
-	}
 	if (candidate && candidate.length > 0) {
-		return `${candidate.slice(0, 600).trimEnd()} …`;
+		const wellFormedCandidate = toWellFormedUnicode(candidate);
+		if (wellFormedCandidate.length <= 600) {
+			return wellFormedCandidate;
+		}
+		return `${truncateWellFormed(wellFormedCandidate, 600).trimEnd()} …`;
 	}
-	if (rawInput.length <= 600) return rawInput;
-	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+	const wellFormed = toWellFormedUnicode(rawInput);
+	if (wellFormed.length <= 600) return wellFormed;
+	return `${truncateWellFormed(wellFormed, 400).trimEnd()}\n…\n${tailWellFormed(wellFormed, 200).trimStart()}`;
 }
 
 function injectDemonstrations(

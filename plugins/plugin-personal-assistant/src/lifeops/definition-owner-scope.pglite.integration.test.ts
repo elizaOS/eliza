@@ -327,10 +327,16 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     );
     if (!occurrence) throw new Error("expected shared occurrence");
 
-    const originalUpdate = service.repository.updateOccurrence.bind(
-      service.repository,
-    );
-    service.repository.updateOccurrence = async (candidate, options) => {
+    // Completion writes go through the scope-guarded atomic transition, so
+    // the ownership move is injected immediately before that write lands.
+    const originalComplete =
+      service.repository.completeOccurrenceIfNonTerminal.bind(
+        service.repository,
+      );
+    service.repository.completeOccurrenceIfNonTerminal = async (
+      candidate,
+      options,
+    ) => {
       await ownerBService.updateDefinition(sharedDefinition.id, {
         ownership: {
           domain: "user_lifeops",
@@ -338,7 +344,7 @@ describe("LifeOps definition persistence — owner scope and revision predicates
           subjectId: OWNER_B,
         },
       });
-      return originalUpdate(candidate, options);
+      return originalComplete(candidate, options);
     };
 
     try {
@@ -350,7 +356,7 @@ describe("LifeOps definition persistence — owner scope and revision predicates
           error.code === "LIFEOPS_OCCURRENCE_CONFLICT",
       );
     } finally {
-      service.repository.updateOccurrence = originalUpdate;
+      service.repository.completeOccurrenceIfNonTerminal = originalComplete;
     }
     const persisted = await repository.getOccurrence(agentId, occurrence.id);
     expect(persisted).toMatchObject({

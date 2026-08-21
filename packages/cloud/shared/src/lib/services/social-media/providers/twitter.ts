@@ -12,7 +12,11 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { TWITTER_API_BASE, TWITTER_UPLOAD_BASE } from "../../../utils/twitter-api";
-import { downloadSocialMediaBytes } from "../media-download";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
@@ -26,9 +30,10 @@ export function twitterFetch(
   init?: RequestInit,
   timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 
@@ -58,9 +63,10 @@ async function twitterApiRequest<T>(
 async function uploadMedia(accessToken: string, media: MediaAttachment): Promise<string> {
   let mediaData: Buffer;
   if (media.data) {
+    assertSocialMediaBytesWithinBudget(media.data.length, { platform: "twitter" });
     mediaData = media.data;
   } else if (media.base64) {
-    mediaData = Buffer.from(media.base64, "base64");
+    mediaData = decodeSocialMediaBase64(media.base64, { platform: "twitter" });
   } else if (media.url) {
     mediaData = await downloadSocialMediaBytes(media.url);
   } else {
