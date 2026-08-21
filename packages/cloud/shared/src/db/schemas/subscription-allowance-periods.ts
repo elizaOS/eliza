@@ -88,7 +88,7 @@ export const subscriptionAllowancePeriods = pgTable(
     ),
     period_check: check(
       "subscription_allowance_periods_period_check",
-      sql`${table.period_end} > ${table.period_start} AND ${table.expires_at} = ${table.period_end}`,
+      sql`${table.period_end} > ${table.period_start} AND ${table.expires_at} > ${table.period_start} AND ${table.expires_at} <= ${table.period_end}`,
     ),
     plan_catalog_check: check(
       "subscription_allowance_periods_plan_catalog_check",

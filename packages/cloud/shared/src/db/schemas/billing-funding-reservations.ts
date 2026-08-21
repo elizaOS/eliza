@@ -4,6 +4,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   numeric,
   pgTable,
   text,
@@ -24,6 +25,8 @@ export const BILLING_FUNDING_RESERVATION_STATUSES = [
 export type BillingFundingReservationStatus = (typeof BILLING_FUNDING_RESERVATION_STATUSES)[number];
 export const BILLING_FUNDING_CLASSES = ["allowance_eligible", "cash_only"] as const;
 export type BillingFundingClass = (typeof BILLING_FUNDING_CLASSES)[number];
+export const BILLING_FUNDING_RESERVATION_PHASES = ["initial", "overage"] as const;
+export type BillingFundingReservationPhase = (typeof BILLING_FUNDING_RESERVATION_PHASES)[number];
 
 export const billingFundingReservations = pgTable(
   "billing_funding_reservations",
@@ -76,6 +79,13 @@ export const billingFundingReservations = pgTable(
     closed_at: timestamp("closed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    reservation_phase: text("reservation_phase")
+      .$type<BillingFundingReservationPhase>()
+      .notNull()
+      .default("initial"),
+    phase_sequence: integer("phase_sequence").notNull().default(0),
+    parent_reservation_id: uuid("parent_reservation_id"),
+    root_reservation_id: uuid("root_reservation_id"),
   },
   (table) => ({
     allowance_period_tenant_fk: foreignKey({
@@ -85,6 +95,16 @@ export const billingFundingReservations = pgTable(
         subscriptionAllowancePeriods.organization_id,
       ],
       name: "billing_funding_reservations_allowance_period_tenant_fk",
+    }).onDelete("restrict"),
+    parent_reservation_tenant_fk: foreignKey({
+      columns: [table.parent_reservation_id, table.organization_id],
+      foreignColumns: [table.id, table.organization_id],
+      name: "billing_funding_reservations_parent_tenant_fk",
+    }).onDelete("restrict"),
+    root_reservation_tenant_fk: foreignKey({
+      columns: [table.root_reservation_id, table.organization_id],
+      foreignColumns: [table.id, table.organization_id],
+      name: "billing_funding_reservations_root_tenant_fk",
     }).onDelete("restrict"),
     purchased_credit_reservation_tenant_fk: foreignKey({
       columns: [table.purchased_credit_reservation_transaction_id, table.organization_id],
@@ -109,6 +129,9 @@ export const billingFundingReservations = pgTable(
       table.organization_id,
       table.logical_operation_id,
     ),
+    root_phase_sequence_unique: uniqueIndex("billing_funding_reservations_root_phase_sequence_idx")
+      .on(table.organization_id, table.root_reservation_id, table.phase_sequence)
+      .where(sql`${table.reservation_phase} = 'overage'`),
     organization_status_expiry_idx: index("billing_funding_reservations_org_status_expiry_idx").on(
       table.organization_id,
       table.status,
@@ -121,6 +144,10 @@ export const billingFundingReservations = pgTable(
     status_check: check(
       "billing_funding_reservations_status_check",
       sql`${table.status} IN ('reserved','settled','partially_refunded','refunded') AND ${table.funding_class} IN ('allowance_eligible','cash_only')`,
+    ),
+    phase_shape_check: check(
+      "billing_funding_reservations_phase_shape_check",
+      sql`(${table.reservation_phase} = 'initial' AND ${table.phase_sequence} = 0 AND ${table.parent_reservation_id} IS NULL AND ${table.root_reservation_id} IS NULL) OR (${table.reservation_phase} = 'overage' AND ${table.phase_sequence} > 0 AND ${table.parent_reservation_id} IS NOT NULL AND ${table.root_reservation_id} IS NOT NULL AND ${table.parent_reservation_id} <> ${table.id} AND ${table.root_reservation_id} <> ${table.id})`,
     ),
     allocation_check: check(
       "billing_funding_reservations_allocation_check",

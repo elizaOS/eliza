@@ -26,6 +26,9 @@ const migrationNames = [
   "0277_subscription_allowance_periods.sql",
   "0278_billing_funding_reservations.sql",
   "0279_subscription_allowance_transactions.sql",
+  "0280_subscription_funding_reservation_phases.sql",
+  "0281_organization_spendable_revision.sql",
+  "0282_subscription_allowance_effective_expiry.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map((name) => readFile(new URL(name, import.meta.url), "utf8")),
@@ -107,7 +110,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0269-0273 subscription persistence migrations", () => {
+describe("0269-0276 subscription persistence migrations", () => {
   test("apply in journal order with every authority table present", async () => {
     const db = await database();
     const tables = await db.query<{ table_name: string }>(`
@@ -133,7 +136,9 @@ describe("0269-0273 subscription persistence migrations", () => {
     const journal = JSON.parse(
       await readFile(new URL("meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.slice(-5).map(({ idx, tag }) => ({ idx, tag }))).toEqual(
+    expect(
+      journal.entries.slice(-migrationNames.length).map(({ idx, tag }) => ({ idx, tag })),
+    ).toEqual(
       migrationNames.map((name, offset) => ({ idx: 268 + offset, tag: name.slice(0, -4) })),
     );
   });
@@ -186,6 +191,102 @@ describe("0269-0273 subscription persistence migrations", () => {
       granted_amount, remaining_amount
     ) VALUES ('${ORG}', '${SUBSCRIPTION}', 1, 'in_adjacent', 'plus_monthly', 'v1',
       '2026-02-01T00:00:00Z', '2026-03-01T00:00:00Z', '2026-03-01T00:00:00Z', 25, 25)`);
+  });
+
+  test("accepts an early effective expiry but never one beyond the invoice period", async () => {
+    const db = await database();
+    await seedSubscription(db);
+    await db.exec(`INSERT INTO subscription_allowance_periods (
+      organization_id, subscription_id, subscription_revision, stripe_invoice_id,
+      plan_key, catalog_version, period_start, period_end, expires_at,
+      granted_amount, remaining_amount
+    ) VALUES ('${ORG}', '${SUBSCRIPTION}', 1, 'in_earlyexpiry', 'plus_monthly', 'v1',
+      '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z', '2026-01-20T00:00:00Z', 25, 25)`);
+    await expect(
+      db.exec(`INSERT INTO subscription_allowance_periods (
+        organization_id, subscription_id, subscription_revision, stripe_invoice_id,
+        plan_key, catalog_version, period_start, period_end, expires_at,
+        granted_amount, remaining_amount
+      ) VALUES ('${ORG}', '${SUBSCRIPTION}', 1, 'in_lateexpiry', 'plus_monthly', 'v1',
+        '2026-02-01T00:00:00Z', '2026-03-01T00:00:00Z',
+        '2026-03-02T00:00:00Z', 25, 25)`),
+    ).rejects.toThrow(/subscription_allowance_periods_period_check|check constraint/i);
+  });
+
+  test("advances one spendable revision for purchased-credit and allowance mutations", async () => {
+    const db = await database();
+    const revision = async (): Promise<number> => {
+      const result = await db.query<{ revision: number }>(
+        `SELECT spendable_revision::int AS revision FROM organizations WHERE id = '${ORG}'`,
+      );
+      return result.rows[0]!.revision;
+    };
+    expect(await revision()).toBe(0);
+    await db.exec(
+      `UPDATE organizations SET credit_balance = credit_balance - 1 WHERE id = '${ORG}'`,
+    );
+    const afterPurchasedDebit = await revision();
+    expect(afterPurchasedDebit).toBeGreaterThan(0);
+    await seedPeriod(db);
+    const afterAllowanceGrant = await revision();
+    expect(afterAllowanceGrant).toBeGreaterThan(afterPurchasedDebit);
+    await db.exec(
+      `UPDATE subscription_allowance_periods SET remaining_amount = remaining_amount - 1 WHERE id = '${PERIOD}'`,
+    );
+    expect(await revision()).toBeGreaterThan(afterAllowanceGrant);
+  });
+
+  test("enforces a tenant-scoped, contiguous overage reservation chain", async () => {
+    const db = await database();
+    const OTHER_ORG = "10000000-0000-4000-8000-000000000099";
+    const ROOT = "40000000-0000-4000-8000-000000000001";
+    const OTHER_ROOT = "40000000-0000-4000-8000-000000000099";
+    const OVERAGE_ONE = "40000000-0000-4000-8000-000000000002";
+    await db.exec(`
+      INSERT INTO organizations (id, credit_balance) VALUES ('${OTHER_ORG}', 10);
+      INSERT INTO credit_transactions (id, organization_id) VALUES
+        ('50000000-0000-4000-8000-000000000001', '${ORG}'),
+        ('50000000-0000-4000-8000-000000000002', '${ORG}'),
+        ('50000000-0000-4000-8000-000000000003', '${ORG}'),
+        ('50000000-0000-4000-8000-000000000099', '${OTHER_ORG}');
+      INSERT INTO billing_funding_reservations (
+        id, organization_id, logical_operation_id, funding_class,
+        requested_amount, allowance_amount, purchased_credit_amount,
+        purchased_credit_reservation_transaction_id, expires_at
+      ) VALUES
+        ('${ROOT}', '${ORG}', 'operation.root.001', 'cash_only', 1, 0, 1,
+          '50000000-0000-4000-8000-000000000001', '2099-01-01T00:00:00Z'),
+        ('${OTHER_ROOT}', '${OTHER_ORG}', 'operation.root.099', 'cash_only', 1, 0, 1,
+          '50000000-0000-4000-8000-000000000099', '2099-01-01T00:00:00Z');
+      INSERT INTO billing_funding_reservations (
+        id, organization_id, logical_operation_id, reservation_phase, phase_sequence,
+        parent_reservation_id, root_reservation_id, funding_class,
+        requested_amount, allowance_amount, purchased_credit_amount,
+        purchased_credit_reservation_transaction_id, expires_at
+      ) VALUES ('${OVERAGE_ONE}', '${ORG}', 'operation.overage.001', 'overage', 1,
+        '${ROOT}', '${ROOT}', 'cash_only', 1, 0, 1,
+        '50000000-0000-4000-8000-000000000002', '2099-01-01T00:00:00Z');
+    `);
+    await expect(
+      db.exec(`INSERT INTO billing_funding_reservations (
+        organization_id, logical_operation_id, reservation_phase, phase_sequence,
+        parent_reservation_id, root_reservation_id, funding_class,
+        requested_amount, allowance_amount, purchased_credit_amount,
+        purchased_credit_reservation_transaction_id, expires_at
+      ) VALUES ('${ORG}', 'operation.overage.cross', 'overage', 2,
+        '${OTHER_ROOT}', '${ROOT}', 'cash_only', 1, 0, 1,
+        '50000000-0000-4000-8000-000000000003', '2099-01-01T00:00:00Z')`),
+    ).rejects.toThrow(/preceding phase|parent_tenant_fk|foreign key/i);
+    await expect(
+      db.exec(`INSERT INTO billing_funding_reservations (
+        organization_id, logical_operation_id, reservation_phase, phase_sequence,
+        parent_reservation_id, root_reservation_id, funding_class,
+        requested_amount, allowance_amount, purchased_credit_amount,
+        purchased_credit_reservation_transaction_id, expires_at
+      ) VALUES ('${ORG}', 'operation.overage.skip2', 'overage', 3,
+        '${OVERAGE_ONE}', '${ROOT}', 'cash_only', 1, 0, 1,
+        '50000000-0000-4000-8000-000000000003', '2099-01-01T00:00:00Z')`),
+    ).rejects.toThrow(/preceding phase/i);
   });
 
   test("keeps lifecycle revisions and allowance transactions append-only", async () => {

@@ -19,6 +19,9 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const organizationBalanceRevisionSequence = pgSequence("organization_balance_revision_seq");
+export const organizationSpendableRevisionSequence = pgSequence(
+  "organization_spendable_revision_seq",
+);
 
 /**
  * Organizations table schema (core).
@@ -51,6 +54,9 @@ export const organizations = pgTable(
     // is the per-organization initial revision; only mutations need a globally
     // monotonic sequence value.
     balance_revision: bigint("balance_revision", { mode: "number" }).notNull().default(0),
+    // Advances for either purchased-credit or subscription-allowance changes,
+    // allowing cache admission to fence the complete spendable balance.
+    spendable_revision: bigint("spendable_revision", { mode: "number" }).notNull().default(0),
     // Durable auto-top-up re-arms only after a balance decrease. Existing
     // organizations are conservatively fenced during migration; newly created
     // organizations start without a fence so their first eligible top-up can run.

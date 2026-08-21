@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   BILLING_FUNDING_CLASSES,
+  BILLING_FUNDING_RESERVATION_PHASES,
   BILLING_FUNDING_RESERVATION_STATUSES,
   billingFundingReservations,
 } from "./billing-funding-reservations";
@@ -18,6 +19,7 @@ import {
   ORGANIZATION_ENTITLEMENT_STATES,
   organizationEntitlements,
 } from "./organization-entitlements";
+import { organizations } from "./organizations";
 import {
   SUBSCRIPTION_ALLOWANCE_PERIOD_STATES,
   subscriptionAllowancePeriods,
@@ -122,6 +124,7 @@ describe("subscription persistence schema", () => {
 
   test("records exact allowance and purchased-credit funding splits", () => {
     expect(BILLING_FUNDING_CLASSES).toEqual(["allowance_eligible", "cash_only"]);
+    expect(BILLING_FUNDING_RESERVATION_PHASES).toEqual(["initial", "overage"]);
     expect(BILLING_FUNDING_RESERVATION_STATUSES).toEqual([
       "reserved",
       "settled",
@@ -134,7 +137,19 @@ describe("subscription persistence schema", () => {
         "billing_funding_reservations_settlement_amounts_check",
         "billing_funding_reservations_credit_reference_check",
         "billing_funding_reservations_terminal_shape_check",
+        "billing_funding_reservations_phase_shape_check",
       ]),
+    );
+    expect(getTableConfig(billingFundingReservations).columns.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "reservation_phase",
+        "phase_sequence",
+        "parent_reservation_id",
+        "root_reservation_id",
+      ]),
+    );
+    expect(getTableConfig(organizations).columns.map(({ name }) => name)).toContain(
+      "spendable_revision",
     );
   });
 });
