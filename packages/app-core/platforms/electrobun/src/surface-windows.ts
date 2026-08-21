@@ -31,6 +31,7 @@ export interface ManagedWindowLike {
   show?: () => void;
   hide?: () => void;
   maximize?: () => void;
+  setFrame?: (x: number, y: number, width: number, height: number) => void;
   setAlwaysOnTop(flag: boolean): void;
   on(
     event: "close" | "focus" | "blur" | "resize" | "move",
@@ -74,6 +75,8 @@ export interface CreateManagedWindowOptions {
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
   window: ManagedWindowLike;
   slug?: string;
+  revealFrame?: ManagedWindowFrame;
+  pendingMaximize?: boolean;
 }
 
 interface SurfaceWindowManagerOptions {
@@ -124,6 +127,8 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   settings: { x: 180, y: 120, width: 1240, height: 900 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
+
+const WORKSPACE_STAGING_ORIGIN = -20_000;
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
   return (
@@ -308,11 +313,17 @@ export class SurfaceWindowManager {
     );
     if (existing) {
       if ((routePath !== "/" || section) && existing.window.webview.loadURL) {
-        existing.window.hide?.();
+        this.stageWorkspaceWindow(existing);
+        existing.pendingMaximize ||= maximize;
         const rendererUrl = await this.resolveRendererUrlFn();
         existing.window.webview.loadURL(
           buildWorkspaceWindowRendererUrl(rendererUrl, routePath, section),
         );
+        return this.toSnapshot(existing);
+      }
+      if (existing.revealFrame) {
+        existing.pendingMaximize ||= maximize;
+        return this.toSnapshot(existing);
       }
       if (maximize) this.maximizeWorkspaceWhenReady(existing.window);
       existing.window.focus();
@@ -334,11 +345,44 @@ export class SurfaceWindowManager {
         (entry) => entry.id === snapshot.id,
       );
       if (created) {
-        this.maximizeWorkspaceWhenReady(created.window);
-        created.window.focus();
+        created.pendingMaximize = true;
       }
     }
     return snapshot;
+  }
+
+  /** Reveal a staged Workspace only after its renderer reports ready. */
+  revealWindow(window: ManagedWindowLike): void {
+    const record = Array.from(this.windows.values()).find(
+      (entry) => entry.window === window,
+    );
+    if (!record) return;
+
+    if (record.surface === "workspace" && record.revealFrame) {
+      const frame = record.revealFrame;
+      record.revealFrame = undefined;
+      window.setFrame?.(frame.x, frame.y, frame.width, frame.height);
+      window.show?.();
+      if (record.pendingMaximize) window.maximize?.();
+      record.pendingMaximize = false;
+      window.focus();
+      return;
+    }
+
+    window.show?.();
+  }
+
+  private stageWorkspaceWindow(record: ManagedWindowRecord): void {
+    if (!record.revealFrame) {
+      record.revealFrame = record.window.getFrame?.() ?? SURFACE_FRAMES.workspace;
+    }
+    const frame = record.revealFrame;
+    record.window.setFrame?.(
+      WORKSPACE_STAGING_ORIGIN,
+      WORKSPACE_STAGING_ORIGIN,
+      frame.width,
+      frame.height,
+    );
   }
 
   /**
@@ -532,11 +576,18 @@ export class SurfaceWindowManager {
       slug && this.boundsStore ? this.boundsStore.load(slug) : null;
     const frame = savedFrame ?? SURFACE_FRAMES[surface];
 
+    const revealFrame = surface === "workspace" ? frame : undefined;
     const window = this.createWindowFn({
       title,
       url,
       preload,
-      frame,
+      frame: revealFrame
+        ? {
+            ...revealFrame,
+            x: WORKSPACE_STAGING_ORIGIN,
+            y: WORKSPACE_STAGING_ORIGIN,
+          }
+        : frame,
       // Match the normal macOS workstation presentation: remove the redundant
       // native title strip while retaining the integrated window controls.
       titleBarStyle:
@@ -544,10 +595,11 @@ export class SurfaceWindowManager {
           ? "hiddenInset"
           : "default",
       transparent: false,
-      // A Workspace is a full application surface. Keep it off-screen until
-      // its renderer explicitly reports the ready shell; otherwise WKWebView's
-      // empty backing layer appears as a branded black/white loading window.
-      hidden: surface === "workspace",
+      // Keep the Workspace webview active but off-screen until the renderer
+      // reports ready. A truly hidden WKWebView can be timer-throttled before
+      // startup completes on macOS, while an on-screen one exposes its empty
+      // black backing layer.
+      hidden: false,
     });
     if (alwaysOnTop) {
       window.setAlwaysOnTop(true);
@@ -561,11 +613,12 @@ export class SurfaceWindowManager {
       alwaysOnTop,
       window,
       slug,
+      revealFrame,
     };
 
     this.windows.set(id, record);
     this.wireRpcFn(window);
-    this.onWindowFocused?.(window, surface);
+    if (surface !== "workspace") this.onWindowFocused?.(window, surface);
     window.webview.on("dom-ready", () => {
       this.injectApiBaseFn(window);
     });
