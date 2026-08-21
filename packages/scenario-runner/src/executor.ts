@@ -24,6 +24,7 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  drainPostDeliveryTasks,
   ElizaError,
   logger,
   MemoryType,
@@ -2456,8 +2457,6 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
-  let fixtureConsumptionChecked = false;
-
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -2758,35 +2757,16 @@ export async function runScenario(
         }
       }
     }
-
-    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-    fixtureConsumptionChecked = true;
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
-    if (fixtureFailure) {
-      report.status = "failed";
-      report.failedAssertions.push({
-        label: "modelFixtures",
-        detail: fixtureFailure,
-      });
-    }
   } catch (err) {
     report.status = "failed";
     report.error = err instanceof Error ? err.message : String(err);
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
-    if (!fixtureConsumptionChecked) {
-      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-      if (fixtureFailure) {
-        report.status = "failed";
-        report.failedAssertions.push({
-          label: "modelFixtures",
-          detail: fixtureFailure,
-        });
-      }
-    }
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
+    // Tracked post-delivery work can enter the model after the last turn has
+    // returned. Drain it while scenario isolation is still active, then run
+    // cleanup and drain once more so cleanup-spawned work cannot escape the
+    // authoritative fixture assertion.
+    await drainPostDeliveryTasks(runtime);
     const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
@@ -2794,6 +2774,17 @@ export async function runScenario(
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
+    await drainPostDeliveryTasks(runtime);
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    if (fixtureFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "modelFixtures",
+        detail: fixtureFailure,
+      });
+    }
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     (
       runtime as {
         getService: AgentRuntime["getService"];
