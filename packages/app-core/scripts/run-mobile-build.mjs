@@ -5779,6 +5779,7 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
+  ["@elizaos/capacitor-secure-store", "elizaos-capacitor-secure-store"],
   ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
   ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],

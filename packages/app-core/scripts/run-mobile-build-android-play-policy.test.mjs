@@ -161,6 +161,7 @@ describe("Android Play manifest policy", () => {
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-screencapture",
+        "@elizaos/capacitor-secure-store",
         "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",
       ]),
