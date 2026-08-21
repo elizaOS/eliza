@@ -1222,6 +1222,55 @@ function readCachedValue<T>(
   return entry.value;
 }
 
+/**
+ * Hard ceiling on the entries a single Discord profile cache may retain.
+ *
+ * `readCachedValue` is the only place an entry is ever dropped, and it only
+ * drops one when that exact key is read back after expiry. That is fine for the
+ * room cache (keyed by channel id) and the user cache (keyed by Discord user
+ * id), but `discordMessageAuthorProfileCache` is keyed by Discord message id: a
+ * key is re-read only while its message is still inside the window
+ * `GET /api/inbox/messages` returns. Once the message scrolls out, its entry is
+ * unreachable, and past the TTL it is unservable too — yet it stayed resident
+ * for the whole life of the agent process, one permanent entry per Discord
+ * message the inbox had ever rendered. Sweeping on write bounds every cache
+ * regardless of message volume.
+ *
+ * The ceiling sits well above the 500-row hard cap of one inbox page, so a full
+ * page still round-trips entirely from cache.
+ */
+export const MAX_DISCORD_PROFILE_CACHE_ENTRIES = 2048;
+
+/**
+ * Store `value` under `key` and keep the cache within
+ * MAX_DISCORD_PROFILE_CACHE_ENTRIES. Expired entries are swept first; if that
+ * is not enough, the oldest writes are dropped. Every write re-inserts its key
+ * so the Map's insertion order stays equal to write order — that is what makes
+ * "oldest" mean what it says here.
+ */
+function writeCachedValue<T>(
+  cache: Map<string, { expiresAt: number; value: T }>,
+  key: string,
+  value: T,
+): void {
+  cache.delete(key);
+  cache.set(key, {
+    expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
+    value,
+  });
+  if (cache.size <= MAX_DISCORD_PROFILE_CACHE_ENTRIES) return;
+
+  const now = Date.now();
+  for (const [entryKey, entry] of cache) {
+    if (entry.expiresAt <= now) cache.delete(entryKey);
+  }
+  for (const entryKey of cache.keys()) {
+    if (cache.size <= MAX_DISCORD_PROFILE_CACHE_ENTRIES) break;
+    if (entryKey === key) continue;
+    cache.delete(entryKey);
+  }
+}
+
 type DiscordClientLike = {
   channels?: {
     cache?: { get?: (id: string) => unknown };
@@ -1411,10 +1460,7 @@ async function resolveDiscordMessageAuthorProfile(
           .messages.fetch
       : null;
   if (!fetchMessage) {
-    discordMessageAuthorProfileCache.set(cacheKey, {
-      expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-      value: null,
-    });
+    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
     return null;
   }
 
@@ -1445,16 +1491,10 @@ async function resolveDiscordMessageAuthorProfile(
       avatarUrl: readDiscordAvatarUrl(author),
       ...(rawUserId ? { rawUserId } : {}),
     };
-    discordMessageAuthorProfileCache.set(cacheKey, {
-      expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-      value: profile,
-    });
+    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, profile);
     return profile;
   } catch {
-    discordMessageAuthorProfileCache.set(cacheKey, {
-      expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-      value: null,
-    });
+    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
     return null;
   }
 }
@@ -1482,16 +1522,10 @@ async function resolveDiscordUserProfile(
           : undefined,
       avatarUrl: readDiscordAvatarUrl(user),
     };
-    discordUserProfileCache.set(userId, {
-      expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-      value: profile,
-    });
+    writeCachedValue(discordUserProfileCache, userId, profile);
     return profile;
   } catch {
-    discordUserProfileCache.set(userId, {
-      expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-      value: null,
-    });
+    writeCachedValue(discordUserProfileCache, userId, null);
     return null;
   }
 }
@@ -1553,10 +1587,7 @@ async function resolveDiscordRoomProfile(
     ...(parentChannelId ? { parentChannelId } : {}),
   };
 
-  discordRoomProfileCache.set(channelId, {
-    expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-    value: profile,
-  });
+  writeCachedValue(discordRoomProfileCache, channelId, profile);
   return profile;
 }
 
