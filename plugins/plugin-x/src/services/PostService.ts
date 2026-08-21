@@ -74,8 +74,12 @@ export class TwitterPostService implements IPostService {
             code: "X_AUTH_SESSION_ROTATED",
           });
         }
-        const result =
-          mediaIds.length > 0
+        const result = options.quotedPostId
+          ? await this.client.twitterClient.sendQuoteTweet(
+              options.text,
+              options.quotedPostId,
+            )
+          : mediaIds.length > 0
             ? await this.client.twitterClient.sendTweet(
                 options.text,
                 options.inReplyTo,

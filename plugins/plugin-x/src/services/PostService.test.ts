@@ -145,6 +145,32 @@ describe("TwitterPostService", () => {
     });
   });
 
+  it("routes quote posts through the dedicated quote request", async () => {
+    const sendTweet = vi.fn();
+    const sendQuoteTweet = vi.fn(async () => ({ data: { id: "quote-b" } }));
+    const current = new TwitterPostService({
+      ...withSession(CURRENT_PROFILE, {}),
+      twitterClient: { sendTweet, sendQuoteTweet },
+    } as unknown as ClientBase);
+
+    const post = await current.createPost({
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      text: "why this post matters",
+      quotedPostId: "source-post-1",
+    });
+
+    expect(sendQuoteTweet).toHaveBeenCalledWith(
+      "why this post matters",
+      "source-post-1",
+    );
+    expect(sendTweet).not.toHaveBeenCalled();
+    expect(post).toMatchObject({
+      id: "quote-b",
+      quotedPostId: "source-post-1",
+    });
+  });
+
   it("surfaces an accepted post without a receipt as non-retriable and indeterminate", async () => {
     const sendTweet = vi.fn(async () => ({ data: { id: "   " } }));
     const current = new TwitterPostService({
