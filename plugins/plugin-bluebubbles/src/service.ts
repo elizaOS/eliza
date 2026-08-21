@@ -512,7 +512,6 @@ export class BlueBubblesService extends Service {
 	private knownChats: Map<string, BlueBubblesChat> = new Map();
 	private entityCache: Map<string, UUID> = new Map();
 	private roomCache: Map<string, UUID> = new Map();
-	private processingInboundMessageIds = new Set<UUID>();
 	private webhookPath: string = DEFAULT_WEBHOOK_PATH;
 	private isRunning = false;
 
@@ -1156,196 +1155,172 @@ export class BlueBubblesService extends Service {
 			return;
 		}
 
-		const inboundMemoryId = createUniqueUuid(
-			this.runtime,
-			`bluebubbles:${message.guid}`,
-		) as UUID;
-		if (this.processingInboundMessageIds.has(inboundMemoryId)) {
-			logger.debug(`Skipping concurrent BlueBubbles replay ${message.guid}`);
+		const config = this.blueBubblesConfig;
+		if (!config) {
 			return;
 		}
-		this.processingInboundMessageIds.add(inboundMemoryId);
 
-		try {
-			const existingMemory = await this.runtime.getMemoryById(inboundMemoryId);
-			if (existingMemory) {
-				logger.debug(`Skipping stored BlueBubbles replay ${message.guid}`);
+		const chat = message.chats[0];
+		if (!chat) {
+			logger.warn(`Received message without chat info: ${message.guid}`);
+			return;
+		}
+
+		const isGroup = chat.participants.length > 1;
+		const senderHandle = message.handle?.address ?? "";
+
+		// Check access policies
+		if (isGroup) {
+			if (
+				!isHandleAllowed(
+					senderHandle,
+					config.groupAllowFrom ?? [],
+					config.groupPolicy ?? "allowlist",
+				)
+			) {
+				logger.debug(
+					`Ignoring message from ${senderHandle} - not in group allowlist`,
+				);
 				return;
 			}
-
-			const config = this.blueBubblesConfig;
-			if (!config) {
-				return;
-			}
-
-			const chat = message.chats[0];
-			if (!chat) {
-				logger.warn(`Received message without chat info: ${message.guid}`);
-				return;
-			}
-
-			const isGroup = chat.participants.length > 1;
-			const senderHandle = message.handle?.address ?? "";
-
-			// Check access policies
-			if (isGroup) {
-				if (
-					!isHandleAllowed(
-						senderHandle,
-						config.groupAllowFrom ?? [],
-						config.groupPolicy ?? "allowlist",
-					)
-				) {
+		} else {
+			const dmPolicy = config.dmPolicy ?? "pairing";
+			const staticallyAllowed = isHandleAllowed(
+				senderHandle,
+				config.allowFrom ?? [],
+				dmPolicy === "pairing" ? "allowlist" : dmPolicy,
+			);
+			if (!staticallyAllowed) {
+				if (dmPolicy !== "pairing") {
 					logger.debug(
-						`Ignoring message from ${senderHandle} - not in group allowlist`,
+						`Ignoring message from ${senderHandle} - not in DM allowlist`,
 					);
 					return;
 				}
-			} else {
-				const dmPolicy = config.dmPolicy ?? "pairing";
-				const staticallyAllowed = isHandleAllowed(
+				// "pairing" policy: this connector has no handshake of its own, so
+				// an unknown sender is held through the core PairingService code
+				// flow (same as WhatsApp/Discord) instead of allowed by default.
+				const pairingApproved = await this.checkDmPairing(
 					senderHandle,
-					config.allowFrom ?? [],
-					dmPolicy === "pairing" ? "allowlist" : dmPolicy,
+					chat.guid,
+					message,
 				);
-				if (!staticallyAllowed) {
-					if (dmPolicy !== "pairing") {
-						logger.debug(
-							`Ignoring message from ${senderHandle} - not in DM allowlist`,
-						);
-						return;
-					}
-					// "pairing" policy: this connector has no handshake of its own, so
-					// an unknown sender is held through the core PairingService code
-					// flow (same as WhatsApp/Discord) instead of allowed by default.
-					const pairingApproved = await this.checkDmPairing(
-						senderHandle,
-						chat.guid,
-						message,
-					);
-					if (!pairingApproved) {
-						return;
-					}
+				if (!pairingApproved) {
+					return;
 				}
 			}
+		}
 
-			// Mark as read if configured
-			if (config.sendReadReceipts && this.client) {
-				try {
-					await this.client.markChatRead(chat.guid);
-				} catch (error) {
-					logger.debug(`Failed to mark chat as read: ${error}`);
-				}
+		// Mark as read if configured
+		if (config.sendReadReceipts && this.client) {
+			try {
+				await this.client.markChatRead(chat.guid);
+			} catch (error) {
+				logger.debug(`Failed to mark chat as read: ${error}`);
 			}
+		}
 
-			const entityId = await this.getOrCreateEntity(
-				senderHandle,
-				message.handle?.address,
-			);
-			const roomId = await this.getOrCreateRoom(chat);
-			const worldId = createUniqueUuid(
-				this.runtime,
-				"bluebubbles-world",
-			) as UUID;
-			const replyToGuid = message.threadOriginatorGuid?.trim() || "";
-			const replyToMessageId = replyToGuid
-				? (createUniqueUuid(this.runtime, `bluebubbles:${replyToGuid}`) as UUID)
-				: undefined;
-			const attachments = message.attachments.map((att) => ({
-				id: att.guid,
-				// Bare capability URL only — the server password is appended at fetch
-				// time inside BlueBubblesClient so stored memories never persist the
-				// credential (see BlueBubblesClient.getAttachmentUrl).
-				url: `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(att.guid)}`,
-				title: att.transferName,
-				description: att.mimeType ?? undefined,
-				contentType: (att.mimeType ??
-					"application/octet-stream") as ContentType,
-			}));
+		const entityId = await this.getOrCreateEntity(
+			senderHandle,
+			message.handle?.address,
+		);
+		const roomId = await this.getOrCreateRoom(chat);
+		const worldId = createUniqueUuid(this.runtime, "bluebubbles-world") as UUID;
+		const replyToGuid = message.threadOriginatorGuid?.trim() || "";
+		const replyToMessageId = replyToGuid
+			? (createUniqueUuid(this.runtime, `bluebubbles:${replyToGuid}`) as UUID)
+			: undefined;
+		const attachments = message.attachments.map((att) => ({
+			id: att.guid,
+			// Bare capability URL only — the server password is appended at fetch
+			// time inside BlueBubblesClient so stored memories never persist the
+			// credential (see BlueBubblesClient.getAttachmentUrl).
+			url: `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(att.guid)}`,
+			title: att.transferName,
+			description: att.mimeType ?? undefined,
+			contentType: (att.mimeType ?? "application/octet-stream") as ContentType,
+		}));
 
-			await this.runtime.ensureConnection({
-				entityId,
-				roomId,
-				worldId,
-				worldName: "iMessage",
-				userId: senderHandle as UUID,
-				userName: senderHandle,
-				name: message.handle?.address ?? senderHandle,
-				source: "bluebubbles",
-				type: isGroup ? ChannelType.GROUP : ChannelType.DM,
-				channelId: chat.guid,
-				roomName: chat.displayName ?? chat.chatIdentifier,
-				metadata: {
-					bluebubblesChatGuid: chat.guid,
-					bluebubblesChatIdentifier: chat.chatIdentifier,
-					bluebubblesHandle: senderHandle,
-				},
-			});
-
-			const memory = createMessageMemory({
-				id: inboundMemoryId,
-				agentId: this.runtime.agentId,
-				entityId,
-				roomId,
-				content: {
-					text: message.text ?? "",
-					source: "bluebubbles",
-					...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
-					...(attachments.length > 0 ? { attachments } : {}),
-				},
-			}) as Memory;
-			memory.createdAt = message.dateCreated;
-			memory.metadata = {
-				...(memory.metadata ?? {}),
-				source: "bluebubbles",
-				provider: "bluebubbles",
-				// Top-level accountId per MessageMetadata contract. Inbound connector
-				// stamps this so outbound resolution can route replies back through
-				// the same connector account.
-				accountId: this.accountId,
-				timestamp: message.dateCreated,
-				entityName: message.handle?.address ?? senderHandle,
-				entityUserName: senderHandle,
-				fromId: senderHandle,
-				sourceId: entityId,
-				chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
-				messageIdFull: message.guid,
-				sender: {
-					id: senderHandle,
-					name: message.handle?.address ?? senderHandle,
-					username: senderHandle,
-				},
-				bluebubbles: {
-					id: senderHandle,
-					userId: senderHandle,
-					username: senderHandle,
-					userName: senderHandle,
-					name: message.handle?.address ?? senderHandle,
-					chatGuid: chat.guid,
-					chatIdentifier: chat.chatIdentifier,
-					messageGuid: message.guid,
-				},
+		await this.runtime.ensureConnection({
+			entityId,
+			roomId,
+			worldId,
+			worldName: "iMessage",
+			userId: senderHandle as UUID,
+			userName: senderHandle,
+			name: message.handle?.address ?? senderHandle,
+			source: "bluebubbles",
+			type: isGroup ? ChannelType.GROUP : ChannelType.DM,
+			channelId: chat.guid,
+			roomName: chat.displayName ?? chat.chatIdentifier,
+			metadata: {
 				bluebubblesChatGuid: chat.guid,
 				bluebubblesChatIdentifier: chat.chatIdentifier,
-				bluebubblesMessageGuid: message.guid,
-				bluebubblesThreadOriginatorGuid:
-					message.threadOriginatorGuid ?? undefined,
-			} as Memory["metadata"];
+				bluebubblesHandle: senderHandle,
+			},
+		});
 
-			await this.runtime.createMemory(memory, "messages");
+		const memory = createMessageMemory({
+			id: createUniqueUuid(this.runtime, `bluebubbles:${message.guid}`) as UUID,
+			agentId: this.runtime.agentId,
+			entityId,
+			roomId,
+			content: {
+				text: message.text ?? "",
+				source: "bluebubbles",
+				...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
+				...(attachments.length > 0 ? { attachments } : {}),
+			},
+		}) as Memory;
+		memory.createdAt = message.dateCreated;
+		memory.metadata = {
+			...(memory.metadata ?? {}),
+			source: "bluebubbles",
+			provider: "bluebubbles",
+			// Top-level accountId per MessageMetadata contract. Inbound connector
+			// stamps this so outbound resolution can route replies back through
+			// the same connector account.
+			accountId: this.accountId,
+			timestamp: message.dateCreated,
+			entityName: message.handle?.address ?? senderHandle,
+			entityUserName: senderHandle,
+			fromId: senderHandle,
+			sourceId: entityId,
+			chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
+			messageIdFull: message.guid,
+			sender: {
+				id: senderHandle,
+				name: message.handle?.address ?? senderHandle,
+				username: senderHandle,
+			},
+			bluebubbles: {
+				id: senderHandle,
+				userId: senderHandle,
+				username: senderHandle,
+				userName: senderHandle,
+				name: message.handle?.address ?? senderHandle,
+				chatGuid: chat.guid,
+				chatIdentifier: chat.chatIdentifier,
+				messageGuid: message.guid,
+			},
+			bluebubblesChatGuid: chat.guid,
+			bluebubblesChatIdentifier: chat.chatIdentifier,
+			bluebubblesMessageGuid: message.guid,
+			bluebubblesThreadOriginatorGuid:
+				message.threadOriginatorGuid ?? undefined,
+		} as Memory["metadata"];
 
-			const room = await this.runtime.getRoom(roomId);
-			if (!room) {
-				logger.warn(
-					`BlueBubbles room ${roomId} not found after ensureConnection`,
-				);
-				return;
-			}
+		await this.runtime.createMemory(memory, "messages");
 
-			await this.processMessage(memory, room, chat.guid);
-		} finally {
-			this.processingInboundMessageIds.delete(inboundMemoryId);
+		const room = await this.runtime.getRoom(roomId);
+		if (!room) {
+			logger.warn(
+				`BlueBubbles room ${roomId} not found after ensureConnection`,
+			);
+			return;
 		}
+
+		await this.processMessage(memory, room, chat.guid);
 	}
 
 	/**

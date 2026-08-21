@@ -25,7 +25,6 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { ConnectorFirstInteractionGuide } from "./SharedAgentFirstFiveMinutes";
 import { useConnectionStatus } from "./use-connection-status";
 
 interface TwilioStatus {
@@ -244,8 +243,6 @@ export function TwilioConnection() {
             ]}
           />
 
-          <ConnectorFirstInteractionGuide connector="twilio" />
-
           <ConnectionFooterActions
             note={t("cloud.twilio.accountNote", {
               account: status?.accountSid?.slice(0, 8) ?? "",
@@ -268,8 +265,6 @@ export function TwilioConnection() {
       }
       setupContent={
         <div className="space-y-4">
-          <ConnectorFirstInteractionGuide connector="twilio" />
-
           <ConnectionInstructions
             title={t("cloud.twilio.instructionsTitle", {
               defaultValue: "How to get Twilio credentials",

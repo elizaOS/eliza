@@ -13,7 +13,6 @@ import { BlooioConnection } from "./blooio-connection";
 import { DiscordGatewayConnection } from "./discord-gateway-connection";
 import { GoogleConnection } from "./google-connection";
 import { MicrosoftConnection } from "./microsoft-connection";
-import { SharedAgentFirstFiveMinutes } from "./SharedAgentFirstFiveMinutes";
 import { TelegramConnection } from "./telegram-connection";
 import { TwilioConnection } from "./twilio-connection";
 import { WhatsAppConnection } from "./whatsapp-connection";
@@ -22,8 +21,6 @@ export function CloudConnectorsSection() {
   const t = useCloudT();
   return (
     <div className="space-y-8">
-      <SharedAgentFirstFiveMinutes />
-
       {/* Messaging & Communication Section */}
       <div className="space-y-4">
         <DashboardSection
@@ -38,12 +35,8 @@ export function CloudConnectorsSection() {
         <div className="grid gap-4">
           <GoogleConnection />
           <MicrosoftConnection />
-          <div id="twilio-connection" className="scroll-mt-6">
-            <TwilioConnection />
-          </div>
-          <div id="blooio-connection" className="scroll-mt-6">
-            <BlooioConnection />
-          </div>
+          <TwilioConnection />
+          <BlooioConnection />
           <WhatsAppConnection />
         </div>
       </div>
@@ -61,9 +54,7 @@ export function CloudConnectorsSection() {
 
         <div className="grid gap-4">
           <DiscordGatewayConnection />
-          <div id="telegram-connection" className="scroll-mt-6">
-            <TelegramConnection />
-          </div>
+          <TelegramConnection />
         </div>
       </div>
     </div>

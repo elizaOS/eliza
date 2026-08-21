@@ -25,7 +25,6 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { ConnectorFirstInteractionGuide } from "./SharedAgentFirstFiveMinutes";
 import { useConnectionStatus } from "./use-connection-status";
 
 interface TelegramStatus {
@@ -214,8 +213,8 @@ export function TelegramConnection() {
           </ConnectionIdentityPanel>
 
           <ConnectionCallout
-            title={t("cloud.telegram.nextPrivateChatTitle", {
-              defaultValue: "Next: Prove one private bot chat",
+            title={t("cloud.telegram.nextTitle", {
+              defaultValue: "Next: Start chatting with your bot",
             })}
             tone="muted"
           >
@@ -239,12 +238,9 @@ export function TelegramConnection() {
             </ol>
           </ConnectionCallout>
 
-          <ConnectorFirstInteractionGuide connector="telegram" />
-
           <ConnectionFooterActions
-            note={t("cloud.telegram.privateChatsNote", {
-              defaultValue:
-                "Private chats appear after the user presses Start; hosted groups are not enabled.",
+            note={t("cloud.telegram.footerNote", {
+              defaultValue: "Chats are auto-detected when bot is added.",
             })}
           >
             <ConnectionDisconnectAction
@@ -263,8 +259,6 @@ export function TelegramConnection() {
       }
       setupContent={
         <div className="space-y-4">
-          <ConnectorFirstInteractionGuide connector="telegram" />
-
           <ConnectionInstructions
             title={t("cloud.telegram.instructionsTitle", {
               defaultValue: "How to create a Telegram bot",
