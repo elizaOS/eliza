@@ -14,6 +14,7 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   androidPlayManifestEvidenceFromAapt,
+  applyAndroidGeneratedBuildTargetProperties,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
@@ -59,6 +60,21 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
+    const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
+    const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
+      cloudBuild: true,
+    });
+
+    expect(cloud).toContain("elizaCloudBuild=true\n");
+    expect(cloud).not.toContain("elizaCloudBuild=false");
+    expect(
+      applyAndroidGeneratedBuildTargetProperties(cloud, {
+        cloudBuild: false,
+      }),
+    ).toBe("org.gradle.jvmargs=-Xmx4g\n");
+  });
+
   it("parses AAPT xmltree evidence without confusing nested action names for components", () => {
     expect(androidPlayManifestEvidenceFromAapt(AAPT_MANIFEST)).toEqual({
       actions: [
