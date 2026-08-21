@@ -18,6 +18,8 @@ const manifest = JSON.parse(
   read(".github/rulesets/required-branches.json"),
 ) as Record<string, any>;
 const helper = read("scripts/security/apply-branch-protection.sh");
+const codeowners = read(".github/CODEOWNERS");
+const driftSource = read(".github/workflows/repository-ruleset-drift.yml");
 
 describe("repository ruleset contract", () => {
   test("publishes one stable fail-closed aggregate for PR and merge candidates", () => {
@@ -60,6 +62,17 @@ describe("repository ruleset contract", () => {
       include: ["refs/heads/develop", "refs/heads/main"],
       exclude: [],
     });
+    const pullRequest = manifest.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    expect(codeowners).toContain("are PLACEHOLDERS");
+    expect(pullRequest.parameters).toMatchObject({
+      dismiss_stale_reviews_on_push: true,
+      require_code_owner_review: false,
+      require_last_push_approval: true,
+      required_approving_review_count: 1,
+      required_review_thread_resolution: true,
+    });
     const status = manifest.rules.find(
       (rule: Record<string, any>) => rule.type === "required_status_checks",
     );
@@ -99,7 +112,20 @@ describe("repository ruleset contract", () => {
       "repository_ruleset_drift",
     ]);
     expect(drift.permissions).toEqual({ contents: "read" });
-    expect(drift.jobs.readback.steps.at(-1).run).toContain("--check");
-    expect(drift.jobs.readback.steps.at(-1).run).not.toContain("--apply");
+    expect(driftSource).not.toContain("github.token");
+    const credential = drift.jobs.readback.steps.find(
+      (step: Record<string, any>) =>
+        step.name === "Require the Administration-read credential",
+    );
+    expect(credential.env.GH_TOKEN).toBe(
+      "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",
+    );
+    expect(credential.run).toContain('if [ -z "${GH_TOKEN:-}" ]');
+    const readback = drift.jobs.readback.steps.at(-1);
+    expect(readback.env.GH_TOKEN).toBe(
+      "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",
+    );
+    expect(readback.run).toContain("--check");
+    expect(readback.run).not.toContain("--apply");
   });
 });

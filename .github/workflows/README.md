@@ -24,7 +24,18 @@ create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
 same semantic readback on a schedule, by manual dispatch, and through the
 `repository_ruleset_drift` external repository-dispatch event. A green readback
 proves configuration parity only; owner audit-log review plus red/green and
-direct-push canaries remain required after an authorized apply.
+direct-push canaries remain required after an authorized apply. Scheduled and
+external readback requires an owner-provisioned
+`REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
+`Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
+that repository permission and is never used for this readback.
+
+The manifest intentionally keeps Code Owner review disabled while
+`.github/CODEOWNERS` names placeholder teams. An organization owner must
+replace every placeholder, verify each team exists and can review the covered
+paths, then submit a separate reviewed manifest change enabling Code Owner
+review. The current ruleset still requires one approval, last-push approval,
+and review-thread resolution.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.

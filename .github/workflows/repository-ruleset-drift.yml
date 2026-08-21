@@ -29,7 +29,16 @@ jobs:
           persist-credentials: false
           submodules: false
 
+      - name: Require the Administration-read credential
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::REPOSITORY_RULESET_READ_TOKEN is required with repository Administration: read permission"
+            exit 1
+          fi
+
       - name: Compare live ruleset with the reviewed manifest
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
         run: ./scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY"
