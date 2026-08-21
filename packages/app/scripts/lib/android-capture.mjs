@@ -10,6 +10,10 @@ import { resolveAdb } from "./android-device.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const require = createRequire(import.meta.url);
+const ADB_COMMAND_TIMEOUT_MS = 10_000;
+const ADB_PULL_TIMEOUT_MS = 60_000;
+const MEDIA_TOOL_TIMEOUT_MS = 120_000;
+const FFPROBE_TIMEOUT_MS = 15_000;
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -38,7 +42,10 @@ function packagedBinary(name) {
 
 function executable(command) {
   if (!command) return false;
-  const result = spawnSync(command, ["-version"], { stdio: "ignore" });
+  const result = spawnSync(command, ["-version"], {
+    stdio: "ignore",
+    timeout: ADB_COMMAND_TIMEOUT_MS,
+  });
   return !result.error && result.status === 0;
 }
 
@@ -60,15 +67,22 @@ export function hasPositiveVideoDuration(
     [
       "-v",
       "error",
+      "-count_frames",
+      "-select_streams",
+      "v:0",
       "-show_entries",
-      "format=duration:stream=codec_type,duration",
+      "format=duration:stream=codec_type,width,height,duration,nb_frames,nb_read_frames",
       "-of",
       "json",
       filePath,
     ],
-    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+    {
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: FFPROBE_TIMEOUT_MS,
+    },
   );
-  if (result.error || result.status !== 0) return false;
+  if (result.error || result.signal || result.status !== 0) return false;
   let probe;
   try {
     probe = JSON.parse(result.stdout);
@@ -78,16 +92,17 @@ export function hasPositiveVideoDuration(
     return false;
   }
   const streams = Array.isArray(probe.streams) ? probe.streams : [];
-  const videoStreams = streams.filter(
-    (stream) => stream?.codec_type === "video",
-  );
-  if (videoStreams.length === 0) return false;
-  const durations = [
-    probe.format?.duration,
-    ...videoStreams.map((stream) => stream.duration),
-  ].map(Number);
-  return durations.some(
-    (duration) => Number.isFinite(duration) && duration > 0,
+  const stream = streams.find((entry) => entry?.codec_type === "video");
+  const hasPositiveDuration = [stream?.duration, probe.format?.duration]
+    .map(Number)
+    .some((duration) => Number.isFinite(duration) && duration > 0);
+  const frames = Number(stream?.nb_read_frames ?? stream?.nb_frames);
+  return (
+    Number(stream?.width) > 0 &&
+    Number(stream?.height) > 0 &&
+    hasPositiveDuration &&
+    Number.isFinite(frames) &&
+    frames > 0
   );
 }
 
@@ -208,6 +223,7 @@ export async function startAndroidScreenRecord({
 
   spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
     stdio: "ignore",
+    timeout: ADB_COMMAND_TIMEOUT_MS,
   });
   const recorder = spawn(
     adb,
@@ -226,6 +242,16 @@ export async function startAndroidScreenRecord({
   );
 
   recorder.on("error", () => {});
+  let recorderTimedOut = false;
+  const recorderWatchdog = setTimeout(
+    () => {
+      recorderTimedOut = true;
+      recorder.kill("SIGTERM");
+    },
+    (Math.min(180, Math.max(1, timeLimitSeconds)) + 15) * 1000,
+  );
+  recorderWatchdog.unref();
+  recorder.once("close", () => clearTimeout(recorderWatchdog));
   await delay(750);
   log(`started Android screenrecord on ${serial}: ${remotePath}`);
 
@@ -235,6 +261,7 @@ export async function startAndroidScreenRecord({
     async stop() {
       spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
         stdio: "ignore",
+        timeout: ADB_COMMAND_TIMEOUT_MS,
       });
       // Keep the adb shell transport alive while the device encoder handles
       // SIGINT and appends the trailing moov atom. Signaling the local adb
@@ -244,13 +271,13 @@ export async function startAndroidScreenRecord({
         const pid = spawnSync(
           adb,
           ["-s", serial, "shell", "pidof", "screenrecord"],
-          { encoding: "utf8" },
+          { encoding: "utf8", timeout: ADB_COMMAND_TIMEOUT_MS },
         );
         if (!pid.stdout || pid.stdout.trim() === "") break;
         spawnSync(
           adb,
           ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
-          { stdio: "ignore" },
+          { stdio: "ignore", timeout: ADB_COMMAND_TIMEOUT_MS },
         );
         await delay(500);
       }
@@ -270,7 +297,7 @@ export async function startAndroidScreenRecord({
         const stat = spawnSync(
           adb,
           ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
-          { encoding: "utf8" },
+          { encoding: "utf8", timeout: ADB_COMMAND_TIMEOUT_MS },
         );
         const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
         if (Number.isFinite(size) && size > 0 && size === settledSize) break;
@@ -279,12 +306,13 @@ export async function startAndroidScreenRecord({
       }
       spawnSync(adb, ["-s", serial, "pull", remotePath, localPath], {
         stdio: "ignore",
+        timeout: ADB_PULL_TIMEOUT_MS,
       });
       spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
         stdio: "ignore",
+        timeout: ADB_COMMAND_TIMEOUT_MS,
       });
-      if (!isNonEmptyFile(localPath)) return null;
-      if (!isFinalizedMp4(localPath)) {
+      if (recorderTimedOut || !isFinalizedMp4(localPath)) {
         fs.rmSync(localPath, { force: true });
         log(
           `Android screenrecord was not a finalized positive-duration video: ${remotePath}`,
@@ -301,10 +329,8 @@ export async function startAndroidScreenRecord({
  * Record a gesture walkthrough that outruns `screenrecord`'s hard 180s per-file
  * cap: record back-to-back capped segments on the device, pull each as it ends,
  * and concat them into one mp4 with ffmpeg (`-c copy`, no re-encode — every
- * segment shares the same encoder settings). Falls back to the single recorded
- * segment when ffmpeg is missing or only one segment exists. There is a
- * sub-second gap between segments (the pull + respawn window); evidence video
- * tolerates it, so it is not stitched over.
+ * segment shares the same encoder settings). The next segment starts before
+ * the completed segment is pulled so synchronous host I/O cannot create a gap.
  */
 export async function startChunkedAndroidScreenRecord({
   adb = resolveAdb(),
@@ -330,12 +356,14 @@ export async function startChunkedAndroidScreenRecord({
   const segments = [];
   let stopped = false;
   let currentChild = null;
+  let abortCurrentSegment = null;
   let captureComplete = true;
 
   const recordSegment = (index) => {
     const remotePath = `${remoteBase}-seg${String(index).padStart(3, "0")}.mp4`;
     spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
       stdio: "ignore",
+      timeout: ADB_COMMAND_TIMEOUT_MS,
     });
     const child = spawn(
       adb,
@@ -359,8 +387,21 @@ export async function startChunkedAndroidScreenRecord({
         if (settled) return;
         settled = true;
         if (failed) captureComplete = false;
+        clearTimeout(watchdog);
+        if (currentChild === child) currentChild = null;
+        if (abortCurrentSegment === abort) abortCurrentSegment = null;
         resolve(remotePath);
       };
+      const abort = () => {
+        child.kill("SIGTERM");
+        done(true);
+      };
+      abortCurrentSegment = abort;
+      const watchdog = setTimeout(
+        abort,
+        (Math.min(180, Math.max(1, segmentSeconds)) + 15) * 1000,
+      );
+      watchdog.unref();
       child.once("close", () => done(false));
       child.once("error", () => done(true));
     });
@@ -368,21 +409,22 @@ export async function startChunkedAndroidScreenRecord({
 
   const loop = (async () => {
     let index = 0;
-    while (!stopped) {
-      const remotePath = await recordSegment(index);
-      currentChild = null;
+    let pending = recordSegment(index);
+    while (pending) {
+      const remotePath = await pending;
+      const next = stopped ? null : recordSegment(index + 1);
       const segmentLocal = path.join(artifactDir, `.${stem}-seg${index}.mp4`);
       const pull = spawnSync(
         adb,
         ["-s", serial, "pull", remotePath, segmentLocal],
         {
           stdio: "ignore",
-          timeout: 60_000,
+          timeout: ADB_PULL_TIMEOUT_MS,
         },
       );
       spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
         stdio: "ignore",
-        timeout: 10_000,
+        timeout: ADB_COMMAND_TIMEOUT_MS,
       });
       if (pull.status === 0 && isFinalizedMp4(segmentLocal)) {
         segments.push(segmentLocal);
@@ -393,6 +435,7 @@ export async function startChunkedAndroidScreenRecord({
         log(`Android screenrecord segment ${index} was not finalized`);
       }
       index += 1;
+      pending = next;
     }
   })();
 
@@ -405,6 +448,7 @@ export async function startChunkedAndroidScreenRecord({
       stopped = true;
       spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
         stdio: "ignore",
+        timeout: ADB_COMMAND_TIMEOUT_MS,
       });
       // Keep the local adb transport alive while the device encoder handles
       // SIGINT and appends the trailing moov atom. Bound that wait, then stop a
@@ -418,8 +462,7 @@ export async function startChunkedAndroidScreenRecord({
         await delay(500);
       }
       if (currentChild && currentChild.exitCode === null) {
-        captureComplete = false;
-        currentChild.kill("SIGTERM");
+        abortCurrentSegment?.();
       }
       // The final pull contains the end of the user flow. Never package earlier
       // segments while that pull is still running: a valid-but-truncated MP4 is
@@ -438,7 +481,10 @@ export async function startChunkedAndroidScreenRecord({
 }
 
 function concatSegments(segments, outPath, log) {
-  const probe = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+  const probe = spawnSync("ffmpeg", ["-version"], {
+    stdio: "ignore",
+    timeout: ADB_COMMAND_TIMEOUT_MS,
+  });
   if (probe.status !== 0) return false;
   const listPath = `${outPath}.concat.txt`;
   fs.writeFileSync(
@@ -448,7 +494,7 @@ function concatSegments(segments, outPath, log) {
   const result = spawnSync(
     "ffmpeg",
     ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath],
-    { stdio: "ignore" },
+    { stdio: "ignore", timeout: MEDIA_TOOL_TIMEOUT_MS },
   );
   fs.rmSync(listPath, { force: true });
   if (result.status !== 0 || !isNonEmptyFile(outPath)) {
@@ -472,7 +518,9 @@ export function captureAndroidScreenshot({
 
   ensureDir(artifactDir);
   const localPath = path.join(artifactDir, filename);
-  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"]);
+  const result = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
+    timeout: ADB_COMMAND_TIMEOUT_MS,
+  });
   if (result.status !== 0 || !result.stdout?.length) {
     const detail = result.stderr?.toString("utf8").trim();
     throw new Error(
@@ -504,7 +552,7 @@ export function captureAndroidLogcat({
   const result = spawnSync(
     adb,
     ["-s", serial, "logcat", "-d", "-t", String(lines)],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: ADB_COMMAND_TIMEOUT_MS },
   );
   fs.writeFileSync(
     localPath,
