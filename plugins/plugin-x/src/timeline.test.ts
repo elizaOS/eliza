@@ -4,7 +4,7 @@ import {
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { TwitterTimelineClient } from "./timeline";
@@ -72,6 +72,32 @@ function makeTweet(partial: Partial<Tweet>): Tweet {
     ...partial,
   } as Tweet;
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("TwitterTimelineClient scheduling", () => {
+  it("does not prefix-parse a partial engagement interval", async () => {
+    vi.useFakeTimers();
+    const client = new TwitterTimelineClient(makeClient(), makeRuntime({}), {
+      TWITTER_ENGAGEMENT_INTERVAL: "1h",
+    } as TwitterClientState);
+    const handleTimeline = vi
+      .spyOn(client, "handleTimeline")
+      .mockResolvedValue(undefined);
+
+    await client.start();
+    expect(handleTimeline).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1_000 - 1);
+    expect(handleTimeline).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handleTimeline).toHaveBeenCalledTimes(2);
+    await client.stop();
+    vi.clearAllTimers();
+  });
+});
 
 describe("TwitterTimelineClient.describeTweetMedia", () => {
   it("interprets photos and video previews via IMAGE_DESCRIPTION", async () => {

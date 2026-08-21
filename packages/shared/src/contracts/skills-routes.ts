@@ -80,7 +80,7 @@ const MarketplaceInstallSourceSchema = z.enum(["clawhub", "manual"]);
  * Marketplace install accepts three mutually-exclusive identifying
  * inputs: slug (ClawHub-native install), githubUrl, or repository.
  * The route handler picks a path based on which is present, so the
- * schema only enforces the "at least one" invariant. Optional
+ * schema enforces that exactly one identifier is supplied. Optional
  * descriptive fields are absorbed when whitespace-only.
  */
 export const PostMarketplaceInstallRequestSchema = z
@@ -112,10 +112,12 @@ export const PostMarketplaceInstallRequestSchema = z
     };
   })
   .refine(
-    (value) => Boolean(value.slug || value.githubUrl || value.repository),
+    (value) =>
+      [value.slug, value.githubUrl, value.repository].filter(Boolean).length ===
+      1,
     {
       message:
-        "Install requires at least one of: slug, githubUrl, or repository",
+        "Install requires exactly one of: slug, githubUrl, or repository",
     },
   );
 
