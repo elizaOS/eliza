@@ -220,12 +220,12 @@ const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
  */
 export function coordinatorFetch(
   stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
-  url: string | URL,
+  input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return stub.fetch(url, {
+  return stub.fetch(input, {
     ...init,
     signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
   });
