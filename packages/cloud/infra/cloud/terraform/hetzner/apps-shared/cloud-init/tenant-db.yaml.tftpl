@@ -284,13 +284,13 @@ write_files:
     owner: root:root
     permissions: '0600'
     content: |
-      BACKUP_S3_ENDPOINT=${backup_s3_endpoint}
-      BACKUP_S3_BUCKET=${backup_s3_bucket}
-      BACKUP_S3_PREFIX=${backup_s3_prefix}
-      BACKUP_S3_ACCESS_KEY_ID=${backup_s3_access_key}
-      BACKUP_S3_SECRET_ACCESS_KEY=${backup_s3_secret_key}
-      BACKUP_ENCRYPTION_PASSPHRASE=${backup_encryption_passphrase}
-      BACKUP_RETENTION_DAYS=${backup_retention_days}
+      BACKUP_S3_ENDPOINT_B64=${base64encode(backup_s3_endpoint)}
+      BACKUP_S3_BUCKET_B64=${base64encode(backup_s3_bucket)}
+      BACKUP_S3_PREFIX_B64=${base64encode(backup_s3_prefix)}
+      BACKUP_S3_ACCESS_KEY_ID_B64=${base64encode(backup_s3_access_key)}
+      BACKUP_S3_SECRET_ACCESS_KEY_B64=${base64encode(backup_s3_secret_key)}
+      BACKUP_ENCRYPTION_PASSPHRASE_B64=${base64encode(backup_encryption_passphrase)}
+      BACKUP_RETENTION_DAYS_B64=${base64encode(tostring(backup_retention_days))}
 %{ endif ~}
 
   - path: /usr/local/bin/tenant-db-backup.sh
@@ -318,6 +318,19 @@ write_files:
       fi
       set -a
       . "$ENV_FILE"
+      # The sourced file contains base64 alphabet only. Decode after parsing so
+      # spaces, quotes, dollar signs, command substitutions, and newlines in
+      # operator-provided values can never become root shell syntax.
+      BACKUP_S3_ENDPOINT=$(printf '%s' "$BACKUP_S3_ENDPOINT_B64" | base64 --decode)
+      BACKUP_S3_BUCKET=$(printf '%s' "$BACKUP_S3_BUCKET_B64" | base64 --decode)
+      BACKUP_S3_PREFIX=$(printf '%s' "$BACKUP_S3_PREFIX_B64" | base64 --decode)
+      BACKUP_S3_ACCESS_KEY_ID=$(printf '%s' "$BACKUP_S3_ACCESS_KEY_ID_B64" | base64 --decode)
+      BACKUP_S3_SECRET_ACCESS_KEY=$(printf '%s' "$BACKUP_S3_SECRET_ACCESS_KEY_B64" | base64 --decode)
+      BACKUP_ENCRYPTION_PASSPHRASE=$(printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE_B64" | base64 --decode)
+      BACKUP_RETENTION_DAYS=$(printf '%s' "$BACKUP_RETENTION_DAYS_B64" | base64 --decode)
+      unset BACKUP_S3_ENDPOINT_B64 BACKUP_S3_BUCKET_B64 BACKUP_S3_PREFIX_B64 \
+        BACKUP_S3_ACCESS_KEY_ID_B64 BACKUP_S3_SECRET_ACCESS_KEY_B64 \
+        BACKUP_ENCRYPTION_PASSPHRASE_B64 BACKUP_RETENTION_DAYS_B64
       set +a
       : "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_BUCKET" "$BACKUP_S3_PREFIX" \
         "$BACKUP_S3_ACCESS_KEY_ID" "$BACKUP_S3_SECRET_ACCESS_KEY" \

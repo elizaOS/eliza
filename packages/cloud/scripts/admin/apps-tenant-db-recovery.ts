@@ -7,16 +7,20 @@
  * production node. Emits a redacted JSON drill report with measured RPO
  * (backup age) and RTO (restore duration) against the declared objectives.
  *
- * Safety invariants: the target DSN must not point at the shared tenant-DB
- * private IP or its pooler port; every DSN is redacted before it can reach a
- * report or log line; tenant database names appear only in the decrypted
- * workspace, never in harness output (reports reference the truncated-hash
- * dump ids from dbmap.tsv).
+ * Safety invariants: before any destructive SQL, the direct target must return
+ * the operator's unique disposable-target identity from a server-side custom
+ * setting; aliases and tunnels therefore cannot bypass the guard. Isolation is
+ * proven by authenticating as every restored tenant role through both direct
+ * Postgres and the isolated pgbouncer. DSNs, credentials, and tenant names
+ * never reach reports or logs (reports reference truncated dump ids only).
  *
  * Usage (operator drill, needs openssl + tar + psql client tools):
  *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts \
  *     --set-dir /path/to/downloaded/<stamp> \
  *     --target-dsn postgresql://postgres:...@127.0.0.1:5433/postgres \
+ *     --target-id drill-11111111-2222-4333-8444-555555555555 \
+ *     --pooler-endpoint 127.0.0.1:6432 \
+ *     --tenant-probes-file /path/to/tenant-probes.json \
  *     --passphrase-file /path/to/passphrase \
  *     --rpo-hours 26 --rto-minutes 60 --output /tmp/drill-report.json
  */
@@ -38,8 +42,9 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const DUMP_ID = /^[a-f0-9]{12}$/;
 export const REPORT_SCHEMA_VERSION = 1 as const;
 
-/** Hosts/ports that identify the LIVE shared tenant DB; drills must refuse them. */
-export const PRODUCTION_TENANT_DB_HOSTS = ["10.30.1.10"] as const;
+const RESTORE_TARGET_ID =
+  /^drill-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PASSWORD_ENV = /^[A-Z][A-Z0-9_]*$/;
 export const POOLER_PORT = 6432;
 
 export class RecoveryDrillError extends Error {
@@ -195,12 +200,10 @@ export function parseBackupManifest(json: string): BackupManifest {
 }
 
 /**
- * Refuse any restore target that could be the live shared tenant DB. The
- * drill's whole point is an ISOLATED verification target; connecting the
- * restore at the production private IP (or through its pooler) would clobber
- * live tenant databases.
+ * Validate only the direct-Postgres transport shape. Isolation authority is
+ * established separately from a server-side nonce, never from this hostname.
  */
-export function assertIsolatedTarget(targetDsn: string): void {
+export function assertDirectTarget(targetDsn: string): URL {
   let url: URL;
   try {
     url = new URL(targetDsn);
@@ -216,19 +219,71 @@ export function assertIsolatedTarget(targetDsn: string): void {
       "target DSN must be a postgresql:// URL",
     );
   }
-  const host = url.hostname;
-  if ((PRODUCTION_TENANT_DB_HOSTS as readonly string[]).includes(host)) {
+  if (url.hostname === "" || url.pathname === "" || url.pathname === "/") {
     throw new RecoveryDrillError(
-      "REFUSED_PRODUCTION_TARGET",
-      `target host is the live shared tenant DB (${redactDsn(targetDsn)}); restore drills must use an isolated instance`,
+      "INVALID_TARGET",
+      "target DSN must include a host and maintenance database",
     );
   }
   if (url.port === String(POOLER_PORT)) {
     throw new RecoveryDrillError(
       "REFUSED_POOLER_TARGET",
-      "target DSN points at the pgbouncer pooler port; restores must hit Postgres directly on an isolated instance",
+      "restore target must be direct Postgres; pgbouncer is a separate probe surface",
     );
   }
+  return url;
+}
+
+/** Fail closed unless the server itself returns the one-use disposable nonce. */
+export function assertRestoreTargetIdentity(
+  expectedTargetId: string,
+  observedTargetId: string,
+): void {
+  if (!RESTORE_TARGET_ID.test(expectedTargetId)) {
+    throw new RecoveryDrillError(
+      "INVALID_TARGET_AUTHORITY",
+      "--target-id must be drill- followed by a UUID",
+    );
+  }
+  if (observedTargetId === "" || observedTargetId !== expectedTargetId) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target did not return the expected disposable restore identity",
+    );
+  }
+}
+
+export interface PgEndpoint {
+  host: string;
+  port: string;
+}
+
+/** Parse the credential-free isolated pgbouncer endpoint. */
+export function parsePoolerEndpoint(value: string): PgEndpoint {
+  let url: URL;
+  try {
+    url = new URL(`postgresql://probe@${value}/postgres`);
+  } catch {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      "--pooler-endpoint must be host:6432",
+    );
+  }
+  if (
+    url.username !== "probe" ||
+    url.password !== "" ||
+    url.hostname === "" ||
+    url.port !== String(POOLER_PORT) ||
+    url.pathname !== "/postgres" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      "--pooler-endpoint must be a credential-free host:6432 endpoint",
+    );
+  }
+  return { host: url.hostname, port: url.port };
 }
 
 export interface ChecksumEntry {
@@ -322,6 +377,86 @@ export function parseDbMap(text: string): DbMapEntry[] {
   return entries;
 }
 
+export interface TenantProbe {
+  dumpId: string;
+  role: string;
+  passwordEnv: string;
+}
+
+/**
+ * Parse credential references for the real tenant-role probes. The document
+ * maps opaque dump ids to roles and environment-variable names; it never
+ * contains passwords or tenant database names.
+ */
+export function parseTenantProbes(
+  json: string,
+  databases: DbMapEntry[],
+): TenantProbe[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new RecoveryDrillError(
+      "INVALID_PROBE_METADATA",
+      "tenant probe file is not valid JSON",
+    );
+  }
+  if (typeof raw !== "object" || raw === null) {
+    throw new RecoveryDrillError(
+      "INVALID_PROBE_METADATA",
+      "tenant probe file must be an object",
+    );
+  }
+  const record = raw as Record<string, unknown>;
+  if (record.schema_version !== 1 || !Array.isArray(record.tenants)) {
+    throw new RecoveryDrillError(
+      "INVALID_PROBE_METADATA",
+      "tenant probe file has unsupported schema_version/tenants",
+    );
+  }
+  const expected = new Set(databases.map((entry) => entry.dumpId));
+  const seen = new Set<string>();
+  const probes: TenantProbe[] = [];
+  for (const item of record.tenants) {
+    if (typeof item !== "object" || item === null) {
+      throw new RecoveryDrillError(
+        "INVALID_PROBE_METADATA",
+        "tenant probe entry must be an object",
+      );
+    }
+    const entry = item as Record<string, unknown>;
+    const dumpId = entry.dump_id;
+    const role = entry.role;
+    const passwordEnv = entry.password_env;
+    if (
+      typeof dumpId !== "string" ||
+      !DUMP_ID.test(dumpId) ||
+      !expected.has(dumpId) ||
+      seen.has(dumpId) ||
+      typeof role !== "string" ||
+      role === "" ||
+      role.length > 128 ||
+      role.includes("\0") ||
+      typeof passwordEnv !== "string" ||
+      !PASSWORD_ENV.test(passwordEnv)
+    ) {
+      throw new RecoveryDrillError(
+        "INVALID_PROBE_METADATA",
+        "tenant probe entry is invalid, duplicated, or not in dbmap",
+      );
+    }
+    seen.add(dumpId);
+    probes.push({ dumpId, role, passwordEnv });
+  }
+  if (seen.size !== expected.size) {
+    throw new RecoveryDrillError(
+      "INVALID_PROBE_METADATA",
+      "tenant probe file must cover every restored database exactly once",
+    );
+  }
+  return probes;
+}
+
 export interface RecoveryObjectives {
   rpoHours: number;
   rtoMinutes: number;
@@ -392,6 +527,9 @@ export function buildIsolationChecks(entries: DbMapEntry[]): IsolationCheck[] {
 export interface CliOptions {
   setDir: string;
   targetDsn: string;
+  targetId: string;
+  poolerEndpoint: PgEndpoint;
+  tenantProbesFile: string;
   passphraseFile: string;
   rpoHours: number;
   rtoMinutes: number;
@@ -404,6 +542,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
     options: {
       "set-dir": { type: "string" },
       "target-dsn": { type: "string" },
+      "target-id": { type: "string" },
+      "pooler-endpoint": { type: "string" },
+      "tenant-probes-file": { type: "string" },
       "passphrase-file": { type: "string" },
       "rpo-hours": { type: "string", default: "26" },
       "rto-minutes": { type: "string", default: "60" },
@@ -412,13 +553,24 @@ export function parseCliArgs(argv: string[]): CliOptions {
   });
   const setDir = values["set-dir"];
   const targetDsn = values["target-dsn"];
+  const targetId = values["target-id"];
+  const poolerEndpoint = values["pooler-endpoint"];
+  const tenantProbesFile = values["tenant-probes-file"];
   const passphraseFile = values["passphrase-file"];
-  if (!setDir || !targetDsn || !passphraseFile) {
+  if (
+    !setDir ||
+    !targetDsn ||
+    !targetId ||
+    !poolerEndpoint ||
+    !tenantProbesFile ||
+    !passphraseFile
+  ) {
     throw new RecoveryDrillError(
       "INVALID_ARGS",
-      "required: --set-dir <dir> --target-dsn <dsn> --passphrase-file <file>",
+      "required: --set-dir, --target-dsn, --target-id, --pooler-endpoint, --tenant-probes-file, and --passphrase-file",
     );
   }
+  assertRestoreTargetIdentity(targetId, targetId);
   const rpoHours = Number(values["rpo-hours"]);
   const rtoMinutes = Number(values["rto-minutes"]);
   if (
@@ -435,6 +587,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
   return {
     setDir,
     targetDsn,
+    targetId,
+    poolerEndpoint: parsePoolerEndpoint(poolerEndpoint),
+    tenantProbesFile,
     passphraseFile,
     rpoHours,
     rtoMinutes,
@@ -468,6 +623,52 @@ function run(
   return result.stdout;
 }
 
+function expectCommandFailure(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+): void {
+  const result = spawnSync(command, args, {
+    encoding: "utf-8",
+    env: { ...process.env, ...env },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) {
+    throw new RecoveryDrillError(
+      "TOOL_FAILED",
+      `${command} could not be executed: ${result.error.message}`,
+    );
+  }
+  if (result.status === 0) {
+    throw new RecoveryDrillError(
+      "ISOLATION_VIOLATION",
+      "cross-tenant authentication unexpectedly succeeded",
+    );
+  }
+  if (!/permission denied for database/i.test(result.stderr)) {
+    throw new RecoveryDrillError(
+      "TOOL_FAILED",
+      "cross-tenant probe failed without a database CONNECT denial",
+    );
+  }
+}
+
+function tenantConnectionEnv(
+  endpoint: PgEndpoint,
+  database: string,
+  role: string,
+  password: string,
+): Record<string, string> {
+  return {
+    PGHOST: endpoint.host,
+    PGPORT: endpoint.port,
+    PGDATABASE: database,
+    PGUSER: role,
+    PGPASSWORD: password,
+    PGCONNECT_TIMEOUT: "10",
+  };
+}
+
 interface DrillReport {
   schemaVersion: typeof REPORT_SCHEMA_VERSION;
   startedAt: string;
@@ -482,7 +683,18 @@ interface DrillReport {
 
 /** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
 function executeDrill(options: CliOptions): DrillReport {
-  assertIsolatedTarget(options.targetDsn);
+  const targetUrl = assertDirectTarget(options.targetDsn);
+  const observedTargetId = run("psql", [
+    "--tuples-only",
+    "--no-align",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--dbname",
+    options.targetDsn,
+    "--command",
+    "SELECT current_setting('eliza.restore_target_id', true)",
+  ]).trim();
+  assertRestoreTargetIdentity(options.targetId, observedTargetId);
   const startedAt = new Date();
 
   const sidecar = parseBackupSidecar(
@@ -545,10 +757,27 @@ function executeDrill(options: CliOptions): DrillReport {
       );
     }
 
+    const probes = parseTenantProbes(
+      readFileSync(options.tenantProbesFile, "utf-8"),
+      dbMap,
+    );
+    const probeById = new Map(probes.map((probe) => [probe.dumpId, probe]));
+    const passwords = new Map<string, string>();
+    for (const probe of probes) {
+      const password = process.env[probe.passwordEnv];
+      if (password === undefined || password === "") {
+        throw new RecoveryDrillError(
+          "MISSING_PROBE_SECRET",
+          `required tenant probe environment variable is absent (dump=${probe.dumpId})`,
+        );
+      }
+      passwords.set(probe.dumpId, password);
+    }
+
     const restoreStart = Date.now();
     run("psql", [
       "--set",
-      "ON_ERROR_STOP=0",
+      "ON_ERROR_STOP=1",
       "--dbname",
       options.targetDsn,
       "--file",
@@ -578,49 +807,71 @@ function executeDrill(options: CliOptions): DrillReport {
     const byId = new Map(
       dbMap.map((entry) => [entry.dumpId, entry.databaseName]),
     );
+    const directEndpoint = {
+      host: targetUrl.hostname,
+      port: targetUrl.port === "" ? "5432" : targetUrl.port,
+    };
+    const surfaces = [
+      { name: "direct", endpoint: directEndpoint },
+      { name: "pooler", endpoint: options.poolerEndpoint },
+    ] as const;
     let passed = 0;
-    const targetUrl = new URL(options.targetDsn);
     for (const check of checks) {
       const objectDb = byId.get(check.objectDumpId);
-      if (objectDb === undefined) {
+      const probe = probeById.get(check.subjectDumpId);
+      const password = passwords.get(check.subjectDumpId);
+      if (
+        objectDb === undefined ||
+        probe === undefined ||
+        password === undefined
+      ) {
         throw new RecoveryDrillError(
-          "INVALID_METADATA",
+          "INVALID_PROBE_METADATA",
           "isolation check references unknown dump id",
         );
       }
-      const probeUrl = new URL(targetUrl.toString());
-      probeUrl.pathname = `/${encodeURIComponent(objectDb)}`;
-      // own-connect: the admin restore connection must reach the database and
-      // see the tenant role. cross-reject: the tenant ROLE (whose password we
-      // do not hold) must have CONNECT revoked — verified via has_database_privilege.
-      const subjectDb = byId.get(check.subjectDumpId);
-      if (subjectDb === undefined) {
-        throw new RecoveryDrillError(
-          "INVALID_METADATA",
-          "isolation check references unknown dump id",
+      for (const surface of surfaces) {
+        const env = tenantConnectionEnv(
+          surface.endpoint,
+          objectDb,
+          probe.role,
+          password,
         );
-      }
-      const sql =
-        check.kind === "own-connect"
-          ? "SELECT 1"
-          : `SELECT CASE WHEN has_database_privilege('${subjectDb.replaceAll("'", "''")}', current_database(), 'CONNECT') THEN 'LEAK' ELSE 'OK' END`;
-      const out = run("psql", [
-        "--tuples-only",
-        "--no-align",
-        "--set",
-        "ON_ERROR_STOP=1",
-        "--dbname",
-        probeUrl.toString(),
-        "--command",
-        sql,
-      ]).trim();
-      if (check.kind === "own-connect" ? out === "1" : out === "OK") {
+        if (check.kind === "own-connect") {
+          const out = run(
+            "psql",
+            [
+              "--tuples-only",
+              "--no-align",
+              "--set",
+              "ON_ERROR_STOP=1",
+              "--command",
+              "SELECT current_user || '|' || current_database() || '|' || current_setting('eliza.restore_target_id', true)",
+            ],
+            { env },
+          ).trim();
+          const expected = `${probe.role}|${objectDb}|${options.targetId}`;
+          if (out !== expected) {
+            throw new RecoveryDrillError(
+              "ISOLATION_VIOLATION",
+              `tenant authentication did not reach the expected target (surface=${surface.name}, subject=${check.subjectDumpId})`,
+            );
+          }
+        } else {
+          expectCommandFailure(
+            "psql",
+            [
+              "--tuples-only",
+              "--no-align",
+              "--set",
+              "ON_ERROR_STOP=1",
+              "--command",
+              "SELECT 1",
+            ],
+            env,
+          );
+        }
         passed += 1;
-      } else {
-        throw new RecoveryDrillError(
-          "ISOLATION_VIOLATION",
-          `isolation probe failed (${check.kind}, subject=${check.subjectDumpId}, object=${check.objectDumpId})`,
-        );
       }
     }
 
@@ -642,7 +893,7 @@ function executeDrill(options: CliOptions): DrillReport {
       archiveBytes: sidecar.archiveBytes,
       databaseCount: sidecar.databaseCount,
       checksummedFiles,
-      isolation: { total: checks.length, passed },
+      isolation: { total: checks.length * surfaces.length, passed },
       objectives: {
         ...objectives,
         rpoHours: options.rpoHours,
