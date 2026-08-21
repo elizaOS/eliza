@@ -30,7 +30,7 @@ mock.module("../../utils/logger", () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
 }));
 
-const { discordAutomationService } = await import("./index");
+const { discordAutomationService, discordFetch } = await import("./index");
 
 const realFetch = globalThis.fetch;
 
@@ -152,5 +152,40 @@ describe("handleBotOAuthCallback — J6 best-effort: channel cache-warm failure 
     expect(result.guildId).toBe(guildId);
     // The guild was persisted even though channel warm-up threw.
     expect(guildUpsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("discordFetch — bounded hops fail closed and keep caller signals", () => {
+  it("aborts a hung Discord API hop at the timeout", async () => {
+    // A Discord API that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the 25s default matches the send path).
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      discordFetch("https://discord.com/api/v10/guilds/g1", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return jsonResponse({ ok: true });
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await discordFetch("https://discord.com/api/v10/users/@me", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
