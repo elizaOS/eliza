@@ -20,6 +20,10 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 
 const spec = requireActionSpec("CHOOSE_OPTION");
 
@@ -146,7 +150,7 @@ export const choiceAction: Action = {
 				},
 			)
 			.map((task) => {
-				const shortId = task.id.substring(0, 8);
+				const shortId = truncateWellFormed(toWellFormedUnicode(task.id), 8);
 				const taskMetadata = task.metadata;
 				const taskOptions = taskMetadata?.options;
 
@@ -319,7 +323,9 @@ export const choiceAction: Action = {
 			"Please select a valid option from one of these tasks:\n\n";
 
 		tasksWithOptions.forEach((task) => {
-			const shortId = task.id?.substring(0, 8);
+			const shortId = task.id
+				? truncateWellFormed(toWellFormedUnicode(task.id), 8)
+				: "";
 
 			optionsText += `**${task.name}** (ID: ${shortId}):\n`;
 			const taskMetadata = task.metadata;
