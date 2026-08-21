@@ -4,7 +4,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api-client";
-import { useSandboxListPoll } from "./use-sandbox-status-poll";
+import {
+  useSandboxListPoll,
+  useSandboxStatusPoll,
+} from "./use-sandbox-status-poll";
 
 vi.mock("../../lib/api-client", () => ({ api: vi.fn() }));
 
@@ -33,6 +36,7 @@ function agent(status: "provisioning" | "running") {
 
 beforeEach(() => {
   mockedApi.mockReset();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
@@ -112,5 +116,40 @@ describe("useSandboxListPoll", () => {
       await Promise.resolve();
     });
     expect(onDataRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSandboxStatusPoll", () => {
+  it("starts polling a replacement agent after the previous agent reached a terminal state", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "running", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "provisioning", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 60_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("running"));
+    rerender({ agentId: "agent-b" });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/v1/eliza/agents/agent-b");
+    await waitFor(() => expect(result.current.status).toBe("provisioning"));
   });
 });

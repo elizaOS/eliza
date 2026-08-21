@@ -73,6 +73,7 @@ export function useSandboxStatusPoll(
     }
 
     cancelledRef.current = false;
+    statusRef.current = "pending";
     consecutiveErrorsRef.current = 0;
 
     const poll = async () => {
