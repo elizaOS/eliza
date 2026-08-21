@@ -397,6 +397,8 @@ describe("AcpService", () => {
         ELIZA_CLAUDE_ACP_COMMAND: process.execPath,
         ELIZA_CODEX_ACP_COMMAND: process.execPath,
         ELIZA_OPENCODE_ACP_COMMAND: process.execPath,
+        ELIZA_KIMI_ACP_COMMAND: process.execPath,
+        ELIZA_GROK_ACP_COMMAND: process.execPath,
       }),
     );
 
@@ -434,9 +436,11 @@ describe("AcpService", () => {
         }),
       );
       expect(
-        (await available.checkAvailableAgents()).every(
-          (entry) => entry.installed,
-        ),
+        (await available.checkAvailableAgents())
+          .filter(
+            (entry) => entry.agentType !== "kimi" && entry.agentType !== "grok",
+          )
+          .every((entry) => entry.installed),
       ).toBe(true);
 
       process.env.PATH = "/missing/profile-prerequisites";
@@ -497,6 +501,8 @@ describe("AcpService", () => {
         "pi-agent.cmd",
         "npx.cmd",
         "opencode.cmd",
+        "kimi.cmd",
+        "grok.cmd",
       ]) {
         const executable = join(executableDirectory, command);
         await fs.writeFile(executable, "@echo off\r\n");
@@ -513,6 +519,8 @@ describe("AcpService", () => {
             "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
           ELIZA_CODEX_ACP_COMMAND: "npx -y codex-acp",
           ELIZA_OPENCODE_ACP_COMMAND: "opencode acp",
+          ELIZA_KIMI_ACP_COMMAND: "kimi acp",
+          ELIZA_GROK_ACP_COMMAND: "grok agent stdio",
         }),
       );
 
@@ -1131,7 +1139,9 @@ describe("AcpService", () => {
   });
 
   it("consumes every backend command override from the canonical preflight row", async () => {
-    for (const agentType of CODING_AGENT_BACKENDS) {
+    for (const agentType of CODING_AGENT_BACKENDS.filter(
+      (backend) => backend !== "kimi" && backend !== "grok",
+    )) {
       const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[agentType];
       const sentinel = `/opt/acp/${agentType} --stdio`;
       const service = new AcpService(

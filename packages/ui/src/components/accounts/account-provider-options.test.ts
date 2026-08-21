@@ -39,6 +39,18 @@ describe("consolidated account provider picker", () => {
     expect(claudeSubscription?.eligibility).not.toContain("chat");
   });
 
+  it("keeps the Kimi endpoint key distinct from the CLI OAuth session", () => {
+    const kimiEndpointKey = ACCOUNT_PROVIDER_OPTIONS.find(
+      (option) => option.id === "kimi-coding",
+    );
+
+    expect(kimiEndpointKey).toMatchObject({
+      name: "Kimi Coding Endpoint Key",
+      description: expect.stringContaining("separate kimi login OAuth session"),
+      eligibility: expect.arrayContaining(["endpoint key", "not ACP login"]),
+    });
+  });
+
   it("lists subscriptions before API keys", () => {
     const firstApiIndex = ACCOUNT_PROVIDER_OPTIONS.findIndex(
       (option) => option.category === "chat",

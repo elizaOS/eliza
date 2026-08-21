@@ -1,7 +1,8 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode,
+ * Kimi Code, or Grok Build),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -123,6 +124,15 @@ import {
   isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
 } from "./subagent-stdout-log.js";
+import {
+  assertSubscriptionCodingAdapterReady,
+  classifySubscriptionRuntimeFailure,
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  stripSubscriptionApiEnvironment,
+  subscriptionCodingAdapterCommand,
+} from "./subscription-coding-adapters.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpCapacity,
@@ -1877,10 +1887,26 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    this.assertTransportAvailable(id);
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    if (isSubscriptionCodingAdapter(agentType)) {
+      const preflightEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        ...opts.customCredentials,
+        ...opts.env,
+      };
+      const homeKey = agentType === "kimi" ? "KIMI_CODE_HOME" : "GROK_HOME";
+      const configuredHome = this.setting(homeKey);
+      if (configuredHome) preflightEnv[homeKey] = configuredHome;
+      assertSubscriptionCodingAdapterReady(agentType, {
+        command: this.nativeAgentCommand(agentType),
+        env: preflightEnv,
+        executionMode: opts.subscriptionExecutionMode,
+        transportMode: this.transportMode,
+      });
+    }
+    this.assertTransportAvailable(id);
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     // Orchestrated spawns (via tasks.ts → resolveSpawnWorkdir) always pass
     // opts.workdir, which already applies route/convention/explicit resolution
@@ -2063,9 +2089,11 @@ export class AcpService extends Service {
       // child. Fail-closed refusals (credit-gate / strict no-broker / strict mint
       // failure) throw here; undo the reserved slot so a refused spawn leaves no
       // orphan session record. No-op when gateway mode / lease broker are off.
-      await this.mintModelLease(id, agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: true,
-      });
+      if (!isSubscriptionCodingAdapter(agentType)) {
+        await this.mintModelLease(id, agentType, opts.timeoutMs, {
+          rollbackSessionOnFailure: true,
+        });
+      }
 
       // App-build tasks lose the parent's deploy contract at the spawn boundary.
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
@@ -2839,13 +2867,41 @@ export class AcpService extends Service {
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {
     return DEFAULT_AGENTS.map((agentType) => {
-      const command = this.agentCommandAvailability(agentType);
+      const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+      if (!isSubscriptionCodingAdapter(normalized)) {
+        const command = this.agentCommandAvailability(agentType);
+        return {
+          adapter: agentType,
+          agentType,
+          installed: command.available,
+          ...(command.reason ? { unavailableReason: command.reason } : {}),
+          auth: { status: "unknown" },
+        };
+      }
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalized];
+      const probeEnv: NodeJS.ProcessEnv = { ...process.env };
+      const homeKey = normalized === "kimi" ? "KIMI_CODE_HOME" : "GROK_HOME";
+      const configuredHome = this.setting(homeKey);
+      if (configuredHome) probeEnv[homeKey] = configuredHome;
+      const probe = probeSubscriptionCodingAdapter(normalized, {
+        command: this.nativeAgentCommand(normalized),
+        env: probeEnv,
+        transportMode: this.transportMode,
+      });
       return {
-        adapter: agentType,
-        agentType,
-        installed: command.available,
-        ...(command.reason ? { unavailableReason: command.reason } : {}),
-        auth: { status: "unknown" },
+        adapter: normalized,
+        agentType: normalized,
+        installed: probe.installed,
+        ...(!probe.spawnable ? { unavailableReason: probe.detail } : {}),
+        docsUrl: descriptor.docsUrl,
+        billingSource: descriptor.billingSource,
+        executionPolicy: {
+          requiresUserAttended: descriptor.requiresUserAttended,
+        },
+        auth: {
+          status: probe.authenticated ? "authenticated" : "unauthenticated",
+          detail: probe.detail,
+        },
       };
     });
   }
@@ -3132,16 +3188,21 @@ export class AcpService extends Service {
       // set above before the store writes that can throw here. Idempotent when
       // the failure happened before the set.
       this.nativeClients.delete(id);
-      const message = errorMessage(err);
+      const normalizedAgentType =
+        normalizeTaskAgentAdapter(session.agentType) ?? session.agentType;
+      const failure = isSubscriptionCodingAdapter(normalizedAgentType)
+        ? (classifySubscriptionRuntimeFailure(normalizedAgentType, err) ?? err)
+        : err;
+      const message = errorMessage(failure);
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
         ...this.authFailureFields(message, session.agentType),
       });
-      if (err instanceof ElizaError) throw err;
+      if (failure instanceof ElizaError) throw failure;
       throw new ElizaError(message, {
         code: "ACP_NATIVE_SESSION_SPAWN_FAILED",
-        cause: err,
+        cause: failure,
         context: { sessionId: id, agentType: session.agentType },
       });
     }
@@ -3568,20 +3629,29 @@ export class AcpService extends Service {
       };
     }
 
-    try {
-      await this.mintModelLease(session.id, session.agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: false,
-      });
-    } catch (err) {
-      // error-policy:J2 context-adding rethrow — reconnect lease refusal must
-      // persist on the existing session before the caller observes the failure.
-      const message = errorMessage(err);
-      await this.store.updateStatus(session.id, "errored", message);
-      this.emitSessionEvent(session.id, "error", {
-        message,
-        ...this.authFailureFields(message, session.agentType),
-      });
-      throw err;
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(session.agentType) ?? session.agentType;
+    if (!isSubscriptionCodingAdapter(normalizedAgentType)) {
+      try {
+        await this.mintModelLease(
+          session.id,
+          session.agentType,
+          opts.timeoutMs,
+          {
+            rollbackSessionOnFailure: false,
+          },
+        );
+      } catch (err) {
+        // error-policy:J2 context-adding rethrow — reconnect lease refusal must
+        // persist on the existing session before the caller observes the failure.
+        const message = errorMessage(err);
+        await this.store.updateStatus(session.id, "errored", message);
+        this.emitSessionEvent(session.id, "error", {
+          message,
+          ...this.authFailureFields(message, session.agentType),
+        });
+        throw err;
+      }
     }
     const promptCredentials = await this.accountCredentialsForSession(session);
     const promptEnv: Record<string, string> = {
@@ -3635,6 +3705,13 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (isSubscriptionCodingAdapter(normalizedAgentType)) {
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType];
+      return subscriptionCodingAdapterCommand(
+        normalizedAgentType,
+        this.setting(descriptor.commandSetting),
+      );
+    }
     if (!isCodingAgentBackend(normalizedAgentType)) {
       return String(normalizedAgentType);
     }
@@ -4791,7 +4868,11 @@ export class AcpService extends Service {
     // Gateway mode runs LAST so no earlier merge step (host forwarding,
     // customCredentials, spawn extras, account selection) can reintroduce a
     // raw provider key into the child env. Never log the token.
-    const gateway = resolveModelGatewayConfig();
+    const normalizedAgentTypeForGateway =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    const gateway = isSubscriptionCodingAdapter(normalizedAgentTypeForGateway)
+      ? null
+      : resolveModelGatewayConfig();
     if (gateway) {
       // Prefer this session's per-spawn lease token over the static gateway
       // token; the lease is scoped + short-lived + revocable (#11536 E2
@@ -4833,6 +4914,24 @@ export class AcpService extends Service {
         agentType,
         sessionId: childSessionId,
       });
+    }
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (isSubscriptionCodingAdapter(normalizedAgentType)) {
+      const removed = stripSubscriptionApiEnvironment(normalizedAgentType, env);
+      if (removed.length > 0) {
+        this.log(
+          "debug",
+          "stripped direct API configuration from subscription coding-agent environment",
+          {
+            agentType: normalizedAgentType,
+            removedKeys: removed,
+            billingSource:
+              SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType].billingSource
+                .kind,
+          },
+        );
+      }
     }
     return env;
   }

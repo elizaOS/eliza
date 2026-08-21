@@ -117,9 +117,10 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * opencode authenticates through its configured backend; the only backend it
  * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
  * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
- * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * accounts and no-ops otherwise. The Kimi ACP backend uses the OAuth session
+ * owned by `kimi login`, not the pooled `kimi-coding` endpoint key; Grok also
+ * owns its CLI OAuth state. Those subscription adapters are therefore absent
+ * here, as are z.ai / GLM backends that have no spawnable CLI.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
