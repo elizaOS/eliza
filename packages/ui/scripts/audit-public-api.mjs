@@ -2,13 +2,14 @@
  * Freezes the public API surface so compatibility work can shrink it
  * deliberately, without allowing accidental additions or removals in CI.
  *
- * Two distinct surfaces are frozen. The root barrel (`src/index.ts`) is
- * checked via the TypeScript checker, same as before. Wildcard subpath
- * exports (e.g. `./cloud/*`, `./components/*` in package.json `exports`) are
- * a SEPARATE public surface: every source file the build emits under the
- * corresponding `dist/<prefix>/...` path is importable from outside this
- * package as `@elizaos/ui/<prefix>/<path>`, whether or not anything inside
- * the monorepo currently imports it. An in-repo importer search finds zero
+ * Three distinct surfaces are frozen. The root barrel (`src/index.ts`) is
+ * checked via the TypeScript checker, same as before. Exact non-root entries
+ * in package.json `exports` are frozen with their complete target mappings.
+ * Wildcard subpath exports (e.g. `./cloud/*`, `./components/*` in package.json
+ * `exports`) are a SEPARATE public surface: every source file the build emits
+ * under the corresponding `dist/<prefix>/...` path is importable from
+ * outside this package as `@elizaos/ui/<prefix>/<path>`, whether or not the
+ * monorepo currently imports it. An in-repo importer search finds zero
  * hits for such a file and makes deleting it look free — it is not, because
  * an external deep-importer can still reach it. Walking the exports map is
  * the only way to see this surface; `checker.getExportsOfModule` on
@@ -19,6 +20,10 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import {
+  collectExplicitSubpathExports,
+  diffExplicitSubpathExports,
+} from "./public-api-explicit-subpaths.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = resolve(packageRoot, "scripts/public-api-baseline.json");
@@ -112,6 +117,10 @@ const pkgJson = JSON.parse(
   await readFile(resolve(packageRoot, "package.json"), "utf8"),
 );
 const exportsMap = pkgJson.exports ?? {};
+const explicitSubpathExports = collectExplicitSubpathExports(
+  exportsMap,
+  pkgJson.name,
+);
 
 const wildcardPrefixes = Object.entries(exportsMap)
   .filter(([key, value]) => {
@@ -150,12 +159,14 @@ const report = {
   count: api.length,
   subpathExports,
   subpathCount: subpathExports.length,
+  explicitSubpathExports,
+  explicitSubpathCount: explicitSubpathExports.length,
 };
 
 if (updateBaseline) {
   await writeFile(baselinePath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(
-    `Updated public API baseline (${api.length} root exports, ${subpathExports.length} subpath entry points).`,
+    `Updated public API baseline (${api.length} root exports, ${explicitSubpathExports.length} explicit subpaths, ${subpathExports.length} wildcard subpath entry points).`,
   );
   process.exit(0);
 }
@@ -196,6 +207,11 @@ if (currentText !== baselineText) {
       previousSubpaths.get(entry.specifier) !== entry.source,
   );
 
+  const explicitSubpathDiff = diffExplicitSubpathExports(
+    baseline.explicitSubpathExports ?? [],
+    explicitSubpathExports,
+  );
+
   throw new Error(
     [
       "Public API changed. Prefer an explicit subpath; update the baseline only for an intentional compatibility decision.",
@@ -217,6 +233,15 @@ if (currentText !== baselineText) {
       movedSubpaths.length
         ? `Subpath moved: ${movedSubpaths.map((entry) => entry.specifier).join(", ")}`
         : "",
+      explicitSubpathDiff.added.length
+        ? `Explicit subpath added: ${explicitSubpathDiff.added.map((entry) => entry.specifier).join(", ")}`
+        : "",
+      explicitSubpathDiff.removed.length
+        ? `Explicit subpath removed: ${explicitSubpathDiff.removed.map((entry) => entry.specifier).join(", ")}`
+        : "",
+      explicitSubpathDiff.retargeted.length
+        ? `Explicit subpath retargeted: ${explicitSubpathDiff.retargeted.map((entry) => entry.specifier).join(", ")}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -224,5 +249,5 @@ if (currentText !== baselineText) {
 }
 
 console.log(
-  `Public API matches baseline (${api.length} root exports, ${subpathExports.length} subpath entry points).`,
+  `Public API matches baseline (${api.length} root exports, ${explicitSubpathExports.length} explicit subpaths, ${subpathExports.length} wildcard subpath entry points).`,
 );
