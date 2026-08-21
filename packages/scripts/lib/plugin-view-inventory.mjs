@@ -113,11 +113,20 @@ function parseSourceContext(repoRoot, source, cache) {
     source: normalized,
     sourceFile,
     constants: new Map(),
+    functions: new Map(),
     imports: new Map(),
     cache,
   };
   cache.set(normalized, context);
   for (const statement of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name &&
+      statement.body
+    ) {
+      context.functions.set(statement.name.text, statement);
+      continue;
+    }
     if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name) && declaration.initializer) {
@@ -168,6 +177,27 @@ function resolveRelativeImport(context, specifier) {
 
 function resolveStaticExpression(expression, context, resolving = new Set()) {
   const value = unwrap(expression);
+  if (
+    ts.isCallExpression(value) &&
+    value.arguments.length === 0 &&
+    ts.isIdentifier(value.expression)
+  ) {
+    const declaration = context.functions.get(value.expression.text);
+    const returns = declaration?.body?.statements.filter((statement) =>
+      ts.isReturnStatement(statement),
+    );
+    if (returns?.length === 1 && returns[0].expression) {
+      const key = `${context.source}:function:${value.expression.text}`;
+      if (resolving.has(key)) {
+        throw new Error(`[plugin-view-inventory] cyclic static value ${key}`);
+      }
+      return resolveStaticExpression(
+        returns[0].expression,
+        context,
+        new Set(resolving).add(key),
+      );
+    }
+  }
   if (!ts.isIdentifier(value)) return { value, context };
   const key = `${context.source}:${value.text}`;
   if (resolving.has(key)) {
@@ -305,31 +335,172 @@ function capabilityIds(object, context) {
   return ids;
 }
 
-function isPluginObject(object) {
-  const isPluginType = (type) =>
-    /(?:^|\W)Plugin(?:<.*>)?(?:$|\W)/.test(type?.getText() ?? "");
-  let current = object;
-  let typedAsPlugin = false;
+function isPluginType(type) {
+  return /(?:^|\W)Plugin(?:<.*>)?(?:$|\W)/.test(type?.getText() ?? "");
+}
+
+function hasPluginAssertion(expression) {
+  let current = expression;
   while (
-    ts.isAsExpression(current.parent) ||
-    ts.isSatisfiesExpression(current.parent) ||
-    ts.isParenthesizedExpression(current.parent)
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isParenthesizedExpression(current)
   ) {
-    current = current.parent;
     if (
       (ts.isAsExpression(current) || ts.isSatisfiesExpression(current)) &&
       isPluginType(current.type)
     ) {
-      typedAsPlugin = true;
+      return true;
+    }
+    current = current.expression;
+  }
+  return false;
+}
+
+function effectiveObjectPropertyNames(object, context, resolving = new Set()) {
+  const key = `${context.source}:${object.pos}`;
+  if (resolving.has(key)) return null;
+  const nextResolving = new Set(resolving).add(key);
+  const names = new Set();
+  for (const member of object.properties) {
+    if (ts.isSpreadAssignment(member)) {
+      const spread = resolveStaticExpression(member.expression, context);
+      if (!ts.isObjectLiteralExpression(spread.value)) return null;
+      const spreadNames = effectiveObjectPropertyNames(
+        spread.value,
+        spread.context,
+        nextResolving,
+      );
+      if (!spreadNames) return null;
+      for (const name of spreadNames) names.add(name);
+      continue;
+    }
+    const name = propertyName(member);
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+function hasPluginShape(object, context) {
+  const names = effectiveObjectPropertyNames(object, context);
+  return (
+    names?.has("name") === true &&
+    names.has("description") &&
+    names.has("views")
+  );
+}
+
+function hasExportModifier(statement) {
+  return (
+    statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    ) ?? false
+  );
+}
+
+function enumeratePluginRoots(context) {
+  const bindings = new Map();
+  const exportedBindings = new Set();
+  const assertedExports = new Set();
+  const inlineExports = [];
+
+  for (const statement of context.sourceFile.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+          continue;
+        }
+        bindings.set(declaration.name.text, declaration);
+        if (hasExportModifier(statement)) {
+          exportedBindings.add(declaration.name.text);
+        }
+      }
+      continue;
+    }
+    if (
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const element of statement.exportClause.elements) {
+        exportedBindings.add(element.propertyName?.text ?? element.name.text);
+      }
+      continue;
+    }
+    if (!ts.isExportAssignment(statement) || statement.isExportEquals) {
+      continue;
+    }
+    const expression = unwrap(statement.expression);
+    if (ts.isIdentifier(expression)) {
+      exportedBindings.add(expression.text);
+      if (hasPluginAssertion(statement.expression)) {
+        assertedExports.add(expression.text);
+      }
+    } else {
+      inlineExports.push({
+        expression: statement.expression,
+        node: statement,
+        label: "default export",
+        explicit: hasPluginAssertion(statement.expression),
+      });
     }
   }
-  if (typedAsPlugin) return true;
-  if (!ts.isVariableDeclaration(current.parent)) return false;
-  const declaration = current.parent;
-  const nameText = ts.isIdentifier(declaration.name)
-    ? declaration.name.text
-    : "";
-  return isPluginType(declaration.type) || /plugin$/i.test(nameText);
+
+  const roots = [];
+  const seen = new Set();
+  for (const name of exportedBindings) {
+    const declaration = bindings.get(name);
+    if (!declaration) continue;
+    const explicit =
+      isPluginType(declaration.type) ||
+      hasPluginAssertion(declaration.initializer) ||
+      assertedExports.has(name) ||
+      /plugin$/i.test(name);
+    const resolved = resolveStaticExpression(declaration.initializer, context);
+    if (!ts.isObjectLiteralExpression(resolved.value)) {
+      if (explicit) {
+        throw new Error(
+          `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, declaration)} exported Plugin ${name} must resolve statically to an object literal`,
+        );
+      }
+      continue;
+    }
+    if (!explicit && !hasPluginShape(resolved.value, resolved.context)) {
+      continue;
+    }
+    const key = `${resolved.context.source}:${resolved.value.pos}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    roots.push({
+      object: resolved.value,
+      context: resolved.context,
+      node: declaration,
+      label: name,
+    });
+  }
+
+  for (const entry of inlineExports) {
+    const resolved = resolveStaticExpression(entry.expression, context);
+    if (!ts.isObjectLiteralExpression(resolved.value)) {
+      if (entry.explicit) {
+        throw new Error(
+          `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, entry.node)} exported Plugin ${entry.label} must resolve statically to an object literal`,
+        );
+      }
+      continue;
+    }
+    if (!entry.explicit && !hasPluginShape(resolved.value, resolved.context)) {
+      continue;
+    }
+    roots.push({
+      object: resolved.value,
+      context: resolved.context,
+      node: entry.node,
+      label: entry.label,
+    });
+  }
+  return roots;
 }
 
 function resolvePluginViews(object, context, resolving = new Set()) {
@@ -536,45 +707,37 @@ function parseBuiltin(context) {
 function parsePlugin(context, owner) {
   const views = [];
   const sources = [];
-  const visit = (node) => {
-    if (ts.isObjectLiteralExpression(node) && isPluginObject(node)) {
-      const declaration = resolvePluginViews(node, context);
-      if (declaration.kind === "unsupported") {
+  for (const root of enumeratePluginRoots(context)) {
+    const declaration = resolvePluginViews(root.object, root.context);
+    if (declaration.kind === "unsupported") {
+      throw new Error(
+        `[plugin-view-inventory] ${declaration.context.source}:${sourceLine(declaration.context.sourceFile, declaration.node)} Plugin composition must resolve statically so views cannot evade inventory`,
+      );
+    }
+    if (declaration.kind === "absent") continue;
+    const resolved = resolvedArray(
+      declaration.expression,
+      declaration.context,
+      "Plugin.views",
+    );
+    const sourceViews = resolved.value.elements.map((element) => {
+      const item = resolveStaticExpression(element, resolved.context);
+      if (!ts.isObjectLiteralExpression(item.value)) {
         throw new Error(
-          `[plugin-view-inventory] ${declaration.context.source}:${sourceLine(declaration.context.sourceFile, declaration.node)} Plugin composition must resolve statically so views cannot evade inventory`,
+          `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} Plugin.views entry must resolve to an object literal`,
         );
       }
-      if (declaration.kind === "absent") {
-        ts.forEachChild(node, visit);
-        return;
-      }
-      const resolved = resolvedArray(
-        declaration.expression,
-        declaration.context,
-        "Plugin.views",
-      );
-      const sourceViews = resolved.value.elements.map((element) => {
-        const item = resolveStaticExpression(element, resolved.context);
-        if (!ts.isObjectLiteralExpression(item.value)) {
-          throw new Error(
-            `[plugin-view-inventory] ${item.context.source}:${sourceLine(item.context.sourceFile, item.value)} Plugin.views entry must resolve to an object literal`,
-          );
-        }
-        return parseView(item.value, item.context, owner, false);
-      });
-      views.push(...sourceViews);
-      sources.push({
-        owner,
-        source: declaration.context.source,
-        line: sourceLine(declaration.context.sourceFile, declaration.node),
-        kind: "plugin-manifest",
-        viewCount: sourceViews.length,
-      });
-      return;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(context.sourceFile);
+      return parseView(item.value, item.context, owner, false);
+    });
+    views.push(...sourceViews);
+    sources.push({
+      owner,
+      source: declaration.context.source,
+      line: sourceLine(declaration.context.sourceFile, declaration.node),
+      kind: "plugin-manifest",
+      viewCount: sourceViews.length,
+    });
+  }
   return { views, sources };
 }
 

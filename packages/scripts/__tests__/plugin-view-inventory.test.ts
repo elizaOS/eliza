@@ -255,13 +255,13 @@ export default { name: "spread", description: "fixture", ...base } satisfies Plu
     const explicitAfter = addPluginSource(
       explicitAfterRoot,
       "plugin-explicit-after",
-      `const base = {
+      `const basePlugin = {
   name: "base",
   description: "helper",
   views: [${view("base-before-override")}],
 };
 export default {
-  ...base,
+  ...basePlugin,
   name: "explicit-after",
   views: [${view("explicit-after")}],
 } satisfies Plugin;\n`,
@@ -281,7 +281,7 @@ export default {
     const spreadAfter = addPluginSource(
       spreadAfterRoot,
       "plugin-spread-after",
-      `const base = {
+      `const basePlugin = {
   name: "spread-after",
   description: "helper",
   views: [${view("spread-after")}],
@@ -290,7 +290,7 @@ export default {
   name: "explicit-before",
   description: "fixture",
   views: [${view("explicit-before-spread")}],
-  ...base,
+  ...basePlugin,
 } satisfies Plugin;\n`,
     );
     const spreadAfterInventory = discover(spreadAfterRoot, [spreadAfter]);
@@ -303,6 +303,102 @@ export default {
         (source) => source.kind === "plugin-manifest",
       ),
     ).toHaveLength(1);
+  });
+
+  test("does not inventory an unexported typed composition helper", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-typed-helper",
+      `const basePlugin: Plugin = {
+  name: "typed-helper",
+  description: "helper",
+  views: [${view("typed-helper")}],
+};
+export default {
+  ...basePlugin,
+  views: [${view("typed-runtime")}],
+} satisfies Plugin;\n`,
+    );
+    const inventory = discover(root, [source]);
+    expect(inventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "typed-runtime",
+    ]);
+    expect(
+      inventory.sources.filter((entry) => entry.kind === "plugin-manifest"),
+    ).toHaveLength(1);
+  });
+
+  test("fails closed on exported plugin declarations with dynamic initializers", () => {
+    const factoryRoot = makeRoot();
+    const factory = addPluginSource(
+      factoryRoot,
+      "plugin-dynamic-export",
+      `export const validPlugin: Plugin = {
+  name: "valid",
+  description: "fixture",
+  views: [${view("valid")}],
+};
+export const dynamicPlugin: Plugin = buildPlugin();\n`,
+    );
+    expect(() => discover(factoryRoot, [factory])).toThrow(
+      /exported Plugin dynamicPlugin must resolve statically to an object literal/,
+    );
+
+    const conditionalRoot = makeRoot();
+    const conditional = addPluginSource(
+      conditionalRoot,
+      "plugin-conditional-export",
+      `const conditionalPlugin: Plugin = enabled ? left : right;
+export default conditionalPlugin;\n`,
+    );
+    expect(() => discover(conditionalRoot, [conditional])).toThrow(
+      /exported Plugin conditionalPlugin must resolve statically to an object literal/,
+    );
+  });
+
+  test("deduplicates local export aliases and ignores ordinary exported objects", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-export-alias",
+      `export const layout = { views: ["grid"] };
+const runtimePlugin: Plugin = {
+  name: "runtime",
+  description: "fixture",
+  views: [${view("runtime")}],
+};
+export { runtimePlugin, runtimePlugin as default };\n`,
+    );
+    const inventory = discover(root, [source]);
+    expect(inventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "runtime",
+    ]);
+    expect(
+      inventory.sources.filter((entry) => entry.kind === "plugin-manifest"),
+    ).toHaveLength(1);
+  });
+
+  test("resolves a zero-argument local plugin factory with one static return", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-static-factory",
+      `function createPlugin(): Plugin {
+  return {
+    name: "factory",
+    description: "fixture",
+    views: [${view("factory")}],
+  };
+}
+export const factoryPlugin: Plugin = createPlugin();\n`,
+    );
+    expect(discover(root, [source]).views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "factory",
+    ]);
   });
 
   test("rejects plugin composition that could hide runtime views", () => {
