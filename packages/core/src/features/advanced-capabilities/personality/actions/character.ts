@@ -353,11 +353,11 @@ export const characterAction: Action = {
 	] as ActionExample[][],
 };
 
-function trimToString(value: unknown, max: number): string | undefined {
+export function trimToString(value: unknown, max: number): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (!trimmed) return undefined;
-	return trimmed.slice(0, max);
+	return truncateWellFormed(toWellFormedUnicode(trimmed), max);
 }
 
 function readCharacterField(
