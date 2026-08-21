@@ -34,9 +34,11 @@ function provider(
           unitAmount: 2_999,
           type: "recurring",
           billingScheme: "per_unit",
+          transformQuantity: null,
           recurring: {
             interval: "month",
             intervalCount: 1,
+            trialPeriodDays: null,
             usageType: "licensed",
           },
           productId: "prod_plus123",
@@ -50,9 +52,11 @@ function provider(
         unitAmount: plus ? 3_000 : 10_000,
         type: "recurring",
         billingScheme: "per_unit",
+        transformQuantity: null,
         recurring: {
           interval: "month",
           intervalCount: 1,
+          trialPeriodDays: null,
           usageType: "licensed",
         },
         productId: plus ? "prod_plus123" : "prod_pro123",

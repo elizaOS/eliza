@@ -404,6 +404,7 @@ export interface SubscriptionAllowanceDto {
   amountUsd: string;
   fundingClass: "allowance_eligible";
   rollover: false;
+  expiresAt: "billing_period_end";
 }
 
 export interface SubscriptionPlanDto {
@@ -418,7 +419,8 @@ export interface SubscriptionPlanDto {
   allowance: SubscriptionAllowanceDto;
   fundingClasses: readonly SubscriptionFundingClass[];
   rateLimits: SubscriptionRateEnvelopeDto;
-  resourceCeilings: SubscriptionResourceCeilingsDto;
+  /** Unavailable until the resource-enforcement policy is ratified. */
+  resourceCeilings: null;
 }
 
 export interface SubscriptionPlansDto {

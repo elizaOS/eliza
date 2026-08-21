@@ -33,6 +33,7 @@ const planDefinitionSchema = z
         amountUsd: z.string().regex(/^(?:0|[1-9]\d*)\.\d{6}$/),
         fundingClass: z.literal("allowance_eligible"),
         rollover: z.literal(false),
+        expiresAt: z.literal("billing_period_end"),
       })
       .strict(),
     fundingClasses: z.tuple([z.literal("allowance_eligible"), z.literal("cash_only")]),
@@ -44,15 +45,8 @@ const planDefinitionSchema = z
         strictRpm: z.number().int().positive().safe(),
       })
       .strict(),
-    resourceCeilings: z
-      .object({
-        cloudCharacters: z.number().int().positive().safe(),
-        agentSandboxes: z.number().int().positive().safe(),
-        containers: z.number().int().positive().safe(),
-        storageGiB: z.number().int().positive().safe(),
-        apps: z.number().int().positive().safe(),
-      })
-      .strict(),
+    // Candidate ceilings are recommendations, not ratified enforcement policy.
+    resourceCeilings: z.null(),
   })
   .strict();
 
@@ -104,6 +98,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       amountUsd: "25.000000",
       fundingClass: "allowance_eligible",
       rollover: false,
+      expiresAt: "billing_period_end",
     },
     fundingClasses: ["allowance_eligible", "cash_only"],
     rateLimits: {
@@ -112,13 +107,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 60,
       strictRpm: 10,
     },
-    resourceCeilings: {
-      cloudCharacters: 100,
-      agentSandboxes: 100,
-      containers: 25,
-      storageGiB: 25,
-      apps: 25,
-    },
+    resourceCeilings: null,
   },
   {
     key: "pro_monthly",
@@ -133,6 +122,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       amountUsd: "90.000000",
       fundingClass: "allowance_eligible",
       rollover: false,
+      expiresAt: "billing_period_end",
     },
     fundingClasses: ["allowance_eligible", "cash_only"],
     rateLimits: {
@@ -141,13 +131,7 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
       standardRpm: 120,
       strictRpm: 30,
     },
-    resourceCeilings: {
-      cloudCharacters: 500,
-      agentSandboxes: 500,
-      containers: 100,
-      storageGiB: 100,
-      apps: 25,
-    },
+    resourceCeilings: null,
   },
 ]);
 
@@ -183,9 +167,14 @@ export interface SubscriptionCatalogProviderPrice {
   unitAmount: number | null;
   type: string;
   billingScheme: string;
+  transformQuantity: {
+    divideBy: number;
+    round: string;
+  } | null;
   recurring: {
     interval: string;
     intervalCount: number;
+    trialPeriodDays: number | null;
     usageType: string;
   } | null;
   productId: string | null;
@@ -210,10 +199,18 @@ const providerPriceSchema = z
     unitAmount: z.number().int().safe().nullable(),
     type: z.string().min(1),
     billingScheme: z.string().min(1),
+    transformQuantity: z
+      .object({
+        divideBy: z.number().int().positive().safe(),
+        round: z.string().min(1),
+      })
+      .strict()
+      .nullable(),
     recurring: z
       .object({
         interval: z.string().min(1),
         intervalCount: z.number().int().positive().safe(),
+        trialPeriodDays: z.number().int().nonnegative().safe().nullable(),
         usageType: z.string().min(1),
       })
       .strict()
@@ -336,10 +333,14 @@ async function verifyPlan(
   if (price.unitAmount !== plan.amountCents) mismatch(plan.key, "price.unit_amount");
   if (price.type !== "recurring") mismatch(plan.key, "price.type");
   if (price.billingScheme !== "per_unit") mismatch(plan.key, "price.billing_scheme");
+  if (price.transformQuantity !== null) mismatch(plan.key, "price.transform_quantity");
   if (!price.recurring) mismatch(plan.key, "price.recurring");
   if (price.recurring.interval !== plan.interval) mismatch(plan.key, "price.recurring.interval");
   if (price.recurring.intervalCount !== plan.intervalCount) {
     mismatch(plan.key, "price.recurring.interval_count");
+  }
+  if (price.recurring.trialPeriodDays !== null) {
+    mismatch(plan.key, "price.recurring.trial_period_days");
   }
   if (price.recurring.usageType !== "licensed") {
     mismatch(plan.key, "price.recurring.usage_type");
@@ -365,7 +366,7 @@ function publicPlans(): SubscriptionPlansDto {
       allowance: { ...plan.allowance },
       fundingClasses: [...plan.fundingClasses],
       rateLimits: { ...plan.rateLimits },
-      resourceCeilings: { ...plan.resourceCeilings },
+      resourceCeilings: plan.resourceCeilings,
     })) as SubscriptionPlanDto[],
   });
 }
@@ -468,10 +469,17 @@ export function adaptStripeSubscriptionCatalogProvider(
         unitAmount: price.unit_amount,
         type: price.type,
         billingScheme: price.billing_scheme,
+        transformQuantity: price.transform_quantity
+          ? {
+              divideBy: price.transform_quantity.divide_by,
+              round: price.transform_quantity.round,
+            }
+          : null,
         recurring: price.recurring
           ? {
               interval: price.recurring.interval,
               intervalCount: price.recurring.interval_count,
+              trialPeriodDays: price.recurring.trial_period_days,
               usageType: price.recurring.usage_type,
             }
           : null,

@@ -64,9 +64,11 @@ function createProvider(overrides: ProviderOverrides = {}): {
           unitAmount: plan.amountCents,
           type: "recurring",
           billingScheme: "per_unit",
+          transformQuantity: null,
           recurring: {
             interval: plan.interval,
             intervalCount: plan.intervalCount,
+            trialPeriodDays: null,
             usageType: "licensed",
           },
           productId: productByPrice.get(priceId) ?? null,
@@ -110,6 +112,7 @@ describe("subscription catalog contract", () => {
             amountUsd: "25.000000",
             fundingClass: "allowance_eligible",
             rollover: false,
+            expiresAt: "billing_period_end",
           },
           fundingClasses: ["allowance_eligible", "cash_only"],
           rateLimits: {
@@ -118,13 +121,7 @@ describe("subscription catalog contract", () => {
             standardRpm: 60,
             strictRpm: 10,
           },
-          resourceCeilings: {
-            cloudCharacters: 100,
-            agentSandboxes: 100,
-            containers: 25,
-            storageGiB: 25,
-            apps: 25,
-          },
+          resourceCeilings: null,
         },
         {
           key: "pro_monthly",
@@ -139,6 +136,7 @@ describe("subscription catalog contract", () => {
             amountUsd: "90.000000",
             fundingClass: "allowance_eligible",
             rollover: false,
+            expiresAt: "billing_period_end",
           },
           fundingClasses: ["allowance_eligible", "cash_only"],
           rateLimits: {
@@ -147,13 +145,7 @@ describe("subscription catalog contract", () => {
             standardRpm: 120,
             strictRpm: 30,
           },
-          resourceCeilings: {
-            cloudCharacters: 500,
-            agentSandboxes: 500,
-            containers: 100,
-            storageGiB: 100,
-            apps: 25,
-          },
+          resourceCeilings: null,
         },
       ],
     });
@@ -236,13 +228,52 @@ describe("Stripe provider authority", () => {
     ["amount", { unitAmount: 2_999 }],
     ["price kind", { type: "one_time" }],
     ["billing scheme", { billingScheme: "tiered" }],
+    ["quantity transform", { transformQuantity: { divideBy: 10, round: "up" } }],
     ["recurrence", { recurring: null }],
-    ["interval", { recurring: { interval: "year", intervalCount: 1, usageType: "licensed" } }],
+    [
+      "interval",
+      {
+        recurring: {
+          interval: "year",
+          intervalCount: 1,
+          trialPeriodDays: null,
+          usageType: "licensed",
+        },
+      },
+    ],
     [
       "interval count",
-      { recurring: { interval: "month", intervalCount: 2, usageType: "licensed" } },
+      {
+        recurring: {
+          interval: "month",
+          intervalCount: 2,
+          trialPeriodDays: null,
+          usageType: "licensed",
+        },
+      },
     ],
-    ["usage type", { recurring: { interval: "month", intervalCount: 1, usageType: "metered" } }],
+    [
+      "default trial",
+      {
+        recurring: {
+          interval: "month",
+          intervalCount: 1,
+          trialPeriodDays: 7,
+          usageType: "licensed",
+        },
+      },
+    ],
+    [
+      "usage type",
+      {
+        recurring: {
+          interval: "month",
+          intervalCount: 1,
+          trialPeriodDays: null,
+          usageType: "metered",
+        },
+      },
+    ],
     ["approved product", { productId: "prod_unapproved" }],
     ["price livemode", { livemode: true }],
   ] satisfies Array<[string, Partial<SubscriptionCatalogProviderPrice>]>)(

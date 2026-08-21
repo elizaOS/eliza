@@ -45,6 +45,7 @@ const PLANS: SubscriptionPlansDto = {
         amountUsd: "25.000000",
         fundingClass: "allowance_eligible",
         rollover: false,
+        expiresAt: "billing_period_end",
       },
       fundingClasses: ["allowance_eligible", "cash_only"],
       rateLimits: {
@@ -53,13 +54,7 @@ const PLANS: SubscriptionPlansDto = {
         standardRpm: 60,
         strictRpm: 10,
       },
-      resourceCeilings: {
-        cloudCharacters: 100,
-        agentSandboxes: 100,
-        containers: 25,
-        storageGiB: 25,
-        apps: 25,
-      },
+      resourceCeilings: null,
     },
   ],
 };
