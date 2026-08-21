@@ -658,6 +658,37 @@ describe("live routing regressions", () => {
 		expect(routed.plan.candidateActions).toContain("TASKS");
 	});
 
+	it("replaces a weak SHELL-only guess with the promoted coding sub-agent for a normie program request", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT", "CODE_EXECUTE"],
+			},
+			{ name: "SHELL", similes: ["RUN_SHELL"] },
+			{ name: "REPLY" },
+		];
+		const messageText =
+			"Can you make me a little program that shows the prime numbers from 1 to 20? Try it too so I know it works.";
+
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: ["create prime numbers program", "run prime numbers program"],
+				replyText: "On it.",
+				candidateActionNames: ["SHELL"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions, messageText },
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
 	it("URL work orders with unlisted verbs reach TASKS through the real production path (issue #18108)", () => {
 		// This is the load-bearing regression for issue #18108: "review this PR …",
 		// "audit this repository …", and "investigate the failure here …" must each

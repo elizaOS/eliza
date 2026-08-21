@@ -6054,6 +6054,31 @@ export function shouldPreferDirectCurrentCandidateActions(args: {
 	actions?: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 }): boolean {
 	if (args.candidateActions.length === 0) return false;
+	// A normal coding work order can be phrased with "run"/"try" language, and
+	// weak Stage-1 models often reduce the whole request to SHELL (live: "make
+	// me a little program ... try it" tried to execute a file that did not
+	// exist). When the deterministic current-request inference found the
+	// registered coding-delegation action, let that complete lifecycle outrank a
+	// shell-only guess. Focused coding sub-agents do not expose delegation, so
+	// their own FILE/SHELL loop is unaffected.
+	if (looksLikeCodingWorkRequest(args.currentMessageText)) {
+		const delegationAction = findCodingDelegationActionName(args.actions ?? []);
+		const directHasDelegation =
+			delegationAction !== undefined &&
+			args.directCandidateActions.some(
+				(name) =>
+					normalizeActionIdentifier(name) ===
+					normalizeActionIdentifier(delegationAction),
+			);
+		const modelOnlyGuessedShell = args.candidateActions.every((name) => {
+			const normalized = normalizeActionIdentifier(name);
+			return (
+				isShellDirectActionName(normalized, args.actions) ||
+				canonicalPlannerControlActionName(normalized) !== null
+			);
+		});
+		if (directHasDelegation && modelOnlyGuessedShell) return true;
+	}
 	if (!looksLikeLocalShellRequest(args.currentMessageText)) return false;
 	if (looksLikeCodingWorkRequest(args.currentMessageText)) return false;
 	if (
