@@ -59,6 +59,7 @@ import {
   type TerminalRunParams,
 } from "@elizaos/core";
 import { parsePositiveInteger } from "@elizaos/shared";
+import { trimEndCharacters } from "../utils/string-boundaries.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
@@ -1116,7 +1117,7 @@ function parseEnvironment(
 }
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  return trimEndCharacters(value, "/");
 }
 
 function isValidRemotePluginModuleId(value: unknown): value is string {

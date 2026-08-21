@@ -12,6 +12,7 @@ import {
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
 import { signInWithSolana as siwsSignIn } from "@/lib/api/siws";
+import { confirmSiwsSession } from "@/lib/context/siws-session";
 
 export interface TelegramAuthData {
   id: number;
@@ -455,45 +456,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const result = await siwsSignIn();
-      setSessionToken(result.apiKey);
-      try {
-        await fetchUserInfo(result.apiKey);
-      } catch (err) {
-        // The /api/eliza-app/user/me endpoint may not yet recognize a
-        // wallet-only session. Fall back to a synthetic ElizaAppUser so the
-        // homepage UI can show a wallet-linked dashboard.
-        console.warn(
-          "[Auth] user/me failed after SIWS — using synthetic wallet user",
-          err,
-        );
-        const now = new Date().toISOString();
-        setUser({
-          id: result.user.id,
-          telegram_id: null,
-          telegram_username: null,
-          telegram_first_name: null,
-          discord_id: null,
-          discord_username: null,
-          discord_global_name: null,
-          discord_avatar_url: null,
-          whatsapp_id: null,
-          whatsapp_name: null,
-          phone_number: null,
-          name: `${result.address.slice(0, 4)}…${result.address.slice(-4)}`,
-          avatar: null,
-          organization_id: result.user.organization_id,
-          created_at: now,
-        });
-        setOrganization(
-          result.organization
-            ? {
-                id: result.organization.id,
-                name: result.organization.name,
-                credit_balance: "0.00",
-              }
-            : null,
-        );
-      }
+      await confirmSiwsSession(result.apiKey, {
+        storeToken: setSessionToken,
+        loadCanonicalUser: fetchUserInfo,
+        clearIdentity: () => {
+          setUser(null);
+          setOrganization(null);
+        },
+      });
       return { success: true, address: result.address };
     } catch (err) {
       const result = parseAuthError(err);

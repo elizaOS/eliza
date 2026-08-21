@@ -3,11 +3,16 @@
  * logo references for the Classic variant. Parallel to the default `brand/`
  * tokens; surfaces select one variant at render time.
  */
+import {
+  trimEndCharacters,
+  trimStartCharacters,
+} from "../utils/string-boundaries.js";
+
 export const BRAND_ASSET_BASE_PATH = "/brand" as const;
 
 export function brandAssetPath(path: string, basePath = BRAND_ASSET_BASE_PATH) {
-  const normalizedBase = basePath.replace(/\/+$/, "");
-  const normalizedPath = path.replace(/^\/+/, "");
+  const normalizedBase = trimEndCharacters(basePath, "/");
+  const normalizedPath = trimStartCharacters(path, "/");
   return `${normalizedBase}/${normalizedPath}`;
 }
 

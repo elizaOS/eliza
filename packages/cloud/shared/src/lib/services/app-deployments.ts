@@ -13,14 +13,11 @@
  * image otherwise). This service is that integration boundary — callers keep
  * polling `getLatestDeployment` regardless of which backend is wired.
  */
+
+import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
-import {
-  assertDeployable,
-  type DeploymentStatus,
-  deploymentIdFor,
-  publicStatusFor,
-} from "./app-deployments-helpers";
+import { type DeploymentStatus, deploymentIdFor, publicStatusFor } from "./app-deployments-helpers";
 import { appsService } from "./apps";
 
 export type { DeploymentStatus } from "./app-deployments-helpers";
@@ -131,17 +128,18 @@ export class AppDeploymentsService {
     if (!existing) {
       throw new Error("App not found");
     }
-    assertDeployable(existing);
-
     const startedAt = new Date();
     const deploymentMetadata = deployMetadataFor(existing.metadata ?? {}, input);
-    const updated = await appsService.update(input.appId, {
-      deployment_status: "building",
+    const updated = await appsService.claimDeploymentStart(input.appId, {
       last_deployed_at: startedAt,
       ...(deploymentMetadata ? { metadata: deploymentMetadata } : {}),
     });
     if (!updated) {
-      throw new Error("Failed to record deployment start");
+      throw new ApiError(
+        409,
+        "session_not_ready",
+        "A deployment is already in progress for this app",
+      );
     }
 
     // Apps lane (Product 2): trigger the real isolated deploy.

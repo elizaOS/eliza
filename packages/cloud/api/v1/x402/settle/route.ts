@@ -5,8 +5,8 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
@@ -14,7 +14,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STRICT));
+app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   let body: Record<string, unknown>;

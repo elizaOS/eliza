@@ -59,7 +59,16 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
     >
       <span className="demo-review-number">{index + 1}</span>
       <span className="demo-review-avatar-slot">
-        {avatar ? <img src={avatar} alt="" /> : null}
+        {avatar ? (
+          <img
+            src={avatar}
+            alt=""
+            width={256}
+            height={256}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : null}
       </span>
       <div className="demo-review-step-body">
         <div className="demo-review-step-meta">
@@ -137,9 +146,20 @@ export default function DemoScenariosPage() {
                         ]
                       }
                       alt=""
+                      width={256}
+                      height={256}
+                      loading="lazy"
+                      decoding="async"
                     />
                   ))}
-                  <img src="/brand/logos/logo_white_orangebg.svg" alt="" />
+                  <img
+                    src="/brand/logos/logo_white_orangebg.svg"
+                    alt=""
+                    width={423}
+                    height={423}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </div>
                 <div>
                   <p>{scenario.label}</p>

@@ -9,6 +9,7 @@
  */
 import { isReservedNonToolActionName } from "../../action-names";
 import type { Action } from "../../types/components";
+import { trimEndCharacters } from "../../utils/string-boundaries";
 
 export interface DirectActionInferenceHooks {
 	looksLikeCodingWorkRequest?: (text: string) => boolean;
@@ -1735,7 +1736,7 @@ function extractLocalShellPath(text: string): string | null {
 	if (!match?.[1]) {
 		return null;
 	}
-	return match[1].replace(/[),.;:]+$/u, "");
+	return trimEndCharacters(match[1], "),.;:");
 }
 
 export function inferLocalShellCommandFromMessageText(
@@ -1875,10 +1876,7 @@ const CONTINUATION_APPROVAL_RE = new RegExp(
 );
 
 function normalizeContinuationText(text: string): string {
-	return text
-		.trim()
-		.replace(/[.!…]+$/u, "")
-		.replace(/\s+/gu, " ");
+	return trimEndCharacters(text.trim(), ".!…").replace(/\s+/gu, " ");
 }
 
 export type ExplicitContinuationKind = "directive" | "approval";

@@ -390,29 +390,6 @@ body.pwa-standalone textarea {
   }
 }
 
-/* ── Home pill listening waveform ───────────────────────────────────── */
-
-/*
- * Wispr-Flow-style mic-live bars inside the shell home pill. The bars are
- * fixed-height spans that oscillate scaleY so the capsule reads as "hearing
- * you" without real audio metering; per-bar animation-delay staggers them.
- */
-.home-pill-wave-bar {
-  animation: home-pill-wave 900ms ease-in-out infinite;
-  transform-origin: center;
-}
-
-@keyframes home-pill-wave {
-  0%,
-  100% {
-    transform: scaleY(0.55);
-  }
-
-  50% {
-    transform: scaleY(1.9);
-  }
-}
-
 /*
  * Processing-state dots: mic closed, transcription in flight. A soft
  * opacity/scale breath sweeping left-to-right via per-dot animation-delay.

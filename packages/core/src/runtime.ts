@@ -117,6 +117,7 @@ import {
 import {
 	authorizeOwnerExclusiveDisclosure,
 	CompositeEntityRecognizer,
+	collectPiiPromptText,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	GuardedStreamScanner,
 	ownerExclusiveSuppressionNote,
@@ -1788,24 +1789,14 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/** Flatten every string leaf of the model params plus the system prompt into
-	 * one text blob for the PII recognizer to scan. */
+	 * one text blob for the PII recognizer to scan. Uses the shared bounded
+	 * descriptor-safe PII walker so cyclic / over-deep / sparse / Proxy graphs
+	 * fail closed with {@link PII_PSEUDONYM_UNBOUNDED} before `learn`. */
 	private collectPromptText(
 		params: unknown,
 		systemPrompt: string | undefined,
 	): string {
-		const parts: string[] = [];
-		const walk = (value: unknown): void => {
-			if (typeof value === "string") {
-				parts.push(value);
-			} else if (Array.isArray(value)) {
-				for (const item of value) walk(item);
-			} else if (value && typeof value === "object") {
-				for (const child of Object.values(value)) walk(child);
-			}
-		};
-		walk(params);
-		if (systemPrompt) parts.push(systemPrompt);
-		return parts.join("\n");
+		return collectPiiPromptText(params, systemPrompt);
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -6752,6 +6743,16 @@ export class AgentRuntime implements IAgentRuntime {
 					ModelType.VIDEO,
 					ModelType.TEXT_EMBEDDING,
 				];
+				// Validate the caller-owned graph before `isPlainObject` / object spread
+				// below can reflect it. The later collection still runs after secret swap
+				// so NER never sees raw secrets; this preflight exists to make the earlier
+				// runtime cloning boundary descriptor-safe and fail-closed as well.
+				if (
+					this.isPiiSwapEnabled() &&
+					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
+				) {
+					collectPiiPromptText(params);
+				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
 					? { ...(params as Record<string, JsonValue | object>) }

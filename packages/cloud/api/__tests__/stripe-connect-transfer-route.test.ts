@@ -52,6 +52,8 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { CRITICAL: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 
 const getBalance = mock();

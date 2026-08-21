@@ -24,6 +24,7 @@ import {
 	isPrivateIpAddress,
 	normalizeHostLike,
 } from "../../network/ssrf.ts";
+import { stripHtmlRawTextElements } from "../../utils/html-raw-text.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -523,9 +524,7 @@ function decodeBasicHtmlEntities(value: string): string {
 
 function htmlToPlainText(value: string): string {
 	return decodeBasicHtmlEntities(
-		value
-			.replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
-			.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+		stripHtmlRawTextElements(value)
 			.replace(/<br\s*\/?>/gi, "\n")
 			.replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
 			.replace(/<li\b[^>]*>/gi, "- ")

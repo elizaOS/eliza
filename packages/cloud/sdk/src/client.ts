@@ -12,6 +12,15 @@
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
+import type {
+  CreateRedemptionRequest,
+  CreateRedemptionResponse,
+  ListRedemptionsResponse,
+  RedemptionNetwork,
+  RedemptionQuoteRequest,
+  RedemptionQuoteResponse,
+  RedemptionStatusResponse,
+} from "./redemption-contract.js";
 import {
   type ActivateAppFrontendResponse,
   type AdCampaignAttributionResponse,
@@ -73,8 +82,6 @@ import {
   type CreateInfluencerProfileResponse,
   type CreatePressReleaseInput,
   type CreatePressReleaseResponse,
-  type CreateRedemptionRequest,
-  type CreateRedemptionResponse,
   type CreateX402PaymentRequest,
   type CreateX402PaymentRequestResponse,
   type CreditBalanceResponse,
@@ -114,15 +121,12 @@ import {
   type ListInfluencersResponse,
   type ListPressCoverageResponse,
   type ListPressReleasesResponse,
-  type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
   type OpenApiSpec,
   type PairingTokenResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
-  type RedemptionQuoteResponse,
-  type RedemptionStatusResponse,
   type RegenerateAppApiKeyResponse,
   type RegisterGatewayRelaySessionResponse,
   type ResponsesCreateRequest,
@@ -766,14 +770,29 @@ export class ElizaCloudClient {
   }
 
   getRedemptionQuote(
-    network: string,
+    request: RedemptionQuoteRequest,
+  ): Promise<RedemptionQuoteResponse>;
+  /** @deprecated Pass a canonical `RedemptionQuoteRequest` object instead. */
+  getRedemptionQuote(
+    network: RedemptionNetwork,
+    pointsAmount?: number,
+  ): Promise<RedemptionQuoteResponse>;
+  getRedemptionQuote(
+    requestOrNetwork: RedemptionQuoteRequest | RedemptionNetwork,
     pointsAmount?: number,
   ): Promise<RedemptionQuoteResponse> {
+    const request: RedemptionQuoteRequest =
+      typeof requestOrNetwork === "string"
+        ? { network: requestOrNetwork, pointsAmount }
+        : requestOrNetwork;
     return this.request<RedemptionQuoteResponse>(
       "GET",
       "/api/v1/redemptions/quote",
       {
-        query: { network, pointsAmount },
+        query: {
+          network: request.network,
+          pointsAmount: request.pointsAmount,
+        },
       },
     );
   }
