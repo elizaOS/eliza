@@ -6,6 +6,7 @@
  * runaway or stuck planner from burning a turn.
  */
 import type { ActionFailureProvenance } from "../types/action-failure";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed.ts";
 
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
@@ -201,7 +202,7 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
-	const normalizedError = rawError.trim().replace(/\s+/g, " ").slice(0, 240);
+	const normalizedError = truncateWellFormed(toWellFormedUnicode(rawError.trim().replace(/\s+/g, " ")), 240);
 	return `${toolName}:${normalizedError}`;
 }
 
@@ -227,7 +228,7 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey ? `${signature}:${truncateWellFormed(toWellFormedUnicode(repeatKey), 240)}` : signature;
 }
 
 export function assertRepeatedFailureLimit(params: {
