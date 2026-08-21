@@ -7496,8 +7496,6 @@
   "cloud.privacyPanel.exportComingSoon": "Data export is coming soon — not yet available on this server.",
   "cloud.privacyPanel.exportFailed": "Export failed: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "Please type \"{{phrase}}\" to confirm.",
-  "cloud.privacyPanel.deletionScheduled": "Deletion scheduled. You have 30 days to recover before purge.",
-  "cloud.privacyPanel.deletionComingSoon": "Account deletion is coming soon — not yet available on this server.",
   "cloud.privacyPanel.deleteRequestFailed": "Delete request failed: {{message}}",
   "cloud.privacyPanel.title": "Privacy",
   "cloud.privacyPanel.subtitle": "Control optional data capture and exercise your data rights.",

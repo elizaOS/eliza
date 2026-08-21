@@ -32,7 +32,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
     "/api/cron/reclaim-stale-domains",
   ],
-  "0 * * * *": ["/api/cron/agent-billing"],
+  "0 * * * *": ["/api/cron/agent-billing", "/api/cron/process-account-deletions"],
   "*/5 * * * *": [
     // Keep the cache-only shared first-turn gates warm for recently active
     // agents (admission snapshot / pricing / character projection) so idle

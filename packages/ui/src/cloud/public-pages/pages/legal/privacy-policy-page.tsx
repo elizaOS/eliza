@@ -16,7 +16,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       title: t("cloud.privacy.s1Title", { defaultValue: "1. Introduction" }),
       body: t("cloud.privacy.s1Body", {
         defaultValue:
-          "Eliza Cloud is committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard information when you use the service.",
+          "Eliza Cloud and the Eliza app are services by ElizaOS. We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard information when you use the service.",
       }),
     },
     {
@@ -66,7 +66,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       title: t("cloud.privacy.s7Title", { defaultValue: "7. Data Retention" }),
       body: t("cloud.privacy.s7Body", {
         defaultValue:
-          "We retain personal information for as long as needed for the purposes described in this policy unless a longer retention period is required or permitted by law.",
+          "We retain personal information only as long as needed to provide the service or meet legal, tax, fraud-prevention, and security obligations. Verified account-deletion requests disable access immediately and schedule associated account data for deletion within 30 days; narrowly required records are deleted or anonymized when their retention obligation ends.",
       }),
     },
     {
@@ -75,7 +75,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       }),
       body: t("cloud.privacy.s8Body", {
         defaultValue:
-          "Depending on your location, you may have rights to access, correct, delete, object to processing, request portability, or withdraw consent for certain personal information.",
+          "Depending on your location, you may have rights to access, correct, delete, object to processing, request portability, or withdraw consent for certain personal information. You can request account deletion in Account & Security settings or at https://eliza.app/account-deletion.",
       }),
     },
     {
@@ -109,7 +109,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       title: t("cloud.privacy.s12Title", { defaultValue: "12. Contact Us" }),
       body: t("cloud.privacy.s12Body", {
         defaultValue:
-          "Questions about this Privacy Policy or our privacy practices can be sent through Eliza Cloud support channels.",
+          "Questions about this Privacy Policy, privacy rights, or an account-deletion request can be sent to support@eliza.cloud.",
       }),
     },
   ];
@@ -141,7 +141,7 @@ export default function PrivacyPolicyPage() {
             </h1>
             <p className="text-base text-muted">
               {t("cloud.privacy.lastUpdated", {
-                defaultValue: "Last updated: November 4, 2025",
+                defaultValue: "Last updated: August 20, 2026",
               })}
             </p>
           </div>

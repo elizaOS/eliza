@@ -623,6 +623,20 @@ export class UsersService {
       }
     });
   }
+
+  /** Permanently erases a sole-user personal account without partial DB deletion. */
+  async deletePersonalAccount(id: string, organizationId: string): Promise<void> {
+    const user = await usersRepository.findByIdForWrite(id);
+    if (!user) throw new Error(`User ${id} not found`);
+    if (user.organization_id !== organizationId) {
+      throw new Error("Account deletion organization does not match the user");
+    }
+
+    await setInferenceSubjectActive(organizationId, id, false, "account");
+    await this.invalidateCache(user);
+    await this.invalidateInferenceAuthForUser(id);
+    await usersRepository.deletePersonalOrganizationAtomically(id, organizationId);
+  }
 }
 
 // Export singleton instance

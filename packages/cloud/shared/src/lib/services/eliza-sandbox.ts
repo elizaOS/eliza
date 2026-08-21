@@ -417,7 +417,7 @@ export type DeleteAgentResult =
     }
   | { success: false; error: string; retryable?: true };
 
-export type DeleteAuthorization = "user_request" | "billing_request";
+export type DeleteAuthorization = "user_request" | "billing_request" | "account_deletion";
 
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
@@ -1993,7 +1993,12 @@ export class ElizaSandboxService {
     // exists to protect.
     const captureSkippedForUnauthorizedRunning =
       !options.authorization && snapshotSource?.status === "running";
-    if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
+    const captureSkippedForAccountDeletion = options.authorization === "account_deletion";
+    if (
+      !captureSkippedForUnauthorizedRunning &&
+      !captureSkippedForAccountDeletion &&
+      this.requiresPreDeleteCapture(snapshotSource)
+    ) {
       // A deletion retry whose earlier attempt already captured (or recorded
       // the image's supported no-snapshot response) must not contact a bridge
       // the teardown may already have killed. Both candidates are revalidated
@@ -2440,7 +2445,7 @@ export class ElizaSandboxService {
         stateData: AgentBackupStateData;
         sizeBytes: number;
       } | null = null;
-      if (this.requiresPreDeleteCapture(rec)) {
+      if (authorization !== "account_deletion" && this.requiresPreDeleteCapture(rec)) {
         const existingBackup = preDeleteCapture?.existingBackup ?? null;
         if (
           existingBackup &&
