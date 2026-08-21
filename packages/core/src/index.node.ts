@@ -8,6 +8,7 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
 export * from "./access-control/filter";
 export * from "./access-control/provenance-envelope";
 // Export all core modules
