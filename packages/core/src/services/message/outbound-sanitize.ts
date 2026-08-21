@@ -40,7 +40,11 @@
  * here — the planner consumes `GenerateTextResult.toolCalls` directly, so
  * sanitizing delivered prose cannot delete a valid machine action.
  */
-import { REASONING_TAG_NAMES } from "../../utils/reasoning-tags";
+import {
+	REASONING_TAG_NAMES,
+	stripPairedTagBlocks,
+	stripUnclosedTagSuffix,
+} from "../../utils/reasoning-tags";
 
 const MACHINE_SYNTAX_TAGS = [
 	...REASONING_TAG_NAMES,
@@ -184,24 +188,8 @@ export function sanitizeOutboundText(text: string): string {
 	processed = degradePseudoLinks(processed);
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
-		const openTag = `<\\s*${tag}(?=[\\s/>])[^>]*>`;
-		const closeTag = `<\\s*\\/\\s*${tag}\\s*>`;
-		const closeTagMatches = new RegExp(closeTag, "gi");
-		let lastCloseEnd = -1;
-		for (const match of processed.matchAll(closeTagMatches)) {
-			lastCloseEnd = (match.index ?? 0) + match[0].length;
-		}
-		if (lastCloseEnd >= 0) {
-			// A suffix after the final close cannot contain a complete pair. Do not
-			// make the paired regex fail again from every unmatched opening there.
-			const pairedPrefix = processed
-				.slice(0, lastCloseEnd)
-				.replace(new RegExp(`${openTag}([\\s\\S]*?)${closeTag}`, "gi"), "");
-			processed = pairedPrefix + processed.slice(lastCloseEnd);
-		}
-
-		const unclosed = new RegExp(`${openTag}[\\s\\S]*$`, "gi");
-		processed = processed.replace(unclosed, "");
+		processed = stripPairedTagBlocks(processed, tag);
+		processed = stripUnclosedTagSuffix(processed, tag);
 	}
 
 	processed = processed.replace(/<final\b[^>]*>([\s\S]*?)<\/final>/gi, "$1");

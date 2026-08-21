@@ -12,7 +12,12 @@
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
-import { REASONING_TAG_NAMES } from "../../utils/reasoning-tags";
+import {
+	findNextCloseTag,
+	REASONING_TAG_NAMES,
+	stripPairedTagBlocks,
+	stripUnclosedTagSuffix,
+} from "../../utils/reasoning-tags";
 
 type ErrorWithStatus = {
 	code?: unknown;
@@ -425,36 +430,25 @@ export function buildFailureReplyPrompt(
 }
 
 const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
-const REASONING_OPEN_TAG_SOURCE = `<\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])[^>]*>`;
-const REASONING_CLOSE_TAG_SOURCE = `<\\s*\\/\\s*(?:${REASONING_TAG_ALTERNATION})\\s*>`;
 
-function stripPairedReasoningBlocks(raw: string): string {
-	const closeTag = new RegExp(REASONING_CLOSE_TAG_SOURCE, "gi");
-	let lastCloseEnd = -1;
-	for (const match of raw.matchAll(closeTag)) {
-		lastCloseEnd = (match.index ?? 0) + match[0].length;
-	}
-	if (lastCloseEnd < 0) return raw;
-
-	// Only the prefix through the final close can contain a complete pair.
-	// Keeping an unmatched-opening suffix out of the paired regex prevents a
-	// failed rescan from every opening tag (quadratic on repeated model residue).
-	const pairedPrefix = raw
-		.slice(0, lastCloseEnd)
-		.replace(
-			new RegExp(
-				`${REASONING_OPEN_TAG_SOURCE}[\\s\\S]*?${REASONING_CLOSE_TAG_SOURCE}`,
-				"gi",
-			),
-			"",
-		);
-	return pairedPrefix + raw.slice(lastCloseEnd);
+/**
+ * Strips a leading close-only residue prefix — model output can open with a
+ * dangling close tag left over from a previous stripping pass (e.g. the
+ * evaluator's "None</think>" repair) with no matching open of its own. Only
+ * the first remaining close matters here: everything before it is discarded,
+ * everything at/after it is kept for the caller's later passes.
+ */
+function stripLeadingCloseOnlyResidue(text: string): string {
+	const close = findNextCloseTag(text, 0, REASONING_TAG_ALTERNATION);
+	return close ? text.slice(close.end) : text;
 }
 
 export function stripReasoningBlocks(raw: string): string {
-	return stripPairedReasoningBlocks(raw)
-		.replace(new RegExp(`^[\\s\\S]*?${REASONING_CLOSE_TAG_SOURCE}`, "i"), "")
-		.replace(new RegExp(`${REASONING_OPEN_TAG_SOURCE}[\\s\\S]*$`, "gi"), "")
-		.replace(/\/?\bno_think\b/gi, "")
-		.trim();
+	const paired = stripPairedTagBlocks(raw, REASONING_TAG_ALTERNATION);
+	const afterLeadingClose = stripLeadingCloseOnlyResidue(paired);
+	const afterUnclosedSuffix = stripUnclosedTagSuffix(
+		afterLeadingClose,
+		REASONING_TAG_ALTERNATION,
+	);
+	return afterUnclosedSuffix.replace(/\/?\bno_think\b/gi, "").trim();
 }
