@@ -1294,7 +1294,8 @@ describe("cloud-api worker entrypoint", () => {
           durable_objects?: DurableConfig;
         };
       };
-      migrations?: Array<{ tag?: string; new_sqlite_classes?: string[] }>;
+      exports?: Record<string, { type?: string; storage?: string }>;
+      migrations?: unknown;
     };
 
     expect(config.browser?.binding).toBe("BROWSER");
@@ -1311,10 +1312,11 @@ describe("cloud-api worker entrypoint", () => {
         class_name: "DoorDashCheckoutGate",
       });
     }
-    expect(config.migrations).toContainEqual({
-      tag: "doordash-checkout-gates-v1",
-      new_sqlite_classes: ["DoorDashCheckoutGate"],
+    expect(config.exports?.DoorDashCheckoutGate).toEqual({
+      type: "durable-object",
+      storage: "sqlite",
     });
+    expect(config.migrations).toBeUndefined();
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
