@@ -23,7 +23,7 @@
  * `orchestrator-multi-project-failure-isolation.scenario.ts`.
  */
 
-import type { Action, Plugin } from "@elizaos/core";
+import type { Action, IAgentRuntime, Plugin } from "@elizaos/core";
 import { projectWorldId, type UUID } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -39,7 +39,6 @@ import {
   waitForTask,
   waitUntil,
 } from "./_helpers/multi-project-scenario";
-import { registerCalibratedJudgeFixture } from "./_helpers/orchestrator-scenario-harness";
 
 const PORTFOLIO_PLUGIN_NAME = "orchestrator-multi-project-portfolio-scenario";
 const ORCHESTRATOR_MULTI_PROJECT_PORTFOLIO =
@@ -93,7 +92,9 @@ function portfolioData(ctx: ScenarioContext): PortfolioResult | null {
     : null;
 }
 
-async function runPortfolio(): Promise<PortfolioResult> {
+async function runPortfolio(
+  modelRuntime: IAgentRuntime,
+): Promise<PortfolioResult> {
   const restoreGates = applyScenarioEnv({
     ELIZA_ACP_ADMISSION_QUEUE: "1",
     ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY: "1",
@@ -109,7 +110,15 @@ async function runPortfolio(): Promise<PortfolioResult> {
   const runtime = makeMultiProjectRuntime(acp, {
     agentId: AGENT_ID,
     onJudge: (prompt) => judgePrompts.push(prompt),
-  });
+  }) as { useModel: IAgentRuntime["useModel"] };
+  const useScenarioModel = modelRuntime.useModel.bind(modelRuntime);
+  runtime.useModel = (async (
+    ...args: Parameters<IAgentRuntime["useModel"]>
+  ) => {
+    const prompt = (args[1] as { prompt?: string } | undefined)?.prompt ?? "";
+    judgePrompts.push(prompt);
+    return useScenarioModel(...args);
+  }) as IAgentRuntime["useModel"];
   const store = new OrchestratorTaskStore({ backend: "memory" });
   const service = new OrchestratorTaskService(runtime as never, { store });
   await service.start();
@@ -348,8 +357,8 @@ function portfolioPlugin(): Plugin {
     description:
       "Drive three registered projects (18 tasks) through the full orchestrator lifecycle simultaneously: project binding, per-project list filters, cap-respecting concurrency, interleaved event routing, and evidence-verified completion.",
     validate: async () => true,
-    handler: async () => {
-      const result = await runPortfolio();
+    handler: async (runtime) => {
+      const result = await runPortfolio(runtime);
       return {
         success: true,
         text: result.summary,
@@ -370,6 +379,35 @@ function portfolioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-multi-project-portfolio",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-multi-project-portfolio-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "Tests 3 passed (3)" },
+        },
+        response: {
+          text: '{"passed":true,"summary":"Every acceptance criterion is backed by pasted test output.","missing":[]}',
+        },
+        cardinality: 18,
+      },
+      {
+        name: "orchestrator-multi-project-portfolio-final-judge",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*Score the candidate response against the rubric)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*orchestrated 3 projects simultaneously)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*checkout-service 6)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*web-dashboard 5)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*mobile-app 7)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*18/18 tasks done)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"score":1,"reason":"all required trace evidence present in judge candidate"}',
+        },
+      },
+    ],
+  },
   title:
     "Orchestrator manages 3 projects simultaneously: 18 tasks end-to-end with project binding, filters, cap-respecting concurrency, and verified completion",
   domain: "agent-orchestrator",
@@ -400,17 +438,6 @@ export default scenario({
         if (!already) {
           await runtime.registerPlugin?.(portfolioPlugin());
         }
-        registerCalibratedJudgeFixture(
-          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
-          ORCHESTRATOR_MULTI_PROJECT_PORTFOLIO,
-          [
-            "orchestrated 3 projects simultaneously",
-            "checkout-service 6",
-            "web-dashboard 5",
-            "mobile-app 7",
-            `${TOTAL}/${TOTAL} tasks done`,
-          ],
-        );
         return undefined;
       },
     },

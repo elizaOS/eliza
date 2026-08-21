@@ -29,7 +29,7 @@
  * exactly the expected partition.
  */
 
-import type { Action, Plugin, UUID } from "@elizaos/core";
+import type { Action, IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
@@ -44,7 +44,6 @@ import {
   waitForTask,
   waitUntil,
 } from "./_helpers/multi-project-scenario";
-import { registerCalibratedJudgeFixture } from "./_helpers/orchestrator-scenario-harness";
 
 const ISOLATION_PLUGIN_NAME =
   "orchestrator-multi-project-failure-isolation-scenario";
@@ -152,7 +151,9 @@ function prooflessFor(title: string): string {
   return `I finished ${title}. Everything works, trust me.`;
 }
 
-async function runFailureIsolation(): Promise<IsolationResult> {
+async function runFailureIsolation(
+  modelRuntime: IAgentRuntime,
+): Promise<IsolationResult> {
   const restoreGates = applyScenarioEnv({
     ELIZA_ACP_ADMISSION_QUEUE: "1",
     ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY: "1",
@@ -168,7 +169,15 @@ async function runFailureIsolation(): Promise<IsolationResult> {
   const runtime = makeMultiProjectRuntime(acp, {
     agentId: AGENT_ID,
     onJudge: (prompt) => judgePrompts.push(prompt),
-  });
+  }) as { useModel: IAgentRuntime["useModel"] };
+  const useScenarioModel = modelRuntime.useModel.bind(modelRuntime);
+  runtime.useModel = (async (
+    ...args: Parameters<IAgentRuntime["useModel"]>
+  ) => {
+    const prompt = (args[1] as { prompt?: string } | undefined)?.prompt ?? "";
+    judgePrompts.push(prompt);
+    return useScenarioModel(...args);
+  }) as IAgentRuntime["useModel"];
   const store = new OrchestratorTaskStore({ backend: "memory" });
   const service = new OrchestratorTaskService(runtime as never, { store });
   await service.start();
@@ -480,8 +489,8 @@ function isolationPlugin(): Plugin {
     description:
       "Drive three registered projects with mixed error paths (crash, verify-fail grill, cancel) interleaved with clean tasks, and prove one task failing never corrupts a sibling in the same or another project.",
     validate: async () => true,
-    handler: async () => {
-      const result = await runFailureIsolation();
+    handler: async (runtime) => {
+      const result = await runFailureIsolation(runtime);
       return {
         success: true,
         text: result.summary,
@@ -502,6 +511,46 @@ function isolationPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-multi-project-failure-isolation",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-multi-project-isolation-proofless-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "Everything works, trust me." },
+        },
+        response: {
+          text: '{"passed":false,"summary":"No concrete test output was pasted; the claim is unproven.","missing":["concrete proof of completion"]}',
+        },
+        cardinality: 2,
+      },
+      {
+        name: "orchestrator-multi-project-isolation-proven-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "Tests 4 passed (4)" },
+        },
+        response: {
+          text: '{"passed":true,"summary":"Every acceptance criterion is backed by pasted test output.","missing":[]}',
+        },
+        cardinality: 11,
+      },
+      {
+        name: "orchestrator-multi-project-failure-isolation-final-judge",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*Score the candidate response against the rubric)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*orchestrated 3 projects with mixed error paths)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*2 agent-dies crashes went terminal-failed)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*grilled and recovered on retry)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*never corrupted another)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"score":1,"reason":"all required trace evidence present in judge candidate"}',
+        },
+      },
+    ],
+  },
   title:
     "Orchestrator isolates failures across 3 projects: crash, grill, and cancel paths never corrupt sibling tasks",
   domain: "agent-orchestrator",
@@ -534,16 +583,6 @@ export default scenario({
         if (!already) {
           await runtime.registerPlugin?.(isolationPlugin());
         }
-        registerCalibratedJudgeFixture(
-          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
-          ORCHESTRATOR_MULTI_PROJECT_FAILURE_ISOLATION,
-          [
-            "orchestrated 3 projects with mixed error paths",
-            `${CRASH_TOTAL} agent-dies crashes went terminal-failed`,
-            "grilled and recovered on retry",
-            "never corrupted another",
-          ],
-        );
         return undefined;
       },
     },

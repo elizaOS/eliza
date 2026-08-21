@@ -18,7 +18,6 @@
  * a canned string.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
@@ -29,61 +28,42 @@ import { codingAgentRoutePlugin } from "../../../../src/setup-routes.ts";
 
 const COMMAND_TEXT = "/orchestrator-status";
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
-
-function statusRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes(COMMAND_TEXT);
-  return [
-    {
-      name: "route-orchestrator-status-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["command"],
-        replyText: "",
-        threadOps: [],
-        candidateActionNames: [ORCHESTRATOR_STATUS_COMMAND_ACTION],
-      },
-      times: 1,
-    },
-    {
-      name: "route-orchestrator-status-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: ORCHESTRATOR_STATUS_COMMAND_ACTION,
-      },
-      response: {
-        text: "",
-        thought:
-          "Dispatch the deterministic orchestrator-status slash command.",
-        messageToUser: "Here's the orchestrator status.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-orchestrator-status",
-            name: ORCHESTRATOR_STATUS_COMMAND_ACTION,
-            type: "function",
-            arguments: {},
-          },
-        ],
-      },
-      times: 1,
-    },
-  ];
-}
-
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-status-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: COMMAND_TEXT },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          text: '{"contexts":["general"],"intents":["command"],"replyText":"","threadOps":[],"candidateActionNames":["ORCHESTRATOR_STATUS_COMMAND"]}',
+        },
+      },
+      {
+        name: "orchestrator-status-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { includes: COMMAND_TEXT },
+          toolNames: [
+            "REPLY",
+            "IGNORE",
+            ORCHESTRATOR_STATUS_COMMAND_ACTION,
+            "REPLY",
+            "IGNORE",
+            "STOP",
+          ],
+        },
+        response: {
+          text: '{"text":"","thought":"Dispatch the deterministic orchestrator-status slash command.","messageToUser":"Here\'s the orchestrator status.","completed":true,"finishReason":"tool-calls","toolCalls":[{"id":"call-orchestrator-status","name":"ORCHESTRATOR_STATUS_COMMAND","type":"function","arguments":{}}]}',
+        },
+      },
+    ],
+  },
   id: "task-coordinator.orchestrator-status",
   title: "Task-coordinator slash command routes to ORCHESTRATOR_STATUS_COMMAND",
   domain: "task-coordinator",
@@ -104,7 +84,7 @@ export default scenario({
       type: "custom",
       name: "register-orchestrator-command",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        const runtime = ctx.runtime as AgentRuntime;
         // Register the view-scoped universal slash command, exactly as a live
         // runtime does when the orchestrator view mounts, so validate() resolves.
         useRuntime(runtime.agentId);
@@ -116,7 +96,6 @@ export default scenario({
         for (const route of codingAgentRoutePlugin.routes ?? []) {
           runtime.routes.push(route);
         }
-        runtime.scenarioModelFixtures?.register(...statusRouteFixtures());
         return undefined;
       },
     },

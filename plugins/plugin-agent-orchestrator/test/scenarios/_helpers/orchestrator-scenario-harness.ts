@@ -444,7 +444,7 @@ class OrchestratorScenarioHarness {
       acceptanceCriteria: [
         "cache diff is present",
         "tests pass with output",
-        "public URL is verified",
+        "public URL claim is surfaced as unverified",
       ],
     })) as TaskDetail;
     const detail = (await this.taskService.spawnAgentForTask(task.id, {
@@ -948,6 +948,33 @@ export function registerVerifierFixtures(
     },
     times: responses.length,
   });
+}
+
+const verifierPromptCaptureInstalled = new WeakSet<ScenarioRuntime>();
+
+/**
+ * Captures strict-manifest verifier prompts without registering a dynamic
+ * fixture. Migrated scenarios use this narrow observer so their serialized
+ * fixture remains the sole response source while the harness can still assert
+ * that real completion evidence reached the verifier boundary.
+ */
+export function installVerifierPromptCapture(runtime: ScenarioRuntime): void {
+  if (verifierPromptCaptureInstalled.has(runtime)) return;
+  verifierPromptCaptureInstalled.add(runtime);
+  const useModel = runtime.useModel.bind(runtime);
+  runtime.useModel = (async (...args: Parameters<typeof runtime.useModel>) => {
+    const [modelType, params] = args;
+    const prompt = (params as { prompt?: string } | undefined)?.prompt ?? "";
+    if (
+      modelType === ModelType.TEXT_SMALL &&
+      prompt.includes("You are a demanding engineering manager")
+    ) {
+      harnessByRuntime.get(runtime)?.captureVerifierPrompt({
+        params: { prompt },
+      });
+    }
+    return useModel(...args);
+  }) as typeof runtime.useModel;
 }
 
 /**

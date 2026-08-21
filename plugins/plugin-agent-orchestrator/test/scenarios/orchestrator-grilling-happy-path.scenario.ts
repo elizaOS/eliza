@@ -6,10 +6,9 @@ import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   installOrchestratorScenarioHarness,
+  installVerifierPromptCapture,
   ORCHESTRATOR_GRILLING_HAPPY_PATH,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerCalibratedJudgeFixture,
-  registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
@@ -25,6 +24,46 @@ function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
 export default scenario({
   id: "orchestrator-grilling-happy-path",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-grilling-proofless-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            includes: "I finished the cache fix; tests should be good.",
+          },
+        },
+        response: {
+          text: '{"passed":false,"summary":"The completion claimed success but did not paste the required test output.","missing":["tests pass with pasted output"]}',
+        },
+      },
+      {
+        name: "orchestrator-grilling-proven-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "Tests 4 passed (4)" },
+        },
+        response: {
+          text: '{"passed":true,"summary":"All acceptance criteria are backed by concrete proof.","missing":[]}',
+        },
+      },
+      {
+        name: "orchestrator-grilling-final-judge",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*Score the candidate response against the rubric)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*corrective evidence checklist was sent)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*Tests 4 passed \\(4\\))(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*passed validation)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"score":1,"reason":"all required trace evidence present in judge candidate"}',
+        },
+      },
+    ],
+  },
   title:
     "Orchestrator grills proofless completions and accepts proven re-report",
   domain: "agent-orchestrator",
@@ -39,36 +78,7 @@ export default scenario({
       name: "install deterministic orchestrator grilling harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        registerVerifierFixtures(
-          ctx.runtime as Parameters<typeof registerVerifierFixtures>[0],
-          ORCHESTRATOR_GRILLING_HAPPY_PATH,
-          [
-            {
-              passed: false,
-              summary:
-                "The completion claimed success but did not paste the required test output.",
-              missing: ["tests pass with pasted output"],
-            },
-            {
-              passed: true,
-              summary: "All acceptance criteria are backed by concrete proof.",
-              missing: [],
-            },
-          ],
-        );
-        // The judge only passes when the harness's real end-state summary
-        // (produced after auto_verify_failed + validation_passed were
-        // observed) reached the judge candidate. None of these strings
-        // appear in the scenario turn text.
-        registerCalibratedJudgeFixture(
-          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
-          ORCHESTRATOR_GRILLING_HAPPY_PATH,
-          [
-            "corrective evidence checklist was sent",
-            "Tests 4 passed (4)",
-            "passed validation",
-          ],
-        );
+        installVerifierPromptCapture(ctx.runtime);
         return undefined;
       },
     },

@@ -6,10 +6,9 @@ import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   installOrchestratorScenarioHarness,
+  installVerifierPromptCapture,
   ORCHESTRATOR_EVIDENCE_BUNDLE,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerCalibratedJudgeFixture,
-  registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
@@ -25,6 +24,37 @@ function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
 export default scenario({
   id: "orchestrator-evidence-bundle",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-evidence-bundle-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*## CHANGESET)(?=[\\s\\S]*src/cache\\.ts)(?=[\\s\\S]*Tests 8 passed \\(8\\))(?=[\\s\\S]*## CLAIMED URLS)(?=[\\s\\S]*NOT probe-verified)(?=[\\s\\S]*https://app\\.example\\.com/cache)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"passed":true,"summary":"The changeset, test output, and explicitly unverified URL claim prove every applicable criterion.","missing":[]}',
+        },
+      },
+      {
+        name: "orchestrator-evidence-bundle-final-judge",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*Score the candidate response against the rubric)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*## CHANGESET src/cache\\.ts)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*Tests 8 passed \\(8\\))(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*https://app\\.example\\.com/cache)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"score":1,"reason":"all required trace evidence present in judge candidate"}',
+        },
+      },
+    ],
+  },
   title: "Orchestrator verifier receives diff, test output, and URL evidence",
   domain: "agent-orchestrator",
   tags: ["orchestrator", "evidence", "verification", "pr", "deterministic"],
@@ -38,30 +68,7 @@ export default scenario({
       name: "install deterministic evidence bundle harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        registerVerifierFixtures(
-          ctx.runtime as Parameters<typeof registerVerifierFixtures>[0],
-          ORCHESTRATOR_EVIDENCE_BUNDLE,
-          [
-            {
-              passed: true,
-              summary:
-                "The changeset, test output, and verified URL prove every criterion.",
-              missing: [],
-            },
-          ],
-        );
-        // The judge only passes when the diff-stat, pasted test output, and
-        // verified URL from the harness's validated end-state summary
-        // reached the judge candidate. None appear in the turn text.
-        registerCalibratedJudgeFixture(
-          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
-          ORCHESTRATOR_EVIDENCE_BUNDLE,
-          [
-            "## CHANGESET src/cache.ts",
-            "Tests 8 passed (8)",
-            "https://app.example.com/cache",
-          ],
-        );
+        installVerifierPromptCapture(ctx.runtime);
         return undefined;
       },
     },

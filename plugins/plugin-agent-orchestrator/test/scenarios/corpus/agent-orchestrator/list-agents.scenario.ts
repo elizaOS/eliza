@@ -11,8 +11,6 @@
  * shell (the default on a Linux dev host), so the TASKS parent action is
  * registered and routes `action: "list_agents"` to `runListAgents`.
  */
-import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
@@ -20,14 +18,65 @@ import {
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const TASKS = "TASKS";
-type R = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
-};
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-list-agents-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: "List the active coding agents." },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          text: '{"contexts":["code"],"intents":["coding"],"replyText":"","threadOps":[],"candidateActionNames":["TASKS"]}',
+        },
+      },
+      {
+        name: "orchestrator-list-agents-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { includes: "List the active coding agents." },
+          toolNames: [
+            "TASKS",
+            "TASKS_CREATE",
+            "TASKS_SPAWN_AGENT",
+            "TASKS_SEND",
+            "TASKS_STOP_AGENT",
+            "TASKS_LIST_AGENTS",
+            "TASKS_CANCEL",
+            "TASKS_HISTORY",
+            "TASKS_CONTROL",
+            "TASKS_SHARE",
+            "TASKS_PROVISION_WORKSPACE",
+            "TASKS_SUBMIT_WORKSPACE",
+            "TASKS_MANAGE_ISSUES",
+            "TASKS_ARCHIVE",
+            "TASKS_REOPEN",
+            "REPLY",
+            "IGNORE",
+            "STOP",
+          ],
+        },
+        response: {
+          text: '{"text":"","thought":"List the active coding sub-agents.","messageToUser":"","completed":true,"finishReason":"tool-calls","toolCalls":[{"id":"call-tasks","name":"TASKS","type":"function","arguments":{"action":"list_agents"}}]}',
+        },
+      },
+      {
+        name: "orchestrator-list-agents-terminal-decision",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          toolNames: [],
+        },
+        response: {
+          text: '{"success":true,"decision":"FINISH","thought":"No active task agents; nothing more to do.","messageToUser":"There are no active coding sub-agents right now."}',
+        },
+      },
+    ],
+  },
   id: "agent-orchestrator.list-agents",
   title: "Agent orchestrator: list active coding sub-agents",
   domain: "agent-orchestrator",
@@ -37,75 +86,6 @@ export default scenario({
 
   requires: { plugins: ["@elizaos/plugin-agent-orchestrator"] },
   isolation: "per-scenario",
-
-  seed: [
-    {
-      type: "custom",
-      name: "orchestrator-list-agents-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as R;
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "orchestrator-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("coding agents"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["code"],
-              intents: ["coding"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [TASKS],
-            },
-            times: 1,
-          },
-          {
-            name: "orchestrator-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("coding agents"),
-              toolName: TASKS,
-            },
-            response: {
-              text: "",
-              thought: "List the active coding sub-agents.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-tasks",
-                  name: TASKS,
-                  type: "function",
-                  arguments: { action: "list_agents" },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            // After TASKS returns, the runtime makes a final RESPONSE_HANDLER
-            // (no HANDLE_RESPONSE tool) to decide FINISH/CONTINUE; an empty
-            // agent list is terminal, so FINISH.
-            name: "orchestrator-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "No active task agents; nothing more to do.",
-              messageToUser: "There are no active coding sub-agents right now.",
-            },
-            times: 1,
-          },
-        );
-        return undefined;
-      },
-    },
-  ],
 
   rooms: [
     {

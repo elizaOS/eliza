@@ -6,10 +6,9 @@ import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   installOrchestratorScenarioHarness,
+  installVerifierPromptCapture,
   ORCHESTRATOR_REFLEXION_RESPAWN,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
-  registerCalibratedJudgeFixture,
-  registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
 const FAIL_SUMMARY = "the sub-agent never ran the unit tests";
@@ -28,6 +27,36 @@ function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
 export default scenario({
   id: "orchestrator-reflexion-respawn",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "orchestrator-reflexion-proofless-verifier",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            includes: "I implemented the parser and I believe it works.",
+          },
+        },
+        response: {
+          text: '{"passed":false,"summary":"the sub-agent never ran the unit tests","missing":["unit tests pass"]}',
+        },
+      },
+      {
+        name: "orchestrator-reflexion-final-judge",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "(?=[\\s\\S]*Score the candidate response against the rubric)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*Attempt 1: the sub-agent never ran the unit tests)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*--- Past Attempt Failures ---)(?=[\\s\\S]*CANDIDATE RESPONSE:[\\s\\S]*persisted a post-mortem)[\\s\\S]*",
+          },
+        },
+        response: {
+          text: '{"score":1,"reason":"all required trace evidence present in judge candidate"}',
+        },
+      },
+    ],
+  },
   title:
     "Orchestrator replays a failed attempt's reflection into the retry prompt",
   domain: "agent-orchestrator",
@@ -42,31 +71,7 @@ export default scenario({
       name: "install deterministic orchestrator reflexion harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        // One failing verdict drives the single failed verification; the
-        // re-spawn does not re-verify.
-        registerVerifierFixtures(
-          ctx.runtime as Parameters<typeof registerVerifierFixtures>[0],
-          ORCHESTRATOR_REFLEXION_RESPAWN,
-          [
-            {
-              passed: false,
-              summary: FAIL_SUMMARY,
-              missing: [MISSING_CRITERION],
-            },
-          ],
-        );
-        // The judge only passes when the persisted post-mortem line (built
-        // by the real reflection-persistence path from the failed verify)
-        // and the replayed prompt section reached the judge candidate.
-        registerCalibratedJudgeFixture(
-          ctx.runtime as Parameters<typeof registerCalibratedJudgeFixture>[0],
-          ORCHESTRATOR_REFLEXION_RESPAWN,
-          [
-            `Attempt 1: ${FAIL_SUMMARY}`,
-            "--- Past Attempt Failures ---",
-            "persisted a post-mortem",
-          ],
-        );
+        installVerifierPromptCapture(ctx.runtime);
         return undefined;
       },
     },
