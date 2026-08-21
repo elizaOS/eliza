@@ -2338,6 +2338,7 @@ export class MessageManager {
             roomId,
             content: {
               ...content,
+              text: sentMessage.text,
               inReplyTo: reactionId,
               metadata: { accountId: this.accountId },
             },
