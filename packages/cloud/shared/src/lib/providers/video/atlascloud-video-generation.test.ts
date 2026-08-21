@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   atlasCloudVideoProvider,
+  atlasFetch,
   buildAtlasVideoInput,
   firstAtlasVideoOutput,
   generateAtlasCloudVideo,
@@ -227,5 +228,37 @@ describe("Atlas Cloud video provider", () => {
       state: "failed",
       error: "Atlas Cloud does not know request missing",
     });
+  });
+});
+
+describe("atlasFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Atlas Cloud API hop at the timeout", async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    }) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      atlasFetch("https://api.atlascloud.ai/api/v1/model/generateVideo", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await atlasFetch("https://api.atlascloud.ai/api/v1/model/generateVideo", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
