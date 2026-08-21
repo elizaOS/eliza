@@ -104,6 +104,29 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     expect(claims?.expiration).toBe(minted.expiresAt);
   });
 
+  test("preserves a signed Telegram identity through verification and re-minting", async () => {
+    const source = await mint({
+      telegramId: "7684336618",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    const sourceClaims = await verify(source);
+    expect(sourceClaims?.telegramId).toBe("7684336618");
+    if (!sourceClaims) return;
+
+    const reminted = await mintStewardTokenFromClaims(ENV, sourceClaims, 60);
+    expect(reminted).not.toBeNull();
+    if (!reminted) return;
+    expect((await verify(reminted.token))?.telegramId).toBe("7684336618");
+  });
+
+  test("rejects malformed Telegram identity claims", async () => {
+    const token = await mint({
+      telegramId: "@mutable-username",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    expect(await verify(token)).toBeNull();
+  });
+
   test("rejects a token with no exp claim (would never expire)", async () => {
     const token = await mint({ sub: "steward-user-noexp" });
     expect(await verify(token)).toBeNull();

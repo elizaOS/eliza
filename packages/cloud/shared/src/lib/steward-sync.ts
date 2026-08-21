@@ -239,6 +239,8 @@ export interface StewardSyncParams {
   name?: string;
   /** Phone independently verified against the current Steward bearer. */
   verifiedPhone?: string;
+  /** Stable Telegram id carried by the server-verified Steward JWT. */
+  verifiedTelegramId?: string;
   /** Opaque account-bound continuation delivered only inside a Telegram DM. */
   telegramContinuation?: string;
   /** Strongly ordered personal-history coordinator supplied by the Worker auth boundary. */
@@ -420,7 +422,7 @@ async function findUserByStoredWalletAddress(
  * 4. Check for wallet-only Steward session -> link to existing wallet user if possible
  * 5. Create new user + organization
  */
-export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
+async function syncUserFromStewardBase(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
   const verifiedPhone = params.verifiedPhone
@@ -1145,6 +1147,73 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     initialCreditsGranted,
     initialFreeCreditsUsd,
   };
+}
+
+/**
+ * Converges Steward's signed Telegram subject with the gateway's durable
+ * sender identity. A mutable username is never identity authority. Message-
+ * first provisional accounts are promoted before generic sync can create a
+ * duplicate; website-first accounts are linked after ordinary provisioning.
+ */
+export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
+  const verifiedTelegramId = params.verifiedTelegramId?.trim();
+  if (verifiedTelegramId && !/^\d{1,20}$/.test(verifiedTelegramId)) {
+    throw new StewardTelegramAccountClaimError("invalid_verified_telegram_id");
+  }
+
+  if (verifiedTelegramId) {
+    const [telegramOwner, stewardOwner] = await Promise.all([
+      usersRepository.findByTelegramIdWithOrganizationForWrite(verifiedTelegramId),
+      usersService.getByStewardIdForWrite(params.stewardUserId),
+    ]);
+
+    if (telegramOwner && stewardOwner && telegramOwner.id !== stewardOwner.id) {
+      throw new StewardTelegramAccountClaimError("telegram_owned_by_other_cloud_account");
+    }
+
+    if (telegramOwner && !stewardOwner) {
+      if (!telegramOwner.organization_id) {
+        throw new StewardTelegramAccountClaimError("telegram_account_has_no_organization");
+      }
+      const provisionalStewardId = `telegram:${verifiedTelegramId}`;
+      if (
+        telegramOwner.steward_user_id !== provisionalStewardId &&
+        telegramOwner.steward_user_id !== params.stewardUserId
+      ) {
+        throw new StewardTelegramAccountClaimError("telegram_owned_by_mature_account");
+      }
+      const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
+        telegramId: verifiedTelegramId,
+        stewardUserId: params.stewardUserId,
+        expectedUserId: telegramOwner.id,
+        expectedOrganizationId: telegramOwner.organization_id,
+      });
+      if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+        throw new StewardTelegramAccountClaimError(promotion.status);
+      }
+    }
+  }
+
+  const user = await syncUserFromStewardBase(params);
+  if (!verifiedTelegramId) return user;
+
+  try {
+    const linked = await usersRepository.linkTelegramIdentity(user.id, {
+      telegram_id: verifiedTelegramId,
+    });
+    if (!linked) {
+      throw new StewardTelegramAccountClaimError("telegram_link_user_not_found");
+    }
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    throw new StewardTelegramAccountClaimError("telegram_link_conflict");
+  }
+  await invalidateBoundPersonalDeliveryProjection("telegram", verifiedTelegramId);
+  const linkedUser = await usersService.getByStewardIdForWrite(params.stewardUserId);
+  if (!linkedUser || linkedUser.telegram_id !== verifiedTelegramId) {
+    throw new StewardTelegramAccountClaimError("telegram_link_readback_failed");
+  }
+  return linkedUser;
 }
 
 /**

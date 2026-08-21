@@ -114,9 +114,11 @@ const releasePersonalProvisionalHistoryConvergence = mock(async () => {
   convergenceEvents.push("release");
 });
 const getByStewardId = mock(async () => undefined);
+const findByTelegramIdWithOrganizationForWrite = mock(async () => undefined);
 const getByStewardIdForWrite = mock(
   async (): Promise<typeof convergedTelegramUser | undefined> => undefined,
 );
+const linkTelegramIdentity = mock(async () => telegramUser);
 const upsertStewardIdentity = mock(async () => undefined);
 const createUser = mock(async () => undefined);
 const createOrganization = mock(async () => undefined);
@@ -131,8 +133,10 @@ mock.module("./services/eliza-app/onboarding-chat", () => ({
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
     commitPhoneTelegramPersonalAccountConvergence,
+    findByTelegramIdWithOrganizationForWrite,
     findPendingPhoneTelegramPersonalAccountConvergence,
     inspectPhoneTelegramPersonalAccountConvergence,
+    linkTelegramIdentity,
     linkVerifiedPhone,
     markPhoneTelegramPersonalAccountAliasComplete,
     promoteTelegramPersonalAccountToSteward,
@@ -213,8 +217,13 @@ beforeEach(() => {
   preparePersonalProvisionalHistoryConvergence.mockClear();
   commitPersonalProvisionalHistoryConvergence.mockClear();
   releasePersonalProvisionalHistoryConvergence.mockClear();
-  getByStewardId.mockClear();
+  getByStewardId.mockReset();
+  getByStewardId.mockResolvedValue(undefined);
+  findByTelegramIdWithOrganizationForWrite.mockReset();
+  findByTelegramIdWithOrganizationForWrite.mockResolvedValue(undefined);
   getByStewardIdForWrite.mockClear();
+  linkTelegramIdentity.mockReset();
+  linkTelegramIdentity.mockResolvedValue(telegramUser);
   upsertStewardIdentity.mockClear();
   createUser.mockClear();
   createOrganization.mockClear();
@@ -224,6 +233,82 @@ beforeEach(() => {
 });
 
 describe("syncUserFromSteward Telegram account convergence", () => {
+  test("promotes a message-first account from the signed Telegram id without a continuation", async () => {
+    const provisionalTelegramUser = {
+      ...telegramUser,
+      steward_user_id: "telegram:123456789",
+      organization: telegramOrganization,
+    };
+    findByTelegramIdWithOrganizationForWrite.mockResolvedValue(provisionalTelegramUser);
+    getByStewardId.mockResolvedValue(telegramUser);
+    getByStewardIdForWrite
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(convergedTelegramUser);
+
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      verifiedTelegramId: "123456789",
+    });
+
+    expect(promoteTelegramPersonalAccountToSteward).toHaveBeenCalledWith({
+      telegramId: "123456789",
+      stewardUserId: "steward-user-1",
+      expectedUserId: "telegram-user-1",
+      expectedOrganizationId: "telegram-org-1",
+    });
+    expect(linkTelegramIdentity).toHaveBeenCalledWith("telegram-user-1", {
+      telegram_id: "123456789",
+    });
+    expect(result.telegram_id).toBe("123456789");
+    expect(createUser).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("binds website-first Telegram login so a later bot message reuses the account", async () => {
+    getByStewardIdForWrite.mockResolvedValue(convergedTelegramUser);
+    getByStewardId.mockResolvedValue(telegramUser);
+
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      verifiedTelegramId: "123456789",
+    });
+
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(linkTelegramIdentity).toHaveBeenCalledWith("telegram-user-1", {
+      telegram_id: "123456789",
+    });
+    expect(result.telegram_id).toBe("123456789");
+    expect(createUser).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when the signed Telegram id belongs to another Steward account", async () => {
+    findByTelegramIdWithOrganizationForWrite.mockResolvedValue({
+      ...telegramUser,
+      steward_user_id: "steward-user-other",
+      organization: telegramOrganization,
+    });
+    getByStewardIdForWrite.mockResolvedValue({
+      ...convergedTelegramUser,
+      id: "steward-user-row",
+      telegram_id: null,
+    });
+
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-user-1",
+        verifiedTelegramId: "123456789",
+      }),
+    ).rejects.toMatchObject<Partial<InstanceType<typeof StewardTelegramAccountClaimError>>>({
+      reason: "telegram_owned_by_other_cloud_account",
+    });
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(linkTelegramIdentity).not.toHaveBeenCalled();
+    expect(getByStewardId).not.toHaveBeenCalled();
+  });
+
   test("returns the original account and performs no provisioning", async () => {
     const result = await syncUserFromSteward({
       stewardUserId: "steward-user-1",

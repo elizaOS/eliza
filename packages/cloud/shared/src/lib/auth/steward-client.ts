@@ -62,6 +62,8 @@ export interface StewardTokenClaims {
   walletChain?: "ethereum" | "solana";
   /** Tenant/org scope, if present */
   tenantId?: string;
+  /** Stable Telegram user id, present on Telegram-authenticated sessions. */
+  telegramId?: string;
   /**
    * True when the token was minted by the cross-host SSO bridge exchange
    * (auth/sso-bridge). Bridge-issued tokens are subject to the fail-closed
@@ -92,6 +94,7 @@ interface CachedStewardClaims {
   walletAddress?: string;
   walletChain?: "ethereum" | "solana";
   tenantId?: string;
+  telegramId?: string;
   bridged?: boolean;
   stagingSessionBinding?: StagingSessionBinding;
   expiration: number;
@@ -224,6 +227,7 @@ export async function mintStewardTokenFromClaims(
   claims: StewardTokenClaims,
   ttlSeconds = STEWARD_ACCESS_TOKEN_TTL_SECONDS,
 ): Promise<{ token: string; expiresAt: number; expiresIn: number } | null> {
+  if (claims.telegramId && !/^\d{1,20}$/.test(claims.telegramId)) return null;
   const now = Math.floor(Date.now() / 1000);
   let secret: Uint8Array | null;
   let protectedHeader: { alg: "HS256"; typ: string; kid?: string };
@@ -271,6 +275,7 @@ export async function mintStewardTokenFromClaims(
     payload.tenantId = claims.tenantId;
     payload.tenant_id = claims.tenantId;
   }
+  if (claims.telegramId) payload.telegramId = claims.telegramId;
   // The bridge stamp survives re-mints (steward-refresh re-mints from verified
   // claims): a session that entered an origin through the bridge stays subject
   // to the cross-host logout barrier for its whole cookie-planting lifetime.
@@ -349,6 +354,13 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     | "solana"
     | undefined;
   const stagingSessionBinding = extractStagingSessionBinding(payload);
+  const rawTelegramId = payload.telegramId ?? payload.telegram_id;
+  if (
+    rawTelegramId !== undefined &&
+    (typeof rawTelegramId !== "string" || !/^\d{1,20}$/.test(rawTelegramId))
+  ) {
+    throw new Error("Invalid Telegram identity claim");
+  }
 
   return {
     userId: (payload.sub ?? payload.userId ?? "") as string,
@@ -357,6 +369,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     walletAddress,
     walletChain,
     tenantId: (payload.tenantId ?? payload.tenant_id) as string | undefined,
+    ...(typeof rawTelegramId === "string" ? { telegramId: rawTelegramId } : {}),
     ...(payload.bridged === true ? { bridged: true } : {}),
     ...(stagingSessionBinding ? { stagingSessionBinding } : {}),
     expiration: payload.exp ?? 0,
@@ -547,7 +560,9 @@ export async function verifyStewardTokenCached(
         typeof cached.userId !== "string" ||
         typeof cached.expiration !== "number" ||
         typeof cached.issuedAt !== "number" ||
-        typeof cached.signingKeyFingerprint !== "string"
+        typeof cached.signingKeyFingerprint !== "string" ||
+        (cached.telegramId !== undefined &&
+          (typeof cached.telegramId !== "string" || !/^\d{1,20}$/.test(cached.telegramId)))
       ) {
         await cache.del(cacheKey);
         return null;
@@ -568,6 +583,7 @@ export async function verifyStewardTokenCached(
           walletAddress: cached.walletAddress,
           walletChain: cached.walletChain,
           tenantId: cached.tenantId,
+          ...(cached.telegramId ? { telegramId: cached.telegramId } : {}),
           ...(cached.bridged === true ? { bridged: true } : {}),
           ...(cached.stagingSessionBinding
             ? { stagingSessionBinding: cached.stagingSessionBinding }

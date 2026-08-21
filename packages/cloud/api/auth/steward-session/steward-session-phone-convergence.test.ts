@@ -4,12 +4,19 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const emitAudit = mock(async () => undefined);
-const verifyStewardTokenCached = mock(async () => ({
+const baseStewardClaims: {
+  userId: string;
+  tenantId: string;
+  expiration: number;
+  issuedAt: number;
+  telegramId?: string;
+} = {
   userId: "steward-user-1",
   tenantId: "personal-steward-user-1",
   expiration: Math.floor(Date.now() / 1000) + 900,
   issuedAt: Math.floor(Date.now() / 1000) - 10,
-}));
+};
+const verifyStewardTokenCached = mock(async () => baseStewardClaims);
 type PhoneOwnership =
   | { status: "verified"; phoneNumber: string }
   | { status: "not_linked" };
@@ -96,7 +103,8 @@ async function post(body: unknown): Promise<Response> {
 
 beforeEach(() => {
   emitAudit.mockClear();
-  verifyStewardTokenCached.mockClear();
+  verifyStewardTokenCached.mockReset();
+  verifyStewardTokenCached.mockResolvedValue(baseStewardClaims);
   verifyStewardBearerPhone.mockReset();
   verifyStewardBearerPhone.mockResolvedValue({
     status: "verified",
@@ -125,6 +133,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       email: undefined,
       walletAddress: undefined,
       walletChainType: undefined,
+      verifiedTelegramId: undefined,
       verifiedPhone: "+14155552671",
       telegramContinuation: undefined,
     });
@@ -143,8 +152,29 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       email: undefined,
       walletAddress: undefined,
       walletChainType: undefined,
+      verifiedTelegramId: undefined,
       verifiedPhone: undefined,
       telegramContinuation: "opaque-telegram-claim-token",
+    });
+  });
+
+  test("passes the signed Telegram id into Cloud account convergence", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      ...baseStewardClaims,
+      telegramId: "123456789",
+    });
+
+    const response = await post({ token: "telegram-session-token" });
+
+    expect(response.status).toBe(200);
+    expect(syncUserFromSteward).toHaveBeenCalledWith({
+      stewardUserId: "steward-user-1",
+      email: undefined,
+      walletAddress: undefined,
+      walletChainType: undefined,
+      verifiedTelegramId: "123456789",
+      verifiedPhone: undefined,
+      telegramContinuation: undefined,
     });
   });
 
