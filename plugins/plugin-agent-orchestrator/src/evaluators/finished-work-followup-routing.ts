@@ -34,8 +34,9 @@ export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
   description:
     "Routes run-it/show-me follow-ups on finished sub-agent work to the TASKS surface deterministically.",
   priority: 20,
+  deterministicActions: ["TASKS"],
   shouldRun: ({ message }) => RUN_FOLLOWUP_RE.test(messageText(message)),
-  evaluate: async ({ runtime, messageHandler }) => {
+  evaluate: async ({ runtime, message, messageHandler }) => {
     if (messageHandler.processMessage !== "RESPOND") return undefined;
     const service = getAcpService(runtime);
     if (!service) return undefined;
@@ -56,20 +57,37 @@ export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
       return undefined;
     }
     const now = Date.now();
-    const recentTerminal = routed.some((s) => {
-      if (!TERMINAL_SESSION_STATUSES.has(s.status)) return false;
-      const at = new Date(s.lastActivityAt ?? s.createdAt).getTime();
-      return Number.isFinite(at) && now - at < RECENT_TERMINAL_WINDOW_MS;
-    });
+    const recentTerminal = routed
+      .filter((s) => TERMINAL_SESSION_STATUSES.has(s.status))
+      .filter((s) => {
+        const at = new Date(s.lastActivityAt ?? s.createdAt).getTime();
+        return Number.isFinite(at) && now - at < RECENT_TERMINAL_WINDOW_MS;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.lastActivityAt ?? b.createdAt).getTime() -
+          new Date(a.lastActivityAt ?? a.createdAt).getTime(),
+      )[0];
     if (!recentTerminal) return undefined;
+    const userText = messageText(message).trim();
+    if (!userText) return undefined;
+    // Fully deterministic: the model writes NO tool args. Candidate-narrowing
+    // alone still let the planner fill the wide TASKS schema itself, and it
+    // sprayed values into wrong params — a send whose `agents` field carried
+    // serialized junk ("\"\"\",appMonetized:false,approvalPreset:") became a
+    // garbage-labeled second lane (live 2026-08-21). runSend's terminal
+    // redirect turns this into the merged successor create.
     return {
-      clearCandidateActions: true,
-      addCandidateActions: ["TASKS", "TASKS_SEND", "TASKS_CREATE"],
-      // TASKS' contextGate accepts automation; without it the planner can
-      // reject the injected candidates as out-of-context.
-      addContextSlices: ["automation"],
+      deterministicToolCall: {
+        name: "TASKS",
+        params: {
+          action: "send",
+          sessionId: recentTerminal.id,
+          input: userText,
+        },
+      },
       debug: [
-        "run-it follow-up on finished sub-agent work: candidate surface narrowed to TASKS (direct SHELL against a gc'd workspace is the proven failure mode)",
+        `run-it follow-up on finished sub-agent work: deterministic TASKS send to ${recentTerminal.id}`,
       ],
     };
   },
