@@ -8,6 +8,11 @@ const nativeStores = vi.hoisted(() => ({
   preferences: new Map<string, string>(),
   secure: new Map<string, string>(),
   secureAvailable: true,
+  secureDeleteError: null as
+    | null
+    | "denied"
+    | "unavailable"
+    | "native_error",
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -46,8 +51,11 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
     },
     remove: async ({ key }: { key: string }) => {
       if (!nativeStores.secureAvailable) throw new Error("bridge cold");
-      nativeStores.secure.delete(key);
-      return { ok: true };
+      if (nativeStores.secureDeleteError) {
+        return { ok: false, error: nativeStores.secureDeleteError };
+      }
+      const deleted = nativeStores.secure.delete(key);
+      return { ok: true, deleted };
     },
   },
 }));
@@ -76,6 +84,7 @@ describe("native protected-storage bridge contract", () => {
     nativeStores.preferences.clear();
     nativeStores.secure.clear();
     nativeStores.secureAvailable = true;
+    nativeStores.secureDeleteError = null;
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -160,4 +169,24 @@ describe("native protected-storage bridge contract", () => {
     );
     expect(bridge.isStorageBridgeInitialized()).toBe(true);
   }, 15_000);
+
+  it("retains the live and restart credential when native deletion is denied", async () => {
+    const bridge = await import("./storage-bridge");
+    await bridge.setStorageValue(
+      "eliza.device.auth",
+      "still-durable-after-failed-delete",
+    );
+    nativeStores.secureDeleteError = "denied";
+
+    await expect(
+      bridge.removeStorageValue("eliza.device.auth"),
+    ).rejects.toThrow("Apple protected storage rejected deletion");
+
+    expect(nativeStores.secure.get("session.device_auth")).toBe(
+      "still-durable-after-failed-delete",
+    );
+    expect(await bridge.getStorageValue("eliza.device.auth")).toBe(
+      "still-durable-after-failed-delete",
+    );
+  });
 });

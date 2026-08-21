@@ -57,6 +57,24 @@ describe("macOS platform secure-store boundary", () => {
     }
   });
 
+  it("propagates native delete failures and verifies absence before success", () => {
+    expect(source).toContain("Promise<SecureStoreDeleteResult>");
+    expect(source).toContain("const failure = nativeStoreReason(err)");
+    expect(source).toContain(
+      'verifiedMissing.reason === "not_found"',
+    );
+    expect(source).toContain("{ ok: true, deleted: false }");
+    expect(source).toContain("{ ok: true, deleted: true }");
+    expect(source).not.toContain("// ignore — item may not exist");
+    expect(source).not.toContain('e.code === 1 || stderr.includes("not found")');
+    expect(rendererBridgeSource).toContain(
+      "secureStoreDelete: async (params) =>\n      rendererSecureStore.delete(",
+    );
+    expect(rendererBridgeSource).not.toContain(
+      "await rendererSecureStore.delete(",
+    );
+  });
+
   it("allowlists renderer slots and bounds credential payload size", () => {
     expect(rendererBridgeSource).toContain("rendererSecureStoreKinds");
     expect(rendererBridgeSource).toContain(

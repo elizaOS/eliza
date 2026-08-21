@@ -115,6 +115,13 @@ const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
 ]);
 
 const protectedStorageCache = new Map<string, string>();
+const protectedStorageMutationVersion = new Map<string, number>();
+
+function markProtectedStorageMutation(key: string): number {
+  const version = (protectedStorageMutationVersion.get(key) ?? 0) + 1;
+  protectedStorageMutationVersion.set(key, version);
+  return version;
+}
 
 function isAppleNativePlatform(): boolean {
   try {
@@ -166,15 +173,21 @@ async function protectedStoreSet(key: string, value: string): Promise<boolean> {
 
 async function protectedStoreDelete(key: string): Promise<void> {
   const kind = PROTECTED_STORAGE_KIND.get(key);
-  if (!kind) return;
+  if (!kind) {
+    throw new Error("Protected storage kind is not registered");
+  }
   if (isAppleNativePlatform()) {
     const { ElizaSecureStore } = await loadAppleSecureStore();
-    await ElizaSecureStore.remove({ key: kind });
-    return;
+    const result = await ElizaSecureStore.remove({ key: kind });
+    if (result.ok || result.error === "not_found") return;
+    throw new Error("Apple protected storage rejected deletion");
   }
   if (isElectrobunRuntime()) {
-    await desktopSecureStoreDelete(kind);
+    const result = await desktopSecureStoreDelete(kind);
+    if (result?.ok || result?.reason === "not_found") return;
+    throw new Error("Desktop protected storage rejected deletion");
   }
+  throw new Error("Protected storage is unavailable");
 }
 
 // In-memory cache of values from Preferences (for native)
@@ -436,6 +449,7 @@ function setupStorageProxy(): void {
     nativeStorage;
   const secureSetItem = (key: string, value: string): void => {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      markProtectedStorageMutation(key);
       protectedStorageCache.set(key, value);
       originalRemoveItem(key);
       setTimeout(() => {
@@ -497,15 +511,26 @@ function setupStorageProxy(): void {
   // Override removeItem
   const secureRemoveItem = (key: string): void => {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-      protectedStorageCache.delete(key);
-      originalRemoveItem(key);
+      const removalVersion = markProtectedStorageMutation(key);
       setTimeout(() => {
-        protectedStoreDelete(key).catch((err) => {
-          logger.error(
-            { err, key },
-            "[StorageBridge] failed to remove protected key",
-          );
-        });
+        protectedStoreDelete(key)
+          .then(() => {
+            if (
+              protectedStorageMutationVersion.get(key) === removalVersion
+            ) {
+              protectedStorageCache.delete(key);
+              originalRemoveItem(key);
+            }
+          })
+          .catch((err) => {
+            // error-policy:J4 a synchronous Web Storage call cannot surface an
+            // asynchronous native rejection. Retain the cached credential so
+            // the current session does not claim a deletion that did not occur.
+            logger.error(
+              { err, key },
+              "[StorageBridge] failed to remove protected key",
+            );
+          });
       }, 0);
       return;
     }
@@ -587,6 +612,7 @@ export async function setStorageValue(
   value: string,
 ): Promise<void> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+    markProtectedStorageMutation(key);
     protectedStorageCache.set(key, value);
     if (!(await protectedStoreSet(key, value))) {
       throw new Error(`Protected storage rejected write for ${key}`);
@@ -609,8 +635,11 @@ export async function setStorageValue(
  */
 export async function removeStorageValue(key: string): Promise<void> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-    protectedStorageCache.delete(key);
+    const removalVersion = markProtectedStorageMutation(key);
     await protectedStoreDelete(key);
+    if (protectedStorageMutationVersion.get(key) === removalVersion) {
+      protectedStorageCache.delete(key);
+    }
     return;
   }
   runAsPrivilegedShell(() => window.localStorage.removeItem(key));

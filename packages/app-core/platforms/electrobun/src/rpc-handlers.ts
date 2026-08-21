@@ -1351,13 +1351,11 @@ export function buildBunRpcHandlers({
       );
       return result.ok ? { ok: true } : result;
     },
-    secureStoreDelete: async (params) => {
-      await rendererSecureStore.delete(
+    secureStoreDelete: async (params) =>
+      rendererSecureStore.delete(
         deriveAgentVaultId(),
         requireRendererSecureStoreKind(params?.kind),
-      );
-      return { ok: true };
-    },
+      ),
     secureStoreStatus: async () =>
       describeNodePlatformSecureStore(rendererSecureStore),
 

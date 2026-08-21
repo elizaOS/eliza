@@ -497,7 +497,7 @@ export type RendererSecureStoreKind =
   | "runtime.agent_profiles";
 
 export type RendererSecureStoreResult =
-  | { ok: true; value?: string }
+  | { ok: true; value?: string; deleted?: boolean }
   | {
       ok: false;
       reason: "not_found" | "denied" | "unavailable" | "error";
@@ -2106,7 +2106,7 @@ export type ElizaDesktopRPCSchema = {
       };
       secureStoreDelete: {
         params: { kind: RendererSecureStoreKind };
-        response: { ok: true };
+        response: RendererSecureStoreResult;
       };
       secureStoreStatus: {
         params: undefined;

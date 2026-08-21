@@ -38,6 +38,11 @@ describe("Apple secure-store bridge contract", () => {
     expect(source).not.toContain('call.getString("service")');
   });
 
+  it("distinguishes deleted and already-absent items", () => {
+    expect(source).toContain('["ok": true, "deleted": true]');
+    expect(source).toContain('["ok": true, "deleted": false]');
+  });
+
   it("does not grant Keychain Sharing to the app or its extensions", () => {
     const iosAppRoot = resolve(
       new URL(".", import.meta.url).pathname,

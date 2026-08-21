@@ -18,6 +18,7 @@ import type {
   PlatformSecureStore,
   PlatformSecureStoreBackend,
   PlatformSecureStoreProtection,
+  SecureStoreDeleteResult,
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
@@ -93,7 +94,9 @@ async function secretToolOnPath(): Promise<boolean> {
   return secretToolOnPathSync();
 }
 
-function nativeStoreReason(error: unknown): SecureStoreGetResult {
+type SecureStoreFailure = Extract<SecureStoreGetResult, { ok: false }>;
+
+function nativeStoreReason(error: unknown): SecureStoreFailure {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
   if (
@@ -177,7 +180,10 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
     }
   }
 
-  async delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void> {
+  async delete(
+    vaultId: string,
+    kind: SecureStoreSecretKind,
+  ): Promise<SecureStoreDeleteResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
       const { AsyncEntry } = await loadMacKeyring();
@@ -185,9 +191,37 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
         ELIZA_AGENT_VAULT_SERVICE,
         account,
       ).deleteCredential();
-    } catch {
-      // ignore — item may not exist
+    } catch (err: unknown) {
+      const failure = nativeStoreReason(err);
+      if (failure.reason !== "not_found") {
+        return failure;
+      }
+      const verifiedMissing = await this.get(vaultId, kind);
+      if (!verifiedMissing.ok && verifiedMissing.reason === "not_found") {
+        return { ok: true, deleted: false };
+      }
+      if (!verifiedMissing.ok) {
+        return verifiedMissing;
+      }
+      return {
+        ok: false,
+        reason: "error",
+        message: "Native credential store deletion could not be verified.",
+      };
     }
+
+    const verifiedMissing = await this.get(vaultId, kind);
+    if (!verifiedMissing.ok && verifiedMissing.reason === "not_found") {
+      return { ok: true, deleted: true };
+    }
+    if (!verifiedMissing.ok) {
+      return verifiedMissing;
+    }
+    return {
+      ok: false,
+      reason: "error",
+      message: "Native credential store deletion could not be verified.",
+    };
   }
 }
 
@@ -220,7 +254,11 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
     } catch (err: unknown) {
       const e = err as { stderr?: string; code?: number };
       const stderr = String(e.stderr ?? "");
-      if (e.code === 1 || stderr.includes("not found")) {
+      const normalized = stderr.trim().toLowerCase();
+      if (
+        (e.code === 1 && normalized.length === 0) ||
+        normalized.includes("not found")
+      ) {
         return { ok: false, reason: "not_found" };
       }
       return {
@@ -262,7 +300,10 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
     }
   }
 
-  async delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void> {
+  async delete(
+    vaultId: string,
+    kind: SecureStoreSecretKind,
+  ): Promise<SecureStoreDeleteResult> {
     const account = this.account(vaultId, kind);
     try {
       await execFileAsync("secret-tool", [
@@ -272,9 +313,26 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
         "account",
         account,
       ]);
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      const verifiedMissing = await this.get(vaultId, kind);
+      if (!verifiedMissing.ok && verifiedMissing.reason === "not_found") {
+        return { ok: true, deleted: false };
+      }
+      return nativeStoreReason(err);
     }
+
+    const verifiedMissing = await this.get(vaultId, kind);
+    if (!verifiedMissing.ok && verifiedMissing.reason === "not_found") {
+      return { ok: true, deleted: true };
+    }
+    if (!verifiedMissing.ok) {
+      return verifiedMissing;
+    }
+    return {
+      ok: false,
+      reason: "error",
+      message: "Native credential store deletion could not be verified.",
+    };
   }
 }
 
@@ -293,7 +351,9 @@ class NonePlatformSecureStore implements PlatformSecureStore {
     return { ok: false, reason: "unavailable" };
   }
 
-  async delete(): Promise<void> {}
+  async delete(): Promise<SecureStoreDeleteResult> {
+    return { ok: false, reason: "unavailable" };
+  }
 }
 
 /**

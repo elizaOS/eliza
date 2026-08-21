@@ -15,6 +15,7 @@ export type ElizaSecureStoreError =
 export interface ElizaSecureStoreResult {
   ok: boolean;
   value?: string;
+  deleted?: boolean;
   error?: ElizaSecureStoreError;
   message?: string;
 }

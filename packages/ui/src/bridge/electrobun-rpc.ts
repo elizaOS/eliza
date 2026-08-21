@@ -120,7 +120,7 @@ export type DesktopSecureStoreKind =
   | "runtime.agent_profiles";
 
 export type DesktopSecureStoreResult =
-  | { ok: true; value?: string }
+  | { ok: true; value?: string; deleted?: boolean }
   | {
       ok: false;
       reason: "not_found" | "denied" | "unavailable" | "error";
@@ -150,13 +150,12 @@ export async function desktopSecureStoreSet(
 
 export async function desktopSecureStoreDelete(
   kind: DesktopSecureStoreKind,
-): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ ok: true }>({
+): Promise<DesktopSecureStoreResult | null> {
+  return invokeDesktopBridgeRequest<DesktopSecureStoreResult>({
     rpcMethod: "secureStoreDelete",
     ipcChannel: "secureStore:delete",
     params: { kind },
   });
-  return result?.ok === true;
 }
 
 export interface DesktopRuntimeModeInfo {

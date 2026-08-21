@@ -1,3 +1,7 @@
+/**
+ * Provides the iOS Keychain boundary for the fixed, app-scoped credential
+ * slots shared by the renderer storage bridge.
+ */
 import Capacitor
 import Foundation
 import Security
@@ -74,8 +78,12 @@ public class ElizaSecureStorePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func remove(_ call: CAPPluginCall) {
         guard let key = validatedKey(call) else { return }
         let status = SecItemDelete(baseQuery(key) as CFDictionary)
-        if status == errSecSuccess || status == errSecItemNotFound {
-            call.resolve(["ok": true])
+        if status == errSecSuccess {
+            call.resolve(["ok": true, "deleted": true])
+            return
+        }
+        if status == errSecItemNotFound {
+            call.resolve(["ok": true, "deleted": false])
             return
         }
         call.resolve(statusResult(status))

@@ -11,6 +11,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   PlatformSecureStore,
+  SecureStoreDeleteResult,
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
@@ -43,8 +44,12 @@ class MemorySecureStore implements PlatformSecureStore {
     return { ok: true };
   }
 
-  async delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void> {
-    this.values.delete(`${vaultId}:${kind}`);
+  async delete(
+    vaultId: string,
+    kind: SecureStoreSecretKind,
+  ): Promise<SecureStoreDeleteResult> {
+    const deleted = this.values.delete(`${vaultId}:${kind}`);
+    return { ok: true, deleted };
   }
 
   async isAvailable(): Promise<boolean> {

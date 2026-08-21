@@ -43,6 +43,10 @@ export type SecureStoreSetResult =
   | { ok: true }
   | { ok: false; reason: SecureStoreUnavailableReason; message?: string };
 
+export type SecureStoreDeleteResult =
+  | { ok: true; deleted: boolean }
+  | { ok: false; reason: SecureStoreUnavailableReason; message?: string };
+
 /**
  * Which native API backs this implementation (for diagnostics and support).
  */
@@ -80,7 +84,10 @@ export interface PlatformSecureStore {
     value: string,
   ): Promise<SecureStoreSetResult>;
 
-  delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void>;
+  delete(
+    vaultId: string,
+    kind: SecureStoreSecretKind,
+  ): Promise<SecureStoreDeleteResult>;
 
   /** True if the backend can run on this host right now (e.g. Secret Service up). */
   isAvailable(): Promise<boolean>;
