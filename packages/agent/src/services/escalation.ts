@@ -2,11 +2,12 @@
  * EscalationService — escalates an unacknowledged agent message to the owner
  * across the configured ordered channels (client_chat first, then paired
  * connectors), retrying on a wait/backoff timer until the owner responds or the
- * retry budget is exhausted. State is module-level (one active escalation at a
- * time, coalescing new reasons into it) and persisted to the runtime cache so it
- * survives restarts; owner-contact config and routing hints resolve the delivery
- * target per channel. `registerEscalationChannel` appends newly paired channels
- * to the escalation order in eliza.json.
+ * retry budget is exhausted. State is module-level but partitioned per agent
+ * (one active escalation at a time PER AGENT, coalescing new reasons into it)
+ * and persisted to the runtime cache under an agent-scoped key so it survives
+ * restarts; owner-contact config and routing hints resolve the delivery target
+ * per channel. `registerEscalationChannel` appends newly paired channels to the
+ * escalation order in eliza.json.
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
@@ -50,8 +51,69 @@ const DEFAULT_WAIT_MINUTES = 5;
 const DEFAULT_MAX_RETRIES = 3;
 const ESCALATION_CACHE_KEY_PREFIX = "agent:escalation:active";
 
-const activeEscalations = new Map<string, EscalationState>();
-const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * In-memory escalation state, partitioned by `runtime.agentId`.
+ *
+ * These maps used to be flat (`escalationId -> state`) while
+ * {@link escalationCacheKey} was already agent-scoped. A process that holds
+ * more than one runtime — a multi-agent boot (one service instance per runtime
+ * over the same data dir) or a runtime rebuilt in-process by PGLite recovery —
+ * then shared one "active escalation" across agents: agent B's
+ * `startEscalation` found agent A's state, appended B's reason/text to it, and
+ * persisted A's mutated state under B's cache key. B never got its own
+ * escalation and A's timer went on to deliver text that belonged to B.
+ * Partitioning both maps the same way the cache key is partitioned keeps each
+ * agent's escalation to itself.
+ */
+const activeEscalations = new Map<string, Map<string, EscalationState>>();
+const pendingTimers = new Map<
+  string,
+  Map<string, ReturnType<typeof setTimeout>>
+>();
+
+function agentIdOf(runtime: IAgentRuntime): string {
+  return runtime.agentId as string;
+}
+
+function escalationsFor(agentId: string): Map<string, EscalationState> {
+  let bucket = activeEscalations.get(agentId);
+  if (!bucket) {
+    bucket = new Map<string, EscalationState>();
+    activeEscalations.set(agentId, bucket);
+  }
+  return bucket;
+}
+
+function timersFor(
+  agentId: string,
+): Map<string, ReturnType<typeof setTimeout>> {
+  let bucket = pendingTimers.get(agentId);
+  if (!bucket) {
+    bucket = new Map<string, ReturnType<typeof setTimeout>>();
+    pendingTimers.set(agentId, bucket);
+  }
+  return bucket;
+}
+
+/**
+ * Locate an escalation by id. `resolveEscalation` may be called without a
+ * runtime, so fall back to a scan across agents when no runtime is supplied.
+ */
+function findEscalation(
+  escalationId: string,
+  runtime?: IAgentRuntime,
+): { agentId: string; state: EscalationState } | null {
+  if (runtime) {
+    const agentId = agentIdOf(runtime);
+    const state = activeEscalations.get(agentId)?.get(escalationId);
+    return state ? { agentId, state } : null;
+  }
+  for (const [agentId, bucket] of activeEscalations) {
+    const state = bucket.get(escalationId);
+    if (state) return { agentId, state };
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Persistence helpers -- owned by agent state instead of app-lifeops storage.
@@ -383,11 +445,12 @@ function scheduleCheck(
   escalationId: string,
   delayMs: number,
 ): void {
-  const existing = pendingTimers.get(escalationId);
+  const timers = timersFor(agentIdOf(runtime));
+  const existing = timers.get(escalationId);
   if (existing) clearTimeout(existing);
 
   const timer = setTimeout(async () => {
-    pendingTimers.delete(escalationId);
+    timers.delete(escalationId);
     try {
       await EscalationService.checkEscalation(runtime, escalationId);
     } catch (err) {
@@ -398,7 +461,7 @@ function scheduleCheck(
     }
   }, delayMs);
 
-  pendingTimers.set(escalationId, timer);
+  timers.set(escalationId, timer);
 }
 
 let idCounter = 0;
@@ -410,7 +473,7 @@ export class EscalationService {
     reason: string,
     text: string,
   ): Promise<EscalationState> {
-    const existing = EscalationService.getActiveEscalationSync();
+    const existing = EscalationService.getActiveEscalationSync(runtime);
     if (existing) {
       existing.reason = `${existing.reason}; ${reason}`;
       existing.text = `${existing.text}\n---\n${text}`;
@@ -450,7 +513,7 @@ export class EscalationService {
       resolved: false,
     };
 
-    activeEscalations.set(escalationId, state);
+    escalationsFor(agentIdOf(runtime)).set(escalationId, state);
 
     // Initial delivery falls through failed channels immediately: a channel
     // whose send throws (dashboard with no conversation, missing handler) is
@@ -490,7 +553,7 @@ export class EscalationService {
     runtime: IAgentRuntime,
     escalationId: string,
   ): Promise<void> {
-    const state = activeEscalations.get(escalationId);
+    const state = escalationsFor(agentIdOf(runtime)).get(escalationId);
     if (!state || state.resolved) return;
 
     const config = loadEscalationConfig();
@@ -561,16 +624,19 @@ export class EscalationService {
     escalationId: string,
     runtime?: IAgentRuntime,
   ): Promise<void> {
-    const state = activeEscalations.get(escalationId);
-    if (!state || state.resolved) return;
+    const found = findEscalation(escalationId, runtime);
+    if (!found) return;
+    const { agentId, state } = found;
+    if (state.resolved) return;
 
     state.resolved = true;
     state.resolvedAt = Date.now();
 
-    const timer = pendingTimers.get(escalationId);
+    const timers = timersFor(agentId);
+    const timer = timers.get(escalationId);
     if (timer) {
       clearTimeout(timer);
-      pendingTimers.delete(escalationId);
+      timers.delete(escalationId);
     }
 
     logger.info(`[escalation] Resolved ${escalationId}`);
@@ -582,11 +648,18 @@ export class EscalationService {
     // Drop the resolved escalation from the in-memory map. getActiveEscalationSync
     // ignores resolved entries and the resolved state is persisted to cache, so
     // retaining it only grows the map one entry per escalation ever created.
-    activeEscalations.delete(escalationId);
+    const bucket = activeEscalations.get(agentId);
+    bucket?.delete(escalationId);
+    if (bucket?.size === 0) activeEscalations.delete(agentId);
   }
 
-  static getActiveEscalationSync(): EscalationState | null {
-    for (const state of activeEscalations.values()) {
+  /** The calling agent's own active escalation, if any. */
+  static getActiveEscalationSync(
+    runtime: IAgentRuntime,
+  ): EscalationState | null {
+    const bucket = activeEscalations.get(agentIdOf(runtime));
+    if (!bucket) return null;
+    for (const state of bucket.values()) {
       if (!state.resolved) return state;
     }
     return null;
@@ -595,12 +668,12 @@ export class EscalationService {
   static async getActiveEscalation(
     runtime: IAgentRuntime,
   ): Promise<EscalationState | null> {
-    const cached = EscalationService.getActiveEscalationSync();
+    const cached = EscalationService.getActiveEscalationSync(runtime);
     if (cached) return cached;
 
     const persisted = await loadActiveFromCache(runtime);
     if (persisted) {
-      activeEscalations.set(persisted.id, persisted);
+      escalationsFor(agentIdOf(runtime)).set(persisted.id, persisted);
       return persisted;
     }
     return null;
@@ -608,8 +681,9 @@ export class EscalationService {
 
   static async rehydrateFromDb(runtime: IAgentRuntime): Promise<void> {
     const persisted = await loadActiveFromCache(runtime);
-    if (persisted && !activeEscalations.has(persisted.id)) {
-      activeEscalations.set(persisted.id, persisted);
+    const bucket = escalationsFor(agentIdOf(runtime));
+    if (persisted && !bucket.has(persisted.id)) {
+      bucket.set(persisted.id, persisted);
       logger.info(
         `[escalation] Rehydrated unresolved escalation ${persisted.id} from cache`,
       );
@@ -617,7 +691,9 @@ export class EscalationService {
   }
 
   static _reset(): void {
-    for (const timer of pendingTimers.values()) clearTimeout(timer);
+    for (const bucket of pendingTimers.values()) {
+      for (const timer of bucket.values()) clearTimeout(timer);
+    }
     pendingTimers.clear();
     activeEscalations.clear();
     idCounter = 0;
