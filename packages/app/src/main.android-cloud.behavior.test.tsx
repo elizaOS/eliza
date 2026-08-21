@@ -262,8 +262,8 @@ describe("Android Cloud renderer behavior", () => {
   it("does not start after cancellation overtakes the initial native stop", async () => {
     let finishInitialStop: () => void = () => {};
     playEntry.voiceStop.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        finishInitialStop = resolve;
+      new Promise<undefined>((resolve) => {
+        finishInitialStop = () => resolve(undefined);
       }),
     );
 
@@ -357,7 +357,7 @@ describe("Android Cloud renderer behavior", () => {
     try {
       await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
       playEntry.voiceStop.mockClear();
-      playEntry.voiceStop.mockReturnValueOnce(new Promise<void>(() => {}));
+      playEntry.voiceStop.mockReturnValueOnce(new Promise<undefined>(() => {}));
 
       const stopping = entry.androidCloudVoice.stop();
       const rejection = expect(stopping).rejects.toThrow(

@@ -339,7 +339,7 @@ async function teardownVoiceResources(): Promise<void> {
   const listeners = activeVoiceListeners;
   // Invoke native stop before listener teardown. Both boundaries are bounded,
   // and listener handles remain registered until their removers really settle.
-  let nativeTimeout: ReturnType<typeof window.setTimeout> | undefined;
+  let nativeTimeout: number | undefined;
   const nativeStopResult = Promise.resolve()
     .then(() => PlayVoice.stopDictation())
     .then(
@@ -365,7 +365,7 @@ async function teardownVoiceResources(): Promise<void> {
   });
   const removalResults = await Promise.allSettled(
     listeners.map(async (listener) => {
-      let timeout: ReturnType<typeof window.setTimeout> | undefined;
+      let timeout: number | undefined;
       const removal = listener.remove().then(() => {
         activeVoiceListeners = activeVoiceListeners.filter(
           (candidate) => candidate !== listener,
@@ -504,7 +504,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
       teardownErrors.push(error);
     }
     if (pendingStart) {
-      let timeout: ReturnType<typeof window.setTimeout> | undefined;
+      let timeout: number | undefined;
       try {
         await Promise.race([
           pendingStart,
