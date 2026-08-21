@@ -238,6 +238,11 @@ async function serveRuntimeDirectoryAppAsset(
   const contentType =
     LOCAL_APP_ASSET_CONTENT_TYPES[path.extname(filePath).toLowerCase()] ??
     "application/octet-stream";
+  // The API server installs X-Frame-Options: DENY globally. Local app
+  // previews are intentionally rendered inside Eliza's Browser iframe, so
+  // this route relies on the stricter CSP frame-ancestors 'self' policy
+  // below instead of keeping the conflicting legacy header.
+  ctx.res.removeHeader("X-Frame-Options");
   ctx.res.writeHead(200, {
     "Content-Type": contentType,
     "Content-Length": body.byteLength,

@@ -314,6 +314,10 @@ function normalizeBrowserWorkspaceInputUrl(
   if (!trimmed) return null;
   if (trimmed === "about:blank") return trimmed;
 
+  if (/^\/api\/apps\/local\/[A-Za-z0-9._~%-]+\/(?:[?#].*)?$/.test(trimmed)) {
+    return new URL(trimmed, window.location.origin).toString();
+  }
+
   const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
     ? trimmed
     : `https://${trimmed}`;

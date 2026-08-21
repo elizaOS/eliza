@@ -190,6 +190,9 @@ function canOpenBrowserView(payload: BridgeEventPayload): boolean {
 }
 
 function browserViewPathForLaunchUrl(launchUrl: string): string {
+	if (launchUrl.startsWith("/api/apps/local/")) {
+		return `/browser?browse=${encodeURIComponent(launchUrl)}`;
+	}
 	const absoluteUrl = new URL(
 		launchUrl,
 		`${getAppControlApiBase()}/`,

@@ -353,7 +353,7 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: expect.stringContaining(
-					'"path":"/browser?browse=http%3A%2F%2F127.0.0.1%3A',
+					'"path":"/browser?browse=%2Fapi%2Fapps%2Flocal%2Fnotes%2F"',
 				),
 			}),
 		);

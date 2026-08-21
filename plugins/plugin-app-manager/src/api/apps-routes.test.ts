@@ -28,7 +28,7 @@ type TestRequest = http.IncomingMessage & { __body?: unknown };
 function createResponse(): http.ServerResponse & CapturedResponse {
   return {
     body: undefined,
-    headers: {},
+    headers: { "X-Frame-Options": "DENY" },
     status: 200,
     writeHead(status: number, headers: Record<string, string | number>) {
       this.status = status;
@@ -38,6 +38,12 @@ function createResponse(): http.ServerResponse & CapturedResponse {
     setHeader(name: string, value: string | number) {
       this.headers[name] = value;
       return this as http.ServerResponse;
+    },
+    removeHeader(name: string) {
+      const key = Object.keys(this.headers).find(
+        (header) => header.toLowerCase() === name.toLowerCase(),
+      );
+      if (key) delete this.headers[key];
     },
     end(chunk?: unknown) {
       this.body = chunk;
@@ -189,6 +195,10 @@ describe("handleAppsRoutes", () => {
       );
       expect(index.res.headers["Content-Type"]).toBe(
         "text/html; charset=utf-8",
+      );
+      expect(index.res.headers["X-Frame-Options"]).toBeUndefined();
+      expect(index.res.headers["Content-Security-Policy"]).toContain(
+        "frame-ancestors 'self'",
       );
 
       const asset = await callRoute({

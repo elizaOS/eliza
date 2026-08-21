@@ -181,6 +181,35 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
+  it("opens a local app preview through the current Eliza UI origin", async () => {
+    const previewPath = "/api/apps/local/nubs-color-pebble/";
+    const previewUrl = `${window.location.origin}${previewPath}`;
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: {
+        ...GOOGLE_WORKSPACE.tabs[0],
+        id: "tab-preview",
+        title: "Nubs Color Pebble",
+        url: previewUrl,
+      },
+    });
+    window.history.replaceState(
+      {},
+      "",
+      `/browser?browse=${encodeURIComponent(previewPath)}`,
+    );
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await waitFor(() =>
+        expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
+          expect.objectContaining({ url: previewUrl }),
+        ),
+      );
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
