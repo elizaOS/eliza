@@ -87,7 +87,11 @@ describe("StartupShell — delayed loading splash", () => {
     expect(splash).not.toBeNull();
     // Visual contract preserved: phase + role attributes still present.
     expect(splash?.getAttribute("data-startup-phase")).toBe("starting-backend");
+    expect(splash?.getAttribute("data-startup-shell")).toBe("loading");
     expect(splash?.getAttribute("role")).toBe("status");
+    expect(splash?.style.fontFamily).toBe(
+      "var(--launch-font, Arial, system-ui, sans-serif)",
+    );
     // first-paint telemetry fires only when the splash actually paints.
     expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(true);
   });

@@ -259,6 +259,17 @@ describe("brand surfaces", () => {
     expect(html).toContain("Booting up&hellip;");
   });
 
+  it("keeps the HTML and React startup lockups on the same non-swapping font", () => {
+    const html = read("index.html");
+    const startupShell = read("../ui/src/components/shell/StartupShell.tsx");
+    const stableLaunchFont = "var(--launch-font, Arial, system-ui, sans-serif)";
+
+    expect(html).toContain("--launch-font: Arial, system-ui, sans-serif;");
+    expect(html).toContain(`font-family: ${stableLaunchFont};`);
+    expect(startupShell).toContain(`fontFamily: "${stableLaunchFont}"`);
+    expect(startupShell).not.toContain('fontFamily: "var(--font-sans)"');
+  });
+
   it("preboot shell sits outside the React mount root and is removed only on meaningful paint", () => {
     // React clears #root on its first commit, and the web build's lazy router
     // shell makes those first commits EMPTY Suspense fallbacks — an in-root
@@ -271,6 +282,13 @@ describe("brand surfaces", () => {
     expect(html).toMatch(/\.eliza-preboot-shell\s*\{[^}]*position:\s*fixed/s);
     expect(html).toContain("new MutationObserver");
     expect(html).toContain("hasMeaningfulContent");
+    expect(html).toContain("isReactLoadingShell");
+    expect(html).toContain('data-startup-shell="loading"');
+    expect(html).toContain("hasMeaningfulContent() && !isReactLoadingShell()");
+    expect(html).toContain("mark.decode().then(revealBrand, revealBrand)");
+    expect(html).toContain(
+      '.eliza-preboot-shell[data-brand-ready="true"] .eliza-preboot-shell__content',
+    );
   });
 
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
@@ -282,6 +300,12 @@ describe("brand surfaces", () => {
     );
     expect(html).not.toMatch(
       /class="eliza-preboot-shell__mark"\s+src="\.\/brand/,
+    );
+    expect(html).toContain(
+      '<link rel="preload" as="image" href="%BASE_URL%brand/logos/logo_white_nobg.svg" fetchpriority="high" />',
+    );
+    expect(html).toMatch(
+      /class="eliza-preboot-shell__mark"[^>]*decoding="sync"[^>]*fetchpriority="high"/,
     );
   });
 

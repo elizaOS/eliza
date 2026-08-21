@@ -281,6 +281,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicons/favicon-16x16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/favicons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preload" as="image" href="%BASE_URL%brand/logos/logo_white_nobg.svg" fetchpriority="high" />
   <script>
     // One bundle serves both the dark agent app and the light public marketing
     // pages. Seed the marketing launch surface before the inline FOUC CSS is
@@ -362,6 +363,11 @@
     :root {
       --launch-bg: #000000;
       --launch-foreground: #fdfaf7;
+      /* Keep the HTML preboot shell and React startup shell on a font that is
+         available at first paint. The app's Poppins files use font-display:
+         swap; using them here visibly changed the wordmark's width/weight while
+         booting and again during the HTML-to-React handoff. */
+      --launch-font: Arial, system-ui, sans-serif;
     }
 
     html,
@@ -411,6 +417,7 @@
       overflow: hidden;
       background: var(--launch-bg, #000000);
       color: var(--launch-foreground, #fdfaf7);
+      font-family: var(--launch-font, Arial, system-ui, sans-serif);
     }
 
     .eliza-preboot-shell__content {
@@ -423,6 +430,12 @@
       gap: 1.25rem;
       padding: 0 1.5rem;
       text-align: center;
+      opacity: 0;
+    }
+
+    .eliza-preboot-shell[data-brand-ready="true"] .eliza-preboot-shell__content {
+      opacity: 1;
+      transition: opacity 100ms ease-out;
     }
 
     .eliza-preboot-shell__brand {
@@ -461,6 +474,10 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
+      .eliza-preboot-shell[data-brand-ready="true"] .eliza-preboot-shell__content {
+        transition: none;
+      }
+
       .eliza-preboot-shell__status {
         animation: none;
       }
@@ -473,21 +490,22 @@
   <div id="eliza-preboot-shell" class="eliza-preboot-shell" role="status" aria-live="polite" aria-label="Loading Eliza">
     <div class="eliza-preboot-shell__content">
       <div class="eliza-preboot-shell__brand" aria-hidden="true">
-        <img class="eliza-preboot-shell__mark" src="%BASE_URL%brand/logos/logo_white_nobg.svg" alt="" />
+        <img class="eliza-preboot-shell__mark" src="%BASE_URL%brand/logos/logo_white_nobg.svg" alt="" decoding="sync" fetchpriority="high" />
         <span class="eliza-preboot-shell__name">elizaOS</span>
       </div>
       <p class="eliza-preboot-shell__status">Booting up&hellip;</p>
     </div>
   </div>
   <script>
-    // Remove the preboot shell only when #root paints MEANINGFUL content.
+    // Remove the preboot shell only when #root paints MEANINGFUL app content.
     // React's first commits under the lazy web router shell render empty
     // aria-busy Suspense fallbacks (#18256's ~1.4s blank once the old
-    // in-#root shell was wiped at mount); text or a media/control element is
-    // the signal the app has really painted. MutationObserver callbacks run
-    // before the next frame, so the swap is never visible as an overlay
-    // covering live UI. If boot never paints (script/network death) the
-    // branded shell intentionally stays, exactly like the old in-root shell.
+    // in-#root shell was wiped at mount). Its later StartupShell loading view
+    // intentionally does not count either: swapping between two visually
+    // similar lockups produced a one-frame logo/wordmark disappearance during
+    // hydration. Keep this parser-painted shell on top until real app content,
+    // an error, pairing, or bootstrap UI replaces it. If boot never paints
+    // (script/network death), the branded shell intentionally stays.
     (() => {
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
@@ -499,17 +517,34 @@
         shell.remove();
         return;
       }
+      // Paint the mark, wordmark, and status as one lockup. Without waiting for
+      // the external SVG to decode, Chromium can paint the status a frame
+      // before the brand row, which reads as a size/weight jump on refresh.
+      const mark = shell.querySelector(".eliza-preboot-shell__mark");
+      const revealBrand = () => shell.setAttribute("data-brand-ready", "true");
+      if (mark && typeof mark.decode === "function") {
+        mark.decode().then(revealBrand, revealBrand);
+      } else if (mark && !mark.complete) {
+        mark.addEventListener("load", revealBrand, { once: true });
+        mark.addEventListener("error", revealBrand, { once: true });
+      } else {
+        revealBrand();
+      }
       if (!root || typeof MutationObserver !== "function") return;
       const hasMeaningfulContent = () =>
         (root.textContent || "").trim().length > 0 ||
         root.querySelector("img,svg,canvas,video,iframe,input,button,textarea,select") !== null;
+      const isReactLoadingShell = () =>
+        root.querySelector('[data-startup-shell="loading"]') !== null;
+      const canRevealRoot = () =>
+        hasMeaningfulContent() && !isReactLoadingShell();
       const observer = new MutationObserver(() => {
-        if (!hasMeaningfulContent()) return;
+        if (!canRevealRoot()) return;
         observer.disconnect();
         shell.remove();
       });
       observer.observe(root, { childList: true, subtree: true, characterData: true });
-      if (hasMeaningfulContent()) {
+      if (canRevealRoot()) {
         observer.disconnect();
         shell.remove();
       }

@@ -128,12 +128,18 @@ function StartupLoading(props: { phase: string; status: string }) {
   return (
     <div
       data-testid="startup-shell-loading"
+      data-startup-shell="loading"
       data-startup-phase={props.phase}
       role="status"
       aria-live="polite"
       aria-busy="true"
       className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
-      style={{ fontFamily: "var(--font-sans)" }}
+      // Match the parser-painted HTML preboot shell exactly. The regular app
+      // font is loaded with font-display: swap, which is desirable after boot
+      // but made this lockup visibly resize/reweight during the handoff.
+      style={{
+        fontFamily: "var(--launch-font, Arial, system-ui, sans-serif)",
+      }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
