@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetLastCloudHandoffPhaseDetailForTests,
+  CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -16,6 +17,7 @@ import {
   type CloudHandoffPhaseDetail,
   clearPendingFocusConnector,
   dispatchBackIntent,
+  dispatchChatClose,
   dispatchChatOpen,
   dispatchChatPrefill,
   dispatchCloudHandoffPhase,
@@ -158,13 +160,16 @@ describe("UI-only event dispatch helpers", () => {
     expect(seen).toEqual([{ command: "start" }, { command: "stop" }]);
   });
 
-  it("dispatchChatPrefill and dispatchChatOpen reach window listeners", () => {
+  it("dispatchChatPrefill and chat open/close reach window listeners", () => {
     const prefill = captureWindow(CHAT_PREFILL_EVENT);
     const opens = captureWindow(CHAT_OPEN_EVENT);
+    const closes = captureWindow(CHAT_CLOSE_EVENT);
     dispatchChatPrefill({ text: "hello", select: true });
     dispatchChatOpen();
+    dispatchChatClose();
     expect(prefill).toEqual([{ text: "hello", select: true }]);
     expect(opens).toHaveLength(1);
+    expect(closes).toHaveLength(1);
   });
 
   it("dispatchOpenNotificationCenter emits the surface-agnostic open request", () => {

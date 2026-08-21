@@ -20,12 +20,14 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
+import { dispatchChatClose } from "../../events";
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { ViewHeader } from "../shared/ViewHeader";
+import { useShellControllerContext } from "../shell/ShellControllerContext.hooks";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
@@ -99,6 +101,7 @@ function ProjectsSegmentButton({
  * (`fullPage`, no second heading) and the app inventory.
  */
 export function TasksPageView() {
+  const shellController = useShellControllerContext();
   const [segment, setSegment] = useState<ProjectsSegment>(() =>
     initialProjectsSegmentForPath(
       typeof window === "undefined" ? "" : getWindowNavigationPath(),
@@ -123,36 +126,48 @@ export function TasksPageView() {
       window.removeEventListener("popstate", selectSegmentForRoute);
     };
   }, []);
+  useEffect(() => {
+    // App lifecycle controls must never sit underneath the ambient chat sheet.
+    // Selecting the Apps segment therefore folds chat to its resting composer,
+    // matching other control-heavy management surfaces and keeping every
+    // create/load/run affordance reachable on phone, tablet, and desktop.
+    if (segment === "apps") {
+      dispatchChatClose();
+      if (shellController?.isOpen) shellController.close();
+    }
+  }, [segment, shellController]);
+  const segmentControl = (
+    <>
+      <SegmentedControl
+        value={segment}
+        onValueChange={setSegment}
+        items={segments.map((entry) => ({
+          value: entry.id,
+          label: entry.label,
+          testId: `projects-segment-${entry.id}`,
+        }))}
+        role="tablist"
+        aria-label="Projects sections"
+      />
+      {segments.map((entry) => (
+        <ProjectsSegmentButton
+          key={entry.id}
+          id={entry.id}
+          label={entry.label}
+          isActive={segment === entry.id}
+          onSelect={setSegment}
+        />
+      ))}
+    </>
+  );
   return (
     <ShellViewAgentSurface viewId="tasks">
       <div
         className="flex h-full min-h-0 w-full flex-col"
         data-testid="tasks-view"
       >
-        <ViewHeader title="Projects" />
+        <ViewHeader title="Projects" right={segmentControl} />
         <div className="device-layout mx-auto flex min-h-0 w-full min-w-0 max-w-4xl flex-1 flex-col">
-          <div className="flex w-full items-center px-4 pt-2 sm:px-6">
-            <SegmentedControl
-              value={segment}
-              onValueChange={setSegment}
-              items={segments.map((entry) => ({
-                value: entry.id,
-                label: entry.label,
-                testId: `projects-segment-${entry.id}`,
-              }))}
-              role="tablist"
-              aria-label="Projects sections"
-            />
-            {segments.map((entry) => (
-              <ProjectsSegmentButton
-                key={entry.id}
-                id={entry.id}
-                label={entry.label}
-                isActive={segment === entry.id}
-                onSelect={setSegment}
-              />
-            ))}
-          </div>
           {segment === "apps" ? (
             <div
               className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll pb-[var(--eliza-chat-clearance,5.25rem)]"
