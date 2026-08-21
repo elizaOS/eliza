@@ -29,21 +29,31 @@ const DISCORD_API_BASE = "https://discord.com/api/v10";
 const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
 
 const DISCORD_REQUEST_TIMEOUT_MS = 25_000;
+const MAX_DISCORD_MESSAGE_CHUNKS = 25;
 
 /**
  * Bound every Discord REST hop so a hung or rate-limited Discord API cannot
  * pin the calling worker indefinitely. Matches the 25s bound the message-send
- * path already applies; a caller-provided abort signal wins.
+ * path already applies. Caller cancellation and the deadline are composed so
+ * neither can disable the other, and the clearable timer cannot outlive a
+ * completed transport hop.
  */
-export function discordFetch(
+export async function discordFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
-  });
+  const deadline = new AbortController();
+  const timeoutId = setTimeout(() => {
+    deadline.abort(new DOMException("Discord API request timed out", "TimeoutError"));
+  }, timeoutMs);
+  const signal = init?.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
+
+  try {
+    return await fetch(input, { ...init, signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // Required environment variables
@@ -579,9 +589,20 @@ class DiscordAutomationService {
       return { success: false, error: "Bot token not configured" };
     }
 
+    const deadline = new AbortController();
+    const timeoutId = setTimeout(() => {
+      deadline.abort(new DOMException("Discord message send timed out", "TimeoutError"));
+    }, DISCORD_REQUEST_TIMEOUT_MS);
+
     try {
       // Split message if too long
       const chunks = splitMessage(content, DISCORD_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      if (chunks.length > MAX_DISCORD_MESSAGE_CHUNKS) {
+        return {
+          success: false,
+          error: `Message exceeds the ${MAX_DISCORD_MESSAGE_CHUNKS}-chunk delivery limit`,
+        };
+      }
       let lastMessageId: string | undefined;
 
       for (let i = 0; i < chunks.length; i++) {
@@ -596,19 +617,15 @@ class DiscordAutomationService {
           if (options?.components) body.components = options.components;
         }
 
-        const response = await Promise.race([
-          fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Discord API timeout")), 25_000),
-          ),
-        ]);
+        const response = await discordFetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: deadline.signal,
+        });
 
         if (!response.ok) {
           const error = await response.text();
@@ -633,6 +650,8 @@ class DiscordAutomationService {
         error: error instanceof Error ? error.message : "Unknown error",
       });
       return { success: false, error: "Failed to send message" };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

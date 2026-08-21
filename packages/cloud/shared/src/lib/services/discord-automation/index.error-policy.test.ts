@@ -51,6 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   globalThis.fetch = realFetch;
 });
 
@@ -175,17 +176,120 @@ describe("discordFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("composes a caller-provided abort signal with the deadline", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    const pending = discordFetch("https://discord.com/api/v10/users/@me", {
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    expect(seen).not.toBe(controller.signal);
+    controller.abort(new Error("caller cancelled"));
+    await expect(pending).rejects.toThrow(/caller cancelled/);
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("keeps the deadline when the caller signal never aborts", async () => {
+    jest.useFakeTimers();
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    const pending = discordFetch(
+      "https://discord.com/api/v10/users/@me",
+      { signal: controller.signal },
+      100,
+    );
+    await Promise.resolve();
+    jest.advanceTimersByTime(100);
+    await expect(pending).rejects.toThrow(/timed out/i);
+    expect(controller.signal.aborted).toBe(false);
+    expect(seen?.aborted).toBe(true);
+  });
+});
+
+describe("sendMessage — one bounded delivery sequence", () => {
+  it("aborts the underlying hung transport at the overall deadline", async () => {
+    jest.useFakeTimers();
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
+
+    const pending = discordAutomationService.sendMessage("channel-1", "hello");
+    await Promise.resolve();
+    expect(seen?.aborted).toBe(false);
+    jest.advanceTimersByTime(25_000);
+
+    await expect(pending).resolves.toEqual({
+      success: false,
+      error: "Failed to send message",
+    });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("clears the sequence deadline after a completed body read", async () => {
+    jest.useFakeTimers();
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
-      return jsonResponse({ ok: true });
+      return jsonResponse({ id: "message-1" });
     }) as unknown as typeof fetch;
 
-    const controller = new AbortController();
-    await discordFetch("https://discord.com/api/v10/users/@me", {
-      signal: controller.signal,
+    await expect(discordAutomationService.sendMessage("channel-1", "hello")).resolves.toEqual({
+      success: true,
+      messageId: "message-1",
     });
-    expect(seen).toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+    jest.advanceTimersByTime(25_000);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  it("rejects over-budget chunk work before the first REST mutation", async () => {
+    const fetchMock = mock(async () => jsonResponse({ id: "unexpected" }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await discordAutomationService.sendMessage(
+      "channel-1",
+      "x".repeat(2_000 * 25 + 1),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: "Message exceeds the 25-chunk delivery limit",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not report full success after a later chunk fails", async () => {
+    let requestCount = 0;
+    globalThis.fetch = mock(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? jsonResponse({ id: "partial-message" })
+        : jsonResponse("rate limited", { ok: false, status: 429 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      discordAutomationService.sendMessage("channel-1", "x".repeat(2_001)),
+    ).resolves.toEqual({ success: false, error: "Failed to send message" });
+    expect(requestCount).toBe(2);
   });
 });
