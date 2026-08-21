@@ -1998,6 +1998,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-message--typing .landing-message-author {
+  margin-left: 0;
   max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;

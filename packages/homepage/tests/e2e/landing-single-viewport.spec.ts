@@ -292,7 +292,13 @@ test("concurrent human replies share one compact typing row", async ({
     Math.abs((multipleAuthorBox?.x ?? 0) - (singleAuthorBox?.x ?? 0)),
   ).toBeLessThanOrEqual(1);
   expect(
+    Math.abs((multipleAuthorBox?.x ?? 0) - (multipleBubbleBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  expect(
     Math.abs((multipleBubbleBox?.x ?? 0) - (singleBubbleBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs((singleAuthorBox?.x ?? 0) - (singleBubbleBox?.x ?? 0)),
   ).toBeLessThanOrEqual(1);
   await expect(page.getByText("I'm home late", { exact: true })).toBeVisible();
   await expect(page.getByText("plants are done", { exact: true })).toBeVisible({
