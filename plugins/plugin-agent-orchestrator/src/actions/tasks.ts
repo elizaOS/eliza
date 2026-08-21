@@ -2872,7 +2872,13 @@ async function resolveRequestedRepo(
     if (url) candidate = url[0];
   }
   if (!candidate) {
-    const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^/]|$)/);
+    // Both segments must contain a letter: date fragments in quoted context
+    // ("Fri 08/21/2026 07:37") match a bare [\w.-]+/[\w.-]+ slug, and the
+    // word-"repo" gate passes on phrasing like "not the repo in a vps" — the
+    // spawn then died cloning github.com/21/2026 (live 2026-08-21).
+    const slug = text.match(
+      /\b([\w.-]*[A-Za-z][\w.-]*)\/([\w.-]*[A-Za-z][\w.-]*)\b(?=[^/]|$)/,
+    );
     if (slug && /\brepo(?:sitory)?\b/i.test(text)) {
       candidate = `${slug[1]}/${slug[2]}`;
     }
