@@ -379,13 +379,23 @@ function ChatOverlayShell() {
       reportNativeInteractiveSize(authSize);
       return;
     }
-    if (windowSizeClass === "sheet") {
+    if (windowSizeClass !== "resting") {
+      // INPUT and every open detent share one stable native envelope. Resizing
+      // NSWindow at the same instant the renderer mounted its drag preview let
+      // WKWebView briefly keep the old 64px viewport at the new window origin:
+      // the composer jumped up-screen, then snapped back as WebKit caught up.
+      // The exact painted bounds remain the separate native hit target below,
+      // so transparent pixels in this stable envelope stay click-through.
       reportNativeWindowSize(stageSize);
-      // Fail open for the transition frame. The panel's ResizeObserver reports
-      // its exact painted bounds on the next animation frame and narrows this
-      // region, but a missed observer must never leave the detached window
-      // stuck with the resting 64x32 hit target while a full sheet is visible.
-      reportNativeInteractiveSize(stageSize);
+      if (windowSizeClass === "sheet") {
+        // Fail open for the transition frame. The panel's ResizeObserver
+        // reports its exact painted bounds on the next animation frame.
+        reportNativeInteractiveSize(stageSize);
+      } else {
+        reportNativeInteractiveSize(
+          resolveChatOverlayCompactWindowSize("input", stageSize),
+        );
+      }
       return;
     }
     const compactSize = resolveChatOverlayCompactWindowSize(
@@ -412,27 +422,13 @@ function ChatOverlayShell() {
     ): void => {
       if (measuredSizeClass !== windowSizeClassRef.current) return;
       reportNativeInteractiveSize(size);
-      if (
-        controller?.authGate.gated ||
-        windowSizeClassRef.current !== "input"
-      ) {
-        return;
-      }
-      const inputWidth = Math.max(
-        CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-        stageSize.width - 24,
-      );
-      if (size.width < inputWidth) return;
-      reportNativeWindowSize({
-        width: inputWidth,
-        height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, size.height),
-      });
+      // The native envelope is intentionally stable from INPUT through every
+      // sheet detent. Only the precise interactive material follows renderer
+      // measurements; writing those measurements back into NSWindow recreated
+      // the WebKit resize race this split API exists to prevent.
     },
     [
-      controller?.authGate.gated,
-      reportNativeWindowSize,
       reportNativeInteractiveSize,
-      stageSize.width,
     ],
   );
   const handleWindowSizeClassChange = useCallback(
