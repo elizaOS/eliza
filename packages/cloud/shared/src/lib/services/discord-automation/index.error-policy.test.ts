@@ -175,17 +175,50 @@ describe("discordFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("propagates a caller abort through the composed signal", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
-      return jsonResponse({ ok: true });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
 
     const controller = new AbortController();
-    await discordFetch("https://discord.com/api/v10/users/@me", {
-      signal: controller.signal,
-    });
-    expect(seen).toBe(controller.signal);
+    const pending = discordFetch(
+      "https://discord.com/api/v10/users/@me",
+      { signal: controller.signal },
+      60_000,
+    );
+    controller.abort();
+    await expect(pending).rejects.toThrow(/aborted/i);
+    expect(seen).not.toBe(controller.signal);
+  });
+
+  it("keeps the hop deadline when the caller signal never aborts", async () => {
+    // The caller signal must not replace the bound: a caller holding a signal
+    // it never fires would otherwise pin the worker forever.
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const never = new AbortController();
+    const start = Date.now();
+    await expect(
+      discordFetch(
+        "https://discord.com/api/v10/users/@me",
+        { signal: never.signal },
+        100,
+      ),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
   });
 });
