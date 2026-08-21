@@ -140,14 +140,20 @@ describe("loadOlderConversationMessages", () => {
     expect(result).toEqual({ hasMore: false, prependedCount: 2 });
   });
 
-  it("stops at the hop budget on a long filtered run but keeps hasMore armed", async () => {
+  it("crosses a filtered run beyond the former five-hop ceiling", async () => {
     const prependMessages = vi.fn();
     let call = 0;
     const client: LoadOlderClient = {
       getConversationMessages: vi.fn(async () => {
         call += 1;
+        if (call === 7) {
+          return {
+            messages: [userMsg("visible", 900)],
+            hasMore: false,
+          };
+        }
         return {
-          messages: [blankAssistant(`s-${call}`, 1000 - call * 10)],
+          messages: [blankAssistant(`s-${call}`, 2000 - call * 100)],
           hasMore: true,
         };
       }),
@@ -160,9 +166,27 @@ describe("loadOlderConversationMessages", () => {
       prependMessages,
     });
 
-    expect(call).toBe(5);
-    expect(prependMessages).not.toHaveBeenCalled();
-    expect(result).toEqual({ hasMore: true, prependedCount: 0 });
+    expect(call).toBe(7);
+    expect(prependMessages).toHaveBeenCalledWith([userMsg("visible", 900)]);
+    expect(result).toEqual({ hasMore: false, prependedCount: 1 });
+  });
+
+  it("rejects a filtered page that does not advance to an older cursor", async () => {
+    const client: LoadOlderClient = {
+      getConversationMessages: vi.fn(async () => ({
+        messages: [blankAssistant("stuck", 20)],
+        hasMore: true,
+      })),
+    };
+
+    await expect(
+      loadOlderConversationMessages({
+        client,
+        conversationId: "conv-1",
+        currentMessages: [userMsg("c", 20)],
+        prependMessages: () => {},
+      }),
+    ).rejects.toThrow("Conversation pagination did not return an older cursor");
   });
 
   it("propagates fetch failures so the caller can retry", async () => {

@@ -4,10 +4,8 @@
  * The cursor is the timestamp of the oldest currently retained message. The
  * caller owns scroll anchoring; this helper owns the API cursor, transcript
  * filtering, prepend dispatch, and the `hasMore` result that gates the next
- * fetch. One load may issue a bounded number of page fetches: fully
- * non-renderable pages advance the cursor in-invocation (see
- * MAX_FILTERED_PAGE_HOPS) because the retained-oldest cursor alone can never
- * move past them.
+ * fetch. Fully non-renderable pages advance the cursor in-invocation because
+ * the retained-oldest cursor alone can never move past them.
  */
 
 import type { ConversationMessage } from "../api";
@@ -46,15 +44,6 @@ export interface LoadOlderResult {
   prependedCount: number;
 }
 
-/**
- * How many consecutive fully-non-renderable pages one invocation will hop
- * past. The cursor is the oldest RETAINED (renderable) message, so a page
- * where every turn filters out (a run of silent assistant turns) would
- * otherwise leave the cursor parked and every retry would refetch the same
- * page. Bounded so a pathological store can't spin the client.
- */
-const MAX_FILTERED_PAGE_HOPS = 5;
-
 export async function loadOlderConversationMessages(
   deps: LoadOlderConversationMessagesDeps,
 ): Promise<LoadOlderResult> {
@@ -73,7 +62,8 @@ export async function loadOlderConversationMessages(
   }
 
   let cursor = oldest.timestamp;
-  for (let hop = 0; hop < MAX_FILTERED_PAGE_HOPS; hop++) {
+  const seenCursors = new Set<number>([cursor]);
+  while (true) {
     const response = await client.getConversationMessages(conversationId, {
       before: cursor,
       ...(limit !== undefined ? { limit } : {}),
@@ -98,10 +88,16 @@ export async function loadOlderConversationMessages(
     // (messages arrive ascending; [0] is its oldest) and fetch the next one —
     // the retained thread's oldest message can't move, so without this hop the
     // next attempt would refetch this exact page.
-    cursor = response.messages[0].timestamp;
+    const nextCursor = response.messages[0].timestamp;
+    if (
+      typeof nextCursor !== "number" ||
+      !Number.isFinite(nextCursor) ||
+      nextCursor >= cursor ||
+      seenCursors.has(nextCursor)
+    ) {
+      throw new Error("Conversation pagination did not return an older cursor");
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   }
-
-  // Hop budget exhausted with more history behind the filtered run: report
-  // hasMore so a later scroll-up (with the same in-invocation hops) resumes.
-  return { hasMore: true, prependedCount: 0 };
 }

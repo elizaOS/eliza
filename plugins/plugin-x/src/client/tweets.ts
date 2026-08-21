@@ -711,19 +711,6 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
 }
 
 /**
- * Bounds the user-timeline pagination generators against a provider that never
- * stops paginating. `userTimeline` legitimately answers with zero tweets and a
- * non-empty `next_token` — server-side filtering (`exclude: ["retweets",
- * "replies"]`) can empty a page that still has data behind it — so a loop
- * guarded only by a fetched-tweet counter never advances that counter and never
- * terminates. X serves at most 3,200 recent tweets per user timeline, so 1,000
- * pages is ~30x more than a well-behaved provider can ever need while keeping
- * worst-case requests finite. Same bound, and the same repeated-cursor guard,
- * that `getAllRetweeters` below already carries.
- */
-export const MAX_TIMELINE_PAGES = 1000;
-
-/**
  * Resolves the cursor for the next timeline page, or `undefined` when the
  * provider signalled the end of the timeline.
  *
@@ -740,8 +727,7 @@ export function nextTimelinePageCursor(
   seenCursors: Set<string>,
   pageCount: number,
 ): string | undefined {
-  // A terminal page ends the run before any guard applies, so a timeline that
-  // legitimately ends on page 1,000 still completes.
+  // A terminal page ends the run before any integrity guard applies.
   if (!next) {
     return undefined;
   }
@@ -754,16 +740,6 @@ export function nextTimelinePageCursor(
       `X timeline pagination in ${source} repeated a page cursor`,
       {
         code: "X_TIMELINE_PAGINATION_CURSOR_REPEATED",
-        context: { source, pageCount },
-      },
-    );
-  }
-
-  if (pageCount >= MAX_TIMELINE_PAGES) {
-    throw new ElizaError(
-      `X timeline pagination in ${source} exceeded ${MAX_TIMELINE_PAGES} pages`,
-      {
-        code: "X_TIMELINE_PAGINATION_LIMIT_EXCEEDED",
         context: { source, pageCount },
       },
     );
