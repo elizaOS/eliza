@@ -128,11 +128,23 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/v1/cron/provisioning-worker-health/route.test.ts mock \"@/db/repositories/agent-sandboxes\" is missing bound export(s): PRE_DELETE_BACKUP_RETENTION_MS, prepareAgentBackupInsertData",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/cron/provisioning-worker-health/route.test.ts mock \"@/db/repositories/jobs\" is missing bound export(s): cutoverResumeWindowAllows, hydrateJob, msWindowTimestampMatch, prepareJobInsertData, StaleJobExecutionError",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/v1/cron/shared-agent-keepwarm/route.test.ts mock \"@/db/repositories/agent-sandboxes\" is missing bound export(s): PRE_DELETE_BACKUP_RETENTION_MS, prepareAgentBackupInsertData",
     "count": 1
   },
   {
     "finding": "[missing-export] packages/cloud/api/v1/cron/shared-agent-keepwarm/route.test.ts mock \"@/lib/services/shared-runtime/shared-eliza-runtime\" is missing bound export(s): runSharedElizaRuntimeTurn, runSharedElizaRuntimeTurnStream",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/eliza/agents/route.auto-provision.test.ts mock \"@/lib/api/cloud-worker-errors\" is missing bound export(s): ForbiddenError",
     "count": 1
   },
   {
@@ -152,6 +164,10 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/revoke-and-metering.test.ts mock \"@elizaos/core\" is missing bound export(s): toWellFormedUnicode, truncateWellFormed",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/voice-agent-scope-hydration.test.ts mock \"@/db/client\" is missing bound export(s): db, dbRead, dbWrite, getDbConnectionInfo",
     "count": 1
   },
@@ -164,11 +180,19 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/ws-lifecycle.test.ts mock \"@elizaos/core\" is missing bound export(s): toWellFormedUnicode, truncateWellFormed",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/v1/voice/session/__tests__/ws-route-upgrade.test.ts mock \"@/lib/cache/redis-factory\" is missing bound export(s): hasRedisConfig, isCloudflareWorkerRuntime",
     "count": 1
   },
   {
     "finding": "[missing-export] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts mock \"@/lib/cache/redis-factory\" is missing bound export(s): isCloudflareWorkerRuntime",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/session/voice-session-routes-and-auth.test.ts mock \"@elizaos/core\" is missing bound export(s): toWellFormedUnicode, truncateWellFormed",
     "count": 1
   },
   {
@@ -212,6 +236,10 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@elizaos/core\" is missing bound export(s): toWellFormedUnicode, truncateWellFormed",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/shared/src/lib/api/a2a/skills.money-guard.test.ts mock \"../../runtime/cloud-bindings\" is missing bound export(s): getCloudBinding",
     "count": 1
   },
@@ -233,6 +261,10 @@
   },
   {
     "finding": "[missing-export] packages/cloud/shared/src/lib/services/__tests__/payout-status-resilience.test.ts mock \"../../runtime/cloud-bindings\" is missing bound export(s): getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/account-deletion.test.ts mock \"./steward-platform-users\" is missing bound export(s): getStewardApiUrl, getStewardPlatformKey, isStewardPlatformConfigured",
     "count": 1
   },
   {
@@ -329,6 +361,14 @@
   },
   {
     "finding": "[missing-export] packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.test.ts mock \"../../pricing\" is missing bound export(s): calculateCost",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/social-media/providers/linkedin.error-policy.test.ts mock \"../media-download\" is missing bound export(s): assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/shared/src/lib/services/social-media/providers/slack.error-policy.test.ts mock \"../media-download\" is missing bound export(s): assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64",
     "count": 1
   },
   {
