@@ -54,7 +54,18 @@ interface Harness {
   listenerCount: () => number;
 }
 
-function makeHarness(): Harness {
+interface HarnessOptions {
+  /** Replace the runtime's cache read, e.g. to simulate a DB adapter outage. */
+  getCache?: () => Promise<never>;
+  /**
+   * Decide what each durable write resolves to. `setCache` returns
+   * `Promise<boolean>` and adapters resolve `false` when the row did not land;
+   * the registry treats that as a failed mutation and throws.
+   */
+  setCacheResult?: () => boolean;
+}
+
+function makeHarness(options: HarnessOptions = {}): Harness {
   const cache = new Map<string, unknown>();
   const listeners = new Set<AgentEventListener>();
   const bus = {
@@ -65,9 +76,12 @@ function makeHarness(): Harness {
   };
   const runtime = {
     agentId: "00000000-0000-0000-0000-0000000000aa",
-    getCache: async <T>(key: string): Promise<T | undefined> =>
-      cache.get(key) as T | undefined,
+    getCache: async <T>(key: string): Promise<T | undefined> => {
+      if (options.getCache) return options.getCache();
+      return cache.get(key) as T | undefined;
+    },
     setCache: async <T>(key: string, value: T): Promise<boolean> => {
+      if (options.setCacheResult && !options.setCacheResult()) return false;
       cache.set(key, value);
       return true;
     },
@@ -115,6 +129,30 @@ function notification(
 
 /** Wait a microtask turn so the service's async onNotification settles. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Run `body` and report every process-level unhandled rejection it produced.
+ * The bus listener is invoked synchronously, so `AgentEventService.emit`'s
+ * try/catch can only see a synchronous throw — a rejection from the detached
+ * fan-out promise is observable nowhere else.
+ */
+async function collectUnhandledRejections(
+  body: () => void,
+): Promise<unknown[]> {
+  const escaped: unknown[] = [];
+  const onUnhandled = (reason: unknown) => escaped.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    body();
+    // One turn for the fan-out promise to settle, one more for node to decide
+    // the rejection was never handled.
+    await flush();
+    await flush();
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+  return escaped;
+}
 
 describe("NotificationPushService", () => {
   let h: Harness;
@@ -257,5 +295,61 @@ describe("NotificationPushService", () => {
       providers: { ios, android },
     });
     await expect(service.attach()).resolves.toBeUndefined();
+  });
+
+  it("contains a registry hydration failure instead of rejecting into the void", async () => {
+    // The bus listener is invoked synchronously by AgentEventService.emit,
+    // whose try/catch (error-policy:J7) can only contain a SYNCHRONOUS throw.
+    // `registry.list()` → `hydrate()` deliberately rethrows a failed
+    // `getCache`, and that rejection arrives after the listener has returned —
+    // so it used to surface as a process-level unhandled rejection, which
+    // node's default `--unhandled-rejections=throw` turns into agent death on
+    // a transient cache outage.
+    const broken = makeHarness({
+      getCache: async () => {
+        throw new Error("cache adapter unavailable");
+      },
+    });
+    const ios = new FakeProvider("apns", true);
+    const android = new FakeProvider("fcm", false);
+    const service = new NotificationPushService(broken.runtime, {
+      providers: { ios, android },
+    });
+    await service.attach();
+
+    const escaped = await collectUnhandledRejections(() => {
+      broken.emit(notification());
+    });
+
+    expect(escaped).toEqual([]);
+    expect(ios.sent).toHaveLength(0);
+  });
+
+  it("contains a failed dead-token unregister instead of rejecting into the void", async () => {
+    // `dispatch` calls `registry.unregister(token)` from INSIDE its own catch
+    // block, so a PUSH_TOKEN_PERSIST_FAILED raised there is not caught by that
+    // try. The registry throws it whenever `setCache` rejects OR resolves a
+    // non-`true` value (an adapter reports `false` when the row did not land).
+    let writesLand = true;
+    const flaky = makeHarness({ setCacheResult: () => writesLand });
+    const ios = new FakeProvider("apns", true, new Set(["dead-token"]));
+    const android = new FakeProvider("fcm", false);
+    const service = new NotificationPushService(flaky.runtime, {
+      registry: flaky.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    await flaky.registry.register("ios", "dead-token");
+    writesLand = false;
+
+    const escaped = await collectUnhandledRejections(() => {
+      flaky.emit(notification());
+    });
+
+    expect(escaped).toEqual([]);
+    // The removal never persisted, so the observable registry is unchanged.
+    expect((await flaky.registry.list()).map((r) => r.token)).toEqual([
+      "dead-token",
+    ]);
   });
 });
