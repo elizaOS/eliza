@@ -18,6 +18,24 @@ import { withRetry } from "../rate-limit";
 
 const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
 
+const TIKTOK_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every TikTok REST hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function tiktokFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TIKTOK_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 interface TikTokUser {
   open_id: string;
   union_id?: string;
@@ -56,7 +74,7 @@ async function tiktokApiRequest<T>(
     error?: { code: string; message: string };
   }>(
     () =>
-      fetch(url, {
+      tiktokFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -247,7 +265,7 @@ export const tiktokProvider: SocialMediaProvider = {
         }
 
         // Upload the video
-        const uploadResponse = await fetch(initResponse.upload_url, {
+        const uploadResponse = await tiktokFetch(initResponse.upload_url, {
           method: "PUT",
           headers: {
             "Content-Type": "video/mp4",
