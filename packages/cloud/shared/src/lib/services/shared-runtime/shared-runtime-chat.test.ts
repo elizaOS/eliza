@@ -541,6 +541,29 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnRole).toBe("system");
   });
 
+  test("projects validated uploads into request-scoped runtime attachments", async () => {
+    const service = new SharedRuntimeChatService();
+    const data = Buffer.from("document body").toString("base64");
+
+    await service.bridge(
+      agent,
+      {
+        ...rpc,
+        params: { ...rpc.params, images: [{ name: "notes.txt", mimeType: "text/plain", data }] },
+      },
+      harness(),
+    );
+
+    expect(lastTurnInput?.attachments).toMatchObject([
+      {
+        title: "notes.txt",
+        contentType: "document",
+        _data: data,
+        _mimeType: "text/plain",
+      },
+    ]);
+  });
+
   test("returns before billing and persists ordered cache-local history", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -1503,6 +1526,29 @@ describe("SharedRuntimeChatService", () => {
     expect(turnCalls).toBe(1);
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("a reused clientMessageId with different attachment bytes is rejected before admission", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+    const withAttachment = (data: string) => ({
+      ...keyedRpc,
+      params: {
+        ...keyedRpc.params,
+        images: [{ name: "photo.png", mimeType: "image/png", data }],
+      },
+    });
+
+    await service.bridge(agent, withAttachment(Buffer.from("first").toString("base64")), options);
+    await Promise.all(h.background);
+
+    await expect(
+      service.bridge(agent, withAttachment(Buffer.from("second").toString("base64")), options),
+    ).rejects.toMatchObject({ name: "SharedTurnConflictError" });
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
   });
 
   test("a failed keyed turn re-executes under the SAME billing identities", async () => {
