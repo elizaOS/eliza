@@ -11,6 +11,11 @@ const strictWrapper = ({ children }: { children: ReactNode }) => (
   <StrictMode>{children}</StrictMode>
 );
 
+function requireEpoch(epoch: number | null): number {
+  if (epoch === null) throw new Error("Expected an active first-run epoch");
+  return epoch;
+}
+
 describe("useFirstRunChatRelease", () => {
   it("does not release for an unmounted startup-probe transition", () => {
     const { result, rerender } = renderHook(
@@ -30,9 +35,17 @@ describe("useFirstRunChatRelease", () => {
       { initialProps: { complete: false }, wrapper: strictWrapper },
     );
 
-    act(() => result.current.recordMountedOverlay());
+    act(() =>
+      result.current.recordMountedOverlay(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
     expect(result.current.mountedOnboarding).toBe(false);
-    act(() => result.current.recordMountedTranscript());
+    act(() =>
+      result.current.recordMountedTranscript(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
     expect(result.current.mountedOnboarding).toBe(true);
     rerender({ complete: true });
     expect(result.current.releasePending).toBe(true);
@@ -51,8 +64,16 @@ describe("useFirstRunChatRelease", () => {
       { initialProps: { complete: false }, wrapper: strictWrapper },
     );
 
-    act(() => result.current.recordMountedOverlay());
-    act(() => result.current.recordMountedTranscript());
+    act(() =>
+      result.current.recordMountedOverlay(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
+    act(() =>
+      result.current.recordMountedTranscript(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
     rerender({ complete: true });
     expect(result.current.releasePending).toBe(true);
 
@@ -62,8 +83,16 @@ describe("useFirstRunChatRelease", () => {
     expect(result.current.releasePending).toBe(false);
 
     rerender({ complete: false });
-    act(() => result.current.recordMountedOverlay());
-    act(() => result.current.recordMountedTranscript());
+    act(() =>
+      result.current.recordMountedOverlay(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
+    act(() =>
+      result.current.recordMountedTranscript(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
     rerender({ complete: true });
     expect(result.current.releasePending).toBe(true);
   });
@@ -88,10 +117,44 @@ describe("useFirstRunChatRelease", () => {
     );
 
     rerender({ complete: false, phase: "first-run-required" });
-    act(() => result.current.recordMountedOverlay());
-    act(() => result.current.recordMountedTranscript());
+    act(() =>
+      result.current.recordMountedOverlay(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
+    act(() =>
+      result.current.recordMountedTranscript(
+        requireEpoch(result.current.mountEpoch),
+      ),
+    );
     rerender({ complete: true, phase: "starting-runtime" });
 
+    expect(result.current.releasePending).toBe(true);
+  });
+
+  it("retains polling mount evidence when first run becomes authoritative", () => {
+    const { result, rerender } = renderHook(
+      ({ complete, phase }: { complete: boolean; phase: StartupPhaseValue }) =>
+        useFirstRunChatRelease(complete, phase),
+      {
+        initialProps: { complete: false, phase: "polling-backend" },
+        wrapper: strictWrapper,
+      },
+    );
+
+    const pollingEpoch = result.current.mountEpoch;
+    expect(pollingEpoch).not.toBeNull();
+    act(() => result.current.recordMountedOverlay(requireEpoch(pollingEpoch)));
+    act(() =>
+      result.current.recordMountedTranscript(requireEpoch(pollingEpoch)),
+    );
+    expect(result.current.mountedOnboarding).toBe(false);
+
+    rerender({ complete: false, phase: "first-run-required" });
+    expect(result.current.authorityEpoch).toBe(pollingEpoch);
+    expect(result.current.mountedOnboarding).toBe(true);
+
+    rerender({ complete: true, phase: "starting-runtime" });
     expect(result.current.releasePending).toBe(true);
   });
 });

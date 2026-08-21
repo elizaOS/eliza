@@ -321,10 +321,12 @@ function ChatOverlayShell({
   releaseFirstRunToFull,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
+  firstRunMountEpoch,
 }: {
   releaseFirstRunToFull: boolean;
   onFirstRunReleaseHandled: () => void;
-  onFirstRunChatMounted: () => void;
+  onFirstRunChatMounted: (epoch: number) => void;
+  firstRunMountEpoch: number | null;
 }) {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
@@ -361,6 +363,7 @@ function ChatOverlayShell({
           releaseFirstRunToFull={releaseFirstRunToFull}
           onFirstRunReleaseHandled={onFirstRunReleaseHandled}
           onFirstRunChatMounted={onFirstRunChatMounted}
+          firstRunMountEpoch={firstRunMountEpoch}
         />
       </div>
     </>
@@ -1854,12 +1857,14 @@ function ShellFoundationMount({
   releaseFirstRunToFull = false,
   onFirstRunReleaseHandled = () => {},
   onFirstRunChatMounted,
+  firstRunMountEpoch = null,
 }: {
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
   releaseFirstRunToFull?: boolean;
   onFirstRunReleaseHandled?: () => void;
-  onFirstRunChatMounted?: () => void;
+  onFirstRunChatMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
 } = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
@@ -2083,6 +2088,7 @@ function ShellFoundationMount({
         releaseFirstRunToFull={releaseFirstRunToFull}
         onFirstRunReleaseHandled={onFirstRunReleaseHandled}
         onFirstRunChatMounted={onFirstRunChatMounted}
+        firstRunMountEpoch={firstRunMountEpoch}
         onPilledChange={closeWebChatWhenPilled}
         onDetentChange={setShellHostDetent}
         onStateChange={syncNativeSurfaceState}
@@ -2164,6 +2170,7 @@ function ChatOverlayMount({
   releaseFirstRunToFull,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
+  firstRunMountEpoch = null,
   onPilledChange,
   onDetentChange,
   onStateChange,
@@ -2172,7 +2179,8 @@ function ChatOverlayMount({
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
   onFirstRunReleaseHandled: () => void;
-  onFirstRunChatMounted?: () => void;
+  onFirstRunChatMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
@@ -2194,10 +2202,14 @@ function ChatOverlayMount({
     isAuthorized: atLeast("USER"),
   });
   useLayoutEffect(() => {
-    if (controller && firstRunComplete === false) {
-      onFirstRunChatMounted?.();
+    if (
+      controller &&
+      firstRunComplete === false &&
+      firstRunMountEpoch !== null
+    ) {
+      onFirstRunChatMounted?.(firstRunMountEpoch);
     }
-  }, [controller, firstRunComplete, onFirstRunChatMounted]);
+  }, [controller, firstRunComplete, firstRunMountEpoch, onFirstRunChatMounted]);
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -3047,11 +3059,14 @@ function AppContent() {
             releaseFirstRunToFull={firstRunChatRelease.releasePending}
             onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
             onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
           />
           <FirstRunConductorMount
             onFirstRunTranscriptMounted={
               firstRunChatRelease.recordMountedTranscript
             }
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+            firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
           />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
@@ -3372,6 +3387,7 @@ function AppContent() {
           releaseFirstRunToFull={firstRunChatRelease.releasePending}
           onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
           onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
@@ -3381,6 +3397,8 @@ function AppContent() {
           onFirstRunTranscriptMounted={
             firstRunChatRelease.recordMountedTranscript
           }
+          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+          firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
         />
         {/* In-chat model-status card (headless) — while the local text model is
             downloading/loading/missing/errored it seeds ONE live status turn
