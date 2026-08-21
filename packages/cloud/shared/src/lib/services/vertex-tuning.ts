@@ -9,16 +9,20 @@ const VERTEX_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Bound every Vertex AI REST hop so a hung or rate-limited API cannot pin the
- * tuning worker indefinitely. A caller-provided abort signal wins.
+ * tuning worker indefinitely.
+ * A caller-provided signal is composed with the deadline rather than
+ * replacing it — a caller that cancels still aborts early, and a caller
+ * whose signal never fires still cannot outlive the bound.
  */
 export function vertexTuningFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = VERTEX_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 
