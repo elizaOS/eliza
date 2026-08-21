@@ -1167,5 +1167,8 @@ export async function fetchSolanaNativeBalanceViaRpc(
     }
   }
 
-  throw new Error(errors.join(" | ").slice(0, 400) || "Solana RPC unavailable");
+  throw new Error(
+    truncateWellFormed(toWellFormedUnicode(errors.join(" | ")), 400) ||
+      "Solana RPC unavailable",
+  );
 }
