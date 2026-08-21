@@ -1,3 +1,4 @@
+import { Navigation, Star } from "lucide-react";
 import type { LandingDemoPlace } from "@/lib/landing-demo";
 
 export function LandingPlaceAttachment({ place }: { place: LandingDemoPlace }) {
@@ -55,27 +56,16 @@ export function LandingPlaceAttachment({ place }: { place: LandingDemoPlace }) {
           <span>{`${place.category} · ${place.neighborhood}`}</span>
         </div>
         <span className="landing-place-directions" aria-hidden="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m13.8 4.4 5.8 5.8a2.6 2.6 0 0 1 0 3.6l-5.8 5.8a2.6 2.6 0 0 1-3.6 0l-5.8-5.8a2.6 2.6 0 0 1 0-3.6l5.8-5.8a2.6 2.6 0 0 1 3.6 0Z" />
-            <path d="m9 13 3-3 3 3M12 10v5" />
-          </svg>
+          <Navigation />
         </span>
       </div>
       <div className="landing-place-meta">
         <span className="landing-place-rating">
           {place.rating}
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="m10 1.8 2.4 5 5.5.8-4 3.8.9 5.4-4.8-2.6L5.2 17l.9-5.5-4-3.8 5.5-.8z" />
-          </svg>
+          <Star aria-hidden="true" />
         </span>
         <span>{place.distance}</span>
         <span>{place.feature}</span>
-      </div>
-      <div className="landing-place-fit">
-        <svg viewBox="0 0 20 20" aria-hidden="true">
-          <path d="m5.2 10.4 3 3 6.7-7" />
-        </svg>
-        <span>{place.fit}</span>
       </div>
     </article>
   );

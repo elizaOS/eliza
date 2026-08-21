@@ -134,8 +134,8 @@ export function findUnsupportedLandingDemoClaims(
 
 /**
  * Advanced claims are allowed only when the scripted Eliza step declares the
- * matching capability. Cards must additionally disclose the data source or
- * permission state, which is enforced by the contract test.
+ * matching capability. Attachments use that same capability contract, which
+ * the contract test enforces.
  */
 export function findUndeclaredLandingDemoClaims(
   step: LandingDemoStep,
@@ -159,16 +159,30 @@ export type LandingDemoStep =
       capability: "public-web-search";
       kind: "place";
       place: LandingDemoPlace;
+    }
+  | {
+      capability: "room-memory";
+      kind: "task-list";
+      taskList: LandingDemoTaskList;
     };
 
 export interface LandingDemoPlace {
   category: string;
   distance: string;
   feature: string;
-  fit: string;
   name: string;
   neighborhood: string;
   rating: string;
+}
+
+export interface LandingDemoTaskList {
+  items: readonly {
+    assignee: string;
+    completed: boolean;
+    task: string;
+  }[];
+  subtitle: string;
+  title: string;
 }
 
 export type LandingDemoScenarioId =
@@ -270,7 +284,6 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
           category: "Italian",
           distance: "0.4 mi",
           feature: "Quiet patio",
-          fit: "Vegetarian menu · peanut protocol checked",
           name: "Cypress Table",
           neighborhood: "Noe Valley",
           rating: "4.8",
@@ -417,6 +430,26 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         capability: "room-memory",
         kind: "eliza",
         text: "Yep. Final split: Noor does the dishwasher and two-item run, Jules has plants and pasta, Eli has recycling and trash bags, and you have coffee and laundry. Two each.",
+      },
+      {
+        capability: "room-memory",
+        kind: "task-list",
+        taskList: {
+          title: "Tonight",
+          subtitle: "To Do",
+          items: [
+            { assignee: "You", completed: false, task: "Coffee + laundry" },
+            {
+              assignee: "Noor",
+              completed: false,
+              task: "Dishwasher + 2-item run",
+            },
+            { assignee: "Eli", completed: true, task: "Recycling" },
+            { assignee: "Eli", completed: false, task: "Trash bags" },
+            { assignee: "Jules", completed: true, task: "Plants" },
+            { assignee: "Jules", completed: false, task: "Pasta" },
+          ],
+        },
       },
     ],
   },
@@ -583,14 +616,22 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] =
   });
 
 export function landingDemoStepText(step: LandingDemoStep): string {
-  if (step.kind !== "place") return step.text;
-  return [
-    step.place.name,
-    step.place.category,
-    step.place.neighborhood,
-    step.place.distance,
-    step.place.rating,
-    step.place.feature,
-    step.place.fit,
-  ].join(" ");
+  if (step.kind === "place") {
+    return [
+      step.place.name,
+      step.place.category,
+      step.place.neighborhood,
+      step.place.distance,
+      step.place.rating,
+      step.place.feature,
+    ].join(" ");
+  }
+  if (step.kind === "task-list") {
+    return [
+      step.taskList.title,
+      step.taskList.subtitle,
+      ...step.taskList.items.flatMap((item) => [item.assignee, item.task]),
+    ].join(" ");
+  }
+  return step.text;
 }

@@ -24,6 +24,7 @@ import {
   useState,
 } from "react";
 import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
+import { LandingTaskListAttachment } from "@/components/landing-task-list-attachment";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
@@ -84,6 +85,12 @@ type DemoItem =
       id: number;
       kind: "place";
       place: Extract<LandingDemoStep, { kind: "place" }>["place"];
+    }
+  | {
+      from: "eliza";
+      id: number;
+      kind: "task-list";
+      taskList: Extract<LandingDemoStep, { kind: "task-list" }>["taskList"];
     };
 
 interface DemoSender {
@@ -207,13 +214,20 @@ function scenarioItems(
           kind: "place",
           place: step.place,
         }
-      : {
-          id: scenarioIndex * 100 + index,
-          from: step.kind,
-          kind: "text",
-          name: step.kind === "member" ? step.name : undefined,
-          text: step.text,
-        },
+      : step.kind === "task-list"
+        ? {
+            from: "eliza",
+            id: scenarioIndex * 100 + index,
+            kind: "task-list",
+            taskList: step.taskList,
+          }
+        : {
+            id: scenarioIndex * 100 + index,
+            from: step.kind,
+            kind: "text",
+            name: step.kind === "member" ? step.name : undefined,
+            text: step.text,
+          },
   );
 }
 
@@ -339,12 +353,24 @@ function PhoneMockup() {
             ...previous,
             { id, from: "eliza", kind: "text", text: step.text },
           ]);
-        } else {
+        } else if (step.kind === "place") {
           await sleep(PRE_ATTACHMENT_MS);
           if (cancelled) return;
           setItems((previous) => [
             ...previous,
             { id, from: "eliza", kind: "place", place: step.place },
+          ]);
+        } else {
+          await sleep(PRE_ATTACHMENT_MS);
+          if (cancelled) return;
+          setItems((previous) => [
+            ...previous,
+            {
+              id,
+              from: "eliza",
+              kind: "task-list",
+              taskList: step.taskList,
+            },
           ]);
         }
         await sleep(
@@ -554,7 +580,7 @@ function PhoneMockup() {
               <div
                 key={item.id}
                 data-demo-item="true"
-                className={`landing-message landing-message--${item.from}${item.kind === "place" ? " landing-message--attachment" : ""}`}
+                className={`landing-message landing-message--${item.from}${item.kind !== "text" ? " landing-message--attachment" : ""}`}
               >
                 {sender ? (
                   <span className="landing-message-avatar-slot">
@@ -569,6 +595,8 @@ function PhoneMockup() {
                   ) : null}
                   {item.kind === "place" ? (
                     <LandingPlaceAttachment place={item.place} />
+                  ) : item.kind === "task-list" ? (
+                    <LandingTaskListAttachment taskList={item.taskList} />
                   ) : (
                     <p
                       className={`landing-bubble landing-bubble--${item.from}`}

@@ -1,6 +1,7 @@
 /** Development-only board for reviewing every landing demo room at once. */
 
 import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
+import { LandingTaskListAttachment } from "@/components/landing-task-list-attachment";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
@@ -30,7 +31,11 @@ function stepCapability(step: LandingDemoStep): LandingDemoCapability | null {
 }
 
 function senderAvatar(step: LandingDemoStep): string | null {
-  if (step.kind === "eliza" || step.kind === "place") {
+  if (
+    step.kind === "eliza" ||
+    step.kind === "place" ||
+    step.kind === "task-list"
+  ) {
     return "/brand/logos/logo_white_orangebg.svg";
   }
   if (step.kind === "user") return null;
@@ -42,15 +47,37 @@ function senderAvatar(step: LandingDemoStep): string | null {
 }
 
 function stepKey(step: LandingDemoStep): string {
-  return step.kind === "place"
-    ? `${step.kind}-${step.place.name}`
-    : `${step.kind}-${step.text}`;
+  if (step.kind === "place") return `${step.kind}-${step.place.name}`;
+  if (step.kind === "task-list") {
+    return `${step.kind}-${step.taskList.title}`;
+  }
+  return `${step.kind}-${step.text}`;
 }
 
-function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
+function sameStepSender(
+  first: LandingDemoStep | undefined,
+  second: LandingDemoStep | undefined,
+): boolean {
+  if (!first || !second) return false;
+  return stepSender(first) === stepSender(second);
+}
+
+function ReviewStep({
+  index,
+  nextStep,
+  previousStep,
+  step,
+}: {
+  index: number;
+  nextStep?: LandingDemoStep;
+  previousStep?: LandingDemoStep;
+  step: LandingDemoStep;
+}) {
   const sender = stepSender(step);
   const capability = stepCapability(step);
   const avatar = senderAvatar(step);
+  const showAuthor = !sameStepSender(previousStep, step);
+  const showAvatar = !sameStepSender(step, nextStep);
 
   return (
     <li
@@ -59,7 +86,7 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
     >
       <span className="demo-review-number">{index + 1}</span>
       <span className="demo-review-avatar-slot">
-        {avatar ? (
+        {avatar && showAvatar ? (
           <img
             src={avatar}
             alt=""
@@ -71,16 +98,20 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
         ) : null}
       </span>
       <div className="demo-review-step-body">
-        <div className="demo-review-step-meta">
-          <strong>{sender}</strong>
-          {capability ? (
-            <span className="demo-review-step-capability">
-              {CAPABILITY_LABELS[capability]}
-            </span>
-          ) : null}
-        </div>
+        {showAuthor ? (
+          <div className="demo-review-step-meta">
+            <strong>{sender}</strong>
+            {capability ? (
+              <span className="demo-review-step-capability">
+                {CAPABILITY_LABELS[capability]}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {step.kind === "place" ? (
           <LandingPlaceAttachment place={step.place} />
+        ) : step.kind === "task-list" ? (
+          <LandingTaskListAttachment taskList={step.taskList} />
         ) : (
           <p>{step.text}</p>
         )}
@@ -181,6 +212,8 @@ export default function DemoScenariosPage() {
                   <ReviewStep
                     index={index}
                     key={`${scenario.id}-${stepKey(step)}`}
+                    nextStep={scenario.steps[index + 1]}
+                    previousStep={scenario.steps[index - 1]}
                     step={step}
                   />
                 ))}

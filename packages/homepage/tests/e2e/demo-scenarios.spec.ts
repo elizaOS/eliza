@@ -1,7 +1,9 @@
 /** Review-board coverage for the development-only full script view. */
 import { expect, test } from "playwright/test";
 
-test("shows all five rooms and the Friends place preview", async ({ page }) => {
+test("shows all five rooms and their native attachment prototypes", async ({
+  page,
+}) => {
   await page.goto("/demo-scenarios", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -19,17 +21,32 @@ test("shows all five rooms and the Friends place preview", async ({ page }) => {
     page.locator('[data-demo-review-room="friends"] [data-demo-review-step]'),
   ).toHaveCount(21);
   await expect(
+    page.locator('[data-demo-review-room="household"] [data-demo-review-step]'),
+  ).toHaveCount(21);
+  await expect(
     page.locator(
-      '[data-demo-review-room]:not([data-demo-review-room="friends"])',
+      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
     ),
-  ).toHaveCount(4);
+  ).toHaveCount(3);
   for (const room of await page
-    .locator('[data-demo-review-room]:not([data-demo-review-room="friends"])')
+    .locator(
+      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
+    )
     .all()) {
     await expect(room.locator("[data-demo-review-step]")).toHaveCount(20);
   }
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-task-list-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-place-fit")).toHaveCount(0);
+  await expect(
+    page.locator(".landing-task-list-attachment footer"),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      '[data-demo-review-room="friends"] [data-demo-review-step="place"] .demo-review-step-meta',
+    ),
+  ).toHaveCount(0);
   await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
 
   const castSources = await page

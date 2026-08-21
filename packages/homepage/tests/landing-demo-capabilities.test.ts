@@ -75,7 +75,10 @@ describe("landing Shared-agent capability contract", () => {
       expect(connectedSteps.length).toBeGreaterThan(0);
       expect(
         connectedSteps.every(
-          (step) => step.kind === "eliza" || step.kind === "place",
+          (step) =>
+            step.kind === "eliza" ||
+            step.kind === "place" ||
+            step.kind === "task-list",
         ),
       ).toBe(true);
     }
@@ -104,10 +107,14 @@ describe("landing Shared-agent capability contract", () => {
 
   test("gives every room a longer mini-story with evolving recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      expect(scenario.steps).toHaveLength(scenario.id === "friends" ? 21 : 20);
-      expect(scenario.steps.at(-1)?.kind).toBe(
-        scenario.id === "friends" ? "place" : "eliza",
-      );
+      const expectedAttachment =
+        scenario.id === "friends"
+          ? "place"
+          : scenario.id === "household"
+            ? "task-list"
+            : null;
+      expect(scenario.steps).toHaveLength(expectedAttachment ? 21 : 20);
+      expect(scenario.steps.at(-1)?.kind).toBe(expectedAttachment ?? "eliza");
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
       ).toBeGreaterThanOrEqual(5);
@@ -139,6 +146,29 @@ describe("landing Shared-agent capability contract", () => {
         neighborhood: "Noe Valley",
       },
     });
+  });
+
+  test("keeps the Household task list synced with the final chat state", () => {
+    const household = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "household",
+    );
+    const attachment = household?.steps.find(
+      (step) => step.kind === "task-list",
+    );
+
+    expect(attachment).toMatchObject({
+      capability: "room-memory",
+      kind: "task-list",
+      taskList: {
+        subtitle: "To Do",
+        title: "Tonight",
+      },
+    });
+    expect(
+      attachment?.kind === "task-list"
+        ? attachment.taskList.items.filter((item) => item.completed)
+        : [],
+    ).toHaveLength(2);
   });
 
   test("keeps every attributed speaker inside that room's member list", () => {
