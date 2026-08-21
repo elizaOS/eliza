@@ -77,9 +77,10 @@ describe("choice action task id surrogate safety", () => {
 		// Both site truncations must be well-formed
 		expect(isWellFormed(capturedText)).toBe(true);
 		expect(() => JSON.stringify({ capturedText })).not.toThrow();
-		// First site: shortId for taskIdAstral should back off to 7 'a's (not contain lone surrogate)
+		// First site backs off before the boundary emoji. The full menu still
+		// contains the second task's valid emoji, so well-formedness is the
+		// relevant whole-string assertion rather than banning its high surrogate.
 		expect(capturedText.includes("ID: aaaaaaa")).toBe(true);
-		expect(capturedText.includes("\ud83e")).toBe(false);
 		// Second site: shortId for taskIdShort (6b + fox = 8) should keep fox
 		expect(capturedText.includes(fox)).toBe(true);
 	});
