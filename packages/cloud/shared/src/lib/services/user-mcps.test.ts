@@ -28,6 +28,11 @@ let idCounter: number;
 let usageStats: {
   totalRequests: number;
   totalCreditsCharged: number;
+  baseAmountUsd: string;
+  affiliateFeeUsd: string;
+  platformFeeUsd: string;
+  totalAmountUsd: string;
+  feeComponentsKnown: boolean;
   totalX402Usd: number;
   uniqueOrgs: number;
 };
@@ -172,9 +177,27 @@ mock.module("../../db/repositories", () => ({
     async getStats() {
       return usageStats;
     },
-    async create(data: { credits_charged: string }) {
+    async create(data: {
+      credits_charged: string;
+      base_amount_usd: string;
+      affiliate_fee_usd: string;
+      platform_fee_usd: string;
+      total_amount_usd: string;
+    }) {
       usageStats.totalRequests += 1;
       usageStats.totalCreditsCharged += Number(data.credits_charged);
+      usageStats.baseAmountUsd = String(
+        Number(usageStats.baseAmountUsd) + Number(data.base_amount_usd),
+      );
+      usageStats.affiliateFeeUsd = String(
+        Number(usageStats.affiliateFeeUsd) + Number(data.affiliate_fee_usd),
+      );
+      usageStats.platformFeeUsd = String(
+        Number(usageStats.platformFeeUsd) + Number(data.platform_fee_usd),
+      );
+      usageStats.totalAmountUsd = String(
+        Number(usageStats.totalAmountUsd) + Number(data.total_amount_usd),
+      );
       usageStats.uniqueOrgs = 1;
       return { id: "usage-1" };
     },
@@ -240,6 +263,11 @@ beforeEach(() => {
   usageStats = {
     totalRequests: 0,
     totalCreditsCharged: 0,
+    baseAmountUsd: "0",
+    affiliateFeeUsd: "0",
+    platformFeeUsd: "0",
+    totalAmountUsd: "0",
+    feeComponentsKnown: true,
     totalX402Usd: 0,
     uniqueOrgs: 0,
   };
@@ -588,8 +616,8 @@ describe("userMcpsService.toRegistryFormat", () => {
   });
 });
 
-describe("userMcpsService base-price stats", () => {
-  test("names the base amount honestly when a precharge also included surcharges", async () => {
+describe("userMcpsService fee-inclusive receipt stats", () => {
+  test("returns the persisted base, fees, and debit total separately", async () => {
     const mcp = await userMcpsService.create(baseCreateParams({ creatorSharePercentage: 0 }));
 
     const result = await userMcpsService.recordUsageWithoutDeduction({
@@ -610,10 +638,13 @@ describe("userMcpsService base-price stats", () => {
     const stats = await userMcpsService.getStats(mcp.id, ORG);
     expect(stats).toMatchObject({
       totalCreditsEarned: 100,
-      baseCloudCreditsCharged: 1,
+      baseCloudCreditsCharged: "1",
+      affiliateFeesCloudCreditsCharged: "0.25",
+      platformFeesCloudCreditsCharged: "0.2",
+      totalCloudCreditsCharged: "1.45",
+      feeComponentsKnown: true,
       creditUnit: "USD",
     });
-    expect(stats).not.toHaveProperty("totalCloudCreditsCharged");
   });
 });
 

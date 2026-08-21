@@ -41,7 +41,10 @@ import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
-import { formatCloudCreditUsd } from "./lib/format-cloud-credit";
+import {
+  formatCloudCreditUsd,
+  formatMcpUsageTotal,
+} from "./lib/format-cloud-credit";
 import {
   useDeleteMcp,
   usePublishMcp,
@@ -259,11 +262,9 @@ export function McpDetailDrawer({
                     />
                     <Stat
                       label={t("cloud.mcps.statCredits", {
-                        defaultValue: "Base cloud credits charged",
+                        defaultValue: "Total cloud credits charged",
                       })}
-                      value={formatCloudCreditUsd(
-                        stats.baseCloudCreditsCharged,
-                      )}
+                      value={formatMcpUsageTotal(stats)}
                     />
                     <Stat
                       label={t("cloud.mcps.statX402", {
