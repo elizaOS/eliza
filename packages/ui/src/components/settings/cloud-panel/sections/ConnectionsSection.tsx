@@ -201,12 +201,14 @@ function McpRow({ mcp }: { mcp: McpEntry }) {
 function ConnectorGroup({
   title,
   connectors,
+  footer,
 }: {
   title: string;
   connectors: ConnectorEntry[];
+  footer: string;
 }) {
   return (
-    <SettingsGroup title={title}>
+    <SettingsGroup title={title} footer={footer}>
       {connectors.map((connector) => (
         <ConnectorRow key={connector.id} connector={connector} />
       ))}
@@ -247,11 +249,20 @@ export function ConnectionsSection() {
 
   return (
     <SettingsStack>
-      <ConnectorGroup title="Messaging" connectors={MESSAGING_CONNECTORS} />
-      <ConnectorGroup title="Social" connectors={SOCIAL_CONNECTORS} />
+      <ConnectorGroup
+        title="Messaging"
+        connectors={MESSAGING_CONNECTORS}
+        footer="Link Eliza to messaging channels for two-way conversation."
+      />
+      <ConnectorGroup
+        title="Social"
+        connectors={SOCIAL_CONNECTORS}
+        footer="Connect social platforms for posting and monitoring."
+      />
       <ConnectorGroup
         title="Productivity"
         connectors={PRODUCTIVITY_CONNECTORS}
+        footer="Integrate with productivity suites for calendar, mail, and docs."
       />
 
       <SettingsGroup
