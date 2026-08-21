@@ -178,3 +178,132 @@ describe("mergeWarmClaimEnvironmentVars", () => {
     });
   });
 });
+
+/**
+ * The payload crosses an HTTP boundary as `JSON.stringify(payload)` and the
+ * container applies it to the live runtime, persists it via `updateAgent`
+ * metadata and journals it to character history. So every projected string has
+ * to be well-formed UTF-16 by the time it leaves this builder: a lone surrogate
+ * survives JSON (it is escaped as `\ud83d`) and only turns into a permanent
+ * U+FFFD when the container UTF-8 encodes it for storage, and it throws
+ * `URIError` in any downstream that re-encodes it into a URI. [sol-warmpool]
+ */
+describe("buildWarmClaimCharacterPayload — surrogate-safe projection", () => {
+  const ROCKET = "🚀"; // U+1F680, one surrogate pair (2 UTF-16 code units)
+
+  test("a cap landing mid-pair backs off one code unit instead of splitting it", () => {
+    const payload = buildWarmClaimCharacterPayload({
+      name: `${"a".repeat(99)}${ROCKET}`, // 101 units, NAME_MAX = 100
+      username: `${"u".repeat(49)}${ROCKET}`, // 51 units, USERNAME_MAX = 50
+      system: `${"s".repeat(9999)}${ROCKET}`, // 10001 units, SYSTEM_MAX = 10000
+      adjectives: [`${"j".repeat(99)}${ROCKET}`], // 101 units, LIST_ITEM_MAX = 100
+      topics: [`${"t".repeat(99)}${ROCKET}`],
+    }) as {
+      name: string;
+      username: string;
+      system: string;
+      adjectives: string[];
+      topics: string[];
+    } | null;
+
+    expect(payload).not.toBeNull();
+    if (!payload) return;
+
+    expect(payload.name).toBe("a".repeat(99));
+    expect(payload.username).toBe("u".repeat(49));
+    expect(payload.system).toBe("s".repeat(9999));
+    expect(payload.adjectives[0]).toBe("j".repeat(99));
+    expect(payload.topics[0]).toBe("t".repeat(99));
+
+    for (const value of [
+      payload.name,
+      payload.username,
+      payload.system,
+      payload.adjectives[0],
+      payload.topics[0],
+    ]) {
+      expect(value.isWellFormed()).toBe(true);
+      // The whole point: no unpaired half rides onto the wire.
+      expect(value.endsWith("\ud83d")).toBe(false);
+    }
+  });
+
+  test("a lone surrogate already in agent_config is normalised, not forwarded", () => {
+    const payload = buildWarmClaimCharacterPayload({
+      name: "agent\ud83d",
+      username: "\udc00user",
+      system: "sys\ud83dtem",
+      bio: "bio\ud83d",
+      topics: ["topic\ud83d"],
+      style: { all: ["style\ud83d"] },
+      postExamples: ["post\ud83d"],
+      messageExamples: [
+        {
+          examples: [
+            { name: "who\ud83d", content: { text: "what\ud83d", actions: ["REPLY\ud83d"] } },
+          ],
+        },
+      ],
+    });
+
+    expect(payload).not.toBeNull();
+    if (!payload) return;
+
+    const strings: string[] = [];
+    const collect = (value: unknown): void => {
+      if (typeof value === "string") strings.push(value);
+      else if (Array.isArray(value)) for (const item of value) collect(item);
+      else if (value && typeof value === "object")
+        for (const item of Object.values(value)) collect(item);
+    };
+    collect(payload);
+
+    expect(strings.length).toBeGreaterThan(0);
+    for (const value of strings) {
+      expect(value.isWellFormed()).toBe(true);
+    }
+    expect(payload.name).toBe("agent�");
+    expect(payload.username).toBe("�user");
+    expect(payload.system).toBe("sys�tem");
+  });
+
+  test("the projected name survives the wire and the container's UTF-8 persist", () => {
+    const payload = buildWarmClaimCharacterPayload({
+      name: `${"a".repeat(99)}${ROCKET}`,
+    }) as { name: string } | null;
+    expect(payload).not.toBeNull();
+    if (!payload) return;
+
+    // What `pushClaimedWarmContainerCharacter` puts on the wire, and what the
+    // container gets back out of it before storing it.
+    const received = JSON.parse(JSON.stringify(payload)) as { name: string };
+    const persisted = Buffer.from(received.name, "utf8").toString("utf8");
+    expect(persisted).toBe(payload.name);
+    expect(persisted.includes("�")).toBe(false);
+    // Any downstream that re-encodes the stored name into a URI must not throw.
+    expect(() => encodeURIComponent(persisted)).not.toThrow();
+  });
+
+  test("ASCII and BMP values under and at the cap are unchanged", () => {
+    const config = {
+      name: "Nyx",
+      username: "nyx",
+      system: "You are Nyx. 漢字 кириллица é ☃",
+      bio: ["Nyx is a night owl. 漢字"],
+      adjectives: ["nocturnal", "é".repeat(100)],
+      topics: ["astronomy"],
+      style: { all: ["terse ☃"] },
+      postExamples: ["hello 漢字"],
+    };
+    expect(buildWarmClaimCharacterPayload(config)).toEqual({
+      name: "Nyx",
+      username: "nyx",
+      system: "You are Nyx. 漢字 кириллица é ☃",
+      bio: ["Nyx is a night owl. 漢字"],
+      adjectives: ["nocturnal", "é".repeat(100)],
+      topics: ["astronomy"],
+      style: { all: ["terse ☃"] },
+      postExamples: ["hello 漢字"],
+    });
+  });
+});
