@@ -18,6 +18,23 @@ import { withRetry } from "../rate-limit";
 const REDDIT_API_BASE = "https://oauth.reddit.com";
 const REDDIT_AUTH_BASE = "https://www.reddit.com/api/v1";
 
+const REDDIT_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Reddit REST hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function redditFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = REDDIT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface RedditToken {
   access_token: string;
   token_type: string;
@@ -55,7 +72,7 @@ async function getAccessToken(
 
   const { data } = await withRetry<RedditToken>(
     () =>
-      fetch(`${REDDIT_AUTH_BASE}/access_token`, {
+      redditFetch(`${REDDIT_AUTH_BASE}/access_token`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${auth}`,
@@ -91,7 +108,7 @@ async function redditApiRequest<T>(
 
   const { data } = await withRetry<T>(
     () =>
-      fetch(url, {
+      redditFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
