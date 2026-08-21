@@ -376,7 +376,7 @@ function redactAuditMetadata(value: unknown): unknown {
       redactedValue: AUDIT_REDACTED,
     });
   } catch (error) {
-    // error-policy:J3 metadata already at rest may exceed the walk budget (it
+    // error-policy:J4 metadata already at rest may exceed the walk budget (it
     // could have been written before this bound existed, or by an in-process
     // writer that does not pass through this route). Serve an explicit marker
     // so a single stored value cannot 500 every subsequent read; the reader is
@@ -760,6 +760,10 @@ export async function handleConnectorAccountRoutes(
       try {
         createPatch = accountPatchFromBody(parsed.data);
       } catch (err) {
+        // error-policy:J1 route boundary — an over-budget caller body becomes a
+        // 400 rather than escaping the handler with no response written. Any
+        // other error is rethrown, so this narrows one shape rather than
+        // swallowing the class.
         if (!isUnboundedMetadataGraph(err)) throw err;
         error(res, UNBOUNDED_METADATA_MESSAGE, 400);
         return true;
@@ -810,6 +814,9 @@ export async function handleConnectorAccountRoutes(
         try {
           patch = accountPatchFromBody(parsed.data, existing.metadata);
         } catch (err) {
+          // error-policy:J1 route boundary — same translation as the POST path
+          // above; an over-budget patch body becomes a 400 and every other
+          // error is rethrown.
           if (!isUnboundedMetadataGraph(err)) throw err;
           error(res, UNBOUNDED_METADATA_MESSAGE, 400);
           return true;
