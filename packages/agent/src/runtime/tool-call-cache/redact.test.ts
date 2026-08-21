@@ -65,6 +65,18 @@ describe("defaultPrivacyRedactor", () => {
     expect(out).not.toContain("37.7749");
   });
 
+  it("redacts coordinate objects with additional scalar fields", () => {
+    const out = defaultPrivacyRedactor(
+      '{"coords" : { "latitude" : 37.7749, "longitude" : -122.4194, "accuracy" : 12, "source_name": "gps" }}',
+    ) as string;
+    expect(out).toBe("{[REDACTED_GEO]}");
+  });
+
+  it("scans adversarial coordinate-like text in linear time", () => {
+    const input = `{"coords":{"latitude":0,"longitude":0${',"A":+\t'.repeat(50_000)}}}`;
+    expect(defaultPrivacyRedactor(input)).toBe("{[REDACTED_GEO]}");
+  });
+
   it("redacts lat/lng pair", () => {
     const out = defaultPrivacyRedactor(
       '{"latitude": 48.8566, "longitude": 2.3522}',

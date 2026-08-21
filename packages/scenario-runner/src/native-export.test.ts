@@ -504,6 +504,43 @@ describe("exportScenarioNativeJsonl", () => {
     }
   });
 
+  it("redacts long coordinate objects without regex backtracking", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-coords-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      const trajectory = syntheticTrajectory() as ReturnType<
+        typeof syntheticTrajectory
+      >;
+      const planner = trajectory.stages[1];
+      if (!planner || !("model" in planner) || !planner.model) {
+        throw new Error("synthetic planner stage missing");
+      }
+      planner.model.response = `{"coords":{"latitude":0,"longitude":0${',"A":+\t'.repeat(50_000)}}}`;
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(trajectory),
+        "utf-8",
+      );
+
+      const outPath = path.join(runDir, "native.jsonl");
+      expect(exportScenarioNativeJsonl(runDir, outPath)).toBe(1);
+      const body = readFileSync(outPath, "utf-8");
+      expect(body).toContain("[REDACTED_GEO]");
+      expect(body).not.toContain('"latitude":0');
+      const attestation = JSON.parse(
+        readFileSync(
+          path.join(runDir, "native.privacy-attestation.json"),
+          "utf-8",
+        ),
+      );
+      expect(attestation.redaction_count).toBeGreaterThanOrEqual(1);
+      expect(attestation.categories.geo).toBeGreaterThanOrEqual(1);
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
   it("labels scenario native exports as synthetic, not a reviewed real-user export (#13623)", () => {
     const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-src-"));
     try {

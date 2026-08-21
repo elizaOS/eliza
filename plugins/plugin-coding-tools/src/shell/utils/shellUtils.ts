@@ -287,9 +287,52 @@ export function deriveSessionName(command: string): string | undefined {
 }
 
 function tokenizeCommand(command: string): string[] {
-  const matches =
-    command.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
-  return matches.map((token) => stripQuotes(token)).filter(Boolean);
+  const tokens: string[] = [];
+  let token = "";
+  let cursor = 0;
+  const flush = () => {
+    if (!token) return;
+    const stripped = stripQuotes(token);
+    if (stripped) tokens.push(stripped);
+    token = "";
+  };
+
+  while (cursor < command.length) {
+    const char = command[cursor];
+    if (/\s/.test(char)) {
+      flush();
+      cursor += 1;
+      continue;
+    }
+    if (char !== '"' && char !== "'") {
+      token += char;
+      cursor += 1;
+      continue;
+    }
+
+    const quote = char;
+    let quoteEnd = cursor + 1;
+    while (quoteEnd < command.length) {
+      if (command[quoteEnd] === "\\" && quoteEnd + 1 < command.length) {
+        quoteEnd += 2;
+        continue;
+      }
+      if (command[quoteEnd] === quote) break;
+      quoteEnd += 1;
+    }
+    if (quoteEnd === command.length) {
+      // The former matcher skipped an unmatched delimiter and resumed at the
+      // following text. Preserve that behavior without repeatedly exploring
+      // alternate quoted/unquoted parses.
+      flush();
+      cursor += 1;
+      continue;
+    }
+    token += command.slice(cursor, quoteEnd + 1);
+    cursor = quoteEnd + 1;
+  }
+  flush();
+  return tokens;
 }
 
 function stripQuotes(value: string): string {
