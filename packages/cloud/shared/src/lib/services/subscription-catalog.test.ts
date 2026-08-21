@@ -169,6 +169,16 @@ describe("subscription catalog contract", () => {
     );
   });
 
+  test("rejects non-canonical six-decimal allowance money", () => {
+    const [plus, pro] = __publicSubscriptionPlansForTests().plans;
+    expect(() =>
+      __buildSubscriptionCatalogForTests([
+        { ...plus, allowance: { ...plus?.allowance, amountUsd: "025.000000" } },
+        pro,
+      ]),
+    ).toThrow();
+  });
+
   test("public DTO serialization contains no Stripe or provider identifiers", () => {
     const serialized = JSON.stringify(__publicSubscriptionPlansForTests());
     expect(serialized.toLowerCase()).not.toContain("stripe");
@@ -222,6 +232,7 @@ describe("Stripe provider authority", () => {
   test.each([
     ["price activity", { active: false }],
     ["currency", { currency: "eur" }],
+    ["non-canonical currency case", { currency: "USD" }],
     ["amount", { unitAmount: 2_999 }],
     ["price kind", { type: "one_time" }],
     ["billing scheme", { billingScheme: "tiered" }],
@@ -277,6 +288,17 @@ describe("Stripe provider authority", () => {
       now: () => now,
     });
     expect(fixture.priceCalls).toHaveLength(4);
+  });
+
+  test("does not reuse provider verification after a Stripe credential rotation", async () => {
+    const fixture = createProvider();
+    await getVerifiedSubscriptionPlans({ env: TEST_ENV, provider: fixture.provider });
+    await getVerifiedSubscriptionPlans({
+      env: { ...TEST_ENV, STRIPE_SECRET_KEY: "sk_test_rotatedCatalog456" },
+      provider: fixture.provider,
+    });
+    expect(fixture.priceCalls).toHaveLength(4);
+    expect(fixture.productCalls).toHaveLength(4);
   });
 
   test("never caches a provider failure", async () => {

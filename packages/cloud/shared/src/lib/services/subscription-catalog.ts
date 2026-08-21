@@ -30,7 +30,7 @@ const planDefinitionSchema = z
     amountCents: z.number().int().positive().safe(),
     allowance: z
       .object({
-        amountUsd: z.string().regex(/^\d+\.\d{6}$/),
+        amountUsd: z.string().regex(/^(?:0|[1-9]\d*)\.\d{6}$/),
         fundingClass: z.literal("allowance_eligible"),
         rollover: z.literal(false),
       })
@@ -173,6 +173,7 @@ interface PlanBinding {
 
 interface SubscriptionCatalogBindings {
   expectedLivemode: boolean;
+  credential: string;
   plans: Readonly<Record<SubscriptionPlanKey, Readonly<PlanBinding>>>;
 }
 
@@ -302,7 +303,7 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
       "Subscription plans cannot share an approved provider product",
     );
   }
-  return deepFreeze({ expectedLivemode, plans });
+  return deepFreeze({ expectedLivemode, credential: secret.data, plans });
 }
 
 function mismatch(planKey: SubscriptionPlanKey, field: string): never {
@@ -331,7 +332,7 @@ async function verifyPlan(
   const product = productResult.data;
 
   if (!price.active) mismatch(plan.key, "price.active");
-  if (price.currency.toLowerCase() !== plan.currency) mismatch(plan.key, "price.currency");
+  if (price.currency !== plan.currency) mismatch(plan.key, "price.currency");
   if (price.unitAmount !== plan.amountCents) mismatch(plan.key, "price.unit_amount");
   if (price.type !== "recurring") mismatch(plan.key, "price.type");
   if (price.billingScheme !== "per_unit") mismatch(plan.key, "price.billing_scheme");
@@ -373,6 +374,11 @@ function bindingCacheKey(bindings: SubscriptionCatalogBindings): string {
   return [
     CATALOG_VERSION,
     bindings.expectedLivemode ? "live" : "test",
+    // The Stripe client is also keyed by the complete credential. Keeping the
+    // same identity here prevents a valid test/live key rotation from reusing
+    // a provider verification performed under the previous Stripe account.
+    // This process-local key is never logged, serialized, or returned.
+    bindings.credential,
     bindings.plans.plus_monthly.priceId,
     bindings.plans.plus_monthly.productId,
     bindings.plans.pro_monthly.priceId,

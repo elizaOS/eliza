@@ -14,8 +14,10 @@ import type { SubscriptionPlansDto } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const SUCCESS_CACHE_CONTROL =
-  "public, max-age=60, s-maxage=300, must-revalidate";
+// Provider/configuration verification is part of publication. A shared edge
+// cache would bypass that fail-closed boundary after a binding rotation or
+// deploy, so clients must re-enter the Worker for every catalog read.
+const SUCCESS_CACHE_CONTROL = "no-store";
 const FAILURE_RETRY_SECONDS = "60";
 
 interface SubscriptionPlansRouteDependencies {
@@ -40,7 +42,6 @@ export function createSubscriptionPlansRoute(
     try {
       const plans = await dependencies.loadPlans();
       c.header("Cache-Control", SUCCESS_CACHE_CONTROL);
-      c.header("ETag", `"subscription-catalog-${plans.catalogVersion}"`);
       return c.json({ success: true as const, data: plans });
     } catch (error) {
       // error-policy:J1 The public transport boundary emits one explicit,
