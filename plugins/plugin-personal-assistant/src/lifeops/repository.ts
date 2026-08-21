@@ -2785,8 +2785,15 @@ export class LifeOpsRepository {
           try {
             result = parseJsonRecord(row.result_json);
           } catch {
-            // error-policy:J6 one corrupt historical result must not block the
-            // compatibility migration for every other workflow run.
+            // error-policy:J3 corrupt stored JSON produces an explicit skip
+            // rather than a fabricated key, so one bad historical row cannot
+            // block the compatibility migration for every other run. Logged
+            // with the row id, because "backfill completed" and "backfill
+            // silently dropped 4,000 rows" must not look identical.
+            logger.warn(
+              { workflowRunId: row.id },
+              "[lifeops-repository] skipped a workflow run whose stored result could not be parsed during idempotency backfill",
+            );
             continue;
           }
           const legacyKey = result.idempotencyKey;

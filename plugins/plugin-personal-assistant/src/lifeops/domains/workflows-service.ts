@@ -506,9 +506,19 @@ export class WorkflowsDomain {
             idempotencyKey: `schedule:${nextWorkflow.id}:${dueAt}`,
           });
         if (disposition === "in_progress") {
-          this.ctx.logLifeOpsWarn(
+          // A claim that never completed is unrecoverable without operator
+          // action: the partial unique index means this (agent, workflow, key)
+          // can never be claimed again, so this workflow's cursor stops
+          // advancing permanently. reportError is the designated signal for
+          // that — it reaches RECENT_ERRORS and owner escalation, where a warn
+          // re-logged on every scheduler tick reaches nobody.
+          this.ctx.runtime.reportError(
             "workflow_scheduled_execution",
-            "workflow run is already in progress; scheduler cursor was not advanced",
+            new LifeOpsServiceError(
+              409,
+              `workflow run ${run.id} holds an uncompleted running claim; the scheduler cursor cannot advance until it is released`,
+              "WORKFLOW_RUN_CLAIM_WEDGED",
+            ),
             {
               workflowId: nextWorkflow.id,
               workflowRunId: run.id,
@@ -657,9 +667,16 @@ export class WorkflowsDomain {
               idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.endAt}`,
             });
           if (disposition === "in_progress") {
-            this.ctx.logLifeOpsWarn(
+            // Same unrecoverable shape as the scheduled path above: the claim
+            // can never be re-taken, so this workflow stops advancing until an
+            // operator releases it.
+            this.ctx.runtime.reportError(
               "workflow_event_execution",
-              "workflow run is already in progress; event cursor was not advanced",
+              new LifeOpsServiceError(
+                409,
+                `workflow run ${run.id} holds an uncompleted running claim; the event cursor cannot advance until it is released`,
+                "WORKFLOW_RUN_CLAIM_WEDGED",
+              ),
               {
                 workflowId: nextWorkflow.id,
                 workflowRunId: run.id,
@@ -742,9 +759,16 @@ export class WorkflowsDomain {
               idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.occurredAt}`,
             });
           if (disposition === "in_progress") {
-            this.ctx.logLifeOpsWarn(
+            // Same unrecoverable shape as the scheduled path above: the claim
+            // can never be re-taken, so this workflow stops advancing until an
+            // operator releases it.
+            this.ctx.runtime.reportError(
               "workflow_event_execution",
-              "workflow run is already in progress; event cursor was not advanced",
+              new LifeOpsServiceError(
+                409,
+                `workflow run ${run.id} holds an uncompleted running claim; the event cursor cannot advance until it is released`,
+                "WORKFLOW_RUN_CLAIM_WEDGED",
+              ),
               {
                 workflowId: nextWorkflow.id,
                 workflowRunId: run.id,

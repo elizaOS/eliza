@@ -668,9 +668,12 @@ describe("WorkflowsDomain execution contract", () => {
       lastDueAt: previousDueAt,
       lastRunId: previousRunId,
     });
-    expect(harness.logLifeOpsWarn).toHaveBeenCalledWith(
+    // Escalated, not merely logged: the claim can never be re-taken, so the
+    // cursor is stuck until an operator intervenes. reportError is what
+    // reaches RECENT_ERRORS and owner escalation.
+    expect(harness.reportError).toHaveBeenCalledWith(
       "workflow_scheduled_execution",
-      "workflow run is already in progress; scheduler cursor was not advanced",
+      expect.objectContaining({ code: "WORKFLOW_RUN_CLAIM_WEDGED" }),
       {
         workflowId: "wf-1",
         workflowRunId: "already-running-scheduled-run",
@@ -744,9 +747,9 @@ describe("WorkflowsDomain execution contract", () => {
     expect(definition.metadata.lifeopsScheduler).toEqual(
       originalSchedulerState,
     );
-    expect(harness.logLifeOpsWarn).toHaveBeenCalledWith(
+    expect(harness.reportError).toHaveBeenCalledWith(
       "workflow_event_execution",
-      "workflow run is already in progress; event cursor was not advanced",
+      expect.objectContaining({ code: "WORKFLOW_RUN_CLAIM_WEDGED" }),
       {
         workflowId: "wf-1",
         workflowRunId: "already-running-event-run",
