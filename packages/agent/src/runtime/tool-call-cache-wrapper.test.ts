@@ -177,6 +177,54 @@ describe("wrapActionWithCache", () => {
     expect(calls()).toBe(2);
   });
 
+  it("does not cache a proxied field or run its reflection traps", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const { action, calls } = makeFakeAction("web_search", () => ({
+      success: true,
+      data: new Proxy(
+        { payload: "value" },
+        {
+          get() {
+            trapCalls.get += 1;
+            throw new TypeError("hostile get trap");
+          },
+          getOwnPropertyDescriptor() {
+            trapCalls.getOwnPropertyDescriptor += 1;
+            throw new TypeError("hostile descriptor trap");
+          },
+          getPrototypeOf() {
+            trapCalls.getPrototypeOf += 1;
+            throw new TypeError("hostile prototype trap");
+          },
+          ownKeys() {
+            trapCalls.ownKeys += 1;
+            throw new TypeError("hostile ownKeys trap");
+          },
+        },
+      ),
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    const options = { parameters: { q: "hostile-proxy" } };
+
+    await wrapped.handler({} as never, {} as never, undefined, options);
+    await wrapped.handler({} as never, {} as never, undefined, options);
+
+    expect(calls()).toBe(2);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
+  });
+
   it("createToolCallCacheFromConfig returns null when disabled", () => {
     const cache = createToolCallCacheFromConfig({ enabled: false });
     expect(cache).toBeNull();
