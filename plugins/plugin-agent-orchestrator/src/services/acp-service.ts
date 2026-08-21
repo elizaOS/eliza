@@ -43,7 +43,12 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKENDS, isAndroidMobile } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  isAndroidMobile,
+  isCodingAgentBackend,
+} from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
@@ -2916,7 +2921,8 @@ export class AcpService extends Service {
   }
 
   private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
+    const preflight = CODING_AGENT_BACKEND_PREFLIGHTS.opencode;
+    const configured = this.setting(preflight.commandConfigKey)?.trim();
     if (configured) return configured;
     return resolveVendoredOpencodeAcpCommand();
   }
@@ -3045,8 +3051,9 @@ export class AcpService extends Service {
   }
 
   private codexAgentCommand(): string {
+    const preflight = CODING_AGENT_BACKEND_PREFLIGHTS.codex;
     const command = resolveCodexAcpCommand(
-      this.setting("ELIZA_CODEX_ACP_COMMAND"),
+      this.setting(preflight.commandConfigKey),
     );
     if (command === DEFAULT_CODEX_ACP_COMMAND) {
       this.validateManagedCodexAcpModeConfiguration();
@@ -3617,32 +3624,19 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
+    if (!isCodingAgentBackend(normalizedAgentType)) {
+      return String(normalizedAgentType);
     }
-    if (normalizedAgentType === "codex") return this.codexAgentCommand();
-    const override = this.setting(
-      `ELIZA_${String(normalizedAgentType)
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
-    );
-    if (override?.trim()) return override.trim();
-    if (normalizedAgentType === "claude")
-      return (
-        this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
-        "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
-      );
-    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
-    // server is the native adapter for this agent type.
-    if (normalizedAgentType === "elizaos")
-      return (
-        this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
-        findExecutableOnPath("eliza-code-acp") ??
-        "eliza-code-acp"
-      );
-    return String(normalizedAgentType);
+    const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[normalizedAgentType];
+    if (preflight.commandResolution === "vendored-opencode") {
+      return this.opencodeAgentCommand() ?? preflight.defaultCommand;
+    }
+    if (preflight.commandResolution === "managed-codex") {
+      return this.codexAgentCommand();
+    }
+    const configured = this.setting(preflight.commandConfigKey);
+    if (configured?.trim()) return configured.trim();
+    return preflight.defaultCommand;
   }
 
   private agentCommandAvailability(agentType: AgentType): {
@@ -4635,8 +4629,9 @@ export class AcpService extends Service {
     }
     if (
       agentType === "codex" &&
-      resolveCodexAcpCommand(this.setting("ELIZA_CODEX_ACP_COMMAND")) ===
-        DEFAULT_CODEX_ACP_COMMAND
+      resolveCodexAcpCommand(
+        this.setting(CODING_AGENT_BACKEND_PREFLIGHTS.codex.commandConfigKey),
+      ) === DEFAULT_CODEX_ACP_COMMAND
     ) {
       const initialAgentMode =
         codexInitialAgentModeOverride ?? this.managedCodexAcpInitialAgentMode();

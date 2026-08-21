@@ -4,13 +4,17 @@
  * connection signal.
  */
 
+import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   eligibilityChips,
   providerConnectionState,
   resolveProviderEligibility,
 } from "./account-eligibility";
-import { getAccountProviderOption } from "./account-provider-options";
+import {
+  ACCOUNT_PROVIDER_OPTIONS,
+  getAccountProviderOption,
+} from "./account-provider-options";
 
 function option(id: Parameters<typeof getAccountProviderOption>[0]) {
   const found = getAccountProviderOption(id);
@@ -62,11 +66,48 @@ describe("resolveProviderEligibility", () => {
     expect(resolved.note).toBe("No Kimi spawn backend is wired.");
   });
 
-  it("conservatively infers coding-only for subscription providers", () => {
+  it("keeps the explicit Anthropic subscription chat policy in the descriptor", () => {
     const resolved = resolveProviderEligibility(claudeSub, undefined);
     expect(resolved.source).toBe("inferred");
     expect(resolved.chat).toBe(false);
     expect(resolved.codingAgent).toBe(true);
+  });
+
+  it("derives every fallback chat verdict from the canonical descriptor", () => {
+    for (const providerOption of ACCOUNT_PROVIDER_OPTIONS) {
+      const resolved = resolveProviderEligibility(providerOption, undefined);
+      const descriptor = codingProviderDescriptorForProvider(providerOption.id);
+      expect(resolved.chat, providerOption.id).toBe(
+        providerOption.unavailable
+          ? false
+          : (descriptor?.inferenceSupport ?? false),
+      );
+      expect(resolved.codingAgent, providerOption.id).toBe(
+        providerOption.unavailable ? false : descriptor?.spawnSupport === true,
+      );
+    }
+  });
+
+  it.each(["zai-coding", "kimi-coding"] as const)(
+    "infers inference-only eligibility for %s",
+    (providerId) => {
+      expect(resolveProviderEligibility(option(providerId), undefined)).toEqual(
+        {
+          chat: true,
+          codingAgent: false,
+          source: "inferred",
+        },
+      );
+    },
+  );
+
+  it("fails closed when a provider descriptor is missing", () => {
+    expect(
+      resolveProviderEligibility(
+        { ...anthropicApi, id: "missing-provider" as never },
+        undefined,
+      ),
+    ).toEqual({ chat: false, codingAgent: false, source: "inferred" });
   });
 
   it("infers neither for explicitly unavailable providers", () => {

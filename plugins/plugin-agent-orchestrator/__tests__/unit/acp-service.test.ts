@@ -11,7 +11,10 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
-import { CODING_AGENT_BACKENDS } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+} from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -944,8 +947,8 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(1);
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
-    expect(nativeClientMock.instances[0]?.opts.command).toMatch(
-      /eliza-code-acp/,
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      CODING_AGENT_BACKEND_PREFLIGHTS.elizaos.defaultCommand,
     );
   });
 
@@ -989,7 +992,30 @@ describe("AcpService", () => {
     expect(spawned.agentType).toBe("pi-agent");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(nativeClientMock.instances).toHaveLength(1);
-    expect(nativeClientMock.instances[0]?.opts.command).toBe("pi-agent");
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      CODING_AGENT_BACKEND_PREFLIGHTS["pi-agent"].defaultCommand,
+    );
+  });
+
+  it("consumes every backend command override from the canonical preflight row", async () => {
+    for (const agentType of CODING_AGENT_BACKENDS) {
+      const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[agentType];
+      const sentinel = `/opt/acp/${agentType} --stdio`;
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          [preflight.commandConfigKey]: sentinel,
+        }),
+      );
+      await service.start();
+      await service.spawnSession({
+        name: `canonical-${agentType}-command`,
+        agentType,
+        workdir: "/tmp/acp-test",
+      });
+      expect(nativeClientMock.instances.at(-1)?.opts.command).toBe(sentinel);
+      await service.stop();
+    }
   });
 
   it("still supports the legacy CLI transport when explicitly configured", async () => {

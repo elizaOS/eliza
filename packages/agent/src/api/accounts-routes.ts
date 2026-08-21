@@ -71,6 +71,7 @@ import {
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   codingAgentSpawnCapabilityForProvider,
+  codingProviderDescriptorForProvider,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
@@ -377,86 +378,56 @@ function codingAgentCapabilityForProvider(
 function runtimeEligibilityForProvider(
   providerId: LinkedAccountProviderId,
 ): ProviderRuntimeEligibility {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return {
-        chat: {
-          available: false,
-          defaultModel: "claude-fable-5",
-          credentialPath: "none",
-          unavailableReason: ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON,
-        },
-        codingAgent: codingAgentCapabilityForProvider(
-          providerId,
-          "account-pool",
-          "claude-fable-5",
-        ),
-      };
-    case "openai-codex":
-      return {
-        chat: {
-          available: true,
-          defaultModel: "gpt-5.6-sol",
-          credentialPath: "account-pool",
-        },
-        codingAgent: codingAgentCapabilityForProvider(
-          providerId,
-          "account-pool",
-          "gpt-5.6-terra",
-        ),
-      };
-    case "anthropic-api":
-      return {
-        chat: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "direct-api",
-        },
-        codingAgent: codingAgentCapabilityForProvider(
-          providerId,
-          "direct-api",
-          "claude-fable-5",
-        ),
-      };
-    case "gemini-cli":
-      return {
-        chat: {
-          available: false,
-          credentialPath: "none",
-          unavailableReason:
-            "Gemini subscription auth stays inside Gemini CLI and is not a runtime chat provider.",
-        },
-        codingAgent: codingAgentCapabilityForProvider(
-          providerId,
-          "external-cli",
-        ),
-      };
-    default: {
-      const direct = DIRECT_PROVIDER_IDS.has(providerId);
-      const codingPlan = isCodingPlanKeySubscriptionProvider(providerId);
-      const inferenceAvailable = direct || codingPlan;
-      return {
-        chat: {
-          available: inferenceAvailable,
-          credentialPath: direct
-            ? "direct-api"
-            : codingPlan
-              ? "account-pool"
-              : "none",
-          ...(inferenceAvailable
-            ? {}
-            : {
-                unavailableReason:
-                  "This provider is not registered as a runtime chat provider.",
-              }),
-        },
-        codingAgent: codingAgentCapabilityForProvider(
-          providerId,
-          direct ? "direct-api" : "account-pool",
-        ),
-      };
-    }
+  const descriptor = codingProviderDescriptorForProvider(providerId);
+  if (!descriptor) {
+    throw new ElizaError(
+      "Linked account provider has no capability descriptor",
+      {
+        code: "ACCOUNT_PROVIDER_DESCRIPTOR_MISSING",
+        context: { providerId },
+        severity: "fatal",
+      },
+    );
   }
+  const credentialPath =
+    descriptor.authMode === "external-cli"
+      ? "external-cli"
+      : descriptor.accountKind === "api-key"
+        ? "direct-api"
+        : "account-pool";
+  const chatDefaultModel =
+    providerId === "anthropic-subscription" || providerId === "anthropic-api"
+      ? "claude-fable-5"
+      : providerId === "openai-codex"
+        ? "gpt-5.6-sol"
+        : undefined;
+  const codingDefaultModel =
+    providerId === "anthropic-subscription" || providerId === "anthropic-api"
+      ? "claude-fable-5"
+      : providerId === "openai-codex"
+        ? "gpt-5.6-terra"
+        : undefined;
+  const chatUnavailableReason =
+    providerId === "anthropic-subscription"
+      ? ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON
+      : descriptor.authMode === "external-cli"
+        ? "This provider's credentials stay inside its external CLI and are not available to runtime chat."
+        : "This provider is not registered as a runtime chat provider.";
+  return {
+    chat: {
+      available: descriptor.inferenceSupport,
+      credentialPath: descriptor.inferenceSupport ? credentialPath : "none",
+      ...(chatDefaultModel ? { defaultModel: chatDefaultModel } : {}),
+      ...(descriptor.inferenceSupport
+        ? {}
+        : { unavailableReason: chatUnavailableReason }),
+    },
+    codingAgent: codingAgentCapabilityForProvider(
+      providerId,
+      credentialPath,
+      codingDefaultModel,
+    ),
+  };
 }
 
 function asSubscriptionProvider(

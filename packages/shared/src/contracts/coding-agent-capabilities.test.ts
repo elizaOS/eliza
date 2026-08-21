@@ -54,6 +54,42 @@ describe("coding-agent capability mapping", () => {
   });
 
   it("declares a preflight backend for every credential route", () => {
+    expect(CODING_AGENT_BACKEND_PREFLIGHTS).toEqual({
+      elizaos: {
+        requiredRuntime: "eliza-code-acp",
+        discoveryPolicy: "bundled-or-configured-command",
+        commandConfigKey: "ELIZA_ELIZAOS_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "eliza-code-acp",
+      },
+      "pi-agent": {
+        requiredRuntime: "pi-agent",
+        discoveryPolicy: "bundled-or-configured-command",
+        commandConfigKey: "ELIZA_PI_AGENT_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "pi-agent",
+      },
+      claude: {
+        requiredRuntime: "claude-acp",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_CLAUDE_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+      },
+      codex: {
+        requiredRuntime: "codex-acp",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_CODEX_ACP_COMMAND",
+        commandResolution: "managed-codex",
+      },
+      opencode: {
+        requiredRuntime: "opencode-acp",
+        discoveryPolicy: "vendored-or-path",
+        commandConfigKey: "ELIZA_OPENCODE_ACP_COMMAND",
+        commandResolution: "vendored-opencode",
+        defaultCommand: "opencode acp",
+      },
+    });
     for (const backend of CODING_AGENT_BACKENDS) {
       const providers = CODING_AGENT_BACKEND_PROVIDERS[backend];
       if (providers.length === 0) continue;
@@ -85,8 +121,15 @@ describe("coding-agent capability mapping", () => {
       });
       expect(descriptor.spawnSupport).toBe(descriptor.backend !== null);
       if (descriptor.spawnSupport) {
-        expect(descriptor.requiredRuntime).toBeTruthy();
-        expect(descriptor.discoveryPolicy).not.toBe("none");
+        if (!descriptor.backend) {
+          throw new Error(`missing backend for ${providerId}`);
+        }
+        expect(descriptor.requiredRuntime).toBe(
+          CODING_AGENT_BACKEND_PREFLIGHTS[descriptor.backend].requiredRuntime,
+        );
+        expect(descriptor.discoveryPolicy).toBe(
+          CODING_AGENT_BACKEND_PREFLIGHTS[descriptor.backend].discoveryPolicy,
+        );
         expect(descriptor.unsupportedReason).toBeNull();
       } else {
         expect(descriptor.requiredRuntime).toBeNull();

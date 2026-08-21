@@ -4,7 +4,7 @@
  *
  * Prefers the server-supplied `runtimeEligibility` (#16203 contract). When
  * that's absent (older agent, or the field hasn't landed yet) it falls back
- * to a CONSERVATIVE inference from the static provider option so the UI never
+ * to a CONSERVATIVE inference from the shared provider descriptor so the UI never
  * over-promises: API/BYOK accounts remain chat-capable, while coding-agent
  * eligibility requires a canonical executable-backend mapping. No hardcoded
  * provider-name copy leaks into components.
@@ -12,6 +12,7 @@
 
 import {
   codingAgentSpawnCapabilityForProvider,
+  codingProviderDescriptorForProvider,
   type LinkedAccountProviderId,
 } from "@elizaos/shared";
 import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
@@ -27,18 +28,19 @@ export interface ResolvedEligibility {
 }
 
 /**
- * Conservative fallback: infer capability from the static option's category.
- *  - chat providers (BYOK API keys) → chat
+ * Conservative fallback: infer capability from the canonical descriptor.
+ *  - descriptor inference support → chat
  *  - only providers with a canonical executable mapping → coding agent
- *  - coding subscriptions remain coding-only enrollment options
+ *  - subscription spawn support remains independently mapped
  *  - unavailable providers → neither
  */
 function inferEligibility(option: AccountProviderOption): ResolvedEligibility {
   if (option.unavailable) {
     return { chat: false, codingAgent: false, source: "inferred" };
   }
+  const descriptor = codingProviderDescriptorForProvider(option.id);
   return {
-    chat: option.category === "chat",
+    chat: descriptor?.inferenceSupport ?? false,
     codingAgent: codingAgentSpawnCapabilityForProvider(option.id).available,
     source: "inferred",
   };

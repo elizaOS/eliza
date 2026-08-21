@@ -30,32 +30,54 @@ export type CodingProviderDiscoveryPolicy =
   | "vendored-or-path"
   | "none";
 
-export interface CodingAgentBackendPreflight {
+interface CodingAgentBackendPreflightBase {
   requiredRuntime: string;
   discoveryPolicy: Exclude<CodingProviderDiscoveryPolicy, "none">;
+  commandConfigKey: string;
 }
+
+export type CodingAgentBackendPreflight = CodingAgentBackendPreflightBase &
+  (
+    | { commandResolution: "literal"; defaultCommand: string }
+    | { commandResolution: "managed-codex" }
+    | { commandResolution: "vendored-opencode"; defaultCommand: string }
+  );
 
 /** Executable discovery contract implemented by ACP for every spawn backend. */
 export const CODING_AGENT_BACKEND_PREFLIGHTS = {
   elizaos: {
-    requiredRuntime: "elizaos-acp",
+    requiredRuntime: "eliza-code-acp",
     discoveryPolicy: "bundled-or-configured-command",
+    commandConfigKey: "ELIZA_ELIZAOS_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "eliza-code-acp",
   },
   "pi-agent": {
-    requiredRuntime: "pi-acp",
+    requiredRuntime: "pi-agent",
     discoveryPolicy: "bundled-or-configured-command",
+    commandConfigKey: "ELIZA_PI_AGENT_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "pi-agent",
   },
   claude: {
     requiredRuntime: "claude-acp",
     discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_CLAUDE_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
   },
   codex: {
     requiredRuntime: "codex-acp",
     discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_CODEX_ACP_COMMAND",
+    commandResolution: "managed-codex",
   },
   opencode: {
     requiredRuntime: "opencode-acp",
     discoveryPolicy: "vendored-or-path",
+    commandConfigKey: "ELIZA_OPENCODE_ACP_COMMAND",
+    commandResolution: "vendored-opencode",
+    defaultCommand: "opencode acp",
   },
 } as const satisfies Readonly<
   Record<CodingAgentBackend, CodingAgentBackendPreflight>

@@ -6,6 +6,8 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
@@ -227,8 +229,30 @@ describe("accounts routes", () => {
     const request = makeContext("GET", "/api/accounts");
     await handleAccountsRoutes(request.ctx);
     const response = request.jsonCalls[0]?.body as {
-      providers: Array<Record<string, unknown>>;
+      providers: Array<{
+        providerId: string;
+        runtimeEligibility: {
+          chat: { available: boolean };
+          codingAgent: { available: boolean };
+        };
+      }>;
     };
+    for (const providerId of LINKED_ACCOUNT_PROVIDER_IDS) {
+      const provider = response.providers.find(
+        (item) => item.providerId === providerId,
+      );
+      const descriptor = codingProviderDescriptorForProvider(providerId);
+      if (!provider || !descriptor) {
+        throw new Error(`missing capability row for ${providerId}`);
+      }
+      expect(provider.runtimeEligibility.chat.available, providerId).toBe(
+        descriptor.inferenceSupport,
+      );
+      expect(
+        provider.runtimeEligibility.codingAgent.available,
+        providerId,
+      ).toBe(descriptor.spawnSupport);
+    }
     expect(
       response.providers.find((item) => item.providerId === "openai-api"),
     ).toMatchObject({
