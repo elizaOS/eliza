@@ -4803,9 +4803,13 @@ export async function handleConversationRoutes(
             message: getErrorMessage(streamError),
           });
         }
-      } catch {
-        // A dead socket cannot receive the terminal frame; the rethrow below
-        // is still the real failure.
+      } catch (frameError) {
+        // error-policy:J6 best-effort teardown: the terminal frame is a
+        // courtesy to a socket that is already gone, and the rethrow below
+        // still carries the real failure to the J1 boundary.
+        logger.warn(
+          `[conversation-stream] terminal error frame undeliverable: ${getErrorMessage(frameError)}`,
+        );
       }
       throw streamError;
     } finally {
