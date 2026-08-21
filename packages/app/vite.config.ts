@@ -1098,6 +1098,51 @@ export function stripAndroidCloudIpcBootstrap(html: string): string {
   );
 }
 
+/** Removes browser-only icons/manifest links whose public tree is not packaged. */
+export function stripAndroidCloudPublicAssetReferences(html: string): string {
+  return html.replace(
+    /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
+    "\n",
+  );
+}
+
+const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
+const ANDROID_CLOUD_RENDERER_ENTRY = "/src/main.android-cloud.tsx";
+
+/**
+ * Selects the minimal Play-safe renderer before Rollup sees the application
+ * graph. A source-level entry swap is stronger than a runtime branch: Android
+ * Cloud builds cannot accidentally package the desktop, local-runtime, iOS,
+ * service-worker, or generic App composition roots behind a dormant condition.
+ */
+export function selectAndroidCloudRendererEntry(
+  html: string,
+  androidCloudBuild: boolean,
+): string {
+  if (!androidCloudBuild) return html;
+  if (!html.includes(DEFAULT_RENDERER_ENTRY)) {
+    throw new Error(
+      `Android Cloud HTML is missing the expected ${DEFAULT_RENDERER_ENTRY} module entry`,
+    );
+  }
+  return html.replace(DEFAULT_RENDERER_ENTRY, ANDROID_CLOUD_RENDERER_ENTRY);
+}
+
+/** Runs before Vite discovers HTML module imports, enforcing graph isolation. */
+export function androidCloudRendererEntryPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
+  return {
+    name: "android-cloud-renderer-entry",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        return selectAndroidCloudRendererEntry(html, androidCloudBuild);
+      },
+    },
+  };
+}
+
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
   options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
@@ -1167,6 +1212,7 @@ export function appShellMetadataPlugin(
       }
       if (isAndroidCloudBuild) {
         next = stripAndroidCloudIpcBootstrap(next);
+        next = stripAndroidCloudPublicAssetReferences(next);
       }
       return next;
     },
@@ -1186,6 +1232,7 @@ export function appShellMetadataPlugin(
       });
     },
     generateBundle() {
+      if (isAndroidCloudBuild) return;
       this.emitFile({
         type: "asset",
         fileName: "site.webmanifest",
@@ -2233,7 +2280,9 @@ export default defineConfig(({ command }) => ({
   cacheDir: process.env.ELIZA_VITE_CACHE_DIR
     ? path.resolve(process.env.ELIZA_VITE_CACHE_DIR)
     : path.resolve(here, ".vite"),
-  publicDir: path.resolve(here, "public"),
+  publicDir: IS_ANDROID_CLOUD_RENDERER_BUILD
+    ? false
+    : path.resolve(here, "public"),
   define: {
     global: "globalThis",
     // Build variant — set at signing time by desktop-build.mjs and embedded
@@ -2276,6 +2325,8 @@ export default defineConfig(({ command }) => ({
     ),
   },
   plugins: [
+    androidCloudRendererEntryPlugin(),
+    androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),

@@ -3,11 +3,15 @@
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
+  ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
+  androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   resolveAppShellLocalCspSources,
+  selectAndroidCloudRendererEntry,
   scrubAndroidCloudLocalRouting,
   stripAndroidCloudIpcBootstrap,
+  stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -110,6 +114,46 @@ describe("app shell local connection policy", () => {
     const transformed = plugin.transformIndexHtml(source) as string;
     expect(transformed).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
     expect(transformed).not.toContain("eliza-local-agent:");
+  });
+
+  test("removes browser-only public asset references from the Play shell", () => {
+    const source = `
+      <link rel="icon" href="/brand/favicons/favicon.svg" />
+      <link rel="apple-touch-icon" href="/brand/favicons/apple-touch-icon.png" />
+      <link rel="manifest" href="/site.webmanifest" />
+      <link rel="stylesheet" href="/assets/app.css" />`;
+    const stripped = stripAndroidCloudPublicAssetReferences(source);
+
+    expect(stripped).not.toMatch(/favicon|apple-touch-icon|site\.webmanifest/);
+    expect(stripped).toContain('rel="stylesheet"');
+  });
+
+  test("selects the dedicated renderer before the Android Cloud graph is bundled", () => {
+    const source = '<script type="module" src="/src/entry.ts"></script>';
+
+    expect(selectAndroidCloudRendererEntry(source, true)).toBe(
+      '<script type="module" src="/src/main.android-cloud.tsx"></script>',
+    );
+    expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);
+    expect(() =>
+      selectAndroidCloudRendererEntry("<main></main>", true),
+    ).toThrow("missing the expected /src/entry.ts");
+
+    const hook = androidCloudRendererEntryPlugin(true).transformIndexHtml;
+    if (typeof hook !== "object" || !("handler" in hook)) {
+      throw new Error("Android Cloud entry plugin has no pre-transform");
+    }
+    expect(hook.order).toBe("pre");
+    const transformed = hook.handler(source, {
+      path: "/",
+      filename: "index.html",
+      server: undefined,
+      bundle: undefined,
+      chunk: undefined,
+      originalUrl: "/",
+    }) as string;
+    expect(transformed).toContain("/src/main.android-cloud.tsx");
+    expect(transformed).not.toContain('src="/src/entry.ts"');
   });
 
   test("retains the native local-agent bootstrap outside Android cloud builds", () => {
