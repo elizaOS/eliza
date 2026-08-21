@@ -1,3 +1,11 @@
+/**
+ * Managed payment-provider clients keep Cloud authentication and response
+ * validation at the runtime boundary while delegating route construction to
+ * the generated Cloud SDK.
+ */
+
+import { ElizaCloudClient } from "@elizaos/cloud-sdk";
+import { z } from "zod";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
@@ -43,6 +51,7 @@ export class PlaidManagedClientError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code: string | null = null,
   ) {
     super(message);
     this.name = "PlaidManagedClientError";
@@ -60,24 +69,46 @@ export class PaypalManagedClientError extends Error {
   }
 }
 
-async function readPlaidJson<T>(response: Response): Promise<T> {
+async function readPlaidJson<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+  secrets: readonly string[] = [],
+): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`.trim();
+    let code: string | null = null;
     const text = await response.text();
     if (text.trim().length > 0) {
       try {
         const parsed = JSON.parse(text) as {
+          code?: string | null;
           error?: string;
           message?: string;
         };
         detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        code = typeof parsed.code === "string" ? parsed.code : null;
       } catch {
         detail = text.slice(0, 240);
       }
     }
-    throw new PlaidManagedClientError(response.status, detail);
+    for (const secret of secrets) {
+      if (secret.length > 0) detail = detail.replaceAll(secret, "[REDACTED]");
+    }
+    throw new PlaidManagedClientError(response.status, detail, code);
   }
-  return (await response.json()) as T;
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    // error-policy:J3 malformed Cloud responses are explicit provider errors,
+    // never fabricated successful payment data.
+    throw new PlaidManagedClientError(502, "Eliza Cloud returned invalid Plaid JSON.");
+  }
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new PlaidManagedClientError(502, "Eliza Cloud returned malformed Plaid data.");
+  }
+  return parsed.data;
 }
 
 async function readPaypalJson<T>(response: Response): Promise<T> {
@@ -110,8 +141,8 @@ export interface PlaidLinkTokenResponse {
 }
 
 export interface PlaidExchangeResponse {
-  accessToken: string;
-  itemId: string;
+  connectionId: string;
+  environment: "sandbox" | "development" | "production";
   institution: {
     institutionId: string;
     institutionName: string;
@@ -152,6 +183,58 @@ export interface PlaidTransactionDto {
   } | null;
 }
 
+const plaidAccountSchema = z.object({
+  accountId: z.string().min(1),
+  name: z.string(),
+  mask: z.string().nullable(),
+  type: z.string().min(1),
+  subtype: z.string().nullable(),
+});
+
+const plaidLinkTokenResponseSchema: z.ZodType<PlaidLinkTokenResponse> = z.object({
+  linkToken: z.string().min(1),
+  expiration: z.string().min(1),
+  environment: z.enum(["sandbox", "development", "production"]),
+});
+
+const plaidExchangeResponseSchema: z.ZodType<PlaidExchangeResponse> = z.object({
+  connectionId: z.string().uuid(),
+  environment: z.enum(["sandbox", "development", "production"]),
+  institution: z.object({
+    institutionId: z.string().min(1),
+    institutionName: z.string().min(1),
+    primaryAccountMask: z.string().nullable(),
+    accounts: z.array(plaidAccountSchema),
+  }),
+});
+
+const plaidTransactionSchema: z.ZodType<PlaidTransactionDto> = z.object({
+  transaction_id: z.string().min(1),
+  account_id: z.string().min(1),
+  amount: z.number().finite(),
+  iso_currency_code: z.string().nullable(),
+  unofficial_currency_code: z.string().nullable(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  authorized_date: z.string().nullable(),
+  name: z.string(),
+  merchant_name: z.string().nullable(),
+  pending: z.boolean(),
+  category: z.array(z.string()).nullable(),
+  personal_finance_category: z
+    .object({ primary: z.string(), detailed: z.string() })
+    .nullable(),
+});
+
+const plaidSyncResponseSchema: z.ZodType<PlaidSyncResponse> = z.object({
+  added: z.array(plaidTransactionSchema),
+  modified: z.array(plaidTransactionSchema),
+  removed: z.array(z.object({ transaction_id: z.string().min(1) })),
+  nextCursor: z.string(),
+  hasMore: z.boolean(),
+});
+
+const plaidRevokeResponseSchema = z.object({ revoked: z.literal(true) });
+
 export class PlaidManagedClient {
   constructor(
     private readonly configSource: ConfigSource =
@@ -172,60 +255,63 @@ export class PlaidManagedClient {
 
   async createLinkToken(): Promise<PlaidLinkTokenResponse> {
     const config = this.requireConfig();
-    const response = await fetch(
-      `${config.apiBaseUrl}/eliza/plaid/link-token`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: "{}",
-        signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
-      },
-    );
-    return readPlaidJson<PlaidLinkTokenResponse>(response);
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidLinkTokenRaw({
+      json: {},
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return readPlaidJson(response, plaidLinkTokenResponseSchema, [config.apiKey]);
   }
 
   async exchangePublicToken(args: {
     publicToken: string;
   }): Promise<PlaidExchangeResponse> {
     const config = this.requireConfig();
-    const response = await fetch(
-      `${config.apiBaseUrl}/eliza/plaid/exchange`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ publicToken: args.publicToken }),
-        signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
-      },
-    );
-    return readPlaidJson<PlaidExchangeResponse>(response);
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidExchangeRaw({
+      json: { publicToken: args.publicToken },
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return readPlaidJson(response, plaidExchangeResponseSchema, [
+      config.apiKey,
+      args.publicToken,
+    ]);
   }
 
   async syncTransactions(args: {
-    accessToken: string;
+    connectionId: string;
     cursor?: string;
     count?: number;
   }): Promise<PlaidSyncResponse> {
     const config = this.requireConfig();
-    const response = await fetch(`${config.apiBaseUrl}/eliza/plaid/sync`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        accessToken: args.accessToken,
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidSyncRaw({
+      json: {
+        connectionId: args.connectionId,
         cursor: args.cursor ?? "",
         count: args.count ?? 250,
-      }),
-      signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS * 2),
+      },
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS * 2,
     });
-    return readPlaidJson<PlaidSyncResponse>(response);
+    return readPlaidJson(response, plaidSyncResponseSchema, [config.apiKey]);
+  }
+
+  async revokeConnection(args: {
+    connectionId: string;
+  }): Promise<{ revoked: true }> {
+    const config = this.requireConfig();
+    const response = await this.cloudClient(config).routes.postApiV1ElizaPlaidRevokeRaw({
+      json: { connectionId: args.connectionId },
+      timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
+    });
+    return readPlaidJson(response, plaidRevokeResponseSchema, [config.apiKey]);
+  }
+
+  private cloudClient(
+    config: ElizaCloudManagedClientConfig & { apiKey: string },
+  ): ElizaCloudClient {
+    return new ElizaCloudClient({
+      baseUrl: config.siteUrl,
+      apiBaseUrl: config.apiBaseUrl,
+      apiKey: config.apiKey,
+    });
   }
 }
 

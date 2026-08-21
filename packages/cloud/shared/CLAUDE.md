@@ -86,6 +86,12 @@ bun run --cwd packages/cloud/shared generate:email-templates
 
 `INFERENCE_AUTH_HYDRATION_DEADLINE_MS` (`inference-auth-context.ts`, default `10000`) bounds a background auth hydration attempt. It must be a canonical decimal integer from `1` through `2147483647`; unset/blank uses the default, and invalid values throw `ElizaError` (`INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE`) at module load.
 
+Plaid uses `PLAID_CLIENT_ID` plus an environment-specific secret:
+`PLAID_SANDBOX_SECRET`, `PLAID_DEVELOPMENT_SECRET`, or
+`PLAID_PRODUCTION_SECRET`. `PLAID_SECRET` remains a compatibility alias only
+for the active `PLAID_ENV`; cross-environment Item cleanup fails closed unless
+the stored Item environment's explicit secret is configured.
+
 ## How to extend
 
 - **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud/shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).

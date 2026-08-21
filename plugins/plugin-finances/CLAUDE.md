@@ -126,7 +126,7 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 
 | Variable | Required | Description |
 |---|---|---|
-| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting Plaid / PayPal tokens at rest. Falls back to a lazily-generated `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
+| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting PayPal tokens at rest. Plaid Item tokens remain in organization-bound Cloud credentials; the local source stores only an opaque connection id. Falls back to a lazily-generated `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for the managed Plaid / PayPal bridges. |
 | `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override for the managed bridges. |
 
