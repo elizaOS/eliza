@@ -93,6 +93,24 @@ describe("googleAdsProvider.listAdAccounts error surfacing", () => {
       { id: "123", name: "Acme" },
     ]);
   });
+
+  test("rejects an oversized accessible-customer set before detail fanout", async () => {
+    let fetches = 0;
+    mockFetch((url) => {
+      fetches += 1;
+      if (url.includes("listAccessibleCustomers")) {
+        return jsonResponse({
+          resourceNames: Array.from({ length: 10_001 }, (_, index) => `customers/${index + 1}`),
+        });
+      }
+      throw new Error(`unexpected detail fetch: ${url}`);
+    });
+
+    await expect(googleAdsProvider.listAdAccounts(credentials)).rejects.toThrow(
+      /more than 10000 accessible customers/,
+    );
+    expect(fetches).toBe(1);
+  });
 });
 
 describe("googleAdsProvider.getCampaignMetrics money-path distinctness", () => {
@@ -148,17 +166,46 @@ describe("googleAdsFetch — bounded hops fail closed and keep caller signals", 
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  test("composes caller cancellation with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
-      return jsonResponse({ resourceNames: [] });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
 
     const controller = new AbortController();
-    await googleAdsFetch("https://googleads.googleapis.com/v24/customers:listAccessibleCustomers", {
-      signal: controller.signal,
-    });
-    expect(seen).toBe(controller.signal);
+    const pending = googleAdsFetch(
+      "https://googleads.googleapis.com/v24/customers:listAccessibleCustomers",
+      { signal: controller.signal },
+    );
+    await Promise.resolve();
+    expect(seen).not.toBe(controller.signal);
+    controller.abort(new Error("caller cancelled"));
+    await expect(pending).rejects.toThrow(/caller cancelled/);
+    expect(seen?.aborted).toBe(true);
+  });
+
+  test("keeps the deadline when a supplied caller signal never aborts", async () => {
+    const controller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      googleAdsFetch(
+        "https://googleads.googleapis.com/v24/customers:listAccessibleCustomers",
+        { signal: controller.signal },
+        100,
+      ),
+    ).rejects.toThrow(/timed out/i);
+    expect(controller.signal.aborted).toBe(false);
   });
 });
