@@ -732,7 +732,7 @@ function normalizeNativeToolsForCall(
     // A missing schema means the tool takes no arguments. Provider-specific
     // normalization below turns this bare object into the explicit closed
     // shape required by strict grammar compilers.
-    const rawSchema =
+    const declaredSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =
       typeof tool.strict === "boolean"
@@ -741,6 +741,20 @@ function normalizeNativeToolsForCall(
           ? functionTool.strict
           : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
+    // Shaw P1: the production strict Cerebras path used to call
+    // sanitizeJsonSchema (raw Array.isArray / object spread / Object.entries /
+    // .map / unbounded recursion) BEFORE the descriptor-safe walker. An
+    // 8k-deep, cyclic, revoked, or accessor-bearing schema RangeError'd or
+    // leaked a trap there. Run the bounded walk first so sanitization only
+    // ever sees a cloned, budgeted graph. Share the same walker after
+    // sanitization so Cerebras empty-object / oneOf rules still apply to
+    // nodes sanitize introduces.
+    let rawSchema: unknown = declaredSchema;
+    if (options.cerebrasMode) {
+      rawSchema = normalizeSchemaForCerebras(rawSchema, true, {
+        strict: strict !== false,
+      });
+    }
     let inputSchema: JSONSchema7;
     if (strict === false) {
       if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {

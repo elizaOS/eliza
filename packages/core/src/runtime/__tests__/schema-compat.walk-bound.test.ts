@@ -18,6 +18,7 @@ import {
 	CEREBRAS_SCHEMA_UNBOUNDED,
 	isCerebrasSchemaUnbounded,
 	MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+	MAX_CEREBRAS_SCHEMA_WALK_NODES,
 	normalizeSchemaForCerebras,
 } from "../schema-compat";
 
@@ -37,10 +38,7 @@ function deepProperties(depth: number): Record<string, unknown> {
  * })`. A throw here is the fail-closed gate before `toolSet` assignment
  * / provider dispatch.
  */
-function normalizeCerebrasToolSchema(
-	schema: unknown,
-	strict = true,
-): unknown {
+function normalizeCerebrasToolSchema(schema: unknown, strict = true): unknown {
 	let providerDispatch = 0;
 	try {
 		const inputSchema = normalizeSchemaForCerebras(schema, true, { strict });
@@ -359,6 +357,7 @@ describe("normalizeSchemaForCerebras caller-path Shaw CR", () => {
 		expect(t.prefixItems).toHaveLength(3);
 		expect((t.prefixItems as unknown[])[0]).toMatchObject({ type: "string" });
 		expect((t.prefixItems as unknown[])[1]).toBeUndefined();
+		expect(1 in (t.prefixItems as unknown[])).toBe(false);
 		expect((t.prefixItems as unknown[])[2]).toMatchObject({ type: "number" });
 	});
 
@@ -378,6 +377,28 @@ describe("normalizeSchemaForCerebras caller-path Shaw CR", () => {
 		} catch (error) {
 			const typed = expectUnbounded(error);
 			expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
+		}
+	});
+
+	it("fails closed on an over-wide own-key node before cloning", () => {
+		const wide: Record<string, unknown> = {
+			type: "object",
+			properties: {},
+		};
+		for (let i = 0; i < MAX_CEREBRAS_SCHEMA_WALK_NODES + 1; i++) {
+			wide[`k${i}`] = true;
+		}
+		const started = Date.now();
+		try {
+			normalizeSchemaForCerebras(wide, true);
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			expect(Date.now() - started).toBeLessThan(2000);
+			const typed = expectUnbounded(error);
+			expect(typed.context?.maxNodes).toBe(MAX_CEREBRAS_SCHEMA_WALK_NODES);
+			expect(
+				(typed.context?.visits as number) > MAX_CEREBRAS_SCHEMA_WALK_NODES,
+			).toBe(true);
 		}
 	});
 });

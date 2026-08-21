@@ -147,13 +147,31 @@ function hasNonEmptyOwnArray(value: unknown): boolean {
 	return isArrayRecord(value) && ownArrayLength(value) > 0;
 }
 
-function cloneOwnData(value: object): Record<string, unknown> {
+function cloneOwnData(
+	value: object,
+	ctx: SchemaWalkContext,
+): Record<string, unknown> {
+	// Reserve the raw own-key width BEFORE allocating the clone. A node
+	// with >100k irrelevant keys must trip MAX_CEREBRAS_SCHEMA_WALK_NODES
+	// instead of copying every enumerable value first.
+	const keys = inspectSchema("ownKeys", () => Reflect.ownKeys(value));
+	reserveSchemaVisits(ctx, keys.length);
+	const entries: Array<{ key: string; value: unknown }> = [];
+	for (const key of keys) {
+		if (typeof key !== "string") continue;
+		const descriptor = inspectSchema("getOwnPropertyDescriptor", () =>
+			Object.getOwnPropertyDescriptor(value, key),
+		);
+		if (!descriptor?.enumerable) continue;
+		if (!("value" in descriptor)) {
+			failCerebrasSchemaUnbounded({ accessor: true, key });
+		}
+		entries.push({ key, value: descriptor.value });
+	}
 	const out: Record<string, unknown> = {};
-	for (const key of ownEnumerableStringKeys(value)) {
-		const descriptor = ownValueDescriptor(value, key);
-		if (!descriptor) continue;
-		Object.defineProperty(out, key, {
-			value: descriptor.value,
+	for (const entry of entries) {
+		Object.defineProperty(out, entry.key, {
+			value: entry.value,
 			enumerable: true,
 			writable: true,
 			configurable: true,
@@ -270,17 +288,16 @@ function mapSchemaArray(
 ): unknown[] {
 	const length = ownArrayLength(value);
 	reserveSchemaVisits(ctx, length);
-	const mapped: unknown[] = [];
+	const mapped: unknown[] = new Array(length);
 	for (let index = 0; index < length; index += 1) {
 		const descriptor = ownValueDescriptor(value, String(index));
-		mapped.push(
-			normalizeSchemaForCerebrasWalk(
-				descriptor ? descriptor.value : undefined,
-				false,
-				options,
-				depth + 1,
-				ctx,
-			),
+		if (!descriptor) continue;
+		mapped[index] = normalizeSchemaForCerebrasWalk(
+			descriptor.value,
+			false,
+			options,
+			depth + 1,
+			ctx,
 		);
 	}
 	return mapped;
@@ -413,7 +430,7 @@ function normalizeSchemaForCerebrasWalk(
 	reserveSchemaVisits(ctx, 1);
 
 	try {
-		let node = cloneOwnData(schema);
+		let node = cloneOwnData(schema, ctx);
 
 		if (isRoot && hasIllegalCerebrasRoot(node)) {
 			// Wrap the cloned schema under properties.value so the model still
