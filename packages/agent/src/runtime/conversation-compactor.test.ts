@@ -475,6 +475,18 @@ describe("CompactBench deterministic state fragments", () => {
     };
   }
 
+  it("preserves a rendered-state bullet after adversarial indentation", async () => {
+    const durableFact = "the release key stays offline";
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(`Facts:\n-${"\t".repeat(100_000)}${durableFact}`),
+      buildOptions({
+        callModel: fakeStructured({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    expect(out.replacementMessages[0].content).toContain(durableFact);
+  });
+
   it("structured-state preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
     const out = await structuredStateCompactor.compact(
       compactBenchTranscript(
