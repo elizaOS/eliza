@@ -45,7 +45,7 @@ export function isContainerJobType(type: string): boolean {
 
 /** Route a CONTAINER_* job to its executor. */
 export async function dispatchContainerJob(
-  job: JobLike & { type: string },
+  job: JobLike & { type: string; organization_id: string },
   deps: ContainerExecutorDeps,
 ): Promise<void> {
   switch (job.type) {

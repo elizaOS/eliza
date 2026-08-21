@@ -103,6 +103,7 @@ describe("dispatchContainerJob", () => {
         {
           id: "j",
           type,
+          organization_id: "org-1",
           data: { containerId: "container-1", organizationId: "org-1", userId: "user-1" },
         },
         deps,
@@ -114,7 +115,10 @@ describe("dispatchContainerJob", () => {
   test("throws on a non-container job type", async () => {
     const { deps } = fakeDeps();
     await expect(
-      dispatchContainerJob({ id: "j", type: JOB_TYPES.AGENT_PROVISION, data: {} }, deps),
+      dispatchContainerJob(
+        { id: "j", type: JOB_TYPES.AGENT_PROVISION, organization_id: "org-1", data: {} },
+        deps,
+      ),
     ).rejects.toThrow("Not a container job type");
   });
 });

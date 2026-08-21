@@ -277,9 +277,10 @@ export async function executeContainerProvision(
 }
 
 export async function executeContainerDelete(
-  job: JobLike,
+  job: JobLike & { organization_id: string },
   deps: ContainerExecutorDeps,
 ): Promise<void> {
+  const organizationId = authoritativeDeleteOrganizationId(job);
   let targets: Array<{
     id: string;
     organizationId: string;
@@ -287,7 +288,7 @@ export async function executeContainerDelete(
   }>;
   if (isContainerDeleteJobData(job.data)) {
     const row = await deps.store.getById(job.data.containerId);
-    if (row && row.organizationId !== job.data.organizationId) {
+    if (row && row.organizationId !== organizationId) {
       throw new ElizaError(
         `Container delete job ${job.id} organization does not own ${job.data.containerId}`,
         {
@@ -295,16 +296,15 @@ export async function executeContainerDelete(
           context: {
             jobId: job.id,
             containerId: job.data.containerId,
-            jobOrganizationId: job.data.organizationId,
+            jobOrganizationId: organizationId,
             containerOrganizationId: row.organizationId,
           },
           severity: "fatal",
         },
       );
     }
-    targets = [{ id: job.data.containerId, organizationId: job.data.organizationId, row }];
+    targets = [{ id: job.data.containerId, organizationId, row }];
   } else {
-    const organizationId = recoverableDeleteOrganizationId(job);
     const rows = await deps.store.findDeletingByOrganization(organizationId);
     targets = rows.map((row) => ({ id: row.id, organizationId, row }));
     logger.warn("[ContainerExecutor] recovering malformed container delete job", {
@@ -355,15 +355,40 @@ export async function executeContainerDelete(
   }
 }
 
-function recoverableDeleteOrganizationId(job: JobLike): string {
+/**
+ * Bind every delete scope to the jobs row before any container lookup or
+ * provider mutation. The JSON payload is input; `organization_id` is durable
+ * queue authority. This guard also covers workers racing the operator
+ * reconciler and any future producer that bypasses that reconciler.
+ */
+function authoritativeDeleteOrganizationId(job: JobLike & { organization_id: string }): string {
+  let payloadOrganizationId: string;
   if (typeof job.data !== "object" || job.data === null) {
-    return readContainerDeleteJobData(job).organizationId;
+    payloadOrganizationId = readContainerDeleteJobData(job).organizationId;
+  } else {
+    const candidate = Reflect.get(job.data, "organizationId");
+    if (typeof candidate !== "string" || candidate.trim().length === 0) {
+      payloadOrganizationId = readContainerDeleteJobData(job).organizationId;
+    } else {
+      payloadOrganizationId = candidate;
+    }
   }
-  const organizationId = Reflect.get(job.data, "organizationId");
-  if (typeof organizationId !== "string" || organizationId.trim().length === 0) {
-    return readContainerDeleteJobData(job).organizationId;
+
+  if (payloadOrganizationId.toLowerCase() !== job.organization_id.toLowerCase()) {
+    throw new ElizaError(
+      `Container delete job ${job.id} payload organization does not match its owner`,
+      {
+        code: "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH",
+        context: {
+          jobId: job.id,
+          jobOrganizationId: job.organization_id,
+          payloadOrganizationId,
+        },
+        severity: "fatal",
+      },
+    );
   }
-  return organizationId;
+  return job.organization_id;
 }
 
 export async function executeContainerRestart(
