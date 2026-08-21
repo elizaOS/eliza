@@ -1,0 +1,6 @@
+{
+  "chromeManifestKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAveKXsndNuvPOiR73T4QPrTQnQlk+chiqidorrwPGNYZ2G5HzOOQzg1qtOip9lqtgIQt4ThvUhnFzMgTQYGuBZ/ptY24MYYOGbjWMhTnbCyUlbF5uGe7IQc7VhY4PafWH6hWTicbDiUOBWQbnkAN2PD0iv/Z3fXqAdakIFt8t68ASGqtkibcI/tPkwd7OUZ6HhnFTw6WTUVC+LfgdfVmDsw9oU8Qgkmwt7A9WAy7TjJvY4fIx5tUMqvac3hl0YTIKC4GLxQ+9IbRisTx53MTW2C6xRvUznx8BLMZyKyb4AUuKMh3yURPk+NFo4xJeYa1MK8X/QE2XP02XgduNfATrYwIDAQAB",
+  "chromeExtensionId": "pmldpcoefklbdbgmggcejkfoinmjfeio",
+  "firefoxExtensionId": "browser-bridge@elizaos.ai",
+  "safariExtensionId": "ai.elizaos.browserbridge.app.Extension"
+}

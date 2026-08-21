@@ -34,6 +34,7 @@ type BuiltManifest = {
   }>;
   content_security_policy: { extension_pages: string };
   background: { service_worker?: string; scripts?: string[] };
+  key?: string;
   browser_specific_settings?: {
     gecko?: { id?: string };
   };
@@ -120,6 +121,7 @@ describe("cross-browser extension build", () => {
     }
 
     expect(chrome.background).toEqual({ service_worker: "background.js" });
+    expect(chrome.key).toMatch(/^MIIB/);
     expect(chrome.browser_specific_settings).toBeUndefined();
     expect(firefox.background).toEqual({ scripts: ["background.js"] });
     expect(firefox.browser_specific_settings?.gecko?.id).toBe(
