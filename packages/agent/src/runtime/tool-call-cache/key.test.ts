@@ -233,6 +233,18 @@ describe("canonicalizeJson bounds", () => {
     });
   });
 
+  it("charges canonical text by UTF-8 bytes rather than UTF-16 code units", () => {
+    // JSON text is `"é"`: three UTF-16 code units but four UTF-8 bytes.
+    expect(tryCanonicalizeJson("é", { maxBytes: 3 })).toEqual({
+      ok: false,
+      reason: "bytes",
+    });
+    expect(tryCanonicalizeJson("é", { maxBytes: 4 })).toEqual({
+      ok: true,
+      canonical: '"é"',
+    });
+  });
+
   it("bounds total node count", () => {
     expect(tryCanonicalizeJson([1, 2, 3, 4, 5], { maxNodes: 3 })).toEqual({
       ok: false,
@@ -382,13 +394,16 @@ describe("ToolCallCache with unkeyable arguments", () => {
     await expect(cache.run(descriptor, cyclic, execute)).resolves.toEqual({
       ok: true,
     });
+    expect(observed).toEqual([{ toolName: "web_search", reason: "cycle" }]);
     await expect(cache.run(descriptor, cyclic, execute)).resolves.toEqual({
       ok: true,
     });
     // Never served from cache, never crashed.
     expect(executions).toBe(2);
-    expect(observed.length).toBeGreaterThanOrEqual(2);
-    expect(observed[0]).toEqual({ toolName: "web_search", reason: "cycle" });
+    expect(observed).toEqual([
+      { toolName: "web_search", reason: "cycle" },
+      { toolName: "web_search", reason: "cycle" },
+    ]);
   });
 
   it("misses on get and no-ops on set for unkeyable args", () => {

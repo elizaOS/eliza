@@ -17,6 +17,8 @@
 
 import path from "node:path";
 
+import { logger } from "@elizaos/core";
+
 import { resolveStateDir } from "../../config/paths.ts";
 import { boundedWalk } from "./bounded-walk.ts";
 import { DiskStore } from "./disk-store.ts";
@@ -82,7 +84,14 @@ export class ToolCallCache {
     this.memory = new Lru(options.memoryCapacity ?? 1000);
     this.disk = new DiskStore(root, options.redact);
     this.now = options.now ?? Date.now;
-    this.onUnkeyableArgs = options.onUnkeyableArgs;
+    this.onUnkeyableArgs =
+      options.onUnkeyableArgs ??
+      ((info) => {
+        logger.warn(
+          info,
+          "[ToolCallCache] Bypassing cache for unkeyable tool arguments",
+        );
+      });
   }
 
   /**
@@ -102,18 +111,11 @@ export class ToolCallCache {
     return undefined;
   }
 
-  /**
-   * Look up a cache entry for (toolName, args). Returns undefined on miss,
-   * on TTL expiry, or on tool-version mismatch. A disk hit promotes the
-   * entry into the in-memory tier.
-   */
-  get(
+  /** Read and validate one already-derived cache key. */
+  private getByKey(
     descriptor: CacheableToolDescriptor,
-    args: ToolArgs,
+    key: string,
   ): ToolCacheEntry | undefined {
-    if (!descriptor.cacheable) return undefined;
-    const key = this.keyFor(descriptor.name, args);
-    if (key === undefined) return undefined;
     const fromMemory = this.memory.get(key);
     const candidate = fromMemory ?? this.disk.read(key);
     if (!candidate) return undefined;
@@ -139,25 +141,27 @@ export class ToolCallCache {
   }
 
   /**
-   * Record a fresh tool result. Returns immediately when the descriptor is not cacheable.
-   * Both tiers are written synchronously; the disk tier runs through the
-   * privacy redactor inside DiskStore.write.
-   *
-   * The bound is enforced here, independently of any caller-supplied
-   * `shouldCache` predicate, and BEFORE `structuredClone`: a lenient custom
-   * validator (or a direct `set()` caller) must not be able to push a cyclic,
-   * accessor-bearing, hostile-proxy or million-key value into either tier or
-   * through the clone/redaction work.
+   * Look up a cache entry for (toolName, args). Returns undefined on miss,
+   * on TTL expiry, or on tool-version mismatch. A disk hit promotes the
+   * entry into the in-memory tier.
    */
-  set(
+  get(
     descriptor: CacheableToolDescriptor,
     args: ToolArgs,
+  ): ToolCacheEntry | undefined {
+    if (!descriptor.cacheable) return undefined;
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return undefined;
+    return this.getByKey(descriptor, key);
+  }
+
+  /** Validate and store one result under an already-derived cache key. */
+  private setByKey(
+    descriptor: CacheableToolDescriptor,
+    key: string,
     output: ToolOutput,
   ): void {
-    if (!descriptor.cacheable) return;
     if (!isCacheableToolOutput(output)) return;
-    const key = this.keyFor(descriptor.name, args);
-    if (key === undefined) return;
     const cachedAt = this.now();
     let cloned: ToolOutput;
     try {
@@ -181,6 +185,28 @@ export class ToolCallCache {
     };
     this.memory.set(key, entry);
     this.disk.write(entry);
+  }
+
+  /**
+   * Record a fresh tool result. Returns immediately when the descriptor is not cacheable.
+   * Both tiers are written synchronously; the disk tier runs through the
+   * privacy redactor inside DiskStore.write.
+   *
+   * The bound is enforced here, independently of any caller-supplied
+   * `shouldCache` predicate, and BEFORE `structuredClone`: a lenient custom
+   * validator (or a direct `set()` caller) must not be able to push a cyclic,
+   * accessor-bearing, hostile-proxy or million-key value into either tier or
+   * through the clone/redaction work.
+   */
+  set(
+    descriptor: CacheableToolDescriptor,
+    args: ToolArgs,
+    output: ToolOutput,
+  ): void {
+    if (!descriptor.cacheable) return;
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return;
+    this.setByKey(descriptor, key, output);
   }
 
   /**
@@ -237,20 +263,25 @@ export class ToolCallCache {
       output: unknown,
     ) => output is ToolOutput = isCacheableToolOutput,
   ): Promise<unknown> {
-    const hit = this.get(descriptor, args);
-    if (hit && shouldCache(hit.output)) return hit.output;
-    if (hit) this.invalidate(descriptor.name, hit.key);
     if (!descriptor.cacheable) return execute();
 
+    // Derive once per run. Besides avoiding repeated bounded walks, this keeps
+    // the observable bypass signal to one event and prevents stateful
+    // reflection traps from producing different keys for lookup, in-flight
+    // deduplication and writeback within the same execution.
     const cacheKey = this.keyFor(descriptor.name, args);
     if (cacheKey === undefined) return execute();
+
+    const hit = this.getByKey(descriptor, cacheKey);
+    if (hit && shouldCache(hit.output)) return hit.output;
+    if (hit) this.invalidate(descriptor.name, hit.key);
     const inFlightKey = `${cacheKey}:${descriptor.version}`;
     const existing = this.inFlight.get(inFlightKey);
     if (existing) return existing;
 
     const pending = execute()
       .then((output) => {
-        if (shouldCache(output)) this.set(descriptor, args, output);
+        if (shouldCache(output)) this.setByKey(descriptor, cacheKey, output);
         return output;
       })
       .finally(() => {
