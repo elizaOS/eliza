@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Shared Cerebras judge transport.
  *
@@ -343,7 +344,7 @@ export class CerebrasJudge {
             continue;
           }
           throw new CerebrasJudgeError(
-            `cerebras error ${response.status}: ${errBody.slice(0, 300)}`,
+            `cerebras error ${response.status}: ${truncateWellFormed(toWellFormedUnicode(errBody), 300)}`,
             response.status,
             errBody,
           );
