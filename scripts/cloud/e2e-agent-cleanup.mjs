@@ -26,6 +26,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   assertExpectedCleanupIdentity,
@@ -414,43 +415,132 @@ function writeReport(reportPath, report) {
   }
 }
 
-let reportLockPath = null;
-
-function acquireReportLock(reportPath) {
-  if (!reportPath) return;
-  const lockPath = `${reportPath}.lock`;
-  try {
-    fs.mkdirSync(lockPath, { mode: 0o700 });
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      throw new Error(
-        `report is already locked by another cleanup: ${reportPath}`,
-        {
-          cause: error,
-        },
-      );
-    }
-    throw error;
-  }
-  reportLockPath = lockPath;
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
 }
 
-process.on("exit", () => {
-  if (!reportLockPath) return;
-  try {
-    fs.rmdirSync(reportLockPath);
-  } catch (error) {
-    // error-policy:J6 process teardown cannot safely recover a report lock;
-    // leave it fail-closed for explicit operator inspection.
-    console.error(
-      `[e2e-agent-cleanup] WARN: could not release report lock ${reportLockPath}: ${error.message}`,
-    );
-  }
-});
+function acquireReportLock(reportPath) {
+  if (!reportPath) return () => {};
+  const lockPath = `${reportPath}.lock`;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let descriptor;
+    let createdIdentity;
+    try {
+      descriptor = fs.openSync(
+        lockPath,
+        fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_EXCL |
+          fs.constants.O_NOFOLLOW,
+        0o600,
+      );
+      createdIdentity = fs.fstatSync(descriptor);
+      fs.writeFileSync(
+        descriptor,
+        `${JSON.stringify({ pid: process.pid, hostname: os.hostname(), startedAt: new Date().toISOString() })}\n`,
+        "utf8",
+      );
+      fs.fsyncSync(descriptor);
+      const identity = fs.fstatSync(descriptor);
+      fs.closeSync(descriptor);
+      descriptor = undefined;
+      return () => {
+        try {
+          const current = fs.lstatSync(lockPath);
+          if (!sameFileIdentity(identity, current)) {
+            throw new Error("report lock changed while cleanup was running");
+          }
+          fs.unlinkSync(lockPath);
+        } catch (error) {
+          // error-policy:J6 releasing the advisory receipt lock is teardown;
+          // the receipt itself already records the authoritative run result.
+          console.warn(
+            `[e2e-agent-cleanup] WARN: failed to release report lock: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      };
+    } catch (error) {
+      // error-policy:J2 lock acquisition failures gain report-path context and
+      // preserve their filesystem cause; EEXIST is inspected fail-closed below.
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+      if (createdIdentity !== undefined) {
+        try {
+          const current = fs.lstatSync(lockPath);
+          if (sameFileIdentity(createdIdentity, current))
+            fs.unlinkSync(lockPath);
+        } catch (cleanupError) {
+          // error-policy:J6 this cleanup only removes a lock created by this
+          // failed acquisition; the original failure remains authoritative.
+          if (cleanupError?.code !== "ENOENT") {
+            console.warn(
+              `[e2e-agent-cleanup] WARN: failed to clean incomplete report lock: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+            );
+          }
+        }
+      }
+      if (error?.code !== "EEXIST") {
+        throw new Error(
+          `failed to acquire cleanup report lock at ${lockPath}`,
+          {
+            cause: error,
+          },
+        );
+      }
+    }
 
-async function main() {
-  const options = parseOptions();
-  acquireReportLock(options.reportPath);
+    let existingDescriptor;
+    let owner;
+    let existingIdentity;
+    try {
+      existingDescriptor = fs.openSync(
+        lockPath,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+      );
+      existingIdentity = fs.fstatSync(existingDescriptor);
+      const text = fs.readFileSync(existingDescriptor, "utf8");
+      try {
+        owner = JSON.parse(text);
+      } catch (error) {
+        // error-policy:J3 lock contents are untrusted; malformed ownership can
+        // never authorize removal of a potentially live process's lock.
+        throw new Error(`cleanup report lock is malformed at ${lockPath}`, {
+          cause: error,
+        });
+      }
+    } finally {
+      if (existingDescriptor !== undefined) fs.closeSync(existingDescriptor);
+    }
+    if (
+      owner?.hostname !== os.hostname() ||
+      !Number.isInteger(owner?.pid) ||
+      owner.pid <= 0
+    ) {
+      throw new Error(`cleanup report is locked by an unverifiable owner`);
+    }
+
+    let ownerAlive = true;
+    try {
+      process.kill(owner.pid, 0);
+    } catch (error) {
+      // error-policy:J3 only the OS's definitive no-such-process result makes
+      // a same-host lock stale; permissions and unknown errors stay locked.
+      if (error?.code === "ESRCH") ownerAlive = false;
+      else throw new Error(`cleanup report is locked by pid ${owner.pid}`);
+    }
+    if (ownerAlive) {
+      throw new Error(`cleanup report is locked by active pid ${owner.pid}`);
+    }
+
+    const currentIdentity = fs.lstatSync(lockPath);
+    if (!sameFileIdentity(existingIdentity, currentIdentity)) {
+      throw new Error("cleanup report lock changed during stale-lock recovery");
+    }
+    fs.unlinkSync(lockPath);
+  }
+  throw new Error(`failed to acquire cleanup report lock at ${lockPath}`);
+}
+
+async function executeCleanup(options) {
   const { token, identity } = await resolveToken(options);
   if (options.apply) {
     assertExpectedCleanupIdentity(identity, options);
@@ -547,6 +637,16 @@ async function main() {
       ? `done: verified ${report.verifiedAbsent.length} reviewed candidate(s) absent`
       : `dry run: ${toDelete.length} eligible agent(s); review IDs before --apply`,
   );
+}
+
+async function main() {
+  const options = parseOptions();
+  const releaseReportLock = acquireReportLock(options.reportPath);
+  try {
+    await executeCleanup(options);
+  } finally {
+    releaseReportLock();
+  }
 }
 
 main().catch((error) => {

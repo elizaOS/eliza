@@ -375,7 +375,83 @@ describe("cli", () => {
     }
   });
 
-  test("concurrent report writers leave one complete private receipt", async () => {
+  test("rejects a concurrent apply before network and preserves the active receipt", async () => {
+    let agents = [oldAgentRow("first"), oldAgentRow("second")];
+    const requests = [];
+    let markDeleteEntered;
+    let releaseDelete;
+    const deleteEntered = new Promise((resolve) => {
+      markDeleteEntered = resolve;
+    });
+    const deleteReleased = new Promise((resolve) => {
+      releaseDelete = resolve;
+    });
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        requests.push(`${request.method} ${url.pathname}`);
+        if (url.pathname === "/api/v1/credits/balance") {
+          return Response.json({ balance: 10 });
+        }
+        if (url.pathname === "/api/v1/eliza/agents") {
+          return Response.json({ data: agents });
+        }
+        if (url.pathname === "/api/v1/eliza/agents/first") {
+          markDeleteEntered();
+          await deleteReleased;
+          agents = agents.filter(({ id }) => id !== "first");
+          return Response.json({ success: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const receipt = temporaryReport();
+    let firstRun;
+    try {
+      firstRun = runCli(applyArgs(server, receipt.reportPath, ["first"]));
+      await deleteEntered;
+      const requestsBeforeSecondRun = requests.length;
+      const secondRun = await runCli(
+        applyArgs(server, receipt.reportPath, ["second"]),
+      );
+      expect(secondRun.exitCode).toBe(1);
+      expect(secondRun.stderr).toContain("locked by active pid");
+      expect(requests).toHaveLength(requestsBeforeSecondRun);
+
+      releaseDelete();
+      const firstResult = await firstRun;
+      expect(firstResult.exitCode).toBe(0);
+      expect(
+        JSON.parse(fs.readFileSync(receipt.reportPath, "utf8")),
+      ).toMatchObject({
+        apply: true,
+        failure: null,
+        attempts: [{ agentId: "first", status: "completed" }],
+        verifiedAbsent: ["first"],
+      });
+      expect(fs.statSync(receipt.reportPath).mode & 0o777).toBe(0o600);
+      expect(fs.readdirSync(receipt.directory)).toEqual(["receipt.json"]);
+    } finally {
+      releaseDelete();
+      await firstRun?.catch(() => {});
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
+
+  test("reclaims only a verifiably stale same-host report lock", async () => {
+    const exited = Bun.spawn(["bun", "-e", ""], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await exited.exited;
+    const receipt = temporaryReport();
+    fs.writeFileSync(
+      `${receipt.reportPath}.lock`,
+      `${JSON.stringify({ pid: exited.pid, hostname: os.hostname(), startedAt: new Date().toISOString() })}\n`,
+      { mode: 0o600 },
+    );
     const server = Bun.serve({
       port: 0,
       fetch(request) {
@@ -384,31 +460,49 @@ describe("cli", () => {
           return Response.json({ balance: 10 });
         }
         if (url.pathname === "/api/v1/eliza/agents") {
-          return Response.json({ data: [oldAgentRow("old")] });
+          return Response.json({ data: [] });
         }
         return new Response("not found", { status: 404 });
       },
     });
-    const receipt = temporaryReport();
     try {
-      const results = await Promise.all(
-        Array.from({ length: 4 }, () =>
-          runCli([
-            "--base",
-            server.url.toString(),
-            "--report",
-            receipt.reportPath,
-            "--min-age-minutes",
-            "0",
-          ]),
-        ),
-      );
-      expect(results.every(({ exitCode }) => exitCode === 0)).toBe(true);
-      expect(
-        JSON.parse(fs.readFileSync(receipt.reportPath, "utf8")),
-      ).toMatchObject({ apply: false, eligible: ["old"], failure: null });
-      expect(fs.statSync(receipt.reportPath).mode & 0o777).toBe(0o600);
-      expect(fs.readdirSync(receipt.directory)).toEqual(["receipt.json"]);
+      const result = await runCli([
+        "--base",
+        server.url.toString(),
+        "--report",
+        receipt.reportPath,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(fs.existsSync(`${receipt.reportPath}.lock`)).toBe(false);
+    } finally {
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
+
+  test("fails closed on a symlinked report lock before network", async () => {
+    let requests = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests += 1;
+        return new Response("unexpected", { status: 500 });
+      },
+    });
+    const receipt = temporaryReport();
+    const sentinel = path.join(receipt.directory, "sentinel.txt");
+    fs.writeFileSync(sentinel, "untouched\n");
+    fs.symlinkSync(sentinel, `${receipt.reportPath}.lock`);
+    try {
+      const result = await runCli([
+        "--base",
+        server.url.toString(),
+        "--report",
+        receipt.reportPath,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(requests).toBe(0);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("untouched\n");
     } finally {
       server.stop(true);
       receipt.cleanup();
@@ -498,11 +592,11 @@ describe("cli", () => {
   });
 
   test.each([
-    ["failed", "delete job delete-job for old failed"],
-    ["running", "delete job delete-job for old timed out"],
+    ["failed", "delete job delete-job for old failed", "2000"],
+    ["running", "delete job delete-job for old timed out", "50"],
   ])(
     "fails closed on a %s delete job and writes the failure receipt",
-    async (jobStatus, expectedError) => {
+    async (jobStatus, expectedError, timeoutMs) => {
       const server = Bun.serve({
         port: 0,
         fetch(request) {
@@ -529,7 +623,7 @@ describe("cli", () => {
         const result = await runCli([
           ...applyArgs(server, receipt.reportPath, ["old"]),
           "--job-timeout-ms",
-          "20",
+          timeoutMs,
           "--poll-interval-ms",
           "1",
         ]);
