@@ -8,7 +8,7 @@ import { ElizaClient } from "./client-base";
 export interface IMessageApiStatus {
   available: boolean;
   connected: boolean;
-  bridgeType?: "native" | "imsg" | "bluebubbles" | "none";
+  bridgeType?: "native" | "none";
   hostPlatform?: "darwin" | "linux" | "win32" | "unknown";
   diagnostics?: string[];
   error?: string | null;
