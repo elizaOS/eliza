@@ -30,6 +30,7 @@ import { buildContainerProvisionInput } from "./container-provider-input";
 export interface AppContainerRow {
   id: string;
   appId: string;
+  deploymentGeneration?: string;
   containerName: string;
   image: string;
   port: number;
@@ -68,6 +69,8 @@ export interface AppContainerStore {
 export interface ContainerExecutorDeps {
   provider: AppContainerProvider;
   store: AppContainerStore;
+  /** Rejects stale app-container work before provider or app-state mutation. */
+  isAppDeploymentCurrent?: (appId: string, deploymentGeneration: string | null) => Promise<boolean>;
   /**
    * Ingress hooks (optional). When set, the executor registers the per-app route
    * `<shortid>.<base>` -> `127.0.0.1:hostPort` (node-local Caddy) right after the
@@ -99,7 +102,11 @@ export interface ContainerExecutorDeps {
    * impl resolves by app id). Optional/injected; best-effort is NOT acceptable
    * here — a failure must surface so the deploy is retried, not silently stuck.
    */
-  markAppDeployed?: (appId: string, productionUrl: string | null) => Promise<void>;
+  markAppDeployed?: (
+    appId: string,
+    deploymentGeneration: string | null,
+    productionUrl: string | null,
+  ) => Promise<void>;
   /**
    * Probe whether the app's public URL is HTTP-reachable (#9853). Runs after the
    * ingress route is registered and BEFORE the app is marked `deployed`, so a
@@ -169,12 +176,83 @@ async function settleFailedProvision(
   throw failure;
 }
 
+async function discardStaleProvision(
+  deps: ContainerExecutorDeps,
+  row: AppContainerRow,
+  result: Awaited<ReturnType<AppContainerProvider["provision"]>>,
+): Promise<void> {
+  try {
+    await deps.provider.deletePrimaryById(result.containerId);
+  } catch (cleanupError) {
+    const cleanupMessage =
+      cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+    await deps.store.markCleanupRequired(
+      row.id,
+      `Stale deployment primary cleanup unproven: ${cleanupMessage}`,
+    );
+    throw new ElizaError(`Could not discard stale app deployment container ${row.id}`, {
+      code: "APP_DEPLOYMENT_STALE_CLEANUP_UNPROVEN",
+      context: {
+        containerId: row.id,
+        hostContainerId: result.containerId,
+        cleanupError: cleanupMessage,
+      },
+      cause: cleanupError,
+      severity: "fatal",
+    });
+  }
+  const rolledBack = await deps.store.rollbackNodeSlotClaim(
+    row.id,
+    row.organizationId,
+    deps.provider.targetNodeId,
+  );
+  if (!rolledBack) {
+    await deps.store.markCleanupRequired(
+      row.id,
+      "Stale deployment primary is absent but the node-slot claim could not be released",
+    );
+    throw new ElizaError(`Could not release stale app deployment slot ${row.id}`, {
+      code: "APP_DEPLOYMENT_STALE_SLOT_ROLLBACK_UNAPPLIED",
+      context: { containerId: row.id, nodeId: deps.provider.targetNodeId },
+      severity: "fatal",
+    });
+  }
+}
+
 export async function executeContainerProvision(
   job: JobLike,
   deps: ContainerExecutorDeps,
 ): Promise<void> {
-  const { containerId } = readContainerProvisionJobData(job);
+  const { containerId, deploymentGeneration: jobGeneration } = readContainerProvisionJobData(job);
   const row = await requireRow(deps.store, containerId);
+  const generation = row.deploymentGeneration ?? null;
+  if (jobGeneration && jobGeneration !== generation) {
+    logger.info("[ContainerExecutor] ignored mismatched app deployment job", {
+      containerId,
+      appId: row.appId,
+      jobDeploymentGeneration: jobGeneration,
+      rowDeploymentGeneration: generation,
+    });
+    return;
+  }
+  if (generation && !deps.isAppDeploymentCurrent) {
+    throw new ElizaError(
+      `App container ${containerId} has a deployment generation but no generation fence`,
+      {
+        code: "APP_DEPLOYMENT_GENERATION_FENCE_MISSING",
+        context: { containerId, appId: row.appId, deploymentGeneration: generation },
+        severity: "fatal",
+      },
+    );
+  }
+  if (deps.isAppDeploymentCurrent && !(await deps.isAppDeploymentCurrent(row.appId, generation))) {
+    logger.info("[ContainerExecutor] ignored stale app deployment container", {
+      containerId,
+      appId: row.appId,
+      deploymentGeneration: generation,
+    });
+    return;
+  }
   const input = buildContainerProvisionInput({
     name: row.containerName,
     projectName: row.appId,
@@ -200,7 +278,28 @@ export async function executeContainerProvision(
     return settleFailedProvision(deps, row, containerId, error);
   }
 
+  if (deps.isAppDeploymentCurrent && !(await deps.isAppDeploymentCurrent(row.appId, generation))) {
+    await discardStaleProvision(deps, row, result);
+    logger.info("[ContainerExecutor] discarded app deployment that became stale during provision", {
+      containerId,
+      appId: row.appId,
+      deploymentGeneration: generation,
+    });
+    return;
+  }
+
   try {
+    if (
+      deps.isAppDeploymentCurrent &&
+      !(await deps.isAppDeploymentCurrent(row.appId, generation))
+    ) {
+      logger.info("[ContainerExecutor] skipped stale app deployment ingress mutation", {
+        containerId,
+        appId: row.appId,
+        deploymentGeneration: generation,
+      });
+      return;
+    }
     await deps.store.markRunning(containerId, {
       hostContainerId: result.containerId,
       hostPort: result.hostPort,
@@ -261,7 +360,18 @@ export async function executeContainerProvision(
     // Container is running and routable — flip the app to `deployed` so the
     // deploy-status route reports READY (instead of `building` forever).
     if (deps.markAppDeployed) {
-      await deps.markAppDeployed(row.appId, endpoint?.url ?? null);
+      if (
+        deps.isAppDeploymentCurrent &&
+        !(await deps.isAppDeploymentCurrent(row.appId, generation))
+      ) {
+        logger.info("[ContainerExecutor] skipped stale app deployment success writeback", {
+          containerId,
+          appId: row.appId,
+          deploymentGeneration: generation,
+        });
+        return;
+      }
+      await deps.markAppDeployed(row.appId, generation, endpoint?.url ?? null);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

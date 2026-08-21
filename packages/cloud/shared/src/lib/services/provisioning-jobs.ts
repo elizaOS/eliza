@@ -84,6 +84,10 @@ import {
 } from "./app-cache-invalidation-job";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
+import {
+  APP_DEPLOYMENT_GENERATION_KEY,
+  deploymentGenerationFromMetadata,
+} from "./app-deployment-generation";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
@@ -3797,12 +3801,18 @@ export class ProvisioningJobService {
       // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
       // and exhausts retries.
       case JOB_TYPES.APP_DEPLOY: {
-        const { appId } = readAppDeployJobData(job);
+        const { appId, deploymentGeneration } = readAppDeployJobData(job);
         return async (tx, failedJob) => {
           const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
+            .where(
+              and(
+                eq(apps.id, appId),
+                eq(apps.organization_id, failedJob.organization_id),
+                sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`,
+              ),
+            )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
@@ -3829,12 +3839,14 @@ export class ProvisioningJobService {
       // container after ANOTHER tenant's app id and flip that app to `failed`,
       // because the cross-org WHERE matches zero rows.
       case JOB_TYPES.CONTAINER_PROVISION: {
-        const { containerId } = readContainerProvisionJobData(job);
+        const { containerId, deploymentGeneration: jobGeneration } =
+          readContainerProvisionJobData(job);
         return async (tx, failedJob) => {
           const [row] = await tx
             .select({
               projectName: containers.project_name,
               organizationId: containers.organization_id,
+              metadata: containers.metadata,
             })
             .from(containers)
             .where(
@@ -3846,10 +3858,22 @@ export class ProvisioningJobService {
             .limit(1);
           const appId = row?.projectName;
           if (!appId || !isValidUUID(appId)) return;
+          const rowGeneration = deploymentGenerationFromMetadata(row.metadata);
+          if (jobGeneration && jobGeneration !== rowGeneration) return;
+          const deploymentGeneration = jobGeneration ?? rowGeneration;
+          const generationFilter = deploymentGeneration
+            ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`
+            : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
           const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
+            .where(
+              and(
+                eq(apps.id, appId),
+                eq(apps.organization_id, row.organizationId),
+                generationFilter,
+              ),
+            )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
