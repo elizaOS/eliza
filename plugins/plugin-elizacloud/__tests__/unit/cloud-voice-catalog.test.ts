@@ -10,6 +10,7 @@
  *     at all, since the gate runs before the HTTP fetch).
  *   - Per-endpoint failure isolation (one endpoint erroring still surfaces
  *     the other's voices).
+ *   - Total outages are retried rather than cached as genuine empty catalogs.
  *
  * The SDK client is swapped via `setCloudVoiceClientFactoryForTesting` so
  * the tests never hit the real network and never need a working
@@ -292,15 +293,55 @@ describe("fetchCloudVoiceCatalog", () => {
     warnSpy.mockRestore();
   });
 
-  it("returns empty array when both endpoints fail", async () => {
-    const { client } = makeFakeClient({
+  it("does not cache a total outage and recovers on the next call", async () => {
+    const failed = makeFakeClient({
       premadeError: new Error("premade endpoint down"),
+      userError: new Error("user endpoint down"),
+    });
+    const recovered = makeFakeClient({
+      premade: [{ voice_id: "recovered-voice", name: "Recovered" }],
+      user: [],
+    });
+    let currentClient = failed.client;
+    setCloudVoiceClientFactoryForTesting(() => currentClient);
+
+    const first = await fetchCloudVoiceCatalog(makeRuntime());
+    expect(first).toEqual([]);
+
+    currentClient = recovered.client;
+    const second = await fetchCloudVoiceCatalog(makeRuntime());
+    expect(second.map((voice) => voice.id)).toEqual(["recovered-voice"]);
+    expect(failed.calls).toEqual({ premade: 1, user: 1 });
+    expect(recovered.calls).toEqual({ premade: 1, user: 1 });
+  });
+
+  it("caches a partial success while one endpoint is unavailable", async () => {
+    const { client, calls } = makeFakeClient({
+      premade: [{ voice_id: "available-voice", name: "Available" }],
       userError: new Error("user endpoint down"),
     });
     setCloudVoiceClientFactoryForTesting(() => client);
 
-    const voices = await fetchCloudVoiceCatalog(makeRuntime());
-    expect(voices).toEqual([]);
+    const runtime = makeRuntime();
+    const first = await fetchCloudVoiceCatalog(runtime);
+    const second = await fetchCloudVoiceCatalog(runtime);
+
+    expect(first.map((voice) => voice.id)).toEqual(["available-voice"]);
+    expect(second).toBe(first);
+    expect(calls).toEqual({ premade: 1, user: 1 });
+  });
+
+  it("caches a genuine empty catalog when both endpoints succeed", async () => {
+    const { client, calls } = makeFakeClient({ premade: [], user: [] });
+    setCloudVoiceClientFactoryForTesting(() => client);
+
+    const runtime = makeRuntime();
+    const first = await fetchCloudVoiceCatalog(runtime);
+    const second = await fetchCloudVoiceCatalog(runtime);
+
+    expect(first).toEqual([]);
+    expect(second).toBe(first);
+    expect(calls).toEqual({ premade: 1, user: 1 });
   });
 
   it("accepts bare-array payloads (some upstream variants return arrays)", async () => {

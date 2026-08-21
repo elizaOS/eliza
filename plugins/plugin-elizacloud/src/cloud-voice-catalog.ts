@@ -11,9 +11,9 @@
  *
  * Results are cached in-memory for {@link CACHE_TTL_MS} (1 hour). The cache
  * is keyed by the runtime's cloud base URL + API key so multi-tenant or
- * test-isolated runtimes don't share entries. On any fetch error we return
- * a normalized empty list rather than throwing — callers can decide whether
- * to surface a UI hint.
+ * test-isolated runtimes don't share entries. Endpoint failures degrade
+ * independently, but a total upstream outage is never cached as a genuine
+ * empty catalog.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -71,6 +71,10 @@ interface CacheEntry {
   fetchedAt: number;
   voices: CloudVoiceCatalogEntry[];
 }
+
+type EndpointVoiceResult =
+  | { ok: true; voices: CloudVoiceCatalogEntry[] }
+  | { ok: false; voices: [] };
 
 /** Module-level cache. Keyed by `${baseUrl}|${apiKey}`. */
 const cache = new Map<string, CacheEntry>();
@@ -187,7 +191,7 @@ function dedupeById(entries: CloudVoiceCatalogEntry[]): CloudVoiceCatalogEntry[]
 async function fetchEndpointVoices(
   runtime: IAgentRuntime,
   endpoint: "premade" | "user",
-): Promise<CloudVoiceCatalogEntry[]> {
+): Promise<EndpointVoiceResult> {
   try {
     const client = clientFactory(runtime);
     const payload =
@@ -200,7 +204,7 @@ async function fetchEndpointVoices(
       const v = normalizeVoiceEntry(entry);
       if (v) normalized.push(v);
     }
-    return normalized;
+    return { ok: true, voices: normalized };
   } catch (err) {
     // error-policy:J4 one endpoint degrades to empty so the other still
     // populates the catalog (see fetchCloudVoiceCatalog); warn so a sustained
@@ -209,7 +213,7 @@ async function fetchEndpointVoices(
     logger.warn(
       `[ELIZAOS_CLOUD] voice catalog ${endpoint} fetch failed: ${message}`,
     );
-    return [];
+    return { ok: false, voices: [] };
   }
 }
 
@@ -246,7 +250,9 @@ export async function fetchCloudVoiceCatalog(
 
   // User voices first so cloned voices appear before the shared premade
   // list — most users care about their own clones.
-  const merged = dedupeById([...user, ...premade]);
-  cache.set(key, { fetchedAt: now, voices: merged });
+  const merged = dedupeById([...user.voices, ...premade.voices]);
+  if (premade.ok || user.ok) {
+    cache.set(key, { fetchedAt: now, voices: merged });
+  }
   return merged;
 }
