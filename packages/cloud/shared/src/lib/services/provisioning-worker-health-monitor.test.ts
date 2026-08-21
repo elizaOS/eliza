@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ProvisioningWorkerHealth } from "./provisioning-worker-health";
 import {
+  alertFetch,
   HEARTBEAT_MAX_AGE_MS,
   isHeartbeatStale,
   monitorProvisioningWorkerHealth,
@@ -174,5 +175,38 @@ describe("monitorProvisioningWorkerHealth", () => {
       if (prevPd === undefined) delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
       else process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = prevPd;
     }
+  });
+});
+
+describe("alertFetch — bounded alert hops fail closed and keep caller signals", () => {
+  it("aborts a hung alert hop at the configured timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await alertFetch("https://events.pagerduty.com/v2/enqueue", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

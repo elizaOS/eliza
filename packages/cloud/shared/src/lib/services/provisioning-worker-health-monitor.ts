@@ -23,6 +23,23 @@ import {
   type ProvisioningWorkerHealth,
 } from "./provisioning-worker-health";
 
+const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Bound every ops-alert hop so a hung webhook cannot pin the monitor. A
+ * caller-provided abort signal wins.
+ */
+export function alertFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 /**
  * Alert-channel env vars, mirroring the per-domain convention already used by
  * `payout-alerts` (`REDEMPTION_ALERT_*`) and the social-media alerts
@@ -89,7 +106,7 @@ export async function sendProvisioningWorkerAlert(alert: DaemonHealthAlert): Pro
 
   if (slackWebhook) {
     sends.push(
-      fetch(slackWebhook, {
+      alertFetch(slackWebhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -101,7 +118,7 @@ export async function sendProvisioningWorkerAlert(alert: DaemonHealthAlert): Pro
 
   if (pagerDutyKey) {
     sends.push(
-      fetch("https://events.pagerduty.com/v2/enqueue", {
+      alertFetch("https://events.pagerduty.com/v2/enqueue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
