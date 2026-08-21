@@ -198,6 +198,28 @@ function isVaultReference(value: unknown): boolean {
 const BUNDLED_TELEGRAM_APP_ID = 2040;
 const BUNDLED_TELEGRAM_APP_HASH = "b18441a1ff607e10a989891a5462e627";
 
+function resolveRuntimeCredentialPair(
+  runtime: IAgentRuntime,
+  appIdKey: string,
+  appHashKey: string,
+): { apiId: number; apiHash: string } | null {
+  const appId = runtime.getSetting(appIdKey);
+  const appHash = runtime.getSetting(appHashKey);
+  const parsedAppId =
+    typeof appId === "string" || typeof appId === "number"
+      ? Number(appId)
+      : Number.NaN;
+  if (
+    !Number.isInteger(parsedAppId) ||
+    parsedAppId <= 0 ||
+    typeof appHash !== "string" ||
+    appHash.trim().length === 0
+  ) {
+    return null;
+  }
+  return { apiId: parsedAppId, apiHash: appHash.trim() };
+}
+
 /**
  * Resolve the MTProto app credentials for the personal-account login, in
  * priority order: (1) per-account configured creds (power users / own app
@@ -228,24 +250,20 @@ export function resolveTelegramAppCredentials(
       apiHash: connConfig.appHash.trim(),
     };
   }
-  const envId =
-    runtime.getSetting("TELEGRAM_ACCOUNT_APP_ID") ??
-    runtime.getSetting("TELEGRAM_APP_ID");
-  const envHash =
-    runtime.getSetting("TELEGRAM_ACCOUNT_APP_HASH") ??
-    runtime.getSetting("TELEGRAM_APP_HASH");
-  const parsedEnvId =
-    typeof envId === "string" || typeof envId === "number"
-      ? Number(envId)
-      : Number.NaN;
-  if (
-    Number.isInteger(parsedEnvId) &&
-    parsedEnvId > 0 &&
-    typeof envHash === "string" &&
-    envHash.trim().length > 0
-  ) {
-    return { apiId: parsedEnvId, apiHash: envHash.trim() };
-  }
+  const canonicalCredentials = resolveRuntimeCredentialPair(
+    runtime,
+    "TELEGRAM_ACCOUNT_APP_ID",
+    "TELEGRAM_ACCOUNT_APP_HASH",
+  );
+  if (canonicalCredentials) return canonicalCredentials;
+
+  const legacyCredentials = resolveRuntimeCredentialPair(
+    runtime,
+    "TELEGRAM_APP_ID",
+    "TELEGRAM_APP_HASH",
+  );
+  if (legacyCredentials) return legacyCredentials;
+
   return {
     apiId: BUNDLED_TELEGRAM_APP_ID,
     apiHash: BUNDLED_TELEGRAM_APP_HASH,

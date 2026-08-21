@@ -122,6 +122,35 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
+  it.each([
+    {
+      label: "ID",
+      canonical: { TELEGRAM_ACCOUNT_APP_ID: "12345" },
+    },
+    {
+      label: "hash",
+      canonical: {
+        TELEGRAM_ACCOUNT_APP_HASH: "canonicalHashcanonicalHashcanon1",
+      },
+    },
+  ])(
+    "does not mix a canonical $label with the legacy credential pair",
+    ({ canonical }) => {
+      const creds = resolveTelegramAppCredentials(
+        makeRuntime({
+          ...canonical,
+          TELEGRAM_APP_ID: "65432",
+          TELEGRAM_APP_HASH: "legacyHashlegacyHashlegacyHash12",
+        }),
+        {},
+      );
+      expect(creds).toEqual({
+        apiId: 65432,
+        apiHash: "legacyHashlegacyHashlegacyHash12",
+      });
+    },
+  );
+
   it("ignores a non-numeric TELEGRAM_APP_ID and falls back to the bundled default", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({
