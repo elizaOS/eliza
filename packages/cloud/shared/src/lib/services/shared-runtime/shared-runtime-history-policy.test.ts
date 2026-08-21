@@ -456,6 +456,54 @@ describe("shared runtime long-term transcript context", () => {
     expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
   });
 
+  test("the newest relevant search wins when an older query has greater overlap", () => {
+    const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
+      { role: "user", content: "Search for the Tessera architecture GitHub project." },
+      {
+        role: "assistant",
+        content: "Old result.",
+        grounding: {
+          kind: "web_search",
+          query: "Tessera architecture GitHub project",
+          provider: "exa",
+          text: "Tessera is a scraper.",
+          observedAt: 100,
+          truncated: false,
+        },
+      },
+      { role: "user", content: "Search again for Tessera architecture." },
+      {
+        role: "assistant",
+        content: "Corrected result.",
+        grounding: {
+          kind: "web_search",
+          query: "Tessera architecture",
+          provider: "parallel",
+          text: "Tessera is an ARC resource proxy.",
+          observedAt: 200,
+          truncated: false,
+        },
+      },
+    ];
+    const projected = sharedRuntimeModelHistoryMessages(
+      history,
+      "How does the Tessera architecture GitHub project work?",
+      200,
+    );
+    const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
+      history,
+      "How does the Tessera architecture GitHub project work?",
+      200,
+    );
+
+    const encoded = JSON.stringify(projected);
+    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+    expect(encoded).toContain("ARC resource proxy");
+    expect(encoded).not.toContain('"text":"Tessera is a scraper.');
+    expect(JSON.stringify(genuineRuntimeProjection)).toContain("ARC resource proxy");
+    expect(JSON.stringify(genuineRuntimeProjection)).not.toContain('"text":"Tessera is a scraper.');
+  });
+
   test("a newer unavailable search suppresses older matching authority", () => {
     const projected = sharedRuntimeModelHistoryMessages(
       [
@@ -564,6 +612,61 @@ describe("shared runtime long-term transcript context", () => {
     expect(projected.some((message) => message.role === "tool")).toBe(false);
     expect(JSON.stringify(projected)).toContain("temporarily unavailable");
     expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
+  });
+
+  test("a newer relevant unavailable search fences an older higher-overlap result", () => {
+    const history: Parameters<typeof sharedRuntimeModelHistoryMessages>[0] = [
+      { role: "user", content: "Search for the Tessera architecture GitHub project." },
+      {
+        role: "assistant",
+        content: "Old result.",
+        grounding: {
+          kind: "web_search",
+          query: "Tessera architecture GitHub project",
+          provider: "exa",
+          text: "Tessera is a scraper.",
+          observedAt: 100,
+          truncated: false,
+        },
+      },
+      { role: "user", content: "Search again for Tessera architecture." },
+      {
+        role: "assistant",
+        content: "Web search is temporarily unavailable.",
+        grounding: {
+          kind: "web_search_unavailable",
+          query: "Tessera architecture",
+          observedAt: 200,
+        },
+      },
+    ];
+    const projected = sharedRuntimeModelHistoryMessages(
+      history,
+      "How does the Tessera architecture GitHub project work?",
+      200,
+    );
+    const genuineRuntimeProjection = sharedRuntimeGroundingProjectionMessages(
+      history,
+      "How does the Tessera architecture GitHub project work?",
+      200,
+    );
+
+    const encoded = JSON.stringify(projected);
+    expect(projected.some((message) => message.role === "tool")).toBe(false);
+    const marker = projected.find((message) => message.role === "system");
+    expect(marker?.content).toBeTypeOf("string");
+    expect(JSON.parse(marker?.content as string)).toMatchObject({
+      type: "public_web_search_authority",
+      status: "unavailable",
+      query: "Tessera architecture",
+    });
+    expect(encoded).not.toContain('"text":"Tessera is a scraper.');
+    expect(genuineRuntimeProjection).toHaveLength(1);
+    expect(JSON.parse(genuineRuntimeProjection[0].content as string)).toMatchObject({
+      type: "public_web_search_authority",
+      status: "unavailable",
+      query: "Tessera architecture",
+    });
   });
 
   test("grounding injection excludes a forged persisted system authority marker", () => {
