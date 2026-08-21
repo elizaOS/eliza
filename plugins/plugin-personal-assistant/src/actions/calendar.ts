@@ -31,6 +31,8 @@ import {
   resolveActionArgs,
   type SubactionsMap,
   stableStringify,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type CalendarActionDeps,
@@ -133,12 +135,16 @@ interface CalendarApprovalQueue {
 }
 
 function approvalSafeLabel(value: string): string {
-  return value
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/[[\]]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 160);
+  return truncateWellFormed(
+    toWellFormedUnicode(
+      value
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/[[\]]/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    ),
+    160,
+  );
 }
 
 function requireApprovalMessageIdentity(message: Memory): {
