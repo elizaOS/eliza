@@ -38,14 +38,30 @@ interface WorkflowJob {
   env?: Record<string, string>;
   outputs?: Record<string, string>;
   steps?: WorkflowStep[];
+  uses?: string;
+  with?: Record<string, string>;
+}
+
+interface WorkflowInput {
+  default?: boolean | string;
+  description?: string;
+  required?: boolean;
+  type?: string;
 }
 
 interface Workflow {
+  on?: {
+    schedule?: unknown;
+    workflow_call?: { inputs?: Record<string, WorkflowInput> };
+    workflow_dispatch?: { inputs?: Record<string, WorkflowInput> };
+  };
   jobs?: Record<string, WorkflowJob>;
 }
 
 const workflowSource = read(".github/workflows/cloud-cf-release.yml");
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
+const deployWorkflowSource = read(".github/workflows/cloud-cf-deploy.yml");
+const deployWorkflow = Bun.YAML.parse(deployWorkflowSource) as Workflow;
 const deployedConfig = read("packages/app/playwright.cloud-deployed.config.ts");
 const smokeSpec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
 
@@ -162,6 +178,45 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(authorityDownload.with?.name).toBe(
       `pages-deployment-authority-${githubExpression("github.run_id")}-${githubExpression("github.run_attempt")}`,
     );
+  });
+
+  test("supports an explicit one-shot dispatch without arming scheduled runs", () => {
+    const inputName = "run_deployed_renderer_staging";
+    const dispatchInput =
+      deployWorkflow.on?.workflow_dispatch?.inputs?.[inputName];
+    const calledInput = workflow.on?.workflow_call?.inputs?.[inputName];
+    const releaseJob = deployWorkflow.jobs?.release;
+    const admissionJob = deployWorkflow.jobs?.["admit-staging"];
+    const admissionStep = admissionJob?.steps?.find(
+      (step) =>
+        step.name === "Reject superseded staging SHA before work starts",
+    );
+
+    expect(dispatchInput?.type).toBe("boolean");
+    expect(dispatchInput?.default).toBe(false);
+    expect(calledInput?.type).toBe("boolean");
+    expect(calledInput?.default).toBe(false);
+    expect(releaseJob?.with?.[inputName]).toBe(
+      githubExpression(
+        "github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true",
+      ),
+    );
+    expect(admissionStep?.env?.RUN_DEPLOYED_RENDERER_STAGING).toBe(
+      releaseJob?.with?.[inputName],
+    );
+    expect(admissionStep?.run).toContain(
+      '&& [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]',
+    );
+    expect(admissionStep?.run).toContain(
+      '"--run-deployed-renderer-staging=$RUN_DEPLOYED_RENDERER_STAGING"',
+    );
+    expect(deployedJob.if).toContain(
+      "inputs.run_deployed_renderer_staging == true",
+    );
+    expect(deployedJob.if).toContain(
+      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)",
+    );
+    expect(deployWorkflow.on?.schedule).toBeUndefined();
   });
 
   test("keeps public probes secretless and exposes the key only to Chromium", () => {
