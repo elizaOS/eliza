@@ -85,7 +85,7 @@ export function validateWranglerEnvironmentArgs(args) {
 }
 
 async function runWrangler(args) {
-  const result = await execFileAsync("bunx", ["wrangler@4.100.0", ...args], {
+  const result = await execFileAsync("bunx", ["wrangler@4.116.0", ...args], {
     encoding: "utf8",
     maxBuffer: 1024 * 1024,
   });

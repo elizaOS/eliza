@@ -8452,7 +8452,7 @@
   "cloud.mcps.saving": "Saving...",
   "cloud.mcps.slugHint": "Lowercase letters, numbers and dashes only.",
   "cloud.mcps.slugLabel": "Slug",
-  "cloud.mcps.statCredits": "Base cloud credits charged",
+  "cloud.mcps.statCredits": "Total cloud credits charged",
   "cloud.mcps.statRequests": "Requests",
   "cloud.mcps.statsTitle": "Usage",
   "cloud.mcps.statUsers": "Unique users",

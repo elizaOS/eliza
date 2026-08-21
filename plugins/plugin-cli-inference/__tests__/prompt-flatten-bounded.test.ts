@@ -15,6 +15,8 @@
  *  2. Ordinary payloads still flatten byte-identically — the guard must not
  *     reject anything the live path accepts today.
  */
+
+import { runInNewContext } from "node:vm";
 import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -209,6 +211,73 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     ]);
     expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
     expect(out.length).toBeLessThan(9 * MiB);
+  });
+
+  it("charges property names, so sibling objects with huge keys are bounded", () => {
+    // #23891 charged nested values and dropped the terminal charge that used to
+    // account for keys and serialization syntax, which made property names free
+    // forever. Reported on that PR by @lalalune; this pins the fix.
+    const bigKey = (char: string): Record<string, number> => {
+      const object: Record<string, number> = {};
+      object[char.repeat(3 * MiB)] = 1;
+      return object;
+    };
+    const out = contentToText([toolResult([bigKey("a"), bigKey("b"), bigKey("c")])]);
+    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(out.length).toBeLessThan(9 * MiB);
+  });
+
+  it("cannot be made to throw by a getTime override on a Date-shaped payload", () => {
+    // `JSON.stringify` reaches the internal slot via the builtin `valueOf`, so
+    // the parent path survived this. Direct `object.getTime()` dispatch made it
+    // an uncaught throw out of contentToText -> flattenPrompt.
+    class EvilTime extends Date {
+      getTime(): number {
+        throw new Error("attacker code ran");
+      }
+      toISOString(): string {
+        throw new Error("attacker code ran");
+      }
+    }
+    expect(() => contentToText([toolResult({ when: new EvilTime(0) })])).not.toThrow();
+    expect(contentToText([toolResult({ when: new EvilTime(0) })])).toBe(
+      `[tool_result WEB_FETCH: ${JSON.stringify({ when: new Date(0) })}]`
+    );
+  });
+
+  it("renders an own __proto__ data property instead of silently dropping it", () => {
+    // JSON.parse produces a real own "__proto__" key; plain assignment into the
+    // projection hit the Object.prototype setter and the member vanished with
+    // no marker.
+    const payload = JSON.parse('{"__proto__":{"polluted":1},"keep":2}');
+    expect(Object.getOwnPropertyNames(payload)).toContain("__proto__");
+    const out = contentToText([toolResult(payload)]);
+    expect(out).toBe(`[tool_result WEB_FETCH: ${JSON.stringify(payload)}]`);
+    expect(out).toContain("polluted");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it("preserves Buffer and URL shape, and still bounds a large Buffer", () => {
+    expect(contentToText([toolResult(Buffer.from("hi"))])).toBe(
+      '[tool_result WEB_FETCH: {"type":"Buffer","data":[104,105]}]'
+    );
+    expect(contentToText([toolResult(new URL("https://e.com/x"))])).toBe(
+      '[tool_result WEB_FETCH: "https://e.com/x"]'
+    );
+    // Byte count is charged, so a buffer wider than the node budget is marked
+    // rather than materialized into a multi-megabyte index array.
+    expect(contentToText([toolResult(Buffer.alloc(200_000))])).toContain(
+      TOOL_PAYLOAD_BUDGET_MARKER
+    );
+  });
+
+  it("renders a cross-realm Date rather than an empty object", () => {
+    const CrossRealmDate = runInNewContext("Date") as DateConstructor;
+    const value = new CrossRealmDate(0);
+    expect(value instanceof Date).toBe(false);
+    expect(contentToText([toolResult({ at: value })])).toBe(
+      `[tool_result WEB_FETCH: ${JSON.stringify({ at: new Date(0) })}]`
+    );
   });
 
   it("still returns a single oversized body whole, nested or bare", () => {

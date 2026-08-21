@@ -4,6 +4,7 @@
  * this module owns transcript-only presentation policy.
  */
 
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import type { ChatTurnStatus } from "../../api/client-types-chat";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import {
@@ -18,6 +19,7 @@ import {
   SensitiveRequestBlock,
 } from "../chat/MessageContent";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
+import { useParsedSegments } from "../chat/use-parsed-segments";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
@@ -54,6 +56,15 @@ function OverlayAssistantTurnBody({
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
 }) {
+  // Liveness consumes this marker as a prose-reply signal, so derive it from
+  // the same normalized segments InlineWidgetText renders, not widget chrome.
+  const renderedSegments = useParsedSegments(
+    stripUnclaimedInteractionMarkup(message.text),
+    false,
+  );
+  const hasRenderedProse = renderedSegments.some(
+    (segment) => segment.kind === "text" && Boolean(segment.text.trim()),
+  );
   const attachmentsNode = message.attachments?.length ? (
     <MessageAttachments attachments={message.attachments} />
   ) : null;
@@ -67,7 +78,7 @@ function OverlayAssistantTurnBody({
       className="grid min-h-[1.4375rem] w-full min-w-0"
       data-testid="overlay-assistant-turn-body"
       data-phase={phase}
-      data-has-message-text={message.text.trim() ? "true" : "false"}
+      data-has-message-text={hasRenderedProse ? "true" : "false"}
     >
       {pending ? (
         <div className="col-start-1 row-start-1 flex min-h-[1.4375rem] items-center">

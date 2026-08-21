@@ -4629,7 +4629,22 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
-  it("exposes interrupted and widget-only rows without treating either as settled text", () => {
+  function assistantTurnBody(messageId: string): HTMLElement {
+    const body = document
+      .getElementById(`chat-message-${messageId}`)
+      ?.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      );
+    expect(body).toBeTruthy();
+    return body as HTMLElement;
+  }
+
+  it("marks parsed prose, not attachment or inline-widget chrome, as message text", () => {
+    const form = JSON.stringify({
+      id: "trip-details",
+      title: "Trip details",
+      fields: [{ name: "destination", type: "text", label: "Destination" }],
+    });
     render(
       <ChatOverlay
         controller={makeController({
@@ -4656,6 +4671,26 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
               ],
               createdAt: 2,
             },
+            {
+              id: "a-choice-only",
+              role: "assistant",
+              content:
+                "[CHOICE:approval id=choice-only]\nyes=Approve\nno=Reject\n[/CHOICE]",
+              createdAt: 3,
+            },
+            {
+              id: "a-form-only",
+              role: "assistant",
+              content: `[FORM]\n${form}\n[/FORM]`,
+              createdAt: 4,
+            },
+            {
+              id: "a-prose-widget",
+              role: "assistant",
+              content:
+                "Choose next:\n[CHOICE:next id=choice-with-prose]\ncontinue=Continue\n[/CHOICE]",
+              createdAt: 5,
+            },
           ],
         } as unknown as Partial<ShellController>)}
       />,
@@ -4680,6 +4715,92 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     );
     expect(attachmentBody?.dataset.phase).toBe("reply");
     expect(attachmentBody?.dataset.hasMessageText).toBe("false");
+
+    expect(screen.getByTestId("choice-shell-choice-only")).toBeTruthy();
+    expect(assistantTurnBody("a-choice-only").dataset.hasMessageText).toBe(
+      "false",
+    );
+    expect(screen.getByTestId("form-request")).toBeTruthy();
+    expect(assistantTurnBody("a-form-only").dataset.hasMessageText).toBe(
+      "false",
+    );
+    expect(screen.getByText("Choose next:")).toBeTruthy();
+    expect(assistantTurnBody("a-prose-widget").dataset.hasMessageText).toBe(
+      "true",
+    );
+  });
+
+  it("does not promote hidden or structured-only markup to assistant prose", () => {
+    const uiSpec = JSON.stringify({
+      root: "heading",
+      state: {},
+      elements: {
+        heading: {
+          type: "Heading",
+          props: { text: "Structured only", level: "h2" },
+          children: [],
+        },
+      },
+    });
+    const permissionRequest = JSON.stringify({
+      action: "permission_request",
+      permission: "camera",
+      reason: "Scan a code.",
+      feature: "scanner.qr.read",
+    });
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "a-hidden-only",
+              role: "assistant",
+              content: "<think>private reasoning</think>",
+              createdAt: 1,
+            },
+            {
+              id: "a-code-only",
+              role: "assistant",
+              content: "```ts\nconst answer = 42;\n```",
+              createdAt: 2,
+            },
+            {
+              id: "a-config-only",
+              role: "assistant",
+              content: "[CONFIG:weather]",
+              createdAt: 3,
+            },
+            {
+              id: "a-ui-only",
+              role: "assistant",
+              content: `\`\`\`json\n${uiSpec}\n\`\`\``,
+              createdAt: 4,
+            },
+            {
+              id: "a-permission-only",
+              role: "assistant",
+              content: `\`\`\`json\n${permissionRequest}\n\`\`\``,
+              createdAt: 5,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    expect(screen.queryByText("private reasoning")).toBeNull();
+    expect(screen.getByTestId("code-block")).toBeTruthy();
+    expect(screen.getByTestId("permission-card")).toBeTruthy();
+    for (const messageId of [
+      "a-hidden-only",
+      "a-code-only",
+      "a-config-only",
+      "a-ui-only",
+      "a-permission-only",
+    ]) {
+      expect(assistantTurnBody(messageId).dataset.hasMessageText).toBe("false");
+    }
   });
 
   it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {

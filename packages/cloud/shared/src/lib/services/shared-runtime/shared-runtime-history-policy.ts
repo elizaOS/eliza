@@ -320,7 +320,6 @@ function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {
     content: JSON.stringify({
       type: "public_web_search_authority",
       status: selection.status,
-      query: selection.grounding.query,
       policy: "do_not_use_prior_assistant_web_claims",
     }),
   };
@@ -332,8 +331,9 @@ function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {
  * `nativeToolProjection` must be false whenever the current request does not
  * declare `WEB_SEARCH` in its tool set: a strict provider rejects an entire
  * request whose history references an undeclared tool, which loses the turn
- * rather than only the grounding. The data-only transcript form carries the
- * same bounded, JSON-encoded evidence text and is valid on every provider.
+ * rather than only the grounding. The data-only user message carries the same
+ * bounded, JSON-encoded evidence text without granting public content system
+ * authority, and is valid on every provider.
  */
 export interface SharedRuntimeGroundingProjectionOptions {
   nativeToolProjection?: boolean;
@@ -349,7 +349,7 @@ function groundingProjectionMessages(
   if (options?.nativeToolProjection === false) {
     return [
       groundingAuthorityMarker(selection),
-      { role: "system", content: encodeSharedPublicWebGrounding(selection.grounding) },
+      { role: "user", content: encodeSharedPublicWebGrounding(selection.grounding) },
     ];
   }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;

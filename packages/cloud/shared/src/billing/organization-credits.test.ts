@@ -5,6 +5,7 @@ import {
   formatOrganizationCreditUsd,
   LEGACY_MCP_POINTS_PER_DOLLAR,
   legacyMcpPointsToOrganizationCredits,
+  mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_PRICING,
   organizationCreditsToLegacyMcpPoints,
   RETRIEVE_MEMORIES_PRICE_USD,
@@ -55,6 +56,23 @@ describe("organization credit unit", () => {
     expect(formatOrganizationCreditUsd(0.0125)).toBe("0.0125");
     expect(formatOrganizationCreditUsd(0.000001)).toBe("0.000001");
     expect(formatOrganizationCreditUsd(100)).toBe("100");
+  });
+
+  test("builds the exact fee-inclusive receipt used by debit and persistence", () => {
+    expect(
+      mcpUsageChargeReceiptFromLegacyPoints({
+        basePoints: 1,
+        affiliateFeePoints: 0.1,
+        platformFeePoints: 0.2,
+      }),
+    ).toEqual({
+      creditUnit: "USD",
+      baseAmountUsd: 0.01,
+      affiliateFeeUsd: 0.001,
+      platformFeeUsd: 0.002,
+      totalAmountUsd: 0.013,
+      feeComponentsKnown: true,
+    });
   });
 
   test("rejects negative and non-finite amounts", () => {

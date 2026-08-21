@@ -89,6 +89,7 @@ const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const ANDROID_LOCAL_AGENT_DEVICE_PORT = 31337;
+const ANDROID_E2E_API_EXPOSE_PORT_PROP = "debug.eliza.api_expose_port";
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
@@ -862,34 +863,82 @@ async function launchAndroidEmulatorApp() {
   }
 
   const context = { adb, serial, installed: true };
-  if (androidSelectLocal) {
-    removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
-    forceStopConflictingAndroidAgents(context);
-    preseedAndroidLocalRuntime(context);
-  }
-  if (androidStageSmokeModel) {
-    await stageAndroidSmokeModel(context);
-  }
+  const prepareAndLaunch = async () => {
+    if (androidSelectLocal) {
+      removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
+      forceStopConflictingAndroidAgents(context);
+      preseedAndroidLocalRuntime(context);
+    }
+    if (androidStageSmokeModel) {
+      await stageAndroidSmokeModel(context);
+    }
 
-  console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
+    console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
+    requireExec(
+      adb,
+      ["-s", serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
+      `Failed to launch ${id} on ${serial}.`,
+    );
+    tryExec(adb, [
+      "-s",
+      serial,
+      "shell",
+      "am",
+      "start",
+      "-a",
+      "android.intent.action.VIEW",
+      "-d",
+      "elizaos://chat",
+      id,
+    ]);
+    return context;
+  };
+
+  return androidSelectLocal
+    ? withAndroidE2eApiPortOverride(context, prepareAndLaunch)
+    : prepareAndLaunch();
+}
+
+async function withAndroidE2eApiPortOverride(
+  context,
+  operation,
+  setOverride = setAndroidE2eApiPortOverride,
+) {
+  setOverride(context, true);
+  try {
+    return await operation();
+  } catch (error) {
+    try {
+      setOverride(context, false);
+    } catch (cleanupError) {
+      // error-policy:J6 best-effort teardown; preserve the launch failure while
+      // reporting that the operator-visible API-port override may remain set.
+      console.warn(
+        `[local-chat-smoke] Failed to clear Android API port override after launch preparation failed: ${cleanupError instanceof Error ? cleanupError.message : cleanupError}`,
+      );
+    }
+    throw error;
+  }
+}
+
+function setAndroidE2eApiPortOverride(context, enabled) {
   requireExec(
-    adb,
-    ["-s", serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
-    `Failed to launch ${id} on ${serial}.`,
+    context.adb,
+    androidE2eApiPortOverrideArgs(context.serial, enabled),
+    `Failed to ${enabled ? "enable" : "clear"} the Android debug API port override.`,
   );
-  tryExec(adb, [
+  context.e2eApiPortOverride = enabled;
+}
+
+function androidE2eApiPortOverrideArgs(serial, enabled) {
+  return [
     "-s",
     serial,
     "shell",
-    "am",
-    "start",
-    "-a",
-    "android.intent.action.VIEW",
-    "-d",
-    "elizaos://chat",
-    id,
-  ]);
-  return context;
+    "setprop",
+    ANDROID_E2E_API_EXPOSE_PORT_PROP,
+    enabled ? "1" : "0",
+  ];
 }
 
 function xmlEscape(value) {
@@ -2148,6 +2197,33 @@ async function probeHealth(baseUrl, authToken) {
   });
 }
 
+/**
+ * GET /api/status for authenticated process-state diagnostics. Android's
+ * debug-only TCP lane requires local auth, which deliberately trims
+ * /api/health to its public `{ ready }` liveness shape even with a valid bearer
+ * token. The protected status route owns the agent state, uptime, and startup
+ * attempt needed by the stability gate.
+ */
+async function probeAgentStatus(baseUrl, authToken) {
+  return withTransientRetry("status probe", async () => {
+    const { response, data, text } = await requestJsonResponse(
+      "GET",
+      "/api/status",
+      undefined,
+      baseUrl,
+      authToken,
+      { timeoutMs: ANDROID_HEALTH_PROBE_TIMEOUT_MS },
+    );
+    if (!response.ok) {
+      throw new Error(`GET /api/status failed: ${response.status} ${text}`);
+    }
+    if (!text || !data || typeof data !== "object") {
+      throw new Error("GET /api/status returned an empty body.");
+    }
+    return data;
+  });
+}
+
 function readStartupAttempt(health) {
   const attempt = health?.startup?.attempt;
   return typeof attempt === "number" && Number.isFinite(attempt)
@@ -2157,9 +2233,9 @@ function readStartupAttempt(health) {
 
 /**
  * Process-stability gate. Requires ANDROID_STABILITY_SAMPLES consecutive
- * /api/health reads with: agentState==running, ready==true, monotonically
+ * /api/status reads with: state==running, canRespond==true, monotonically
  * increasing uptime, and a non-climbing startup.attempt. Keyed on PROCESS
- * health only — NOT on device-bridge connected:true, which is legitimately
+ * state only — NOT on device-bridge connected:true, which is legitimately
  * false now that inference is served in-process.
  */
 async function waitForAndroidProcessStability(baseUrl, authToken) {
@@ -2170,7 +2246,7 @@ async function waitForAndroidProcessStability(baseUrl, authToken) {
   for (let attempt = 1; attempt <= ANDROID_STABILITY_ATTEMPTS; attempt += 1) {
     let health;
     try {
-      health = await probeHealth(baseUrl, authToken);
+      health = await probeAgentStatus(baseUrl, authToken);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       consecutive = 0;
@@ -2187,7 +2263,7 @@ async function waitForAndroidProcessStability(baseUrl, authToken) {
     lastHealth = health;
     const uptime = typeof health.uptime === "number" ? health.uptime : null;
     const startupAttempt = readStartupAttempt(health);
-    const running = health.agentState === "running" && health.ready === true;
+    const running = health.state === "running" && health.canRespond === true;
     const uptimeMonotonic =
       uptime !== null && (previousUptime === null || uptime >= previousUptime);
     const attemptStable =
@@ -2395,7 +2471,7 @@ async function runLocalInferenceApiSmoke(
     `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference full turn).`,
   );
   // Process-stability gate: wait for a settled agent process (monotonic uptime,
-  // agentState==running, startup.attempt not climbing) before exercising, so a
+  // state==running, canRespond==true, startup.attempt not climbing) before exercising, so a
   // turn is never fired mid-restart. Keyed on process health, NOT device-bridge
   // connected:true (inference is in-process now, so the bridge stays detached).
   await waitForAndroidProcessStability(baseUrl, authToken);
@@ -2828,12 +2904,24 @@ async function main() {
       });
     }
     cleanupAndroidAgentForwards(androidContext, "shutdown");
+    if (androidContext?.e2eApiPortOverride) {
+      try {
+        setAndroidE2eApiPortOverride(androidContext, false);
+      } catch (error) {
+        // error-policy:J6 best-effort teardown; preserve the runner's root
+        // failure while reporting the operator-visible override cleanup issue.
+        console.warn(
+          `[local-chat-smoke] Failed to clear Android debug API port override: ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
   }
 }
 
 export {
   androidBackgroundServicesReady,
   androidDeviceSerial,
+  androidE2eApiPortOverrideArgs,
   androidRunAs,
   appId,
   cleanupAndroidAgentForwards,
@@ -2853,13 +2941,14 @@ export {
   preseedAndroidLocalRuntime,
   preseedIosFullBunSmoke,
   preseedIosLocalRuntime,
+  probeAgentStatus,
   probeHealth,
   readAndroidLocalAgentToken,
-  removeAndroidReverse,
   readIosFullBunSmokeDiagnostics,
   readLastWakeFiredAtMs,
   readStartupAttempt,
   readTextFileIfPresent,
+  removeAndroidReverse,
   requestJson,
   requestJsonResponse,
   requestOptionalJson,
@@ -2867,6 +2956,7 @@ export {
   requireLocalInferenceReady,
   requireUsableFullTurnReply,
   runLocalInferenceApiSmoke,
+  setAndroidE2eApiPortOverride,
   shellQuote,
   stageAndroidSmokeModel,
   stageIosFullBunSmokeModel,
@@ -2874,6 +2964,7 @@ export {
   verifyIosFullBunSmoke,
   verifySmokeModelFile,
   waitForAndroidProcessStability,
+  withAndroidE2eApiPortOverride,
   withTransientRetry,
   writeAndroidCapacitorPreferences,
   writeAndroidLocalInferenceRegistry,
