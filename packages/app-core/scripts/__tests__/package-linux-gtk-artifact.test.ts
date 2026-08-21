@@ -15,16 +15,21 @@ import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -479,6 +484,109 @@ describe("verifyArtifactDir", () => {
         },
       }),
     ).toThrow(/manifest.*changed during verification/);
+  });
+});
+
+describe("archive inspection is independent of $TMPDIR", () => {
+  function withTmpDir<T>(value: string, run: () => T): T {
+    const previous = process.env.TMPDIR;
+    process.env.TMPDIR = value;
+    try {
+      return run();
+    } finally {
+      if (previous === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previous;
+    }
+  }
+
+  it("verifies a good artifact when $TMPDIR is unusable", () => {
+    const { outDir, publicKeyPem } = produce("x86_64");
+    const unusable = path.join(tempDir(), "no-such-temp-directory");
+    expect(existsSync(unusable)).toBe(false);
+    const manifest = withTmpDir(unusable, () =>
+      verifyArtifactDir(outDir, publicKeyPem),
+    );
+    expect(manifest.archive).toBe("eliza-desktop-gtk-1.2.3-x86_64.tar.zst");
+    expect(existsSync(unusable)).toBe(false);
+  });
+
+  // On macOS, bsdtar itself uses $TMPDIR for extended-attribute scratch and
+  // prints a cosmetic "Could not open extended attribute file" warning here.
+  // It is tar's own behaviour on both arms, not the module's.
+  it("produces a verifiable artifact when $TMPDIR is unusable", () => {
+    const { privateKeyPem, publicKeyPem } = generateSigningKeyPair();
+    const outDir = tempDir();
+    const stageDir = stageShell();
+    const unusable = path.join(tempDir(), "no-such-temp-directory");
+    withTmpDir(unusable, () =>
+      produceArtifact({
+        stageDir,
+        outDir,
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    );
+    expect(verifyArtifactDir(outDir, publicKeyPem).architecture).toBe("x86_64");
+    expect(existsSync(unusable)).toBe(false);
+  });
+});
+
+describe("stability check decides on content, not on metadata churn", () => {
+  it("accepts a no-op chmod during verification", () => {
+    const { result, outDir, publicKeyPem } = produce("x86_64");
+    const before = readFileSync(result.archivePath);
+    const manifest = verifyArtifactDir(outDir, publicKeyPem, {
+      beforeFinalStableFileCheck: ({ archivePath }) => {
+        chmodSync(archivePath, statSync(archivePath).mode & 0o7777);
+      },
+    });
+    expect(manifest.archive).toBe("eliza-desktop-gtk-1.2.3-x86_64.tar.zst");
+    expect(readFileSync(result.archivePath).equals(before)).toBe(true);
+  });
+
+  it("accepts an extra hard link, as a release mirror creates", () => {
+    const { result, outDir, publicKeyPem } = produce("x86_64");
+    const before = readFileSync(result.archivePath);
+    const mirror = path.join(tempDir(), "mirrored.tar.zst");
+    const manifest = verifyArtifactDir(outDir, publicKeyPem, {
+      beforeFinalStableFileCheck: ({ archivePath }) => {
+        linkSync(archivePath, mirror);
+      },
+    });
+    expect(manifest.archive).toBe("eliza-desktop-gtk-1.2.3-x86_64.tar.zst");
+    expect(statSync(result.archivePath).nlink).toBe(2);
+    expect(readFileSync(result.archivePath).equals(before)).toBe(true);
+  });
+
+  it("still rejects a same-size rewrite whose mtime was restored", () => {
+    const { result, outDir, publicKeyPem } = produce("x86_64");
+    const original = readFileSync(result.archivePath);
+    // Pin the timestamps to a value utimes can restore exactly, so the rewrite
+    // below leaves size and mtime identical and only the change time moves.
+    const FORGED_SECONDS = 1_700_000_000;
+    utimesSync(result.archivePath, FORGED_SECONDS, FORGED_SECONDS);
+    const originalMtimeMs = statSync(result.archivePath).mtimeMs;
+    expect(() =>
+      verifyArtifactDir(outDir, publicKeyPem, {
+        beforeFinalStableFileCheck: ({ archivePath }) => {
+          const fd = openSync(archivePath, "r+");
+          try {
+            writeSync(fd, Buffer.from([original[0] ^ 0xff]), 0, 1, 0);
+          } finally {
+            closeSync(fd);
+          }
+          utimesSync(archivePath, FORGED_SECONDS, FORGED_SECONDS);
+        },
+      }),
+    ).toThrow(/archive .* changed during verification/);
+    const after = readFileSync(result.archivePath);
+    expect(after.length).toBe(original.length);
+    expect(after.equals(original)).toBe(false);
+    // The forged mtime is what makes this the one tampering case that size and
+    // mtime cannot see: only the change time moved, and the re-read decided it.
+    expect(statSync(result.archivePath).mtimeMs).toBe(originalMtimeMs);
   });
 });
 
