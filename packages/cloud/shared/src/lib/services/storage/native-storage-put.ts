@@ -24,7 +24,6 @@ const RECOVERY_GRACE_MS = 10 * 60 * 1000;
 const PROVIDER_ABSENCE_QUARANTINE_MS = 10 * 60 * 1000;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
 const NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE = 1_000;
-const MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES = 1_000;
 const NATIVE_STORAGE_QUOTA_RECONCILE_LIST_TIMEOUT_MS = 10_000;
 const utf8Encoder = new TextEncoder();
 const nativeStorageQuotaReconciliations = new WeakMap<
@@ -60,6 +59,8 @@ export class NativeStoragePutError extends Error {
       | "IDEMPOTENCY_REQUIRED"
       | "IDEMPOTENCY_INVALID"
       | "CONTENT_TYPE_INVALID"
+      | "CONTENT_LENGTH_INVALID"
+      | "CONTENT_SHA256_INVALID"
       | "OPERATION_IN_PROGRESS"
       | "PROVIDER_AMBIGUOUS"
       | "PROVIDER_INTEGRITY",
@@ -82,7 +83,11 @@ export interface ExecuteNativeStoragePutInput {
   organizationId: string;
   logicalKey: string;
   idempotencyKey: string;
-  body: ArrayBuffer;
+  body: ArrayBuffer | ReadableStream<Uint8Array>;
+  /** Required for a stream because reading it here would defeat streaming. */
+  sizeBytes?: number;
+  /** Lowercase hex digest verified by R2 while it consumes a stream. */
+  contentSha256?: string;
   contentType: string;
   priceUsd: number;
 }
@@ -165,15 +170,7 @@ async function reconcileNativeStorageQuota(
   const seenCursorDigests = new Set<string>();
   let cursor: string | undefined;
   let hasMore = true;
-  let pageCount = 0;
   while (hasMore) {
-    pageCount += 1;
-    if (pageCount > MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES) {
-      throw new NativeStoragePutError(
-        "PROVIDER_INTEGRITY",
-        `R2 quota reconciliation pagination exceeded ${MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES} pages`,
-      );
-    }
     const page = await listNativeStorageQuotaPage(
       bucket.list({
         prefix: providerPrefix,
@@ -196,12 +193,6 @@ async function reconcileNativeStorageQuota(
     }
     let nextCursor: string | undefined;
     if (page.truncated) {
-      if (pageCount === MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES) {
-        throw new NativeStoragePutError(
-          "PROVIDER_INTEGRITY",
-          `R2 quota reconciliation pagination exceeded ${MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES} pages`,
-        );
-      }
       const nextPageCursor =
         typeof page.cursor === "string" && page.cursor.length > 0 ? page.cursor : null;
       const cursorDigest = nextPageCursor ? await sha256(nextPageCursor) : null;
@@ -333,7 +324,28 @@ async function requestIdentity(input: ExecuteNativeStoragePutInput) {
   if (contentType.length === 0 || contentType.length > 255 || /[\0\r\n]/.test(contentType)) {
     throw new NativeStoragePutError("CONTENT_TYPE_INVALID", "Content-Type is invalid");
   }
-  const contentSha256 = await sha256(input.body);
+  const bufferedBody = input.body instanceof ArrayBuffer ? input.body : undefined;
+  const sizeBytes = bufferedBody ? bufferedBody.byteLength : input.sizeBytes;
+  if (!Number.isSafeInteger(sizeBytes) || !sizeBytes || sizeBytes <= 0) {
+    throw new NativeStoragePutError(
+      "CONTENT_LENGTH_INVALID",
+      "A positive, safe Content-Length is required",
+    );
+  }
+  const computedSha256 = bufferedBody ? await sha256(bufferedBody) : undefined;
+  const contentSha256 = (input.contentSha256 ?? computedSha256)?.toLowerCase();
+  if (!contentSha256 || !/^[0-9a-f]{64}$/.test(contentSha256)) {
+    throw new NativeStoragePutError(
+      "CONTENT_SHA256_INVALID",
+      "A lowercase hexadecimal SHA-256 digest is required",
+    );
+  }
+  if (computedSha256 && input.contentSha256 && computedSha256 !== contentSha256) {
+    throw new NativeStoragePutError(
+      "CONTENT_SHA256_INVALID",
+      "The declared SHA-256 digest does not match the request body",
+    );
+  }
   const priceUsd = canonicalPrice(input.priceUsd);
   const idempotencyKeyHash = await sha256(input.idempotencyKey);
   const requestDigest = await sha256(
@@ -342,12 +354,12 @@ async function requestIdentity(input: ExecuteNativeStoragePutInput) {
       organizationId: input.organizationId,
       logicalKey: input.logicalKey,
       contentType,
-      sizeBytes: input.body.byteLength,
+      sizeBytes,
       contentSha256,
       priceUsd,
     }),
   );
-  return { contentType, contentSha256, priceUsd, idempotencyKeyHash, requestDigest };
+  return { contentType, contentSha256, sizeBytes, priceUsd, idempotencyKeyHash, requestDigest };
 }
 
 async function deleteRequestIdentity(input: ExecuteNativeStorageDeleteInput) {
@@ -481,7 +493,7 @@ export async function executeNativeStoragePut(
     logicalKey: input.logicalKey,
     idempotencyKeyHash: identity.idempotencyKeyHash,
     requestDigest: identity.requestDigest,
-    sizeBytes: BigInt(input.body.byteLength),
+    sizeBytes: BigInt(identity.sizeBytes),
     contentType: identity.contentType,
     contentSha256: identity.contentSha256,
     priceUsd: identity.priceUsd,

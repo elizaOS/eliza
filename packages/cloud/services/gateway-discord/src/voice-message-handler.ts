@@ -8,6 +8,7 @@
  * - Cleans up expired audio files
  */
 
+import { createHash } from "node:crypto";
 import { type Attachment, MessageFlags } from "discord.js";
 import { logger } from "./logger";
 
@@ -123,7 +124,11 @@ async function uploadVoiceObject(
     headers: {
       ...storageHeaders(config),
       "Content-Type": contentType,
+      "Content-Length": String(audioBuffer.byteLength),
       "Idempotency-Key": idempotencyKey,
+      "X-Content-SHA256": createHash("sha256")
+        .update(audioBuffer)
+        .digest("hex"),
       "X-Storage-Object-Key": key,
     },
     body: new Uint8Array(audioBuffer),

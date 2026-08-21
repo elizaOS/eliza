@@ -2,7 +2,7 @@
  * Attachment object storage proxy.
  *
  * Routes:
- *   PUT    /api/v1/apis/storage/objects/_   raw bytes →  { key, size, contentType, etag }
+ *   PUT    /api/v1/apis/storage/objects/_   integrity-declared byte stream → metadata
  *   GET    /api/v1/apis/storage/objects/_                raw bytes
  *   HEAD   /api/v1/apis/storage/objects/_                metadata headers, 404 if missing
  *   DELETE /api/v1/apis/storage/objects/_                204 No Content
@@ -13,7 +13,8 @@
  * access; new bytes live under tenant-scoped immutable generation keys.
  *
  * Auth: requireUserOrApiKeyWithOrg.
- * Quota: hard-rejects writes with 413 when the org's bytes_limit is exceeded.
+ * Quota: declared bytes are reserved atomically before R2 consumes the stream;
+ * object size itself is governed by R2 and the ingress plan, not Worker heap.
  * Pricing: PUT, GET, and HEAD use durable server-priced receipts. Read retries
  * recover the exact immutable provider generation before any provider access.
  */
@@ -43,7 +44,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
-const MAX_PUT_BYTES = 50 * 1024 * 1024;
 const R2_NOT_CONFIGURED_BODY = {
   error:
     "Attachment storage proxy not available — server misconfigured (R2_* env vars unset)",
@@ -110,17 +110,23 @@ app.put("/*", async (c) => {
       return c.json({ error: validated.error }, 400);
     }
 
-    const arrayBuffer = await c.req.arrayBuffer();
-    const bytes = arrayBuffer.byteLength;
-    if (bytes === 0) {
-      return c.json({ error: "Request body is required" }, 400);
-    }
-    if (bytes > MAX_PUT_BYTES) {
+    const contentLength = c.req.header("content-length");
+    const bytes = contentLength ? Number(contentLength) : Number.NaN;
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) {
       return c.json(
-        { error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${bytes})` },
-        413,
+        { error: "A positive Content-Length header is required" },
+        411,
       );
     }
+    const contentSha256 = c.req.header("x-content-sha256")?.toLowerCase();
+    if (!contentSha256 || !/^[0-9a-f]{64}$/.test(contentSha256)) {
+      return c.json(
+        { error: "A hexadecimal X-Content-SHA256 header is required" },
+        400,
+      );
+    }
+    const body = c.req.raw.body;
+    if (!body) return c.json({ error: "Request body is required" }, 400);
 
     const flatCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put");
     const perByteCost = await getServiceMethodCost(
@@ -133,7 +139,9 @@ app.put("/*", async (c) => {
       organizationId: organization_id,
       logicalKey: validated.key,
       idempotencyKey: c.req.header("idempotency-key") ?? "",
-      body: arrayBuffer,
+      body,
+      sizeBytes: bytes,
+      contentSha256,
       contentType: c.req.header("content-type") ?? "application/octet-stream",
       priceUsd: totalCost,
     });
@@ -161,7 +169,9 @@ app.put("/*", async (c) => {
           ? 409
           : error.code === "IDEMPOTENCY_REQUIRED" ||
               error.code === "IDEMPOTENCY_INVALID" ||
-              error.code === "CONTENT_TYPE_INVALID"
+              error.code === "CONTENT_TYPE_INVALID" ||
+              error.code === "CONTENT_LENGTH_INVALID" ||
+              error.code === "CONTENT_SHA256_INVALID"
             ? 400
             : 503;
       return c.json({ error: error.message, code: error.code }, status);
