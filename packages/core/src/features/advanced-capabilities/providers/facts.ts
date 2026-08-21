@@ -10,9 +10,17 @@
  * header; room-pool facts about other participants render under a neutral
  * room header, so relay/webhook turns keep room recall without the room's
  * facts being misattributed to the bridge sender.
- * Retrieval deliberately avoids vector search so relevance is computed from the
- * fact's own words and extracted keywords; a keyword-miss on durable facts
- * falls back to the highest-prior candidates so direct recall still works.
+ * Lexical BM25 stays the primary lane, but it is no longer the only one: a
+ * bounded semantic lane (local gte-small embedding of the query, one embed
+ * call plus the same bounded fact-table searches the old total-miss widen
+ * path used) is ALWAYS unioned in, so facts that are meaning-related but
+ * lexically disjoint from the query ("Connor is a Zcash core dev" vs a
+ * "convent/season/grove" turn) still surface. In-turn evidence text — the
+ * current message's attachment/link-preview text and any action results
+ * already on the composed state — contributes query tokens too, so content
+ * the agent just read participates in retrieval within the same turn.
+ * A keyword-miss on durable facts still falls back to the highest-prior
+ * candidates so direct recall works.
  * Sender-owned `preference` facts get a separate bounded always-on lane
  * because standing preferences should be visible on every turn even with zero
  * lexical overlap ("brief replies" never BM25-matches "what's next?"); the
@@ -62,6 +70,18 @@ const DEFAULT_FACT_CONFIDENCE = 0.6;
  */
 const CANDIDATE_POOL_PER_SEARCH = 120;
 const TOP_PER_KIND = 6;
+/**
+ * Bounded always-on semantic lane. Embedding-lane hits enter on similarity
+ * alone (the lexical score>0 filter does not apply to them), capped per kind
+ * so the union can never flood the prompt. The floor keeps junk matches out
+ * while staying well under relevant-conversations' 0.7 (which the factlink
+ * diagnosis showed is too strict for cross-topic fact clusters).
+ */
+const SEMANTIC_LANE_LIMIT = 3;
+const SEMANTIC_SEARCH_COUNT = 8;
+const SEMANTIC_SIMILARITY_FLOOR = 0.45;
+/** Cap on in-turn evidence text folded into the retrieval query. */
+const EVIDENCE_TEXT_CHAR_CAP = 4000;
 const PRIVATE_FACT_PRIVACY_CLASSES = new Set([
 	"private",
 	"sensitive",
@@ -283,6 +303,71 @@ function mergeAlwaysIncludedFacts(
 	return dedupeById([...alwaysIncluded, ...ranked]).slice(0, max);
 }
 
+/**
+ * Textual evidence the agent already possesses THIS turn, beyond the message
+ * text itself: attachment/link-preview text and descriptions on the current
+ * message, and the textual results of actions that already ran (present on
+ * the composed state's actionResults when the provider re-runs after a
+ * planner tool — e.g. an ATTACHMENT page read). Folded into the retrieval
+ * query so in-turn-acquired content contributes query tokens within the same
+ * turn. Bounded by EVIDENCE_TEXT_CHAR_CAP; keyword extraction downstream
+ * caps the final query size regardless.
+ */
+function collectTurnEvidenceText(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): string {
+	const parts: string[] = [];
+	for (const attachment of message.content.attachments ?? []) {
+		if (typeof attachment.title === "string") parts.push(attachment.title);
+		if (typeof attachment.description === "string") {
+			parts.push(attachment.description);
+		}
+		if (typeof attachment.text === "string") parts.push(attachment.text);
+	}
+	const pushResultText = (result: unknown): void => {
+		if (!result || typeof result !== "object") return;
+		const record = result as Record<string, unknown>;
+		if (typeof record.text === "string") parts.push(record.text);
+		if (typeof record.userFacingText === "string") {
+			parts.push(record.userFacingText);
+		}
+		const data = record.data;
+		if (data && typeof data === "object" && !Array.isArray(data)) {
+			const content = (data as Record<string, unknown>).content;
+			if (typeof content === "string") parts.push(content);
+		}
+	};
+	const actionResults = state?.data?.actionResults;
+	if (Array.isArray(actionResults)) {
+		for (const result of actionResults) pushResultText(result);
+	}
+	// The composed state a provider receives is the runtime's cached turn
+	// state, which does not always carry actionResults (callers enrich a COPY
+	// via withActionResultsForPrompt). The per-turn scratch entry is the
+	// durable in-memory record of what already ran this turn — an in-process
+	// Map read, never a DB call.
+	if (
+		typeof runtime.getActionResults === "function" &&
+		typeof message.id === "string" &&
+		message.id
+	) {
+		try {
+			for (const result of runtime.getActionResults(message.id)) {
+				pushResultText(result);
+			}
+		} catch {
+			// Scratch-state read is best-effort; evidence enrichment must never
+			// fail the provider.
+		}
+	}
+	const joined = parts.filter((part) => part.trim().length > 0).join("\n");
+	return joined.length > EVIDENCE_TEXT_CHAR_CAP
+		? joined.slice(0, EVIDENCE_TEXT_CHAR_CAP)
+		: joined;
+}
+
 function formatDurableLine(memory: Memory): string {
 	const text = memory.content.text ?? "";
 	if (!text) return "";
@@ -331,7 +416,7 @@ const factsProvider: Provider = {
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state: State,
+		state: State,
 	): Promise<ProviderResult> => {
 		try {
 			const recentMessagesPromise = runtime.getMemories({
@@ -360,9 +445,16 @@ const factsProvider: Provider = {
 			}
 			lastMessageLines.reverse();
 			const last5Messages = lastMessageLines.join("\n");
+			// In-turn evidence: attachment/link-preview text on the current message
+			// and textual results of actions that already ran this turn. Folding it
+			// into the query means content the agent just read (an ATTACHMENT page
+			// read whose text says "ZCash infra") contributes retrieval tokens
+			// WITHIN the same turn instead of being invisible to fact recall.
+			const evidenceText = collectTurnEvidenceText(runtime, message, state);
 			const queryText = buildFactQueryText(
 				message.content.text ?? "",
 				last5Messages,
+				evidenceText,
 			);
 
 			if (!queryText) {
@@ -411,23 +503,27 @@ const factsProvider: Provider = {
 			let dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
 				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
 			);
-			// Bounded-pool blindness guard: both pools are RECENCY-fetched, so a
-			// fact older than the last CANDIDATE_POOL_PER_SEARCH extractions per
-			// scope is invisible to ranking no matter how directly the user asks
-			// for it (observed live: "whats my keyboard budget" fabricated an
-			// answer while the extracted "$150 max" fact sat in the store, pushed
-			// out of the recent pool by heavy room traffic). When keyword scoring
-			// finds NOTHING relevant in the recency pools, widen once with an
-			// embedding search over the same room/entity scopes and merge the
-			// hits — ranking stays local and keyword-based over the widened pool.
-			// Gated to genuine misses so ordinary turns pay no embedding cost;
-			// any failure degrades to the recency pools.
-			const poolHasKeywordHit = scoreFactKeywordRelevance(
-				queryText,
-				dedupedPool,
-			).some((entry) => entry.relevance > 0);
+			// Semantic lane (always-on, bounded, local-only). Previously the
+			// embedding widen fired ONLY on a total keyword miss, so a query with
+			// ANY lexical hit ("convent" matching convent facts) never widened —
+			// and cross-topic facts sharing zero tokens with the query ("Connor is
+			// a Zcash core dev" on a grove/convent turn) stayed invisible no
+			// matter how related they were. Now: one LOCAL embedding of the query
+			// (gte-small class, ~50ms; never a cloud embedding — the capability
+			// gate below is the same one the old widen honored) plus the same
+			// bounded fact-table searches the widen path already ran. The hits
+			// serve two roles:
+			//   1. pool widening — merged into the candidate pool so BM25 can
+			//      rank older-than-recency-pool facts (the keyboard-budget case);
+			//   2. similarity admission — the top hits above a similarity floor
+			//      are unioned into the ranked output on similarity alone, capped
+			//      at SEMANTIC_LANE_LIMIT per kind, so lexically-disjoint-but-
+			//      related facts surface (the c-node/Zcash case).
+			// Any failure degrades to pure lexical retrieval while staying
+			// observable. No new hot-path DB shape: these are the exact adapter
+			// calls the total-miss widen already made.
+			let semanticHits: Memory[] = [];
 			if (
-				!poolHasKeywordHit &&
 				!(
 					typeof runtime.getSetting === "function" &&
 					isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
@@ -444,7 +540,7 @@ const factsProvider: Provider = {
 								tableName: "facts",
 								roomId: message.roomId,
 								worldId: message.worldId,
-								count: 12,
+								count: SEMANTIC_SEARCH_COUNT,
 								unique: false,
 							}),
 							...relatedEntityIds.map((entityId) =>
@@ -452,30 +548,42 @@ const factsProvider: Provider = {
 									embedding,
 									tableName: "facts",
 									entityId,
-									count: 12,
+									count: SEMANTIC_SEARCH_COUNT,
 									unique: false,
 								}),
 							),
 						]);
-						dedupedPool = dedupeById([
-							...dedupedPool,
+						const searched = dedupeById([
 							...searchedRoom,
 							...searchedEntities.flat(),
 						]).filter(
 							(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
 						);
+						semanticHits = searched
+							.filter(
+								(memory) =>
+									typeof memory.similarity === "number" &&
+									memory.similarity >= SEMANTIC_SIMILARITY_FLOOR,
+							)
+							.sort(
+								(left, right) =>
+									(right.similarity ?? 0) - (left.similarity ?? 0),
+							);
+						dedupedPool = dedupeById([...dedupedPool, ...searched]);
 					}
 				} catch (error) {
-					// error-policy:J4 the widened pool is an optional recall upgrade;
-					// an unavailable embedding model or search degrades to the
-					// recency pools while staying observable.
-					runtime.reportError?.("FactsProvider.poolWiden", error, {
+					// error-policy:J4 the semantic lane is an optional recall upgrade;
+					// an unavailable embedding model or search degrades to pure
+					// lexical retrieval while staying observable.
+					runtime.reportError?.("FactsProvider.semanticLane", error, {
 						roomId: message.roomId,
 					});
 				}
 			}
 			const { durable: durableCandidates, current: currentCandidates } =
 				partitionByKind(dedupedPool);
+			const { durable: semanticDurable, current: semanticCurrent } =
+				partitionByKind(semanticHits);
 
 			const nowMs = Date.now();
 			const senderEntityIds = new Set<string>(relatedEntityIds);
@@ -509,6 +617,16 @@ const factsProvider: Provider = {
 					)
 					.slice(0, TOP_PER_KIND);
 			}
+			// Semantic-lane admission: the top embedding hits enter on similarity
+			// alone — the lexical score>0 filter does not gate them — bounded per
+			// kind so the union can never exceed the existing prompt caps by more
+			// than SEMANTIC_LANE_LIMIT rows per kind. BM25-ranked facts keep
+			// their order; semantic-only facts append after them.
+			durableFacts = mergeAlwaysIncludedFacts(
+				durableFacts,
+				semanticDurable.slice(0, SEMANTIC_LANE_LIMIT),
+				TOP_PER_KIND + SEMANTIC_LANE_LIMIT,
+			);
 			const preferenceLane = topByPrior(
 				durableCandidates.filter(
 					(memory) => isAboutSender(memory) && isPreferenceFact(memory),
@@ -520,14 +638,18 @@ const factsProvider: Provider = {
 			durableFacts = mergeAlwaysIncludedFacts(
 				preferenceLane,
 				durableFacts,
-				TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
+				TOP_PER_KIND + PREFERENCE_LANE_LIMIT + SEMANTIC_LANE_LIMIT,
 			);
-			const currentFacts = rankByKeywordScore(
-				currentCandidates,
-				"current",
-				queryText,
-				nowMs,
-			).slice(0, TOP_PER_KIND);
+			const currentFacts = mergeAlwaysIncludedFacts(
+				rankByKeywordScore(
+					currentCandidates,
+					"current",
+					queryText,
+					nowMs,
+				).slice(0, TOP_PER_KIND),
+				semanticCurrent.slice(0, SEMANTIC_LANE_LIMIT),
+				TOP_PER_KIND + SEMANTIC_LANE_LIMIT,
+			);
 			const allFacts = [...durableFacts, ...currentFacts];
 
 			if (allFacts.length === 0) {

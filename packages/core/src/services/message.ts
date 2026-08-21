@@ -7083,6 +7083,77 @@ export function __buildV5ExecutorContextForTests(
 	return buildV5ExecutorContext(args);
 }
 
+/**
+ * Providers whose output is a retrieval over the turn's query text, so their
+ * turn-cached result goes stale the moment an action introduces new textual
+ * evidence mid-turn (an ATTACHMENT page read, a WEB_FETCH body). Names, not
+ * references: the agent-side relevant-conversations provider registers by
+ * name and core never imports it.
+ */
+const EVIDENCE_SENSITIVE_PROVIDER_NAMES = [
+	"FACTS",
+	"relevant-conversations",
+] as const;
+
+/**
+ * Minimum characters of new action-result text that count as "new textual
+ * evidence". Filters out terse control results (REPLY echoes, IGNORE, status
+ * one-liners) so ordinary tool turns do not pay the re-retrieval cost.
+ */
+const EVIDENCE_INVALIDATION_MIN_CHARS = 200;
+
+function actionResultEvidenceTextLength(result: ActionResult): number {
+	let length = 0;
+	if (typeof result.text === "string") length += result.text.length;
+	if (typeof result.userFacingText === "string") {
+		length += result.userFacingText.length;
+	}
+	const content = (result.data as Record<string, unknown> | undefined)?.content;
+	if (typeof content === "string") length += content.length;
+	return length;
+}
+
+/**
+ * Within-turn freshness for retrieval providers (the c-node/Zcash gap): when
+ * an action settles carrying substantive new text, evict the FACTS and
+ * relevant-conversations entries from the turn's cached provider state so the
+ * NEXT composeState — planner recompose with maximum reuse, the REPLY
+ * action's compose, a continuation compose — re-runs retrieval with the new
+ * evidence tokens in scope instead of reusing the pre-action output
+ * (`provider-cache:FACTS cacheHit:true` was exactly how "ZCash" on a
+ * just-read page never reached fact recall in the same turn). Eviction only;
+ * nothing recomputes until a caller actually composes again, and the re-runs
+ * are ~tens of ms against multi-second model calls.
+ */
+function invalidateEvidenceSensitiveProviderCache(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	if (!message.id) return;
+	if (
+		actionResultEvidenceTextLength(result) < EVIDENCE_INVALIDATION_MIN_CHARS
+	) {
+		return;
+	}
+	const cached = runtime.stateCache?.get?.(message.id);
+	const providers = cached?.data?.providers as
+		| Record<string, unknown>
+		| undefined;
+	if (!providers || typeof providers !== "object") return;
+	for (const name of EVIDENCE_SENSITIVE_PROVIDER_NAMES) {
+		if (name in providers) delete providers[name];
+	}
+}
+
+export function __invalidateEvidenceSensitiveProviderCacheForTests(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	invalidateEvidenceSensitiveProviderCache(runtime, message, result);
+}
+
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
@@ -7173,6 +7244,11 @@ async function executeV5PlannedToolCall(
 		executorCtx,
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
+	);
+	invalidateEvidenceSensitiveProviderCache(
+		args.runtime,
+		args.executorCtx.message,
+		rawActionResult,
 	);
 	const actionResult = projectActionResultForClipboard(
 		action,
