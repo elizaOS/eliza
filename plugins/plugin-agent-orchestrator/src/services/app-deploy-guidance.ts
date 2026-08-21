@@ -316,8 +316,7 @@ export function augmentTaskWithDeployGuidance(
       // script itself ran clean (live 2026-08-21, 2 of 4 runs).
       "Do not run linters, type checkers, or test frameworks (mypy, flake8, eslint, tsc, pytest) unless the workspace already has them installed and configured — a failing check you introduced is not a task failure.",
       "End your final message with the captured run output.",
-    ].join("
-");
+    ].join("\n");
   }
   const resolved = config ?? resolveAppDeployConfig();
   // The planner's monetization judgment (model intent, not a keyword match).
