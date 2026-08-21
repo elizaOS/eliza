@@ -86,7 +86,11 @@ function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
 					entryType !== "symbol"
 				);
 			})
-			.sort(([left], [right]) => left.localeCompare(right))
+			.sort(([left], [right]) => {
+				if (left < right) return -1;
+				if (left > right) return 1;
+				return 0;
+			})
 			.map(
 				([key, entryValue]) =>
 					`${JSON.stringify(key)}:${stableStringifyValue(entryValue, seen)}`,
