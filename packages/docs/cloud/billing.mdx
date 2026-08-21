@@ -5,7 +5,9 @@ description: Understand elizaOS Cloud pricing, credits system, and billing manag
 
 # Billing & Credits
 
-elizaOS Cloud bills usage in USD-backed credits for flexible, pay-as-you-go pricing.
+elizaOS Cloud bills organization balances in USD-denominated cloud credits for
+flexible, pay-as-you-go pricing. One cloud credit equals **$1.00 USD**; balances
+and checkout amounts use that same denomination.
 
 <Info>
   Provider pricing is refreshed from upstream catalogs and pricing pages. The
@@ -15,7 +17,7 @@ elizaOS Cloud bills usage in USD-backed credits for flexible, pay-as-you-go pric
 
 ## Overview
 
-- **Credits**: Universal currency for all services
+- **Credits**: USD-denominated balance units (1 cloud credit = $1 USD)
 - **Pay-as-you-go**: Only pay for what you use
 - **Top-up**: Purchase credits as needed
 - **Auto top-up**: Automatic refills (optional)
@@ -102,7 +104,7 @@ curl -X POST "https://api.eliza.app/api/v1/credits/checkout" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "credits": 50,
+    "amountUsd": 50,
     "success_url": "https://cloud.eliza.app/cloud/billing/success",
     "cancel_url": "https://cloud.eliza.app/cloud/billing"
   }'
@@ -110,6 +112,9 @@ curl -X POST "https://api.eliza.app/api/v1/credits/checkout" \
 
 The response contains `url` and `sessionId`. Redirect the user to `url`, then
 verify the completed session with `GET /api/v1/credits/verify?session_id=...`.
+`amountUsd` is both the dollar charge and the number of organization cloud
+credits granted. The deprecated `credits` request field remains a 1:1
+compatibility alias.
 
 ### x402 Crypto Payment
 

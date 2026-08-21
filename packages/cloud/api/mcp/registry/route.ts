@@ -7,6 +7,7 @@
  */
 
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
+import { BUILTIN_MCP_PRICING } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -82,6 +83,9 @@ interface McpRegistryEntry {
   pricing: {
     type: "free" | "credits" | "x402";
     description: string;
+    creditUnit?: "USD";
+    priceUsd?: string | number;
+    /** @deprecated Legacy MCP pricing points. */
     pricePerRequest?: string;
   };
   x402Enabled: boolean;
@@ -130,10 +134,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     color: "#F7931A",
     toolCount: 3,
     features: ["get_price", "get_market_data", "list_trending"],
-    pricing: {
-      type: "free",
-      description: "Free tier available",
-    },
+    pricing: BUILTIN_MCP_PRICING.crypto,
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/crypto-prices",
     configTemplate: {
@@ -165,10 +166,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       "calculate_time_diff",
       "list_timezones",
     ],
-    pricing: {
-      type: "free",
-      description: "Free to use",
-    },
+    pricing: BUILTIN_MCP_PRICING.time,
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/time",
     configTemplate: {
@@ -199,11 +197,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       "compare_weather",
       "search_location",
     ],
-    pricing: {
-      type: "credits",
-      description: "1-2 credits per request",
-      pricePerRequest: "1-2",
-    },
+    pricing: BUILTIN_MCP_PRICING.weather,
     x402Enabled: false,
     configTemplate: {
       servers: {
@@ -240,7 +234,9 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     ],
     pricing: {
       type: "credits",
-      description: "Uses your credit balance (requires API key authentication)",
+      description:
+        "Uses your USD-denominated cloud-credit balance (requires API key authentication)",
+      creditUnit: "USD",
     },
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/platform",
@@ -267,11 +263,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     color: "#10B981",
     toolCount: 2,
     features: ["search", "fetch_page"],
-    pricing: {
-      type: "credits",
-      description: "0.01 credits per search",
-      pricePerRequest: "0.01",
-    },
+    pricing: BUILTIN_MCP_PRICING.webSearch,
     x402Enabled: false,
     configTemplate: {
       servers: {

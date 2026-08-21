@@ -32,12 +32,39 @@ import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CheckoutSchema = z.object({
-  credits: z.number().min(1).max(1000),
-  agent_id: z.string().uuid().optional(),
-  success_url: z.string().url(),
-  cancel_url: z.string().url(),
-});
+const checkoutAmountSchema = z.number().min(1).max(1000);
+
+const CheckoutSchema = z
+  .object({
+    /** Canonical USD-denominated organization-credit purchase amount. */
+    amountUsd: checkoutAmountSchema.optional(),
+    /** @deprecated Compatibility alias; this number has always meant USD. */
+    credits: checkoutAmountSchema.optional(),
+    agent_id: z.string().uuid().optional(),
+    success_url: z.string().url(),
+    cancel_url: z.string().url(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.amountUsd === undefined && value.credits === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountUsd"],
+        message: "amountUsd is required",
+      });
+      return;
+    }
+    if (
+      value.amountUsd !== undefined &&
+      value.credits !== undefined &&
+      value.amountUsd !== value.credits
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["credits"],
+        message: "credits must equal amountUsd when both are supplied",
+      });
+    }
+  });
 
 const app = new Hono<AppEnv>();
 
@@ -59,12 +86,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const {
-      credits: amount,
-      agent_id,
-      success_url,
-      cancel_url,
-    } = validation.data;
+    const { amountUsd, credits, agent_id, success_url, cancel_url } =
+      validation.data;
+    const amount = amountUsd ?? credits;
+    if (amount === undefined) {
+      throw ValidationError("amountUsd is required");
+    }
     const user = await resolveCreditUser(c, agent_id);
     const stripeCurrency = (
       (c.env.STRIPE_CURRENCY as string | undefined) || "usd"
