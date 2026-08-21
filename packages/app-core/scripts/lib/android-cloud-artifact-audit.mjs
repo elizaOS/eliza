@@ -42,6 +42,25 @@ export const ANDROID_LP3_POLICY_PERMISSIONS = Object.freeze([
 
 export const ANDROID_LP3_POLICY_MARKERS = Object.freeze(["lp3_color_policy"]);
 
+// Product-specific local-runtime and sideload implementation markers that must
+// never survive R8 into the Google Play Cloud artifact. Keep this list narrow:
+// generic strings such as "localhost" occur legitimately in AndroidX/vendor
+// bytecode and are audited at the renderer/source boundary instead.
+export const ANDROID_PLAY_FORBIDDEN_DEX_MARKERS = Object.freeze([
+  "10.0.2.2",
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "adb reverse",
+  "eliza-local-agent:",
+  "eliza_bionic_infer_v1",
+  "Landroid/net/LocalSocket;",
+  "remote-mac",
+  "TalkModePlugin",
+]);
+
 const AAB_MANIFEST_ENTRY = /^([^/\\]+)\/manifest\/AndroidManifest\.xml$/;
 const AAB_DEX_ENTRY = /^([^/\\]+)\/dex\/classes\d*\.dex$/;
 const AAB_STRAY_DEX_ENTRY = /\.dex$/i;
@@ -1056,8 +1075,9 @@ function normalizeDexBuffers(dexEntries, dexBuffers) {
 }
 
 /**
- * Scans every DEX payload for stripped repo-owned classes and private LP3
- * control-plane markers, including features that a universal APK can omit.
+ * Scans every DEX payload for stripped repo-owned classes, private LP3
+ * control-plane markers, and sideload/local-runtime implementation markers,
+ * including features that a universal APK can omit.
  */
 export function assertAabDexPolicy({
   appId,
@@ -1085,6 +1105,9 @@ export function assertAabDexPolicy({
     marker,
     payload: Buffer.from(marker, "utf8"),
   }));
+  const forbiddenPlayMarkers = ANDROID_PLAY_FORBIDDEN_DEX_MARKERS.map(
+    (marker) => ({ marker, payload: Buffer.from(marker, "utf8") }),
+  );
 
   for (let index = 0; index < buffers.length; index += 1) {
     for (const { className, marker } of forbiddenClassDescriptors) {
@@ -1098,6 +1121,13 @@ export function assertAabDexPolicy({
       if (buffers[index].includes(payload)) {
         throw androidAabAuditError(
           `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden LP3 marker: ${marker}`,
+        );
+      }
+    }
+    for (const { marker, payload } of forbiddenPlayMarkers) {
+      if (buffers[index].includes(payload)) {
+        throw androidAabAuditError(
+          `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden Play local-runtime marker: ${marker}`,
         );
       }
     }
