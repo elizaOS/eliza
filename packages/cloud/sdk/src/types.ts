@@ -265,10 +265,27 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     autoTopUpAmount?: number | null;
     hasPaymentMethod?: boolean;
   };
+  pricing?: {
+    creditUnit: "USD";
+    creditsPerDollar: 1;
+    usdPerCredit: 1;
+    minimumTopUp: number;
+    x402Enabled: boolean;
+  };
 }
 
+/**
+ * Checkout accepts either the canonical `amountUsd` or the deprecated
+ * `credits` alias, which has always denominated the same dollar amount. Both
+ * stay optional so the interface remains extendable by SDK consumers; the
+ * server rejects a request that supplies neither, and rejects conflicting
+ * values when both are supplied.
+ */
 export interface CreateCreditsCheckoutRequest {
-  credits: number;
+  /** Canonical dollar charge and 1:1 organization-credit grant. */
+  amountUsd?: number;
+  /** @deprecated Compatibility alias; must equal amountUsd when both are sent. */
+  credits?: number;
   success_url: string;
   cancel_url: string;
 }

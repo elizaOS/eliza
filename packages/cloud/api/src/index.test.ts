@@ -994,6 +994,7 @@ describe("cloud-api worker entrypoint", () => {
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
       personalSharedTelegramEdge: { enabled: false },
+      schemaCompatibility: { usageQuotasTombstone: true },
     });
   });
 

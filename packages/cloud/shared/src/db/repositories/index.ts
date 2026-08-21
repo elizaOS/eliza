@@ -115,6 +115,8 @@ export * from "./org-storage-quota";
 export * from "./org-storage-reads";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./phone-message-logs";
+export * from "./phone-metadata-readers";
 export * from "./press-releases";
 export * from "./provider-health";
 // ============================================
@@ -129,7 +131,6 @@ export * from "./service-pricing";
 // Token Redemptions (elizaOS payouts)
 // ============================================
 export * from "./token-redemptions";
-export * from "./usage-quotas";
 export * from "./usage-records";
 // ============================================
 // User MCPs (Monetizable MCP Servers)

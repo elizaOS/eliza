@@ -84,6 +84,83 @@ export function isLiveReply(reply) {
 }
 
 /**
+ * Find the assistant reply structurally paired with one run-unique user turn.
+ *
+ * The token is required only in the user row. A model may answer the exact
+ * turn without copying an arbitrary code verbatim; requiring an echo confuses
+ * instruction-following with liveness. DOM order still binds the reply to the
+ * run: the first assistant row after the token-bearing user row owns the turn
+ * and must settle as uninterrupted, non-failure model text. The helper never
+ * skips an invalid owner row to accept unrelated content further down.
+ *
+ * This helper consumes a privacy-sensitive in-memory transcript snapshot but
+ * returns only indices plus the validated candidate text. Callers must never
+ * serialize either the token or reply into CI evidence.
+ *
+ * @param {Array<{
+ *   role?: string,
+ *   text?: string,
+ *   failureKind?: string,
+ *   hasRetry?: boolean,
+ *   interrupted?: boolean,
+ *   hasMessageText?: boolean | null,
+ *   phase?: string | null,
+ * }>} lines ordered thread rows
+ * @param {{ anchorToken?: string }} [options]
+ * @returns {{ userLineIndex: number, assistantLineIndex: number, reply: string } | null}
+ */
+export function findAnchoredLiveTurn(lines, { anchorToken } = {}) {
+  const token = String(anchorToken ?? "")
+    .trim()
+    .toLowerCase();
+  if (!token || !Array.isArray(lines)) return null;
+
+  for (
+    let userLineIndex = 0;
+    userLineIndex < lines.length;
+    userLineIndex += 1
+  ) {
+    const userLine = lines[userLineIndex];
+    if (
+      userLine?.role !== "user" ||
+      !String(userLine.text ?? "")
+        .toLowerCase()
+        .includes(token)
+    ) {
+      continue;
+    }
+
+    for (
+      let assistantLineIndex = userLineIndex + 1;
+      assistantLineIndex < lines.length;
+      assistantLineIndex += 1
+    ) {
+      const line = lines[assistantLineIndex];
+      if (line?.role === "user") return null;
+      if (line?.role !== "assistant") continue;
+      // The first assistant row after the anchored user owns this turn. A
+      // pending row may become a reply on a later poll; a terminal failure,
+      // retry, interruption, or widget-only body must never be skipped in
+      // favour of an unrelated assistant row further down the transcript.
+      if (String(line.failureKind ?? "").trim()) return null;
+      if (
+        line.hasRetry === true ||
+        line.interrupted === true ||
+        line.hasMessageText === false ||
+        line.phase === "status"
+      ) {
+        return null;
+      }
+      const reply = String(line.text ?? "").trim();
+      if (!reply) return null;
+      return { userLineIndex, assistantLineIndex, reply };
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
  * The challenge suffix shared by every liveness lane that binds the reply to
  * the exact run. The token after the colon is what the harness generates fresh
  * per run and what the reply must echo back. Kept as the one literal so the

@@ -12,6 +12,10 @@ import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import {
+  isPhoneSchemaMigrationRequired,
+  phoneErrorDiagnostic,
+} from "@/lib/services/phone-error-diagnostics";
+import {
   type AuthenticatedBlueBubblesGateway,
   authenticateBlueBubblesGateway,
   registerPhoneGatewayDevice,
@@ -137,7 +141,26 @@ export async function handleBlueBubblesWebhookPayload(
     c.req.param("orgId") ??
     "default";
 
-  const authorization = await resolveGatewayAuthorization(c, bridgeId);
+  let authorization: Awaited<ReturnType<typeof resolveGatewayAuthorization>>;
+  try {
+    authorization = await resolveGatewayAuthorization(c, bridgeId);
+  } catch (error) {
+    // error-policy:J2 database-backed authentication must fail explicitly and
+    // retryably; a missing migration or read outage must never become a 401.
+    logger.error("[BlueBubblesWebhook] Gateway authorization unavailable", {
+      registeredGateway: false,
+      ...phoneErrorDiagnostic(error),
+    });
+    return c.json(
+      {
+        success: false,
+        handled: false,
+        reason: "bridge_failed",
+        routingError: "BlueBubbles gateway authorization unavailable",
+      },
+      503,
+    );
+  }
   if (!authorization) {
     return c.json({ error: "Unauthorized" }, 401);
   }
@@ -145,10 +168,7 @@ export async function handleBlueBubblesWebhookPayload(
 
   const parsed = BlueBubblesWebhookSchema.safeParse(payload);
   if (!parsed.success) {
-    return c.json(
-      { error: "Invalid BlueBubbles payload", details: parsed.error.issues },
-      400,
-    );
+    return c.json({ error: "Invalid BlueBubbles payload" }, 400);
   }
 
   const { type, data } = parsed.data;
@@ -168,7 +188,6 @@ export async function handleBlueBubblesWebhookPayload(
   if (!sender) {
     logger.warn("[BlueBubblesWebhook] Missing sender", {
       type,
-      messageId: data.guid,
     });
     return c.json({ error: "Missing sender" }, 400);
   }
@@ -184,7 +203,7 @@ export async function handleBlueBubblesWebhookPayload(
   if (!registeredGateway && (!legacyOrganizationId || !legacyRecipient)) {
     logger.error(
       "[BlueBubblesWebhook] Legacy gateway identity is not configured",
-      { bridgeId },
+      { registeredGateway: false },
     );
     return c.json({ error: "BlueBubbles gateway is not configured" }, 503);
   }
@@ -196,9 +215,8 @@ export async function handleBlueBubblesWebhookPayload(
       // error-policy:J1 a failed presence write is translated before the dedupe
       // claim, so the relay can retry without losing this message GUID.
       logger.error("[BlueBubblesWebhook] Gateway presence update failed", {
-        bridgeId,
-        messageId: data.guid,
-        error: error instanceof Error ? error.message : String(error),
+        registeredGateway: true,
+        ...phoneErrorDiagnostic(error),
       });
       return c.json(
         {
@@ -228,7 +246,6 @@ export async function handleBlueBubblesWebhookPayload(
     });
     if (!dedupe.created) {
       logger.warn("[BlueBubblesWebhook] Duplicate delivery ignored", {
-        messageGuid,
         type,
       });
       return c.json({ success: true, skipped: "duplicate_delivery" });
@@ -250,36 +267,48 @@ export async function handleBlueBubblesWebhookPayload(
     registered: Boolean(registeredGateway),
   };
 
-  if (!registeredGateway) {
-    try {
-      gatewayDevice = await registerPhoneGatewayDevice({
-        organizationId,
-        provider: "blooio",
-        phoneNumber: recipient,
-        bridgeId,
-        phoneAccountId,
-        phoneAccountLabel,
-        friendlyName: phoneAccountLabel,
-        sendMethod: "bluebubbles-local-bridge",
-        cloudWebhookUrl: c.req.url,
-        metadata: {
-          eventType: type,
-          chatGuid: data.chats?.[0]?.guid ?? undefined,
-          chatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
-          detectedService: data.handle?.service ?? undefined,
-        },
-      });
-    } catch (error) {
-      // error-policy:J4 legacy device discovery may degrade without affecting routing.
-      logger.warn("[BlueBubblesWebhook] Gateway device registration failed", {
-        bridgeId,
-        recipient,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
   try {
+    if (!registeredGateway) {
+      try {
+        gatewayDevice = await registerPhoneGatewayDevice({
+          organizationId,
+          provider: "blooio",
+          phoneNumber: recipient,
+          bridgeId,
+          phoneAccountId,
+          phoneAccountLabel,
+          friendlyName: phoneAccountLabel,
+          sendMethod: "bluebubbles-local-bridge",
+          cloudWebhookUrl: c.req.url,
+          metadata: {
+            eventType: type,
+            ...(data.chats?.[0]?.guid !== null &&
+            data.chats?.[0]?.guid !== undefined
+              ? { chatGuid: data.chats[0].guid }
+              : {}),
+            ...(data.chats?.[0]?.chatIdentifier !== null &&
+            data.chats?.[0]?.chatIdentifier !== undefined
+              ? { chatIdentifier: data.chats[0].chatIdentifier }
+              : {}),
+            ...(data.handle?.service !== null &&
+            data.handle?.service !== undefined
+              ? { detectedService: data.handle.service }
+              : {}),
+          },
+        });
+      } catch (error) {
+        // error-policy:J2 a missing canonical gateway table must reach the
+        // retryable webhook boundary instead of masquerading as write_failed.
+        if (isPhoneSchemaMigrationRequired(error)) throw error;
+        // error-policy:J4 legacy device discovery may otherwise degrade without
+        // affecting routing; an explicit write_failed result follows this path too.
+        logger.warn("[BlueBubblesWebhook] Gateway device registration failed", {
+          registeredGateway: false,
+          ...phoneErrorDiagnostic(error),
+        });
+      }
+    }
+
     const routingInput = {
       organizationId,
       from: sender,
@@ -289,14 +318,24 @@ export async function handleBlueBubblesWebhookPayload(
       metadata: {
         bluebubblesBridgeId: bridgeId,
         bluebubblesEventType: type,
-        bluebubblesChatGuid: data.chats?.[0]?.guid ?? undefined,
-        bluebubblesChatIdentifier: data.chats?.[0]?.chatIdentifier ?? undefined,
-        bluebubblesDateCreated: data.dateCreated ?? undefined,
+        ...(data.chats?.[0]?.guid !== null &&
+        data.chats?.[0]?.guid !== undefined
+          ? { bluebubblesChatGuid: data.chats[0].guid }
+          : {}),
+        ...(data.chats?.[0]?.chatIdentifier !== null &&
+        data.chats?.[0]?.chatIdentifier !== undefined
+          ? { bluebubblesChatIdentifier: data.chats[0].chatIdentifier }
+          : {}),
+        ...(data.dateCreated !== null && data.dateCreated !== undefined
+          ? { bluebubblesDateCreated: data.dateCreated }
+          : {}),
         localPhoneNumber: recipient,
         phoneNumber: recipient,
         phoneAccountId,
         phoneAccountLabel,
-        phoneGatewayDeviceId: gatewayDevice.id ?? undefined,
+        ...(gatewayDevice.id !== null && gatewayDevice.id !== undefined
+          ? { phoneGatewayDeviceId: gatewayDevice.id }
+          : {}),
         phoneGatewayDeviceRegistered: gatewayDevice.registered,
       },
     };
@@ -344,10 +383,9 @@ export async function handleBlueBubblesWebhookPayload(
   } catch (error) {
     // error-policy:J1 the webhook boundary returns an explicit transport failure.
     logger.error("[BlueBubblesWebhook] Routing failed", {
-      bridgeId,
       type,
-      messageId: data.guid,
-      error: error instanceof Error ? error.message : String(error),
+      registeredGateway: Boolean(registeredGateway),
+      ...phoneErrorDiagnostic(error),
     });
     if (dedupeEventId) {
       // The marker is created before routing so concurrent deliveries cannot
@@ -363,12 +401,8 @@ export async function handleBlueBubblesWebhookPayload(
         // failure must still return 503 so the transport observes a retryable
         // failure rather than an unstructured exception.
         logger.error("[BlueBubblesWebhook] Dedupe rollback failed", {
-          bridgeId,
-          messageId: data.guid,
-          error:
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : String(cleanupError),
+          type,
+          ...phoneErrorDiagnostic(cleanupError),
         });
       }
     }
@@ -379,7 +413,6 @@ export async function handleBlueBubblesWebhookPayload(
         reason: "bridge_failed",
         gatewayDeviceId: gatewayDevice.id,
         gatewayDeviceRegistered: gatewayDevice.registered,
-        gatewayDevicePhoneNumber: recipient,
         gatewayDeviceBridgeId: bridgeId,
         gatewayDeviceProvider: registeredGateway ? "bluebubbles" : "blooio",
         routingError: "BlueBubbles routing failed",

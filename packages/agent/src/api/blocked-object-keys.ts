@@ -152,10 +152,27 @@ function walkHasBlockedObjectKey(
   }
 }
 
+/**
+ * What the clone does with one own enumerable string key. Blocked keys are
+ * always dropped regardless of the policy; the policy only decides the fate of
+ * the keys this walk would otherwise have kept.
+ */
+export type BoundedCloneKeyAction = "keep" | "drop" | "redact";
+
+export interface BoundedCloneOptions {
+  /** Defaults to keeping every non-blocked key, i.e. the historical behaviour. */
+  keyAction?: (key: string) => BoundedCloneKeyAction;
+  /** Substituted for a key whose action is `"redact"`. */
+  redactedValue?: unknown;
+}
+
+const KEEP_EVERY_KEY: BoundedCloneOptions = {};
+
 function cloneWithoutBlockedObjectKeysWalk<T>(
   value: T,
   depth: number,
   ctx: BlockedObjectWalkContext,
+  options: BoundedCloneOptions,
   visitAlreadyReserved = false,
 ): T {
   if (depth > MAX_BLOCKED_OBJECT_DEPTH) {
@@ -182,6 +199,7 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
           descriptor.value,
           depth + 1,
           ctx,
+          options,
           true,
         );
       }
@@ -193,12 +211,19 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
     const out: Record<string, unknown> = {};
     for (const key of keys) {
       if (isBlockedObjectKey(key)) continue;
+      const action = options.keyAction?.(key) ?? "keep";
+      if (action === "drop") continue;
+      if (action === "redact") {
+        out[key] = options.redactedValue;
+        continue;
+      }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor || !("value" in descriptor)) continue;
       out[key] = cloneWithoutBlockedObjectKeysWalk(
         descriptor.value,
         depth + 1,
         ctx,
+        options,
         true,
       );
     }
@@ -227,9 +252,17 @@ export function hasBlockedObjectKeyDeep(value: unknown): boolean {
   }
 }
 
-export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
-  return cloneWithoutBlockedObjectKeysWalk(value, 0, {
-    visits: 0,
-    visiting: new WeakSet<object>(),
-  });
+export function cloneWithoutBlockedObjectKeys<T>(
+  value: T,
+  options: BoundedCloneOptions = KEEP_EVERY_KEY,
+): T {
+  return cloneWithoutBlockedObjectKeysWalk(
+    value,
+    0,
+    {
+      visits: 0,
+      visiting: new WeakSet<object>(),
+    },
+    options,
+  );
 }

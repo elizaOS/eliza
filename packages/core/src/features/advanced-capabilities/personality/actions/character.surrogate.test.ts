@@ -4,6 +4,7 @@ import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../../../../utils/well-formed.ts";
+import { trimToString } from "./character.ts";
 
 function isWellFormed(value: string): boolean {
 	if (!value) return true;
@@ -68,5 +69,40 @@ describe("character action surrogate safety", () => {
 			expect(out.length).toBeLessThanOrEqual(100);
 			expect(() => JSON.stringify({ text: out })).not.toThrow();
 		}
+	});
+});
+
+// trimToString feeds runtime.character.name and .system, which are persisted by
+// persistCharacter and rendered back in the action's user-facing text, so a
+// pair split at the cap is both durable and visible. These call the real
+// exported function rather than re-deriving the clamp, so a change to
+// trimToString cannot leave them passing.
+describe("trimToString", () => {
+	test("backs off an emoji straddling the cap", () => {
+		const trimmed = trimToString(`${"a".repeat(63)}🦊 tail`, 64);
+
+		expect(trimmed).toBeDefined();
+		expect(isWellFormed(trimmed as string)).toBe(true);
+		expect(trimmed).toBe("a".repeat(63));
+	});
+
+	test("keeps an emoji that ends exactly on the cap", () => {
+		const trimmed = trimToString(`${"a".repeat(62)}🦊 tail`, 64);
+
+		expect(trimmed).toBe(`${"a".repeat(62)}🦊`);
+		expect(isWellFormed(trimmed as string)).toBe(true);
+	});
+
+	test("sanitizes a lone surrogate that arrives well inside the cap", () => {
+		const trimmed = trimToString("name \uD800 here", 64);
+
+		expect(trimmed).toBeDefined();
+		expect(isWellFormed(trimmed as string)).toBe(true);
+		expect((trimmed as string).includes("\uD800")).toBe(false);
+	});
+
+	test("still rejects non-strings and blank input", () => {
+		expect(trimToString(42, 64)).toBeUndefined();
+		expect(trimToString("   ", 64)).toBeUndefined();
 	});
 });

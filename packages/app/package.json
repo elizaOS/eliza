@@ -122,6 +122,7 @@
     "test:e2e:ios:physical": "node scripts/ios-device-e2e.mjs",
     "capture:ios-sim:boot": "node scripts/ios-device-capture.mjs --platform sim",
     "build:android": "node ../../packages/app-core/scripts/run-mobile-build.mjs android",
+    "build:android:host-e2e": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-host-e2e",
     "build:android:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:cloud-hybrid": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-hybrid",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",

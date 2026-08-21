@@ -32,6 +32,108 @@ carry no timestamps in the archive, so they are counted in the summary and
 never emitted as message rows. Re-running is idempotent: unchanged shards are
 reused, missing shards are rewritten.
 
+## Loader for mock and scenario consumers
+
+`loadCorpusMessages` (`src/loader.ts`) is the read boundary for downstream
+mocks: it validates a shard tree with the shared validator, applies a
+platform/account/thread/window/cap selection with deterministic ts-then-id
+ordering, and enforces a scrub floor that defaults to `verified` — unscrubbed
+rows never reach a consumer unless a test explicitly loosens
+`minScrubState`. Any validation issue aborts the load (`CorpusLoadError`)
+rather than serving a partial corpus, and an unrecognized `minScrubState` or a
+malformed numeric bound is rejected as a `CorpusSelectionError` at the call
+boundary; the array selection fields must be arrays, so a decoded-config
+string cannot widen an account filter into a substring match. Message-id
+uniqueness and reply resolution are evaluated over the whole collected corpus,
+not per shard, and because selection can still cut a thread, a released row
+whose parent was not released is emitted with `replyToId` dropped. The
+committed synthetic tree under
+`fixtures/sample-corpus/` exercises the whole path in CI; the scenario-runner
+Gmail mock consumes this loader via `ELIZA_CORPUS_DIR` /
+`startMocks({ corpusDir })` (see
+`packages/scenario-runner/test/mocks/scripts/google-gmail-corpus.ts`).
+## Gmail collector
+
+`collectGmail` (`src/collectors/gmail.ts`) collects one Gmail account into
+validated monthly shards through an injected `GmailTransport`. The package
+never holds OAuth material: a live run wraps the existing account-scoped
+plugin-google Gmail client (`gmail.read` scope) in a small adapter that
+implements `getProfile`, `listMessageIds`, `getMessage` (`format: "full"`),
+`getAttachment`, and `listHistory`, translating HTTP failures into
+`GmailTransportError` with the upstream status and any `Retry-After` hint.
+
+The adapter must pass Gmail responses through unprojected. In particular
+`listHistory` has to forward `messagesAdded`, `messagesDeleted`,
+`labelsAdded`, `labelsRemoved`, `nextPageToken`, and the page's terminal
+`historyId`: labels decide both inclusion (`DRAFT`/`CHAT`) and direction
+(`SENT`), so an adapter that returns only add/delete events leaves stale
+verdicts frozen in the corpus. `getMessage` must surface a deleted message as
+`GmailTransportError` with status 404 rather than an empty object.
+
+```ts
+import { collectGmail, type GmailTransport } from "@elizaos/corpus-tools";
+
+const result = await collectGmail({
+  transport: makePluginGoogleTransport(accountRef), // owner-side adapter
+  accountEmail: "owner@example.com",
+  aliasEmails: ["owner.alias@example.com"],
+  outDir: "data",
+});
+```
+
+Behavior contract:
+
+- The query is the frozen UTC corpus window expressed in epoch seconds
+  (Gmail's `after:yyyy/mm/dd` is local-timezone and would shift the cutoff);
+  chats are excluded and drafts are dropped by label.
+- Pagination runs to exhaustion with a durable checkpoint per page under
+  `data/.state/gmail-<account>.json`; fetched rows append to a private
+  staging JSONL so an interrupted run resumes without refetching.
+- A completed checkpoint is never trusted indefinitely: the next run
+  reconciles through `users.history.list` from the checkpointed history id,
+  applying additions, deletions, and label changes; a relabeled id drops its
+  cached exclusion/staging verdict and is refetched, so a draft that becomes
+  real mail enters the corpus and a message relabeled `CHAT` leaves it. The
+  checkpoint then advances to the terminal `historyId` of the pages actually
+  applied (never backwards), not to the pre-reconciliation profile snapshot.
+  An expired/invalid history id (HTTP 404/400) triggers a full rescan.
+- A message deleted between `messages.list` and `messages.get` (HTTP 404) is
+  recorded as a deletion in `missingAtFetch` and excluded, not treated as a
+  fatal transport failure.
+- 429/5xx transport failures retry with bounded exponential backoff,
+  honoring the server retry hint.
+- Ids are account-namespaced (`gmail:<account>:<messageId>`); direction is
+  alias-aware (`From` versus the account plus `aliasEmails`) or `SENT`
+  label; text prefers `text/plain` and falls back to stripped `text/html`;
+  attachment bytes are fetched only to compute SHA-256 and size, and
+  attachment-only messages are counted, never given fabricated text — the
+  empty-text verdict is reached before the attachment fetch, so a dropped
+  message spends no quota and `attachmentsHashed` counts only attachments that
+  reached the corpus.
+- Shards no longer named by a run are swept, but a run that emitted **no**
+  messages refuses to sweep and fails with
+  `GMAIL_COLLECT_EMPTY_SWEEP_REFUSED`. An expired history id forces a full
+  rescan, and a transiently empty listing on that path would otherwise unlink
+  the only local copy of the owner's mail. Pass `allowEmptySweep: true` to
+  delete once the empty result has been confirmed.
+- Output is private (0600 files, 0700 directories) and account-isolated under
+  `gmail/<segment>/`, where `<segment>` is the sanitized, collision-free
+  account segment (`corpusAccountSegment`) rather than the raw address, so an
+  address can never steer writes or the stale-shard sweep outside `outDir`.
+  Shards are byte-stable on rerun and committed by a validated
+  `manifest.json`.
+- Concurrency is serialized by a per-account lease file recording PID,
+  hostname and process start time. A live owner fails the second run closed
+  with `GMAIL_COLLECT_OUTPUT_BUSY`; a lease abandoned by SIGKILL/OOM is
+  detected as dead and recovered on the next run, so crash resume never needs
+  manual filesystem repair. Recovery displaces the dead record with an atomic
+  `rename` rather than an unlink, so two runs racing to recover the same
+  abandoned lease cannot both end up holding the account.
+
+Live-run acceptance evidence (two owner-authorized accounts, refresh-token
+exercise, interruption/resume, quota behavior, manual shard inspection) is
+owner-only and stays local; share only sanitized aggregate counts and digests.
+
 ## Reviewed sensitive deletion
 
 The two-phase deletion boundary never mutates raw source shards. `plan` binds a

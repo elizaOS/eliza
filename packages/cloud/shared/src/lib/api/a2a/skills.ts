@@ -11,6 +11,7 @@
  */
 
 import { streamText } from "ai";
+import { SAVE_MEMORY_PRICE_USD } from "../../../billing/organization-credits";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {
@@ -521,15 +522,12 @@ export async function executeSkillSaveMemory(
   const metadata = dataContent.metadata as Record<string, unknown> | undefined;
 
   if (!content || !roomId) throw new Error("content and roomId required");
-
-  const COST = 1;
-
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;
   try {
     reservation = await creditsService.reserve({
       organizationId: ctx.user.organization_id,
-      amount: COST,
+      amount: SAVE_MEMORY_PRICE_USD,
       userId: ctx.user.id,
       description: `A2A memory: ${type}`,
     });
@@ -552,8 +550,12 @@ export async function executeSkillSaveMemory(
       persistent: true,
     });
 
-    await reservation.reconcile(COST);
-    return { memoryId: result.memoryId, storage: result.storage, cost: COST };
+    await reservation.reconcile(SAVE_MEMORY_PRICE_USD);
+    return {
+      memoryId: result.memoryId,
+      storage: result.storage,
+      cost: SAVE_MEMORY_PRICE_USD,
+    };
   } catch (error) {
     await reservation.reconcile(0);
     throw error;

@@ -46,6 +46,7 @@ export default defineConfig({
       // "No test files found" for any PR touching it.
       "src/lib/services/headscale-client.test.ts",
       "src/lib/services/steward-platform-users.error-policy.test.ts",
+      "src/lib/utils/whatsapp-api.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after

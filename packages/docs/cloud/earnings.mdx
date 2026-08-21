@@ -52,7 +52,7 @@ The Earnings dashboard shows "Spent on hosting" separately from token redemption
 
 ## Redeem for elizaOS Tokens
 
-Redemptions use `pointsAmount`, where 100 points equals $1.00.
+Earnings balances are held in **USD** (four decimal places). Redemptions use `pointsAmount`, an integer **API-boundary representation** where 100 points equals $1.00 — stored balances, ledgers, and conversion records are always USD, and the `100:1` ratio is applied only at this boundary.
 
 1. Check `/api/v1/redemptions/balance`.
 2. Quote `/api/v1/redemptions/quote?network=base&pointsAmount=10000`.

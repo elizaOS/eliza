@@ -15,6 +15,7 @@ import type {
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -211,35 +212,14 @@ function coordinatorName(agentId: string, rpc: BridgeRequest): string {
   return `${agentId}:${coordinatorRoom(rpc.params?.roomId, rpc.params?.userId)}`;
 }
 
-const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
-
-/**
- * Bound every shared-runtime Durable Object hop so a hung or overloaded
- * coordinator cannot pin the calling worker indefinitely. Caller cancellation
- * and the hop deadline are composed so whichever fires first aborts the fetch.
- */
-export function coordinatorFetch(
-  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
-  url: string | URL,
-  init?: RequestInit,
-  timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
-): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return stub.fetch(url, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
-  });
-}
+export { coordinatorFetch };
 
 function coordinatorStub(
   namespace: RuntimeDurableObjectNamespace,
   agentId: string,
   roomId: string,
 ) {
-  const stub = namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
-  return {
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => coordinatorFetch(stub, input, init),
-  };
+  return deadlineBoundCoordinatorStub(namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`));
 }
 
 function cacheContextUnavailable(): SharedRuntimeCacheWarmingError {

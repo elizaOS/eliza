@@ -6,8 +6,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { evaluatorTemplate } from "../../prompts/evaluator";
-import { ModelType } from "../../types/model";
+import {
+	type ChatMessage,
+	ModelType,
+	type PromptSegment,
+} from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
 	it("keeps synthesized replies human-readable unless raw output was requested", () => {
@@ -194,7 +199,7 @@ df -h / /home
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
 		// Wire-shape contract: evaluator emits ONLY `messages`.
 		expect(evaluatorParams.prompt).toBeUndefined();
-		expect(evaluatorParams.maxTokens).toBe(1024);
+		expect(evaluatorParams.maxTokens).toBe(2048);
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
@@ -1348,5 +1353,387 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			expect(result.decision).toBe("FINISH");
 			expect(result.messageToUser).toBe(answer);
 		}
+	});
+});
+
+describe("completion-truncation guard: one bounded retry, never a loop", () => {
+	// Bidirectional contract for the 2026-08-17 truncation spiral: an envelope
+	// cut off at the completion cap must trigger EXACTLY ONE retry at a doubled
+	// cap. Without the guard (the old behavior) the truncated JSON parsed as a
+	// protocol failure and the planner burned extra full-prompt rounds; with it,
+	// the second (complete) envelope is used directly.
+	const truncatedEnvelope = {
+		// A JSON envelope cut mid-string — unparseable by construction.
+		text: '{"success": true, "decision": "FINISH", "thought": "long reasoning that got cut o',
+		finishReason: "length",
+		usage: { promptTokens: 100, completionTokens: 2048 },
+	};
+	const completeEnvelope = {
+		text: '{"success": true, "decision": "FINISH", "thought": "Recovered on the retry."}',
+		finishReason: "stop",
+		usage: { promptTokens: 100, completionTokens: 40 },
+	};
+	const baseParams = (useModel: ReturnType<typeof vi.fn>) => ({
+		runtime: { useModel },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "Check status." },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+	});
+	const captureRecorder = (stages: RecordedStage[]): TrajectoryRecorder => ({
+		startTrajectory: () => "trajectory-evaluator-retry",
+		recordStage: async (_trajectoryId, stage) => {
+			stages.push(stage);
+		},
+		endTrajectory: async () => undefined,
+		load: async () => null,
+		list: async () => [],
+	});
+
+	it("detects truncation via finishReason and via usage-at-cap", async () => {
+		const { evaluatorHitCompletionLimit } = await import("../evaluator");
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "length", usage: { completionTokens: 10 } },
+				2048,
+			),
+		).toBe(true);
+		for (const finishReason of ["max_completion_tokens", "stop_length"]) {
+			expect(
+				evaluatorHitCompletionLimit(
+					{ finishReason, usage: { completionTokens: 10 } },
+					2048,
+				),
+			).toBe(true);
+		}
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 2048 } },
+				2048,
+			),
+		).toBe(true);
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 40 } },
+				2048,
+			),
+		).toBe(false);
+		// String results carry no metadata and are never treated as truncated.
+		expect(evaluatorHitCompletionLimit("plain text", 2048)).toBe(false);
+	});
+
+	it("retries ONCE with a doubled cap when the truncated envelope is unparseable, then uses the retry result", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		const firstCap = useModel.mock.calls[0][1].maxTokens;
+		const secondCap = useModel.mock.calls[1][1].maxTokens;
+		expect(firstCap).toBe(2048);
+		expect(secondCap).toBe(4096);
+		expect(result.decision).toBe("FINISH");
+		expect(result.success).toBe(true);
+		expect(result.protocolFailure).toBeUndefined();
+	});
+
+	it("reports usage for both the truncated attempt and its successful retry", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+		const onUsage = vi.fn();
+
+		await runEvaluator({ ...baseParams(useModel), onUsage });
+
+		expect(onUsage).toHaveBeenCalledTimes(2);
+		expect(onUsage).toHaveBeenNthCalledWith(1, {
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+		expect(onUsage).toHaveBeenNthCalledWith(2, {
+			promptTokens: 100,
+			completionTokens: 40,
+		});
+	});
+
+	it("records both billable model calls when the truncation retry succeeds", async () => {
+		const stages: RecordedStage[] = [];
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+
+		await runEvaluator({
+			...baseParams(useModel),
+			recorder: captureRecorder(stages),
+			trajectoryId: "trajectory-evaluator-retry",
+		});
+
+		expect(stages).toHaveLength(2);
+		expect(stages.map((stage) => stage.stageId)).toEqual([
+			expect.stringContaining("-attempt-1"),
+			expect.stringContaining("-attempt-2"),
+		]);
+		expect(stages[0]?.model?.response).toBe(truncatedEnvelope.text);
+		expect(stages[0]?.model?.usage).toMatchObject({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+		expect(stages[1]?.model?.response).toBe(completeEnvelope.text);
+		expect(stages[1]?.model?.usage).toMatchObject({
+			promptTokens: 100,
+			completionTokens: 40,
+		});
+	});
+
+	it("keeps first-attempt provenance when a differently routed retry fails", async () => {
+		const stages: RecordedStage[] = [];
+		const providerError = Object.assign(new Error("retry rate limited"), {
+			status: 429,
+		});
+		let callIndex = 0;
+		const useModel = vi.fn(
+			async (
+				_modelType: string,
+				request: {
+					messages: ChatMessage[];
+					promptSegments?: PromptSegment[];
+					providerOptions?: Record<string, unknown>;
+					prepareModelAttempt?: (
+						attempt: { modelType: string; provider: string },
+						params: {
+							messages: ChatMessage[];
+							promptSegments?: PromptSegment[];
+							providerOptions?: Record<string, unknown>;
+						},
+					) => Promise<void> | void;
+				},
+			) => {
+				const provider =
+					callIndex === 0 ? "initial-provider" : "retry-provider";
+				await request.prepareModelAttempt?.(
+					{ modelType: ModelType.RESPONSE_HANDLER, provider },
+					request,
+				);
+				callIndex++;
+				if (callIndex === 1) return truncatedEnvelope;
+				throw providerError;
+			},
+		);
+
+		const result = await runEvaluator({
+			...baseParams(useModel),
+			runtime: {
+				useModel,
+				supportsModelAttemptPreparation: true,
+				reportError: vi.fn(),
+			},
+			recorder: captureRecorder(stages),
+			trajectoryId: "trajectory-evaluator-retry",
+		});
+
+		expect(result.protocolFailure).toBe(true);
+		expect(stages).toHaveLength(2);
+		expect(stages[0]?.model?.provider).toBe("initial-provider");
+		expect(stages[0]?.model?.response).toBe(truncatedEnvelope.text);
+		expect(stages[1]?.model?.provider).toBe("retry-provider");
+		expect(stages[1]?.model?.response).toContain("retry rate limited");
+	});
+
+	it("falls back to parse-recovery when the bounded retry throws", async () => {
+		const providerError = Object.assign(new Error("retry rate limited"), {
+			status: 429,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(providerError);
+		const warn = vi.fn();
+		const reportError = vi.fn();
+		const onUsage = vi.fn();
+
+		const result = await runEvaluator({
+			...baseParams(useModel),
+			runtime: { useModel, logger: { warn }, reportError },
+			onUsage,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result).toMatchObject({
+			decision: "CONTINUE",
+			success: false,
+			protocolFailure: true,
+		});
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ retryMaxTokens: 4096 }),
+			"[evaluator] truncation retry failed; using the original response for parse-recovery",
+		);
+		expect(reportError).toHaveBeenCalledWith(
+			"Evaluator.truncationRetry",
+			providerError,
+			expect.objectContaining({ retryMaxTokens: 4096 }),
+		);
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("records a retry budget rejection and falls back to the initial response", async () => {
+		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", '{"tiny-evaluator":8000}');
+		try {
+			const stages: RecordedStage[] = [];
+			let completedCalls = 0;
+			const useModel = vi.fn(
+				async (
+					_modelType: string,
+					request: {
+						messages: ChatMessage[];
+						promptSegments?: PromptSegment[];
+						providerOptions?: Record<string, unknown>;
+						prepareModelAttempt?: (
+							attempt: {
+								modelType: string;
+								provider: string;
+								metadata: { displayModel: string };
+							},
+							params: {
+								messages: ChatMessage[];
+								promptSegments?: PromptSegment[];
+								providerOptions?: Record<string, unknown>;
+							},
+						) => Promise<void> | void;
+					},
+				) => {
+					await request.prepareModelAttempt?.(
+						{
+							modelType: ModelType.RESPONSE_HANDLER,
+							provider: "tiny",
+							metadata: { displayModel: "tiny-evaluator" },
+						},
+						request,
+					);
+					completedCalls++;
+					return completedCalls === 1 ? truncatedEnvelope : completeEnvelope;
+				},
+			);
+			const reportError = vi.fn();
+
+			const result = await runEvaluator({
+				...baseParams(useModel),
+				runtime: {
+					useModel,
+					supportsModelAttemptPreparation: true,
+					getModelRegistrations: () => [
+						{
+							modelType: ModelType.RESPONSE_HANDLER,
+							provider: "tiny",
+							metadata: { displayModel: "tiny-evaluator" },
+						},
+					],
+					reportError,
+				},
+				context: {
+					...baseParams(useModel).context,
+					staticPrefix: {
+						characterPrompt: {
+							content: `agent_name: Eliza\n${"x".repeat(10_000)}`,
+							stable: true,
+						},
+					},
+				},
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-retry-budget",
+			});
+
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(completedCalls).toBe(1);
+			expect(result).toMatchObject({
+				decision: "CONTINUE",
+				success: false,
+				protocolFailure: true,
+			});
+			expect(stages).toHaveLength(2);
+			expect(stages[1]?.model?.response).toContain(
+				"EVALUATOR_INPUT_OVER_BUDGET",
+			);
+			expect(reportError).toHaveBeenCalledWith(
+				"Evaluator.truncationRetry",
+				expect.objectContaining({ code: "EVALUATOR_INPUT_OVER_BUDGET" }),
+				expect.objectContaining({ retryMaxTokens: 4096 }),
+			);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("propagates non-provider failures from the bounded retry", async () => {
+		const programmerError = new TypeError("retry result adapter is broken");
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(programmerError);
+		const onUsage = vi.fn();
+
+		await expect(
+			runEvaluator({ ...baseParams(useModel), onUsage }),
+		).rejects.toBe(programmerError);
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("does NOT retry when the completion hit the cap but still parsed", async () => {
+		const parseableAtCap = {
+			text: '{"success": true, "decision": "FINISH", "thought": "Fits exactly."}',
+			finishReason: "stop",
+			usage: { promptTokens: 100, completionTokens: 2048 },
+		};
+		const useModel = vi.fn().mockResolvedValue(parseableAtCap);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(result.decision).toBe("FINISH");
+	});
+
+	it("never loops: a still-truncated retry proceeds to parse-recovery with exactly two calls total", async () => {
+		const useModel = vi.fn().mockResolvedValue(truncatedEnvelope);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		// One initial call + one retry. NEVER a third.
+		expect(useModel).toHaveBeenCalledTimes(2);
+		// The unparseable envelope routes through the existing protocol-failure
+		// path (CONTINUE + replan), not an exception and not a user-visible leak.
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.messageToUser).toBeUndefined();
 	});
 });

@@ -52,6 +52,7 @@ import {
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
   WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
@@ -105,12 +106,14 @@ import {
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
 import {
+  AGENT_JOB_TYPES,
   COLD_BOOT_JOB_TYPES,
   COLD_BOOT_STALE_JOB_THRESHOLD_MS,
   DEFAULT_STALE_JOB_THRESHOLD_MS,
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   type ProvisioningJobType,
+  requiresContainerBackedTarget,
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import {
@@ -135,6 +138,38 @@ function safeErrorKind<T extends Error>(
     // error-policy:J3 hostile thrown value; treat it as an ordinary failure so
     // the job still reaches its durable retry/failure transition.
     return false;
+  }
+}
+
+const CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE =
+  "Agent job requires a container-backed execution tier";
+
+function isContainerBackedExecutionTier(tier: AgentExecutionTier): boolean {
+  return (CONTAINER_BACKED_EXECUTION_TIERS as readonly AgentExecutionTier[]).includes(tier);
+}
+
+/** Domain rejection that must terminate the exact claim without ordinary retry handling. */
+class RejectedAgentExecutionError extends ElizaError {
+  override readonly name = "RejectedAgentExecutionError";
+
+  constructor(
+    message: string,
+    context: {
+      jobId: string;
+      jobType: string;
+      columnAgentId: string | null;
+      columnOrganizationId: string;
+      payloadAgentId?: string | null;
+      payloadOrganizationId?: string | null;
+      executionTier?: string;
+      cause?: string;
+    },
+  ) {
+    super(message, {
+      code: "PROVISIONING_JOB_TARGET_REJECTED",
+      context,
+      severity: "fatal",
+    });
   }
 }
 
@@ -1563,6 +1598,17 @@ export class ProvisioningJobService {
           jobType: opts.jobType,
         },
       });
+    }
+
+    if (
+      requiresContainerBackedTarget(opts.jobType) &&
+      !isContainerBackedExecutionTier(sandbox.execution_tier)
+    ) {
+      throw new ApiError(
+        409,
+        "session_not_ready",
+        `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${opts.jobType}`,
+      );
     }
 
     if (
@@ -3749,6 +3795,29 @@ export class ProvisioningJobService {
       : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
+    if (safeErrorKind(err, RejectedAgentExecutionError)) {
+      const outcome = await this.retryOwnedWrite(job, "reject-agent-execution", () =>
+        jobsRepository.rejectClaimedExecution(job, errorMsg, this.executionOwnerId),
+      );
+      if (outcome === "rejected" || outcome === "already-terminal") {
+        if (result) result.failed++;
+        logger.warn("[provisioning-jobs] Rejected invalid agent execution before dispatch", {
+          jobId: job.id,
+          jobType: job.type,
+          outcome,
+          error: errorMsg,
+        });
+      } else {
+        logger.info("[provisioning-jobs] Invalid agent execution lost its exact claim", {
+          jobId: job.id,
+          jobType: job.type,
+          outcome,
+          error: errorMsg,
+        });
+      }
+      return;
+    }
+
     if (retryableTransportError) {
       const retrySnapshot = retryableTransportError.retrySnapshot;
       const onExhaustedInTx = this.buildPermanentFailureWriteback(retrySnapshot, errorMsg);
@@ -4184,51 +4253,105 @@ export class ProvisioningJobService {
     return (hydratedJob, error) => this.buildPermanentFailureWriteback(hydratedJob, error);
   }
 
-  private async assertNoConflictingLifecycleExecution(job: Job): Promise<void> {
-    if (
-      !EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType) ||
-      !job.agent_id
-    ) {
-      return;
+  /** Parse and cross-check the duplicated agent identity before any handler runs. */
+  private assertAgentJobIdentity(
+    job: Job,
+  ): { agentId: string; organizationId: string } | undefined {
+    if (!AGENT_JOB_TYPES.includes(job.type as ProvisioningJobType)) return undefined;
+
+    const raw = job.data && typeof job.data === "object" ? job.data : undefined;
+    let identity: { agentId: string; organizationId: string };
+    try {
+      switch (job.type) {
+        case JOB_TYPES.AGENT_PROVISION:
+          identity = readAgentProvisionJobData(job);
+          break;
+        case JOB_TYPES.AGENT_DELETE:
+          identity = readAgentDeleteJobData(job);
+          break;
+        case JOB_TYPES.AGENT_SUSPEND:
+          identity = readAgentSuspendJobData(job);
+          break;
+        case JOB_TYPES.AGENT_RESUME:
+          identity = readAgentResumeJobData(job);
+          break;
+        case JOB_TYPES.AGENT_SLEEP:
+          identity = readAgentSleepJobData(job);
+          break;
+        case JOB_TYPES.AGENT_WAKE:
+          identity = readAgentWakeJobData(job);
+          break;
+        case JOB_TYPES.AGENT_RESTART:
+          identity = readAgentRestartJobData(job);
+          break;
+        case JOB_TYPES.AGENT_UPGRADE:
+          identity = readAgentUpgradeJobData(job);
+          break;
+        case JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE:
+          identity = readAdminCanaryImageJobData(job);
+          break;
+        case JOB_TYPES.AGENT_DOWNGRADE:
+          identity = readAgentDowngradeJobData(job);
+          break;
+        case JOB_TYPES.AGENT_LOGS:
+          identity = readAgentLogsJobData(job);
+          break;
+        case JOB_TYPES.AGENT_MESSAGE:
+          identity = readAgentMessageJobData(job);
+          break;
+        case JOB_TYPES.AGENT_SNAPSHOT:
+          identity = readAgentSnapshotJobData(job);
+          break;
+        default:
+          throw new Error(`No identity parser for agent job type ${job.type}`);
+      }
+    } catch (cause) {
+      // error-policy:J3 an unparseable job payload becomes an explicit terminal
+      // rejection, never a fake-valid identity. The cause is carried as a
+      // string rather than the Error so a malformed payload cannot smuggle a
+      // value into the persisted failure row.
+      throw new RejectedAgentExecutionError(`Invalid agent job payload for job ${job.id}`, {
+        jobId: job.id,
+        jobType: job.type,
+        columnAgentId: job.agent_id,
+        columnOrganizationId: job.organization_id,
+        payloadAgentId: typeof raw?.agentId === "string" ? raw.agentId : null,
+        payloadOrganizationId: typeof raw?.organizationId === "string" ? raw.organizationId : null,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
     }
+
+    if (
+      identity.agentId.trim().length === 0 ||
+      identity.organizationId.trim().length === 0 ||
+      identity.agentId !== job.agent_id ||
+      identity.organizationId !== job.organization_id
+    ) {
+      throw new RejectedAgentExecutionError(
+        `Agent job identity does not match indexed columns for job ${job.id}`,
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          payloadAgentId: identity.agentId,
+          payloadOrganizationId: identity.organizationId,
+        },
+      );
+    }
+    return identity;
+  }
+
+  private async assertNoConflictingLifecycleExecution(job: Job): Promise<void> {
+    const identity = this.assertAgentJobIdentity(job);
+    if (!identity) return;
     if (!job.execution_generation) {
       throw new Error(`Claimed lifecycle job ${job.id} has no execution generation`);
     }
     await this.assertExecutionMutationLease(job);
     await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      await tx.execute(elizaProvisionAdvisoryLockSql(job.organization_id, job.agent_id!));
-      const [conflict] = await tx
-        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.organization_id, job.organization_id),
-            eq(jobs.agent_id, job.agent_id!),
-            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
-            ne(jobs.id, job.id),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-            // A manual suspend may be a durable follow-up to an already claimed
-            // billing suspend. Both executions serialize on the sandbox row in
-            // executeSuspend; treating them as a conflict would strand the
-            // unconditional follow-up behind the stale hydrated billing job.
-            or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-      if (conflict) {
-        throw new ApiError(
-          409,
-          "session_not_ready",
-          `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
-          {
-            conflictingJobId: conflict.id,
-            conflictingJobType: conflict.type,
-            conflictingJobStatus: conflict.status,
-          },
-        );
-      }
+      await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
       const [currentJob] = await tx
         .select({ id: jobs.id })
         .from(jobs)
@@ -4253,6 +4376,68 @@ export class ProvisioningJobService {
         throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
       }
 
+      const [sandboxAuthority] = await tx
+        .select({ executionTier: agentSandboxes.execution_tier })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, identity.agentId),
+            eq(agentSandboxes.organization_id, identity.organizationId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (
+        requiresContainerBackedTarget(job.type) &&
+        (!sandboxAuthority || !isContainerBackedExecutionTier(sandboxAuthority.executionTier))
+      ) {
+        throw new RejectedAgentExecutionError(
+          `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${job.type}`,
+          {
+            jobId: job.id,
+            jobType: job.type,
+            columnAgentId: job.agent_id,
+            columnOrganizationId: job.organization_id,
+            payloadAgentId: identity.agentId,
+            payloadOrganizationId: identity.organizationId,
+            executionTier: sandboxAuthority?.executionTier ?? "missing",
+          },
+        );
+      }
+
+      if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
+
+      const [conflict] = await tx
+        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.organization_id, job.organization_id),
+            eq(jobs.agent_id, identity.agentId),
+            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+            ne(jobs.id, job.id),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+            // A manual suspend may be a durable follow-up to an already claimed
+            // billing suspend. Both executions serialize on the sandbox row in
+            // executeSuspend; treating them as a conflict would strand the
+            // unconditional follow-up behind the stale hydrated billing job.
+            or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+      if (conflict) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
+          {
+            conflictingJobId: conflict.id,
+            conflictingJobType: conflict.type,
+            conflictingJobStatus: conflict.status,
+          },
+        );
+      }
       const [claimedSandbox] = await tx
         .update(agentSandboxes)
         .set({
@@ -4261,8 +4446,8 @@ export class ProvisioningJobService {
         })
         .where(
           and(
-            eq(agentSandboxes.id, job.agent_id!),
-            eq(agentSandboxes.organization_id, job.organization_id),
+            eq(agentSandboxes.id, identity.agentId),
+            eq(agentSandboxes.organization_id, identity.organizationId),
             or(
               isNull(agentSandboxes.lifecycle_execution_generation),
               and(
@@ -4279,8 +4464,8 @@ export class ProvisioningJobService {
           .from(agentSandboxes)
           .where(
             and(
-              eq(agentSandboxes.id, job.agent_id!),
-              eq(agentSandboxes.organization_id, job.organization_id),
+              eq(agentSandboxes.id, identity.agentId),
+              eq(agentSandboxes.organization_id, identity.organizationId),
             ),
           )
           .limit(1);

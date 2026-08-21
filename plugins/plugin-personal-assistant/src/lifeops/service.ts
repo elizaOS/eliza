@@ -7,7 +7,10 @@
  * still exported from the `service-mixin-*.ts` files that consumers import.
  */
 
-export { LifeOpsServiceError } from "./service-types.js";
+export {
+  LifeOpsServiceError,
+  LifeOpsWorkflowRunFailedUncompensatedError,
+} from "./service-types.js";
 
 import type {
   BrowserBridgeCompanionAutoPairResponse,

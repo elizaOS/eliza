@@ -42,13 +42,16 @@
  *
  * Manifest hashing here intentionally mirrors the producer in
  * `packages/agent/src/services/agent-backup.ts` (canonical sorted-key JSON →
- * sha256). Cloud-shared cannot import that package, so the canonicalization is
- * reimplemented; if the producer's hash shapes change, this verifier must
- * change in lockstep or the fleet will page with hash-mismatch failures.
+ * sha256). Cloud-shared cannot import that package, so both sides now call the
+ * one bounded walk in `@elizaos/shared/canonical-json` instead of keeping two
+ * copies of the recursion in sync; if the producer's hash shapes change, this
+ * verifier must still change in lockstep or the fleet will page with
+ * hash-mismatch failures.
  */
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
+import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/shared/canonical-json";
 import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
@@ -333,24 +336,20 @@ function classifyChainError(error: unknown): BackupVerificationFailure | null {
 
 type JsonRecord = Record<string, unknown>;
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out: JsonRecord = {};
-    for (const key of Object.keys(value as JsonRecord).sort()) {
-      out[key] = canonicalize((value as JsonRecord)[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
 function sha256Bytes(bytes: Buffer | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Bounded canonical hash of stored-backup content. `manifest.integrity`
+ * and the file-set entries are read straight out of a stored backup, so the
+ * unbounded sorted-key recursion this replaces could `RangeError` the whole
+ * `runBackupVerificationCycle` daemon pass on one malformed row instead of
+ * stamping that row as unverifiable. Canonical bytes are unchanged for every
+ * manifest that hashed before.
+ */
 function sha256Json(value: unknown): string {
-  return sha256Bytes(JSON.stringify(canonicalize(value)));
+  return sha256Bytes(stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON));
 }
 
 function verifyFileEntry(label: string, entry: AgentBackupFileEntry, mismatches: string[]): void {

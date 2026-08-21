@@ -130,6 +130,11 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("auth.setup", "POST", "/api/auth/setup"),
   publicExact("auth.login.password", "POST", "/api/auth/login/password"),
   publicExact("auth.status", "GET", "/api/auth/status"),
+  // The handler independently requires trusted loopback before returning the
+  // operator-visible short-lived code. Keeping this route behind the session
+  // gate made that loopback bootstrap impossible: the operator needs the code
+  // precisely before the remote device has a session.
+  publicExact("auth.pair-code", "GET", "/api/auth/pair-code"),
   publicExact("auth.pair", "POST", "/api/auth/pair"),
   publicExact("embed.auth", "POST", "/api/embed/auth"),
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),

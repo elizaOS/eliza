@@ -83,9 +83,9 @@ interface AppContext {
  * split in calculateRevenueSplits, not by a separate commission.
  */
 const REWARDS = {
-  SIGNUP_BONUS: 1.0, // Referrer gets $1 (100 credits) when someone signs up with their code
-  REFERRED_BONUS: 0.5, // New user gets $0.50 (50 credits) for using a referral code
-  QUALIFIED_BONUS: 0.5, // Referrer gets $0.50 (50 credits) when referred user links social account
+  SIGNUP_BONUS: 1.0, // Referrer gets $1 (one cloud credit) on signup.
+  REFERRED_BONUS: 0.5, // New user gets $0.50 (0.5 cloud credit).
+  QUALIFIED_BONUS: 0.5, // Referrer gets $0.50 after social-account qualification.
   SHARE_X: 0.25,
   SHARE_FARCASTER: 0.25,
   SHARE_TELEGRAM: 0.25,

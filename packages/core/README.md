@@ -164,6 +164,8 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
+- `AUTONOMY_INTERVAL_MS`: Autonomy loop cadence as a canonical positive decimal integer in milliseconds. Values are clamped to 5,000–600,000; malformed or unset values use 30,000.
+- `AUTONOMY_MODEL_SIZE`: Model tier for autonomy background reasoning, exactly `small` or `large`. Malformed or unset values use `large`.
 - `ELIZA_TRAJECTORY_LOGGING`: Canonical trajectory persistence knob. Truthy values (`1`, `true`, `yes`, `on`) enable file and DB trajectory recording; non-empty falsey values disable it; blank is treated as unset. When unset, recording is on for local/dev and unset `NODE_ENV`, but off for `NODE_ENV=test` and `NODE_ENV=production` unless explicitly enabled.
 - `ELIZA_TRAJECTORY_RECORDING`: Legacy alias honored only when `ELIZA_TRAJECTORY_LOGGING` is unset.
 - `ELIZA_DISABLE_TRAJECTORY_LOGGING=1`: Hard opt-out that wins over both trajectory enable knobs.

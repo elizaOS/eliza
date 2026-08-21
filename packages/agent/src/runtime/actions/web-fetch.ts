@@ -24,6 +24,8 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
 
@@ -106,7 +108,7 @@ function extractValue(body: string, extract: string | undefined): string {
       // Body was not JSON, or extract did not resolve — fall through to snippet.
     }
   }
-  return body.slice(0, WEB_FETCH_SNIPPET_CHARS);
+  return truncateWellFormed(toWellFormedUnicode(body), WEB_FETCH_SNIPPET_CHARS);
 }
 
 export const webFetch: Action & Record<string, unknown> = {

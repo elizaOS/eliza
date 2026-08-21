@@ -11,6 +11,10 @@ workflow. Pull requests targeting `develop` or `main` and every `merge_group`
 candidate run the same fail-closed job graph. Branch rules require only its stable
 `CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
 succeeds; individual lane names may evolve without silently weakening admission.
+Manual diagnostics use independent concurrency groups, PR and merge candidates
+supersede stale runs, and `develop` pushes share a never-cancelled terminal group.
+GitHub's default single-pending queue therefore lets the running push finish while
+retaining only the newest waiting tip instead of accumulating every merge-wave run.
 
 `merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
 GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
@@ -50,9 +54,10 @@ force-push/deletion bans remain active here.
 core smoke tests. It never publishes packages or creates releases.
 
 `develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
-Push-triggered develop runs supersede each other during merge waves, so this
-lane runs the repository verify gate on the live develop tip four times a day
-(and on manual dispatch) from a single hosted runner, in a fixed
+Pending push-triggered develop runs can still supersede each other during merge
+waves and hosted capacity can delay their start. This lane independently runs
+the repository verify gate on the live develop tip four times a day (and on
+manual dispatch) from a single hosted runner, in a fixed
 never-cancelled concurrency group, and publishes the outcome as a
 `develop-health` commit status on the exact SHA it measured. A missing status
 means no measurement concluded; a red status means develop is actually red —

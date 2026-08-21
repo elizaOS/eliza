@@ -1933,6 +1933,27 @@
       "when": 1793072800004,
       "tag": "0281_twilio_call_opening_context",
       "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793072900000,
+      "tag": "0282_drop_unused_usage_quotas_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793072900001,
+      "tag": "0282_01_restore_usage_quotas_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1793736000001,
+      "tag": "0295_phone_message_payload_jsonb",
+      "breakpoints": true
     }
   ]
 }

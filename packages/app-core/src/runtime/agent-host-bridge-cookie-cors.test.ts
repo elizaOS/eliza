@@ -24,9 +24,9 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CSRF_HEADER_NAME,
   createBrowserSession,
   createMachineSession,
-  CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
 } from "../api/auth/sessions";
 import { _resetAuthRateLimiter } from "../api/auth.ts";
@@ -149,6 +149,9 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     });
     const { session } = await createBrowserSession(harness.store, {
       identityId: identity.id,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
     });
     const cookie = `${SESSION_COOKIE_NAME}=${session.id}`;
 
@@ -192,6 +195,9 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     });
     const { session, csrfToken } = await createBrowserSession(harness.store, {
       identityId: identity.id,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
     });
     const cookie = `${SESSION_COOKIE_NAME}=${session.id}`;
 

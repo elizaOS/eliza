@@ -1,5 +1,3 @@
-import { truncateWellFormed } from "../utils/well-formed";
-
 /**
  * Bounds and guard functions for the planner chaining loop: the
  * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
@@ -7,6 +5,9 @@ import { truncateWellFormed } from "../utils/well-formed";
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
+import type { ActionFailureProvenance } from "../types/action-failure";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
+
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
 	maxToolCalls: number;
@@ -29,6 +30,22 @@ export interface ChainingLoopConfig {
 	 * This is the success-side analog of `maxRepeatedFailures`.
 	 */
 	maxRepeatedToolCalls: number;
+	/**
+	 * Maximum successful memory/knowledge-recall search rounds per turn
+	 * (MEMORY_SEARCH-family: `*_SEARCH` recall tools, SEARCH_KNOWLEDGE, and the
+	 * MEMORY umbrella with a search op). The existing redundant-call breaker
+	 * only catches byte-identical repeats; a model reformulating the SAME recall
+	 * ("alexis gym signup" → "gym signup alexis" → "alexis gym") slips past it
+	 * and every extra round costs a full planner prompt (live sol-dev
+	 * 2026-08-17: 3-5 MEMORY_SEARCH rounds per turn drove 30-117s tails). Once
+	 * the budget is spent, further search-class calls are skipped with an
+	 * instruction to answer from the results already gathered — the results ARE
+	 * in the trajectory, so no information is lost. Near-duplicate queries
+	 * (same tool, same normalized query tokens) are additionally skipped
+	 * regardless of remaining budget. Failed calls remain governed by the
+	 * repeated-failure guard so this budget does not suppress a corrected retry.
+	 */
+	maxMemorySearchRounds: number;
 	/** Estimated model context window for compaction decisions. */
 	contextWindowTokens: number;
 	/**
@@ -117,6 +134,7 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxUnavailableToolCallRetries: 3,
 	maxTerminalOnlyContinuations: 2,
 	maxRepeatedToolCalls: 2,
+	maxMemorySearchRounds: 2,
 	contextWindowTokens: 128_000,
 	compactionReserveTokens: 10_000,
 	compactionEnabled: true,
@@ -136,12 +154,19 @@ export class TrajectoryLimitExceeded extends Error {
 	readonly kind: TrajectoryLimitKind;
 	readonly max: number;
 	readonly observed: number;
+	/**
+	 * Present only for `repeated_failures`, where the underlying tool failure
+	 * has a structured cause worth surfacing. Consumed by
+	 * `classifyStructuredFailureCause` in `services/message/fallback-reply.ts`.
+	 */
+	readonly failureProvenance?: ActionFailureProvenance;
 
 	constructor(params: {
 		kind: TrajectoryLimitKind;
 		max: number;
 		observed: number;
 		message?: string;
+		failureProvenance?: ActionFailureProvenance;
 	}) {
 		super(
 			params.message ??
@@ -151,6 +176,9 @@ export class TrajectoryLimitExceeded extends Error {
 		this.kind = params.kind;
 		this.max = params.max;
 		this.observed = params.observed;
+		if (params.failureProvenance !== undefined) {
+			this.failureProvenance = params.failureProvenance;
+		}
 	}
 }
 
@@ -181,6 +209,13 @@ export interface FailureLike {
 	error?: unknown;
 	success?: boolean;
 	repeatKey?: string;
+	/**
+	 * Structured cause carried up from the settled `ActionResult`. When a
+	 * repeated-failure abort is raised, this is what lets the fallback reply
+	 * say *why* the tool kept failing (a dead datastore, say) rather than
+	 * reporting generic planner exhaustion.
+	 */
+	failureProvenance?: ActionFailureProvenance;
 }
 
 export function getFailureSignature(failure: FailureLike): string | null {
@@ -197,8 +232,11 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
+	// Normalize before truncating: toWellFormedUnicode repairs lone surrogates
+	// already present in the raw provider error, and truncateWellFormed keeps
+	// the 240-char cut off a pair boundary. Truncation alone fixes only the cut.
 	const normalizedError = truncateWellFormed(
-		rawError.trim().replace(/\s+/g, " "),
+		toWellFormedUnicode(rawError.trim().replace(/\s+/g, " ")),
 		240,
 	);
 	return `${toolName}:${normalizedError}`;
@@ -243,6 +281,7 @@ export function assertRepeatedFailureLimit(params: {
 			message: `Repeated tool failure limit exceeded for ${getFailureSignature(
 				params.latestFailure,
 			)}`,
+			failureProvenance: params.latestFailure.failureProvenance,
 		});
 	}
 }

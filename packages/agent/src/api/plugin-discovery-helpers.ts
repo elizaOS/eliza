@@ -649,7 +649,10 @@ export function inferDescription(key: string): string {
 
 /** Extract the plugin/service prefix label from a key by removing a known suffix. */
 export function prefixLabel(key: string, suffix: string): string {
-  const raw = key.replace(new RegExp(`${suffix}$`, "i"), "").replace(/_+$/, "");
+  const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const raw = key
+    .replace(new RegExp(`${escapedSuffix}$`, "i"), "")
+    .replace(/_+$/, "");
   if (!raw) return key;
   return raw
     .split("_")

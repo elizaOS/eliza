@@ -34,6 +34,7 @@ import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
+import { getAgentTier } from "@/lib/services/shared-runtime/agent-tier";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
@@ -463,6 +464,12 @@ app.post("/", async (c) => {
           ELIZA_UI_ENABLE: "true",
         },
         dockerImage: p.container?.image,
+        executionTier: getAgentTier({
+          dockerImage: p.container?.image,
+          // This API always provisions immediately, including when it uses the
+          // managed image rather than a caller-supplied custom image.
+          alwaysOn: true,
+        }),
       }));
     } catch (createErr) {
       try {

@@ -111,8 +111,15 @@ mock.module("@/lib/services/eliza-app", () => ({
     resolvePersonalDelivery,
   },
 }));
+// The real serializer, not a re-implementation: mocking it meant the header
+// this route exists to emit was never actually produced by the code under
+// test, so the whole route-layer claim went unexercised.
+const { sharedTurnServerTiming } = await import(
+  "@/lib/services/shared-runtime/shared-rest-adapter"
+);
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+  sharedTurnServerTiming,
 }));
 mock.module("@/lib/services/shared-runtime/prewarm-shared-agent", () => ({
   prewarmPersonalSharedAgentTurnCaches,
@@ -1216,5 +1223,36 @@ describe("personal Shared messaging deliveries", () => {
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  // The route's headline claim is that a provider timing receipt reaches the
+  // client as a `shared_model` Server-Timing segment. Every other test here
+  // returns no `timing`, so that segment was never produced — this drives the
+  // real serializer with a real receipt.
+  test("emits the shared_model segment when the turn carries a timing receipt", async () => {
+    sharedRestMessageSend.mockResolvedValueOnce({
+      text: "hello from Eliza",
+      timing: {
+        replayed: false,
+        durationMs: 1234.5,
+        callCount: 2,
+        fallbackCount: 1,
+        selectedProvider: "openrouter",
+        callsTruncated: false,
+        clamped: false,
+        calls: [],
+      },
+    } as never);
+
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+
+    const serverTiming = response.headers.get("server-timing") ?? "";
+    expect(serverTiming).toContain("shared_model;dur=1234.5");
+    expect(serverTiming).toContain("provider=openrouter");
+    expect(serverTiming).toContain("calls=2");
+    expect(serverTiming).toContain("fallbacks=1");
+    expect(serverTiming).toContain("replayed=0");
+    expect(serverTiming).toContain("clamped=0");
   });
 });

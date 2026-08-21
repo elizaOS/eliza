@@ -8,7 +8,12 @@
  * opens itself.
  */
 import os from "node:os";
-import { logger, type RouteRequestContext } from "@elizaos/core";
+import {
+  logger,
+  type RouteRequestContext,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
@@ -128,14 +133,21 @@ interface BugReportBody {
 }
 
 export function sanitize(input: string, maxLen = 10_000): string {
-  const clipped = input.length > maxLen ? input.slice(0, maxLen) : input;
+  const wellFormed = toWellFormedUnicode(input);
+  const clipped =
+    wellFormed.length > maxLen
+      ? truncateWellFormed(wellFormed, maxLen)
+      : wellFormed;
   let prev = clipped;
   let next = prev.replace(/<[^<>]{0,1024}>/g, "");
   while (next !== prev) {
     prev = next;
     next = prev.replace(/<[^<>]{0,1024}>/g, "");
   }
-  return next.replace(/[<>]/g, "").slice(0, maxLen);
+  const cleaned = next.replace(/[<>]/g, "");
+  return cleaned.length > maxLen
+    ? truncateWellFormed(cleaned, maxLen)
+    : cleaned;
 }
 
 function redactSecrets(input: string, maxLen = 10_000): string {

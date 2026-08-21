@@ -1,13 +1,26 @@
 /**
- * Downloads URL-backed social media attachments through the shared outbound
- * network guard and enforces a hard streaming byte limit before providers
- * hand the bytes to their authenticated upload APIs.
+ * Owns the byte budget for every social media attachment a provider hands to
+ * an authenticated upload API.
+ *
+ * URL-backed attachments go through the shared outbound network guard with a
+ * hard streaming byte limit. Attachments the caller supplied inline — the
+ * `media.data` and `media.base64` siblings of the same provider `if/else` —
+ * are charged against that same budget here, so no provider branch can
+ * allocate unbounded bytes inside the Worker isolate.
+ *
+ * The budget is a parameter, not a constant, because TikTok chunk-uploads
+ * video: the image ceiling would reject ordinary video posts, but the decode
+ * still happens in one allocation, so it takes the larger
+ * `SOCIAL_MEDIA_VIDEO_MAX_BYTES` rather than no bound at all.
  */
 import { ElizaError } from "@elizaos/core";
 
 import { safeFetch } from "../../security/safe-fetch";
+import {
+  SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
+  SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+} from "../../types/social-media";
 
-const SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 const SOCIAL_MEDIA_DOWNLOAD_TIMEOUT_MS = 10_000;
 
 interface SocialMediaDownloadOptions {
@@ -27,6 +40,62 @@ function downloadError(
     severity: "ephemeral",
     ...(cause === undefined ? {} : { cause }),
   });
+}
+
+/**
+ * Charges the shared media byte budget against bytes a provider is about to
+ * hand to an upload API. Fails closed with the same typed error the URL branch
+ * raises, so an oversized attachment is rejected identically on every branch.
+ */
+export function assertSocialMediaBytesWithinBudget(
+  byteLength: number,
+  context: Record<string, unknown> = {},
+  maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+): void {
+  if (byteLength <= maxBytes) return;
+  throw downloadError(
+    "Media attachment exceeds the media byte limit",
+    "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
+    { receivedBytes: byteLength, maxBytes, ...context },
+  );
+}
+
+/**
+ * Decodes a caller-supplied base64 attachment under the budget the URL branch
+ * already enforces.
+ *
+ * The budget is a DECODED-byte budget, charged twice. First against the
+ * encoded character count, so an oversized payload is rejected BEFORE
+ * `Buffer.from` allocates the decode; every payload the URL branch accepts
+ * (at most {@link SOCIAL_MEDIA_MEDIA_MAX_BYTES} bytes) encodes to at most
+ * {@link SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH} characters, so nothing that
+ * posts today is rejected by that pre-check. Then against the buffer actually
+ * produced, because `Buffer.from` skips characters outside the base64 alphabet
+ * and a padded string of the maximum accepted length can still decode two
+ * bytes past the budget.
+ */
+export function decodeSocialMediaBase64(
+  base64: string,
+  context: Record<string, unknown> = {},
+  maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+): Buffer {
+  const maxEncodedLength = Math.ceil(maxBytes / 3) * 4;
+  if (base64.length > maxEncodedLength) {
+    throw downloadError(
+      "Media attachment exceeds the media byte limit",
+      "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
+      {
+        encodedLength: base64.length,
+        maxEncodedLength,
+        maxBytes,
+        ...context,
+      },
+    );
+  }
+
+  const bytes = Buffer.from(base64, "base64");
+  assertSocialMediaBytesWithinBudget(bytes.length, context, maxBytes);
+  return bytes;
 }
 
 function cancelBody(response: Response, reason?: unknown): void {
@@ -58,24 +127,24 @@ async function readBodyWithLimit(response: Response, signal: AbortSignal): Promi
   if (
     declaredLength !== null &&
     Number.isFinite(declaredLength) &&
-    declaredLength > SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES
+    declaredLength > SOCIAL_MEDIA_MEDIA_MAX_BYTES
   ) {
     cancelBody(response);
     throw downloadError(
       "Remote media exceeds the download byte limit",
       "SOCIAL_MEDIA_DOWNLOAD_TOO_LARGE",
-      { declaredBytes: declaredLength, maxBytes: SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES },
+      { declaredBytes: declaredLength, maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES },
     );
   }
 
   const body = response.body;
   if (!body) {
     const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES) {
+    if (bytes.length > SOCIAL_MEDIA_MEDIA_MAX_BYTES) {
       throw downloadError(
         "Remote media exceeds the download byte limit",
         "SOCIAL_MEDIA_DOWNLOAD_TOO_LARGE",
-        { receivedBytes: bytes.length, maxBytes: SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES },
+        { receivedBytes: bytes.length, maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES },
       );
     }
     return bytes;
@@ -97,12 +166,12 @@ async function readBodyWithLimit(response: Response, signal: AbortSignal): Promi
       if (done) break;
       if (!value?.byteLength) continue;
       total += value.byteLength;
-      if (total > SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES) {
+      if (total > SOCIAL_MEDIA_MEDIA_MAX_BYTES) {
         cancelReader(reader);
         throw downloadError(
           "Remote media exceeds the download byte limit",
           "SOCIAL_MEDIA_DOWNLOAD_TOO_LARGE",
-          { receivedBytes: total, maxBytes: SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES },
+          { receivedBytes: total, maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES },
         );
       }
       chunks.push(value);

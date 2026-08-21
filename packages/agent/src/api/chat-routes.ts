@@ -59,7 +59,6 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   ChatFailureKind,
   ChatToolCallEvent,

@@ -8,6 +8,7 @@
  */
 import type http from "node:http";
 import type { InferenceTurnSummary, Log } from "@elizaos/core";
+import { INFERENCE_TRACE_ID_PATTERN } from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
@@ -106,6 +107,14 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
 
   return {
     turnId,
+    // Persisted metadata is replayed from storage, so the id is re-validated
+    // rather than trusted: anything that is not a well-formed trace id (including
+    // logs written before correlation existed) rehydrates as an explicit null.
+    traceId:
+      typeof metadata.traceId === "string" &&
+      INFERENCE_TRACE_ID_PATTERN.test(metadata.traceId)
+        ? metadata.traceId
+        : null,
     label,
     roomId: typeof body.roomId === "string" ? body.roomId : null,
     modelProvider:

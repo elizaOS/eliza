@@ -30,7 +30,11 @@ describe("paypalFetch — bounded hops fail closed and keep caller signals", () 
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  // Asserting identity here is what kept the hop weak: `toBe(controller.signal)`
+  // is only true when the caller's signal REPLACED the deadline, which is the
+  // bug. The property worth pinning is that the caller's abort still
+  // propagates through the composed signal.
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
@@ -41,6 +45,25 @@ describe("paypalFetch — bounded hops fail closed and keep caller signals", () 
     await paypalFetch("https://api-m.paypal.com/v1/oauth2/token", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  test("propagates a caller abort through the composed signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await paypalFetch("https://api-m.paypal.com/v1/oauth2/token", {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    expect(seen?.aborted).toBe(true);
   });
 });

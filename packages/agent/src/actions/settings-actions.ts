@@ -25,6 +25,8 @@ import {
   ModelType,
   type Setting,
   saltWorldSettings,
+  toWellFormedUnicode,
+  truncateWellFormed,
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
@@ -119,11 +121,11 @@ function isCapabilityKey(value: unknown): value is CapabilityKey {
   );
 }
 
-function trimToString(value: unknown, max: number): string | undefined {
+export function trimToString(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  const trimmed = toWellFormedUnicode(value.trim());
   if (!trimmed) return undefined;
-  return trimmed.slice(0, max);
+  return truncateWellFormed(trimmed, max);
 }
 
 function fail(
@@ -315,8 +317,11 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
 async function handleSetOwnerName(
   params: Record<string, unknown>,
 ): Promise<ActionResult> {
-  const raw = typeof params.name === "string" ? params.name.trim() : "";
-  const name = raw.slice(0, OWNER_NAME_MAX_LENGTH);
+  const raw =
+    typeof params.name === "string"
+      ? toWellFormedUnicode(params.name.trim())
+      : "";
+  const name = truncateWellFormed(raw, OWNER_NAME_MAX_LENGTH);
   if (!name) {
     return fail(
       "INVALID_PARAMETERS",

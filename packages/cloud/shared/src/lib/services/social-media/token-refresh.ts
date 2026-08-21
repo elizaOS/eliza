@@ -2,9 +2,42 @@
 import type { SocialCredentials, SocialPlatform } from "../../types/social-media";
 import { parseJsonErrorBody } from "../../utils/json-parsing";
 import { logger } from "../../utils/logger";
-import { requestTwitterOAuth2Token } from "../twitter-automation/oauth2-client";
+import {
+  requestTwitterOAuth2Token,
+  TWITTER_OAUTH2_TOKEN_TIMEOUT_MS,
+} from "../twitter-automation/oauth2-client";
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
+
+/**
+ * Deadline for one outbound OAuth token-refresh hop.
+ *
+ * Pinned to the value the twitter arm of {@link refreshToken} already ships
+ * (`TWITTER_OAUTH2_TOKEN_TIMEOUT_MS`, 20 s) so the four arms of the same switch
+ * agree instead of only one of them terminating.
+ */
+const TOKEN_REFRESH_TIMEOUT_MS = TWITTER_OAUTH2_TOKEN_TIMEOUT_MS;
+
+/**
+ * Bound every outbound OAuth token-refresh hop so a hung provider IdP cannot pin
+ * the credential path indefinitely.
+ *
+ * A caller-provided signal is composed with the deadline rather than replacing
+ * it — a caller that cancels still aborts early, and a caller whose signal never
+ * fires still cannot outlive the bound. Same contract as `alertFetch`
+ * (`social-media/alerts.ts`) next door.
+ */
+export function tokenRefreshFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TOKEN_REFRESH_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface RefreshResult {
   accessToken: string;
@@ -59,7 +92,7 @@ async function refreshMetaToken(accessToken: string): Promise<RefreshResult> {
 
   if (!appId || !appSecret) throw new Error("META_APP_ID or META_APP_SECRET not configured");
 
-  const response = await fetch(
+  const response = await tokenRefreshFetch(
     `https://graph.facebook.com/v19.0/oauth/access_token?` +
       new URLSearchParams({
         grant_type: "fb_exchange_token",
@@ -88,7 +121,7 @@ async function refreshLinkedInToken(refreshToken: string): Promise<RefreshResult
   if (!clientId || !clientSecret)
     throw new Error("LINKEDIN_CLIENT_ID or LINKEDIN_CLIENT_SECRET not configured");
 
-  const response = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+  const response = await tokenRefreshFetch("https://www.linkedin.com/oauth/v2/accessToken", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -123,7 +156,7 @@ async function refreshTikTokToken(refreshToken: string): Promise<RefreshResult> 
   if (!clientKey || !clientSecret)
     throw new Error("TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET not configured");
 
-  const response = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+  const response = await tokenRefreshFetch("https://open.tiktokapis.com/v2/oauth/token/", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

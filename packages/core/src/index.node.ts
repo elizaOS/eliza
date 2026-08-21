@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./access-control/provenance-envelope";
 // Export all core modules
@@ -24,7 +26,6 @@ export * from "./api/route-helpers";
 export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
-import "./runtime-probes";
 export * from "./build-variant";
 export * from "./capabilities";
 export * from "./capability-selection";

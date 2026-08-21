@@ -13,6 +13,7 @@ import {
   type InferInsertModel,
   type InferSelectModel,
   inArray,
+  ne,
   notInArray,
   sql,
 } from "drizzle-orm";
@@ -24,7 +25,7 @@ import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
 import { type Database, dbRead, dbWrite } from "../helpers";
 import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
-import { containers } from "../schemas/containers";
+import { containers, TERMINAL_CONTAINER_STATUS } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizationConfig } from "../schemas/organization-config";
@@ -46,7 +47,9 @@ export type ContainerStatus =
   | "stopped"
   | "failed"
   | "deleting"
-  | "deleted";
+  // Spelled through the shared constant so the CAS predicate and this union can
+  // never drift apart.
+  | typeof TERMINAL_CONTAINER_STATUS;
 
 export interface QuotaCheckResult {
   /** Distinguishes an authoritative quota decision from an unreadable source. */
@@ -645,6 +648,31 @@ export class ContainersRepository {
 
   /**
    * Updates container status and optional error message.
+   *
+   * Compare-and-set on the hard-terminal status. Lifecycle writers read the row
+   * and write it back in two separate awaited round-trips with no enclosing
+   * transaction (`ContainerRepoAppContainerStore.markRunning` reads at one
+   * statement and lands `updateStatus` at another), and a `CONTAINER_DELETE`
+   * job for the same container is independently claimable during a deploy
+   * overlap — `claimPendingJobs` keys `FOR UPDATE SKIP LOCKED` on JOB rows by
+   * type/status/scheduled_for, never by `containerId`. Without this predicate a
+   * late write resurrects a container that a completed delete already drove to
+   * `deleted`, silently: the row counts toward the organization container quota
+   * again (`checkQuota` excludes only `deleting`/`deleted`), and the app-container
+   * orphan reconciler treats a non-terminal row as LIVE, so it can never detect
+   * or repair the mismatch.
+   *
+   * Scoped to `deleted` ONLY. Every other status is legitimately re-entered by
+   * the lifecycle (a failed deploy retries, `stopped` is restarted by
+   * `prepareFundedRestart`), so a broader CAS would reject transitions the live
+   * path accepts today. Re-asserting `deleted` on a deleted row stays a
+   * permitted idempotent write. Same shape as
+   * `agentSandboxesRepository.markReconnectedFromDisconnected`/
+   * `markRunningFromProvisioning`, which already compare-and-set this exact
+   * class of transition.
+   *
+   * @returns the updated row, or null when the row is absent OR the CAS lost —
+   * callers that must not proceed on a terminal row have to check for null.
    */
   async updateStatus(
     id: string,
@@ -658,7 +686,11 @@ export class ContainersRepository {
         error_message: errorMessage || null,
         updated_at: new Date(),
       })
-      .where(eq(containers.id, id))
+      .where(
+        status === TERMINAL_CONTAINER_STATUS
+          ? eq(containers.id, id)
+          : and(eq(containers.id, id), ne(containers.status, TERMINAL_CONTAINER_STATUS)),
+      )
       .returning();
 
     return updated ? await hydrateContainerDeploymentLog(updated) : null;

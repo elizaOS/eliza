@@ -77,4 +77,17 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
       'case "tray-open-chat":\n            switchShellView("desktop");',
     );
   });
+
+  // The runtime routing itself is exercised behaviorally in
+  // DesktopTrayRuntime.workspace.test.tsx; this only pins the audit row that
+  // the click-audit report renders.
+  it("audits the Desktop Workspace click as the complete managed shell", () => {
+    const audit = DESKTOP_TRAY_CLICK_AUDIT.find(
+      (entry) => entry.id === "tray-open-desktop-workspace",
+    );
+    expect(audit?.expectedAction).toBe(
+      "Open the complete Eliza shell in a managed app window.",
+    );
+    expect(audit?.coverage).toBe("automated");
+  });
 });

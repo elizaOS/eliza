@@ -73,6 +73,15 @@ function timingReceipt(
       providerTotalDurationMs: 10,
       slowestProviderDurationMs: 10,
     },
+    model: {
+      replayed: false,
+      durationMs: 0,
+      callCount: 0,
+      fallbackCount: 0,
+      selectedProvider: "none" as const,
+      callsTruncated: false,
+      calls: [],
+    },
     routing: { decision: "respond" as const, contextIds: ["room"] },
   };
 }
@@ -1616,7 +1625,22 @@ describe("SharedRuntimeChatService", () => {
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
     expect(settleCalls).toEqual([0.004]);
-    expect(second.result).toEqual(first.result);
+    expect(second.result).toEqual({
+      ...first.result,
+      timing: {
+        replayed: true,
+        durationMs: 0,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "none",
+        callsTruncated: false,
+        // A replay never ran a provider call, so nothing was clamped. The
+        // field is required on the receipt, so asserting it here keeps a
+        // replayed receipt structurally identical to a live one.
+        clamped: false,
+        calls: [],
+      },
+    });
     expect(second.id).toBe("client-key-1");
     expect(h.history()).toHaveLength(historyAfterFirst);
   });

@@ -115,6 +115,7 @@ describe("createAgent rejects a non-allowlisted image before provisioning (H1)",
           organizationId: "11111111-1111-1111-1111-111111111111",
           userId: "22222222-2222-2222-2222-222222222222",
           agentName: "evil",
+          executionTier: "custom",
           dockerImage: "docker.io/library/nginx:latest",
         }),
       ).rejects.toBeInstanceOf(AgentImageNotAllowedError);

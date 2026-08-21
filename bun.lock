@@ -327,6 +327,7 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
@@ -1032,6 +1033,7 @@
         "ws": "^8.21.3",
       },
       "devDependencies": {
+        "@elizaos/corpus-tools": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.1.10",
