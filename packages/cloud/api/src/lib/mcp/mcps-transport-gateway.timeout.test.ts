@@ -307,7 +307,8 @@ describe("MCP built-in provider timeout", () => {
       new DOMException("MCP provider body deadline exceeded", "TimeoutError"),
     );
     const res = await pending;
-    expect([500, 200]).toContain(res.status);
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe("Internal Server Error");
     expect(timeoutCalls).toEqual([10_000]);
     expect(fetchedSignals[0]).toBe(controller.signal);
   });
@@ -359,7 +360,8 @@ describe("MCP built-in provider timeout", () => {
       new DOMException("MCP provider deadline exceeded", "TimeoutError"),
     );
     const res = await pending;
-    expect([500, 200]).toContain(res.status);
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe("Internal Server Error");
     expect(timeoutCalls).toEqual([10_000]);
   });
 });
