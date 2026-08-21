@@ -1,8 +1,9 @@
 /**
  * Covers InferenceTurnTimer and the inference-timing AsyncLocalStorage helpers:
  * span roll-up by name, request-boundary milestone derivation, duplicate-mark
- * anomaly detection, ALS attribution across async boundaries, and the emit /
- * format / dev-payload registry. Deterministic — no live model.
+ * anomaly detection, ALS attribution across async boundaries, the emit /
+ * format / dev-payload registry, and per-turn trace-id minting, adoption, and
+ * structured rejection. Deterministic — no live model.
  */
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";

@@ -17,8 +17,16 @@
  * {@link markInference}). When no timer is active the helpers are zero-cost
  * no-ops, so instrumentation is safe to leave on every code path.
  *
+ * Each turn also carries a `traceId` — a bounded 32-lowercase-hex id, minted
+ * here or adopted from an upstream hop — that outbound callers propagate so a
+ * turn's local spans join the records of downstream services (e.g. the elizaOS
+ * Cloud gateway) that key their own events to the same id. The format doubles
+ * as a W3C `traceparent` trace-id so a hop can forward it without re-minting.
+ *
  * A missing measurement is recorded as missing, never synthesized (AGENTS.md
  * §3 / §8): derived metrics whose endpoint mark was never recorded stay `null`.
+ * The same rule governs the trace id: a summary rehydrated from a log written
+ * before correlation existed reports `traceId: null` rather than a fresh id.
  *
  * Logger only, `[InferenceTiming]` prefix (AGENTS.md §9).
  */
