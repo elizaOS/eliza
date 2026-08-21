@@ -305,6 +305,12 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
+  /**
+   * Hard ceiling, in bytes, on a single field persisted inline in a SQL text or
+   * jsonb column when object storage is unavailable. Defaults to 1 MiB; values
+   * below 1024 are ignored.
+   */
+  SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- Steward (auth provider) ----
