@@ -19,6 +19,17 @@ const getAgentById = mock(
     execution_tier: "dedicated-lazy",
   }),
 );
+const getAgentForWrite = mock(
+  async (): Promise<{
+    id: string;
+    organization_id: string;
+    status: string;
+  } | null> => ({
+    id: "cloud-agent-1",
+    organization_id: "agent-org",
+    status: "stopped",
+  }),
+);
 const provision = mock(async () => ({
   success: true,
   sandboxRecord: { status: "running" },
@@ -67,6 +78,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
     executeResume,
     getAgentById,
+    getAgentForWrite,
     provision,
   },
 }));
@@ -93,6 +105,12 @@ describe("service agent resume route", () => {
       organization_id: "agent-org",
       status: "stopped",
       execution_tier: "dedicated-lazy",
+    });
+    getAgentForWrite.mockClear();
+    getAgentForWrite.mockResolvedValue({
+      id: "cloud-agent-1",
+      organization_id: "agent-org",
+      status: "stopped",
     });
     executeResume.mockClear();
     executeResume.mockResolvedValue({
@@ -202,6 +220,7 @@ describe("service agent resume route", () => {
       status: "running",
     });
     expect(executeResume).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
+    expect(getAgentForWrite).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
     expect(settleAccruedBillingBeforeLifecycle).not.toHaveBeenCalled();
     expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
@@ -238,7 +257,46 @@ describe("service agent resume route", () => {
       error: "Insufficient credits to settle accrued agent compute charges",
     });
     expect(executeResume).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
+    expect(getAgentForWrite).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
     expect(settleAccruedBillingBeforeLifecycle).not.toHaveBeenCalled();
+  });
+
+  test("reports the authoritative primary status after resume mutates then fails", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    executeResume.mockResolvedValueOnce({
+      success: false,
+      containerStarted: false,
+      reprovisioned: true,
+      error: "Provisioning failed after lifecycle mutation",
+    });
+    getAgentForWrite.mockResolvedValueOnce({
+      id: "cloud-agent-1",
+      organization_id: "agent-org",
+      status: "error",
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/resume",
+        {
+          method: "POST",
+          headers: { "X-Service-Key": "svc" },
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      status: "error",
+      error: "Provisioning failed after lifecycle mutation",
+    });
+    expect(getAgentForWrite).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
   });
 });
