@@ -123,10 +123,14 @@ function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfi
   const apiKey =
     configKey ?? normalizeElizaCloudApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
   const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? undefined;
+  // The managed payment clients append "/v1/eliza/..." to apiBaseUrl, so the
+  // base must end at "/api"; the canonical resolver returns ".../api/v1" and
+  // keeping that suffix would double the version segment and 404 every call.
+  const apiBaseUrl = resolveCloudApiBaseUrl(baseUrl).replace(/\/v1$/, "");
   return {
     configured: Boolean(apiKey),
     apiKey,
-    apiBaseUrl: resolveCloudApiBaseUrl(baseUrl),
+    apiBaseUrl,
     siteUrl: normalizeCloudSiteUrl(baseUrl),
   };
 }

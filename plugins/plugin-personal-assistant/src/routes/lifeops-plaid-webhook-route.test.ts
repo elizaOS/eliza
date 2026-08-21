@@ -312,9 +312,11 @@ describe("Plaid webhook production route (real runtime + HTTP key lookup)", () =
       action: "sync",
       sourceId,
     });
-    // Verification key lookup happened, then exactly one sync dispatch.
+    // Verification key lookup happened, then exactly one sync dispatch. The
+    // exact path pins the client's URL join: base ends at /api, the client
+    // contributes the single /v1 segment.
     expect(
-      stub.calls.filter((path) => path.endsWith("/eliza/plaid/webhook-key")),
+      stub.calls.filter((path) => path === "/api/v1/eliza/plaid/webhook-key"),
     ).toHaveLength(1);
     expect(
       stub.calls.filter((path) => path.endsWith("/eliza/plaid/sync")),
