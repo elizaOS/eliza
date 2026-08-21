@@ -89,7 +89,11 @@ describe("ensureConnection under concurrency", () => {
 
 		const connect = (
 			source: string,
-			extra: { name?: string; userName?: string; userId?: ReturnType<typeof stringToUuid> },
+			extra: {
+				name?: string;
+				userName?: string;
+				userId?: ReturnType<typeof stringToUuid>;
+			},
 		) =>
 			ensureConnection(adapter, {
 				agentId,

@@ -247,7 +247,9 @@ export async function ensureConnections(
 			for (const [, v] of entityMap) {
 				const existing = existingByKey.get(v.entityId) ?? null;
 				const names = existing
-					? [...new Set([...(existing.names || []), ...v.names])].filter(Boolean)
+					? [...new Set([...(existing.names || []), ...v.names])].filter(
+							Boolean,
+						)
 					: v.names;
 				const metadata = existing
 					? mergeEntitySourceMetadata(
