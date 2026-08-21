@@ -184,9 +184,18 @@ function acceptsTrajectoryStepCapture(
   enabled: boolean,
   stepId: string,
   captureType: "llm" | "provider",
+  stableRecordId?: string,
 ): boolean {
   if (!acceptsNewTrajectoryCapture(runtime, enabled)) return false;
   if (!isClosedTrajectoryStep(runtime, stepId)) return true;
+  // A provider/runtime recorder can retransmit the same durable capture after
+  // the owner closes (for example a stream backstop racing the awaited record).
+  // Let stable identities reach the durable idempotency check below: an exact
+  // duplicate becomes a quiet no-op, while a genuinely new record still sees
+  // the terminal owner and is rejected/reported by append*.
+  if (typeof stableRecordId === "string" && stableRecordId.trim().length > 0) {
+    return true;
+  }
   reportLateTrajectoryCapture(runtime, stepId, captureType);
   return false;
 }
@@ -818,6 +827,15 @@ async function appendLlmCall(
       context: { trajectoryId, stepId },
     });
   }
+  if (
+    persisted?.steps.some((candidate) =>
+      candidate.llmCalls.some(
+        (candidateCall) => candidateCall.callId === callId,
+      ),
+    )
+  ) {
+    return;
+  }
   if (persisted && persisted.status !== "active") {
     releaseTrajectoryBridgeState(runtime, persisted.id);
     reportLateTrajectoryCapture(runtime, stepId, "llm");
@@ -828,16 +846,8 @@ async function appendLlmCall(
   const expectedUpdatedAt = trajectory.updatedAt;
 
   // A retry may observe its own prior durable write after a transport-level
-  // ambiguity. Record identity makes the operation idempotent across reloads.
-  if (
-    trajectory.steps.some((candidate) =>
-      candidate.llmCalls.some(
-        (candidateCall) => candidateCall.callId === callId,
-      ),
-    )
-  ) {
-    return;
-  }
+  // ambiguity. The persisted-owner check above makes record identity
+  // idempotent even when that retry arrives after terminalization.
 
   trajectory.source = trajectory.source || "runtime";
   trajectory.status =
@@ -1085,6 +1095,15 @@ async function appendProviderAccess(
       },
     );
   }
+  if (
+    persisted?.steps.some((candidate) =>
+      candidate.providerAccesses.some(
+        (candidateAccess) => candidateAccess.providerId === providerId,
+      ),
+    )
+  ) {
+    return;
+  }
   if (persisted && persisted.status !== "active") {
     releaseTrajectoryBridgeState(runtime, persisted.id);
     reportLateTrajectoryCapture(runtime, stepId, "provider");
@@ -1093,16 +1112,6 @@ async function appendProviderAccess(
   const trajectory =
     persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
   const expectedUpdatedAt = trajectory.updatedAt;
-
-  if (
-    trajectory.steps.some((candidate) =>
-      candidate.providerAccesses.some(
-        (candidateAccess) => candidateAccess.providerId === providerId,
-      ),
-    )
-  ) {
-    return;
-  }
 
   trajectory.source = trajectory.source || "runtime";
   trajectory.status =
@@ -1566,6 +1575,9 @@ export async function installDatabaseTrajectoryLogger(
         bridgeIsEnabled(),
         normalized.stepId,
         "llm",
+        typeof normalized.params.callId === "string"
+          ? normalized.params.callId
+          : undefined,
       )
     )
       return;
@@ -1603,6 +1615,9 @@ export async function installDatabaseTrajectoryLogger(
         bridgeIsEnabled(),
         normalized.stepId,
         "provider",
+        typeof normalized.params.providerId === "string"
+          ? normalized.params.providerId
+          : undefined,
       )
     )
       return;
@@ -2716,6 +2731,9 @@ export class DatabaseTrajectoryLogger extends Service {
         this.enabled,
         normalized.stepId,
         "llm",
+        typeof normalized.params.callId === "string"
+          ? normalized.params.callId
+          : undefined,
       )
     )
       return;
@@ -2760,6 +2778,9 @@ export class DatabaseTrajectoryLogger extends Service {
         this.enabled,
         normalized.stepId,
         "provider",
+        typeof normalized.params.providerId === "string"
+          ? normalized.params.providerId
+          : undefined,
       )
     )
       return;

@@ -2129,15 +2129,21 @@ describe("trajectory capture -> DB -> viewer", () => {
       source: "standalone-real",
     });
     const childStepId = publicLogger.startStep(started);
-    publicLogger.logLlmCall(
-      llmCall(childStepId, "openai", "standalone-live", "captured once"),
-    );
+    const liveCall = {
+      ...llmCall(childStepId, "openai", "standalone-live", "captured once"),
+      callId: "standalone-live-call",
+    };
+    publicLogger.logLlmCall(liveCall);
     await publicLogger.flushWriteQueue(started);
     await publicLogger.endTrajectory(started, "completed");
 
-    publicLogger.logLlmCall(
-      llmCall(childStepId, "openai", "standalone-late", "must be rejected"),
-    );
+    // A recorder can retransmit its already-durable capture after the owner
+    // closes. Stable identity makes that exact retry a quiet no-op.
+    publicLogger.logLlmCall(liveCall);
+    publicLogger.logLlmCall({
+      ...llmCall(childStepId, "openai", "standalone-late", "must be rejected"),
+      callId: "standalone-new-late-call",
+    });
     publicLogger.logProviderAccess({
       stepId: childStepId,
       providerName: "standalone-late-provider",
@@ -2187,6 +2193,13 @@ describe("trajectory capture -> DB -> viewer", () => {
         ],
       ]),
     );
+    expect(
+      (
+        publicRuntime.reportError as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        ([scope]) => String(scope) === "TrajectoryStorage.lateCapture",
+      ),
+    ).toHaveLength(2);
 
     await publicLogger.stop();
     const countBefore = Number(
