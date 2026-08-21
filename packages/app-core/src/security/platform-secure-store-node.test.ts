@@ -67,13 +67,13 @@ describe("desktop platform secure-store boundary", () => {
   it("propagates native delete failures and verifies absence before success", () => {
     expect(source).toContain("Promise<SecureStoreDeleteResult>");
     expect(source).toContain("const failure = nativeStoreReason(err)");
-    expect(source).toContain(
-      'verifiedMissing.reason === "not_found"',
-    );
+    expect(source).toContain('verifiedMissing.reason === "not_found"');
     expect(source).toContain("{ ok: true, deleted: false }");
     expect(source).toContain("{ ok: true, deleted: true }");
     expect(source).not.toContain("// ignore — item may not exist");
-    expect(source).not.toContain('e.code === 1 || stderr.includes("not found")');
+    expect(source).not.toContain(
+      'e.code === 1 || stderr.includes("not found")',
+    );
     expect(rendererBridgeSource).toContain(
       "secureStoreDelete: async (params) =>\n      rendererSecureStore.delete(",
     );
@@ -95,7 +95,9 @@ describe("desktop platform secure-store boundary", () => {
 
   it("never returns platform stderr or swallows credential deletion failures", () => {
     expect(source).not.toContain("message: stderr");
-    expect(source).toContain("Native credential store deletion failed.");
+    expect(source).toContain(
+      "Native credential store deletion could not be verified.",
+    );
     expect(source).not.toContain("// ignore — item may not exist");
   });
 

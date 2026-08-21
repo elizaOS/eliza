@@ -506,9 +506,7 @@ function setupStorageProxy(): void {
       setTimeout(() => {
         protectedStoreDelete(key)
           .then(() => {
-            if (
-              protectedStorageMutationVersion.get(key) === removalVersion
-            ) {
+            if (protectedStorageMutationVersion.get(key) === removalVersion) {
               protectedStorageCache.delete(key);
               originalRemoveItem(key);
             }
@@ -603,10 +601,23 @@ export async function setStorageValue(
   value: string,
 ): Promise<void> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
-    markProtectedStorageMutation(key);
+    const mutationVersion = markProtectedStorageMutation(key);
+    const hadPreviousValue = protectedStorageCache.has(key);
+    const previousValue = protectedStorageCache.get(key);
     protectedStorageCache.set(key, value);
-    if (!(await protectedStoreSet(key, value))) {
-      throw new Error(`Protected storage rejected write for ${key}`);
+    try {
+      if (!(await protectedStoreSet(key, value))) {
+        throw new Error(`Protected storage rejected write for ${key}`);
+      }
+    } catch (error) {
+      if (protectedStorageMutationVersion.get(key) === mutationVersion) {
+        if (hadPreviousValue && previousValue !== undefined) {
+          protectedStorageCache.set(key, previousValue);
+        } else {
+          protectedStorageCache.delete(key);
+        }
+      }
+      throw error;
     }
     return;
   }

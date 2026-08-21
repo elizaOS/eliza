@@ -46,4 +46,10 @@ describe("Android secure-store bridge contract", () => {
     expect(source).not.toContain("value.hashCode");
     expect(source).toContain("value.isNullOrEmpty()");
   });
+
+  it("verifies deletion and reports whether ciphertext existed", () => {
+    expect(source).toContain("AtomicFile(file).delete()");
+    expect(source).toContain("if (file.exists())");
+    expect(source).toContain('put("deleted", deleted)');
+  });
 });

@@ -73,14 +73,19 @@ class SecureStorePlugin : Plugin() {
     fun remove(call: PluginCall) {
         val key = validatedKey(call) ?: return
         try {
-            synchronized(lock) {
+            val deleted = synchronized(lock) {
                 val file = valueFile(key)
+                val existed = file.exists()
                 AtomicFile(file).delete()
                 if (file.exists()) {
                     throw IllegalStateException("secure value deletion failed")
                 }
+                existed
             }
-            call.resolve(JSObject().apply { put("ok", true) })
+            call.resolve(JSObject().apply {
+                put("ok", true)
+                put("deleted", deleted)
+            })
         } catch (_: Exception) {
             call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }

@@ -9,11 +9,8 @@ const nativeStores = vi.hoisted(() => ({
   preferences: new Map<string, string>(),
   secure: new Map<string, string>(),
   secureAvailable: true,
-  secureDeleteError: null as
-    | null
-    | "denied"
-    | "unavailable"
-    | "native_error",
+  secureSetError: null as null | "rejected" | "thrown",
+  secureDeleteError: null as null | "denied" | "unavailable" | "native_error",
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -45,6 +42,10 @@ vi.mock("@elizaos/shared/steward-session-client", () => ({
   STEWARD_TOKEN_KEY: "eliza.cloud.steward-token",
 }));
 
+vi.mock("../first-run/mobile-runtime-mode", () => ({
+  MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
+}));
+
 vi.mock("@elizaos/capacitor-secure-store", () => ({
   ElizaSecureStore: {
     get: async ({ key }: { key: string }) => {
@@ -55,6 +56,11 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
     },
     set: async ({ key, value }: { key: string; value: string }) => {
       if (!nativeStores.secureAvailable) throw new Error("bridge cold");
+      if (nativeStores.secureSetError === "thrown")
+        throw new Error("bridge failed");
+      if (nativeStores.secureSetError === "rejected") {
+        return { ok: false, error: "denied" };
+      }
       nativeStores.secure.set(key, value);
       return { ok: true };
     },
@@ -93,6 +99,7 @@ describe("native protected-storage bridge contract", () => {
     nativeStores.preferences.clear();
     nativeStores.secure.clear();
     nativeStores.secureAvailable = true;
+    nativeStores.secureSetError = null;
     nativeStores.secureDeleteError = null;
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -202,4 +209,21 @@ describe("native protected-storage bridge contract", () => {
       "still-durable-after-failed-delete",
     );
   });
+
+  it.each(["rejected", "thrown"] as const)(
+    "rolls the live cache back when an awaited protected write is %s",
+    async (failureMode) => {
+      const bridge = await import("./storage-bridge");
+      await bridge.setStorageValue("eliza.device.auth", "durable-secret");
+      nativeStores.secureSetError = failureMode;
+
+      await expect(
+        bridge.setStorageValue("eliza.device.auth", "rejected-secret"),
+      ).rejects.toThrow();
+
+      expect(window.localStorage.getItem("eliza.device.auth")).toBe(
+        "durable-secret",
+      );
+    },
+  );
 });
