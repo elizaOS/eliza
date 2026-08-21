@@ -3,6 +3,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { pairBrowserBridgeCompanionAsDesktopOwner } from "./browser-bridge-enrollment-adapter";
 
+type PairingFetch = NonNullable<
+  Parameters<typeof pairBrowserBridgeCompanionAsDesktopOwner>[0]["fetchImpl"]
+>;
+
 const ownerSession = {
   sessionId: "owner-session",
   csrfToken: "owner-csrf",
@@ -11,8 +15,8 @@ const ownerSession = {
 
 describe("browser bridge enrollment adapter", () => {
   it("uses the existing owner cookie and CSRF authority on loopback", async () => {
-    const fetchImpl = vi.fn(
-      async () =>
+    const fetchImpl = vi.fn<PairingFetch>(
+      async (_input, _init) =>
         new Response(
           JSON.stringify({
             companion: {
