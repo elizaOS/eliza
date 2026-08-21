@@ -12,7 +12,6 @@ import {
   readBackupCatalogWorkerConfig,
   safeBackupCatalogConfigurationNames,
 } from "./backup-catalog-worker";
-import { loadLocalEnv } from "./shared/load-env";
 
 export async function preflightBackupCatalogWorker(
   env: NodeJS.ProcessEnv = process.env,
@@ -28,7 +27,9 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
-  loadLocalEnv(import.meta.url);
+  // The matching systemd unit passes only its dedicated allowlisted
+  // EnvironmentFile. Reading cloud/.env.local here would defeat the disabled
+  // no-secret boundary before the composition can inspect its gates.
   preflightBackupCatalogWorker()
     .then(({ enabled }) => {
       process.stdout.write(

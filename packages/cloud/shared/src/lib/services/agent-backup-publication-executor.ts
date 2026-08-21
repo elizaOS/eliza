@@ -242,7 +242,9 @@ async function heartbeat(params: {
   claim: Readonly<AgentBackupOperationClaim>;
   leaseMs: number;
   dependencies: AgentBackupPublicationExecutorDependencies;
+  signal?: AbortSignal;
 }): Promise<void> {
+  params.signal?.throwIfAborted();
   const identity = operationIdentity(params.claim);
   await params.dependencies.heartbeatOperation({
     organizationId: identity.organizationId,
@@ -250,6 +252,7 @@ async function heartbeat(params: {
     execution: execution(params.claim),
     leaseMs: params.leaseMs,
   });
+  params.signal?.throwIfAborted();
 }
 
 async function transition(params: {
@@ -259,8 +262,11 @@ async function transition(params: {
   resumeState?: AgentBackupCatalogState;
   leaseMs: number;
   dependencies: AgentBackupPublicationExecutorDependencies;
+  signal?: AbortSignal;
 }): Promise<AgentBackupOperationClaim> {
+  params.signal?.throwIfAborted();
   await heartbeat(params);
+  params.signal?.throwIfAborted();
   const backup = await params.dependencies.transitionOperation({
     ...operationIdentity(params.claim),
     expectedState: params.expectedState,
@@ -268,6 +274,7 @@ async function transition(params: {
     resumeState: params.resumeState,
     execution: execution(params.claim),
   });
+  params.signal?.throwIfAborted();
   return { ...params.claim, backup };
 }
 
@@ -275,7 +282,9 @@ async function resumePublicationClaim(params: {
   claim: Readonly<AgentBackupOperationClaim>;
   leaseMs: number;
   dependencies: AgentBackupPublicationExecutorDependencies;
+  signal?: AbortSignal;
 }): Promise<AgentBackupOperationClaim> {
+  params.signal?.throwIfAborted();
   const state = params.claim.backup.catalog_state;
   if (state !== "failed_retryable") return { ...params.claim };
   const resumeState = params.claim.backup.catalog_resume_state;
@@ -334,7 +343,9 @@ function canonicalChunks(
 async function validatePublicationSource(params: {
   claim: Readonly<AgentBackupOperationClaim>;
   source: AgentBackupCapturedPublicationSource;
+  signal?: AbortSignal;
 }): Promise<AgentBackupCapturedPublicationChunk[]> {
+  params.signal?.throwIfAborted();
   const identity = operationIdentity(params.claim);
   const backup = params.claim.backup;
   if (
@@ -354,9 +365,11 @@ async function validatePublicationSource(params: {
     });
   }
   const chunks = canonicalChunks(params.source.chunks);
+  const inventoryDigest = await agentBackupObjectInventoryDigest(chunks);
+  params.signal?.throwIfAborted();
   if (
     chunks.length !== backup.manifest_object_count ||
-    (await agentBackupObjectInventoryDigest(chunks)) !== backup.object_inventory_digest
+    inventoryDigest !== backup.object_inventory_digest
   ) {
     throw new ElizaError("Captured publication inventory does not match the manifest digest", {
       code: "BACKUP_PUBLICATION_SOURCE_MISMATCH",
@@ -404,6 +417,7 @@ export interface ExecuteAgentBackupPrimaryPublicationInput {
 export async function executeAgentBackupPrimaryPublication(
   input: Readonly<ExecuteAgentBackupPrimaryPublicationInput>,
 ): Promise<AgentBackupOperationClaim> {
+  input.signal?.throwIfAborted();
   requireLeaseMs(input.leaseMs);
   const dependencies = input.dependencies ?? DEFAULT_DEPENDENCIES;
   const deadline = resolveTransferDeadline({
@@ -411,11 +425,14 @@ export async function executeAgentBackupPrimaryPublication(
     deadlineMs: input.objectTransferDeadlineMs,
     dependencies,
   });
+  input.signal?.throwIfAborted();
   let claim = await resumePublicationClaim({
     claim: input.claim,
     leaseMs: input.leaseMs,
     dependencies,
+    signal: input.signal,
   });
+  input.signal?.throwIfAborted();
   let state = claim.backup.catalog_state;
   if (state === "primary_verified" || state === "secondary_pending") return claim;
   if (state !== "captured" && state !== "uploading" && state !== "primary_uploaded") {
@@ -431,12 +448,14 @@ export async function executeAgentBackupPrimaryPublication(
 
   let source: AgentBackupCapturedPublicationSource;
   try {
+    input.signal?.throwIfAborted();
     source = await input.resolveSource({
       claim,
       execution: execution(claim),
       signal: input.signal,
     });
   } catch (cause) {
+    input.signal?.throwIfAborted();
     // error-policy:J2 source failures retain their durable spool and become an
     // exact-state retry without exposing filesystem or object-key details.
     throw stageFailure({ state, phase: "primary", cause });
@@ -444,35 +463,48 @@ export async function executeAgentBackupPrimaryPublication(
 
   let failure: unknown;
   try {
-    const chunks = await validatePublicationSource({ claim, source });
+    input.signal?.throwIfAborted();
+    const chunks = await validatePublicationSource({ claim, source, signal: input.signal });
+    input.signal?.throwIfAborted();
     if (state === "captured") {
       try {
+        input.signal?.throwIfAborted();
         claim = await transition({
           claim,
           expectedState: "captured",
           to: "uploading",
           leaseMs: input.leaseMs,
           dependencies,
+          signal: input.signal,
         });
+        input.signal?.throwIfAborted();
         state = "uploading";
       } catch (cause) {
+        input.signal?.throwIfAborted();
         throw stageFailure({ state: "captured", phase: "primary", cause });
       }
     }
+    input.signal?.throwIfAborted();
     await source.beginPrimaryPublication();
+    input.signal?.throwIfAborted();
     if (state === "uploading") {
       const identity = operationIdentity(claim);
       for (const chunk of chunks) {
-        await heartbeat({ claim, leaseMs: input.leaseMs, dependencies });
+        input.signal?.throwIfAborted();
+        await heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal });
+        input.signal?.throwIfAborted();
         let body: Uint8Array | undefined;
         try {
+          input.signal?.throwIfAborted();
           body = await source.readCiphertextChunk(chunk, input.signal);
+          input.signal?.throwIfAborted();
           if (body.byteLength !== chunk.sizeBytes) {
             throw new ElizaError("Capture spool returned a different encrypted byte length", {
               code: "BACKUP_PUBLICATION_SOURCE_MISMATCH",
               severity: "fatal",
             });
           }
+          input.signal?.throwIfAborted();
           await dependencies.uploadObject({
             organizationId: identity.organizationId,
             backupId: identity.backupId,
@@ -488,29 +520,41 @@ export async function executeAgentBackupPrimaryPublication(
             contentType: "application/octet-stream",
             signal: input.signal,
             deadline,
-            revalidateLease: () => heartbeat({ claim, leaseMs: input.leaseMs, dependencies }),
+            revalidateLease: () =>
+              heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal }),
           });
+          input.signal?.throwIfAborted();
           await source.markPrimaryChunkUploaded(chunk);
+          input.signal?.throwIfAborted();
         } catch (cause) {
+          input.signal?.throwIfAborted();
           // error-policy:J2 the static stage error preserves the underlying
           // provider/spool cause without exposing its key in the public message.
           throw stageFailure({ state: "uploading", phase: "primary", cause });
         } finally {
           body?.fill(0);
         }
-        await heartbeat({ claim, leaseMs: input.leaseMs, dependencies });
+        input.signal?.throwIfAborted();
+        await heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal });
+        input.signal?.throwIfAborted();
       }
+      input.signal?.throwIfAborted();
       claim = await transition({
         claim,
         expectedState: "uploading",
         to: "primary_uploaded",
         leaseMs: input.leaseMs,
         dependencies,
+        signal: input.signal,
       });
+      input.signal?.throwIfAborted();
     }
     try {
+      input.signal?.throwIfAborted();
       await source.markPrimaryPublished();
+      input.signal?.throwIfAborted();
     } catch (cause) {
+      input.signal?.throwIfAborted();
       // error-policy:J2 the persisted primary objects remain replayable while
       // the exact primary_uploaded state retains source-journal reconciliation.
       throw stageFailure({ state: "primary_uploaded", phase: "primary", cause });
@@ -521,18 +565,23 @@ export async function executeAgentBackupPrimaryPublication(
       to: "primary_verified",
       leaseMs: input.leaseMs,
       dependencies,
+      signal: input.signal,
     });
+    input.signal?.throwIfAborted();
   } catch (cause) {
     failure = cause;
   }
   await closeSource(source, failure);
+  input.signal?.throwIfAborted();
   return claim;
 }
 
 async function validatePrimaryInventory(params: {
   backup: StoredAgentSandboxBackup;
   objects: readonly AgentBackupObject[];
+  signal?: AbortSignal;
 }): Promise<AgentBackupObject[]> {
+  params.signal?.throwIfAborted();
   if (!params.backup.manifest_object_count || !params.backup.object_inventory_digest) {
     throw new ElizaError("Secondary replication is missing manifest inventory authority", {
       code: "BACKUP_PUBLICATION_AUTHORITY_INCOMPLETE",
@@ -566,6 +615,7 @@ async function validatePrimaryInventory(params: {
       sizeBytes: object.size_bytes,
     })),
   );
+  params.signal?.throwIfAborted();
   if (
     objects.length !== params.backup.manifest_object_count ||
     digest !== params.backup.object_inventory_digest
@@ -595,6 +645,7 @@ export interface ExecuteAgentBackupSecondaryReplicationInput {
 export async function executeAgentBackupSecondaryReplication(
   input: Readonly<ExecuteAgentBackupSecondaryReplicationInput>,
 ): Promise<AgentBackupOperationClaim> {
+  input.signal?.throwIfAborted();
   requireLeaseMs(input.leaseMs);
   const dependencies = input.dependencies ?? DEFAULT_DEPENDENCIES;
   const deadline = resolveTransferDeadline({
@@ -602,19 +653,25 @@ export async function executeAgentBackupSecondaryReplication(
     deadlineMs: input.objectTransferDeadlineMs,
     dependencies,
   });
+  input.signal?.throwIfAborted();
   let claim = await resumePublicationClaim({
     claim: input.claim,
     leaseMs: input.leaseMs,
     dependencies,
+    signal: input.signal,
   });
+  input.signal?.throwIfAborted();
   if (claim.backup.catalog_state === "primary_verified") {
+    input.signal?.throwIfAborted();
     claim = await transition({
       claim,
       expectedState: "primary_verified",
       to: "secondary_pending",
       leaseMs: input.leaseMs,
       dependencies,
+      signal: input.signal,
     });
+    input.signal?.throwIfAborted();
   }
   if (claim.backup.catalog_state === "protected") return claim;
   if (claim.backup.catalog_state !== "secondary_pending") {
@@ -634,16 +691,22 @@ export async function executeAgentBackupSecondaryReplication(
   }
   let primaryObjects: AgentBackupObject[];
   try {
-    await heartbeat({ claim, leaseMs: input.leaseMs, dependencies });
+    input.signal?.throwIfAborted();
+    await heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal });
+    input.signal?.throwIfAborted();
     primaryObjects = await dependencies.listVerifiedPrimaryObjects({
       ...identity,
       execution: execution(claim),
     });
+    input.signal?.throwIfAborted();
     primaryObjects = await validatePrimaryInventory({
       backup: claim.backup,
       objects: primaryObjects,
+      signal: input.signal,
     });
+    input.signal?.throwIfAborted();
   } catch (cause) {
+    input.signal?.throwIfAborted();
     // error-policy:J2 an unprovable persisted primary inventory remains in the
     // exact secondary_pending state for fenced retry.
     throw stageFailure({ state: "secondary_pending", phase: "secondary", cause });
@@ -651,7 +714,9 @@ export async function executeAgentBackupSecondaryReplication(
 
   for (const primaryObject of primaryObjects) {
     try {
-      await heartbeat({ claim, leaseMs: input.leaseMs, dependencies });
+      input.signal?.throwIfAborted();
+      await heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal });
+      input.signal?.throwIfAborted();
       await dependencies.replicateObject({
         organizationId: identity.organizationId,
         backupId: identity.backupId,
@@ -662,24 +727,32 @@ export async function executeAgentBackupSecondaryReplication(
         manifestDigest,
         registry: input.registry,
         execution: execution(claim),
-        revalidateLease: () => heartbeat({ claim, leaseMs: input.leaseMs, dependencies }),
+        revalidateLease: () =>
+          heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal }),
         signal: input.signal,
         deadline,
       });
-      await heartbeat({ claim, leaseMs: input.leaseMs, dependencies });
+      input.signal?.throwIfAborted();
+      await heartbeat({ claim, leaseMs: input.leaseMs, dependencies, signal: input.signal });
+      input.signal?.throwIfAborted();
     } catch (cause) {
+      input.signal?.throwIfAborted();
       // error-policy:J2 provider/read failures stay key-free and retry from the
       // persisted exact primary locator; no capture source is available here.
       throw stageFailure({ state: "secondary_pending", phase: "secondary", cause });
     }
   }
-  return transition({
+  input.signal?.throwIfAborted();
+  const protectedClaim = await transition({
     claim,
     expectedState: "secondary_pending",
     to: "protected",
     leaseMs: input.leaseMs,
     dependencies,
+    signal: input.signal,
   });
+  input.signal?.throwIfAborted();
+  return protectedClaim;
 }
 
 export interface ExecuteAgentBackupPostCapturePublicationInput {
@@ -696,11 +769,13 @@ export interface ExecuteAgentBackupPostCapturePublicationInput {
 export async function executeAgentBackupPostCapturePublication(
   input: Readonly<ExecuteAgentBackupPostCapturePublicationInput>,
 ): Promise<AgentBackupOperationClaim> {
+  input.signal?.throwIfAborted();
   const dependencies = input.dependencies ?? DEFAULT_DEPENDENCIES;
   const deadline = resolveTransferDeadline({
     deadlineMs: input.config.objectTransferDeadlineMs,
     dependencies,
   });
+  input.signal?.throwIfAborted();
   const primary = await executeAgentBackupPrimaryPublication({
     claim: input.claim,
     leaseMs: input.leaseMs,
@@ -712,7 +787,8 @@ export async function executeAgentBackupPostCapturePublication(
     signal: input.signal,
     deadline,
   });
-  return executeAgentBackupSecondaryReplication({
+  input.signal?.throwIfAborted();
+  const protectedClaim = await executeAgentBackupSecondaryReplication({
     claim: primary,
     leaseMs: input.leaseMs,
     scope: input.config.scope,
@@ -722,6 +798,8 @@ export async function executeAgentBackupPostCapturePublication(
     signal: input.signal,
     deadline,
   });
+  input.signal?.throwIfAborted();
+  return protectedClaim;
 }
 
 /** Bind post-capture authorities once for the bounded catalogue dispatcher. */
@@ -734,6 +812,7 @@ export function createAgentBackupCatalogPublicationExecutor(params: {
   return {
     async execute({ claim, leaseMs, signal }) {
       try {
+        signal?.throwIfAborted();
         const completed = await executeAgentBackupPostCapturePublication({
           claim,
           leaseMs,
@@ -743,6 +822,7 @@ export function createAgentBackupCatalogPublicationExecutor(params: {
           dependencies: params.dependencies,
           signal,
         });
+        signal?.throwIfAborted();
         if (completed.backup.catalog_state !== "protected") {
           throw new ElizaError("Backup publication did not reach protected", {
             code: "BACKUP_PUBLICATION_STATE_INVALID",

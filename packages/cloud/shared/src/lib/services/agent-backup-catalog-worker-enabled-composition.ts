@@ -32,9 +32,11 @@ import { createAgentBackupCatalogPublicationExecutor } from "./agent-backup-publ
 
 const MAX_SPOOL_BYTES = 1024 ** 4;
 const MAX_TOKEN_BYTES = 16 * 1024;
+const MAX_PROVIDER_IDENTITY_BYTES = 256;
 const PLUGIN_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const OPERATION_LEASE_SETTLEMENT_MARGIN_MS = 30_000;
 
 export interface AgentBackupCatalogWorkerEnabledConfig {
   runtime: Extract<AgentBackupCatalogRuntimeConfig, { enabled: true }>;
@@ -76,7 +78,7 @@ function requiredText(env: NodeJS.ProcessEnv, name: string, maxBytes = 512): str
   if (
     !value ||
     value !== value.trim() ||
-    value.includes("\0") ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
     Buffer.byteLength(value, "utf8") > maxBytes
   ) {
     throw new Error(`${name} must be explicitly configured with a canonical value`);
@@ -86,7 +88,11 @@ function requiredText(env: NodeJS.ProcessEnv, name: string, maxBytes = 512): str
 
 function requiredSecret(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
-  if (!value || value.includes("\0") || Buffer.byteLength(value, "utf8") > MAX_TOKEN_BYTES) {
+  if (
+    !value ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    Buffer.byteLength(value, "utf8") > MAX_TOKEN_BYTES
+  ) {
     throw new Error(`${name} must be explicitly configured when backup catalogue is enabled`);
   }
   return value;
@@ -167,7 +173,8 @@ function pluginVersions(env: NodeJS.ProcessEnv): readonly { id: string; version:
     }
     return { id, version };
   });
-  result.sort((left, right) => left.id.localeCompare(right.id));
+  // Manifest canonicalization compares code units, not locale collation.
+  result.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
   if (result.some((entry, index) => index > 0 && entry.id === result[index - 1]?.id)) {
     throw new Error("AGENT_BACKUP_RUNTIME_PLUGINS_JSON contains a duplicate plugin id");
   }
@@ -214,15 +221,16 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
     "AGENT_BACKUP_R2_ACCOUNT_ID",
     "AGENT_BACKUP_R2_BUCKET",
     "AGENT_BACKUP_R2_REGION",
-    "AGENT_BACKUP_R2_ENDPOINT",
     "AGENT_BACKUP_R2_ACCESS_KEY_ID",
     "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
     "AGENT_BACKUP_HETZNER_ACCOUNT_ID",
-    "AGENT_BACKUP_HETZNER_ENDPOINT",
     "AGENT_BACKUP_HETZNER_BUCKET",
     "AGENT_BACKUP_HETZNER_REGION",
     "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
   ] as const) {
+    requiredText(env, name, MAX_PROVIDER_IDENTITY_BYTES);
+  }
+  for (const name of ["AGENT_BACKUP_R2_ENDPOINT", "AGENT_BACKUP_HETZNER_ENDPOINT"] as const) {
     requiredText(env, name, 2048);
   }
   requiredSecret(env, "AGENT_BACKUP_R2_SECRET_ACCESS_KEY");
@@ -230,8 +238,16 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
   canonicalUrl(env, "AGENT_BACKUP_R2_ENDPOINT");
   canonicalUrl(env, "AGENT_BACKUP_HETZNER_ENDPOINT");
 
-  const primaryEndpointAlias = requiredText(env, "AGENT_BACKUP_R2_ENDPOINT_ALIAS");
-  const secondaryEndpointAlias = requiredText(env, "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS");
+  const primaryEndpointAlias = requiredText(
+    env,
+    "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
+    MAX_PROVIDER_IDENTITY_BYTES,
+  );
+  const secondaryEndpointAlias = requiredText(
+    env,
+    "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
+    MAX_PROVIDER_IDENTITY_BYTES,
+  );
   if (primaryEndpointAlias === secondaryEndpointAlias) {
     throw new Error("Primary and secondary backup endpoint aliases must be distinct");
   }
@@ -272,6 +288,28 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(scope)) {
     throw new Error("AGENT_BACKUP_STORAGE_SCOPE must be a canonical storage scope");
   }
+  const captureDeadlineMs = boundedInteger({
+    env,
+    name: "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
+    min: 1,
+    max: AGENT_BACKUP_CAPTURE_V2_LIMITS.maxDeadlineAheadMs,
+  });
+  const objectTransferDeadlineMs = boundedInteger({
+    env,
+    name: "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS",
+    min: 1,
+    max: 15 * 60_000,
+  });
+  const providerDeadlineCeiling = runtime.operationLeaseMs - OPERATION_LEASE_SETTLEMENT_MARGIN_MS;
+  if (
+    providerDeadlineCeiling < 1 ||
+    captureDeadlineMs > providerDeadlineCeiling ||
+    objectTransferDeadlineMs > providerDeadlineCeiling
+  ) {
+    throw new Error(
+      "Backup capture and object-transfer deadlines must leave 30000ms inside AGENT_BACKUP_OPERATION_LEASE_MS for fenced settlement",
+    );
+  }
   return {
     runtime,
     spool: { stateDirectory, maxSpoolBytes, minFreeBytes },
@@ -281,22 +319,12 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
       min: 1,
       max: 100,
     }),
-    captureDeadlineMs: boundedInteger({
-      env,
-      name: "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
-      min: 1,
-      max: AGENT_BACKUP_CAPTURE_V2_LIMITS.maxDeadlineAheadMs,
-    }),
+    captureDeadlineMs,
     publication: {
       scope,
       primaryEndpointAlias,
       secondaryEndpointAlias,
-      objectTransferDeadlineMs: boundedInteger({
-        env,
-        name: "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS",
-        min: 1,
-        max: 15 * 60_000,
-      }),
+      objectTransferDeadlineMs,
     },
     runtimeMetadata: {
       agentSchemaVersion,

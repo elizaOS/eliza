@@ -1,12 +1,12 @@
 /**
  * Runs one bounded scheduler tick for the durable sandbox-backup catalogue.
  *
- * The caller owns cadence and logging. Production daemon composition is
- * intentionally absent until activation/vault authorities and a dedicated
- * sub-minute lane exist. This service owns feature-gated storage authority
- * resolution, fair operation leases, retry deferral for pipeline stages that
- * do not yet have an executor, and isolated exact-object GC. It never logs
- * credentials, endpoint URLs, object keys, or locators.
+ * The dedicated daemon owns cadence and logging, and imports its production
+ * composition only after the disabled-first gate boundary. This service owns
+ * feature-gated storage authority resolution, fair operation leases, retry
+ * deferral for pipeline stages that do not yet have an executor, and isolated
+ * exact-object GC. It never logs credentials, endpoint URLs, object keys, or
+ * locators.
  */
 
 import {
@@ -14,6 +14,7 @@ import {
   type AgentBackupOperationExecution,
   claimDueAgentBackupOperations,
   failAgentBackupOperation,
+  handoffCapturedAgentBackupOperation,
   heartbeatAgentBackupOperation,
   transitionAgentBackupOperation,
 } from "../../db/repositories/agent-backup-catalog";
@@ -49,15 +50,16 @@ import type {
 } from "./agent-backup-capture-v3-spool-cleanup";
 import { executeAgentBackupGcClaims } from "./agent-backup-catalog-worker";
 
-const MAX_OPERATION_BATCH = 100;
+// Repeated fair-SQL claims reset tenant ordering. Keep one operation per tick
+// until a durable cross-tick tenant cursor can prove starvation freedom.
+const MAX_OPERATION_BATCH = 1;
 const MAX_SCHEDULE_BATCH = 100;
 const MAX_GC_BATCH = 100;
 const MAX_LEASE_MS = 5 * 60_000;
 const MAX_OPERATION_RETRY_MS = 24 * 60 * 60_000;
 const MAX_GC_RETRY_MS = 6 * 60 * 60_000;
 
-// Start deliberately serial. Operators may raise the bounded override after
-// observing provider quotas and memory pressure in their own deployment.
+// Deliberately fixed, not merely a default; see MAX_OPERATION_BATCH.
 const DEFAULT_OPERATION_BATCH = 1;
 const DEFAULT_SCHEDULE_BATCH = 32;
 const DEFAULT_SCHEDULE_LEASE_MS = 2 * 60_000;
@@ -177,6 +179,7 @@ export interface AgentBackupCatalogRuntimeDependencies {
     execution: AgentBackupOperationExecution;
     leaseMs: number;
   }): Promise<unknown>;
+  handoffCapturedOperation: typeof handoffCapturedAgentBackupOperation;
   transitionOperation: typeof transitionAgentBackupOperation;
   failOperation: typeof failAgentBackupOperation;
   listDueDeletions: typeof listDueAgentBackupDeletions;
@@ -234,6 +237,7 @@ const DEFAULT_DEPENDENCIES: AgentBackupCatalogRuntimeDependencies = {
   countOverdueSchedules: countOverdueAgentBackupSchedules,
   claimOperations: claimDueAgentBackupOperations,
   heartbeatOperation: heartbeatAgentBackupOperation,
+  handoffCapturedOperation: handoffCapturedAgentBackupOperation,
   transitionOperation: transitionAgentBackupOperation,
   failOperation: failAgentBackupOperation,
   listDueDeletions: listDueAgentBackupDeletions,
@@ -265,7 +269,7 @@ function readBoundedInteger(params: {
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
-  if (!value || value.trim() !== value || value.includes("\0")) {
+  if (!value || value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new Error(
       `${name} must be explicitly configured when backup catalogue runtime is enabled`,
     );
@@ -562,6 +566,13 @@ interface CaptureFailureDisposition {
 
 function classifyCaptureFailure(error: unknown): CaptureFailureDisposition {
   if (!isTrustedAgentBackupCaptureV2TerminalDisposition(error)) return { terminal: false };
+  // A stale runtime generation is irreversible only after the concrete
+  // pipeline opened a spool and attached the exact cleanup authority. Stale
+  // evidence raised during context resolution has no local artifact proof and
+  // therefore remains retryable.
+  if (error.code === "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" && !error.terminalSpoolCleanup) {
+    return { terminal: false };
+  }
   return {
     terminal: true,
     terminalSpoolCleanup: error.terminalSpoolCleanup,
@@ -770,27 +781,41 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   throwIfAborted();
   await countOverdueSchedules();
 
-  let operationClaims: AgentBackupOperationClaim[] = [];
-  throwIfAborted();
-  try {
-    operationClaims = await dependencies.claimOperations({
-      ownerId: params.config.ownerId,
-      limit: params.config.operationBatchSize,
-      leaseMs: params.config.operationLeaseMs,
-    });
-    summary.operationClaimed = operationClaims.length;
-  } catch (error) {
+  // Each serial processing slot acquires its own lease immediately before use.
+  // A slow or poisoned first operation can therefore never idle-lease the rest
+  // of the configured batch while it waits behind that operation.
+  for (
+    let operationSlot = 0;
+    operationSlot < params.config.operationBatchSize;
+    operationSlot += 1
+  ) {
     throwIfAborted();
-    if (!params.config.scheduleEnabled) throw error;
-    summary.operationIndeterminate += 1;
-    alertCodes.add(OPERATION_RECONCILE_CODE);
-  }
-  for (const claim of operationClaims) {
-    throwIfAborted();
+    let operationClaims: AgentBackupOperationClaim[];
+    try {
+      operationClaims = await dependencies.claimOperations({
+        ownerId: params.config.ownerId,
+        limit: 1,
+        leaseMs: params.config.operationLeaseMs,
+      });
+      throwIfAborted();
+      if (operationClaims.length > 1) {
+        throw new Error("Backup operation claimant exceeded the single-slot lease contract");
+      }
+    } catch (error) {
+      throwIfAborted();
+      if (!params.config.scheduleEnabled) throw error;
+      summary.operationIndeterminate += 1;
+      alertCodes.add(OPERATION_RECONCILE_CODE);
+      break;
+    }
+    const claim = operationClaims[0];
+    if (!claim) break;
+    summary.operationClaimed += 1;
     if (params.captureExecutor && isCaptureOperationClaim(claim)) {
       let normalized: AgentBackupOperationClaim;
       try {
         normalized = await normalizeCaptureOperationClaim({ claim, dependencies });
+        throwIfAborted();
       } catch {
         throwIfAborted();
         // A lost transition response is indeterminate. The exact lease/state
@@ -800,13 +825,42 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         continue;
       }
       try {
+        throwIfAborted();
         const result = await params.captureExecutor.execute({
           claim: normalized,
           leaseMs: params.config.operationLeaseMs,
           signal: params.signal,
         });
+        throwIfAborted();
         if (result.state !== "captured-upload-pending") {
           throw new Error("Capture executor crossed an unsupported publication boundary");
+        }
+        const identity = claimIdentity(normalized);
+        if (!identity) {
+          summary.operationIndeterminate += 1;
+          alertCodes.add(OPERATION_RECONCILE_CODE);
+          continue;
+        }
+        try {
+          throwIfAborted();
+          await dependencies.handoffCapturedOperation({
+            organizationId: identity.organizationId,
+            backupId: identity.backupId,
+            operationId: identity.operationId,
+            lifecycleGeneration: identity.lifecycleGeneration,
+            execution: {
+              ownerId: normalized.ownerId,
+              generation: normalized.generation,
+            },
+          });
+          throwIfAborted();
+        } catch {
+          throwIfAborted();
+          // The release CAS may have committed before its response was lost.
+          // Never synthesize publication success or overwrite captured state.
+          summary.operationIndeterminate += 1;
+          alertCodes.add(OPERATION_RECONCILE_CODE);
+          continue;
         }
         summary.operationCaptured += 1;
       } catch (error) {
@@ -832,6 +886,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
               authority: disposition.terminalSpoolCleanup,
               terminalErrorCode: OPERATION_CAPTURE_TERMINAL_CODE,
             });
+            throwIfAborted();
           } catch {
             throwIfAborted();
             // The non-authorizing local candidate is the crash bridge between
@@ -845,6 +900,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
           }
         }
         try {
+          throwIfAborted();
           await dependencies.failOperation({
             ...identity,
             expectedState: "capturing",
@@ -889,11 +945,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
     }
     if (params.publicationExecutor && isPublicationOperationClaim(claim)) {
       try {
+        throwIfAborted();
         const result = await params.publicationExecutor.execute({
           claim,
           leaseMs: params.config.operationLeaseMs,
           signal: params.signal,
         });
+        throwIfAborted();
         if (result.state === "protected") {
           summary.operationProtected += 1;
           continue;
@@ -960,12 +1018,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   // immediately; response-loss cases are picked up here as well.
   throwIfAborted();
   await reconcileSchedules();
-  if (operationClaims.length > 0) await countOverdueSchedules();
+  if (summary.operationClaimed > 0) await countOverdueSchedules();
 
   throwIfAborted();
   if (params.spoolCleanupJanitor) {
     try {
-      const cleanup = await params.spoolCleanupJanitor.runCycle();
+      const cleanup = await params.spoolCleanupJanitor.runCycle(params.signal);
+      throwIfAborted();
       summary.spoolCleanup = {
         discovered: summary.spoolCleanup.discovered + cleanup.discovered,
         authorized: summary.spoolCleanup.authorized + cleanup.authorized,
@@ -1019,6 +1078,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       limit: params.config.gcBatchSize,
       leaseMs: params.config.gcLeaseMs,
     });
+    throwIfAborted();
     summary.gcClaimed = gcClaims.length;
   } catch (error) {
     throwIfAborted();
@@ -1032,6 +1092,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       const result = await dependencies.executeGcClaims({
         claims: [claim],
         registry: params.registry,
+        signal: params.signal,
         retryDelayMs: agentBackupCatalogRetryDelay({
           attempt: claim.outbox.attempts,
           baseMs: params.config.gcRetryBaseMs,
@@ -1039,6 +1100,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
           random: params.random,
         }),
       });
+      throwIfAborted();
       summary.gcCompleted += result.completed;
       summary.gcFailed += result.failed;
       if (result.failed > 0) alertCodes.add(GC_RETRY_CODE);
