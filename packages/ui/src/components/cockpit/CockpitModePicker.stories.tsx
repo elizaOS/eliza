@@ -61,6 +61,6 @@ export const ExperimentalArmed: Story = {
 
 export const Disabled: Story = {
   render: () => (
-    <Harness initial={{ mode: "subscription", agentType: "codex" }} disabled />
+    <Harness initial={{ mode: "opencode", agentType: "opencode" }} disabled />
   ),
 };

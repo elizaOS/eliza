@@ -1,6 +1,6 @@
 /**
  * Unit tests for the cockpit mode → providerPolicy lowering (cockpit-modes):
- * that each of the three modes resolves to the right provider source, model, and
+ * that each of the four modes resolves to the right provider source, model, and
  * create-task input. Pure functions, no DOM or network.
  */
 import { toWellFormedUnicode } from "@elizaos/core";
@@ -16,13 +16,16 @@ import {
 
 describe("cockpit-modes lowering", () => {
   describe("cockpitModeProviderSource", () => {
-    it("eliza-cloud sources from eliza-cloud; subscription/experimental from the vendor", () => {
+    it("eliza-cloud + opencode source from eliza-cloud; subscription/experimental from the vendor", () => {
       expect(
         cockpitModeProviderSource({
           mode: "eliza-cloud",
           agentType: "elizaos",
           tier: "small",
         }),
+      ).toBe("eliza-cloud");
+      expect(
+        cockpitModeProviderSource({ mode: "opencode", agentType: "opencode" }),
       ).toBe("eliza-cloud");
       expect(
         cockpitModeProviderSource({
@@ -60,7 +63,7 @@ describe("cockpit-modes lowering", () => {
         }),
       ).toBe("gemma-4-31b");
       expect(
-        cockpitModeModel({ mode: "subscription", agentType: "codex" }),
+        cockpitModeModel({ mode: "opencode", agentType: "opencode" }),
       ).toBeUndefined();
       expect(
         cockpitModeModel({
@@ -116,13 +119,13 @@ describe("cockpit-modes lowering", () => {
         buildCockpitCreateTaskInput({
           goal: "do a thing",
           title: "Custom Title",
-          mode: { mode: "subscription", agentType: "codex" },
+          mode: { mode: "opencode", agentType: "opencode" },
         }).title,
       ).toBe("Custom Title");
       const long = "x".repeat(120);
       const t = buildCockpitCreateTaskInput({
         goal: long,
-        mode: { mode: "subscription", agentType: "codex" },
+        mode: { mode: "opencode", agentType: "opencode" },
       }).title;
       expect(t.length).toBeLessThanOrEqual(80);
       expect(t.endsWith("…")).toBe(true);
