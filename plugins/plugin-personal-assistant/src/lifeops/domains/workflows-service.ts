@@ -882,7 +882,10 @@ export class WorkflowsDomain {
   /**
    * Runs for the same workflow definition are serialized through this
    * per-workflow promise chain so scheduled, event-triggered, and manual
-   * executions never interleave their step side effects.
+   * executions within this runtime process never interleave their step side
+   * effects. The guarantee is process-local: it also makes the replay-guard
+   * check-then-persist below atomic per workflow, but it does not fence
+   * concurrent independent runtime processes sharing one repository.
    */
   private readonly executionChains = new Map<string, Promise<unknown>>();
 
@@ -893,11 +896,14 @@ export class WorkflowsDomain {
       confirmBrowserActions: boolean;
       request: Record<string, unknown>;
       /**
-       * Replay guard. When set, a prior run of this workflow whose result
-       * carries the same key is returned as-is instead of re-executing the
-       * steps. Scheduled and event loops pass deterministic keys derived
-       * from the due instant / source event so a crash between execution
-       * and cursor persistence cannot double-run side effects.
+       * Replay guard. When set, a prior persisted run of this workflow whose
+       * result carries the same key is returned instead of re-executing the
+       * steps; a prior failed run is surfaced as a typed error rather than
+       * re-executed. Scheduled and event loops pass deterministic keys
+       * derived from the due instant / source event so a crash between run
+       * persistence and scheduler-cursor persistence cannot double-run side
+       * effects. Best-effort: a crash after a step's side effect but before
+       * the run row is persisted is not covered.
        */
       idempotencyKey?: string | null;
     },
@@ -940,6 +946,18 @@ export class WorkflowsDomain {
           isRecord(run.result) && run.result.idempotencyKey === idempotencyKey,
       );
       if (replayed) {
+        // A prior failed run under the same key is terminal for that key:
+        // surface the recorded failure instead of masking it as success.
+        if (replayed.status === "failed") {
+          return {
+            run: replayed,
+            error: new LifeOpsServiceError(
+              409,
+              `workflow run ${replayed.id} already failed for idempotency key "${idempotencyKey}"; use a new key to re-execute`,
+              "WORKFLOW_RUN_ALREADY_FAILED",
+            ),
+          };
+        }
         return { run: replayed, error: null };
       }
     }
@@ -1134,11 +1152,16 @@ export class WorkflowsDomain {
         request.confirmBrowserActions,
         "confirmBrowserActions",
       ) ?? false;
+    const idempotencyKey =
+      normalizeOptionalString(request.idempotencyKey) ?? null;
+    if (idempotencyKey !== null && idempotencyKey.length > 256) {
+      fail(400, "idempotencyKey must be at most 256 characters");
+    }
     const result = await this.executeWorkflowDefinition(definition, {
       startedAt,
       confirmBrowserActions,
       request: request as Record<string, unknown>,
-      idempotencyKey: normalizeOptionalString(request.idempotencyKey) ?? null,
+      idempotencyKey,
     });
     if (result.error instanceof LifeOpsServiceError) {
       throw result.error;

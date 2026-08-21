@@ -66,6 +66,7 @@ type Harness = {
   registry: WorkflowStepRegistry;
   runs: LifeOpsWorkflowRun[];
   logLifeOpsError: ReturnType<typeof vi.fn>;
+  getWorkflowDefinition: ReturnType<typeof vi.fn>;
 };
 
 function makeHarness(): Harness {
@@ -102,7 +103,13 @@ function makeHarness(): Harness {
     ctx as unknown as LifeOpsContext,
     deps as unknown as WorkflowsDeps,
   );
-  return { domain, registry, runs, logLifeOpsError };
+  return {
+    domain,
+    registry,
+    runs,
+    logLifeOpsError,
+    getWorkflowDefinition: deps.getWorkflowDefinition,
+  };
 }
 
 function contribution(
@@ -295,6 +302,48 @@ describe("WorkflowsDomain execution contract", () => {
     expect(first.run.result.idempotencyKey).toBe(
       "schedule:wf-1:2026-08-20T09:00:00.000Z",
     );
+  });
+
+  it("surfaces a prior failed run under the same key as a typed error without re-executing", async () => {
+    const execute = vi.fn(async () => {
+      throw new Error("side effect failed");
+    });
+    harness.registry.register(contribution("side_effect", "finance", execute));
+    const definition = makeDefinition([{ kind: "side_effect" }]);
+
+    const first = await harness.domain.executeWorkflowDefinition(definition, {
+      startedAt: NOW,
+      confirmBrowserActions: false,
+      request: {},
+      idempotencyKey: "schedule:wf-1:failing",
+    });
+    const second = await harness.domain.executeWorkflowDefinition(definition, {
+      startedAt: NOW,
+      confirmBrowserActions: false,
+      request: {},
+      idempotencyKey: "schedule:wf-1:failing",
+    });
+
+    expect(first.run.status).toBe("failed");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(second.run.id).toBe(first.run.id);
+    expect(second.error).toBeInstanceOf(Error);
+    expect((second.error as Error).message).toContain("already failed");
+    expect(harness.runs).toHaveLength(1);
+  });
+
+  it("rejects an oversized public idempotency key", async () => {
+    harness.registry.register(
+      contribution("noop", "calendar", async () => null),
+    );
+    const definition = makeDefinition([{ kind: "noop" }]);
+    harness.getWorkflowDefinition.mockResolvedValue(definition);
+
+    await expect(
+      harness.domain.runWorkflow("wf-1", {
+        idempotencyKey: "k".repeat(257),
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("executes a distinct idempotency key as a new run", async () => {
