@@ -194,7 +194,9 @@ export function resolveMatrixAccountSettings(
       (allowOwnerBind ? base.deviceId : undefined) ??
       (allowOwnerBind ? stringSetting(runtime, "MATRIX_DEVICE_ID") : undefined),
     rooms: roomsValue(
-      account.rooms ?? base.rooms ?? (allowOwnerBind ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
+      account.rooms ??
+        base.rooms ??
+        (allowOwnerBind ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
     ),
     verifyAllowlist: roomsValue(
       account.verifyAllowlist ??
