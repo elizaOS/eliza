@@ -428,6 +428,37 @@ describe("iOS local-agent local inference flow", () => {
     });
   });
 
+  it("does not persist native download exception text", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const marker = "password=secret /private/native/downloader.mm:42";
+    const kernel = await loadKernel({
+      downloadModel: vi.fn(async () => {
+        throw new Error(marker);
+      }),
+    });
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-4b",
+    });
+
+    await eventually(async () => {
+      const response = await kernel.handleIosLocalAgentRequest(
+        new Request(
+          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-4b",
+        ),
+      );
+      const payload = (await response.json()) as {
+        job?: { state?: string; error?: string };
+      };
+      expect(payload.job).toMatchObject({
+        state: "failed",
+        error: "Model download failed",
+      });
+      expect(payload.job?.error).not.toContain(marker);
+    });
+  });
+
   it("uses a simulator RAM fallback when native hardware omits memory", async () => {
     const kernel = await loadKernel({
       hardware: {

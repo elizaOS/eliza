@@ -106,6 +106,7 @@ describe("registered BlueBubbles local bridge E2E", () => {
     const blueBubblesSends: Array<Record<string, unknown>> = [];
     const blueBubblesWebhookCreates: Array<Record<string, unknown>> = [];
     let retryGuidFailuresRemaining = 1;
+    let pendingDeliveryFailuresRemaining = 2;
 
     const cloud = Bun.serve({
       port: 0,
@@ -171,9 +172,12 @@ describe("registered BlueBubbles local bridge E2E", () => {
             url.pathname.slice("/api/v1/message/".length),
           );
           if (
-            ["inbound-1", "inbound-retry", "cross-number-inbound"].includes(
-              messageGuid,
-            )
+            [
+              "inbound-1",
+              "inbound-retry",
+              "inbound-pending-delivery",
+              "cross-number-inbound",
+            ].includes(messageGuid)
           ) {
             return Response.json({
               status: 200,
@@ -185,9 +189,21 @@ describe("registered BlueBubbles local bridge E2E", () => {
           }
         }
         if (url.pathname === "/api/v1/message/text") {
-          blueBubblesSends.push(
-            (await request.json()) as Record<string, unknown>,
-          );
+          const send = (await request.json()) as Record<string, unknown>;
+          blueBubblesSends.push(send);
+          if (
+            send.chatGuid === "iMessage;-;+14155550889" &&
+            pendingDeliveryFailuresRemaining > 0
+          ) {
+            pendingDeliveryFailuresRemaining -= 1;
+            return Response.json(
+              {
+                error:
+                  "<script>password=secret /private/BlueBubbles.swift:42</script>",
+              },
+              { status: 500 },
+            );
+          }
           return Response.json({ status: 200, data: { guid: "outbound-1" } });
         }
         return Response.json({ error: "not found" }, { status: 404 });
@@ -221,6 +237,10 @@ describe("registered BlueBubbles local bridge E2E", () => {
           BLUEBUBBLES_OUTBOUND_VALIDATION_PATH: join(
             temporaryDirectory,
             "outbound-validation.json",
+          ),
+          BLUEBUBBLES_PENDING_REPLIES_PATH: join(
+            temporaryDirectory,
+            "pending-replies.json",
           ),
           ELIZA_CLOUD_BLUEBUBBLES_URL: `http://127.0.0.1:${cloud.port}/api/webhooks/bluebubbles/${bridgeId}`,
           BLUEBUBBLES_AUTO_START: "false",
@@ -517,6 +537,80 @@ describe("registered BlueBubbles local bridge E2E", () => {
       chatGuid: "iMessage;-;+14155550888",
       message: "verified agent response",
     });
+
+    const queued = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "new-message",
+        data: {
+          guid: "inbound-pending-delivery",
+          text: "queue this reply",
+          isFromMe: false,
+          handle: { address: "+14155550889", service: "iMessage" },
+          chats: [
+            {
+              guid: "iMessage;-;+14155550889",
+              chatIdentifier: "+14155550889",
+            },
+          ],
+        },
+      }),
+    });
+    expect(queued.status).toBe(200);
+    await expect(queued.json()).resolves.toMatchObject({
+      success: true,
+      replied: false,
+      replyQueued: true,
+      sendError: "BlueBubbles reply delivery failed",
+    });
+
+    const pendingBeforeRetry = await fetch(`${relayUrl}/pending-replies`);
+    const pendingBeforeRetryBody = await pendingBeforeRetry.json();
+    expect(pendingBeforeRetryBody).toMatchObject({
+      count: 1,
+      replies: [
+        {
+          sourceMessageId: "inbound-pending-delivery",
+          attempts: 0,
+          lastError: "BlueBubbles reply delivery failed",
+        },
+      ],
+    });
+    expect(JSON.stringify(pendingBeforeRetryBody)).not.toContain(
+      "BlueBubbles.swift",
+    );
+
+    const retryFailedDelivery = await fetch(
+      `${relayUrl}/pending-replies/retry`,
+      { method: "POST" },
+    );
+    const retryFailedBody = await retryFailedDelivery.json();
+    expect(retryFailedBody).toMatchObject({
+      sent: [],
+      remaining: 1,
+      failed: [
+        {
+          error: "BlueBubbles reply delivery failed",
+        },
+      ],
+    });
+    expect(JSON.stringify(retryFailedBody)).not.toContain("BlueBubbles.swift");
+
+    const pendingAfterRetry = await fetch(`${relayUrl}/pending-replies`);
+    const pendingAfterRetryBody = await pendingAfterRetry.json();
+    expect(pendingAfterRetryBody).toMatchObject({
+      count: 1,
+      replies: [
+        {
+          attempts: 1,
+          lastError: "BlueBubbles reply delivery failed",
+        },
+      ],
+    });
+    expect(JSON.stringify(pendingAfterRetryBody)).not.toContain(
+      "BlueBubbles.swift",
+    );
 
     const outboundEvent = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
       method: "POST",

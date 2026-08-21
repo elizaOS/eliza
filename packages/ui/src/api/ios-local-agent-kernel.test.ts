@@ -213,13 +213,52 @@ describe("handleIosLocalAgentRequest", () => {
       }),
     );
     vi.stubGlobal("window", { localStorage });
-    const marker = "<script>secret /srv/cloud.ts:9</script>";
+    const marker =
+      "provider says not paired; <script>secret /srv/cloud.ts:9</script>";
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         const error = new Error(marker);
         error.stack = `Error: ${marker}\n    at /srv/cloud.ts:9:1`;
         throw error;
+      }),
+    );
+
+    const response = await post("/api/cloud/chat", { prompt: "hello" });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cloud chat is unavailable",
+    });
+  });
+
+  it("contains a hostile thrown proxy at the Cloud bridge boundary", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const localStorage = stubLocalStorage();
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Cloud Agent",
+        apiBase: "eliza-local-agent://ipc",
+        accessToken: "cloud-token",
+      }),
+    );
+    vi.stubGlobal("window", { localStorage });
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw hostile;
       }),
     );
 

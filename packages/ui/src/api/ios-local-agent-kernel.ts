@@ -11,6 +11,7 @@ import {
   buildMarketMovers,
   buildMarketPriceSnapshots,
   COINGECKO_MARKET_PROVIDER,
+  formatError,
   POLYMARKET_MARKET_PROVIDER,
   type ProviderStatus,
   parseCanonicalInteger,
@@ -1654,16 +1655,37 @@ function normalizedSha256(value: unknown): string | null {
     : null;
 }
 
+class PublicLocalModelDownloadError extends Error {}
+
+function publicLocalModelDownloadError(error: unknown): string | null {
+  try {
+    if (!(error instanceof PublicLocalModelDownloadError)) return null;
+    const message = Reflect.get(error, "message");
+    return typeof message === "string" && message.length <= 512
+      ? message
+      : "Model download failed";
+  } catch {
+    // error-policy:J4 hostile native failures remain a generic visible state.
+    return null;
+  }
+}
+
 function normalizeNativeHashResult(
   result: Awaited<ReturnType<NonNullable<LlamaCppModule["hashFile"]>>>,
 ): { sha256: string; sizeBytes?: number } {
   if (typeof result === "string") {
     const sha256 = normalizedSha256(result);
-    if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+    if (!sha256)
+      throw new PublicLocalModelDownloadError(
+        "Native hashFile returned an invalid SHA256",
+      );
     return { sha256 };
   }
   const sha256 = normalizedSha256(result.sha256 ?? result.hash);
-  if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+  if (!sha256)
+    throw new PublicLocalModelDownloadError(
+      "Native hashFile returned an invalid SHA256",
+    );
   const sizeBytes =
     typeof result.sizeBytes === "number"
       ? result.sizeBytes
@@ -1682,7 +1704,7 @@ async function hashNativeBundleFile(
   label: string,
 ): Promise<{ sha256: string; sizeBytes?: number }> {
   if (!llama.hashFile) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `Native Eliza-1 downloader cannot verify SHA256 for ${label}; refusing bundle install.`,
     );
   }
@@ -1697,7 +1719,7 @@ async function verifyNativeBundleFile(
 ): Promise<{ sha256: string; sizeBytes?: number }> {
   const hashed = await hashNativeBundleFile(llama, filePath, label);
   if (hashed.sha256 !== expectedSha256) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `SHA256 mismatch for ${label}: expected ${expectedSha256}, got ${hashed.sha256}`,
     );
   }
@@ -1719,17 +1741,23 @@ function parseIosBundleManifest(
   model: CatalogModel,
 ): IosBundleManifest {
   if (!input || typeof input !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: expected object");
+    throw new PublicLocalModelDownloadError(
+      "Invalid Eliza-1 manifest: expected object",
+    );
   }
   const raw = input as Partial<IosBundleManifest>;
   if (raw.id !== model.id) {
-    throw new Error(`Invalid Eliza-1 manifest id for ${model.id}`);
+    throw new PublicLocalModelDownloadError(
+      `Invalid Eliza-1 manifest id for ${model.id}`,
+    );
   }
   if (raw.defaultEligible !== true || typeof raw.version !== "string") {
-    throw new Error("Invalid Eliza-1 manifest metadata");
+    throw new PublicLocalModelDownloadError(
+      "Invalid Eliza-1 manifest metadata",
+    );
   }
   if (!raw.files || typeof raw.files !== "object") {
-    throw new Error("Invalid Eliza-1 manifest files");
+    throw new PublicLocalModelDownloadError("Invalid Eliza-1 manifest files");
   }
   for (const kind of [
     "text",
@@ -1740,18 +1768,22 @@ function parseIosBundleManifest(
     "vad",
   ] as const) {
     if (!Array.isArray(raw.files[kind])) {
-      throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
+      throw new PublicLocalModelDownloadError(
+        `Invalid Eliza-1 manifest files.${kind}`,
+      );
     }
   }
   for (const kind of ["text", "voice", "asr", "cache", "vad"] as const) {
     if (raw.files[kind].length === 0) {
-      throw new Error(
+      throw new PublicLocalModelDownloadError(
         `Invalid Eliza-1 manifest files.${kind} must be non-empty`,
       );
     }
   }
   if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
-    throw new Error(`Eliza-1 manifest missing text file ${model.ggufFile}`);
+    throw new PublicLocalModelDownloadError(
+      `Eliza-1 manifest missing text file ${model.ggufFile}`,
+    );
   }
   return raw as IosBundleManifest;
 }
@@ -2328,6 +2360,17 @@ interface CloudForwardResult {
   modelId?: string;
 }
 
+class IosCloudNotPairedError extends Error {}
+
+function isIosCloudNotPairedError(error: unknown): boolean {
+  try {
+    return error instanceof IosCloudNotPairedError;
+  } catch {
+    // error-policy:J1 hostile thrown values map to the generic bridge failure.
+    return false;
+  }
+}
+
 function cloudBridgeResultText(result: unknown): string | null {
   const record = asRecord(result);
   if (!record) return null;
@@ -2343,7 +2386,7 @@ async function sendPromptToIosCloud(
 ): Promise<CloudForwardResult> {
   const pairing = readIosCloudPairing();
   if (!pairing.paired || !pairing.agentId || !pairing.token) {
-    throw new Error("Eliza Cloud is not paired.");
+    throw new IosCloudNotPairedError("Eliza Cloud is not paired.");
   }
 
   const response = await fetch(
@@ -2404,12 +2447,11 @@ async function handleIosCloudChat(request: Request): Promise<Response> {
   try {
     return json(await sendPromptToIosCloud(prompt));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const notPaired = message.includes("not paired");
+    const notPaired = isIosCloudNotPairedError(error);
     // error-policy:J1 the WebView transport logs the provider detail locally
     // and returns a stable typed failure to the renderer.
     logger.error(
-      { error: message },
+      { error, diagnostic: formatError(error) },
       "[ios-local-agent] cloud chat request failed",
     );
     return json(
@@ -2793,7 +2835,9 @@ async function downloadNativeModelFile(
   filename: string,
 ): Promise<string> {
   if (!llama.downloadModel) {
-    throw new Error("Native Eliza-1 downloader is unavailable.");
+    throw new PublicLocalModelDownloadError(
+      "Native Eliza-1 downloader is unavailable.",
+    );
   }
   const result = await llama.downloadModel(url, filename);
   return typeof result === "string" ? result : (result.path ?? filename);
@@ -2805,7 +2849,7 @@ async function downloadIosBundle(
   job: DownloadJob,
 ): Promise<string> {
   if (!model.bundleManifestFile) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `${model.displayName} does not declare an Eliza-1 manifest.`,
     );
   }
@@ -2815,7 +2859,7 @@ async function downloadIosBundle(
   );
   const manifestResponse = await fetch(manifestUrl, { redirect: "follow" });
   if (!manifestResponse.ok) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
     );
   }
@@ -2872,7 +2916,9 @@ async function downloadIosBundle(
 
   const textPath = files[model.ggufFile];
   if (!textPath) {
-    throw new Error(`Eliza-1 bundle did not install ${model.ggufFile}`);
+    throw new PublicLocalModelDownloadError(
+      `Eliza-1 bundle did not install ${model.ggufFile}`,
+    );
   }
   writeBundleRecord({
     modelId: model.id,
@@ -2913,7 +2959,9 @@ function startDownload(model: CatalogModel): DownloadJob {
       updateDownload(job, { state: "downloading" });
       const llama = await loadLlamaCpp();
       if (!llama?.downloadModel) {
-        throw new Error("Native Eliza-1 downloader is unavailable.");
+        throw new PublicLocalModelDownloadError(
+          "Native Eliza-1 downloader is unavailable.",
+        );
       }
       if (model.bundleManifestFile) {
         const textPath = await downloadIosBundle(model, llama, job);
@@ -2960,7 +3008,9 @@ function startDownload(model: CatalogModel): DownloadJob {
                     : total > received && bytesPerSec > 0
                       ? Math.round(((total - received) / bytesPerSec) * 1000)
                       : job.etaMs,
-                ...(progress.error ? { error: progress.error } : {}),
+                ...(progress.error
+                  ? { error: "Native model download reported an error" }
+                  : {}),
               });
             }
           } catch {
@@ -2991,9 +3041,11 @@ function startDownload(model: CatalogModel): DownloadJob {
         await activateModel(model.id, path).catch(() => undefined);
       }
     } catch (error) {
+      logger.error({ error }, "[ios-local-agent] model download failed");
+      const publicError = publicLocalModelDownloadError(error);
       updateDownload(job, {
         state: "failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: publicError ?? "Model download failed",
       });
     }
   })();

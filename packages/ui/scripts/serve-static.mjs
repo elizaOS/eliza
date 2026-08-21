@@ -6,7 +6,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { extname, join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(process.argv[2] || "storybook-static");
 const port = Number(process.argv[3] || 6006);
@@ -34,8 +34,16 @@ const server = createServer(async (req, res) => {
     let url = req.url.split("?")[0];
     if (url === "/") url = "/index.html";
     const p = join(root, decodeURIComponent(url));
-    if (!p.startsWith(root)) {
-      res.writeHead(403);
+    const fromRoot = relative(root, p);
+    if (
+      fromRoot === ".." ||
+      fromRoot.startsWith(`..${sep}`) ||
+      isAbsolute(fromRoot)
+    ) {
+      res.writeHead(403, {
+        "content-type": "text/plain; charset=utf-8",
+        "x-content-type-options": "nosniff",
+      });
       res.end("forbidden");
       return;
     }
@@ -58,8 +66,12 @@ const server = createServer(async (req, res) => {
     // error-policy:J1 keep filesystem/parser diagnostics local and make the
     // HTTP failure body inert even when the requested path is interpreted as HTML.
     console.error("[storybook-static] request failed", e);
-    res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-    res.end("Internal Server Error");
+    const malformedUrl = e instanceof URIError;
+    res.writeHead(malformedUrl ? 400 : 500, {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(malformedUrl ? "Bad Request" : "Internal Server Error");
   }
 });
 

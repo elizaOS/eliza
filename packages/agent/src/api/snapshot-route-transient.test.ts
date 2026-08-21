@@ -193,4 +193,25 @@ describe("POST /api/snapshot transient/terminal mapping", () => {
       },
     );
   }, 120_000);
+
+  it("contains a snapshot failure with hostile diagnostic accessors", async () => {
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    await withSnapshotServer(
+      async () => {
+        throw hostile;
+      },
+      async (baseUrl) => {
+        const res = await postSnapshot(baseUrl);
+        expect(res.status).toBe(500);
+        await expect(res.json()).resolves.toEqual({ error: "Snapshot failed" });
+      },
+    );
+  }, 120_000);
 });

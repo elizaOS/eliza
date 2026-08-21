@@ -15,7 +15,10 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { dashboardErrorResponse } from "./hitl-credential-dashboard.mjs";
+import {
+  dashboardErrorResponse,
+  HttpError,
+} from "./hitl-credential-dashboard.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 
@@ -28,6 +31,33 @@ test("credential dashboard does not serialize unexpected exception details", () 
     status: 500,
     body: { error: "Credential dashboard request failed" },
   });
+});
+
+test("credential dashboard contains hostile thrown proxies", () => {
+  const hostile = new Proxy(Object.create(null), {
+    getPrototypeOf() {
+      throw new Error("prototype secret");
+    },
+    get() {
+      throw new Error("getter secret");
+    },
+  });
+
+  assert.deepEqual(dashboardErrorResponse(hostile), {
+    status: 500,
+    body: { error: "Credential dashboard request failed" },
+  });
+});
+
+test("credential dashboard bounds and escapes typed client errors", () => {
+  const marker = `bad\n\u202e${"x".repeat(2_000)}`;
+  const response = dashboardErrorResponse(new HttpError(400, marker));
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /^bad\\u\{a\}\\u\{202e\}/);
+  assert.match(response.body.error, /…\[truncated\]$/);
+  assert.ok(response.body.error.length < 600);
+  assert.doesNotMatch(response.body.error, /[\n\u202e]/u);
 });
 
 function tempDir(prefix) {

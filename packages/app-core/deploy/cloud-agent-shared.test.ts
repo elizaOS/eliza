@@ -61,6 +61,48 @@ describe("cloud-agent database liveness", () => {
     });
   });
 
+  it("contains hostile probe values and bounds internal diagnostic state", async () => {
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    const result = await checkRuntimeDatabaseLiveness({
+      checkDatabaseLiveness: async () => {
+        throw hostile;
+      },
+    });
+
+    expect(result).toEqual({
+      status: "transient_error",
+      ok: false,
+      terminal: false,
+      message: "[uninspectable thrown value]",
+    });
+    expect(publicDatabaseLiveness(result)).toEqual({
+      status: "transient_error",
+      ok: false,
+      terminal: false,
+    });
+  });
+
+  it("escapes controls and truncates oversized private probe diagnostics", async () => {
+    const result = await checkRuntimeDatabaseLiveness({
+      checkDatabaseLiveness: async () => {
+        throw new Error(`prefix\n\u202esecret-${"x".repeat(10_000)}`);
+      },
+    });
+
+    expect(result.message).toContain("prefix\\u{a}\\u{202e}secret-");
+    expect(result.message).toContain("…[truncated]");
+    expect(result.message?.length).toBeLessThan(4_200);
+    expect(result.message).not.toContain("\n");
+    expect(result.message).not.toContain("\u202e");
+  });
+
   it("classifies a real queryable closed-PGlite error as terminal", async () => {
     await expect(
       checkRuntimeDatabaseLiveness({
