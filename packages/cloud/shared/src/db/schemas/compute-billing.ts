@@ -87,6 +87,7 @@ export type AgentBillingRunStatus =
   | "failed";
 export type AgentBillingRunItemAction =
   | "billed"
+  | "warning_pending"
   | "warning_sent"
   | "shutdown"
   | "skipped"
@@ -244,7 +245,7 @@ export const agentBillingRunItems = pgTable(
     run_idx: index("agent_billing_run_items_run_idx").on(table.run_id),
     action_check: check(
       "agent_billing_run_items_action_check",
-      sql`${table.action} IN ('billed', 'warning_sent', 'shutdown', 'skipped', 'error')`,
+      sql`${table.action} IN ('billed', 'warning_pending', 'warning_sent', 'shutdown', 'skipped', 'error')`,
     ),
     financial_evidence_check: check(
       "agent_billing_run_items_financial_evidence_check",

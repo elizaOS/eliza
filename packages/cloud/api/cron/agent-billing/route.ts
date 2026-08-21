@@ -176,66 +176,8 @@ async function processSandboxBilling(
       now.getTime() + AGENT_PRICING.GRACE_PERIOD_HOURS * 60 * 60 * 1000,
     );
 
-    // Deliver before stamping: the sandbox transition, the armed shutdown,
-    // and the durable `warning_sent` item commit atomically only after the
-    // provider accepted delivery. A crash before that commit changes nothing,
-    // so a retried invocation redelivers instead of recording a false skip.
-    const recipientEmail =
-      org.billing_email || (await getOrgUserEmail(organizationId));
-    if (recipientEmail) {
-      // Reuse the container shutdown warning email template — content is generic enough
-      let sent: boolean;
-      try {
-        sent = await emailService.sendContainerShutdownWarningEmail({
-          email: recipientEmail,
-          organizationName: org.name,
-          containerName: `Agent Agent: ${agentName}`,
-          projectName: "Eliza Cloud",
-          dailyCost: hourlyRate * 24,
-          monthlyCost: hourlyRate * 24 * 30,
-          currentBalance: liveBalance,
-          requiredCredits: amountDue,
-          minimumRecommended: hourlyRate * 24 * 7, // 1 week
-          shutdownTime: shutdownTime.toLocaleString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZoneName: "short",
-          }),
-          billingUrl: `${appUrl}/cloud/billing`,
-          dashboardUrl: `${appUrl}/cloud/agents`,
-        });
-      } catch (cause) {
-        // error-policy:J2 provider failure gains stable billing context while
-        // preserving the original rejection for the outer J1 boundary.
-        throw new ElizaError("Shutdown warning email failed", {
-          code: "AGENT_BILLING_WARNING_EMAIL_FAILED",
-          cause,
-          context: { sandboxId, organizationId },
-          severity: "ephemeral",
-        });
-      }
-      if (!sent) {
-        throw new ElizaError(
-          "Shutdown warning email was not accepted by the provider",
-          {
-            code: "AGENT_BILLING_WARNING_EMAIL_NOT_ACCEPTED",
-            context: { sandboxId, organizationId },
-            severity: "ephemeral",
-          },
-        );
-      }
-
-      logger.info(
-        `[Agent Billing] Sent shutdown warning for ${agentName} to ${recipientEmail}`,
-      );
-    }
-
-    const warningCommitted =
-      await agentBillingRepository.commitShutdownWarningForRun({
+    const warningClaim =
+      await agentBillingRepository.scheduleShutdownWarningForRun({
         ...runAuthority,
         sandboxId,
         organizationId,
@@ -243,7 +185,7 @@ async function processSandboxBilling(
         now,
         shutdownTime,
       });
-    if (!warningCommitted) {
+    if (warningClaim === "not_applicable") {
       return {
         sandboxId,
         agentName,
@@ -253,12 +195,96 @@ async function processSandboxBilling(
       };
     }
 
-    await notifyWaifuCreditWebhook(sandbox, "credits.low", {
-      eventId: `agent-billing:${sandboxId}:credits.low:${now.toISOString()}`,
-      creditsRemaining: liveBalance,
-      requiredCredits: amountDue,
-      scheduledShutdownAt: shutdownTime.toISOString(),
-    });
+    try {
+      const recipientEmail =
+        org.billing_email || (await getOrgUserEmail(organizationId));
+      if (recipientEmail) {
+        // Reuse the container shutdown warning email template — content is generic enough
+        let sent: boolean;
+        try {
+          sent = await emailService.sendContainerShutdownWarningEmail({
+            email: recipientEmail,
+            organizationName: org.name,
+            containerName: `Agent Agent: ${agentName}`,
+            projectName: "Eliza Cloud",
+            dailyCost: hourlyRate * 24,
+            monthlyCost: hourlyRate * 24 * 30,
+            currentBalance: liveBalance,
+            requiredCredits: amountDue,
+            minimumRecommended: hourlyRate * 24 * 7, // 1 week
+            shutdownTime: shutdownTime.toLocaleString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZoneName: "short",
+            }),
+            billingUrl: `${appUrl}/cloud/billing`,
+            dashboardUrl: `${appUrl}/cloud/agents`,
+          });
+        } catch (cause) {
+          // error-policy:J2 provider failure gains stable billing context while
+          // preserving the original rejection for the outer J1 boundary.
+          throw new ElizaError("Shutdown warning email failed", {
+            code: "AGENT_BILLING_WARNING_EMAIL_FAILED",
+            cause,
+            context: { sandboxId, organizationId },
+            severity: "ephemeral",
+          });
+        }
+        if (!sent) {
+          throw new ElizaError(
+            "Shutdown warning email was not accepted by the provider",
+            {
+              code: "AGENT_BILLING_WARNING_EMAIL_NOT_ACCEPTED",
+              context: { sandboxId, organizationId },
+              severity: "ephemeral",
+            },
+          );
+        }
+
+        logger.info(
+          `[Agent Billing] Sent shutdown warning for ${agentName} to ${recipientEmail}`,
+        );
+      }
+
+      await notifyWaifuCreditWebhook(sandbox, "credits.low", {
+        eventId: `agent-billing:${sandboxId}:credits.low:${now.toISOString()}`,
+        creditsRemaining: liveBalance,
+        requiredCredits: amountDue,
+        scheduledShutdownAt: shutdownTime.toISOString(),
+      });
+      const deliveryOutcome =
+        await agentBillingRepository.completeShutdownWarningForRun({
+          ...runAuthority,
+          sandboxId,
+          organizationId,
+          now,
+          shutdownTime,
+          outcome: "sent",
+        });
+      if (deliveryOutcome !== "sent") {
+        throw new ElizaError("Shutdown warning delivery commit failed", {
+          code: "AGENT_BILLING_WARNING_DELIVERY_COMMIT_FAILED",
+          context: { sandboxId, organizationId },
+          severity: "fatal",
+        });
+      }
+    } catch (cause) {
+      // error-policy:J2 preserve provider failure while durably resolving the
+      // pending delivery intent to an honest failed run item.
+      await agentBillingRepository.completeShutdownWarningForRun({
+        ...runAuthority,
+        sandboxId,
+        organizationId,
+        now: new Date(),
+        shutdownTime,
+        outcome: "error",
+      });
+      throw cause;
+    }
 
     return {
       sandboxId,
@@ -783,6 +809,11 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       recovered: claim.recovered,
       attemptCount: run.attempt_count,
     });
+    await renewRunLease(true);
+    for (const item of await agentBillingRunRepository.listItems(run.id)) {
+      if (item.action === "warning_pending") continue;
+      applyRunItem(item);
+    }
     const suspendedFailedSandboxes =
       await agentBillingRepository.suspendFailedSandboxBilling(now);
     if (suspendedFailedSandboxes > 0) {
@@ -790,10 +821,6 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
         runId: run.id,
         sandboxesSuspended: suspendedFailedSandboxes,
       });
-    }
-    await renewRunLease(true);
-    for (const item of await agentBillingRunRepository.listItems(run.id)) {
-      applyRunItem(item);
     }
     // ── 1. Running agents (always billed) ───────────────────────────
     const { runningSandboxes, stoppedWithBackups } =

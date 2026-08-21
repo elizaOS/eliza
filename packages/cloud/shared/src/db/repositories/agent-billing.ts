@@ -226,15 +226,7 @@ export class AgentBillingRepository {
       );
   }
 
-  /**
-   * Durably records a delivered shutdown warning. Called only after the
-   * provider accepted delivery: the sandbox stamp, the armed shutdown, and the
-   * `warning_sent` run item commit in one transaction under the run lease, so
-   * a worker crash before this point leaves the sandbox untouched and a retry
-   * redelivers instead of fabricating a skipped-but-armed outcome. Returns
-   * false when the sandbox is no longer eligible (already warned elsewhere).
-   */
-  async commitShutdownWarningForRun(input: {
+  async scheduleShutdownWarningForRun(input: {
     runId: string;
     leaseToken: string;
     sandboxId: string;
@@ -242,21 +234,29 @@ export class AgentBillingRepository {
     agentName: string;
     now: Date;
     shutdownTime: Date;
-  }): Promise<boolean> {
+  }): Promise<"claimed" | "pending" | "not_applicable"> {
     return dbWrite.transaction(async (tx) => {
       const authority = {
         runId: input.runId,
         leaseToken: input.leaseToken,
       };
       await assertAgentBillingRunLeaseInTransaction(tx, authority);
-      const [updated] = await tx
-        .update(agentSandboxes)
-        .set({
-          billing_status: "shutdown_pending" as AgentBillingStatus,
-          shutdown_warning_sent_at: input.now,
-          scheduled_shutdown_at: input.shutdownTime,
-          updated_at: input.now,
-        })
+      const [existingItem] = await tx
+        .select({ action: agentBillingRunItems.action })
+        .from(agentBillingRunItems)
+        .where(
+          and(
+            eq(agentBillingRunItems.run_id, input.runId),
+            eq(agentBillingRunItems.sandbox_id, input.sandboxId),
+          ),
+        )
+        .limit(1);
+      if (existingItem) {
+        return existingItem.action === "warning_pending" ? "pending" : "not_applicable";
+      }
+      const [eligible] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
         .where(
           and(
             eq(agentSandboxes.id, input.sandboxId),
@@ -266,16 +266,88 @@ export class AgentBillingRepository {
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
-        .returning({ id: agentSandboxes.id });
-      if (!updated) return false;
+        .for("update")
+        .limit(1);
+      if (!eligible) return "not_applicable";
       await recordAgentBillingRunItemInTransaction(tx, authority, {
         sandboxId: input.sandboxId,
         organizationId: input.organizationId,
         agentName: input.agentName,
-        action: "warning_sent",
-        completedAt: new Date(),
+        action: "warning_pending",
+        detailCode: "warning_delivery_pending",
+        detailMessage: "Shutdown warning delivery is pending",
+        completedAt: input.now,
       });
-      return true;
+      return "claimed";
+    });
+  }
+
+  async completeShutdownWarningForRun(input: {
+    runId: string;
+    leaseToken: string;
+    sandboxId: string;
+    organizationId: string;
+    now: Date;
+    shutdownTime: Date;
+    outcome: "sent" | "error";
+  }): Promise<"sent" | "error"> {
+    return dbWrite.transaction(async (tx) => {
+      await assertAgentBillingRunLeaseInTransaction(tx, input);
+      const [pending] = await tx
+        .select({ id: agentBillingRunItems.id, action: agentBillingRunItems.action })
+        .from(agentBillingRunItems)
+        .where(
+          and(
+            eq(agentBillingRunItems.run_id, input.runId),
+            eq(agentBillingRunItems.sandbox_id, input.sandboxId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!pending || pending.action !== "warning_pending") {
+        return pending?.action === "warning_sent" ? "sent" : "error";
+      }
+      let finalOutcome = input.outcome;
+      if (finalOutcome === "sent") {
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            billing_status: "shutdown_pending" as AgentBillingStatus,
+            shutdown_warning_sent_at: input.now,
+            scheduled_shutdown_at: input.shutdownTime,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, input.sandboxId),
+              eq(agentSandboxes.organization_id, input.organizationId),
+              inArray(agentSandboxes.billing_status, ["active", "warning"]),
+              isNull(agentSandboxes.shutdown_warning_sent_at),
+              sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ),
+          )
+          .returning({ id: agentSandboxes.id });
+        if (!updated) finalOutcome = "error";
+      }
+      await tx
+        .update(agentBillingRunItems)
+        .set(
+          finalOutcome === "sent"
+            ? {
+                action: "warning_sent",
+                detail_code: null,
+                detail_message: null,
+                completed_at: input.now,
+              }
+            : {
+                action: "error",
+                detail_code: "warning_delivery_failed",
+                detail_message: "Shutdown warning delivery failed",
+                completed_at: input.now,
+              },
+        )
+        .where(eq(agentBillingRunItems.id, pending.id));
+      return finalOutcome;
     });
   }
 

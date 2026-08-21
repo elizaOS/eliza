@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS "agent_billing_run_items" (
   "detail_message" text,
   "completed_at" timestamptz DEFAULT now() NOT NULL,
   "created_at" timestamptz DEFAULT now() NOT NULL,
-  CONSTRAINT "agent_billing_run_items_action_check" CHECK ("action" IN ('billed', 'warning_sent', 'shutdown', 'skipped', 'error')),
+  CONSTRAINT "agent_billing_run_items_action_check" CHECK ("action" IN ('billed', 'warning_pending', 'warning_sent', 'shutdown', 'skipped', 'error')),
   CONSTRAINT "agent_billing_run_items_financial_evidence_check" CHECK (("action" = 'billed' AND "transaction_id" IS NOT NULL
         AND "new_balance" IS NOT NULL AND "amount" >= 0)
       OR ("action" <> 'billed' AND "transaction_id" IS NULL

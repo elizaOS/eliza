@@ -87,7 +87,7 @@ const recordHourlyBilling = mock(defaultRecordHourlyBilling);
 const suspendFailedSandboxBilling = mock(async () => 0);
 const getOrganizationCreditBalance = mock(async () => 100);
 const warningCallOrder: string[] = [];
-const commitShutdownWarningForRun = mock(
+const scheduleShutdownWarningForRun = mock(
   async (_input: {
     runId: string;
     leaseToken: string;
@@ -96,8 +96,14 @@ const commitShutdownWarningForRun = mock(
     agentName: string;
     now: Date;
   }) => {
-    warningCallOrder.push("commit");
-    return true;
+    warningCallOrder.push("claim");
+    return "claimed" as const;
+  },
+);
+const completeShutdownWarningForRun = mock(
+  async (input: { outcome: "sent" | "error" }) => {
+    warningCallOrder.push(`complete:${input.outcome}`);
+    return input.outcome;
   },
 );
 const sendContainerShutdownWarningEmail = mock(async () => {
@@ -116,7 +122,8 @@ mock.module("@/db/repositories/agent-billing", () => ({
     suspendFailedSandboxBilling,
     getOrganizationCreditBalance,
     scheduleShutdownWarning: mock(async () => undefined),
-    commitShutdownWarningForRun,
+    scheduleShutdownWarningForRun,
+    completeShutdownWarningForRun,
     suspendSandboxForInsufficientCredits: mock(async () => undefined),
   },
 }));
@@ -309,10 +316,15 @@ beforeEach(async () => {
   getOrganizationCreditBalance.mockClear();
   getOrganizationCreditBalance.mockImplementation(async () => 100);
   warningCallOrder.length = 0;
-  commitShutdownWarningForRun.mockClear();
-  commitShutdownWarningForRun.mockImplementation(async () => {
-    warningCallOrder.push("commit");
-    return true;
+  scheduleShutdownWarningForRun.mockClear();
+  scheduleShutdownWarningForRun.mockImplementation(async () => {
+    warningCallOrder.push("claim");
+    return "claimed";
+  });
+  completeShutdownWarningForRun.mockClear();
+  completeShutdownWarningForRun.mockImplementation(async (input) => {
+    warningCallOrder.push(`complete:${input.outcome}`);
+    return input.outcome;
   });
   suspendFailedSandboxBilling.mockClear();
   suspendFailedSandboxBilling.mockImplementation(async () => 0);
@@ -459,7 +471,9 @@ describe("agent billing durable run receipts on PGlite", () => {
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(500);
-    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
+    expect(completeShutdownWarningForRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "error" }),
+    );
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",
@@ -488,7 +502,9 @@ describe("agent billing durable run receipts on PGlite", () => {
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(500);
-    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
+    expect(completeShutdownWarningForRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "error" }),
+    );
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",
@@ -501,7 +517,7 @@ describe("agent billing durable run receipts on PGlite", () => {
     expect(items[0]?.action).toBe("error");
   });
 
-  test("delivers the warning before arming the shutdown and records one warning item", async () => {
+  test("claims, delivers, and then durably completes one warning", async () => {
     recordHourlyBilling.mockImplementation(async () => ({
       status: "insufficient_credits",
     }));
@@ -510,7 +526,7 @@ describe("agent billing durable run receipts on PGlite", () => {
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(200);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
+    expect(warningCallOrder).toEqual(["claim", "email", "complete:sent"]);
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "succeeded",
@@ -526,20 +542,20 @@ describe("agent billing durable run receipts on PGlite", () => {
     });
   });
 
-  test("records an honest skip when the warning is no longer applicable at commit", async () => {
+  test("records an honest skip when the warning is no longer applicable at claim", async () => {
     recordHourlyBilling.mockImplementation(async () => ({
       status: "insufficient_credits",
     }));
     getOrganizationCreditBalance.mockImplementation(async () => 0);
-    commitShutdownWarningForRun.mockImplementation(async () => {
-      warningCallOrder.push("commit");
-      return false;
+    scheduleShutdownWarningForRun.mockImplementation(async () => {
+      warningCallOrder.push("claim");
+      return "not_applicable";
     });
 
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(200);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
+    expect(warningCallOrder).toEqual(["claim"]);
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "succeeded",
@@ -556,7 +572,7 @@ describe("agent billing durable run receipts on PGlite", () => {
     });
   });
 
-  test("a crashed pre-commit warning attempt is redelivered by the scheduled retry", async () => {
+  test("a crashed pending warning intent is delivered by the scheduled retry", async () => {
     recordHourlyBilling.mockImplementation(async () => ({
       status: "insufficient_credits",
     }));
@@ -572,8 +588,10 @@ describe("agent billing durable run receipts on PGlite", () => {
       leaseDurationMs: 5 * 60_000,
     });
     if (!crashed.leaseToken) throw new Error("Expected initial run lease");
-    // Worker death after (at most) the email attempt: no sandbox mutation and
-    // no run item exist, so the retry must redeliver, never fabricate a skip.
+    scheduleShutdownWarningForRun.mockImplementation(async () => {
+      warningCallOrder.push("claim");
+      return "pending";
+    });
     const staleUpdatedAt = new Date(Date.now() - 2 * 60_000);
     await dbWrite
       .update(agentBillingRuns)
@@ -587,7 +605,7 @@ describe("agent billing durable run receipts on PGlite", () => {
 
     expect(response.status).toBe(200);
     expect(sendContainerShutdownWarningEmail).toHaveBeenCalledTimes(1);
-    expect(warningCallOrder).toEqual(["email", "commit"]);
+    expect(warningCallOrder).toEqual(["claim", "email", "complete:sent"]);
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       id: crashed.run.id,

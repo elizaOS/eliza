@@ -223,8 +223,15 @@ describe("compute billing recovery", () => {
       shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
     };
 
-    await expect(agentBillingRepository.commitShutdownWarningForRun(input)).resolves.toBe(true);
-    await expect(agentBillingRepository.commitShutdownWarningForRun(input)).resolves.toBe(false);
+    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(
+      "claimed",
+    );
+    expect(await dbWrite.select().from(agentBillingRunItems)).toMatchObject([
+      { action: "warning_pending" },
+    ]);
+    await expect(
+      agentBillingRepository.completeShutdownWarningForRun({ ...input, outcome: "sent" }),
+    ).resolves.toBe("sent");
     const items = await dbWrite.select().from(agentBillingRunItems);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -245,7 +252,7 @@ describe("compute billing recovery", () => {
     });
   });
 
-  test("a crash before the warning commit leaves the retry free to redeliver", async () => {
+  test("a crash after the warning claim leaves a durable retryable intent", async () => {
     const { org, sandbox } = await seed("0.000000");
     const now = new Date("2026-08-19T04:30:00.000Z");
     const invocationKey = `manual:compute-recovery:${crypto.randomUUID()}`;
@@ -257,9 +264,23 @@ describe("compute billing recovery", () => {
       leaseDurationMs: 5 * 60_000,
     });
     if (!crashed.leaseToken) throw new Error("Expected billing run lease");
-    // Simulated worker death: the email may or may not have left, but the
-    // commit never ran, so neither the sandbox row nor any run item changed.
-    expect(await dbWrite.select().from(agentBillingRunItems)).toEqual([]);
+    const warningInput = {
+      runId: crashed.run.id,
+      leaseToken: crashed.leaseToken,
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      agentName: sandbox.agent_name ?? sandbox.id,
+      now,
+      shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+    };
+    await expect(agentBillingRepository.scheduleShutdownWarningForRun(warningInput)).resolves.toBe(
+      "claimed",
+    );
+    // Simulated worker death before provider delivery: the durable intent is
+    // visible, but neither the sent timestamp nor shutdown is armed.
+    expect(await dbWrite.select().from(agentBillingRunItems)).toMatchObject([
+      { action: "warning_pending" },
+    ]);
     const [beforeRetry] = await dbWrite
       .select({
         billingStatus: agentSandboxes.billing_status,
@@ -295,17 +316,20 @@ describe("compute billing recovery", () => {
       run: { id: crashed.run.id, attempt_count: 2 },
     });
 
+    const recoveredInput = {
+      ...warningInput,
+      runId: retry.run.id,
+      leaseToken: retry.leaseToken,
+    };
     await expect(
-      agentBillingRepository.commitShutdownWarningForRun({
-        runId: retry.run.id,
-        leaseToken: retry.leaseToken,
-        sandboxId: sandbox.id,
-        organizationId: org.id,
-        agentName: sandbox.agent_name ?? sandbox.id,
-        now,
-        shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+      agentBillingRepository.scheduleShutdownWarningForRun(recoveredInput),
+    ).resolves.toBe("pending");
+    await expect(
+      agentBillingRepository.completeShutdownWarningForRun({
+        ...recoveredInput,
+        outcome: "sent",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("sent");
     const items = await dbWrite.select().from(agentBillingRunItems);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
