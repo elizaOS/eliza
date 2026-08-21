@@ -12,12 +12,13 @@ import {
   MAX_CONFIG_PATCH_DEPTH,
 } from "./config-routes";
 
+/** N container wrappers around a scalar leaf — matches the canonical walker. */
 function nest(depth: number): Record<string, unknown> {
-  let node: Record<string, unknown> = { leaf: true };
+  let node: unknown = "leaf";
   for (let i = 0; i < depth; i++) {
     node = { n: node };
   }
-  return node;
+  return node as Record<string, unknown>;
 }
 
 function makeCtx(
