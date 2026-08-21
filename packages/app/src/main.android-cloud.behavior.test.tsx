@@ -12,6 +12,7 @@ const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
   voiceListeners: new Map<string, (value: never) => void>(),
   voiceListenerRemovals: new Map<string, ReturnType<typeof vi.fn>>(),
+  voiceListenerGate: null as Promise<void> | null,
   voiceStart: vi.fn(async () => ({ started: true })),
   voiceStop: vi.fn(async () => undefined),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
@@ -48,6 +49,7 @@ vi.mock("@capacitor/core", () => ({
       : {
           addListener: vi.fn(
             async (eventName: string, listener: (value: never) => void) => {
+              await playEntry.voiceListenerGate;
               playEntry.voiceListeners.set(eventName, listener);
               const remove = vi.fn(async () => {
                 if (playEntry.voiceListeners.get(eventName) === listener) {
@@ -109,6 +111,17 @@ vi.mock("@capacitor/status-bar", () => ({
 
 let entry: typeof import("./main.android-cloud");
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 beforeAll(async () => {
   document.body.innerHTML = '<div id="root"></div>';
   entry = await import("./main.android-cloud");
@@ -124,6 +137,7 @@ beforeEach(async () => {
   playEntry.appListeners.clear();
   playEntry.voiceListeners.clear();
   playEntry.voiceListenerRemovals.clear();
+  playEntry.voiceListenerGate = null;
   playEntry.voiceStart.mockResolvedValue({ started: true });
   playEntry.voiceStop.mockResolvedValue(undefined);
   window.localStorage.clear();
@@ -169,6 +183,50 @@ describe("Android Cloud renderer behavior", () => {
       playEntry.voiceListenerRemovals.get("transcript"),
     ).toHaveBeenCalledOnce();
     expect(playEntry.voiceListenerRemovals.get("error")).toHaveBeenCalledOnce();
+  });
+
+  it("cancels startup and removes listeners when stopped during registration", async () => {
+    const listenerGate = deferred<void>();
+    playEntry.voiceListenerGate = listenerGate.promise;
+
+    const startup = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(playEntry.voiceStop).toHaveBeenCalledOnce());
+    const stopped = entry.androidCloudVoice.stop();
+    listenerGate.resolve(undefined);
+
+    await expect(startup).rejects.toMatchObject({ name: "AbortError" });
+    await expect(stopped).resolves.toBeUndefined();
+    expect(playEntry.voiceStart).not.toHaveBeenCalled();
+    expect(playEntry.voiceListeners.size).toBe(0);
+  });
+
+  it("serializes overlapping starts without leaking the first listener pair", async () => {
+    const firstNativeStart = deferred<{ started: boolean }>();
+    playEntry.voiceStart
+      .mockReturnValueOnce(firstNativeStart.promise)
+      .mockResolvedValueOnce({ started: true });
+
+    const first = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(playEntry.voiceStart).toHaveBeenCalledOnce());
+    const firstRemovals = [
+      playEntry.voiceListenerRemovals.get("transcript"),
+      playEntry.voiceListenerRemovals.get("error"),
+    ];
+    const second = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    firstNativeStart.resolve({ started: true });
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await expect(second).resolves.toBeUndefined();
+    expect(playEntry.voiceStart).toHaveBeenCalledTimes(2);
+    expect(firstRemovals[0]).toHaveBeenCalledOnce();
+    expect(firstRemovals[1]).toHaveBeenCalledOnce();
+    expect([...playEntry.voiceListeners.keys()].sort()).toEqual([
+      "error",
+      "transcript",
+    ]);
+
+    await entry.androidCloudVoice.stop();
+    expect(playEntry.voiceListeners.size).toBe(0);
   });
 
   it("migrates a legacy bearer into the secure plugin before deleting plaintext", async () => {

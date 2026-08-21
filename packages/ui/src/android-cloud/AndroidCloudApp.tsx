@@ -30,6 +30,7 @@ export interface AndroidCloudVoiceAdapter {
   requestAndStart(
     onFinalTranscript: (text: string) => void,
     onError: (error: Error) => void,
+    signal?: AbortSignal,
   ): Promise<void>;
   stop(): Promise<void>;
   speak(text: string): Promise<void>;
@@ -78,47 +79,62 @@ export function AndroidCloudApp({
   const abortRef = useRef<AbortController | null>(null);
   const loginAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
+  const voiceAbortRef = useRef<AbortController | null>(null);
+  const voiceAttemptRef = useRef(0);
 
-  const restore = useCallback(async () => {
-    setError(null);
-    setPhase("loading");
-    try {
-      const restored = await client.restoreSession();
-      setSession(restored);
-      if (restored) {
-        const storedConversationId = localStorage
-          .getItem(ANDROID_CLOUD_CONVERSATION_ID_KEY)
-          ?.trim();
-        if (storedConversationId) {
-          setConversationId(storedConversationId);
-          try {
-            const restoredMessages = await client.getConversationMessages(
-              restored,
-              storedConversationId,
-            );
-            setMessages(restoredMessages.slice(-100));
-          } catch (historyError) {
-            // error-policy:J4 conversation restore failure remains visible
-            // while the authenticated shell stays usable for a new chat.
-            setError(
-              `Your previous conversation could not be restored: ${errorMessage(historyError)}`,
-            );
+  const restore = useCallback(
+    async (signal?: AbortSignal) => {
+      setError(null);
+      if (!signal) setPhase("loading");
+      try {
+        const restored = await client.restoreSession();
+        if (signal?.aborted) return;
+        let storedConversationId: string | null = null;
+        let restoredMessages: AndroidCloudMessage[] = [];
+        let historyErrorMessage: string | null = null;
+        if (restored) {
+          storedConversationId =
+            localStorage.getItem(ANDROID_CLOUD_CONVERSATION_ID_KEY)?.trim() ||
+            null;
+          if (storedConversationId) {
+            try {
+              restoredMessages = (
+                await client.getConversationMessages(
+                  restored,
+                  storedConversationId,
+                )
+              ).slice(-100);
+            } catch (historyError) {
+              if (signal?.aborted) return;
+              // error-policy:J4 conversation restore failure remains visible
+              // while the authenticated shell stays usable for a new chat.
+              historyErrorMessage = `Your previous conversation could not be restored: ${errorMessage(historyError)}`;
+            }
           }
         }
-      } else {
-        localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
-        setConversationId(null);
-        setMessages([]);
+        if (signal?.aborted) return;
+        setSession(restored);
+        if (restored) {
+          setConversationId(storedConversationId);
+          setMessages(restoredMessages);
+          if (historyErrorMessage) setError(historyErrorMessage);
+        } else {
+          localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
+          setConversationId(null);
+          setMessages([]);
+        }
+        setPhase(restored ? "ready" : "signed-out");
+      } catch (restoreError) {
+        if (signal?.aborted) return;
+        // error-policy:J4 session verification failure becomes an explicit
+        // signed-out error state with a retry affordance.
+        setSession(null);
+        setPhase("signed-out");
+        setError(errorMessage(restoreError));
       }
-      setPhase(restored ? "ready" : "signed-out");
-    } catch (restoreError) {
-      // error-policy:J4 session verification failure becomes an explicit
-      // signed-out error state with a retry affordance.
-      setSession(null);
-      setPhase("signed-out");
-      setError(errorMessage(restoreError));
-    }
-  }, [client]);
+    },
+    [client],
+  );
 
   useEffect(() => {
     void restore();
@@ -126,6 +142,8 @@ export function AndroidCloudApp({
       loginAttemptRef.current += 1;
       loginAbortRef.current?.abort();
       abortRef.current?.abort();
+      voiceAttemptRef.current += 1;
+      voiceAbortRef.current?.abort();
       void voice?.stop();
     };
   }, [restore, voice]);
@@ -147,6 +165,7 @@ export function AndroidCloudApp({
     loginAbortRef.current?.abort();
     const controller = new AbortController();
     loginAbortRef.current = controller;
+    let committedToken: string | null = null;
     setBusy(true);
     setError(null);
     try {
@@ -174,13 +193,19 @@ export function AndroidCloudApp({
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
         await client.persistLogin(result.token, controller.signal);
+        committedToken = result.token;
         if (
           controller.signal.aborted ||
           loginAttemptRef.current !== attemptNumber
         )
           return;
         await closeExternal?.();
-        await restore();
+        if (
+          controller.signal.aborted ||
+          loginAttemptRef.current !== attemptNumber
+        )
+          return;
+        await restore(controller.signal);
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");
@@ -193,6 +218,20 @@ export function AndroidCloudApp({
         setError(errorMessage(signInError));
       }
     } finally {
+      if (
+        committedToken &&
+        (controller.signal.aborted || loginAttemptRef.current !== attemptNumber)
+      ) {
+        try {
+          await client.discardLogin(committedToken);
+        } catch (rollbackError) {
+          // error-policy:J4 a secure-store rollback failure is visible instead
+          // of becoming an unhandled event-handler rejection.
+          setError(
+            `Sign-in was cancelled, but its credential could not be removed: ${errorMessage(rollbackError)}`,
+          );
+        }
+      }
       if (loginAttemptRef.current === attemptNumber) {
         loginAbortRef.current = null;
         setBusy(false);
@@ -292,18 +331,38 @@ export function AndroidCloudApp({
 
   const toggleDictation = useCallback(async () => {
     if (listening) {
-      await voice?.stop();
+      voiceAttemptRef.current += 1;
+      voiceAbortRef.current?.abort();
+      voiceAbortRef.current = null;
       setListening(false);
+      try {
+        await voice?.stop();
+      } catch (stopError) {
+        // error-policy:J4 a native stop failure remains visible at the input.
+        setError(errorMessage(stopError));
+      }
       return;
     }
     if (!voice) {
       setError("Voice dictation is not available on this device.");
       return;
     }
+    const attemptNumber = voiceAttemptRef.current + 1;
+    voiceAttemptRef.current = attemptNumber;
+    voiceAbortRef.current?.abort();
+    const controller = new AbortController();
+    voiceAbortRef.current = controller;
+    setError(null);
+    setListening(true);
+    let nativeAttemptFinished = false;
     try {
-      let nativeAttemptFinished = false;
       await voice.requestAndStart(
         (value) => {
+          if (
+            controller.signal.aborted ||
+            voiceAttemptRef.current !== attemptNumber
+          )
+            return;
           nativeAttemptFinished = true;
           const transcript = value.trim();
           if (transcript) {
@@ -314,19 +373,31 @@ export function AndroidCloudApp({
           setListening(false);
         },
         (nativeError) => {
+          if (
+            controller.signal.aborted ||
+            voiceAttemptRef.current !== attemptNumber
+          )
+            return;
           nativeAttemptFinished = true;
           setListening(false);
           setError(errorMessage(nativeError));
         },
+        controller.signal,
       );
-      if (!nativeAttemptFinished) {
-        setError(null);
-        setListening(true);
-      }
     } catch (dictationError) {
       // error-policy:J4 denied or failed dictation is visible at the input.
-      setListening(false);
-      setError(errorMessage(dictationError));
+      if (
+        !nativeAttemptFinished &&
+        !controller.signal.aborted &&
+        voiceAttemptRef.current === attemptNumber
+      ) {
+        setListening(false);
+        setError(errorMessage(dictationError));
+      }
+    } finally {
+      if (voiceAttemptRef.current === attemptNumber) {
+        voiceAbortRef.current = null;
+      }
     }
   }, [listening, voice]);
 

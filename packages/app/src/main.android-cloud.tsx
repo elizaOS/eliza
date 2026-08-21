@@ -279,6 +279,8 @@ interface ActivePlayVoiceListeners {
 }
 
 let activeVoiceListeners: ActivePlayVoiceListeners | null = null;
+let voiceLifecycleGeneration = 0;
+let voiceLifecycleMutation: Promise<void> = Promise.resolve();
 
 interface PlayVoicePlugin {
   requestPermission(): Promise<{ granted: boolean }>;
@@ -323,92 +325,139 @@ function playVoiceError(code: number): Error {
   return new Error(message);
 }
 
+function enqueueVoiceLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const mutation = voiceLifecycleMutation.then(operation, operation);
+  // error-policy:J5 callers observe the returned mutation; this tail only
+  // keeps later lifecycle operations ordered after a rejected predecessor.
+  voiceLifecycleMutation = mutation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return mutation;
+}
+
+async function removeVoiceListeners(
+  listeners: ActivePlayVoiceListeners,
+): Promise<void> {
+  await Promise.all([listeners.transcript.remove(), listeners.error.remove()]);
+}
+
+async function stopActiveVoice(): Promise<void> {
+  const listeners = activeVoiceListeners;
+  activeVoiceListeners = null;
+  try {
+    await PlayVoice.stopDictation();
+  } finally {
+    if (listeners) await removeVoiceListeners(listeners);
+  }
+}
+
+function throwIfVoiceAttemptCancelled(
+  generation: number,
+  signal?: AbortSignal,
+): void {
+  if (generation !== voiceLifecycleGeneration || signal?.aborted) {
+    throw new DOMException("Voice dictation was cancelled.", "AbortError");
+  }
+}
+
 export const androidCloudVoice: AndroidCloudVoiceAdapter = {
-  async requestAndStart(onFinalTranscript, onError) {
-    await androidCloudVoice.stop();
-    const permissions = await PlayVoice.requestPermission();
-    if (!permissions.granted) {
-      throw new Error("Microphone permission is required for voice dictation.");
-    }
-    let listeners: ActivePlayVoiceListeners | null = null;
-    const listenerResults = await Promise.allSettled([
-      PlayVoice.addListener("transcript", (event) => {
-        if (activeVoiceListeners !== listeners || !event.isFinal) return;
-        const transcript = event.text.trim();
-        if (transcript) onFinalTranscript(transcript);
-        void androidCloudVoice
-          .stop()
-          // error-policy:J6 listener teardown is best effort after a terminal event.
-          .catch((error) => logOptionalPluginFailure("PlayVoice", error));
-      }),
-      PlayVoice.addListener("error", (event) => {
-        if (activeVoiceListeners !== listeners) return;
-        onError(playVoiceError(event.code));
-        void androidCloudVoice
-          .stop()
-          // error-policy:J6 listener teardown is best effort after a terminal event.
-          .catch((error) => logOptionalPluginFailure("PlayVoice", error));
-      }),
-    ]);
-    const rejected = listenerResults.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (rejected) {
-      await Promise.all(
-        listenerResults.flatMap((result) =>
-          result.status === "fulfilled" ? [result.value.remove()] : [],
-        ),
-      );
-      throw new Error("Voice dictation listeners could not be registered.", {
-        cause: rejected.reason,
-      });
-    }
-    const [transcriptResult, errorResult] = listenerResults;
-    if (
-      transcriptResult.status !== "fulfilled" ||
-      errorResult.status !== "fulfilled"
-    ) {
-      throw new Error("Voice dictation listeners could not be registered.");
-    }
-    listeners = {
-      transcript: transcriptResult.value,
-      error: errorResult.value,
-    };
-    activeVoiceListeners = listeners;
-    const [startResult] = await Promise.allSettled([
-      PlayVoice.startDictation({
-        language: navigator.language || "en-US",
-      }),
-    ]);
-    if (startResult.status === "rejected" || !startResult.value.started) {
-      if (activeVoiceListeners === listeners) activeVoiceListeners = null;
-      await Promise.all([
-        listeners.transcript.remove(),
-        listeners.error.remove(),
+  requestAndStart(onFinalTranscript, onError, signal) {
+    const generation = voiceLifecycleGeneration + 1;
+    voiceLifecycleGeneration = generation;
+    return enqueueVoiceLifecycle(async () => {
+      await stopActiveVoice();
+      throwIfVoiceAttemptCancelled(generation, signal);
+      const permissions = await PlayVoice.requestPermission();
+      throwIfVoiceAttemptCancelled(generation, signal);
+      if (!permissions.granted) {
+        throw new Error(
+          "Microphone permission is required for voice dictation.",
+        );
+      }
+      let listeners: ActivePlayVoiceListeners | null = null;
+      const listenerResults = await Promise.allSettled([
+        PlayVoice.addListener("transcript", (event) => {
+          if (activeVoiceListeners !== listeners || !event.isFinal) return;
+          const transcript = event.text.trim();
+          if (transcript) onFinalTranscript(transcript);
+          void androidCloudVoice
+            .stop()
+            // error-policy:J6 listener teardown is best effort after a terminal event.
+            .catch((error) => logOptionalPluginFailure("PlayVoice", error));
+        }),
+        PlayVoice.addListener("error", (event) => {
+          if (activeVoiceListeners !== listeners) return;
+          onError(playVoiceError(event.code));
+          void androidCloudVoice
+            .stop()
+            // error-policy:J6 listener teardown is best effort after a terminal event.
+            .catch((error) => logOptionalPluginFailure("PlayVoice", error));
+        }),
       ]);
-      if (startResult.status === "rejected") {
-        throw new Error("Voice dictation could not start.", {
-          cause: startResult.reason,
+      const fulfilledListeners = listenerResults.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      const rejected = listenerResults.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (rejected) {
+        await Promise.all(
+          fulfilledListeners.map((listener) => listener.remove()),
+        );
+        throw new Error("Voice dictation listeners could not be registered.", {
+          cause: rejected.reason,
         });
       }
-      throw new Error(
-        startResult.value.error || "Voice dictation could not start.",
-      );
-    }
-  },
-  async stop() {
-    const listeners = activeVoiceListeners;
-    activeVoiceListeners = null;
-    try {
-      await PlayVoice.stopDictation();
-    } finally {
-      if (listeners) {
-        await Promise.all([
-          listeners.transcript.remove(),
-          listeners.error.remove(),
-        ]);
+      try {
+        throwIfVoiceAttemptCancelled(generation, signal);
+      } catch (error) {
+        await Promise.all(
+          fulfilledListeners.map((listener) => listener.remove()),
+        );
+        throw error;
       }
-    }
+      const [transcriptResult, errorResult] = listenerResults;
+      if (
+        transcriptResult.status !== "fulfilled" ||
+        errorResult.status !== "fulfilled"
+      ) {
+        throw new Error("Voice dictation listeners could not be registered.");
+      }
+      listeners = {
+        transcript: transcriptResult.value,
+        error: errorResult.value,
+      };
+      activeVoiceListeners = listeners;
+      const [startResult] = await Promise.allSettled([
+        PlayVoice.startDictation({
+          language: navigator.language || "en-US",
+        }),
+      ]);
+      if (startResult.status === "rejected" || !startResult.value.started) {
+        if (activeVoiceListeners === listeners) activeVoiceListeners = null;
+        await removeVoiceListeners(listeners);
+        if (startResult.status === "rejected") {
+          throw new Error("Voice dictation could not start.", {
+            cause: startResult.reason,
+          });
+        }
+        throw new Error(
+          startResult.value.error || "Voice dictation could not start.",
+        );
+      }
+      try {
+        throwIfVoiceAttemptCancelled(generation, signal);
+      } catch (error) {
+        await stopActiveVoice();
+        throw error;
+      }
+    });
+  },
+  stop() {
+    voiceLifecycleGeneration += 1;
+    return enqueueVoiceLifecycle(stopActiveVoice);
   },
   async speak(text) {
     await PlayVoice.speak({ text, language: navigator.language || "en-US" });

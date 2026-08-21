@@ -162,6 +162,19 @@ export class AndroidCloudClient {
   private readonly credentialStore: AndroidCloudCredentialStore;
   private loginCredentialMutation: Promise<void> = Promise.resolve();
 
+  private enqueueLoginCredentialMutation(
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const mutation = this.loginCredentialMutation.then(operation, operation);
+    // error-policy:J5 the caller awaits `mutation`; this tail only keeps the
+    // next credential mutation from inheriting the observed rejection.
+    this.loginCredentialMutation = mutation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return mutation;
+  }
+
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -313,14 +326,18 @@ export class AndroidCloudClient {
         throw new DOMException("Sign-in was cancelled.", "AbortError");
       }
     };
-    const mutation = this.loginCredentialMutation.then(commit, commit);
-    // error-policy:J5 the caller awaits `mutation`; this tail only keeps the
-    // next credential commit from inheriting the already-observed rejection.
-    this.loginCredentialMutation = mutation.then(
-      () => undefined,
-      () => undefined,
-    );
-    await mutation;
+    await this.enqueueLoginCredentialMutation(commit);
+  }
+
+  /** Clears an abandoned login token without deleting a newer login. */
+  async discardLogin(token: string): Promise<void> {
+    const abandonedToken = token.trim();
+    if (!abandonedToken) return;
+    await this.enqueueLoginCredentialMutation(async () => {
+      if ((await this.credentialStore.read()) === abandonedToken) {
+        await this.credentialStore.clear();
+      }
+    });
   }
 
   async sendChat(

@@ -130,6 +130,26 @@ describe("AndroidCloudClient", () => {
     expect(secureToken).toBe("fresh-token");
   });
 
+  it("does not discard a newer credential when rolling back a stale login", async () => {
+    let secureToken: string | null = "fresh-token";
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const client = new AndroidCloudClient({ credentialStore });
+
+    await client.discardLogin("stale-token");
+
+    expect(credentialStore.read).toHaveBeenCalledOnce();
+    expect(credentialStore.clear).not.toHaveBeenCalled();
+    expect(secureToken).toBe("fresh-token");
+  });
+
   it("restores identity and resolves its managed runtime before chat", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(

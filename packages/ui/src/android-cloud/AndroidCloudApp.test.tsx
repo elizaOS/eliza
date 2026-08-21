@@ -108,6 +108,112 @@ describe("AndroidCloudApp", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
 
+  it("rolls back a committed login cancelled while the browser is closing", async () => {
+    const client = createClient();
+    const close = deferred<void>();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "committed-token",
+    });
+    const persistLogin = vi
+      .spyOn(client, "persistLogin")
+      .mockResolvedValue(undefined);
+    const discardLogin = vi
+      .spyOn(client, "discardLogin")
+      .mockResolvedValue(undefined);
+    const closeExternal = vi.fn(() => close.promise);
+    render(
+      <AndroidCloudApp
+        client={client}
+        closeExternal={closeExternal}
+        openExternal={vi.fn()}
+        voice={createVoice()}
+      />,
+    );
+    await screen.findByRole("button", { name: "Sign in" });
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    await vi.waitFor(() =>
+      expect(persistLogin).toHaveBeenCalledWith(
+        "committed-token",
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(closeExternal).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    await act(async () => {
+      close.resolve(undefined);
+      await close.promise;
+      await Promise.resolve();
+    });
+
+    expect(discardLogin).toHaveBeenCalledWith("committed-token");
+    expect(client.restoreSession).toHaveBeenCalledOnce();
+  });
+
+  it("turns a second dictation click into a stop while startup is pending", async () => {
+    const client = createClient();
+    const voice = createVoice();
+    const startup = deferred<void>();
+    vi.mocked(voice.requestAndStart).mockReturnValue(startup.promise);
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    expect(screen.getByRole("button", { name: "Stop dictation" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+
+    expect(voice.requestAndStart).toHaveBeenCalledOnce();
+    expect(voice.stop).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("button", { name: "Start dictation" }),
+    ).toBeTruthy();
+    await act(async () => {
+      startup.resolve(undefined);
+      await startup.promise;
+    });
+  });
+
+  it("aborts a pending native voice startup when the shell unmounts", async () => {
+    const client = createClient();
+    const voice = createVoice();
+    const startup = deferred<void>();
+    let startupSignal: AbortSignal | undefined;
+    vi.mocked(voice.requestAndStart).mockImplementation(
+      async (_onTranscript, _onError, signal) => {
+        startupSignal = signal;
+        await startup.promise;
+      },
+    );
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    const view = render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    expect(startupSignal?.aborted).toBe(false);
+    view.unmount();
+
+    expect(startupSignal?.aborted).toBe(true);
+    expect(voice.stop).toHaveBeenCalledOnce();
+    await act(async () => {
+      startup.resolve(undefined);
+      await startup.promise;
+    });
+  });
+
   it("ends dictation and surfaces an asynchronous native voice failure", async () => {
     const client = createClient();
     const voice = createVoice();
