@@ -5,6 +5,7 @@
  * format / dev-payload registry. Deterministic — no live model.
  */
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors";
 import {
 	buildInferenceFlowBreakdown,
 	buildInferenceTimingDevPayload,
@@ -521,22 +522,36 @@ describe("turn trace correlation (#16079)", () => {
 			label: "test",
 		});
 		expect(timer.traceId).toBe(upstream);
-		expect(
-			() =>
-				new InferenceTurnTimer({
-					turnId: "trace-d",
-					traceId: "not-a-trace-id",
-					label: "test",
-				}),
-		).toThrow(/32 lowercase hex/);
-		expect(
-			() =>
-				new InferenceTurnTimer({
-					turnId: "trace-e",
-					traceId: "A".repeat(32),
-					label: "test",
-				}),
-		).toThrow(/32 lowercase hex/);
+
+		// Rejection is a structured domain failure, not a bare Error: callers
+		// classify on the code, and the raw caller-supplied id must never be
+		// echoed back into the error context.
+		for (const [turnId, bad] of [
+			["trace-bad-shape", "not-a-trace-id"],
+			["trace-bad-case", "A".repeat(32)],
+			["trace-too-long", `${upstream}0`],
+			["trace-too-short", upstream.slice(0, 31)],
+			["trace-empty", ""],
+		] as const) {
+			let thrown: unknown;
+			try {
+				new InferenceTurnTimer({ turnId, traceId: bad, label: "test" });
+			} catch (error) {
+				thrown = error;
+			}
+			expect(thrown).toBeInstanceOf(ElizaError);
+			const elizaError = thrown as ElizaError;
+			expect(elizaError.code).toBe("INFERENCE_TRACE_ID_INVALID");
+			expect(elizaError.severity).toBe("fatal");
+			expect(elizaError.context).toEqual({
+				turnId,
+				traceIdLength: bad.length,
+			});
+			if (bad !== "") {
+				expect(JSON.stringify(elizaError.context)).not.toContain(bad);
+				expect(elizaError.message).not.toContain(bad);
+			}
+		}
 	});
 
 	it("carries the trace id into the summary and formatted line", () => {

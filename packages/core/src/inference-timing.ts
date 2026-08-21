@@ -23,6 +23,7 @@
  * Logger only, `[InferenceTiming]` prefix (AGENTS.md §9).
  */
 
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 
 // ---------------------------------------------------------------------------
@@ -365,8 +366,18 @@ export class InferenceTurnTimer {
 			args.traceId !== undefined &&
 			!INFERENCE_TRACE_ID_PATTERN.test(args.traceId)
 		) {
-			throw new Error(
-				`InferenceTurnTimer: traceId must be 32 lowercase hex characters, got ${args.traceId.length} chars`,
+			throw new ElizaError(
+				"InferenceTurnTimer: traceId must be 32 lowercase hex characters",
+				{
+					code: "INFERENCE_TRACE_ID_INVALID",
+					severity: "fatal",
+					// The id itself is caller-propagated and may be attacker-influenced,
+					// so only its shape is recorded, never the value.
+					context: {
+						turnId: args.turnId,
+						traceIdLength: args.traceId.length,
+					},
+				},
 			);
 		}
 		this.traceId = args.traceId ?? mintInferenceTraceId();
