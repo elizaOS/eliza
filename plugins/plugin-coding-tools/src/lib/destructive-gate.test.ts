@@ -131,6 +131,14 @@ describe("classifyDestructiveCommand — fires", () => {
       "mixed nested substitutions",
       'printf "%s" "$(printf \'%s\' "$(rm -rf ./nested)")"',
     ],
+    [
+      "substitution after an apostrophe inside double quotes",
+      'printf "%s" "prefix \' $(rm -rf ./nested)"',
+    ],
+    [
+      "substitution after a commented closing parenthesis",
+      'printf "%s" "$(printf safe # )\nrm -rf ./nested\n)"',
+    ],
   ])("recursive delete inside %s", (_name, command) => {
     expect(classifyDestructiveCommand(command)).toMatchObject({
       destructive: true,
@@ -201,6 +209,22 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["single-quoted backticks", "printf '%s' '`rm -rf ./data`'"],
     ["escaped backticks", "printf '%s' \\`rm -rf ./data\\`"],
     ["benign nested substitution", "printf '%s' \"$(printf safe)\""],
+    [
+      "apostrophe before a benign double-quoted substitution",
+      'printf "%s" "prefix \' $(printf safe)"',
+    ],
+    [
+      "closing parenthesis quoted inside a substitution",
+      "printf \"%s\" \"$(printf '%s' '# )')\"",
+    ],
+    [
+      "destructive-looking text inside a substitution comment",
+      'printf "%s" "$(printf safe # rm -rf ./data )\n)"',
+    ],
+    [
+      "escaped comment marker before the substitution delimiter",
+      'printf "%s" "$(printf \\# )"',
+    ],
   ])("%s remains literal or benign", (_name, command) => {
     expect(classifyDestructiveCommand(command).destructive).toBe(false);
   });

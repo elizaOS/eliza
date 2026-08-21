@@ -340,7 +340,7 @@ function nestedCommands(
       cursor += 1;
       continue;
     }
-    if (shellQuotesAreSyntax && ch === "'") {
+    if (shellQuotesAreSyntax && quote === null && ch === "'") {
       quote = "'";
       continue;
     }
@@ -416,7 +416,7 @@ function nestedCommands(
         body += nested;
         continue;
       }
-      if (nested === "'") {
+      if (nestedQuote === null && nested === "'") {
         nestedQuote = "'";
         body += nested;
         continue;
@@ -424,6 +424,19 @@ function nestedCommands(
       if (nested === '"') {
         nestedQuote = nestedQuote === '"' ? null : '"';
         body += nested;
+        continue;
+      }
+      if (
+        nestedQuote === null &&
+        nested === "#" &&
+        (end === cursor + 2 || /[\s;|&()]/.test(source[end - 1] as string))
+      ) {
+        while (end < source.length && !/[\r\n]/.test(source[end] as string)) {
+          body += source[end] as string;
+          end += 1;
+        }
+        if (end >= source.length) break;
+        body += source[end] as string;
         continue;
       }
       if (nestedQuote === null && nested === "(") parenDepth += 1;

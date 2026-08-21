@@ -3260,15 +3260,25 @@ describe("destructive-bulk confirm gate", () => {
   );
 
   it.runIf(process.platform !== "win32")(
-    "blocks recursive deletes inside command, backtick, and unquoted-heredoc expansions",
+    "blocks recursive deletes across nested executable expansion shapes",
     async () => {
       const commandShapes = [
         (command: string) => `printf '%s' "$(${command})"`,
         (command: string) => `printf '%s' \`${command}\``,
         (command: string) => `cat <<EOF\n$(${command})\nEOF`,
+        (command: string) => `printf '%s' "prefix ' $(${command})"`,
+        (command: string) => `printf '%s' "$(printf safe # )\n${command}\n)"`,
       ];
 
       for (const shape of commandShapes) {
+        const syntaxProbe = await execFileAsync("/bin/bash", [
+          "--noprofile",
+          "--norc",
+          "-c",
+          shape("printf nested-expansion-boundary"),
+        ]);
+        expect(syntaxProbe.stdout).toContain("nested-expansion-boundary");
+
         const { command, target } = await createRecursiveDeleteCommand();
         const { runtime } = await makeRuntime();
         try {
@@ -3308,11 +3318,21 @@ describe("destructive-bulk confirm gate", () => {
         undefined,
         { command: "cat <<'EOF'\n$(rm -rf ./data)\nEOF" },
       );
+      const commentedLiteral = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the benign generated value"),
+        undefined,
+        {
+          command: `printf '%s' "$(printf safe # rm -rf ./data )\n)"`,
+        },
+      );
 
       expect(literal.success).toBe(true);
       expect(literal.text).toContain("$(rm -rf ./data)");
       expect(quotedHeredoc.success).toBe(true);
       expect(quotedHeredoc.text).toContain("$(rm -rf ./data)");
+      expect(commentedLiteral.success).toBe(true);
+      expect(commentedLiteral.text).toContain("safe");
     },
   );
 
