@@ -25,6 +25,12 @@ import {
 	validateMessageAction,
 } from "./_shared.ts";
 
+export function formatSendAtIso(sendAtMs: number): string {
+	if (!Number.isFinite(sendAtMs)) return String(sendAtMs);
+	const date = new Date(sendAtMs);
+	return Number.isNaN(date.getTime()) ? String(sendAtMs) : date.toISOString();
+}
+
 export const scheduleDraftSendAction: Action = {
 	name: "MESSAGE",
 	contexts: ["messaging", "email", "calendar", "automation"],
@@ -105,7 +111,7 @@ export const scheduleDraftSendAction: Action = {
 			parsed.sendAtMs,
 		);
 
-		const text = `Scheduled draft ${parsed.draftId} for ${new Date(parsed.sendAtMs).toISOString()}.`;
+		const text = `Scheduled draft ${parsed.draftId} for ${formatSendAtIso(parsed.sendAtMs)}.`;
 		const commit = updated.scheduleCommit;
 		if (!commit) {
 			throw new ElizaError(
