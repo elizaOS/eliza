@@ -1707,6 +1707,8 @@ export class SubAgentRouter extends Service {
           !/https?:\/\//.test(trimmed)
         ) {
           deliverable = trimmed;
+        } else if (trimmed) {
+          deliverable = lastProofBlockOutput(trimmed);
         }
       }
     }
@@ -3981,6 +3983,32 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
  *  verbatim. */
 const OUTPUT_ASK_RE =
   /\b(?:show|print|display|give|tell|share)\b[\s\S]{0,40}\b(?:output|result|results)\b|\bwhat(?:'s| is) the (?:output|result)\b|\b(?:run|execute|rerun|re-run)\b[\s\S]{0,40}\b(?:it|again|once\s+more|one\s+more\s+time)\b/i;
+
+/** The verify lap tells the child to paste exact proofs, so its final
+ *  response is a long criteria dump whose LAST fenced block is typically
+ *  `$ <run command>` followed by the captured stdout — the very output the
+ *  user asked for. Pull the output lines (not the command) of the last such
+ *  block when they are chat-short; the narration otherwise re-summarized the
+ *  run into "here is the output" with no output (live 2026-08-21). */
+export function lastProofBlockOutput(response: string): string | undefined {
+  const blocks = response.match(/```(?:bash|sh|shell)?\n([\s\S]*?)```/g);
+  if (!blocks?.length) return undefined;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const inner = blocks[i]
+      .replace(/^```(?:bash|sh|shell)?\n/, "")
+      .replace(/```$/, "");
+    const lines = inner.split("\n");
+    if (!lines.some((line) => line.startsWith("$ "))) continue;
+    const output = lines
+      .filter((line) => !line.startsWith("$ "))
+      .join("\n")
+      .trim();
+    if (!output || output.includes("...")) continue;
+    if (Buffer.byteLength(output, "utf8") > 400) continue;
+    return output;
+  }
+  return undefined;
+}
 
 export function extractAskedOutputDeliverable(
   data: unknown,

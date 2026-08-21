@@ -59,3 +59,37 @@ describe("extractAskedOutputDeliverable", () => {
     ).toBeUndefined();
   });
 });
+
+import { lastProofBlockOutput } from "./sub-agent-router.js";
+
+describe("lastProofBlockOutput", () => {
+  it("pulls the stdout of the last $-command fence", () => {
+    const resp = [
+      "- [x] the script exists — proof:",
+      "```bash",
+      "$ ls /w",
+      "space_facts.py",
+      "```",
+      "```bash",
+      "$ python3 /w/space_facts.py",
+      "The sun makes up 99.86% of the mass in our solar system.",
+      "```",
+    ].join("\n");
+    expect(lastProofBlockOutput(resp)).toBe(
+      "The sun makes up 99.86% of the mass in our solar system.",
+    );
+  });
+
+  it("skips truncated blocks and oversized outputs", () => {
+    expect(
+      lastProofBlockOutput("```bash\n$ ls\n...\n```"),
+    ).toBeUndefined();
+    expect(
+      lastProofBlockOutput("```bash\n$ run\n" + "x".repeat(500) + "\n```"),
+    ).toBeUndefined();
+  });
+
+  it("ignores fences without command lines", () => {
+    expect(lastProofBlockOutput("```\njust code\n```")).toBeUndefined();
+  });
+});
