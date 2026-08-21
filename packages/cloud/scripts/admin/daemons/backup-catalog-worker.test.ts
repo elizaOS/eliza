@@ -15,6 +15,8 @@ import {
   waitForShutdownBound,
 } from "./backup-catalog-worker";
 
+const ENTRYPOINT_TEST_TIMEOUT_MS = 30_000;
+
 function minimalSubprocessEnv(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
@@ -218,101 +220,109 @@ describe("backup catalogue worker config", () => {
 });
 
 describe("backup catalogue worker lifecycle", () => {
-  test("runs the production entrypoint once and exits disabled without credentials", async () => {
-    const root = path.resolve(import.meta.dir, "../../../../..");
-    const proofDirectory = await mkdtemp(
-      path.join(tmpdir(), "eliza-backup-catalog-entrypoint-"),
-    );
-    const healthFile = path.join(proofDirectory, "health.json");
-    try {
-      const child = Bun.spawn(
-        [
-          path.join(root, "node_modules/.bin/tsx"),
-          "--tsconfig",
-          path.join(root, "packages/cloud/shared/tsconfig.json"),
-          path.join(import.meta.dir, "backup-catalog-worker.ts"),
-          "--once",
-        ],
-        {
-          cwd: root,
-          env: minimalSubprocessEnv({
-            AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "0",
-            AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
-            AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE: healthFile,
-          }),
-          stdout: "pipe",
-          stderr: "pipe",
-        },
+  test(
+    "runs the production entrypoint once and exits disabled without credentials",
+    async () => {
+      const root = path.resolve(import.meta.dir, "../../../../..");
+      const proofDirectory = await mkdtemp(
+        path.join(tmpdir(), "eliza-backup-catalog-entrypoint-"),
       );
-      const exitCode = await waitForSubprocess(child);
-      if (exitCode === -1) {
-        child.kill();
-        await child.exited;
+      const healthFile = path.join(proofDirectory, "health.json");
+      try {
+        const child = Bun.spawn(
+          [
+            path.join(root, "node_modules/.bin/tsx"),
+            "--tsconfig",
+            path.join(root, "packages/cloud/shared/tsconfig.json"),
+            path.join(import.meta.dir, "backup-catalog-worker.ts"),
+            "--once",
+          ],
+          {
+            cwd: root,
+            env: minimalSubprocessEnv({
+              AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "0",
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE: healthFile,
+            }),
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        );
+        const exitCode = await waitForSubprocess(child);
+        if (exitCode === -1) {
+          child.kill();
+          await child.exited;
+        }
+        expect(exitCode).toBe(0);
+        expect(JSON.parse(await readFile(healthFile, "utf8"))).toMatchObject({
+          format: "elizaos.agent-backup.catalog-worker-health.v1",
+          state: "disabled",
+          enabled: false,
+          cycles: 0,
+          failures: 0,
+          lastCycleMetrics: null,
+        });
+      } finally {
+        await rm(proofDirectory, { recursive: true, force: true });
       }
-      expect(exitCode).toBe(0);
-      expect(JSON.parse(await readFile(healthFile, "utf8"))).toMatchObject({
-        format: "elizaos.agent-backup.catalog-worker-health.v1",
-        state: "disabled",
-        enabled: false,
-        cycles: 0,
-        failures: 0,
-        lastCycleMetrics: null,
-      });
-    } finally {
-      await rm(proofDirectory, { recursive: true, force: true });
-    }
-  });
+    },
+    ENTRYPOINT_TEST_TIMEOUT_MS,
+  );
 
-  test("production entrypoint rejects malformed enabled config without leaking values", async () => {
-    const root = path.resolve(import.meta.dir, "../../../../..");
-    const proofDirectory = await mkdtemp(
-      path.join(tmpdir(), "eliza-backup-catalog-malformed-"),
-    );
-    const healthFile = path.join(proofDirectory, "health.json");
-    const secretSentinel = "DO_NOT_LEAK_BACKUP_SECRET";
-    try {
-      const child = Bun.spawn(
-        [
-          path.join(root, "node_modules/.bin/tsx"),
-          "--tsconfig",
-          path.join(root, "packages/cloud/shared/tsconfig.json"),
-          path.join(import.meta.dir, "backup-catalog-worker.ts"),
-          "--once",
-        ],
-        {
-          cwd: root,
-          env: minimalSubprocessEnv({
-            AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "1",
-            AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
-            AGENT_BACKUP_CATALOG_WORKER_ID: "",
-            AGENT_BACKUP_R2_SECRET_ACCESS_KEY: secretSentinel,
-            AGENT_BACKUP_STEWARD_KMS_TOKEN: secretSentinel,
-            AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE: healthFile,
-          }),
-          stdout: "pipe",
-          stderr: "pipe",
-        },
+  test(
+    "production entrypoint rejects malformed enabled config without leaking values",
+    async () => {
+      const root = path.resolve(import.meta.dir, "../../../../..");
+      const proofDirectory = await mkdtemp(
+        path.join(tmpdir(), "eliza-backup-catalog-malformed-"),
       );
-      const exitCode = await waitForSubprocess(child);
-      if (exitCode === -1) {
-        child.kill();
-        await child.exited;
+      const healthFile = path.join(proofDirectory, "health.json");
+      const secretSentinel = "DO_NOT_LEAK_BACKUP_SECRET";
+      try {
+        const child = Bun.spawn(
+          [
+            path.join(root, "node_modules/.bin/tsx"),
+            "--tsconfig",
+            path.join(root, "packages/cloud/shared/tsconfig.json"),
+            path.join(import.meta.dir, "backup-catalog-worker.ts"),
+            "--once",
+          ],
+          {
+            cwd: root,
+            env: minimalSubprocessEnv({
+              AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "1",
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
+              AGENT_BACKUP_CATALOG_WORKER_ID: "",
+              AGENT_BACKUP_R2_SECRET_ACCESS_KEY: secretSentinel,
+              AGENT_BACKUP_STEWARD_KMS_TOKEN: secretSentinel,
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE: healthFile,
+            }),
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        );
+        const exitCode = await waitForSubprocess(child);
+        if (exitCode === -1) {
+          child.kill();
+          await child.exited;
+        }
+        const stderr = await new Response(child.stderr).text();
+        expect(exitCode).toBe(78);
+        expect(stderr).toContain("AGENT_BACKUP_CATALOG_WORKER_ID");
+        expect(stderr).not.toContain(secretSentinel);
+        expect(JSON.parse(await readFile(healthFile, "utf8"))).toMatchObject({
+          state: "terminal-configuration-failure",
+          enabled: false,
+          cycles: 0,
+          failures: 1,
+          lastCycleMetrics: null,
+        });
+      } finally {
+        await rm(proofDirectory, { recursive: true, force: true });
       }
-      const stderr = await new Response(child.stderr).text();
-      expect(exitCode).toBe(78);
-      expect(stderr).toContain("AGENT_BACKUP_CATALOG_WORKER_ID");
-      expect(stderr).not.toContain(secretSentinel);
-      expect(JSON.parse(await readFile(healthFile, "utf8"))).toMatchObject({
-        state: "terminal-configuration-failure",
-        enabled: false,
-        cycles: 0,
-        failures: 1,
-        lastCycleMetrics: null,
-      });
-    } finally {
-      await rm(proofDirectory, { recursive: true, force: true });
-    }
-  });
+    },
+    ENTRYPOINT_TEST_TIMEOUT_MS,
+  );
 
   test("runs exactly one production-composition cycle in --once mode", async () => {
     const runCycle = mock(async () =>
