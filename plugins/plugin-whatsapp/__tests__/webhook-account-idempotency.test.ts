@@ -129,7 +129,7 @@ function makeRuntimeWithStore(
 				store.updateMemory(memory),
 		),
 		adapter: {
-			documentListQueryCapability: 2,
+			documentListQueryCapability: 3,
 			getDocument: vi.fn(async ({ documentId }: { documentId: UUID }) =>
 				store.getMemoryById(documentId),
 			),

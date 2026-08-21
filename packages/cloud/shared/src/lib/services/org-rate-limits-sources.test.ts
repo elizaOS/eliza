@@ -12,7 +12,7 @@ type RpmOverride = {
   strict_rpm: number | null;
 };
 
-let totalSpend: unknown = "0";
+let tierSourceCreditTotal: unknown = "0";
 let override: RpmOverride | undefined;
 let cacheWrites = 0;
 
@@ -20,7 +20,7 @@ mock.module("../../db/helpers", () => ({
   dbRead: {
     select: () => ({
       from: () => ({
-        where: async () => [{ totalSpend }],
+        where: async () => [{ tierSourceCreditTotal }],
       }),
     }),
   },
@@ -53,18 +53,18 @@ const noOverride = (): RpmOverride => ({
 });
 
 beforeEach(() => {
-  totalSpend = "0";
+  tierSourceCreditTotal = "0";
   override = undefined;
   cacheWrites = 0;
 });
 
 describe("authoritative organization rate-limit tier reads", () => {
-  test.each(["NaN", "-1"])("rejects the corrupt paid-credit total %s", async (value) => {
-    totalSpend = value;
+  test.each(["NaN", "-1"])("rejects the corrupt tier-source credit total %s", async (value) => {
+    tierSourceCreditTotal = value;
 
     await expect(readOrgTierFromSources("org-corrupt-spend")).rejects.toMatchObject({
       code: "ORG_RATE_LIMIT_SOURCE_INVALID",
-      context: { field: "paid_credit_total" },
+      context: { field: "tier_source_credit_total" },
     });
     expect(cacheWrites).toBe(0);
   });
@@ -83,7 +83,7 @@ describe("authoritative organization rate-limit tier reads", () => {
   );
 
   test("returns a valid custom override without writing the inference cache", async () => {
-    totalSpend = "7.25";
+    tierSourceCreditTotal = "7.25";
     override = {
       ...noOverride(),
       completions_rpm: 240,
@@ -101,7 +101,7 @@ describe("authoritative organization rate-limit tier reads", () => {
   });
 
   test("recalculation caches the same authoritative result", async () => {
-    totalSpend = "100";
+    tierSourceCreditTotal = "100";
     override = { ...noOverride(), embeddings_rpm: 900 };
 
     const observed = await readOrgTierFromSources("org-shared-calculation");

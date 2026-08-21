@@ -126,7 +126,7 @@ export function isRemotePairingVerifierCurrent(verifier: string | null, nowMs: n
 
 /** Keeps active sessions and only pending sessions with a current v1 verifier. */
 export function isRemotePairingSessionCurrent(
-  status: "pending" | "active" | "denied" | "revoked",
+  status: "pending" | "active" | "denied" | "revoked" | "expired",
   verifier: string | null,
   nowMs: number,
 ): boolean {

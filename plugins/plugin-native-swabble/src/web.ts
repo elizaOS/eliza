@@ -148,6 +148,19 @@ class WakeWordGate {
   }
 
   /**
+   * Report whether any configured trigger phrase is present in the transcript,
+   * regardless of whether a long-enough command follows. Callers use this to
+   * decide whether finalized text is worth retaining for a later dispatch
+   * (a trigger awaiting its command) versus safe to discard.
+   */
+  hasTrigger(transcript: string): boolean {
+    const normalizedTranscript = transcript.toLowerCase();
+    return this.triggers.some(
+      (trigger) => normalizedTranscript.indexOf(trigger) !== -1,
+    );
+  }
+
+  /**
    * Match wake word in transcript using text-only detection.
    * Returns postGap=-1 to indicate timing data is unavailable on web.
    */
@@ -179,6 +192,11 @@ export class SwabbleWeb extends WebPlugin {
   private wakeGate: WakeWordGate | null = null;
   private isActive = false;
   private segments: SwabbleSpeechSegment[] = [];
+  // Finalized transcript carried across onresult events so a trigger and its
+  // command can arrive in separate final results (the user pauses after the
+  // wake word). Bounded: a successful match consumes it, and finalized text
+  // with no trigger is dropped since a command can only follow a trigger.
+  private wakeBuffer = "";
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private mediaStream: MediaStream | null = null;
@@ -386,6 +404,7 @@ export class SwabbleWeb extends WebPlugin {
     this.config = config;
     this.wakeGate = new WakeWordGate(config);
     this.segments = [];
+    this.wakeBuffer = "";
 
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
@@ -448,16 +467,33 @@ export class SwabbleWeb extends WebPlugin {
   }
 
   private handleSpeechResult(event: SpeechRecognitionResultEvent): void {
-    let transcript = "";
-    let isFinal = false;
+    // event.results accumulates every result of the continuous session; per the
+    // Web Speech API, event.resultIndex marks the first result that CHANGED
+    // since the previous dispatch. Iterating from 0 would re-process (and
+    // re-fire the wake word for) already-finalized utterances, concatenating
+    // them with no separator and handing the agent a garbled command such as
+    // "open calendareliza close calendar". Process only the changed window and
+    // keep final vs interim text separate. Newly finalized text is appended to
+    // wakeBuffer (see below) so a trigger and its command can span separate
+    // final results, while a match still runs against finalized text only.
+    let finalTranscript = "";
+    let interimTranscript = "";
+    let hasFinal = false;
 
-    for (let i = 0; i < event.results.length; i++) {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
       const first = result?.[0];
       if (!first || typeof first.transcript !== "string") continue;
-      transcript += first.transcript;
-      if (result.isFinal) isFinal = true;
+      if (result.isFinal) {
+        finalTranscript += first.transcript;
+        hasFinal = true;
+      } else {
+        interimTranscript += first.transcript;
+      }
     }
+
+    const transcript = finalTranscript + interimTranscript;
+    const isFinal = hasFinal;
     if (!transcript.trim()) return;
 
     // Web Speech API does not provide word-level timing.
@@ -481,9 +517,21 @@ export class SwabbleWeb extends WebPlugin {
     });
 
     if (isFinal && this.wakeGate) {
-      const match = this.wakeGate.match(transcript);
+      // Carry finalized text forward so a trigger in one final result and its
+      // command in a later final result (the user pauses after the wake word)
+      // still wake. A successful match consumes the buffer so an already-fired
+      // utterance is never re-detected when the accumulating results list
+      // carries it again; when no trigger is present the buffer is dropped so
+      // pre-trigger chatter cannot grow it unbounded or later garble a command.
+      this.wakeBuffer = this.wakeBuffer
+        ? `${this.wakeBuffer} ${finalTranscript}`
+        : finalTranscript;
+      const match = this.wakeGate.match(this.wakeBuffer);
       if (match) {
+        this.wakeBuffer = "";
         this.notifyListeners("wakeWord", { ...match, transcript, confidence });
+      } else if (!this.wakeGate.hasTrigger(this.wakeBuffer)) {
+        this.wakeBuffer = "";
       }
     }
   }
@@ -531,6 +579,7 @@ export class SwabbleWeb extends WebPlugin {
 
   async stop(): Promise<void> {
     this.isActive = false;
+    this.wakeBuffer = "";
 
     // Clean up native IPC if in native mode
     if (this.usingNativeIpc) {

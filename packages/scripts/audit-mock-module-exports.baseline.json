@@ -80,10 +80,6 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/db/repositories\" is missing bound export(s): affiliatesRepository, autoTopUpAttemptsRepository, creditPacksRepository, creditTransactionsRepository, generationsRepository, organizationInvitesRepository, organizationsRepository, usageRecordsRepository, userCharactersRepository, userSessionsRepository",
-    "count": 1
-  },
-  {
     "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/lib/services/eliza-sandbox\" is missing bound export(s): assertOrgAgentQuota, buildAgentSandboxInsertValues",
     "count": 1
   },

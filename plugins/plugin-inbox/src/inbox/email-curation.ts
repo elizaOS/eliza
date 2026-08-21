@@ -8,6 +8,8 @@
  * connector or runtime dependency. Consumed by the inbox triage flow and
  * exposed at the `@elizaos/plugin-inbox/inbox/email-curation` subpath.
  */
+import { extractAsciiEmailAddress } from "./email-address.ts";
+
 export type EmailCurationAction = "save" | "archive" | "delete" | "review";
 
 export type EmailCurationMode = "body_semantic" | "metadata_degraded";
@@ -373,10 +375,7 @@ function normalizeWhitespace(value: string): string {
 function normalizeAddress(value: string | null | undefined): string | null {
   const raw = value?.trim();
   if (!raw) return null;
-  const angleMatch = raw.match(/<([^>]+)>/);
-  const candidate = (angleMatch?.[1] ?? raw).trim().toLowerCase();
-  const emailMatch = candidate.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
-  return emailMatch?.[0]?.toLowerCase() ?? null;
+  return extractAsciiEmailAddress(raw);
 }
 
 function localPart(address: string | null): string | null {

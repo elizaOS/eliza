@@ -50,7 +50,8 @@ export type ConnectorAccountCatalogPurpose =
   | "reading"
   | "calendar"
   | "drive"
-  | "meet";
+  | "meet"
+  | "contacts";
 
 /** Provider-owned OAuth capability rendered by the generic account UI. */
 export interface ConnectorOAuthCapabilityDeclaration {
@@ -120,7 +121,7 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
       connectorId: "google",
       provider: "google",
       defaultRole: "OWNER",
-      defaultPurpose: ["messaging", "calendar", "drive", "meet"],
+      defaultPurpose: ["messaging", "calendar", "drive", "meet", "contacts"],
       supportsOAuth: true,
       oauthCapabilities: [
         {
@@ -176,6 +177,12 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
           group: "Meet",
           label: "Read Meet Artifacts",
           description: "Read Meet spaces, participants, and artifacts.",
+        },
+        {
+          id: "people.read",
+          group: "People",
+          label: "Read Contacts",
+          description: "Search and read Google Contacts and Other Contacts.",
         },
       ],
       aliases: ["gmail", "google-workspace"],

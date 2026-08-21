@@ -5,6 +5,7 @@ import { ElizaError } from "@elizaos/core";
 export type MapsErrorCode =
   | "MAPS_INVALID_INPUT"
   | "MAPS_PROVIDER_UNAVAILABLE"
+  | "MAPS_PROVIDER_CHANGED"
   | "MAPS_NOT_FOUND"
   | "MAPS_AUTH_EXPIRED"
   | "MAPS_AUTH_REVOKED"

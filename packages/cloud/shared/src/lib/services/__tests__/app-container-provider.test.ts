@@ -251,3 +251,18 @@ describe("AppContainerProvider.provision", () => {
     ]);
   });
 });
+
+describe("AppContainerProvider.deletePrimaryById", () => {
+  test("removes only the immutable primary and preserves the shared ambassador", async () => {
+    const { calls, ssh } = recordingSsh();
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+
+    await provider.deletePrimaryById("docker-stale-1");
+
+    expect(calls).toEqual(["docker rm -f 'docker-stale-1'"]);
+  });
+});

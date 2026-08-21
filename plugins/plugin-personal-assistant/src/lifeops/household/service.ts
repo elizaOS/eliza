@@ -46,6 +46,7 @@ import { householdExportAuditVisibleToAudience } from "./household-entity-scan.j
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   DEFAULT_HOUSEHOLD_ID,
+  expandGrantScopes,
   HOUSEHOLD_ACCESS_SCOPES,
   HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
   type HouseholdAccessGrant,
@@ -1635,7 +1636,7 @@ export class HouseholdCoordinationService {
     );
     const matching = grants.filter(
       (grant) =>
-        grant.scopes.includes(input.scope) &&
+        expandGrantScopes(grant.scopes).includes(input.scope) &&
         (subjectEntityId === undefined ||
           grant.subjectEntityIds.includes(subjectEntityId)),
     );
@@ -1682,6 +1683,61 @@ export class HouseholdCoordinationService {
         subjectEntityId,
       },
     );
+  }
+
+  /**
+   * Approval authority is revocable after a proposal is issued. A responder
+   * keeps standing either intrinsically — an active owner, co-parent, or
+   * current-partner binding that still covers every affected child — or by
+   * delegation through an active `schedule.approve` grant covering those
+   * children. Caregiver and professional bindings identify household context
+   * but deliberately do not confer approval standing without a revocable
+   * grant. Without this
+   * check, removing an adult from the household (or narrowing their
+   * relationship to a child) would leave their queued approval requests
+   * actionable.
+   */
+  private async requireApprovalStanding(
+    proposal: HouseholdScheduleProposal,
+    partyEntityId: string,
+  ): Promise<void> {
+    if (partyEntityId === SELF_ENTITY_ID) return;
+    const bindings = await this.listRoleBindings(proposal.householdId);
+    const binding = bindings.find(
+      (candidate) => candidate.entityId === partyEntityId,
+    );
+    const childEntityIds = proposal.terms.childEntityIds;
+    if (
+      binding &&
+      (binding.role === "owner" ||
+        binding.role === "co_parent" ||
+        binding.role === "current_partner")
+    ) {
+      const uncovered =
+        binding.role === "owner"
+          ? []
+          : childEntityIds.filter(
+              (childEntityId) =>
+                !binding.subjectEntityIds.includes(childEntityId),
+            );
+      if (uncovered.length === 0) return;
+    }
+    if (childEntityIds.length === 0) {
+      await this.requireScope({
+        principalEntityId: partyEntityId,
+        householdId: proposal.householdId,
+        scope: "schedule.approve",
+      });
+      return;
+    }
+    for (const subjectEntityId of childEntityIds) {
+      await this.requireScope({
+        principalEntityId: partyEntityId,
+        householdId: proposal.householdId,
+        scope: "schedule.approve",
+        subjectEntityId,
+      });
+    }
   }
 
   private async bindCurrentCustodyAuthorityRevision(
@@ -1800,18 +1856,22 @@ export class HouseholdCoordinationService {
         : affectedPartyEntityIds.filter(
             (entityId) => entityId !== createdByEntityId,
           );
+    // Proposing is a distinct, weaker authority than mutating: schedule
+    // changes only ever land through the approval workflow, so a proposer
+    // needs `schedule.propose` (implied by `calendar.mutate` for existing
+    // grants) rather than direct mutation authority.
     if (createdByEntityId !== SELF_ENTITY_ID && mutationSubjects.length === 0) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
         householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
       });
     }
     for (const subjectEntityId of mutationSubjects) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
         householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
         subjectEntityId,
       });
     }
@@ -2297,7 +2357,7 @@ export class HouseholdCoordinationService {
       await this.requireScope({
         principalEntityId: revisedByEntityId,
         householdId: previous.householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
         subjectEntityId: previous.terms.childEntityIds[0],
       });
     }
@@ -2484,6 +2544,7 @@ export class HouseholdCoordinationService {
         },
       );
     }
+    await this.requireApprovalStanding(proposal, partyEntityId);
     const resolution = {
       resolvedBy: partyEntityId,
       resolutionReason: reason,
@@ -2750,7 +2811,7 @@ export class HouseholdCoordinationService {
     );
     return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => {
       const scopedGrants = relevant.filter((grant) =>
-        grant.scopes.includes(scope),
+        expandGrantScopes(grant.scopes).includes(scope),
       );
       if (scopedGrants.length === 0) return false;
       if (scope === "household.visibility" || scope === "calendar.freebusy") {
@@ -2794,7 +2855,9 @@ export class HouseholdCoordinationService {
     const effectiveScopes = isOwner
       ? [...HOUSEHOLD_ACCESS_SCOPES]
       : HOUSEHOLD_ACCESS_SCOPES.filter((scope) =>
-          ownActiveGrants.some((grant) => grant.scopes.includes(scope)),
+          ownActiveGrants.some((grant) =>
+            expandGrantScopes(grant.scopes).includes(scope),
+          ),
         );
     const allRoles = await this.listRoleBindings(householdId);
     let proposals = await this.deps.repository.listProposals(householdId);
@@ -2943,8 +3006,16 @@ export class HouseholdCoordinationService {
       });
     }
 
+    // The audit and decision trail is export-only material: calendar scopes
+    // let a principal see schedules, but reading who decided what and when
+    // requires the distinct, revocable `household.export` authority.
+    const includeAuditTrail =
+      isOwner || effectiveScopes.includes("household.export");
     const audience = new Set([principalEntityId, ...visibleSubjectEntityIds]);
-    const audit = (await this.deps.repository.listAudit())
+    const auditEvents = includeAuditTrail
+      ? await this.deps.repository.listAudit()
+      : [];
+    const audit = auditEvents
       .filter((event) => {
         const eventHouseholdId =
           typeof event.inputs.householdId === "string"

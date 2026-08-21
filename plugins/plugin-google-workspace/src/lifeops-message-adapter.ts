@@ -9,6 +9,8 @@
  * no-ops as unavailable when the plugin is not loaded; `accountId` is carried
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type DraftRequest,
@@ -47,7 +49,10 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  const wellFormedValue = toWellFormedUnicode(value);
+  return wellFormedValue.length > maxLength
+    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
+    : wellFormedValue;
 }
 
 function refId(messageId: string): string {
@@ -102,6 +107,7 @@ function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary):
       ...message.metadata,
       accountId,
       htmlLink: message.htmlLink,
+      replyTo: message.replyTo,
       likelyReplyNeeded: message.likelyReplyNeeded,
       triageReason: message.triageReason,
     },
@@ -327,9 +333,11 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
     }
     const message = await this.ensureMessage(runtime, request.inReplyToId);
+    const replyTarget =
+      metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier;
     const sent = await service.sendGmailReply({
       accountId: messageAccountId(message),
-      to: [message.from.identifier],
+      to: [replyTarget],
       subject: message.subject ?? "Re: your message",
       bodyText: request.body,
       inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),

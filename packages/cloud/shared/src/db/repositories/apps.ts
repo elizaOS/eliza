@@ -1,8 +1,23 @@
 /** Persists apps and serializes their database-backed cache identities across processes. */
 import { ElizaError } from "@elizaos/core";
-import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  countDistinct,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import {
+  APP_DEPLOYMENT_GENERATION_KEY,
+  metadataForDeploymentGeneration,
+} from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
@@ -566,6 +581,96 @@ export class AppsRepository {
     }
 
     return updated;
+  }
+
+  /**
+   * Claims the only active deployment generation for an app on the primary.
+   * Terminal states may claim a new generation; building/deploying states lose
+   * without overwriting the winner's timestamp or metadata.
+   */
+  async claimDeploymentStart(
+    id: string,
+    generation: string,
+    data: Pick<NewApp, "last_deployed_at"> & { metadata?: Record<string, unknown> },
+  ): Promise<App | undefined> {
+    const [updated] = await dbWrite
+      .update(apps)
+      .set({
+        deployment_status: "building",
+        last_deployed_at: data.last_deployed_at,
+        metadata: metadataForDeploymentGeneration(data.metadata, generation),
+        updated_at: new Date(),
+      })
+      .where(and(eq(apps.id, id), notInArray(apps.deployment_status, ["building", "deploying"])))
+      .returning();
+
+    if (updated) {
+      await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
+    }
+    return updated;
+  }
+
+  /** Reads one app only when the caller still owns its persisted generation. */
+  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+    const [app] = await dbWrite
+      .select()
+      .from(apps)
+      .where(
+        and(
+          eq(apps.id, id),
+          sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .limit(1);
+    return app;
+  }
+
+  /** Applies a generation-owned transition without touching a newer deployment. */
+  async updateDeploymentGeneration(
+    id: string,
+    generation: string | null,
+    data: Partial<NewApp>,
+    expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+  ): Promise<App | undefined> {
+    const generationFilter = generation
+      ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
+      : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
+    const statusFilter = expectedStatuses?.length
+      ? inArray(apps.deployment_status, [...expectedStatuses])
+      : undefined;
+    const nextData =
+      generation && data.metadata
+        ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
+        : data;
+    const [updated] = await dbWrite
+      .update(apps)
+      .set({ ...nextData, updated_at: new Date() })
+      .where(and(eq(apps.id, id), generationFilter, statusFilter))
+      .returning();
+
+    if (updated) {
+      await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
+    }
+    return updated;
+  }
+
+  /** Uses the primary row to fence provider work for current and legacy deployments. */
+  async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
+    const generationFilter = generation
+      ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
+      : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
+    const [current] = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(
+        and(
+          eq(apps.id, id),
+          generationFilter,
+          inArray(apps.deployment_status, ["building", "deploying"]),
+        ),
+      )
+      .limit(1);
+    return current !== undefined;
   }
 
   /**

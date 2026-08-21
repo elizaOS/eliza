@@ -220,14 +220,20 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
   });
 
-  it("renders passkey and webauthn autocomplete after a positive capability probe", async () => {
+  it("renders passkey but never arms webauthn autofill after a positive capability probe", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
 
     renderSection();
 
     const input = await screen.findByPlaceholderText("you@example.com");
-    expect(input.getAttribute("autocomplete")).toBe("email webauthn");
+    // Regression guard (port of Steward #690): even when passkeys are
+    // available, the email input must NOT carry the "webauthn" autocomplete
+    // token. That token arms browser conditional-mediation autofill, which
+    // prompts for an existing account's discoverable credential when a
+    // brand-new email is typed and hijacks signup. Passkey sign-in stays
+    // available only through the explicit Passkey button (email-scoped).
+    expect(input.getAttribute("autocomplete")).toBe("email");
     expect(screen.getByRole("button", { name: /Passkey/i })).toBeTruthy();
 
     fireEvent.change(input, { target: { value: "person@example.com" } });

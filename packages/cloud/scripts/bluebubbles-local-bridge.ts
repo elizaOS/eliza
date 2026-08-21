@@ -127,6 +127,45 @@ type PendingReply = {
   updatedAt: string;
 };
 
+const PUBLIC_REPLY_DELIVERY_ERROR = "BlueBubbles reply delivery failed";
+const MAX_INTERNAL_DIAGNOSTIC_CHARS = 4_096;
+
+function boundedDiagnostic(value: unknown): string {
+  let text: string | undefined;
+  if (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function")
+  ) {
+    try {
+      const message = Reflect.get(value, "message");
+      if (typeof message === "string" && message.trim()) text = message;
+    } catch {
+      // error-policy:J7 hostile diagnostic access must not mask delivery state.
+    }
+  }
+  if (text === undefined) {
+    try {
+      text = String(value);
+    } catch {
+      // error-policy:J7 hostile coercion still needs a stable log marker.
+      text = "[uninspectable thrown value]";
+    }
+  }
+  const clipped =
+    text.length > MAX_INTERNAL_DIAGNOSTIC_CHARS
+      ? `${text.slice(0, MAX_INTERNAL_DIAGNOSTIC_CHARS)}…[truncated]`
+      : text;
+  return Array.from(clipped, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+      ? `\\u{${code.toString(16)}}`
+      : character;
+  }).join("");
+}
+
 type BlueBubblesWebhook = {
   id: number;
   url: string;
@@ -979,11 +1018,15 @@ async function retryPendingReplies(
         await sendBlueBubblesReply(reply.chatGuid, reply.text);
         sent.add(reply.id);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const diagnostic = boundedDiagnostic(error);
         reply.attempts += 1;
-        reply.lastError = message;
+        reply.lastError = PUBLIC_REPLY_DELIVERY_ERROR;
         reply.updatedAt = new Date().toISOString();
-        failed.push({ id: reply.id, error: message });
+        failed.push({ id: reply.id, error: PUBLIC_REPLY_DELIVERY_ERROR });
+        console.error(
+          "[bluebubbles-local-bridge] pending reply delivery failed",
+          { replyId: reply.id, error: diagnostic },
+        );
       }
     }
 
@@ -1629,7 +1672,8 @@ async function handleWebhook(
     try {
       await sendBlueBubblesReply(chatGuid, replyText);
     } catch (error) {
-      sendError = error instanceof Error ? error.message : String(error);
+      const internalError = boundedDiagnostic(error);
+      sendError = PUBLIC_REPLY_DELIVERY_ERROR;
       const pending = await enqueuePendingReply({
         chatGuid,
         text: replyText,
@@ -1643,7 +1687,7 @@ async function handleWebhook(
           queuedReplyId,
           chatGuid,
           sourceMessageId: messageId,
-          error: sendError,
+          error: internalError,
         },
       );
     }
@@ -1883,10 +1927,10 @@ async function handleRequest(
 
 const server = createServer((req, res) => {
   handleRequest(req, res).catch((error) => {
+    // error-policy:J1 request failures are logged locally while the remote
+    // caller receives a stable response that cannot disclose exception text.
     console.error("[bluebubbles-local-bridge]", error);
-    json(res, 500, {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    json(res, 500, { error: "BlueBubbles bridge request failed" });
   });
 });
 

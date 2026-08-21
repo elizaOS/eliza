@@ -4,6 +4,9 @@
  * `GOOGLE_CHAT_ACCOUNTS` JSON map, and `character.settings.googleChat` (or the
  * `google-chat` alias), merging per field. Supplies the service the space list
  * and service-account credentials for each configured account.
+ * Named or unrecognized accountIds fail closed: they cannot inherit the
+ * owner service-account JSON / key file from env or the top-level character
+ * `settings.googleChat` identity fields.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
@@ -195,11 +198,11 @@ export function resolveGoogleChatAccountSettings(
   );
   const base = characterConfig(runtime);
   const account = accountConfig(runtime, accountId);
-  const allowEnv = accountId === DEFAULT_GOOGLE_CHAT_ACCOUNT_ID;
+  const allowOwnerBind = accountId === DEFAULT_GOOGLE_CHAT_ACCOUNT_ID;
   const webhookPath =
     account.webhookPath ??
     base.webhookPath ??
-    (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_WEBHOOK_PATH") : undefined) ??
+    (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_WEBHOOK_PATH") : undefined) ??
     "/googlechat";
 
   return {
@@ -207,45 +210,46 @@ export function resolveGoogleChatAccountSettings(
     serviceAccount:
       account.serviceAccount ??
       account.serviceAccountKey ??
-      base.serviceAccount ??
-      base.serviceAccountKey ??
-      (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT") : undefined),
+      (allowOwnerBind ? base.serviceAccount : undefined) ??
+      (allowOwnerBind ? base.serviceAccountKey : undefined) ??
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT") : undefined),
     serviceAccountFile:
       account.serviceAccountFile ??
       account.serviceAccountKeyFile ??
-      base.serviceAccountFile ??
-      base.serviceAccountKeyFile ??
-      (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE") : undefined),
+      (allowOwnerBind ? base.serviceAccountFile : undefined) ??
+      (allowOwnerBind ? base.serviceAccountKeyFile : undefined) ??
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE") : undefined) ??
+      (allowOwnerBind ? process.env.GOOGLE_APPLICATION_CREDENTIALS : undefined),
     audienceType: (account.audienceType ??
       base.audienceType ??
-      (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE_TYPE") : undefined) ??
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE_TYPE") : undefined) ??
       "app-url") as GoogleChatAudienceType,
     audience:
       account.audience ??
       base.audience ??
-      (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE") : undefined) ??
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE") : undefined) ??
       "",
     webhookPath: webhookPath.startsWith("/") ? webhookPath : `/${webhookPath}`,
     spaces: spaceList(
       account.spaces ??
         base.spaces ??
-        (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_SPACES") : undefined)
+        (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_SPACES") : undefined)
     ),
     requireMention: boolValue(
       account.requireMention ??
         base.requireMention ??
-        (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_REQUIRE_MENTION") : undefined),
+        (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_REQUIRE_MENTION") : undefined),
       true
     ),
     enabled: boolValue(
       account.enabled ??
         base.enabled ??
-        (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_ENABLED") : undefined),
+        (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_ENABLED") : undefined),
       true
     ),
     botUser:
       account.botUser ??
       base.botUser ??
-      (allowEnv ? envOrSetting(runtime, "GOOGLE_CHAT_BOT_USER") : undefined),
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_BOT_USER") : undefined),
   };
 }

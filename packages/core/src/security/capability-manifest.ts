@@ -22,6 +22,7 @@
  */
 
 import type { Action } from "../types/components.ts";
+import { trimEndCharacters } from "../utils/string-boundaries.js";
 
 /** A per-call capability budget. Every field is optional — an empty manifest is a no-op. */
 export interface CapabilityManifest {
@@ -148,7 +149,7 @@ export function isPathAllowed(
 	const p = path.trim();
 	if (!p || p.split(/[\\/]/).includes("..")) return false;
 	return manifest.allowedPaths.some((root) => {
-		const r = root.trim().replace(/[\\/]+$/, "");
+		const r = trimEndCharacters(root.trim(), "\\/");
 		return p === r || p.startsWith(`${r}/`);
 	});
 }

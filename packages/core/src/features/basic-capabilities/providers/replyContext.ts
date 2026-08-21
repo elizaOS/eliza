@@ -27,6 +27,10 @@ import type {
 	ProviderResult,
 	UUID,
 } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { addHeader, formatMessages, validateUuid } from "../../../utils.ts";
 
 /** Turns fetched on EACH side of the replied-to message. */
@@ -50,20 +54,33 @@ function memoryText(memory: Memory): string {
 
 export function truncateSingleLine(text: string, maxChars: number): string {
 	const collapsed = text.replace(/\s+/g, " ").trim();
-	return collapsed.length > maxChars
-		? `${collapsed.slice(0, maxChars - 1)}…`
-		: collapsed;
+	const wellFormed = toWellFormedUnicode(collapsed);
+	if (wellFormed.length <= maxChars) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, maxChars - 1);
+	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 /** Cap a window turn's text so one giant pasted message can't blow up the prompt. */
 export function withBoundedText(memory: Memory): Memory {
 	const text = memoryText(memory);
-	if (text.length <= MAX_REPLY_WINDOW_MESSAGE_CHARS) return memory;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= MAX_REPLY_WINDOW_MESSAGE_CHARS) {
+		if (wellFormed !== text) {
+			return {
+				...memory,
+				content: { ...memory.content, text: wellFormed },
+			};
+		}
+		return memory;
+	}
+	const budget = Math.max(0, MAX_REPLY_WINDOW_MESSAGE_CHARS - 1);
 	return {
 		...memory,
 		content: {
 			...memory.content,
-			text: `${text.slice(0, MAX_REPLY_WINDOW_MESSAGE_CHARS - 1)}…`,
+			text: `${truncateWellFormed(wellFormed, budget).trimEnd()}…`,
 		},
 	};
 }

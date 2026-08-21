@@ -12,7 +12,7 @@ mock.module("../../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
 }));
 
-const { discordProvider } = await import("./discord");
+const { discordProvider, discordApiFetch } = await import("./discord");
 
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -112,5 +112,38 @@ describe("discordProvider error policy", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Unknown Message");
+  });
+});
+
+describe("discordApiFetch — bounded hops fail closed and keep caller signals", () => {
+  it("aborts a hung Discord API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      discordApiFetch("https://discord.com/api/v10/channels/1/messages", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await discordApiFetch("https://discord.com/api/v10/channels/1/messages", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

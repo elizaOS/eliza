@@ -4,7 +4,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api-client";
-import { useSandboxListPoll } from "./use-sandbox-status-poll";
+import {
+  useSandboxListPoll,
+  useSandboxStatusPoll,
+} from "./use-sandbox-status-poll";
 
 vi.mock("../../lib/api-client", () => ({ api: vi.fn() }));
 
@@ -37,6 +40,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("useSandboxListPoll", () => {
@@ -112,5 +116,47 @@ describe("useSandboxListPoll", () => {
       await Promise.resolve();
     });
     expect(onDataRefresh).not.toHaveBeenCalled();
+  });
+
+  it("aborts a hung status fetch at the per-poll timeout instead of leaving isLoading pinned", async () => {
+    // An agent-status endpoint that never settles on its own: the only way out
+    // is the caller's AbortSignal firing (the per-poll `AbortSignal.timeout(10s)`).
+    // Note: Node's AbortSignal.timeout uses an internal timer that vitest fake
+    // timers cannot drive, so back it with the faked global setTimeout here.
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), ms);
+      return controller.signal;
+    });
+    const hungFetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            ),
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", hungFetch);
+    vi.useFakeTimers();
+    const { result } = renderHook(() =>
+      useSandboxStatusPoll("agent-1", { intervalMs: 60_000 }),
+    );
+
+    // First poll hop is in flight and pinned as loading.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(hungFetch).toHaveBeenCalledTimes(1);
+    expect(result.current.isLoading).toBe(true);
+
+    // The per-poll 10s bound aborts the hung hop; the error path clears
+    // isLoading instead of leaving the progress view stuck forever.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_100);
+    });
+    expect(hungFetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(result.current.isLoading).toBe(false);
   });
 });

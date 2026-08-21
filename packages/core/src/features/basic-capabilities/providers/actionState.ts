@@ -27,6 +27,10 @@ import {
 	truncateMiddle,
 } from "../../../utils/action-results.js";
 import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.js";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -36,9 +40,12 @@ const MAX_RUNS = 3;
 export const MAX_THOUGHT_CHARS = 2000;
 
 export function truncateThought(thought: string): string {
-	return thought.length > MAX_THOUGHT_CHARS
-		? `${thought.slice(0, MAX_THOUGHT_CHARS - 1)}…`
-		: thought;
+	const wellFormed = toWellFormedUnicode(thought);
+	if (wellFormed.length <= MAX_THOUGHT_CHARS) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, MAX_THOUGHT_CHARS - 1);
+	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 type WorkingMemoryEntry = {

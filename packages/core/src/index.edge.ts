@@ -37,6 +37,7 @@ export {
 } from "./constants";
 export * from "./contracts/computer-use";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -110,6 +111,7 @@ export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
 export { stableStringify } from "./utils/deterministic";
 export * from "./utils/environment";
+export * from "./utils/html-raw-text";
 export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";

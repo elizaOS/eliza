@@ -41,8 +41,8 @@ interface LegacyChatResponse {
   data?: {
     reply?: string;
     containerStatus?: string;
-    bridgeUrl?: string;
-    agentId?: string;
+    bridgeUrl?: string | null;
+    agentId?: string | null;
   };
 }
 
@@ -123,8 +123,15 @@ export function useElizaAppProvisioningChat(
       setContainerStatus(provisioning.status);
       setHasObservedStatus(true);
     }
-    if (provisioning?.agentId) setAgentId(provisioning.agentId);
-    if (provisioning?.bridgeUrl) setBridgeUrl(provisioning.bridgeUrl);
+    if (provisioning) {
+      // Same authoritative replacement as the legacy poll branch.
+      setAgentId(provisioning.agentId ?? null);
+      setBridgeUrl(
+        provisioning.status === "running"
+          ? (provisioning.bridgeUrl ?? null)
+          : null,
+      );
+    }
     const nextMessages = toChatMessages(data.messages);
     if (nextMessages.length > 0) {
       setMessages(nextMessages);
@@ -177,7 +184,7 @@ export function useElizaAppProvisioningChat(
   }, [onboardingSessionId]);
 
   useEffect(() => {
-    if (!active || isReady || isDedicatedOff || provisioningError) return;
+    if (!active || isDedicatedOff || provisioningError) return;
     stoppedRef.current = false;
     if (pollStartRef.current === null) pollStartRef.current = Date.now();
     generationRef.current += 1;
@@ -194,7 +201,10 @@ export function useElizaAppProvisioningChat(
       const elapsed = pollStartRef.current
         ? Date.now() - pollStartRef.current
         : 0;
-      if (elapsed > POLL_DEADLINE_MS) {
+      if (
+        elapsed > POLL_DEADLINE_MS &&
+        containerStatusRef.current !== "running"
+      ) {
         if (generation !== generationRef.current) return;
         stoppedRef.current = true;
         setProvisioningError(
@@ -217,23 +227,36 @@ export function useElizaAppProvisioningChat(
             const newStatus = res.data.status ?? containerStatusRef.current;
             setContainerStatus(newStatus);
             if (res.data.status) setHasObservedStatus(true);
-            if (res.data.agentId && !agentIdRef.current)
-              setAgentId(res.data.agentId);
-            if (res.data.bridgeUrl) {
-              setBridgeUrl(res.data.bridgeUrl);
-            }
+            // Replace from the authoritative response rather than keeping the
+            // first id ever seen: the server re-selects the canonical target
+            // every poll, so first-write-wins pinned this client to a
+            // superseded agent while status correctly moved on. A bridge only
+            // belongs to a running target, so it clears with any other status.
+            setAgentId(res.data.agentId ?? null);
+            setBridgeUrl(
+              newStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
+            );
             if (newStatus === "running" && res.data.bridgeUrl) {
-              stoppedRef.current = true;
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: uid(),
-                  role: "assistant",
-                  content:
-                    "Your AI space is ready! You can start chatting in full now.",
-                },
-              ]);
-              return;
+              // A running target is not immutable: deletion, replacement, or
+              // lifecycle changes can make a later status response the new
+              // authority. Keep observing it and avoid duplicating the ready
+              // announcement on every successful poll.
+              pollStartRef.current = Date.now();
+              setMessages((prev) =>
+                prev.some((message) =>
+                  message.content.includes("Your AI space is ready!"),
+                )
+                  ? prev
+                  : [
+                      ...prev,
+                      {
+                        id: uid(),
+                        role: "assistant" as const,
+                        content:
+                          "Your AI space is ready! You can start chatting in full now.",
+                      },
+                    ],
+              );
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -243,6 +266,13 @@ export function useElizaAppProvisioningChat(
               stoppedRef.current = true;
               setProvisioningError(
                 "Provisioning failed. Please try again or contact support.",
+              );
+              return;
+            }
+            if (newStatus === "deletion_failed") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Removing your previous Dedicated agent failed. Contact support.",
               );
               return;
             }
@@ -269,8 +299,7 @@ export function useElizaAppProvisioningChat(
               provisioning?.status ?? containerStatusRef.current;
             applyOnboardingResponse(res.data);
             if (newStatus === "running" && provisioning?.bridgeUrl) {
-              stoppedRef.current = true;
-              return;
+              pollStartRef.current = Date.now();
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -280,6 +309,13 @@ export function useElizaAppProvisioningChat(
               stoppedRef.current = true;
               setProvisioningError(
                 "Provisioning failed. Please try again or contact support.",
+              );
+              return;
+            }
+            if (newStatus === "deletion_failed") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Removing your previous Dedicated agent failed. Contact support.",
               );
               return;
             }
@@ -313,7 +349,6 @@ export function useElizaAppProvisioningChat(
   }, [
     active,
     applyOnboardingResponse,
-    isReady,
     isDedicatedOff,
     onboardingSessionId,
     provisioningError,
@@ -346,10 +381,23 @@ export function useElizaAppProvisioningChat(
             },
           );
           if (res.success && res.data) {
-            if (res.data.containerStatus)
-              setContainerStatus(res.data.containerStatus);
-            if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-            if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
+            const nextStatus =
+              res.data.containerStatus ?? containerStatusRef.current;
+            if (res.data.containerStatus) {
+              setContainerStatus(nextStatus);
+              setHasObservedStatus(true);
+            }
+            // A chat response observes the same canonical target as polling.
+            // Replace nullable identity fields so a removed or stopped target
+            // cannot leave a stale handoff URL in the client.
+            setAgentId(res.data.agentId ?? null);
+            setBridgeUrl(
+              nextStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
+            );
+            if (nextStatus !== "running" || !res.data.bridgeUrl) {
+              pollStartRef.current = Date.now();
+              stoppedRef.current = false;
+            }
             const reply = res.data.reply;
             if (reply) {
               setMessages((prev) => [

@@ -66,6 +66,11 @@ import { summarizeOverviewSection } from "../service-helpers-occurrence.js";
 import { shouldDeliverReminderForIntensity } from "../service-helpers-reminder.js";
 import { fail, normalizeReminderUrgency } from "../service-normalize.js";
 import { addMinutes, getZonedDateParts } from "../time.js";
+import {
+  callerDefinitionScopes,
+  getCallerOccurrenceView,
+  listCallerDefinitions,
+} from "./definition-authorization.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 /** Days of inactivity after which a daily / interval / times-per-day goal is
@@ -195,8 +200,9 @@ export class GoalsDomain {
         .filter((link) => link.linkedType === "definition")
         .map((link) => link.linkedId),
     );
-    const definitions = await this.ctx.repository.listDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
     );
     return definitions
       .filter(
@@ -960,8 +966,9 @@ export class GoalsDomain {
   async explainOccurrence(
     occurrenceId: string,
   ): Promise<LifeOpsOccurrenceExplanation> {
-    const occurrence = await this.ctx.repository.getOccurrenceView(
-      this.ctx.agentId(),
+    const occurrence = await getCallerOccurrenceView(
+      this.ctx.repository,
+      this.ctx,
       occurrenceId,
     );
     if (!occurrence) {
@@ -1041,8 +1048,10 @@ export class GoalsDomain {
       timezone: resolveDefaultTimeZone(),
       now,
     });
-    const definitions = await this.ctx.repository.listActiveDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: true },
     );
     for (const definition of definitions) {
       await this.deps.refreshDefinitionOccurrences(definition, now);
@@ -1051,11 +1060,13 @@ export class GoalsDomain {
       definitions.map((definition) => [definition.id, definition]),
     );
     const horizon = addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString();
-    const overviewOccurrences =
+    const overviewOccurrences = (
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-      );
+        callerDefinitionScopes(this.ctx),
+      )
+    ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const reminderPlans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",

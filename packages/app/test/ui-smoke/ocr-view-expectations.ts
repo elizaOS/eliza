@@ -298,6 +298,11 @@ export const VIEW_OCR_POLICIES = {
   "plugin-messages-gui": expected({
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
+  "plugin-maps-gui": expected({
+    requireAll: ["Maps", "Provider-neutral map"],
+    requireAny: ["Provider-neutral map", "Search a place"],
+    forbid: ["Google Maps", "Mapbox"],
+  }),
   "plugin-phone-gui": expected({
     requireAny: ["call-blocked", "dialer", "recent"],
   }),

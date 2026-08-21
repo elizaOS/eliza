@@ -5,6 +5,23 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+const VERTEX_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Vertex AI REST hop so a hung or rate-limited API cannot pin the
+ * tuning worker indefinitely. A caller-provided abort signal wins.
+ */
+export function vertexTuningFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = VERTEX_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 export interface VertexTuningConfig {
   projectId: string;
   region?: string;
@@ -172,7 +189,7 @@ export async function uploadToGCS(
   const content = await readFile(localPath);
   const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(objectName)}`;
 
-  const response = await fetch(uploadUrl, {
+  const response = await vertexTuningFetch(uploadUrl, {
     method: "POST",
     headers: {
       authorization: `Bearer ${accessToken}`,
@@ -216,7 +233,7 @@ export async function createTuningJob(config: VertexTuningConfig): Promise<Creat
   };
   const sourceModel = `publishers/google/models/${modelMap[config.baseModel] ?? config.baseModel}`;
 
-  const response = await fetch(
+  const response = await vertexTuningFetch(
     `https://${region}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${region}/tuningJobs`,
     {
       method: "POST",
@@ -262,7 +279,7 @@ export async function listTuningJobs(
   accessToken?: string,
 ): Promise<TuningJob[]> {
   const token = await getAccessToken(accessToken);
-  const response = await fetch(
+  const response = await vertexTuningFetch(
     `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/tuningJobs`,
     {
       headers: { authorization: `Bearer ${token}` },
@@ -282,7 +299,7 @@ export async function getTuningJobStatus(
   accessToken?: string,
 ): Promise<TuningJob> {
   const token = await getAccessToken(accessToken);
-  const response = await fetch(`https://aiplatform.googleapis.com/v1/${jobName}`, {
+  const response = await vertexTuningFetch(`https://aiplatform.googleapis.com/v1/${jobName}`, {
     headers: { authorization: `Bearer ${token}` },
   });
 

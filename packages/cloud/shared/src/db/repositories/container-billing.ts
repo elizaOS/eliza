@@ -320,8 +320,13 @@ export class ContainerBillingRepository {
       };
     }
 
-    const creditApplied = Decimal.min(creditAvailable, amount);
-    const earningsApplied = amount.minus(creditApplied);
+    // Earnings-first split (#22951): when the pay-as-you-go toggle is on, the
+    // owner's redeemable earnings absorb the charge FIRST and purchased
+    // credits only cover the remainder — the order `computeContainerBillingPlan`
+    // (and every doc, schema comment, and UI string) promises. A credits-first
+    // split here would silently invert the documented survival-economics rule.
+    const earningsApplied = Decimal.min(earningsAvailable, amount);
+    const creditApplied = amount.minus(earningsApplied);
     // Earnings are stored at 4dp while compute debt is authoritative at 6dp.
     // Convert enough earnings to cover the exact debt and leave sub-0.0001
     // change in canonical organization credits; rounding down would attempt

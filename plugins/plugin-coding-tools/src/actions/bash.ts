@@ -20,6 +20,10 @@ import {
   type State,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import {
+  consumeDestructiveChallenge,
+  issueDestructiveChallenge,
+} from "../lib/destructive-confirmation.js";
 import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
 import {
   capTranscriptForChat,
@@ -1210,9 +1214,16 @@ export const shellAction: Action = {
     {
       name: "confirm",
       description:
-        "Set true ONLY after the user has explicitly confirmed THIS destructive bulk operation in chat (recursive delete, raw device overwrite, database drop). Never set it preemptively.",
+        "Set true only with the one-time confirmation_challenge returned for this exact command after the user replies `confirm <challenge>` in a later message.",
       required: false,
       schema: { type: "boolean" },
+    },
+    {
+      name: "confirmation_challenge",
+      description:
+        "Opaque one-time challenge returned by a prior needs_confirmation result for this exact command, requester, and room.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "handle",
@@ -1632,44 +1643,11 @@ export const shellAction: Action = {
         process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
       return v === "1" || v === "true" || v === "yes" || v === "on";
     })();
-    // Destructive bulk operations on the CHAT path require an explicit
-    // in-chat confirmation before they run (a confirmation gate, not a
-    // refusal — the planner re-issues the same command with confirm=true
-    // after the user says yes). Coding sub-agents execute explicit task
-    // briefs, which carry their own confirmation upstream, so they are
-    // exempt. Opt out with ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
       return !(v === "0" || v === "false" || v === "off");
     })();
-    if (!codingSubAgentShell && destructiveGateEnabled) {
-      const verdict = classifyDestructiveCommand(command);
-      const confirmed = readBoolParam(options, "confirm") === true;
-      if (verdict.destructive && !confirmed) {
-        const redactedReason = verdict.reason
-          ? redactShellText(runtime, verdict.reason)
-          : undefined;
-        const redactedTargets = verdict.targets.map((target) =>
-          redactShellText(runtime, target),
-        );
-        const targetList =
-          redactedTargets.filter(Boolean).join(", ") || "its targets";
-        return failureToActionResult(
-          {
-            reason: "needs_confirmation",
-            message:
-              `this ${redactedReason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
-              "ask the user to confirm the exact operation, then re-run with confirm=true.",
-          },
-          {
-            command: redactShellText(runtime, command),
-            destructive_reason: redactedReason,
-            targets: redactedTargets,
-          },
-        );
-      }
-    }
     if (!codingSubAgentShell) {
       const localStatusCommand = resolveLocalStatusCommand({
         command,
@@ -1709,6 +1687,63 @@ export const shellAction: Action = {
         command = cryptoCommand.command;
         coreLogger.warn(
           `${CODING_TOOLS_LOG_PREFIX} SHELL replaced unreliable crypto spot-price endpoint with neutral no-key API`,
+        );
+      }
+    }
+
+    // Classify only after every CHAT rewrite so the challenge digest and
+    // verdict describe the exact command that can reach dispatch. A blocked
+    // operation is authorized only when the same requester replies in a later
+    // message with `confirm <challenge>` and the planner returns that challenge
+    // alongside confirm=true. ELIZA_PLANNER_FULL_ACTION_SURFACE changes planner
+    // tool exposure and CHAT presentation behavior; it is process-global and
+    // therefore cannot prove authority for an individual invocation. Operators
+    // may explicitly disable this chat gate with
+    // ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
+    if (destructiveGateEnabled) {
+      const verdict = classifyDestructiveCommand(
+        command,
+        resolveCommandPlatform() === "windows" ? "powershell" : "posix",
+      );
+      const confirmationRequested = readBoolParam(options, "confirm") === true;
+      const confirmation = confirmationRequested
+        ? consumeDestructiveChallenge({
+            runtime,
+            token: readStringParam(options, "confirmation_challenge"),
+            command,
+            message,
+          })
+        : ({ authorized: false, reason: "missing" } as const);
+      if (verdict.destructive && !confirmation.authorized) {
+        const challenge = issueDestructiveChallenge({
+          runtime,
+          command,
+          message,
+        });
+        const redactedReason = verdict.reason
+          ? redactShellText(runtime, verdict.reason)
+          : undefined;
+        const redactedTargets = verdict.targets.map((target) =>
+          redactShellText(runtime, target),
+        );
+        const targetList =
+          redactedTargets.filter(Boolean).join(", ") || "its targets";
+        return failureToActionResult(
+          {
+            reason: "needs_confirmation",
+            message:
+              `this ${redactedReason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
+              `ask the user to reply exactly \`confirm ${challenge ?? "<challenge>"}\`; then re-run in that later user turn with confirm=true and the returned confirmation_challenge.`,
+          },
+          {
+            command: redactShellText(runtime, command),
+            destructive_reason: redactedReason,
+            targets: redactedTargets,
+            confirmation_challenge: challenge,
+            confirmation_failure: confirmationRequested
+              ? confirmation.reason
+              : undefined,
+          },
         );
       }
     }

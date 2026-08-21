@@ -1,8 +1,10 @@
 /** Contributes loaded Agent Skills to the shared runtime command registry. */
 
-import type {
-	CommandRegistryService,
-	IAgentRuntime,
+import {
+	type CommandRegistryService,
+	type IAgentRuntime,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "./services/skills";
 
@@ -23,7 +25,7 @@ export function registerLoadedSkillCommands(
 		const slug = skill.slug.toLowerCase();
 		commands.register({
 			key: `skill-${slug}`,
-			description: skill.description.substring(0, 80),
+			description: truncateWellFormed(toWellFormedUnicode(skill.description), 80),
 			textAliases: [`/${slug}`],
 			scope: "both",
 			category: "skills",

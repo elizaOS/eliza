@@ -15,7 +15,6 @@ import {
   chatDbMessageToPublicShape,
   formatPhoneNumber,
   getLastChatDbAccessIssue,
-  IMessageCliError,
   IMessageConfigurationError,
   IMessageNotSupportedError,
   // Error classes
@@ -470,18 +469,6 @@ describe("Error classes", () => {
     const error = new IMessageNotSupportedError("custom msg");
     expect(error.message).toBe("custom msg");
   });
-
-  it("IMessageCliError includes exit code", () => {
-    const error = new IMessageCliError("command failed", 1);
-    expect(error.code).toBe("CLI_ERROR");
-    expect(error.details).toEqual({ exitCode: 1 });
-    expect(error.name).toBe("IMessageCliError");
-  });
-
-  it("IMessageCliError handles undefined exit code", () => {
-    const error = new IMessageCliError("command failed");
-    expect(error.details).toBeUndefined();
-  });
 });
 
 // ============================================================
@@ -550,7 +537,8 @@ describe("chatDbMessageToPublicShape", () => {
       attachments: [
         {
           guid: "att-1",
-          filename: "/tmp/image.png",
+          filename: "image.png",
+          path: "/tmp/image.png",
           uti: "public.png",
           mimeType: "image/png",
           totalBytes: 123,
@@ -784,7 +772,7 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
 
     // Seconds-scale Apple date for simplicity: 1000 = 2001-01-01 +1000s
     db.run(
-      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (10, 'guid-10', 'first', 1000, 0, 1, 'iMessage')"
+      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service, cache_has_attachments) VALUES (10, 'guid-10', 'first', 1000, 0, 1, 'iMessage', 1)"
     );
     db.run(
       "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (11, 'guid-11', 'outbound reply', 2000, 1, 1, 'iMessage')"
@@ -796,6 +784,10 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     db.run(
       "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (13, 'guid-13', NULL, 4000, 0, 1, 'iMessage')"
     );
+    db.run(
+      "INSERT INTO attachment (ROWID, guid, transfer_name, filename, mime_type, uti, total_bytes, is_sticker) VALUES (1, 'att-guid-1', 'photo.png', '~/Library/Messages/Attachments/aa/photo.png', 'image/png', 'public.png', 321, 0)"
+    );
+    db.run("INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (10, 1)");
 
     db.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 10)");
     db.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 11)");
@@ -844,6 +836,33 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
       expect(direct?.chatType).toBe("direct");
       expect(group?.chatType).toBe("group");
       expect(group?.displayName).toBe("Weekend Plans");
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps an attachment display name separate from its downloaded local path", async ({
+    skip,
+  }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+
+      const row = reader.fetchNewMessages(0, 100).find((message) => message.rowId === 10);
+      expect(row?.attachments).toEqual([
+        {
+          guid: "att-guid-1",
+          filename: "photo.png",
+          path: "~/Library/Messages/Attachments/aa/photo.png",
+          uti: "public.png",
+          mimeType: "image/png",
+          totalBytes: 321,
+          isSticker: false,
+        },
+      ]);
 
       reader.close();
     } finally {

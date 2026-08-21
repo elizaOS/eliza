@@ -10,6 +10,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * authenticated agent owner can revoke it.
  */
 
+import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -24,6 +25,15 @@ async function __hono_POST(
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
+    if (!isRemotePairingUuid(id)) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: "Session id must be a UUID" },
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
 
     const result = await remoteSessionsRepository.revoke(
       id,

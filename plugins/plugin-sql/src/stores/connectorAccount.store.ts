@@ -25,7 +25,6 @@ import type {
   DeleteConnectorAccountParams,
   GetConnectorAccountCredentialRefParams,
   GetConnectorAccountParams,
-  JsonValue,
   ListConnectorAccountCredentialRefsParams,
   ListConnectorAccountsParams,
   OAuthFlowRecord,
@@ -33,6 +32,7 @@ import type {
   UpsertConnectorAccountParams,
   UUID,
 } from "@elizaos/core";
+import { cloneConnectorJsonObject, redactConnectorJsonAudit } from "@elizaos/core";
 import { and, desc, eq, gt, isNull, type SQL, sql } from "drizzle-orm";
 import {
   authOwnerBindingTable,
@@ -44,34 +44,13 @@ import {
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 
-const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
   /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
-
-function redactConnectorAuditValue(value: unknown): JsonValue {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    return value.map(redactConnectorAuditValue) as JsonValue;
-  }
-  if (typeof value === "object") {
-    const redacted: ConnectorAccountJsonObject = {};
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
-        ? CONNECTOR_AUDIT_REDACTED
-        : redactConnectorAuditValue(item);
-    }
-    return redacted;
-  }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  return String(value);
-}
 
 function redactConnectorAuditMetadata(
   metadata: Record<string, unknown> | undefined
 ): ConnectorAccountJsonObject {
-  return redactConnectorAuditValue(metadata ?? {}) as ConnectorAccountJsonObject;
+  return redactConnectorJsonAudit(metadata, (key) => CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key));
 }
 
 function sha256Hex(value: string): string {
@@ -91,7 +70,7 @@ function paramDateToDate(value: number | Date | null | undefined): Date | null |
 
 function asJsonObject(value: unknown): ConnectorAccountJsonObject {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as ConnectorAccountJsonObject;
+    return cloneConnectorJsonObject(value as ConnectorAccountJsonObject);
   }
   return {};
 }
@@ -291,6 +270,8 @@ export class ConnectorAccountStore implements Store {
       const connectedAt = paramDateToDate(params.connectedAt);
       const lastSyncAt = paramDateToDate(params.lastSyncAt);
       const deletedAt = paramDateToDate(params.deletedAt);
+      const profile = cloneConnectorJsonObject(params.profile);
+      const metadata = cloneConnectorJsonObject(params.metadata);
 
       const insertValues: typeof connectorAccountsTable.$inferInsert = {
         agentId,
@@ -308,8 +289,8 @@ export class ConnectorAccountStore implements Store {
         status: params.status ?? "connected",
         scopes: params.scopes ? [...params.scopes] : [],
         capabilities: params.capabilities ? [...params.capabilities] : [],
-        profile: params.profile ?? {},
-        metadata: params.metadata ?? {},
+        profile,
+        metadata,
         ...(params.id ? { id: params.id } : {}),
         ...(connectedAt !== undefined ? { connectedAt: connectedAt ?? new Date() } : {}),
         ...(lastSyncAt !== undefined ? { lastSyncAt } : {}),
@@ -331,8 +312,8 @@ export class ConnectorAccountStore implements Store {
       if (params.status !== undefined) updateSet.status = params.status;
       if (params.scopes !== undefined) updateSet.scopes = [...params.scopes];
       if (params.capabilities !== undefined) updateSet.capabilities = [...params.capabilities];
-      if (params.profile !== undefined) updateSet.profile = params.profile;
-      if (params.metadata !== undefined) updateSet.metadata = params.metadata;
+      if (params.profile !== undefined) updateSet.profile = profile;
+      if (params.metadata !== undefined) updateSet.metadata = metadata;
       if (connectedAt !== undefined && connectedAt !== null) {
         updateSet.connectedAt = connectedAt;
       }
@@ -462,6 +443,7 @@ export class ConnectorAccountStore implements Store {
       }
       const expiresAt = paramDateToDate(params.expiresAt);
       const lastVerifiedAt = paramDateToDate(params.lastVerifiedAt);
+      const metadata = cloneConnectorJsonObject(params.metadata);
 
       const insertValues: typeof connectorAccountCredentialsTable.$inferInsert = {
         accountId: params.accountId,
@@ -469,7 +451,7 @@ export class ConnectorAccountStore implements Store {
         provider: account.provider,
         credentialType: params.credentialType,
         vaultRef: params.vaultRef,
-        metadata: params.metadata ?? {},
+        metadata,
         ...(expiresAt !== undefined ? { expiresAt } : {}),
         ...(lastVerifiedAt !== undefined ? { lastVerifiedAt } : {}),
       };
@@ -478,7 +460,7 @@ export class ConnectorAccountStore implements Store {
         vaultRef: params.vaultRef,
         updatedAt: new Date(),
       };
-      if (params.metadata !== undefined) updateSet.metadata = params.metadata;
+      if (params.metadata !== undefined) updateSet.metadata = metadata;
       if (expiresAt !== undefined) updateSet.expiresAt = expiresAt;
       if (lastVerifiedAt !== undefined) updateSet.lastVerifiedAt = lastVerifiedAt;
 
@@ -628,6 +610,7 @@ export class ConnectorAccountStore implements Store {
       const explicitExpiresAt = paramDateToDate(params.expiresAt);
       const ttlMs = params.ttlMs ?? 10 * 60_000;
       const expiresAt = explicitExpiresAt ?? new Date(now.getTime() + ttlMs);
+      const metadata = cloneConnectorJsonObject(params.metadata);
 
       const insertValues: typeof oauthFlowsTable.$inferInsert = {
         stateHash,
@@ -637,7 +620,7 @@ export class ConnectorAccountStore implements Store {
         redirectUri: params.redirectUri ?? null,
         codeVerifierRef: params.codeVerifierRef ?? null,
         scopes: params.scopes ? [...params.scopes] : [],
-        metadata: params.metadata ?? {},
+        metadata,
         expiresAt,
       };
 
@@ -651,7 +634,7 @@ export class ConnectorAccountStore implements Store {
             redirectUri: params.redirectUri ?? null,
             codeVerifierRef: params.codeVerifierRef ?? null,
             scopes: params.scopes ? [...params.scopes] : [],
-            metadata: params.metadata ?? {},
+            metadata,
             expiresAt,
             consumedAt: null,
             consumedBy: null,
@@ -758,9 +741,10 @@ export class ConnectorAccountStore implements Store {
       }
       if (params.scopes !== undefined) updateSet.scopes = [...params.scopes];
       if (params.metadata !== undefined) {
+        const metadata = cloneConnectorJsonObject(params.metadata);
         updateSet.metadata = {
-          ...existing.metadata,
-          ...params.metadata,
+          ...cloneConnectorJsonObject(existing.metadata),
+          ...metadata,
         };
       }
       if (params.expiresAt !== undefined) {

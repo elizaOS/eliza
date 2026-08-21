@@ -19,7 +19,11 @@
  *    (frequency, intensity) can be tuned from observed owner reception.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
 
 export const MARKER_RETENTION_HOURS = 24;
@@ -76,10 +80,11 @@ function isOutcome(value: unknown): value is AnticipationOutcome {
 }
 
 function clampSnippet(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length <= SNIPPET_MAX_LENGTH
-    ? trimmed
-    : `${trimmed.slice(0, SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length <= SNIPPET_MAX_LENGTH) {
+    return wellFormed;
+  }
+  return `${truncateWellFormed(wellFormed, SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function normalizeMarkers(value: unknown): ProactiveDispatchMarker[] {

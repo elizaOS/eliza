@@ -45,6 +45,51 @@ function responseRecorder(): RecordedResponse {
 }
 
 describe("POST /api/database/query read-only guard", () => {
+  it("rejects executable text after a line-comment marker inside a string", async () => {
+    const query = vi.fn();
+    const runtime = { adapter: { db: { query } } } as unknown as AgentRuntime;
+    const res = responseRecorder();
+
+    await expect(
+      handleDatabaseRoute(
+        jsonPost({
+          sql: "SELECT 'value--'; DELETE FROM memories",
+          readOnly: true,
+        }),
+        res,
+        runtime,
+        "/api/database/query",
+      ),
+    ).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({
+      error: expect.stringContaining("DELETE"),
+    });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects a schema-qualified quoted dangerous callable", async () => {
+    const query = vi.fn();
+    const runtime = { adapter: { db: { query } } } as unknown as AgentRuntime;
+    const res = responseRecorder();
+
+    await expect(
+      handleDatabaseRoute(
+        jsonPost({ sql: 'SELECT "pg_catalog"."pg_sleep"(1)', readOnly: true }),
+        res,
+        runtime,
+        "/api/database/query",
+      ),
+    ).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({
+      error: expect.stringContaining("PG_SLEEP"),
+    });
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("rejects unicode-escaped identifiers with a JSON error before query execution", async () => {
     const query = vi.fn();
     const runtime = {

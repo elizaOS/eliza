@@ -685,8 +685,18 @@ async function runHouseholdOwnerSubaction(
 
   const principalEntityId =
     optionalText(params, "principalEntityId") ?? SELF_ENTITY_ID;
+  const exportHouseholdId = requiredText(params, "householdId");
+  // Pulling the export artifact for another principal is its own granted,
+  // revocable authority; internal scoped views do not pass through here.
+  if (principalEntityId !== SELF_ENTITY_ID) {
+    await service.requireScope({
+      householdId: exportHouseholdId,
+      principalEntityId,
+      scope: "household.export",
+    });
+  }
   const householdExport = await service.exportFor({
-    householdId: requiredText(params, "householdId"),
+    householdId: exportHouseholdId,
     principalEntityId,
   });
   const operation = "lifeops.household_coordination.export";

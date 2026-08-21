@@ -1,0 +1,88 @@
+{
+  "name": "@elizaos/plugin-notion",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": ["registry-entry.json", "dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/node": "^25.6.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "eliza": {
+    "platforms": ["node"],
+    "runtime": "node"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "NOTION_CLIENT_ID": {
+        "type": "string",
+        "description": "Notion public-integration OAuth client ID",
+        "required": false,
+        "sensitive": false
+      },
+      "NOTION_CLIENT_SECRET": {
+        "type": "string",
+        "description": "Notion public-integration OAuth client secret",
+        "required": false,
+        "sensitive": true
+      },
+      "NOTION_REDIRECT_URI": {
+        "type": "string",
+        "description": "Notion OAuth redirect URI registered on the integration",
+        "required": false,
+        "sensitive": false
+      },
+      "NOTION_TOKEN": {
+        "type": "string",
+        "description": "Local BYO internal-integration token (self-hosted mode)",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
+}

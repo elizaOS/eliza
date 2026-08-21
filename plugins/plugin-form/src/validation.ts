@@ -46,6 +46,12 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import {
+  isSafeUntrustedRegexPattern,
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
+  MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
+  matchesSafeUntrustedRegexPattern,
+} from "@elizaos/shared/config/config-catalog";
 import { strictEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
@@ -196,6 +202,55 @@ export function validateField(
 }
 
 /**
+ * Caps and dialect for `FormControl.pattern` come from the shared
+ * agent-authored-regex policy in `@elizaos/shared`, the same gate the config
+ * and UI renderers use. Re-exported here so form code and its tests have one
+ * name for them and one source of truth for the numbers.
+ */
+export const MAX_CONTROL_PATTERN_LENGTH = MAX_UNTRUSTED_REGEX_PATTERN_LENGTH;
+export const MAX_CONTROL_PATTERN_INPUT_LENGTH =
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH;
+
+/**
+ * Test a caller-supplied form control pattern against a value.
+ *
+ * WHY the shared dialect instead of `new RegExp(pattern).test(value)`:
+ * `control.pattern` is agent- or plugin-authored data, and a backtracking
+ * engine lets that data choose its own running time. Neither a try/catch nor a
+ * length cap bounds it - `^(a|aa)+$` is nine characters and takes seconds on a
+ * forty-character near-miss. `isSafeUntrustedRegexPattern` admits only a flat
+ * sequence with at most one variable repetition (no groups, no alternation, no
+ * backreferences, bounded fixed repetitions), so an admitted pattern has no
+ * ambiguity to backtrack through, and everything else is refused before the
+ * engine ever sees it.
+ *
+ * Every non-`ok` result is a validation failure at both call sites, so a
+ * refused pattern fails the field closed rather than passing it unchecked.
+ */
+export function testControlPattern(
+  pattern: string,
+  value: string,
+):
+  | { ok: true }
+  | { ok: false; reason: "unsupported" | "mismatch" | "too-long" } {
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    return { ok: false, reason: "unsupported" };
+  }
+  if (
+    pattern.length > MAX_CONTROL_PATTERN_LENGTH ||
+    value.length > MAX_CONTROL_PATTERN_INPUT_LENGTH
+  ) {
+    return { ok: false, reason: "too-long" };
+  }
+  if (!isSafeUntrustedRegexPattern(pattern)) {
+    return { ok: false, reason: "unsupported" };
+  }
+  return matchesSafeUntrustedRegexPattern(pattern, value)
+    ? { ok: true }
+    : { ok: false, reason: "mismatch" };
+}
+
+/**
  * Validate text field.
  *
  * Applies: pattern, minLength, maxLength, enum
@@ -206,11 +261,11 @@ function validateText(
 ): ValidationResult {
   const strValue = String(value);
 
-  // Pattern validation
-  // WHY regex: Flexible, powerful, user-defined patterns
+  // Pattern validation. Untrusted pattern text never reaches a bare
+  // `new RegExp(...).test(...)`; see testControlPattern.
   if (control.pattern) {
-    const regex = new RegExp(control.pattern);
-    if (!regex.test(strValue)) {
+    const checked = testControlPattern(control.pattern, strValue);
+    if (!checked.ok) {
       return {
         valid: false,
         error: `${control.label || control.key} has invalid format`,

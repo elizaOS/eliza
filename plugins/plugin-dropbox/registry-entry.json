@@ -1,0 +1,84 @@
+{
+  "id": "dropbox",
+  "name": "Dropbox",
+  "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
+  "npmName": "@elizaos/plugin-dropbox",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "dropbox",
+    "files",
+    "storage",
+    "documents",
+    "connector",
+    "productivity"
+  ],
+  "config": {
+    "DROPBOX_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "App Key",
+      "help": "Dropbox app key (OAuth client ID). Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "DROPBOX_CLIENT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "App Secret",
+      "help": "Dropbox app secret (OAuth client secret). Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "DROPBOX_REDIRECT_URI": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "OAuth Redirect URI",
+      "help": "Redirect URI registered on the Dropbox app.",
+      "advanced": true
+    },
+    "DROPBOX_ACCESS_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Access Token",
+      "help": "Local BYO access token for self-hosted mode. Short-lived tokens without a refresh token stop working when they expire.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "FolderOpen",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-dropbox#readme",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "other",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": [
+      "DROPBOX_ACCESS_TOKEN"
+    ]
+  },
+  "accounts": {
+    "owner": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "The user's Dropbox account, connected via PKCE offline OAuth with read scopes by default and an explicit write-scope escalation."
+    }
+  }
+}

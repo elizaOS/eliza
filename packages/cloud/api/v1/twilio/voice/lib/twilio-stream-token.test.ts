@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   mintTwilioStreamToken,
+  prepareTwilioStreamToken,
   verifyTwilioStreamToken,
 } from "./twilio-stream-token";
 
@@ -26,6 +27,21 @@ describe("Twilio stream token", () => {
       () => 1_000_000,
     );
     expect(minted.token.length).toBeLessThan(500);
+    expect(
+      await verifyTwilioStreamToken(minted.token, "secret", () => 1_001_000),
+    ).toEqual(minted.claims);
+  });
+
+  test("signs the exact preallocated directory identity", async () => {
+    const bootstrap = prepareTwilioStreamToken(() => 1_000_000);
+    const minted = await mintTwilioStreamToken(
+      input,
+      "secret",
+      () => 1_000_000,
+      bootstrap,
+    );
+
+    expect(minted.claims).toMatchObject(bootstrap);
     expect(
       await verifyTwilioStreamToken(minted.token, "secret", () => 1_001_000),
     ).toEqual(minted.claims);

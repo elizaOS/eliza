@@ -22,6 +22,23 @@ const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v24";
 const GOOGLE_ADS_BASE_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 const GOOGLE_ADS_RESUMABLE_UPLOAD_BASE_URL = `https://googleads.googleapis.com/resumable/upload/${GOOGLE_ADS_API_VERSION}`;
 
+const GOOGLE_ADS_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Google Ads REST hop so a hung or rate-limited API cannot pin the
+ * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ */
+export function googleAdsFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = GOOGLE_ADS_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface GoogleAdsError {
   error?: {
     code: number;
@@ -46,7 +63,7 @@ async function googleAdsRequest<T>(
 ): Promise<T> {
   const url = `${GOOGLE_ADS_BASE_URL}/customers/${customerId}${endpoint}`;
 
-  const response = await fetch(url, {
+  const response = await googleAdsFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -221,12 +238,15 @@ export const googleAdsProvider: AdProvider = {
     }
 
     // List accessible customers to validate token
-    const response = await fetch(`${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`, {
-      headers: {
-        Authorization: `Bearer ${credentials.accessToken}`,
-        "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    const response = await googleAdsFetch(
+      `${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`,
+      {
+        headers: {
+          Authorization: `Bearer ${credentials.accessToken}`,
+          "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       return {
@@ -250,7 +270,7 @@ export const googleAdsProvider: AdProvider = {
     refreshToken?: string;
     expiresAt?: Date;
   }> {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
+    const response = await googleAdsFetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -281,12 +301,15 @@ export const googleAdsProvider: AdProvider = {
   async listAdAccounts(
     credentials: AdAccountCredentials,
   ): Promise<Array<{ id: string; name: string }>> {
-    const response = await fetch(`${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`, {
-      headers: {
-        Authorization: `Bearer ${credentials.accessToken}`,
-        "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "",
+    const response = await googleAdsFetch(
+      `${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`,
+      {
+        headers: {
+          Authorization: `Bearer ${credentials.accessToken}`,
+          "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "",
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       throw new Error("Failed to list Google Ads accounts");
@@ -699,7 +722,7 @@ export const googleAdsProvider: AdProvider = {
           "X-Goog-Upload-Header-Content-Length": String(downloaded.bytes.byteLength),
           "X-Goog-Upload-Header-Content-Type": downloaded.contentType,
         };
-        const startResponse = await fetch(
+        const startResponse = await googleAdsFetch(
           `${GOOGLE_ADS_RESUMABLE_UPLOAD_BASE_URL}/customers/${accountId}/youTubeVideoUploads:create`,
           {
             method: "POST",
@@ -727,7 +750,7 @@ export const googleAdsProvider: AdProvider = {
           downloaded.bytes.byteOffset,
           downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
         ) as ArrayBuffer;
-        const finalizeResponse = await fetch(uploadUrl, {
+        const finalizeResponse = await googleAdsFetch(uploadUrl, {
           method: "PUT",
           headers: {
             Authorization: `Bearer ${credentials.accessToken}`,

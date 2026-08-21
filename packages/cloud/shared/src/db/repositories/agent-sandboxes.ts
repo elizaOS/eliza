@@ -68,6 +68,7 @@ import {
   type AgentSandboxStatus,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
@@ -499,6 +500,11 @@ export class AgentSandboxesRepository {
    * (node_id / container_name are NULL by design), so there is nothing to
    * dial over the Headscale tunnel — heartbeating them only ever fails and
    * spams the logs. Only dedicated/custom tiers have a real container.
+   *
+   * Soft-deleted rows and unclaimed warm-pool rows are excluded like the
+   * sibling predicates in this file: neither belongs to a tenant-serving
+   * agent, so dialing them wastes cycles and pollutes heartbeat telemetry
+   * (#22548).
    */
   async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
     return dbRead
@@ -508,8 +514,55 @@ export class AgentSandboxesRepository {
       })
       .from(agentSandboxes)
       .where(
-        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+        and(
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
       );
+  }
+
+  /**
+   * Tier x status census of the container-backed tenant fleet, for the
+   * fleet-liveness monitor (#22548). Grouping by BOTH keys is the point: the
+   * monitor cannot decide whether a row "should be reachable right now" from
+   * its status alone, because the tiers carry different serving contracts —
+   * `dedicated-lazy` is allowed to sleep, `dedicated-always`/`custom` are not.
+   * The caller applies that contract with `isFleetRowExpectedReachable`.
+   *
+   * The tier filter is an explicit allowlist rather than `<> 'shared'` so a
+   * tier added later cannot silently join the paging census: shared rows are
+   * container-free by design, and any new tier must state its own serving
+   * contract before it can raise a fleet alarm. Soft-deleted rows and
+   * unclaimed warm-pool rows are excluded because neither belongs to a
+   * tenant-serving agent.
+   *
+   * Status is deliberately NOT filtered here: the monitor needs the off-state
+   * counts (`sleeping`, `stopped`, ...) to report the whole fleet picture
+   * alongside the alarm, and a fleet whose every row sits in `error` — the
+   * exact shape the heartbeat sweep cannot see, since it iterates only
+   * `running` rows — must still appear in the census.
+   */
+  async summarizeDedicatedFleet(): Promise<
+    Array<{ execution_tier: string; status: string; count: number }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbRead
+      .select({
+        execution_tier: agentSandboxes.execution_tier,
+        status: agentSandboxes.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
+      )
+      .groupBy(agentSandboxes.execution_tier, agentSandboxes.status);
   }
 
   /**
@@ -2722,6 +2775,21 @@ export class AgentSandboxesRepository {
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
     );
+    // The reaper has proved this workload absent on the named node. A retained
+    // bridge/health locator would make the recovery delete try to capture from
+    // that dead generation again, permanently stranding the tombstone. Clear
+    // only the network locators, fenced to the same node and terminal delete
+    // states; the remaining container/node identity stays available for audit.
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ bridge_url: null, health_url: null, updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, agentId),
+          eq(agentSandboxes.node_id, nodeId),
+          inArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
+        ),
+      );
     return result.outcome;
   }
 }

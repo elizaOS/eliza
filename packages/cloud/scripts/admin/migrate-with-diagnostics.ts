@@ -517,12 +517,15 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
 }
 
 async function createPgClient(url: string): Promise<MigrationClient> {
+  console.log("[db:migrate] preparing PostgreSQL client");
   const { url: clientUrl, ssl: clientSsl } = enforceTlsForRemote(url);
   const client = new Client({
     connectionString: clientUrl,
     ...(clientSsl ? { ssl: clientSsl } : {}),
   });
+  console.log("[db:migrate] connecting PostgreSQL client");
   await client.connect();
+  console.log("[db:migrate] PostgreSQL client connected");
   return {
     backend: "postgres",
     query: async <T>(text: string, params?: unknown[]) => {
@@ -546,6 +549,7 @@ export async function runMigrations(
   await runWithCleanup(
     async () => {
       if (client.backend === "postgres") {
+        console.log("[db:migrate] acquiring migration lock");
         await acquireMigrationLock(client, retryOptions);
         lockHeld = true;
       } else {
@@ -653,6 +657,15 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((error) => {
     console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
+    if (error instanceof Error && typeof error.stack === "string") {
+      const frames = error.stack
+        .split("\n")
+        .slice(1, 13)
+        .filter((line) => line.trimStart().startsWith("at "));
+      if (frames.length > 0) {
+        console.error(`[db:migrate] stack frames:\n${frames.join("\n")}`);
+      }
+    }
     process.exit(1);
   });
 }

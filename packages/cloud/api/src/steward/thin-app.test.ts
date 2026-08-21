@@ -12,7 +12,11 @@ import {
   providersCacheControlForAgeMs,
   resetProvidersResponseCacheForTests,
 } from "./embedded";
-import { isThinStewardPublicPath } from "./public-paths";
+import {
+  isThinStewardEmailAuthPath,
+  isThinStewardPath,
+  isThinStewardPublicPath,
+} from "./public-paths";
 import { createStewardThinApp } from "./thin-app";
 
 const UPSTREAM = "https://steward.example.test";
@@ -70,6 +74,59 @@ describe("isThinStewardPublicPath", () => {
     expect(isThinStewardPublicPath("/steward/auth/email/send")).toBe(false);
     expect(isThinStewardPublicPath("/steward/auth/nonce")).toBe(false);
     expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
+    expect(
+      isThinStewardPublicPath(`/steward/auth/providers${"/".repeat(100_000)}`),
+    ).toBe(true);
+  });
+});
+
+describe("isThinStewardEmailAuthPath", () => {
+  test("matches only the three Magic Link email legs", () => {
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/send/")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/code/verify")).toBe(
+      true,
+    );
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/providers")).toBe(false);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/verify")).toBe(
+      false,
+    );
+    expect(isThinStewardEmailAuthPath("/steward/vault/keys")).toBe(false);
+    expect(
+      isThinStewardEmailAuthPath(
+        `/steward/auth/email/send${"/".repeat(100_000)}`,
+      ),
+    ).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/passkey/register")).toBe(
+      false,
+    );
+  });
+});
+
+describe("isThinStewardPath", () => {
+  test("GET/HEAD only for public reads", () => {
+    expect(isThinStewardPath("GET", "/steward/auth/providers")).toBe(true);
+    expect(isThinStewardPath("HEAD", "/steward/tenants/config")).toBe(true);
+    expect(isThinStewardPath("GET", "/steward/auth/email/send")).toBe(false);
+  });
+
+  test("POST only for the Magic Link email legs", () => {
+    expect(isThinStewardPath("POST", "/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardPath("POST", "/steward/auth/email/code/verify")).toBe(
+      true,
+    );
+    expect(isThinStewardPath("POST", "/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardPath("POST", "/steward/auth/providers")).toBe(false);
+    expect(isThinStewardPath("POST", "/steward/vault/keys")).toBe(false);
+    expect(isThinStewardPath("PUT", "/steward/auth/email/send")).toBe(false);
+    expect(isThinStewardPath("DELETE", "/steward/auth/email/send")).toBe(false);
+  });
+
+  test("OPTIONS eligible for both path families", () => {
+    expect(isThinStewardPath("OPTIONS", "/steward/auth/providers")).toBe(true);
+    expect(isThinStewardPath("OPTIONS", "/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardPath("OPTIONS", "/steward/vault/keys")).toBe(false);
   });
 });
 
@@ -316,6 +373,93 @@ describe("createStewardThinApp", () => {
     expect([200, 204].includes(response.status) || response.status < 500).toBe(
       true,
     );
+  });
+
+  test("proxies POST /steward/auth/email/send with signing headers", async () => {
+    const upstreamUrls: string[] = [];
+    let upstreamHeaders: Headers | null = null;
+    stubFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
+      upstreamUrls.push(
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url,
+      );
+      upstreamHeaders = new Headers(init?.headers);
+      return Response.json({
+        ok: true,
+        data: {
+          expiresAt: "2026-01-01T00:00:00.000Z",
+          challengeId: "c1",
+          pollSecret: "p1",
+        },
+      });
+    });
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/email/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://app.elizacloud.ai",
+        },
+        body: JSON.stringify({ email: "user@example.com" }),
+      },
+      {
+        ...stewardEnv,
+        STEWARD_REQUEST_SIGNING_SECRET: "test-signing-secret",
+      } as unknown as AppEnv["Bindings"],
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamUrls).toEqual([`${UPSTREAM}/auth/email/send`]);
+    const sentHeaders = upstreamHeaders as Headers | null;
+    expect(sentHeaders?.get("x-steward-signature")).toMatch(/^v1=[0-9a-f]+$/);
+    expect(sentHeaders?.get("x-steward-request-expires-at")).toMatch(/^\d+$/);
+    expect(sentHeaders?.get("idempotency-key")).toBeTruthy();
+    expect(sentHeaders?.get("x-steward-tenant")).toBe("elizacloud-staging");
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: { challengeId?: string };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.data?.challengeId).toBe("c1");
+  });
+
+  test("proxies POST /steward/auth/email/status without a signing secret", async () => {
+    const upstreamUrls: string[] = [];
+    stubFetch(async (input: RequestInfo | URL) => {
+      upstreamUrls.push(
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url,
+      );
+      return Response.json({ ok: true, data: { status: "pending" } });
+    });
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/email/status",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challengeId: "c1", pollSecret: "p1" }),
+      },
+      stewardEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamUrls).toEqual([`${UPSTREAM}/auth/email/status`]);
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: { status?: string };
+    };
+    expect(body.data?.status).toBe("pending");
   });
 
   test("OPTIONS preflight gets first-party CORS for app origin", async () => {

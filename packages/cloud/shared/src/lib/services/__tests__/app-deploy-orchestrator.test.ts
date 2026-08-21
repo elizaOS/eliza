@@ -9,6 +9,7 @@ import {
 
 const REQ: DeployAppRequest = {
   appId: "11111111-2222-3333-4444-555555555555",
+  deploymentGeneration: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   organizationId: "org-1",
   userId: "user-1",
   containerName: "app-nubilio",
@@ -23,7 +24,7 @@ const TENANT_DSN = "postgresql://app_x:pw@apps-cluster-1/db_app_x?sslmode=requir
 function deps(over: Partial<AppDeployDeps> = {}) {
   const seen: {
     row?: NewAppContainerRow;
-    enqueued?: { containerId: string };
+    enqueued?: { containerId: string; deploymentGeneration: string };
     linked?: { appId: string; containerId: string };
   } = {};
   const base: AppDeployDeps = {
@@ -35,7 +36,10 @@ function deps(over: Partial<AppDeployDeps> = {}) {
       return { containerId: "container-1" };
     },
     async enqueueProvision(p) {
-      seen.enqueued = { containerId: p.containerId };
+      seen.enqueued = {
+        containerId: p.containerId,
+        deploymentGeneration: p.deploymentGeneration,
+      };
       return { id: "job-1" };
     },
     async linkContainerToApp(appId, containerId) {
@@ -60,6 +64,7 @@ describe("deployApp", () => {
     expect(seen.row?.port).toBe(3000);
     // provision was enqueued for the created container
     expect(seen.enqueued?.containerId).toBe("container-1");
+    expect(seen.enqueued?.deploymentGeneration).toBe(REQ.deploymentGeneration);
     // container linked back to the app
     expect(seen.linked).toEqual({ appId: REQ.appId, containerId: "container-1" });
   });

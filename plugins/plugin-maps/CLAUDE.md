@@ -17,7 +17,11 @@ saved places, safe sharing, and navigation handoffs.
   Do not add another file store, scheduler, or identity graph.
 - Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
   package does not request device permissions or read device location itself.
-- Google Maps/Routes integration and rendered maps UI belong to later issues.
+- The plugin-local `/maps` view renders normalized results as a deterministic,
+  provider-neutral schematic. It never fetches external tiles or invents
+  attribution, ratings, availability, route alternatives, or geometry.
+- Commercial provider adapters, provider legal-attribution metadata, and
+  device-specific share/navigation launches belong to their owning connectors.
 
 ## Public surface
 
@@ -37,6 +41,9 @@ saved places, safe sharing, and navigation handoffs.
   desired state is current.
 - Missing action inputs return a canonical form interaction and set
   `awaitingUserInput`; they never fabricate coordinates or places.
+- View reads use the authenticated `serverInteract` broker. The view must not
+  call `savePlace()` directly; its save control hands a reviewable `MAPS_SAVE`
+  request to chat so runtime receipt settlement remains authoritative.
 
 ## Commands
 
@@ -45,6 +52,7 @@ bun run --cwd plugins/plugin-maps test
 bun run --cwd plugins/plugin-maps typecheck
 bun run --cwd plugins/plugin-maps lint:check
 bun run --cwd plugins/plugin-maps build
+bun run --cwd packages/app audit:app
 ```
 
 ## Verification

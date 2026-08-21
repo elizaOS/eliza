@@ -102,6 +102,21 @@ describe("WEB_SEARCH action", () => {
     expect(webSearch.description).toContain("search snippets lag live values");
   });
 
+  it("declares and accepts the planner's snake_case result-count alias", async () => {
+    expect(webSearch.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "num_results" }),
+      ]),
+    );
+    mockProviders({ parallel: mcpJson("RESULT: current elizaOS update") });
+    const { result } = await runHandler({
+      query: "latest elizaOS",
+      num_results: 4,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("current elizaOS update");
+  });
+
   it("is available by default through the inline action surface", async () => {
     delete process.env.ELIZA_WEB_SEARCH;
     delete process.env.ELIZA_INLINE_WEB_SEARCH;

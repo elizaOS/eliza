@@ -3,8 +3,8 @@
  * viewport renders the same phone-first hero; mobile compacts the controls so
  * the framed conversation can use the remaining display height. Readiness is
  * fonts, the visible heading, and the demo having rendered messages. Under
- * reduced motion the demo renders its settled intro immediately (phase
- * "settled"); otherwise playback appends within seconds.
+ * Reduced motion renders its settled first room immediately (phase
+ * "settled"); otherwise the five-room playback begins within seconds.
  */
 
 import { expect, type Page } from "playwright/test";
@@ -14,7 +14,9 @@ const READINESS_TIMEOUT_MS = 30_000;
 export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await expect(
-    page.getByRole("heading", { name: /Four hours of your time back/ }),
+    page.getByRole("heading", {
+      name: /four hours of your time back every week/i,
+    }),
   ).toBeAttached({ timeout: READINESS_TIMEOUT_MS });
 
   const demo = page.locator(".landing-iphone");

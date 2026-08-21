@@ -157,6 +157,23 @@ function failUnbounded(
 	});
 }
 
+function failUnsafeValue(
+	operation: "accessor" | "reflection",
+	cause?: unknown,
+): never {
+	throw new ElizaError(
+		operation === "accessor"
+			? "deepToWellFormedUnicode: enumerable accessor cannot be serialized safely"
+			: "deepToWellFormedUnicode: value cannot be inspected safely",
+		{
+			code: "WELL_FORMED_UNSAFE_VALUE",
+			cause,
+			context: { operation },
+			severity: "fatal",
+		},
+	);
+}
+
 function enterContainer(value: object, depth: number, ctx: WalkCtx): void {
 	if (depth >= MAX_WELL_FORMED_DEPTH) {
 		failUnbounded("depth", { depth, max: MAX_WELL_FORMED_DEPTH });
@@ -223,7 +240,12 @@ function sanitizeObjectPreservingDescriptors<T>(
 		}
 
 		const sanitizedKey = toWellFormedUnicode(key);
-		const entry = "value" in descriptor ? descriptor.value : source[key];
+		// JSON.stringify would execute an enumerable accessor. Reject it without
+		// observation so a provider request can never run caller-controlled code.
+		if (!("value" in descriptor)) {
+			failUnsafeValue("accessor");
+		}
+		const entry = descriptor.value;
 		const sanitizedValue = walkDeep(entry, depth + 1, ctx, true);
 		if (sanitizedKey !== key || sanitizedValue !== entry) {
 			changed = true;
@@ -361,5 +383,12 @@ function walkDeep<T>(
  * `WELL_FORMED_UNBOUNDED` so a hostile nest cannot hang the model call.
  */
 export function deepToWellFormedUnicode<T>(value: T): T {
-	return walkDeep(value, 0, { visits: 0, visiting: new WeakSet<object>() });
+	try {
+		return walkDeep(value, 0, { visits: 0, visiting: new WeakSet<object>() });
+	} catch (error) {
+		// error-policy:J2 Reflection on a revoked or hostile Proxy is translated
+		// into the same typed provider-boundary failure contract.
+		if (error instanceof ElizaError) throw error;
+		return failUnsafeValue("reflection", error);
+	}
 }

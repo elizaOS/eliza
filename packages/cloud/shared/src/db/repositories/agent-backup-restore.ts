@@ -17,10 +17,6 @@ import {
   parseAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { and, eq } from "drizzle-orm";
-import {
-  requireBoundedIdentity,
-  requireSha256Hex,
-} from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
 import {
@@ -40,25 +36,70 @@ import {
   agentBackupObjectInventoryDigest,
   lockAgentBackupCatalogAuthority,
 } from "./agent-backup-catalog";
-import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
+import {
+  AgentBackupRestoreAuthorityError,
+  hasAgentBackupRestoreAuthority,
+} from "./agent-backup-restore-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
-    throw new Error(`${field} must be a canonical lowercase UUID`);
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a canonical lowercase UUID`,
+      { field },
+    );
   }
   return value;
 }
 
 function requireCanonicalUint64(value: string, field: string): bigint {
   if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
-    throw new Error(`${field} must be a canonical unsigned decimal integer`);
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a canonical unsigned decimal integer`,
+      { field },
+    );
   }
   const parsed = BigInt(value);
-  if (parsed > UINT64_MAX) throw new Error(`${field} must fit uint64`);
+  if (parsed > UINT64_MAX) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must fit uint64`,
+      { field },
+    );
+  }
   return parsed;
+}
+
+function requireSha256(value: string, field: string): string {
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a lowercase sha256 digest`,
+      { field },
+    );
+  }
+  return value;
+}
+
+function requireOwnerId(value: string): string {
+  if (
+    value.length === 0 ||
+    value.length > 512 ||
+    /^\s|\s$/.test(value) ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    Buffer.byteLength(value, "utf8") > 255
+  ) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "ownerId must be canonical and contain 1-255 UTF-8 bytes",
+      { field: "ownerId" },
+    );
+  }
+  return value;
 }
 
 function parseCanonicalBase64(value: string, expectedBytes: number): Uint8Array {
@@ -85,6 +126,7 @@ function manifestWithDigest(canonicalDraft: string, manifestSha256: string): unk
   let draft: unknown;
   try {
     draft = JSON.parse(canonicalDraft);
+    // error-policy:J3 stored manifest bytes are untrusted until explicitly parsed.
   } catch (cause) {
     throw new AgentBackupCatalogConflictError("Restore source manifest is not valid JSON", {
       cause,
@@ -113,6 +155,52 @@ function frozenManifest(manifest: AgentBackupManifestV3): AgentBackupManifestV3 
   };
   visit(manifest);
   return manifest;
+}
+
+/**
+ * Parse one catalogue-stored manifest draft and prove that its supplied digest
+ * is the digest of the same canonical v3 document. Callers still have to bind
+ * the returned manifest to their own locked catalogue row and identity tuple.
+ */
+export async function parseAgentBackupManifestV3Authority(input: {
+  canonicalManifestDraft: string;
+  expectedManifestSha256: string;
+}): Promise<
+  Readonly<{
+    manifest: AgentBackupManifestV3;
+    canonicalManifestDraft: string;
+  }>
+> {
+  const manifestInput = manifestWithDigest(
+    input.canonicalManifestDraft,
+    input.expectedManifestSha256,
+  );
+  let manifest: AgentBackupManifestV3;
+  try {
+    manifest = await parseAgentBackupManifestV3(manifestInput);
+    // error-policy:J3 a stored manifest is invalid until the canonical parser accepts it.
+  } catch (cause) {
+    throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed", {
+      cause,
+    });
+  }
+  const { manifestSha256: _manifestSha256, ...draftIntegrity } = manifest.integrity;
+  const canonicalDraft = canonicalizeAgentBackupManifestV3({
+    ...manifest,
+    integrity: draftIntegrity,
+  } as AgentBackupManifestV3Draft);
+  if (
+    canonicalDraft !== input.canonicalManifestDraft ||
+    manifest.integrity.manifestSha256 !== input.expectedManifestSha256
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore source manifest-v3 differs from its canonical digest authority",
+    );
+  }
+  return Object.freeze({
+    manifest: frozenManifest(manifest),
+    canonicalManifestDraft: canonicalDraft,
+  });
 }
 
 export interface AgentBackupRestoreSourceV3Input {
@@ -166,13 +254,17 @@ function validateInput(input: Readonly<AgentBackupRestoreSourceV3Input>): {
   requireUuid(input.backupId, "backupId");
   requireUuid(input.operationId, "operationId");
   requireUuid(input.sourceActivationGeneration, "sourceActivationGeneration");
-  requireSha256Hex(input.expectedManifestSha256, "expectedManifestSha256");
+  requireSha256(input.expectedManifestSha256, "expectedManifestSha256");
   requireUuid(input.restoreAttemptId, "restoreAttemptId");
   requireUuid(input.leaseId, "leaseId");
-  requireBoundedIdentity(input.ownerId, "ownerId");
+  requireOwnerId(input.ownerId);
   requireUuid(input.fencingToken, "fencingToken");
   if (input.copyRole !== "primary" && input.copyRole !== "secondary") {
-    throw new Error("copyRole must be primary or secondary");
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "copyRole must be primary or secondary",
+      { field: "copyRole" },
+    );
   }
   return {
     sourceLifecycleRevision: requireCanonicalUint64(
@@ -281,26 +373,12 @@ export async function loadAgentBackupRestoreSourceV3(
         "Restore source lease is absent, expired, released, or fenced",
       );
     }
-    const manifestInput = manifestWithDigest(
-      backup.manifest_canonical_draft,
-      input.expectedManifestSha256,
-    );
-    let manifest: AgentBackupManifestV3;
-    try {
-      manifest = await parseAgentBackupManifestV3(manifestInput);
-    } catch (cause) {
-      throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed", {
-        cause,
-      });
-    }
-    const { manifestSha256: _manifestSha256, ...draftIntegrity } = manifest.integrity;
-    const canonicalDraft = canonicalizeAgentBackupManifestV3({
-      ...manifest,
-      integrity: draftIntegrity,
-    } as AgentBackupManifestV3Draft);
+    const parsedManifest = await parseAgentBackupManifestV3Authority({
+      canonicalManifestDraft: backup.manifest_canonical_draft,
+      expectedManifestSha256: input.expectedManifestSha256,
+    });
+    const { manifest, canonicalManifestDraft: canonicalDraft } = parsedManifest;
     if (
-      canonicalDraft !== backup.manifest_canonical_draft ||
-      manifest.integrity.manifestSha256 !== input.expectedManifestSha256 ||
       manifest.operationId !== input.operationId ||
       manifest.identity.organizationId !== input.organizationId ||
       manifest.identity.agentId !== input.agentId ||

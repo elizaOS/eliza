@@ -82,8 +82,8 @@ const routerSrc = readFileSync(
   "utf8",
 );
 const honoRoutes = new Map();
-for (const m of routerSrc.matchAll(/app\.route\("([^"]+)"\s*,\s*(\w+)\)/g)) {
-  honoRoutes.set(m[1], m[2]);
+for (const m of routerSrc.matchAll(/^ {4}path: "([^"]+)",$/gm)) {
+  honoRoutes.set(m[1], true);
 }
 // Build regex per Hono route for matching.
 function honoToRegex(route) {

@@ -219,6 +219,13 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   }
   if (pathname === "/api/v1/oauth/callback") return true;
   if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscriptions/plans" ||
+      pathname === "/api/v1/subscriptions/plans/")
+  ) {
+    return true;
+  }
+  if (
     pathname === "/api/v1/oauth/success-proof/verify" ||
     pathname === "/api/v1/oauth/success-proof/verify/"
   ) {

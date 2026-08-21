@@ -1877,6 +1877,20 @@
       "when": 1792612800000,
       "tag": "0268_app_reservation_settlement_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1792699200000,
+      "tag": "0274_agent_billing_run_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792900000000,
+      "tag": "0275_remote_sessions_first_class_expiry",
+      "breakpoints": true
     }
   ]
 }

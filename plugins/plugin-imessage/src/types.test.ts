@@ -13,7 +13,14 @@
 
 import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { splitMessageForIMessage } from "./types";
+import { isEmail, splitMessageForIMessage } from "./types";
+
+describe("isEmail", () => {
+  it("validates a 100k local part without polynomial backtracking", () => {
+    expect(isEmail(`${"a".repeat(100_000)}@example.com`)).toBe(true);
+    expect(isEmail(`${"a".repeat(100_000)}@example`)).toBe(false);
+  });
+});
 
 function expectWellFormedLosslessRejoin(text: string, maxLength: number) {
   const chunks = splitMessageForIMessage(text, maxLength);

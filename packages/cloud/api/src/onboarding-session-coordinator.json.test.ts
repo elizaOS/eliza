@@ -1,5 +1,6 @@
 /** Verifies the onboarding coordinator JSON boundary with deterministic service mocks. */
 import { describe, expect, mock, test } from "bun:test";
+import * as provisioningObservation from "../../shared/src/lib/services/eliza-app/provisioning-observation";
 
 mock.module("../../shared/src/lib/cache/client", () => ({
   cache: {
@@ -17,12 +18,7 @@ mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
 }));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => ({
-    status: "none",
-    agentId: null,
-    bridgeUrl: null,
-    sandbox: null,
-  })),
+  ...provisioningObservation,
   getElizaAppProvisioningStatus: mock(async () => ({
     status: "none",
     agentId: null,

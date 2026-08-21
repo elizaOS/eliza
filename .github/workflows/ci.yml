@@ -1,11 +1,16 @@
-# This workflow is the canonical develop branch-health validation entry point.
-# Pull requests intentionally do not run repository workflows; develop validates
-# the integrated tree after merge.
+# This workflow is the canonical required merge-candidate and develop branch-health
+# validation entry point. Every pull request and merge-group candidate publishes
+# the stable fail-closed `CI / All Tests Passed` admission context.
 name: CI
 
 on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [develop]
+  merge_group:
+    types: [checks_requested]
   workflow_call:
   workflow_dispatch:
 
@@ -14,8 +19,8 @@ on:
 # branch health can never be read on demand. Give workflow_dispatch its own
 # run-scoped identity — the same shape test.yml already uses.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -539,8 +544,8 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: |
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
@@ -578,7 +583,7 @@ jobs:
             --log-opts "$range"
 
   required:
-    name: Required
+    name: All Tests Passed
     if: always()
     needs:
       [

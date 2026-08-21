@@ -53,11 +53,96 @@ export function parseAriaSnapshot(yaml: string): AriaNode[] {
   return root.children;
 }
 
-// Head of a structured line: role, optional quoted name, optional `[attr]`
-// groups, then an optional `:` introducing children or inline text. The name's
-// quotes shield any `:` inside it from being read as the container marker.
-const LINE_GRAMMAR =
-  /^([A-Za-z][\w-]*)(?:\s+"([^"]*)")?((?:\s+\[[^\]]*\])*)\s*(?::\s*(.*))?$/;
+function isAsciiLetter(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isRoleCharacter(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return (
+    isAsciiLetter(char) ||
+    (code >= 48 && code <= 57) ||
+    char === "_" ||
+    char === "-"
+  );
+}
+
+function skipWhitespace(value: string, cursor: number): number {
+  while (cursor < value.length && /\s/u.test(value[cursor])) cursor += 1;
+  return cursor;
+}
+
+function parseStructuredLine(rest: string): AriaNode | null {
+  if (!isAsciiLetter(rest[0])) return null;
+  let cursor = 1;
+  while (isRoleCharacter(rest[cursor])) cursor += 1;
+  const role = rest.slice(0, cursor);
+  let next = skipWhitespace(rest, cursor);
+  let name: string | undefined;
+  if (next > cursor && rest[next] === '"') {
+    const nameStart = next + 1;
+    next = nameStart;
+    while (next < rest.length && rest[next] !== '"') next += 1;
+    if (next === rest.length) return null;
+    name = rest.slice(nameStart, next);
+    cursor = next + 1;
+  }
+
+  const attributes: string[] = [];
+  while (true) {
+    next = skipWhitespace(rest, cursor);
+    if (next === cursor || rest[next] !== "[") break;
+    let close = next + 1;
+    while (close < rest.length && rest[close] !== "]") close += 1;
+    if (close === rest.length) return null;
+    attributes.push(rest.slice(next, close + 1));
+    cursor = close + 1;
+  }
+
+  cursor = skipWhitespace(rest, cursor);
+  let inline: string | undefined;
+  if (rest[cursor] === ":") {
+    cursor = skipWhitespace(rest, cursor + 1);
+    inline = rest.slice(cursor);
+    cursor = rest.length;
+  }
+  if (cursor !== rest.length) return null;
+
+  const node: AriaNode = { role, attributes, children: [] };
+  if (name !== undefined) node.name = name;
+  if (inline !== undefined && inline !== "") {
+    node.children.push({
+      role: "text",
+      name: inline,
+      attributes: [],
+      children: [],
+    });
+  }
+  return node;
+}
+
+function parseFallbackLine(rest: string): AriaNode {
+  const attributes: string[] = [];
+  let cursor = rest.length;
+  while (cursor > 0) {
+    let end = cursor;
+    while (end > 0 && /\s/u.test(rest[end - 1])) end -= 1;
+    if (rest[end - 1] !== "]") break;
+    let open = end - 2;
+    while (open >= 0 && rest[open] !== "[" && rest[open] !== "]") open -= 1;
+    if (open < 1 || rest[open] !== "[" || !/\s/u.test(rest[open - 1])) break;
+    attributes.push(rest.slice(open, end));
+    cursor = open - 1;
+  }
+  let roleEnd = cursor;
+  while (roleEnd > 0 && /\s/u.test(rest[roleEnd - 1])) roleEnd -= 1;
+  if (rest[roleEnd - 1] === ":") roleEnd -= 1;
+  attributes.reverse();
+  return { role: rest.slice(0, roleEnd).trim(), attributes, children: [] };
+}
 
 /** Parse one snapshot line body (`- button "Save" [disabled]`) into a node. */
 function parseLine(body: string): AriaNode | null {
@@ -66,42 +151,19 @@ function parseLine(body: string): AriaNode | null {
   if (rest === "") return null;
   // Text leaf: the content is raw and unquoted, so it must be taken verbatim
   // before any attr/name parsing could misread brackets or quotes inside it.
-  const textLeaf = rest.match(/^text:\s*(.*)$/);
-  if (textLeaf) {
-    return { role: "text", name: textLeaf[1], attributes: [], children: [] };
-  }
-  const structured = rest.match(LINE_GRAMMAR);
-  if (structured) {
-    const [, role, name, attrsBlob, inline] = structured;
-    const node: AriaNode = {
-      role,
-      attributes: attrsBlob.match(/\[[^\]]*\]/g) ?? [],
+  if (rest.startsWith("text:")) {
+    return {
+      role: "text",
+      name: rest.slice("text:".length).trimStart(),
+      attributes: [],
       children: [],
     };
-    if (name !== undefined) node.name = name;
-    // `role "Name": content` wraps a single text child; a bare trailing `:`
-    // (inline === "") just marks a container whose children follow indented.
-    if (inline !== undefined && inline !== "") {
-      node.children.push({
-        role: "text",
-        name: inline,
-        attributes: [],
-        children: [],
-      });
-    }
-    return node;
   }
+  const structured = parseStructuredLine(rest);
+  if (structured) return structured;
   // Outside the grammar (exotic Playwright extensions): keep the raw body as
   // the role, minus trailing attrs/colon, so nothing silently disappears.
-  const attributes: string[] = [];
-  let attrMatch = rest.match(/\s(\[[^\]]*\])\s*$/);
-  while (attrMatch) {
-    attributes.unshift(attrMatch[1]);
-    rest = rest.slice(0, attrMatch.index).trimEnd();
-    attrMatch = rest.match(/\s(\[[^\]]*\])\s*$/);
-  }
-  const role = rest.replace(/:\s*$/, "").trim();
-  return { role, attributes, children: [] };
+  return parseFallbackLine(rest);
 }
 
 /**

@@ -44,12 +44,14 @@ import { users } from "../../../db/schemas/users";
 
 const PGLITE_TIMEOUT = 60_000;
 const CAP = 3;
+const GATEWAY_CAP = 5;
 let pgliteReady = true;
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
 let AgentQuotaExceededError: typeof import("../eliza-sandbox").AgentQuotaExceededError;
+let ManagedAgentDiscordService: typeof import("../agent-managed-discord").ManagedAgentDiscordService;
 
 let seq = 0;
 function uniq(p: string): string {
@@ -57,10 +59,10 @@ function uniq(p: string): string {
   return `${p}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function seedOrg(): Promise<string> {
+async function seedOrg(creditBalance = "5.000000"): Promise<string> {
   const [org] = await dbWrite
     .insert(organizations)
-    .values({ name: "Org", slug: uniq("org"), credit_balance: "5.000000" })
+    .values({ name: "Org", slug: uniq("org"), credit_balance: creditBalance })
     .returning();
   return org.id;
 }
@@ -93,6 +95,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ ElizaSandboxService, AgentQuotaExceededError } = await import("../eliza-sandbox"));
+    ({ ManagedAgentDiscordService } = await import("../agent-managed-discord"));
 
     const schema = { organizations, users, userCharacters, agentSandboxes };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
@@ -274,6 +277,238 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
         }),
       ).rejects.toBeInstanceOf(AgentQuotaExceededError);
       expect(await countOrgRows(orgId)).toBe(CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("managed Discord gateway — quota-atomic ensure (#23003)", () => {
+  test(
+    "two concurrent first-use ensures converge on one row and one creation winner",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const orgId = await seedOrg();
+      const userId = await seedUser(orgId);
+      const svc = new ManagedAgentDiscordService();
+
+      // Both promises are released in the same turn. The real transaction's
+      // org lock serializes marker recheck -> quota -> insert, so the second
+      // call reconstructs the first call's committed logical resource.
+      const outcomes = await Promise.allSettled([
+        svc.ensureGatewayAgent({
+          organizationId: orgId,
+          userId,
+        }),
+        svc.ensureGatewayAgent({
+          organizationId: orgId,
+          userId,
+        }),
+      ]);
+
+      const fulfilled = outcomes.flatMap((outcome) =>
+        outcome.status === "fulfilled" ? [outcome.value] : [],
+      );
+      expect(fulfilled).toHaveLength(2);
+      expect(fulfilled.map((result) => result.sandbox.id)).toEqual([
+        fulfilled[0]?.sandbox.id,
+        fulfilled[0]?.sandbox.id,
+      ]);
+      expect(fulfilled.map((result) => result.created).sort()).toEqual([false, true]);
+      expect(await countOrgRows(orgId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "at capacity a missing gateway inserts nothing and throws the typed quota error",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const orgId = await seedOrg("0.500000");
+      const userId = await seedUser(orgId);
+      const sandboxSvc = new ElizaSandboxService();
+      const gatewaySvc = new ManagedAgentDiscordService();
+
+      for (let i = 0; i < GATEWAY_CAP; i++) {
+        await sandboxSvc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `at-cap-${i}`,
+          executionTier: "custom",
+          maxNonTerminalAgents: GATEWAY_CAP,
+        });
+      }
+
+      await expect(
+        gatewaySvc.ensureGatewayAgent({
+          organizationId: orgId,
+          userId,
+        }),
+      ).rejects.toBeInstanceOf(AgentQuotaExceededError);
+      expect(await countOrgRows(orgId)).toBe(GATEWAY_CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an existing gateway retries successfully at capacity without consuming another slot",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const orgId = await seedOrg("0.500000");
+      const userId = await seedUser(orgId);
+      const sandboxSvc = new ElizaSandboxService();
+      const gatewaySvc = new ManagedAgentDiscordService();
+
+      const first = await gatewaySvc.ensureGatewayAgent({
+        organizationId: orgId,
+        userId,
+      });
+      for (let i = 1; i < GATEWAY_CAP; i++) {
+        await sandboxSvc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `fill-${i}`,
+          executionTier: "custom",
+          maxNonTerminalAgents: GATEWAY_CAP,
+        });
+      }
+
+      const retry = await gatewaySvc.ensureGatewayAgent({
+        organizationId: orgId,
+        userId,
+      });
+      expect(first.created).toBe(true);
+      expect(retry.created).toBe(false);
+      expect(retry.sandbox.id).toBe(first.sandbox.id);
+      expect(await countOrgRows(orgId)).toBe(GATEWAY_CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "gateway, eliza-app, and standard creates race for the last slot with one fresh admission",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const orgId = await seedOrg("0.500000");
+      const userId = await seedUser(orgId);
+      const sandboxSvc = new ElizaSandboxService();
+      const gatewaySvc = new ManagedAgentDiscordService();
+
+      // Eliza-app uses createAgent's reuse branch. Fill limit-1 with stopped
+      // rows so that branch cannot reuse a live row and must compete for the
+      // same final quota slot as the gateway.
+      for (let i = 0; i < GATEWAY_CAP - 1; i++) {
+        const created = await sandboxSvc.createAgent({
+          organizationId: orgId,
+          userId,
+          agentName: `stopped-${i}`,
+          executionTier: "custom",
+          maxNonTerminalAgents: GATEWAY_CAP,
+        });
+        await setAgentStatus(created.agent.id, "stopped");
+      }
+
+      const outcomes = await Promise.allSettled([
+        gatewaySvc
+          .ensureGatewayAgent({
+            organizationId: orgId,
+            userId,
+          })
+          .then((result) => ({
+            kind: "gateway" as const,
+            inserted: result.created,
+          })),
+        sandboxSvc
+          .createAgent({
+            organizationId: orgId,
+            userId,
+            agentName: "eliza-app-racer",
+            executionTier: "custom",
+            reuseExistingNonTerminal: true,
+            maxNonTerminalAgents: GATEWAY_CAP,
+          })
+          .then((result) => ({
+            kind: "eliza-app" as const,
+            inserted: !result.idempotent,
+          })),
+        sandboxSvc
+          .createAgent({
+            organizationId: orgId,
+            userId,
+            agentName: "standard-racer",
+            executionTier: "custom",
+            reuseExistingNonTerminal: false,
+            maxNonTerminalAgents: GATEWAY_CAP,
+          })
+          .then((result) => ({
+            kind: "standard" as const,
+            inserted: !result.idempotent,
+          })),
+      ]);
+
+      const fulfilled = outcomes.flatMap((outcome) =>
+        outcome.status === "fulfilled" ? [outcome.value] : [],
+      );
+      const rejected = outcomes.filter(
+        (outcome): outcome is PromiseRejectedResult => outcome.status === "rejected",
+      );
+      // Eliza-app may idempotently reuse whichever live row wins first (the
+      // pre-existing #22553 selection behavior, deliberately not changed
+      // here), so fulfilled CALLS may be 1 or 2. Fresh INSERT admissions must
+      // still have exactly one winner, and every loser is a typed quota error.
+      expect(fulfilled.filter((outcome) => outcome.inserted)).toHaveLength(1);
+      expect(rejected.length).toBeGreaterThanOrEqual(1);
+      for (const rejection of rejected) {
+        expect(rejection.reason).toBeInstanceOf(AgentQuotaExceededError);
+      }
+      expect(await countOrgRows(orgId)).toBe(GATEWAY_CAP);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "organization quota remains isolated under concurrent ensures",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const orgA = await seedOrg("0.500000");
+      const userA = await seedUser(orgA);
+      const orgB = await seedOrg("0.500000");
+      const userB = await seedUser(orgB);
+      const sandboxSvc = new ElizaSandboxService();
+      const gatewaySvc = new ManagedAgentDiscordService();
+
+      // Saturate A first. If the quota count accidentally loses its tenant
+      // predicate, B's concurrent ensure will also be refused.
+      for (let i = 0; i < GATEWAY_CAP; i++) {
+        await sandboxSvc.createAgent({
+          organizationId: orgA,
+          userId: userA,
+          agentName: `org-a-${i}`,
+          executionTier: "custom",
+          maxNonTerminalAgents: GATEWAY_CAP,
+        });
+      }
+
+      const outcomes = await Promise.allSettled([
+        gatewaySvc.ensureGatewayAgent({
+          organizationId: orgA,
+          userId: userA,
+        }),
+        gatewaySvc.ensureGatewayAgent({
+          organizationId: orgB,
+          userId: userB,
+        }),
+      ]);
+
+      expect(outcomes[0]?.status).toBe("rejected");
+      if (outcomes[0]?.status === "rejected") {
+        expect(outcomes[0].reason).toBeInstanceOf(AgentQuotaExceededError);
+      }
+      expect(outcomes[1]?.status).toBe("fulfilled");
+      if (outcomes[1]?.status === "fulfilled") {
+        expect(outcomes[1].value.created).toBe(true);
+      }
+      expect(await countOrgRows(orgA)).toBe(GATEWAY_CAP);
+      expect(await countOrgRows(orgB)).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

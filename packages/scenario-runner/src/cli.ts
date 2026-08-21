@@ -1,7 +1,7 @@
 /**
  * `eliza-scenarios` CLI. Two commands:
  *
- *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [--lane <name>] [fileGlob ...]
+ *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [--lane <name>] [--provider <name>] [fileGlob ...]
  *   list <dir> [fileGlob ...]
  *
  * Exit codes:
@@ -15,6 +15,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
+import type { LiveProviderName } from "@elizaos/core/testing";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
@@ -39,8 +40,21 @@ const SCENARIO_LANES: readonly ScenarioLane[] = [
   "live-only",
 ];
 
+const LIVE_PROVIDER_NAMES = [
+  "groq",
+  "openai",
+  "anthropic",
+  "google",
+  "openrouter",
+  "cli",
+] as const satisfies readonly LiveProviderName[];
+
 function isScenarioLane(value: string): value is ScenarioLane {
   return (SCENARIO_LANES as readonly string[]).includes(value);
+}
+
+function isLiveProviderName(value: string): value is LiveProviderName {
+  return (LIVE_PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
 export function resolveRunExecutionProfile(
@@ -168,7 +182,9 @@ type LiveProviderModule = {
 };
 type ScenarioRuntimeFactoryModule = Pick<
   typeof import("./runtime-factory.ts"),
-  "createScenarioRuntime" | "shouldUseDeterministicModel"
+  | "createScenarioRuntime"
+  | "scenarioLiveProviderPreflightProblems"
+  | "shouldUseDeterministicModel"
 >;
 
 export interface ParsedArgs {
@@ -181,6 +197,7 @@ export interface ParsedArgs {
   runId?: string;
   filter?: Set<string>;
   lane?: ScenarioLane;
+  provider?: LiveProviderName;
   fileGlobs?: string[];
   expandScenarios?: boolean;
   countScenarios?: boolean;
@@ -206,6 +223,7 @@ export interface CliDependencies {
   writeReportBundle: ReporterModule["writeReportBundle"];
   writeScenarioRunViewer: ReporterModule["writeScenarioRunViewer"];
   createScenarioRuntime: ScenarioRuntimeFactoryModule["createScenarioRuntime"];
+  scenarioLiveProviderPreflightProblems: ScenarioRuntimeFactoryModule["scenarioLiveProviderPreflightProblems"];
   shouldUseDeterministicModel: ScenarioRuntimeFactoryModule["shouldUseDeterministicModel"];
   exportScenarioNativeJsonl: NativeExportModule["exportScenarioNativeJsonl"];
 }
@@ -335,7 +353,7 @@ function usageAndExit(message: string, code: number): never {
 function formatUsageError(error: CliUsageError): string {
   return (
     `[eliza-scenarios] ${error.message}\n` +
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n"
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [--provider groq|openai|anthropic|google|openrouter|cli] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n"
   );
 }
 
@@ -358,6 +376,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   let runId: string | undefined;
   let filter: Set<string> | undefined;
   let lane: ScenarioLane | undefined;
+  let provider: LiveProviderName | undefined;
   let expandScenarios = false;
   let countScenarios = false;
   let validateScenarios = false;
@@ -412,6 +431,17 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       }
       lane = next;
       i += 1;
+    } else if (arg === "--provider") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--provider missing value", 2);
+      if (!isLiveProviderName(next)) {
+        usageAndExit(
+          `--provider must be one of ${LIVE_PROVIDER_NAMES.join(", ")} (got '${next}')`,
+          2,
+        );
+      }
+      provider = next;
+      i += 1;
     } else if (arg === "--expand-scenarios") {
       expandScenarios = true;
     } else if (arg === "--count-scenarios") {
@@ -436,6 +466,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     runId,
     filter,
     lane,
+    provider,
     fileGlobs,
     expandScenarios,
     countScenarios,
@@ -455,7 +486,11 @@ async function loadCliDependencies(): Promise<CliDependencies> {
       writeReportBundle,
       writeScenarioRunViewer,
     },
-    { createScenarioRuntime, shouldUseDeterministicModel },
+    {
+      createScenarioRuntime,
+      scenarioLiveProviderPreflightProblems,
+      shouldUseDeterministicModel,
+    },
     { exportScenarioNativeJsonl },
     // Keep out-of-root imports behind widened specifiers so TypeScript does not
     // pull those modules into this package's rootDir validation graph.
@@ -481,6 +516,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
+    scenarioLiveProviderPreflightProblems,
     shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   };
@@ -513,6 +549,9 @@ export async function runCli(
   }
 
   if (parsed.command === "list") {
+    if (parsed.provider) {
+      usageAndExit("--provider is only valid with the run command", 2);
+    }
     const loaded = await listScenarioMetadata(
       parsed.dir,
       parsed.filter,
@@ -542,11 +581,37 @@ export async function runCli(
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
+    scenarioLiveProviderPreflightProblems,
     shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   } = dependencies ?? (await loadCliDependencies());
 
-  if (availableProviderNames().length === 0 && !shouldUseDeterministicModel()) {
+  const deterministicModelEnabled = shouldUseDeterministicModel();
+  const configuredProviders = availableProviderNames();
+  if (parsed.provider && deterministicModelEnabled) {
+    process.stderr.write(
+      `[eliza-scenarios] --provider ${parsed.provider} cannot be combined with deterministic model mode.\n`,
+    );
+    return 2;
+  }
+  if (!deterministicModelEnabled) {
+    const preflightProblems = scenarioLiveProviderPreflightProblems(
+      parsed.provider,
+    );
+    if (preflightProblems.length > 0) {
+      process.stderr.write(
+        `[eliza-scenarios] live provider preflight failed: ${preflightProblems.join("; ")}\n`,
+      );
+      return 2;
+    }
+  }
+  if (parsed.provider && !configuredProviders.includes(parsed.provider)) {
+    process.stderr.write(
+      `[eliza-scenarios] requested provider ${parsed.provider} is unavailable; configured providers: ${configuredProviders.join(", ") || "(none)"}.\n`,
+    );
+    return 2;
+  }
+  if (configuredProviders.length === 0 && !deterministicModelEnabled) {
     process.stderr.write(
       "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.\n",
     );
@@ -647,6 +712,7 @@ export async function runCli(
   ];
   const runtimeResult = await createScenarioRuntime({
     executionProfile,
+    preferredProvider: parsed.provider,
     requiredPlugins,
   });
   const { runtime, providerName, cleanup } = runtimeResult;

@@ -51,7 +51,11 @@ function json(body: unknown, status = 200): Response {
 
 async function invalidateUserDeliveryProjections(
   env: AppEnv["Bindings"],
-  user: { telegram_id?: string | null; discord_id?: string | null },
+  user: {
+    telegram_id?: string | null;
+    discord_id?: string | null;
+    phone_number?: string | null;
+  },
 ): Promise<void> {
   await Promise.all([
     invalidatePersonalDeliveryProjection(
@@ -63,6 +67,11 @@ async function invalidateUserDeliveryProjections(
       env.PERSONAL_DELIVERY_PROJECTIONS,
       "discord",
       user.discord_id,
+    ),
+    invalidatePersonalDeliveryProjection(
+      env.PERSONAL_DELIVERY_PROJECTIONS,
+      "phone",
+      user.phone_number,
     ),
   ]);
 }
