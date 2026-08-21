@@ -129,8 +129,13 @@ function parseIntEnv(
 ): number {
   const value = process.env[name];
   if (value === undefined) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
+  // `parseInt` stops at the first non-digit, so "3600junk" parsed to 3600 and
+  // slipped past the NaN check below — silently configuring a value the
+  // operator never set, instead of the error this helper already raises for
+  // input it recognizes as invalid.
+  const trimmed = value.trim();
+  const parsed = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(parsed)) {
     throw new Error(
       `Invalid ${name} environment variable: "${value}" is not a valid integer`,
     );
