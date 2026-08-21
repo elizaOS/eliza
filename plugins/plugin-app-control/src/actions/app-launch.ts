@@ -110,9 +110,7 @@ export async function runLaunch({
 	const launchUrl = result.launchUrl?.trim() || null;
 	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
 	const text = launchUrl
-		? opened
-			? `${result.displayName} is open in Browser. [Open ${result.displayName}](${launchUrl})`
-			: `${result.displayName} is running. [Open ${result.displayName}](${launchUrl})`
+		? `[Open ${result.displayName}](${launchUrl})`
 		: `${result.displayName} is running.`;
 
 	logger.info(

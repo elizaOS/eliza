@@ -60,7 +60,7 @@ describe("APP launch Browser handoff", () => {
 			"/api/apps/local/nubs-color-pebble/",
 		);
 		expect(result.userFacingText).toBe(
-			"Nubs Color Pebble is open in Browser. [Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
+			"[Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
 		);
 		expect(result.userFacingText).not.toContain("internal-run-id");
 		expect(result.values).toMatchObject({
@@ -78,7 +78,7 @@ describe("APP launch Browser handoff", () => {
 		});
 
 		expect(result.userFacingText).toBe(
-			"Nubs Color Pebble is running. [Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
+			"[Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
 		);
 		expect(result.userFacingText).not.toContain("Run ID");
 	});
