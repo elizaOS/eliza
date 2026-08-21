@@ -19,15 +19,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertDirectTarget,
+  assertNoGlobalRoleCollisions,
   assertRestoreTargetIdentity,
   buildIsolationChecks,
   evaluateObjectives,
+  guardPsqlScript,
   parseBackupManifest,
   parseBackupSidecar,
   parseChecksumFile,
   parseCliArgs,
   parseDbMap,
+  parseGlobalRoleNames,
   parsePoolerEndpoint,
+  parseRestoreTargetAuthority,
   parseTenantProbes,
   RecoveryDrillError,
   redactDsn,
@@ -156,6 +160,57 @@ describe("restore target authority", () => {
       // error-policy:J3 The harness inspects the explicit invalid-input boundary.
       expect((error as Error).message).not.toContain("supersecret");
     }
+  });
+
+  test("rejects bootstrap and other role collisions before restore", () => {
+    const globals = [
+      "CREATE ROLE postgres;",
+      'CREATE ROLE "tenant""quoted";',
+      "ALTER ROLE postgres WITH SUPERUSER;",
+      "",
+    ].join("\n");
+    expect(parseGlobalRoleNames(globals)).toEqual([
+      "postgres",
+      'tenant"quoted',
+    ]);
+    expect(() => assertNoGlobalRoleCollisions(globals, ["postgres"])).toThrow(
+      expect.objectContaining({ code: "REFUSED_NONEMPTY_TARGET" }),
+    );
+    expect(() =>
+      assertNoGlobalRoleCollisions(globals, ["restore_admin"]),
+    ).not.toThrow();
+  });
+
+  test("parses the server role inventory and refuses malformed output", () => {
+    expect(
+      parseRestoreTargetAuthority(
+        JSON.stringify({
+          target_id: targetId,
+          existing_roles: ["restore_admin"],
+        }),
+      ),
+    ).toEqual({ targetId, existingRoles: ["restore_admin"] });
+    expect(() => parseRestoreTargetAuthority("not-json")).toThrow(
+      RecoveryDrillError,
+    );
+  });
+
+  test("guards the initial session and every pg_restore reconnect", () => {
+    const guarded = guardPsqlScript(
+      "CREATE DATABASE tenant;\n\\connect tenant\nCREATE TABLE data(id int);\n",
+    );
+    expect(
+      guarded.match(/current_setting\('eliza\.restore_target_id'/g),
+    ).toHaveLength(2);
+    expect(guarded.indexOf("current_setting")).toBeLessThan(
+      guarded.indexOf("CREATE DATABASE"),
+    );
+    expect(guarded.indexOf("\\connect tenant")).toBeLessThan(
+      guarded.lastIndexOf("current_setting"),
+    );
+    expect(guarded.lastIndexOf("current_setting")).toBeLessThan(
+      guarded.indexOf("CREATE TABLE"),
+    );
   });
 });
 

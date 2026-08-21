@@ -256,6 +256,101 @@ export function assertRestoreTargetIdentity(
   }
 }
 
+export interface RestoreTargetAuthority {
+  targetId: string;
+  existingRoles: string[];
+}
+
+/** Parse the target identity and role inventory returned by one server session. */
+export function parseRestoreTargetAuthority(
+  json: string,
+): RestoreTargetAuthority {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    // error-policy:J3 untrusted server output becomes an explicit invalid target.
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target authority response is not valid JSON",
+    );
+  }
+  if (typeof raw !== "object" || raw === null) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target authority response is not an object",
+    );
+  }
+  const record = raw as Record<string, unknown>;
+  if (
+    typeof record.target_id !== "string" ||
+    !Array.isArray(record.existing_roles) ||
+    record.existing_roles.some((role) => typeof role !== "string")
+  ) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target authority response has invalid fields",
+    );
+  }
+  return {
+    targetId: record.target_id,
+    existingRoles: record.existing_roles as string[],
+  };
+}
+
+/** Extract the exact role names emitted by pg_dumpall's CREATE ROLE records. */
+export function parseGlobalRoleNames(globalsSql: string): string[] {
+  const roles: string[] = [];
+  for (const line of globalsSql.split("\n")) {
+    if (!line.startsWith("CREATE ROLE ")) continue;
+    const match =
+      /^CREATE ROLE (?:(?:"((?:[^"]|"")*)")|([a-z_][a-z0-9_$]*));$/.exec(line);
+    if (!match) {
+      throw new RecoveryDrillError(
+        "INVALID_METADATA",
+        "globals.sql contains an unsupported CREATE ROLE record",
+      );
+    }
+    roles.push(
+      match[1] === undefined ? match[2] : match[1].replaceAll('""', '"'),
+    );
+  }
+  return roles;
+}
+
+/** Refuse a nonempty target whose existing roles collide with the archive. */
+export function assertNoGlobalRoleCollisions(
+  globalsSql: string,
+  existingRoles: string[],
+): void {
+  const existing = new Set(existingRoles);
+  if (parseGlobalRoleNames(globalsSql).some((role) => existing.has(role))) {
+    throw new RecoveryDrillError(
+      "REFUSED_NONEMPTY_TARGET",
+      "restore target already contains a role defined by globals.sql",
+    );
+  }
+}
+
+const TARGET_GUARD_SQL = `\\set ON_ERROR_STOP on
+SELECT COALESCE(current_setting('eliza.restore_target_id', true) = :'expected_target_id', false) AS eliza_restore_target_ok \\gset
+\\if :eliza_restore_target_ok
+\\else
+\\echo 'restore target identity mismatch'
+\\quit 3
+\\endif
+`;
+
+/** Guard the initial connection and every pg_restore-generated reconnect. */
+export function guardPsqlScript(sql: string): string {
+  let guarded = TARGET_GUARD_SQL;
+  for (const line of sql.split(/(?<=\n)/)) {
+    guarded += line;
+    if (/^\s*\\connect\b/.test(line)) guarded += TARGET_GUARD_SQL;
+  }
+  return guarded;
+}
+
 export interface PgEndpoint {
   host: string;
   port: string;
@@ -690,17 +785,19 @@ interface DrillReport {
 /** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
 function executeDrill(options: CliOptions): DrillReport {
   const targetUrl = assertDirectTarget(options.targetDsn);
-  const observedTargetId = run("psql", [
-    "--tuples-only",
-    "--no-align",
-    "--set",
-    "ON_ERROR_STOP=1",
-    "--dbname",
-    options.targetDsn,
-    "--command",
-    "SELECT current_setting('eliza.restore_target_id', true)",
-  ]).trim();
-  assertRestoreTargetIdentity(options.targetId, observedTargetId);
+  const authority = parseRestoreTargetAuthority(
+    run("psql", [
+      "--tuples-only",
+      "--no-align",
+      "--set",
+      "ON_ERROR_STOP=1",
+      "--dbname",
+      options.targetDsn,
+      "--command",
+      "SELECT json_build_object('target_id', current_setting('eliza.restore_target_id', true), 'existing_roles', (SELECT json_agg(rolname ORDER BY rolname) FROM pg_roles))::text",
+    ]).trim(),
+  );
+  assertRestoreTargetIdentity(options.targetId, authority.targetId);
   const startedAt = new Date();
 
   const sidecar = parseBackupSidecar(
@@ -755,6 +852,8 @@ function executeDrill(options: CliOptions): DrillReport {
       readFileSync(join(work, "checksums.sha256"), "utf-8"),
     );
     const checksummedFiles = verifyChecksums(work, checksums);
+    const globalsSql = readFileSync(join(work, "globals.sql"), "utf-8");
+    assertNoGlobalRoleCollisions(globalsSql, authority.existingRoles);
     const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
     if (dbMap.length !== manifest.databaseCount) {
       throw new RecoveryDrillError(
@@ -781,30 +880,47 @@ function executeDrill(options: CliOptions): DrillReport {
     }
 
     const restoreStart = Date.now();
+    const guardedGlobals = join(work, "guarded-globals.sql");
+    writeFileSync(guardedGlobals, guardPsqlScript(globalsSql));
     run("psql", [
       "--set",
-      "ON_ERROR_STOP=1",
+      `expected_target_id=${options.targetId}`,
       "--dbname",
       options.targetDsn,
       "--file",
-      join(work, "globals.sql"),
+      guardedGlobals,
     ]);
     for (const entry of dbMap) {
       const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
+      const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
+      writeFileSync(
+        guardedDrop,
+        guardPsqlScript(
+          `DROP DATABASE IF EXISTS "${entry.databaseName.replaceAll('"', '""')}";\n`,
+        ),
+      );
       run("psql", [
         "--set",
-        "ON_ERROR_STOP=1",
+        `expected_target_id=${options.targetId}`,
         "--dbname",
         options.targetDsn,
-        "--command",
-        `DROP DATABASE IF EXISTS "${entry.databaseName.replaceAll('"', '""')}"`,
+        "--file",
+        guardedDrop,
       ]);
-      run("pg_restore", [
-        "--create",
-        "--exit-on-error",
+      const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
+      run("pg_restore", ["--create", "--file", rawRestore, dumpFile]);
+      const guardedRestore = join(work, `${entry.dumpId}.guarded-restore.sql`);
+      writeFileSync(
+        guardedRestore,
+        guardPsqlScript(readFileSync(rawRestore, "utf-8")),
+      );
+      run("psql", [
+        "--set",
+        `expected_target_id=${options.targetId}`,
         "--dbname",
         options.targetDsn,
-        dumpFile,
+        "--file",
+        guardedRestore,
       ]);
     }
     const restoreSeconds = Math.round((Date.now() - restoreStart) / 1000);

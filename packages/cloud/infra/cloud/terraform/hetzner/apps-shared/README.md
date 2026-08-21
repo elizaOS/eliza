@@ -173,8 +173,13 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
 
 1. Download the newest set from the bucket to an operator machine or a
    throwaway VM with an **isolated** Postgres instance (never the live node).
-2. Provision a disposable Postgres target plus pgbouncer, generate a one-use
-   identity (`drill-<uuid>`), and set that identity on the Postgres server:
+2. Initialize a disposable Postgres target with a unique bootstrap superuser
+   that does not exist in the source archive (for example
+   `eliza_restore_admin_<uuid>`), plus pgbouncer. A default target containing
+   the source `postgres` role is intentionally refused before destructive SQL:
+   strict `pg_dumpall --globals-only` replay cannot safely ignore role
+   collisions. Generate a one-use identity (`drill-<uuid>`) and set it on the
+   Postgres server:
 
    ```sql
    ALTER SYSTEM SET eliza.restore_target_id =
@@ -182,10 +187,12 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
    SELECT pg_reload_conf();
    ```
 
-   The harness reads this server-side value before any destructive SQL. A DNS
-   alias, alternate address, or SSH tunnel cannot satisfy the guard unless it
-   reaches the explicitly marked disposable server. Never reuse an identity;
-   destroy the target after the drill.
+   The harness inventories existing target roles before restore and refuses
+   any collision with `globals.sql`. It also verifies the server-side identity
+   in the same psql session before globals, each database drop/create, and
+   after every pg_restore-generated reconnect. A DNS alias, alternate address,
+   or SSH tunnel cannot redirect a later destructive connection to another
+   server. Never reuse an identity; destroy the target after the drill.
 
 3. Prepare a root-readable `tenant-probes.json` that covers every opaque dump
    id in `dbmap.tsv` and references password environment variables rather
@@ -213,7 +220,7 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
    ```bash
    bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts \
      --set-dir <downloaded-set> \
-     --target-dsn postgresql://postgres:...@127.0.0.1:5433/postgres \
+     --target-dsn postgresql://eliza_restore_admin:...@127.0.0.1:5433/postgres \
      --target-id drill-11111111-2222-4333-8444-555555555555 \
      --pooler-endpoint 127.0.0.1:6432 \
      --tenant-probes-file <path> --passphrase-file <path> \
