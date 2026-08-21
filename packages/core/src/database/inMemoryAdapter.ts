@@ -920,8 +920,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.memoriesById.set(String(params.documentId), replacement);
 		for (const [key, list] of this.memoriesByRoom) {
 			const index = list.findIndex((memory) => memory.id === params.documentId);
-			if (index >= 0)
-				this.memoriesByRoom.set(key, list.with(index, replacement));
+			// Copy-on-write so a concurrent reader holding the old array still sees a
+			// coherent generation. Built by hand rather than with Array#with: core is
+			// consumed by packages that target ES2022, where that method's lib
+			// declaration is absent and the workspace typecheck fails.
+			if (index >= 0) {
+				const next = list.slice();
+				next[index] = replacement;
+				this.memoriesByRoom.set(key, next);
+			}
 		}
 		for (const fragment of params.fragments) {
 			this.memoriesById.set(String(fragment.id), fragment);
