@@ -2,9 +2,13 @@
  * Unit coverage for the iOS in-renderer fetch kernel's route handling. In-process
  * Request/Response, no real device.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
-import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
+import {
+  CLOUD_BRIDGE_REQUEST_TIMEOUT_MS,
+  handleIosLocalAgentRequest,
+  IOS_BUNDLE_MANIFEST_TIMEOUT_MS,
+} from "./ios-local-agent-kernel";
 
 async function getJson(pathname: string): Promise<unknown> {
   const response = await handleIosLocalAgentRequest(
@@ -781,5 +785,172 @@ describe("handleIosLocalAgentRequest", () => {
       state: "running",
       model: null,
     });
+  });
+
+  it("exports bound request timeout constants for bundle manifest and cloud bridge", () => {
+    expect(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS).toBe(60_000);
+    expect(IOS_BUNDLE_MANIFEST_TIMEOUT_MS).toBe(30_000);
+  });
+});
+
+describe("handleIosLocalAgentRequest cloud bridge timeouts (portable fallback, fake timers)", () => {
+  let originalTimeout: unknown;
+
+  beforeEach(() => {
+    originalTimeout = (AbortSignal as unknown as { timeout?: unknown }).timeout;
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: originalTimeout,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  function pairedStorage(): Storage {
+    const s = stubLocalStorage();
+    s.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Cloud Agent",
+        apiBase: "eliza-local-agent://ipc",
+        accessToken: "cloud-token",
+      }),
+    );
+    return s;
+  }
+
+  it("aborts a headers-stalled Cloud bridge at 60 s and surfaces 502 (fallback proof)", async () => {
+    vi.stubGlobal("window", { localStorage: pairedStorage() });
+    const fetchMock = vi.fn(
+      (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined;
+          if (signal?.aborted) {
+            reject(new DOMException("TimeoutError", "TimeoutError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("TimeoutError", "TimeoutError")),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    // The kernel logs the failed cloud chat through its logging boundary;
+    // spy and assert it so the console guard treats the output as intentional.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const pending = handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/cloud/chat", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "hello" }),
+      }),
+    );
+
+    // Allow async routing (request.json()) to reach fetch before the 60 s
+    // timeout fires; with fake timers the microtask flush may need ticks.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Defer the fetch-called assertion until after the timeout has had a chance
+    // to fire — the contract is that the 60 s bound surfaces 502.
+    await vi.advanceTimersByTimeAsync(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS);
+
+    // The bridge should have been attempted before the timeout aborted it.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const signal = (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)
+      ?.signal as AbortSignal | undefined;
+    expect(signal).toBeInstanceOf(AbortSignal);
+
+    const response = await pending;
+    expect(response.status).toBe(502);
+    expect(consoleError).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("aborts a headers-received plus stalled body at 60 s (signal kept alive through json)", async () => {
+    vi.stubGlobal("window", { localStorage: pairedStorage() });
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: () =>
+            new Promise((_resolve, reject) => {
+              if (signal?.aborted) {
+                reject(new DOMException("AbortError", "AbortError"));
+                return;
+              }
+              signal?.addEventListener(
+                "abort",
+                () => reject(new DOMException("AbortError", "AbortError")),
+                { once: true },
+              );
+            }),
+        } as Response;
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const pending = handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/cloud/chat", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "hello" }),
+      }),
+    );
+
+    // Let headers resolve but body stays stalled.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS);
+
+    const response = await pending;
+    // Body stall is treated as bridge failure → 502, not 200.
+    expect(response.status).toBe(502);
+    expect(consoleError).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clears the pending timer on Cloud bridge success before timeout", async () => {
+    vi.stubGlobal("window", { localStorage: pairedStorage() });
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        jsonrpc: "2.0",
+        id: "cloud-1",
+        result: { text: "cloud answer", model: "cloud-model" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/cloud/chat", {
+        method: "POST",
+        body: JSON.stringify({ prompt: "hello" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
