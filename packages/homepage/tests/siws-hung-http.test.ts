@@ -92,24 +92,62 @@ afterEach(() => {
 });
 
 describe("SIWS HTTP boundary", () => {
-  test("rolls back an issued bearer when canonical session loading fails", async () => {
-    const stored: Array<string | null> = [];
-    let cleared = 0;
+  test("does not publish an issued bearer while canonical session loading is pending", async () => {
+    const committed: string[] = [];
+    let releaseLoad: ((identity: { id: string }) => void) | undefined;
+    const pendingIdentity = new Promise<{ id: string }>((resolve) => {
+      releaseLoad = resolve;
+    });
+
+    const confirmation = confirmSiwsSession("issued-token", {
+      loadCanonicalUser: () => pendingIdentity,
+      commitSession: (token) => committed.push(token),
+    });
+
+    await Promise.resolve();
+    expect(committed).toEqual([]);
+    releaseLoad?.({ id: "canonical-user" });
+    await confirmation;
+    expect(committed).toEqual(["issued-token"]);
+  });
+
+  test("preserves a prior session when canonical session loading fails", async () => {
+    let activeSession = "prior-token";
+    let activeIdentity = "prior-user";
     const failure = new Error("canonical session rejected");
 
     await expect(
       confirmSiwsSession("issued-token", {
-        storeToken: (token) => stored.push(token),
         loadCanonicalUser: async () => {
           throw failure;
         },
-        clearIdentity: () => {
-          cleared += 1;
+        commitSession: (token, identity) => {
+          activeSession = token;
+          activeIdentity = identity as string;
         },
       }),
     ).rejects.toBe(failure);
-    expect(stored).toEqual(["issued-token", null]);
-    expect(cleared).toBe(1);
+    expect(activeSession).toBe("prior-token");
+    expect(activeIdentity).toBe("prior-user");
+  });
+
+  test("commits a confirmed bearer together with its canonical identity", async () => {
+    const events: string[] = [];
+
+    await confirmSiwsSession("issued-token", {
+      loadCanonicalUser: async (token) => {
+        events.push(`load:${token}`);
+        return { id: "canonical-user" };
+      },
+      commitSession: (token, identity) => {
+        events.push(`commit:${token}:${identity.id}`);
+      },
+    });
+
+    expect(events).toEqual([
+      "load:issued-token",
+      "commit:issued-token:canonical-user",
+    ]);
   });
 
   test("times out while consuming the nonce response body", async () => {
@@ -359,6 +397,33 @@ describe("SIWS HTTP boundary", () => {
       );
     });
 
+    await expect(signInWithSolana()).rejects.toThrow(
+      "SIWS verification response has an invalid shape",
+    );
+
+    request = 0;
+    installBrowserDoubles(async () => {
+      request += 1;
+      return jsonResponse(
+        request === 1 ? nonce : { ...verified, organization: null },
+      );
+    });
+    await expect(signInWithSolana()).rejects.toThrow(
+      "SIWS verification response has an invalid shape",
+    );
+
+    request = 0;
+    installBrowserDoubles(async () => {
+      request += 1;
+      return jsonResponse(
+        request === 1
+          ? nonce
+          : {
+              ...verified,
+              user: { ...verified.user, organization_id: "org-1\nInjected" },
+            },
+      );
+    });
     await expect(signInWithSolana()).rejects.toThrow(
       "SIWS verification response has an invalid shape",
     );

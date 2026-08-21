@@ -194,6 +194,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadUserInfo = useCallback(
+    async (token: string): Promise<UserInfoResponse> =>
+      elizacloudFetch<UserInfoResponse>("/api/eliza-app/user/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+    [],
+  );
+
+  const applyUserInfo = useCallback((data: UserInfoResponse): void => {
+    setUser(data.user);
+    setOrganization(data.organization);
+  }, []);
+
   const fetchUserInfo = useCallback(
     async (tokenOverride?: string): Promise<boolean> => {
       const token = tokenOverride || getAuthToken();
@@ -201,20 +216,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      const data = await elizacloudFetch<UserInfoResponse>(
-        "/api/eliza-app/user/me",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      setUser(data.user);
-      setOrganization(data.organization);
+      const data = await loadUserInfo(token);
+      applyUserInfo(data);
       return true;
     },
-    [],
+    [applyUserInfo, loadUserInfo],
   );
 
   useEffect(() => {
@@ -457,11 +463,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await siwsSignIn();
       await confirmSiwsSession(result.apiKey, {
-        storeToken: setSessionToken,
-        loadCanonicalUser: fetchUserInfo,
-        clearIdentity: () => {
-          setUser(null);
-          setOrganization(null);
+        loadCanonicalUser: loadUserInfo,
+        commitSession: (token, identity) => {
+          setSessionToken(token);
+          applyUserInfo(identity);
         },
       });
       return { success: true, address: result.address };
@@ -472,7 +477,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [setSessionToken, fetchUserInfo]);
+  }, [applyUserInfo, loadUserInfo, setSessionToken]);
 
   const logout = useCallback(() => {
     setSessionToken(null);

@@ -1,19 +1,12 @@
-/** Finalizes a SIWS bearer only after the canonical user endpoint accepts it. */
+/** Finalizes a SIWS bearer and identity only after the canonical user endpoint accepts it. */
 
-export async function confirmSiwsSession(
+export async function confirmSiwsSession<TCanonicalIdentity>(
   apiKey: string,
   dependencies: {
-    storeToken: (token: string | null) => void;
-    loadCanonicalUser: (token: string) => Promise<unknown>;
-    clearIdentity: () => void;
+    loadCanonicalUser: (token: string) => Promise<TCanonicalIdentity>;
+    commitSession: (token: string, identity: TCanonicalIdentity) => void;
   },
 ): Promise<void> {
-  dependencies.storeToken(apiKey);
-  try {
-    await dependencies.loadCanonicalUser(apiKey);
-  } catch (error) {
-    dependencies.storeToken(null);
-    dependencies.clearIdentity();
-    throw error;
-  }
+  const identity = await dependencies.loadCanonicalUser(apiKey);
+  dependencies.commitSession(apiKey, identity);
 }

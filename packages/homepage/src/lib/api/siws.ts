@@ -79,10 +79,17 @@ function isOrganization(
 ): value is { id: string; name: string; slug: string } {
   return (
     isRecord(value) &&
-    isBoundedString(value.id, 256) &&
-    isBoundedString(value.name, 256) &&
-    isBoundedString(value.slug, 256)
+    isBoundedControlFreeString(value.id, 256) &&
+    isBoundedControlFreeString(value.name, 256) &&
+    isBoundedControlFreeString(value.slug, 256)
   );
+}
+
+function isBoundedControlFreeString(
+  value: unknown,
+  max = SIWS_FIELD_MAX_BYTES,
+): value is string {
+  return isBoundedString(value, max) && !containsControlCharacter(value);
 }
 
 function errorWithCause(message: string, cause: unknown): Error {
@@ -172,17 +179,15 @@ function parseVerifyResponse(value: unknown): SiwsVerifyResponse {
     !SOLANA_ADDRESS_RE.test(value.address) ||
     typeof value.isNewAccount !== "boolean" ||
     !isRecord(value.user) ||
-    !isBoundedString(value.user.id, 256) ||
+    !isBoundedControlFreeString(value.user.id, 256) ||
     typeof value.user.wallet_address !== "string" ||
     !SOLANA_ADDRESS_RE.test(value.user.wallet_address) ||
-    !isBoundedString(value.user.organization_id, 256) ||
-    !(value.organization === null || isOrganization(value.organization)) ||
-    (isRecord(value.organization) &&
-      value.organization.id !== value.user.organization_id)
+    !isBoundedControlFreeString(value.user.organization_id, 256) ||
+    !isOrganization(value.organization) ||
+    value.organization.id !== value.user.organization_id
   ) {
     throw new Error("SIWS verification response has an invalid shape");
   }
-  const organization = value.organization;
   return {
     apiKey: value.apiKey,
     address: value.address,
@@ -192,14 +197,11 @@ function parseVerifyResponse(value: unknown): SiwsVerifyResponse {
       wallet_address: value.user.wallet_address,
       organization_id: value.user.organization_id,
     },
-    organization:
-      organization === null
-        ? null
-        : {
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-          },
+    organization: {
+      id: value.organization.id,
+      name: value.organization.name,
+      slug: value.organization.slug,
+    },
   };
 }
 
@@ -356,7 +358,7 @@ export interface SiwsVerifyResponse {
   address: string;
   isNewAccount: boolean;
   user: { id: string; wallet_address: string; organization_id: string };
-  organization: { id: string; name: string; slug: string } | null;
+  organization: { id: string; name: string; slug: string };
 }
 
 interface PhantomWallet {
