@@ -120,6 +120,9 @@ describe("GET /api/secrets/inventory/:key encoding", () => {
           protection: "mode-0600",
         }),
       ],
+      // A successful scan says so explicitly, so a caller can tell a clean
+      // result from one that never ran.
+      securityFindingsAvailable: true,
     });
     expect(JSON.stringify(res.body())).not.toContain('secret"');
     expect(vaultMocks.listVaultInventory).toHaveBeenCalled();
