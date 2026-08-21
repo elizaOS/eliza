@@ -737,8 +737,12 @@ export async function runCli(
   const turnTimeoutMs = (() => {
     const raw = process.env.SCENARIO_TURN_TIMEOUT_MS?.trim();
     if (!raw) return 120_000;
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    // `Number.parseInt` stops at the first non-digit, so "500junk" parsed to a
+    // finite, positive 500 and slipped past the guard below — silently running
+    // every turn on a 500ms budget instead of failing the way this check
+    // already intends to.
+    const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
       throw new Error(
         `SCENARIO_TURN_TIMEOUT_MS must be a positive integer (got '${raw}')`,
       );
