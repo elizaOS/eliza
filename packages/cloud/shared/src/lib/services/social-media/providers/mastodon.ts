@@ -10,7 +10,11 @@ import type {
   SocialMediaProvider,
 } from "../../../types/social-media";
 import { logger } from "../../../utils/logger";
-import { downloadSocialMediaBytes } from "../media-download";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 interface MastodonStatus {
@@ -98,9 +102,10 @@ async function uploadMedia(
   let fileData: Buffer;
 
   if (media.data) {
+    assertSocialMediaBytesWithinBudget(media.data.length, { platform: "mastodon" });
     fileData = media.data;
   } else if (media.base64) {
-    fileData = Buffer.from(media.base64, "base64");
+    fileData = decodeSocialMediaBase64(media.base64, { platform: "mastodon" });
   } else if (media.url) {
     fileData = await downloadSocialMediaBytes(media.url);
   } else {

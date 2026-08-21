@@ -9,7 +9,11 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
-import { downloadSocialMediaBytes } from "../media-download";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const SLACK_API_BASE = "https://slack.com/api";
@@ -357,9 +361,10 @@ export const slackProvider: SocialMediaProvider = {
     let filename = "upload";
 
     if (media.data) {
+      assertSocialMediaBytesWithinBudget(media.data.length, { platform: "slack" });
       fileData = media.data;
     } else if (media.base64) {
-      fileData = Buffer.from(media.base64, "base64");
+      fileData = decodeSocialMediaBase64(media.base64, { platform: "slack" });
     } else if (media.url) {
       fileData = await downloadSocialMediaBytes(media.url, {
         httpErrorMessage: (status) => `Failed to download media from ${media.url}: ${status}`,
