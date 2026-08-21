@@ -29,8 +29,14 @@ import { subscriptionAllowanceTransactions } from "../../db/schemas/subscription
 import { creditsService } from "./credits";
 import {
   SUBSCRIPTION_FUNDING_INSUFFICIENT,
-  subscriptionFundingService,
+  SUBSCRIPTION_FUNDING_RELEASE_NOT_DUE,
+  SubscriptionFundingService,
 } from "./subscription-funding";
+
+const autoTopUpCalls: string[] = [];
+const subscriptionFundingService = new SubscriptionFundingService(async (organizationId) => {
+  autoTopUpCalls.push(organizationId);
+});
 
 const PGLITE_TIMEOUT = 90_000;
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
@@ -212,6 +218,7 @@ beforeEach(async () => {
   await dbWrite.delete(creditTransactions);
   await dbWrite.delete(organizations);
   await seedBillingState();
+  autoTopUpCalls.length = 0;
   spyOn(creditsService, "invalidateCreditCaches").mockResolvedValue();
   spyOn(creditsService, "notifyBalanceDecrease").mockResolvedValue();
 });
@@ -225,7 +232,7 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
     const input = {
       organizationId: ORGANIZATION_ID,
       logicalOperationId: "usage.mixed.0001",
-      fundingClass: "allowance_eligible" as const,
+      operation: "ai_inference" as const,
       amount: "8.000000",
       description: "mixed metered usage",
       occurredAt: NOW,
@@ -273,7 +280,7 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
     const result = await subscriptionFundingService.reserve({
       organizationId: ORGANIZATION_ID,
       logicalOperationId: "usage.cashonly.0001",
-      fundingClass: "cash_only",
+      operation: "domain",
       amount: "4.000000",
       description: "domain purchase",
       occurredAt: NOW,
@@ -297,7 +304,7 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
       await subscriptionFundingService.reserve({
         organizationId: ORGANIZATION_ID,
         logicalOperationId: "usage.shortfall.0001",
-        fundingClass: "allowance_eligible",
+        operation: "ai_inference",
         amount: "8.000000",
         description: "too expensive",
         occurredAt: NOW,
@@ -314,5 +321,190 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
     const reservations = await dbWrite.select().from(billingFundingReservations);
     expect(period?.remaining).toBe("6.000000");
     expect(reservations).toHaveLength(0);
+    expect(autoTopUpCalls).toEqual([ORGANIZATION_ID]);
+
+    await expect(
+      subscriptionFundingService.reserve({
+        organizationId: ORGANIZATION_ID,
+        logicalOperationId: "usage.cashshort.0001",
+        operation: "domain",
+        amount: "2.000000",
+        description: "cash-only shortfall",
+        occurredAt: NOW,
+        expiresAt: new Date("2026-08-20T13:00:00.000Z"),
+      }),
+    ).rejects.toMatchObject({ code: SUBSCRIPTION_FUNDING_INSUFFICIENT });
+    expect(autoTopUpCalls).toEqual([ORGANIZATION_ID, ORGANIZATION_ID]);
+  });
+
+  test("settles a full hold and returns unused value to each original source exactly once", async () => {
+    const reserveInput = {
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.settle.0001",
+      operation: "ai_inference" as const,
+      amount: "8.000000",
+      description: "estimated usage",
+      occurredAt: NOW,
+      expiresAt: new Date("2026-08-20T13:00:00.000Z"),
+    };
+    await subscriptionFundingService.reserve(reserveInput);
+    const settlementInput = {
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: reserveInput.logicalOperationId,
+      operation: "ai_inference" as const,
+      actualAmount: "3.000000",
+      occurredAt: new Date("2026-08-20T12:05:00.000Z"),
+    };
+    const settled = await subscriptionFundingService.settle(settlementInput);
+    const replay = await subscriptionFundingService.settle(settlementInput);
+
+    expect(settled.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(settled.reservation.status).toBe("partially_refunded");
+    expect(settled.reservation.settled_allowance_amount).toBe("6.000000");
+    expect(settled.reservation.settled_purchased_credit_amount).toBe("2.000000");
+    expect(settled.reservation.refunded_allowance_amount).toBe("3.000000");
+    expect(settled.reservation.refunded_purchased_credit_amount).toBe("2.000000");
+
+    const [organization] = await dbWrite
+      .select({ balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, ORGANIZATION_ID));
+    const [period] = await dbWrite
+      .select({ remaining: subscriptionAllowancePeriods.remaining_amount })
+      .from(subscriptionAllowancePeriods)
+      .where(eq(subscriptionAllowancePeriods.id, PERIOD_ID));
+    const ledger = await dbWrite
+      .select({ kind: subscriptionAllowanceTransactions.kind })
+      .from(subscriptionAllowanceTransactions)
+      .where(eq(subscriptionAllowanceTransactions.funding_reservation_id, settled.reservation.id));
+    expect(organization?.balance).toBe("10.000000");
+    expect(period?.remaining).toBe("3.000000");
+    expect(ledger.map((row) => row.kind)).toEqual(["reserve", "settle", "refund"]);
+  });
+
+  test("reserves and settles an allowance-first linked overage leg exactly once", async () => {
+    await subscriptionFundingService.reserve({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.overage.0001",
+      operation: "ai_inference",
+      amount: "2.000000",
+      description: "under-estimated usage",
+      occurredAt: NOW,
+      expiresAt: new Date("2026-08-20T13:00:00.000Z"),
+    });
+    const settlement = {
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.overage.0001",
+      operation: "ai_inference" as const,
+      actualAmount: "2.500000",
+      occurredAt: new Date("2026-08-20T12:05:00.000Z"),
+    };
+    const first = await subscriptionFundingService.settle(settlement);
+    const replay = await subscriptionFundingService.settle(settlement);
+    expect(first.overageReservation).toMatchObject({
+      reservation_phase: "overage",
+      phase_sequence: 1,
+      root_reservation_id: first.reservation.id,
+      parent_reservation_id: first.reservation.id,
+      allowance_amount: "0.500000",
+      purchased_credit_amount: "0.000000",
+      status: "settled",
+    });
+    expect(replay.replayed).toBe(true);
+    expect(replay.overageReservation?.id).toBe(first.overageReservation?.id);
+    const [period] = await dbWrite
+      .select({ remaining: subscriptionAllowancePeriods.remaining_amount })
+      .from(subscriptionAllowancePeriods)
+      .where(eq(subscriptionAllowancePeriods.id, PERIOD_ID));
+    expect(period?.remaining).toBe("3.500000");
+  });
+
+  test("releases canceled mixed-source holds and replays the terminal release", async () => {
+    await subscriptionFundingService.reserve({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.cancel.0001",
+      operation: "ai_inference",
+      amount: "8.000000",
+      description: "crashed provider hold",
+      occurredAt: NOW,
+      expiresAt: new Date("2026-08-20T13:00:00.000Z"),
+    });
+    const first = await subscriptionFundingService.releaseCanceled({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.cancel.0001",
+    });
+    const replay = await subscriptionFundingService.releaseCanceled({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.cancel.0001",
+    });
+    expect(first.reservation.status).toBe("refunded");
+    expect(first.reservation.refunded_allowance_amount).toBe("6.000000");
+    expect(first.reservation.refunded_purchased_credit_amount).toBe("2.000000");
+    expect(replay.replayed).toBe(true);
+    const [organization] = await dbWrite
+      .select({ balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, ORGANIZATION_ID));
+    expect(organization?.balance).toBe("10.000000");
+  });
+
+  test("releaseExpired uses the locked database clock and rejects an early sweep", async () => {
+    await subscriptionFundingService.reserve({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "usage.expiry.0001",
+      operation: "ai_inference",
+      amount: "2.000000",
+      description: "active hold",
+      occurredAt: NOW,
+      expiresAt: new Date("2099-08-20T13:00:00.000Z"),
+    });
+    await expect(
+      subscriptionFundingService.releaseExpired({
+        organizationId: ORGANIZATION_ID,
+        logicalOperationId: "usage.expiry.0001",
+      }),
+    ).rejects.toMatchObject({ code: SUBSCRIPTION_FUNDING_RELEASE_NOT_DUE });
+  });
+
+  test("releaseExpired keeps a late allowance refund in the expired audit bucket", async () => {
+    const logicalOperationId = "usage.expired.0001";
+    const reserved = await subscriptionFundingService.reserve({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId,
+      operation: "ai_inference",
+      amount: "2.000000",
+      description: "stranded hold",
+      occurredAt: NOW,
+      expiresAt: new Date("2026-08-20T13:00:00.000Z"),
+    });
+    const expiredAt = new Date("2026-08-19T12:00:00.000Z");
+    await dbWrite
+      .update(billingFundingReservations)
+      .set({ expires_at: expiredAt })
+      .where(eq(billingFundingReservations.id, reserved.reservation.id));
+    await dbWrite
+      .update(subscriptionAllowancePeriods)
+      .set({ expires_at: expiredAt })
+      .where(eq(subscriptionAllowancePeriods.id, PERIOD_ID));
+
+    const released = await subscriptionFundingService.releaseExpired({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId,
+    });
+    const replay = await subscriptionFundingService.releaseExpired({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId,
+    });
+    expect(released.reservation.status).toBe("refunded");
+    expect(replay.replayed).toBe(true);
+    const [period] = await dbWrite
+      .select({
+        remaining: subscriptionAllowancePeriods.remaining_amount,
+        expired: subscriptionAllowancePeriods.expired_amount,
+      })
+      .from(subscriptionAllowancePeriods)
+      .where(eq(subscriptionAllowancePeriods.id, PERIOD_ID));
+    expect(period).toEqual({ remaining: "4.000000", expired: "2.000000" });
   });
 });
