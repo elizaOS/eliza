@@ -13,8 +13,11 @@ export function LandingTaskListAttachment({
       className="landing-task-list-attachment"
       aria-label={`${taskList.title}, ${completed} of ${taskList.items.length} items completed`}
     >
-      <header className="landing-task-list-head">
-        <span className="landing-task-list-icon" aria-hidden="true">
+      <header className="landing-task-list-head landing-attachment-head">
+        <span
+          className="landing-task-list-icon landing-attachment-icon"
+          aria-hidden="true"
+        >
           <ListChecks />
         </span>
         <span>

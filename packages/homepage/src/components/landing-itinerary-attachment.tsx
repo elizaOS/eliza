@@ -1,4 +1,4 @@
-import { House, Luggage, MapPin, Plane, Utensils } from "lucide-react";
+import { House, Luggage, MapPin, Plane, Route, Utensils } from "lucide-react";
 import type { LandingDemoItinerary } from "@/lib/landing-demo";
 
 const STOP_ICONS = [Plane, Luggage, Utensils, House] as const;
@@ -13,9 +13,14 @@ export function LandingItineraryAttachment({
       className="landing-itinerary-attachment"
       aria-label={`${itinerary.title}: ${itinerary.stops.map((stop) => stop.label).join(", ")}`}
     >
-      <header className="landing-itinerary-head">
+      <header className="landing-itinerary-head landing-attachment-head">
+        <span
+          className="landing-itinerary-app-icon landing-attachment-icon"
+          aria-hidden="true"
+        >
+          <Route />
+        </span>
         <strong>{itinerary.title}</strong>
-        <MapPin aria-hidden="true" />
       </header>
       <ol className="landing-itinerary-stops">
         {itinerary.stops.map((stop, index) => {

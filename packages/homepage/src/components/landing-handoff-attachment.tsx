@@ -1,3 +1,4 @@
+import { CalendarDays } from "lucide-react";
 import type { LandingDemoHandoff } from "@/lib/landing-demo";
 
 export function LandingHandoffAttachment({
@@ -10,8 +11,14 @@ export function LandingHandoffAttachment({
       className="landing-handoff-attachment"
       aria-label={`${handoff.child}'s ${handoff.title}, ${handoff.day} at ${handoff.time}, ${handoff.location}`}
     >
-      <header className="landing-calendar-head">
-        <strong>{handoff.day}</strong>
+      <header className="landing-calendar-head landing-attachment-head">
+        <span
+          className="landing-calendar-icon landing-attachment-icon"
+          aria-hidden="true"
+        >
+          <CalendarDays />
+        </span>
+        <strong>{`${handoff.day} Calendar`}</strong>
       </header>
       <div className="landing-calendar-day-view" aria-hidden="true">
         <span className="landing-calendar-hour landing-calendar-hour--four">

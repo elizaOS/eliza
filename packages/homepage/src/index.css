@@ -2246,7 +2246,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transform-origin: left bottom;
 }
 
-.landing-task-list-head {
+.landing-attachment-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -2254,25 +2254,29 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   padding: 0.7rem 0.75rem;
 }
 
-.landing-task-list-icon {
+.landing-attachment-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 0.52rem;
-  background: #ff9f0a;
   color: #fff;
 }
 
-.landing-task-list-icon svg {
-  width: 1.28rem;
-  height: 1.28rem;
+.landing-attachment-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
+}
+
+.landing-task-list-icon {
+  background: #ff9f0a;
 }
 
 .landing-task-list-head > span:nth-child(2) {
@@ -2386,15 +2390,16 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-calendar-head {
-  display: flex;
-  align-items: center;
-  min-height: 2.55rem;
-  padding: 0 0.78rem;
   border-bottom: 1px solid rgb(0 0 0 / 7%);
+  background: #f7f7f8;
+}
+
+.landing-calendar-icon {
+  background: #ff3b30;
 }
 
 .landing-calendar-head strong {
-  color: #ff3b30;
+  color: #111;
   font-size: 0.92rem;
   font-weight: 650;
   letter-spacing: -0.015em;
@@ -2495,26 +2500,18 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-itinerary-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-  padding: 0.68rem 0.75rem 0.62rem;
-  background: #f2f7ff;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+  background: #f7f7f8;
 }
 
 .landing-itinerary-head strong {
-  font-size: 0.9rem;
-  letter-spacing: -0.015em;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
   line-height: 1.15;
 }
 
-.landing-itinerary-head > svg {
-  flex: 0 0 auto;
-  width: 1.15rem;
-  height: 1.15rem;
-  color: #0a84ff;
-  stroke-width: 2;
+.landing-itinerary-app-icon {
+  background: #0a84ff;
 }
 
 .landing-itinerary-stops {
@@ -2581,28 +2578,18 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-heat-plan-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background: linear-gradient(145deg, #2f8be8, #67b8ec);
-  color: #fff;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+  background: #f7f7f8;
 }
 
 .landing-heat-plan-head strong {
-  font-size: 1.02rem;
-  letter-spacing: -0.02em;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
   line-height: 1.1;
 }
 
-.landing-heat-plan-head > svg {
-  flex: 0 0 auto;
-  width: 2.1rem;
-  height: 2.1rem;
-  color: #ffd45a;
-  fill: rgb(255 212 90 / 20%);
-  stroke-width: 1.6;
+.landing-heat-plan-app-icon {
+  background: #4ca6e8;
 }
 
 .landing-heat-plan-schedule {
