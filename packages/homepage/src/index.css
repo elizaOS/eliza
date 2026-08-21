@@ -2286,12 +2286,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   line-height: 1.15;
 }
 
-.landing-task-list-head small {
-  margin-top: 0.08rem;
-  color: #6e6e73;
-  font-size: 0.68rem;
-}
-
 .landing-task-list-head b {
   color: #c56f00;
   font-size: 0.66rem;

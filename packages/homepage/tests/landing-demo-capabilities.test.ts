@@ -160,8 +160,7 @@ describe("landing Shared-agent capability contract", () => {
       capability: "room-memory",
       kind: "task-list",
       taskList: {
-        subtitle: "To Do",
-        title: "Tonight",
+        title: "To Do List",
       },
     });
     expect(

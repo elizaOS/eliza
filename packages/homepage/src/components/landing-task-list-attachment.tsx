@@ -19,7 +19,6 @@ export function LandingTaskListAttachment({
         </span>
         <span>
           <strong>{taskList.title}</strong>
-          <small>{taskList.subtitle}</small>
         </span>
         <b>{completed} done</b>
       </header>

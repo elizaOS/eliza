@@ -181,7 +181,6 @@ export interface LandingDemoTaskList {
     completed: boolean;
     task: string;
   }[];
-  subtitle: string;
   title: string;
 }
 
@@ -435,8 +434,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         capability: "room-memory",
         kind: "task-list",
         taskList: {
-          title: "Tonight",
-          subtitle: "To Do",
+          title: "To Do List",
           items: [
             { assignee: "You", completed: false, task: "Coffee + laundry" },
             {
@@ -629,7 +627,6 @@ export function landingDemoStepText(step: LandingDemoStep): string {
   if (step.kind === "task-list") {
     return [
       step.taskList.title,
-      step.taskList.subtitle,
       ...step.taskList.items.flatMap((item) => [item.assignee, item.task]),
     ].join(" ");
   }
