@@ -4,7 +4,10 @@
  * failure translation without contacting third-party services.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPreset } from "./setup-credentials";
+import {
+	getPreset,
+	SETUP_CREDENTIAL_FETCH_TIMEOUT_MS,
+} from "./setup-credentials";
 
 function preset(name: string) {
 	const value = getPreset(name);
@@ -18,6 +21,10 @@ afterEach(() => {
 });
 
 describe("credential probe network boundary", () => {
+	it("preserves the public credential-probe timeout contract", () => {
+		expect(SETUP_CREDENTIAL_FETCH_TIMEOUT_MS).toBe(15_000);
+	});
+
 	it.each([
 		["github", { token: "github-secret" }, "https://api.github.com/user"],
 		[

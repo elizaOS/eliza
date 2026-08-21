@@ -35,7 +35,7 @@ export interface CredentialField {
 }
 
 const SAFE_PRESET_NAME_RE = /^[A-Za-z0-9_-]+$/;
-const CREDENTIAL_PROBE_TIMEOUT_MS = 15_000;
+export const SETUP_CREDENTIAL_FETCH_TIMEOUT_MS = 15_000;
 const CREDENTIAL_PROBE_MAX_BODY_BYTES = 64 * 1024;
 const CREDENTIAL_VALUE_MAX_LENGTH = 16 * 1024;
 const presets = new Map<string, CredentialPreset>();
@@ -214,7 +214,7 @@ async function credentialProbe(
 	url: string,
 	init: RequestInit,
 ): Promise<{ response: Response; signal: AbortSignal }> {
-	const signal = AbortSignal.timeout(CREDENTIAL_PROBE_TIMEOUT_MS);
+	const signal = AbortSignal.timeout(SETUP_CREDENTIAL_FETCH_TIMEOUT_MS);
 	try {
 		const response = await fetch(url, {
 			...init,
