@@ -7,7 +7,29 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { AppControlClient } from "../client/api.js";
-import { createAppAction } from "./app.js";
+import { createAppAction, inferAppMode } from "./app.js";
+
+describe("APP edit routing", () => {
+	it.each([
+		"update my Nubs Color Pebble site",
+		"change the button on my website",
+		"edit the existing dashboard",
+	])("routes %j through the verified create-or-edit lifecycle", (text) => {
+		expect(inferAppMode(text)).toBe("create");
+	});
+
+	it("does not steal an ordinary non-app code edit", () => {
+		expect(inferAppMode("edit this Python file")).toBeNull();
+	});
+
+	it("advertises existing-app edit attractors to Stage 1", () => {
+		const action = createAppAction();
+		expect(action.similes).toEqual(
+			expect.arrayContaining(["EDIT_APP", "UPDATE_WEBSITE"]),
+		);
+		expect(action.routingHint).toContain("EDITING/UPDATING");
+	});
+});
 
 describe("APP action role policy", () => {
 	it("advertises the same owner-only gate enforced by validate and handler", () => {

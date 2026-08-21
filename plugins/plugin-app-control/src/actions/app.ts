@@ -65,6 +65,9 @@ const LIST_VERBS =
 const DELETE_VERBS = /\b(delete|uninstall|remove|wipe|erase|purge)\b/i;
 const CREATE_VERBS =
 	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
+const EDIT_VERBS = /\b(edit|update|change|modify|revise|tweak|fix)\b/i;
+const EDITABLE_APP_NOUN =
+	/\b(app|application|website|web site|site|webpage|web page|page|game|tool|widget|dashboard)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
 const APP_NOUN = /\b(app|apps|application|applications|mini)\b/i;
 const LOAD_FROM_DIR =
@@ -90,7 +93,7 @@ function defaultRepoRoot(): string {
 	return process.cwd();
 }
 
-function inferMode(
+export function inferAppMode(
 	text: string,
 	options?: Record<string, unknown>,
 ): AppMode | null {
@@ -106,6 +109,13 @@ function inferMode(
 	if (LOAD_FROM_DIR.test(trimmed)) return "load_from_directory";
 
 	if (CREATE_VERBS.test(trimmed) && !PLUGIN_ONLY.test(trimmed)) {
+		return "create";
+	}
+	// The create operation owns both halves of the create-or-edit workflow. An
+	// existing app/site edit must enter that path so it gets an exact workdir,
+	// pre-edit snapshot, verifier, registry refresh, and final launch link. A raw
+	// TASKS spawn can edit files but cannot truthfully complete that lifecycle.
+	if (EDIT_VERBS.test(trimmed) && EDITABLE_APP_NOUN.test(trimmed)) {
 		return "create";
 	}
 
@@ -184,6 +194,10 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"BUILD_APP",
 			"NEW_APP",
 			"BUILD_WEB_APP",
+			"EDIT_APP",
+			"UPDATE_APP",
+			"EDIT_WEBSITE",
+			"UPDATE_WEBSITE",
 			"HOST_WEB_APP",
 			"MAKE_WEBSITE",
 			"PUBLISH_WEB_PAGE",
@@ -200,13 +214,15 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"relaunch",
 			"stop",
 			"scaffold",
+			"edit",
+			"update",
 		],
 		description:
-			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create BUILDS AND HOSTS a new web app / web page / website: the multi-turn create-or-edit flow searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, dispatches a coding agent with AppVerificationService validator, and (when a publish target is configured) publishes the verified build and returns a live URL the user can open.",
+			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create BUILDS A NEW OR EDITS AN EXISTING web app / web page / website: the create-or-edit flow finds the exact app, snapshots it, dispatches a coding agent with AppVerificationService, refreshes registration, and returns a live URL the user can open.",
 		descriptionCompressed:
 			"apps launch|relaunch|stop|list|load_folder|create; create builds a web app/page/site and publishes a live link when a publish target is configured",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. Building/hosting/publishing a NEW web app, web page, or interactive HTML the user wants a live link for ('teach me with an interactive page', 'host it and give me the link') is APP action=create: it scaffolds and dispatches the coding workflow, whose deploy contract publishes through the configured canonical target (Eliza Cloud by default, explicit custom host for an operator override). REGISTER_CLOUD_APP only registers an already-built Cloud product and must not replace this build flow. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's existing Eliza Cloud apps ('my cloud apps') are LIST_CLOUD_APPS, NOT this action.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, restarting, or EDITING/UPDATING an existing app/site/website is APP. Existing-app edits use APP action=create with editTarget when known; this is the verified create-or-edit lifecycle and must not be replaced by a raw TASKS spawn. Building/hosting/publishing a NEW web app, web page, or interactive HTML the user wants a live link for is also APP action=create. REGISTER_CLOUD_APP only registers an already-built Cloud product and must not replace this build flow. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's existing Eliza Cloud apps ('my cloud apps') are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -360,7 +376,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				}
 			}
 
-			const mode = inferMode(text, actionOptions);
+			const mode = inferAppMode(text, actionOptions);
 			if (!mode) {
 				// A delete/uninstall ask has no APP mode by design. Answer with the
 				// designed refusal (with tool-owned userFacingText, so planner-loop
@@ -495,6 +511,21 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: "[CHOICE:app-create id=app-create-…]\nnew = Create a new app\nedit-1 = Edit existing: Notes (notes)\ncancel = Cancel\n[/CHOICE]",
+						action: "APP",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: {
+						text: "update my portfolio site and open it when it's ready",
+					},
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "I'll update the existing site and open the verified result.",
 						action: "APP",
 					},
 				},
