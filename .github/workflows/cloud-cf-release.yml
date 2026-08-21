@@ -691,11 +691,36 @@ jobs:
           fi
           echo "Staging session exchange is off before config validation or deploy ($result)."
 
+      # Installed in THIS job (not inherited from migrate-db, a separate
+      # runner instance) so verify_webhook_gateway_binding_candidates below
+      # can fetch the live gateway secret's value from Railway and prove it
+      # still matches the Worker's queued value — closing the "same name,
+      # different value" gap a names-only wrangler inventory cannot see.
+      # Pinned to the exact version migrate-db already proved compatible.
+      - name: Install pinned Railway CLI for webhook gateway value match
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-deploy-api"
+          archive="$RUNNER_TEMP/railway-v5.38.0-deploy-api.tar.gz"
+          mkdir -p "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
       - name: Prepare Worker secrets for atomic deploy
         id: worker-secrets
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
@@ -1088,9 +1113,41 @@ jobs:
             fi
             local secret_inventory
             secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
-            printf '%s' "$secret_inventory" | node \
+
+            # Names-only wiring (above/below) proves a binding NAME exists or
+            # is queued; it cannot prove the VALUE still matches the live
+            # gateway's. Fetch that live value from Railway — the same
+            # trusted source deploy-gateway-webhook.yml already reads for its
+            # analogous Blooio value-match — and hand it to the node script
+            # purely through this one subshell's environment. It is never
+            # exported into the step's persistent shell state, assigned to a
+            # variable outside this function, or passed to any command that
+            # could echo it (no `set -x`, no `jq` on the raw value, no
+            # temp file). A failed or empty fetch resolves to an empty
+            # string, and the node script fails closed on that: a missing
+            # gateway-side proof is a mismatch, never a silent pass.
+            local railway_gateway_secret_inventory=""
+            local railway_gateway_secret_value=""
+            if railway_gateway_secret_inventory="$(railway variable list \
+                --project "$RAILWAY_PROJECT_ID" \
+                --environment "$RAILWAY_ENVIRONMENT_ID" \
+                --service "$RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK" \
+                --json 2>/dev/null)"; then
+              railway_gateway_secret_value="$(printf '%s' "$railway_gateway_secret_inventory" | jq -r \
+                'if (.ELIZA_APP_WEBHOOK_GATEWAY_SECRET | type) == "string" then .ELIZA_APP_WEBHOOK_GATEWAY_SECRET else "" end')"
+            else
+              echo "::warning::Could not fetch the live gateway's ELIZA_APP_WEBHOOK_GATEWAY_SECRET from Railway; the value-match half of the webhook gateway check will fail closed"
+            fi
+            railway_gateway_secret_inventory=""
+
+            printf '%s' "$secret_inventory" | env \
+              "WEBHOOK_GATEWAY_RAILWAY_SECRET_VALUE=$railway_gateway_secret_value" \
+              node \
               "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.mjs" \
               "${worker_secret_names[@]}"
+            local status=$?
+            railway_gateway_secret_value=""
+            return $status
           }
 
           # Like queue_secret, but for values that act as ROUTING TOGGLES
