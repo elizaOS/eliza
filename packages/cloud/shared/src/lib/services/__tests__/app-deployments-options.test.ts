@@ -12,7 +12,7 @@ type AppRow = {
   created_by_user_id: string;
   github_repo: string | null;
   metadata: Record<string, unknown>;
-  deployment_status: "draft" | "building" | "deployed" | "failed";
+  deployment_status: "draft" | "building" | "deploying" | "deployed" | "failed";
   production_url: string | null;
   last_deployed_at: Date | null;
 };
@@ -37,6 +37,17 @@ mock.module("../apps", () => ({
     update: async (id: string, data: Partial<AppRow>) => {
       if (id !== APP_ID) return undefined;
       appRow = { ...appRow, ...data };
+      return appRow;
+    },
+    claimDeploymentStart: async (id: string, data: Partial<AppRow>) => {
+      if (
+        id !== APP_ID ||
+        appRow.deployment_status === "building" ||
+        appRow.deployment_status === "deploying"
+      ) {
+        return undefined;
+      }
+      appRow = { ...appRow, ...data, deployment_status: "building" };
       return appRow;
     },
   },
