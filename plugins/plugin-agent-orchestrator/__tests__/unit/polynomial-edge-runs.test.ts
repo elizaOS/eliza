@@ -1,5 +1,6 @@
 /** Exercises linear-time public sanitizers with adversarial 100k-character runs. */
 import { describe, expect, it } from "vitest";
+import { extractBulkItems } from "../../src/actions/tasks.ts";
 import { sanitizePlannerText } from "../../src/index.ts";
 import { normalizeClaudeAcpModelId } from "../../src/services/acp-service.ts";
 import { redactCodingMemoryText } from "../../src/services/curated-coding-memory.ts";
@@ -32,5 +33,13 @@ describe("polynomial edge-run regressions", () => {
     const result = sanitizePlannerText(`restart${" ".repeat(100_000)}acpx.`);
     expect(result).toContain("self-heals");
     expect(result).not.toContain("acpx");
+  });
+
+  it("does not treat decimal versions as numbered issue markers", () => {
+    expect(extractBulkItems("release 1.2 works with runtime 3.4")).toEqual([]);
+    expect(extractBulkItems("1. first issue 2. second issue")).toEqual([
+      { title: "first issue" },
+      { title: "second issue" },
+    ]);
   });
 });

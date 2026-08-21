@@ -3877,7 +3877,7 @@ function formatGitHubAuthPrompt(
   );
 }
 
-function extractBulkItems(
+export function extractBulkItems(
   text: string,
 ): Array<{ title: string; body?: string }> {
   if (!text) return [];
@@ -3903,6 +3903,10 @@ function extractBulkItems(
       continue;
     }
     let contentStart = digitEnd + 1;
+    if (text[contentStart]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
     while (contentStart < text.length && text[contentStart]?.trim() === "") {
       contentStart += 1;
     }

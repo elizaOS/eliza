@@ -206,7 +206,9 @@ function parseSpeakerCommitment(value: string): {
   for (const subject of ["i", "we"]) {
     if (!lower.startsWith(subject)) continue;
     let cursor = subject.length;
+    const wordBoundary = cursor;
     while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+    const hasWhitespaceBoundary = cursor > wordBoundary;
     const verb = [
       "'ll ",
       "will ",
@@ -214,7 +216,7 @@ function parseSpeakerCommitment(value: string): {
       "am going to ",
       "are going to ",
     ].find((candidate) => lower.startsWith(candidate, cursor));
-    if (!verb) continue;
+    if (!verb || (!hasWhitespaceBoundary && verb !== "'ll ")) continue;
     const split = splitCommitmentDue(value.slice(cursor + verb.length));
     if (split.what) return split;
   }
