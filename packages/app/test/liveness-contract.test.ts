@@ -14,6 +14,7 @@ import {
   assertLiveReply,
   buildLivenessChallenge,
   extractLivenessChallengeToken,
+  findAnchoredLiveTurn,
   isLiveReply,
   LivenessAssertionError,
   STUB_FIXTURE_MARKER,
@@ -173,5 +174,76 @@ describe("liveness challenge reply assertion", () => {
         label: "ios-cloud-onboarding tap",
       }),
     ).toThrow(/ios-cloud-onboarding tap: /);
+  });
+});
+
+describe("structural user-turn anchoring", () => {
+  const anchorToken = "9f8e7d";
+
+  it("selects a valid assistant row after the exact token-bearing user row without requiring an echo", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "assistant", text: "cached greeting", phase: "reply" },
+          {
+            role: "user",
+            text: `Reply with exactly this code: ${anchorToken}`,
+          },
+          { role: "assistant", text: "", phase: "status" },
+          {
+            role: "assistant",
+            text: "Hello from the live model",
+            phase: "reply",
+          },
+        ],
+        { anchorToken },
+      ),
+    ).toEqual({
+      userLineIndex: 1,
+      assistantLineIndex: 3,
+      reply: "Hello from the live model",
+    });
+  });
+
+  it("rejects failure/retry rows and never crosses into a later user turn", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "user", text: `challenge ${anchorToken}` },
+          {
+            role: "assistant",
+            text: "failed",
+            failureKind: "handler_error",
+          },
+          { role: "assistant", text: "retry", hasRetry: true },
+          { role: "user", text: "a later turn" },
+          { role: "assistant", text: "later answer", phase: "reply" },
+        ],
+        { anchorToken },
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed without a token-bearing user row or a later valid assistant row", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [{ role: "assistant", text: anchorToken, phase: "reply" }],
+        { anchorToken },
+      ),
+    ).toBeNull();
+    expect(
+      findAnchoredLiveTurn([{ role: "user", text: anchorToken }], {
+        anchorToken,
+      }),
+    ).toBeNull();
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "user", text: anchorToken },
+          { role: "assistant", text: "answer", phase: "reply" },
+        ],
+        { anchorToken: "" },
+      ),
+    ).toBeNull();
   });
 });

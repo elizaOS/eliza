@@ -84,6 +84,68 @@ export function isLiveReply(reply) {
 }
 
 /**
+ * Find the assistant reply structurally paired with one run-unique user turn.
+ *
+ * The token is required only in the user row. A model may answer the exact
+ * turn without copying an arbitrary code verbatim; requiring an echo confuses
+ * instruction-following with liveness. DOM order still binds the reply to the
+ * run: the token-bearing user row must be followed by a non-pending,
+ * non-failure assistant row before another user row appears.
+ *
+ * This helper consumes a privacy-sensitive in-memory transcript snapshot but
+ * returns only indices plus the validated candidate text. Callers must never
+ * serialize either the token or reply into CI evidence.
+ *
+ * @param {Array<{
+ *   role?: string,
+ *   text?: string,
+ *   failureKind?: string,
+ *   hasRetry?: boolean,
+ *   phase?: string | null,
+ * }>} lines ordered thread rows
+ * @param {{ anchorToken?: string }} [options]
+ * @returns {{ userLineIndex: number, assistantLineIndex: number, reply: string } | null}
+ */
+export function findAnchoredLiveTurn(lines, { anchorToken } = {}) {
+  const token = String(anchorToken ?? "")
+    .trim()
+    .toLowerCase();
+  if (!token || !Array.isArray(lines)) return null;
+
+  for (
+    let userLineIndex = 0;
+    userLineIndex < lines.length;
+    userLineIndex += 1
+  ) {
+    const userLine = lines[userLineIndex];
+    if (
+      userLine?.role !== "user" ||
+      !String(userLine.text ?? "")
+        .toLowerCase()
+        .includes(token)
+    ) {
+      continue;
+    }
+
+    for (
+      let assistantLineIndex = userLineIndex + 1;
+      assistantLineIndex < lines.length;
+      assistantLineIndex += 1
+    ) {
+      const line = lines[assistantLineIndex];
+      if (line?.role === "user") break;
+      if (line?.role !== "assistant") continue;
+      if (String(line.failureKind ?? "").trim()) continue;
+      if (line.hasRetry === true || line.phase === "status") continue;
+      const reply = String(line.text ?? "").trim();
+      if (!reply) continue;
+      return { userLineIndex, assistantLineIndex, reply };
+    }
+  }
+  return null;
+}
+
+/**
  * The challenge suffix shared by every liveness lane that binds the reply to
  * the exact run. The token after the colon is what the harness generates fresh
  * per run and what the reply must echo back. Kept as the one literal so the

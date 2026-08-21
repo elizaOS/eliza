@@ -10,17 +10,18 @@
  * UI send action through final validation; it is full-turn latency, not
  * first-token latency.
  *
- * Reply selection is fail-closed by construction (#16936 review): the assistant
- * row count is snapshotted before send, only rows that did not exist before the
- * send are considered, and — when a challenge token is provided — a row counts
- * only once it contains that run-unique token. A pending status row, the
- * first-run greeting, a cached reply, or a wrong-code answer can never satisfy
- * the wait, whatever the chat surface renders inside the row.
+ * Reply selection is fail-closed by construction (#16936 review). Strict
+ * challenge callers require the fresh assistant row to echo their token. The
+ * Cloud continuity lane instead anchors on the run-unique token in the exact
+ * user row, then accepts only a valid assistant row that follows it before any
+ * later user turn. A pending status row, first-run greeting, cached reply, or
+ * unrelated answer cannot satisfy either mode.
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
   assertLiveChallengeReply,
   assertLiveReply,
+  findAnchoredLiveTurn,
 } from "./liveness-contract.mjs";
 
 export {
@@ -28,6 +29,7 @@ export {
   assertLiveReply,
   buildLivenessChallenge,
   extractLivenessChallengeToken,
+  findAnchoredLiveTurn,
   isLiveReply,
   LIVENESS_CHALLENGE_PREFIX,
   LivenessAssertionError,
@@ -53,6 +55,12 @@ export interface LivenessChatOptions {
    * containing the token; without it, the first non-empty new row is accepted.
    */
   challengeToken?: string;
+  /**
+   * Run-unique token present in the exact user row that owns the reply. Unlike
+   * `challengeToken`, this binds by transcript order and does not require the
+   * model to copy the token into its answer.
+   */
+  turnAnchorToken?: string;
   /** How long to wait for the assistant reply to render. */
   replyTimeoutMs?: number;
   /** Lane name used to attribute a liveness failure. */
@@ -69,6 +77,34 @@ export interface TimedLivenessReply {
 interface RenderedReplyMeasurement {
   reply: string;
   sendActionStartedAt: number;
+}
+
+export interface LivenessThreadLine {
+  role: string;
+  text: string;
+  failureKind: string;
+  hasRetry: boolean;
+  phase: string | null;
+}
+
+/** Read only the in-memory row fields needed to bind a reply to a user turn. */
+export async function readLivenessThreadLines(
+  page: Page,
+): Promise<LivenessThreadLine[]> {
+  return page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="thread-line"]'),
+    ).map((row) => ({
+      role: row.dataset.role ?? "",
+      text: row.textContent ?? "",
+      failureKind: row.dataset.failure ?? "",
+      hasRetry: Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
+      phase:
+        row.querySelector<HTMLElement>(
+          '[data-testid="overlay-assistant-turn-body"]',
+        )?.dataset.phase ?? null,
+    })),
+  );
 }
 
 function chatComposer(page: Page): Locator {
@@ -129,19 +165,28 @@ async function sendChatAndMeasureRenderedReply(
   const sendStartedAt = performance.now();
   await chatSendButton(page).click();
 
-  // Only rows beyond the pre-send snapshot can satisfy the turn: the pre-existing
-  // greeting or a cached reply must never be read as this run's answer. A row
-  // counts only when it is not a pending placeholder — the overlay publishes
-  // `data-phase="status"` while the "Thinking"/"Running …" label occupies the
-  // row — and, when a challenge token is set, when the row echoes it: a fresh
-  // random token cannot appear in status chrome or any pre-send text. The
-  // transcript only appends during a turn, so indices ≥ the snapshot are
-  // exactly this run's rows.
+  // Without a user-row anchor, only assistant rows beyond the pre-send snapshot
+  // can satisfy the turn. With an anchor, DOM order supplies the stronger
+  // binding: the exact token-bearing user row must precede the accepted reply.
+  // In both modes `data-phase="status"`, structured failures, Retry rows, and
+  // empty content remain ineligible.
   const token = options.challengeToken?.trim().toLowerCase();
-  const replyMatch = { text: "", rowIndex: -1 };
+  const turnAnchorToken = options.turnAnchorToken?.trim().toLowerCase();
+  const replyMatch = { text: "", rowIndex: -1, threadRowIndex: -1 };
   await expect
     .poll(
       async () => {
+        if (turnAnchorToken) {
+          const anchored = findAnchoredLiveTurn(
+            await readLivenessThreadLines(page),
+            { anchorToken: turnAnchorToken },
+          );
+          if (!anchored) return "";
+          if (token && !anchored.reply.toLowerCase().includes(token)) return "";
+          replyMatch.text = anchored.reply;
+          replyMatch.threadRowIndex = anchored.assistantLineIndex;
+          return anchored.reply;
+        }
         const count = await assistantRows.count();
         for (let i = priorCount; i < count; i += 1) {
           const row = assistantRows.nth(i);
@@ -157,12 +202,19 @@ async function sendChatAndMeasureRenderedReply(
         timeout: replyTimeoutMs,
         message: token
           ? `assistant reply echoing challenge token appeared in a new row${options.label ? ` (${options.label})` : ""}`
-          : `assistant reply appeared in a new row${options.label ? ` (${options.label})` : ""}`,
+          : turnAnchorToken
+            ? `assistant reply appeared after the exact token-bearing user row${options.label ? ` (${options.label})` : ""}`
+            : `assistant reply appeared in a new row${options.label ? ` (${options.label})` : ""}`,
       },
     )
     .toMatch(/\S/);
 
-  if (!replyMatch.text || replyMatch.rowIndex < priorCount) {
+  if (
+    !replyMatch.text ||
+    (turnAnchorToken
+      ? replyMatch.threadRowIndex < 0
+      : replyMatch.rowIndex < priorCount)
+  ) {
     throw new Error("liveness reply poll ended without a reply");
   }
 
@@ -183,10 +235,11 @@ async function sendChatAndMeasureRenderedReply(
         .locator('[data-slot="message-scroller-content"][aria-busy="false"]')
         .first(),
     ).toBeVisible({ timeout: remainingTimeoutMs });
-    const settledReply = await acceptedReplyText(
-      assistantRows.nth(replyMatch.rowIndex),
-      token,
-    );
+    const settledReply = turnAnchorToken
+      ? (findAnchoredLiveTurn(await readLivenessThreadLines(page), {
+          anchorToken: turnAnchorToken,
+        })?.reply ?? "")
+      : await acceptedReplyText(assistantRows.nth(replyMatch.rowIndex), token);
     if (!settledReply) {
       throw new Error(
         "fresh assistant row was empty or invalid after the turn settled",
