@@ -32,6 +32,18 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("GatewayConnectionService");
   });
 
+  it("uses public edge-to-edge APIs without hiding the system bars", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).toContain(
+      "WindowCompat.setDecorFitsSystemWindows(getWindow(), false);",
+    );
+    expect(source).toContain("setAppearanceLightStatusBars(false)");
+    expect(source).toContain("setAppearanceLightNavigationBars(false)");
+    expect(source).not.toContain("controller.hide(");
+    expect(source).not.toContain("SYSTEM_UI_FLAG_");
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(
