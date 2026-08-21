@@ -15,12 +15,14 @@ import {
 	targetReferenceLogView,
 } from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
+import { openLaunchUrlInBrowserView } from "../services/browser-view-navigation.js";
 
 export interface RunLaunchInput {
 	client: AppControlClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	callback?: HandlerCallback;
+	openBrowserView?: (launchUrl: string) => Promise<boolean>;
 }
 
 export async function runLaunch({
@@ -28,6 +30,7 @@ export async function runLaunch({
 	message,
 	options,
 	callback,
+	openBrowserView = openLaunchUrlInBrowserView,
 }: RunLaunchInput): Promise<ActionResult> {
 	const target = extractLaunchTarget(message, options);
 	if (!target) {
@@ -104,9 +107,13 @@ export async function runLaunch({
 		};
 	}
 	const runId = result.run?.runId ?? null;
-	const text = runId
-		? `Launched ${result.displayName}. Run ID: ${runId}.`
-		: `Launched ${result.displayName}.`;
+	const launchUrl = result.launchUrl?.trim() || null;
+	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
+	const text = launchUrl
+		? opened
+			? `${result.displayName} is open in Browser. [Open ${result.displayName}](${launchUrl})`
+			: `${result.displayName} is running. [Open ${result.displayName}](${launchUrl})`
+		: `${result.displayName} is running.`;
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
@@ -124,6 +131,7 @@ export async function runLaunch({
 			appName,
 			displayName: result.displayName,
 			runId,
+			openedInBrowser: opened,
 		},
 		data: { launch: result },
 	};

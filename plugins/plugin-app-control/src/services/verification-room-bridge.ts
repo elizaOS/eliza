@@ -34,6 +34,7 @@ import { getSwarmCoordinatorService, logger, Service } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 import { createAppControlClient } from "../client/api.js";
 import { getAppControlApiBase } from "../loopback-api.js";
+import { openLaunchUrlInBrowserView } from "./browser-view-navigation.js";
 import { loadAppFromWorkdir } from "./verification-helpers.js";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
@@ -187,41 +188,6 @@ function canOpenBrowserView(payload: BridgeEventPayload): boolean {
 		payload.originSource !== undefined &&
 		VIEW_CAPABLE_APP_SOURCES.has(payload.originSource.toLowerCase())
 	);
-}
-
-function browserViewPathForLaunchUrl(launchUrl: string): string {
-	if (launchUrl.startsWith("/api/apps/local/")) {
-		return `/browser?browse=${encodeURIComponent(launchUrl)}`;
-	}
-	const absoluteUrl = new URL(
-		launchUrl,
-		`${getAppControlApiBase()}/`,
-	).toString();
-	return `/browser?browse=${encodeURIComponent(absoluteUrl)}`;
-}
-
-async function openLaunchUrlInBrowserView(launchUrl: string): Promise<boolean> {
-	try {
-		const response = await fetch(
-			`${getAppControlApiBase()}/api/views/browser/navigate`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({
-					path: browserViewPathForLaunchUrl(launchUrl),
-					viewType: "gui",
-					source: "agent",
-				}),
-				signal: AbortSignal.timeout(5_000),
-			},
-		);
-		return response.ok;
-	} catch (err) {
-		logger.warn(
-			`[VerificationRoomBridge] Browser view navigation failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return false;
-	}
 }
 
 /**
