@@ -150,8 +150,8 @@ describe("TASKS:spawn_agent", () => {
           action: "spawn_agent",
           task: "make and run a small program",
           workdir,
-          taskRoomId: "{}",
-          worktreeRoomId: "{}",
+          taskRoomId: "''",
+          worktreeRoomId: '""',
           memoryContent: "{}",
           taskId: "{}",
         },
@@ -167,7 +167,7 @@ describe("TASKS:spawn_agent", () => {
     expect(options.memoryContent).toBeUndefined();
     expect(options.metadata?.taskRoomId).toBe("room1");
     expect(options.metadata?.worktreeRoomId).toBeUndefined();
-    expect(options.metadata?.taskRoomId).not.toBe("{}");
+    expect(options.metadata?.taskRoomId).not.toBe("''");
   });
 
   it("refuses a missing explicit workdir before spawning", async () => {

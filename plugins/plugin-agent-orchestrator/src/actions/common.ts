@@ -183,7 +183,7 @@ export function pickString(
   // are absence, not user intent: accepting taskRoomId="{}" bypasses room
   // minting, and accepting memoryContent="{}" injects junk into the child.
   // An actually useful JSON string is non-empty and survives this narrow gate.
-  if (/^(?:\{\}|\[\]|null|undefined)$/iu.test(trimmed)) return undefined;
+  if (/^(?:\{\}|\[\]|null|undefined|''|"")$/iu.test(trimmed)) return undefined;
   return trimmed;
 }
 
