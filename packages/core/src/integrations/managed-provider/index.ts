@@ -5,6 +5,8 @@ export {
 	type LocalConnectionConfig,
 	type ManagedConnectionConfig,
 	type ProviderConnectionConfig,
+	type ResolvedLocalConnection,
+	type ResolvedManagedConnection,
 	type ResolvedProviderConnection,
 	resolveProviderConnection,
 } from "./connection";

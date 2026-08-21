@@ -111,19 +111,12 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
           : resolveProviderConnection({
               mode: "local",
               providerId: options.id,
+              connectionId: options.connectionId,
               baseUrl: options.baseUrl,
               credential: options.credential,
             });
       this.client = new ManagedProviderHttpClient({
-        connection:
-          connection.mode === "managed"
-            ? connection
-            : // Local maps connections keep the caller-supplied opaque handle so
-              // receipts and logs stay correlated with the configured account.
-              {
-                ...connection,
-                connectionId: assertOpaque(options.connectionId),
-              },
+        connection,
         connectionIdHeader: "x-maps-connection-id",
         timeoutMs: options.timeoutMs,
         responseByteLimit: options.responseByteLimit,
@@ -313,13 +306,4 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       });
     }
   }
-}
-
-function assertOpaque(connectionId: string): string {
-  if (!/^conn_[A-Za-z0-9_-]{16,}$/.test(connectionId)) {
-    throw new MapsError("Maps adapter connection id must be opaque.", {
-      code: "MAPS_INVALID_INPUT",
-    });
-  }
-  return connectionId;
 }

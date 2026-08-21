@@ -52,6 +52,7 @@ export const MANAGED_PROVIDER_DEFAULT_RESPONSE_BYTES = 1024 * 1024;
 export const MANAGED_PROVIDER_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_CONNECTION_ID_HEADER = "x-eliza-connection-id";
 const HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const AUTHORIZATION_HEADER = "authorization";
 
 interface RequestDeadline {
 	signal: AbortSignal;
@@ -156,6 +157,12 @@ export class ManagedProviderHttpClient {
 
 	constructor(options: ManagedProviderHttpClientOptions) {
 		const connection = options.connection;
+		if (connection.mode === "managed" && connection.credential !== undefined) {
+			throw new ManagedProviderError(
+				"Managed connections cannot carry provider credentials.",
+				{ code: "INVALID_INPUT" },
+			);
+		}
 		const allowPrivateTest = options.allowPrivateNetworkForTests === true;
 		if (allowPrivateTest && !options.testTransport?.fetchImpl) {
 			throw new ManagedProviderError(
@@ -187,6 +194,12 @@ export class ManagedProviderHttpClient {
 		if (!HEADER_NAME_PATTERN.test(connectionIdHeader)) {
 			throw new ManagedProviderError(
 				"The connection id header name is invalid.",
+				{ code: "INVALID_INPUT" },
+			);
+		}
+		if (connectionIdHeader.toLowerCase() === AUTHORIZATION_HEADER) {
+			throw new ManagedProviderError(
+				"The connection id header cannot overlap provider authentication.",
 				{ code: "INVALID_INPUT" },
 			);
 		}
@@ -224,7 +237,11 @@ export class ManagedProviderHttpClient {
 	/** Builds a request URL pinned to the connection origin. */
 	url(path: string): URL {
 		const url = new URL(path, this.connection.baseOrigin);
-		if (url.origin !== this.connection.baseOrigin) {
+		if (
+			url.origin !== this.connection.baseOrigin ||
+			url.username.length > 0 ||
+			url.password.length > 0
+		) {
 			throw new ManagedProviderError(
 				"The provider request escaped the configured origin.",
 				{ code: "ENDPOINT_BLOCKED" },
@@ -283,15 +300,23 @@ export class ManagedProviderHttpClient {
 		init: RequestInit,
 		deadline: RequestDeadline,
 	): ReturnType<typeof fetchWithSsrfGuard> {
-		if (url.origin !== this.connection.baseOrigin) {
+		if (
+			url.origin !== this.connection.baseOrigin ||
+			url.username.length > 0 ||
+			url.password.length > 0
+		) {
 			throw new ManagedProviderError(
 				"The provider request escaped the configured origin.",
 				{ code: "ENDPOINT_BLOCKED" },
 			);
 		}
 		const headers = new Headers(init.headers);
+		// Authentication is SDK-owned. Managed mode must never forward an adapter-
+		// supplied credential; local mode replaces any caller value with the
+		// credential resolved for this exact connection.
+		headers.delete(AUTHORIZATION_HEADER);
 		if (this.connection.credential)
-			headers.set("authorization", `Bearer ${this.connection.credential}`);
+			headers.set(AUTHORIZATION_HEADER, `Bearer ${this.connection.credential}`);
 		headers.set(this.connectionIdHeader, this.connection.connectionId);
 		try {
 			return await fetchWithSsrfGuard({
@@ -357,25 +382,25 @@ export class ManagedProviderHttpClient {
 		let bytes = 0;
 		try {
 			while (true) {
-				const chunk = await new Promise<ReadableStreamReadResult<Uint8Array>>(
-					(resolve, reject) => {
-						const onAbort = () =>
-							reject(
-								deadline.signal.reason ??
-									new DOMException("Provider deadline elapsed", "TimeoutError"),
-							);
-						if (deadline.signal.aborted) return onAbort();
-						deadline.signal.addEventListener("abort", onAbort, {
-							once: true,
-						});
-						void reader
-							.read()
-							.then(resolve, reject)
-							.finally(() =>
-								deadline.signal.removeEventListener("abort", onAbort),
-							);
-					},
-				);
+				const chunk = await new Promise<
+					Awaited<ReturnType<typeof reader.read>>
+				>((resolve, reject) => {
+					const onAbort = () =>
+						reject(
+							deadline.signal.reason ??
+								new DOMException("Provider deadline elapsed", "TimeoutError"),
+						);
+					if (deadline.signal.aborted) return onAbort();
+					deadline.signal.addEventListener("abort", onAbort, {
+						once: true,
+					});
+					void reader
+						.read()
+						.then(resolve, reject)
+						.finally(() =>
+							deadline.signal.removeEventListener("abort", onAbort),
+						);
+				});
 				if (chunk.done) break;
 				bytes += chunk.value.byteLength;
 				if (bytes > this.responseByteLimit) {

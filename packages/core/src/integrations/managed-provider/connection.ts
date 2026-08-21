@@ -12,7 +12,6 @@ import { ManagedProviderError } from "./errors";
 /** Cloud-issued opaque connection handles: `conn_` plus at least 16 id chars. */
 const OPAQUE_CONNECTION_ID_PATTERN = /^conn_[A-Za-z0-9_-]{16,}$/;
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/i;
-const LOCAL_CONNECTION_ID_PREFIX = "conn_local_";
 
 export function isOpaqueConnectionId(value: string): boolean {
 	return OPAQUE_CONNECTION_ID_PATTERN.test(value);
@@ -32,6 +31,12 @@ export interface ManagedConnectionConfig {
 export interface LocalConnectionConfig {
 	mode: "local";
 	providerId: string;
+	/**
+	 * Caller-owned stable opaque handle for this exact local account. Distinct
+	 * accounts for one provider must use distinct handles. It must not encode an
+	 * endpoint, account name, credential, or other provider data.
+	 */
+	connectionId: string;
 	/** Direct provider API origin. */
 	baseUrl: string;
 	/** User-supplied credential sent as a bearer token; may be absent for
@@ -43,16 +48,31 @@ export type ProviderConnectionConfig =
 	| ManagedConnectionConfig
 	| LocalConnectionConfig;
 
-export interface ResolvedProviderConnection {
-	readonly mode: "managed" | "local";
+interface ResolvedProviderConnectionBase {
 	readonly providerId: string;
 	/** Opaque handle propagated on every request for audit correlation. */
 	readonly connectionId: string;
 	/** Origin every request is pinned to. */
 	readonly baseOrigin: string;
-	/** Bearer credential for local mode; always absent in managed mode. */
+}
+
+export interface ResolvedManagedConnection
+	extends ResolvedProviderConnectionBase {
+	readonly mode: "managed";
+	/** Provider credentials are held by Cloud and cannot enter the runtime. */
+	readonly credential?: never;
+}
+
+export interface ResolvedLocalConnection
+	extends ResolvedProviderConnectionBase {
+	readonly mode: "local";
+	/** Bearer credential for local mode, when the provider requires one. */
 	readonly credential?: string;
 }
+
+export type ResolvedProviderConnection =
+	| ResolvedManagedConnection
+	| ResolvedLocalConnection;
 
 function parseOrigin(raw: string, surface: string): URL {
 	let url: URL;
@@ -107,6 +127,12 @@ export function resolveProviderConnection(
 			baseOrigin: origin.origin,
 		};
 	}
+	if (!isOpaqueConnectionId(config.connectionId)) {
+		throw new ManagedProviderError(
+			"Local connections require a stable opaque connection id.",
+			{ code: "INVALID_INPUT", context: { providerId: config.providerId } },
+		);
+	}
 	const origin = parseOrigin(config.baseUrl, "local provider");
 	if (config.credential !== undefined && config.credential.length === 0) {
 		throw new ManagedProviderError(
@@ -117,14 +143,7 @@ export function resolveProviderConnection(
 	return {
 		mode: "local",
 		providerId: config.providerId,
-		// Local connections still need a stable audit handle; derive a
-		// deterministic opaque id from the provider so logs and receipts never
-		// carry the endpoint or credential.
-		connectionId:
-			`${LOCAL_CONNECTION_ID_PREFIX}${config.providerId.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}`.padEnd(
-				LOCAL_CONNECTION_ID_PREFIX.length + 16,
-				"0",
-			),
+		connectionId: config.connectionId,
 		baseOrigin: origin.origin,
 		credential: config.credential,
 	};

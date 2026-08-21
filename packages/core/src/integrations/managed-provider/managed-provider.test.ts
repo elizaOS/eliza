@@ -15,6 +15,7 @@ import {
 	ManagedProviderHttpClient,
 	type ProviderResponseSchema,
 	probeProviderHealth,
+	type ResolvedProviderConnection,
 	resolveProviderConnection,
 	toCapabilityExecutionErrorCode,
 } from "./index";
@@ -70,18 +71,33 @@ describe("resolveProviderConnection", () => {
 		expect(connection.credential).toBeUndefined();
 	});
 
-	it("resolves local mode with the explicit credential and a derived opaque id", () => {
-		const connection = resolveProviderConnection({
-			mode: "local",
+	it("keeps same-provider local account identities stable, distinct, and opaque", () => {
+		const firstConfig = {
+			mode: "local" as const,
 			providerId: "linear",
+			connectionId: "conn_local_account_000001",
 			baseUrl: "https://api.linear.example.test",
 			credential: "byo-secret",
-		});
-		expect(connection.mode).toBe("local");
-		expect(connection.credential).toBe("byo-secret");
-		expect(isOpaqueConnectionId(connection.connectionId)).toBe(true);
-		expect(connection.connectionId).not.toContain("byo-secret");
-		expect(connection.connectionId).not.toContain("example.test");
+		};
+		const secondConfig = {
+			mode: "local" as const,
+			providerId: "linear",
+			connectionId: "conn_local_account_000002",
+			baseUrl: "https://linear-alt.example.test",
+			credential: "different-secret",
+		};
+		const first = resolveProviderConnection(firstConfig);
+		const firstReplay = resolveProviderConnection(firstConfig);
+		const second = resolveProviderConnection(secondConfig);
+		expect(first.connectionId).toBe(firstReplay.connectionId);
+		expect(first.connectionId).not.toBe(second.connectionId);
+		for (const connection of [first, second]) {
+			expect(connection.mode).toBe("local");
+			expect(isOpaqueConnectionId(connection.connectionId)).toBe(true);
+			expect(connection.connectionId).not.toMatch(
+				/byo-secret|different-secret|example\.test/,
+			);
+		}
 	});
 
 	it("rejects non-opaque managed connection ids and malformed endpoints", () => {
@@ -112,6 +128,15 @@ describe("resolveProviderConnection", () => {
 			resolveProviderConnection({
 				mode: "local",
 				providerId: "linear",
+				connectionId: "not-opaque",
+				baseUrl: "https://api.example.test",
+			}),
+		).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
+		expect(() =>
+			resolveProviderConnection({
+				mode: "local",
+				providerId: "linear",
+				connectionId: "conn_local_account_000001",
 				baseUrl: "https://api.example.test",
 				credential: "",
 			}),
@@ -136,6 +161,43 @@ describe("ManagedProviderHttpClient", () => {
 		expect(() => client.url("https://elsewhere.example.test/items")).toThrow(
 			expect.objectContaining({ code: "ENDPOINT_BLOCKED" }),
 		);
+		expect(() =>
+			client.url("https://user:secret@gateway.example.test/items"),
+		).toThrow(expect.objectContaining({ code: "ENDPOINT_BLOCKED" }));
+	});
+
+	it("strips caller-supplied authorization from managed requests", async () => {
+		const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+			const headers = new Headers(init?.headers);
+			expect(headers.get("authorization")).toBeNull();
+			return Response.json({ items: [] });
+		});
+		const client = managedClient(fetchImpl);
+		await expect(
+			client.requestJson(
+				client.url("/items"),
+				{
+					method: "GET",
+					headers: { Authorization: "Bearer must-not-reach-gateway" },
+				},
+				itemsSchema,
+			),
+		).resolves.toEqual({ items: [] });
+	});
+
+	it("rejects a structurally forged managed connection carrying a credential", () => {
+		expect(
+			() =>
+				new ManagedProviderHttpClient({
+					connection: {
+						mode: "managed",
+						providerId: "linear",
+						connectionId: "conn_0123456789abcdef",
+						baseOrigin: "https://gateway.example.test",
+						credential: "must-not-reach-gateway",
+					} as unknown as ResolvedProviderConnection,
+				}),
+		).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
 	});
 
 	it("sends the local credential as a bearer token", async () => {
@@ -148,14 +210,37 @@ describe("ManagedProviderHttpClient", () => {
 			connection: resolveProviderConnection({
 				mode: "local",
 				providerId: "linear",
+				connectionId: "conn_local_account_000001",
 				baseUrl: "https://api.linear.example.test",
 				credential: "byo-secret",
 			}),
 			testTransport: { fetchImpl: fetchImpl as unknown as typeof fetch },
 		});
 		await expect(
-			client.requestJson(client.url("/items"), { method: "GET" }, itemsSchema),
+			client.requestJson(
+				client.url("/items"),
+				{
+					method: "GET",
+					headers: { authorization: "Bearer caller-smuggled-secret" },
+				},
+				itemsSchema,
+			),
 		).resolves.toEqual({ items: [] });
+	});
+
+	it("rejects a connection-id header that overlaps authorization", () => {
+		expect(
+			() =>
+				new ManagedProviderHttpClient({
+					connection: resolveProviderConnection({
+						mode: "managed",
+						providerId: "linear",
+						connectionId: "conn_0123456789abcdef",
+						gatewayBaseUrl: "https://gateway.example.test",
+					}),
+					connectionIdHeader: "Authorization",
+				}),
+		).toThrowError(expect.objectContaining({ code: "INVALID_INPUT" }));
 	});
 
 	it("classifies expired, revoked, rate-limited, and failed upstream responses", async () => {
@@ -285,6 +370,7 @@ describe("ManagedProviderHttpClient", () => {
 					connection: resolveProviderConnection({
 						mode: "local",
 						providerId: "linear",
+						connectionId: "conn_local_account_000001",
 						baseUrl: "https://169.254.169.254",
 					}),
 				}),
@@ -295,6 +381,7 @@ describe("ManagedProviderHttpClient", () => {
 					connection: resolveProviderConnection({
 						mode: "local",
 						providerId: "linear",
+						connectionId: "conn_local_account_000001",
 						baseUrl: "http://api.example.test",
 					}),
 				}),
@@ -305,6 +392,7 @@ describe("ManagedProviderHttpClient", () => {
 					connection: resolveProviderConnection({
 						mode: "local",
 						providerId: "linear",
+						connectionId: "conn_local_account_000001",
 						baseUrl: "https://api.example.test",
 					}),
 					allowPrivateNetworkForTests: true,
