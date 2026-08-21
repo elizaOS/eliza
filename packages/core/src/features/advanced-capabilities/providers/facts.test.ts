@@ -665,3 +665,109 @@ describe("factsProvider provenance attribution", () => {
 		expect(result.data.facts).toEqual([privateOwnerFact]);
 	});
 });
+
+describe("factsProvider out-of-range timestamps", () => {
+	// A microsecond-precision `createdAt` from a connector passes
+	// `Number.isFinite` but falls outside the ±8.64e15 Date range, so
+	// `new Date(ts).toISOString()` throws `RangeError: Invalid time value`.
+	// That escaped `formatSince` and surfaced as FACTS_PROVIDER_READ_FAILED,
+	// dropping every fact for the turn instead of one unreadable date.
+	const MICROSECOND_TIMESTAMP = 1.7e18;
+
+	it("renders a current fact whose createdAt is outside the Date range", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "where am I working from now?")],
+			facts: [
+				memory(
+					"fact-1",
+					"the user is working from Lisbon",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "lisbon"],
+					},
+					MICROSECOND_TIMESTAMP,
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "where am I working from now?"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is working from Lisbon");
+		expect(result.text).toContain("since unknown");
+	});
+
+	it("keeps readable facts when one row carries an unreadable timestamp", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "remind me where I am working")],
+			facts: [
+				memory(
+					"fact-bad",
+					"the user is working from Lisbon",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "lisbon"],
+					},
+					MICROSECOND_TIMESTAMP,
+				),
+				memory(
+					"fact-good",
+					"the user is working from Porto on Fridays",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "porto"],
+					},
+					Date.now(),
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "remind me where I am working"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is working from Porto on Fridays");
+		expect(result.text).toContain("the user is working from Lisbon");
+	});
+
+	// 8.64e15 is the largest value `Date` can represent. One millisecond past it
+	// is the first input that `Number.isFinite` accepts and `Date` cannot.
+	it("treats a timestamp one millisecond past the Date range as unknown", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "what is my current setup")],
+			facts: [
+				memory(
+					"fact-1",
+					"the user is running the beta setup",
+					{
+						kind: "current",
+						category: "status",
+						confidence: 0.9,
+						keywords: ["running", "beta", "setup"],
+					},
+					8.64e15 + 1,
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "what is my current setup"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is running the beta setup");
+		expect(result.text).toContain("since unknown");
+	});
+});
