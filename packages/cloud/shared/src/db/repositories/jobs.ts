@@ -144,6 +144,14 @@ function timestampMillis(value: Date | string | null): number | null {
       : Date.parse(String(value));
 }
 
+function timestampDate(value: Date | string, field: string): Date {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    throw new Error(`Persisted job ${field} is not a valid timestamp`);
+  }
+  return parsed;
+}
+
 function sameTimestamp(left: Date | string | null, right: Date | string | null): boolean {
   return timestampMillis(left) === timestampMillis(right);
 }
@@ -1605,13 +1613,19 @@ export class JobsRepository {
     // Exponential backoff: 30s, 2min, 8min for attempts 1, 2, 3
     const backoffMs = isFailed ? 0 : 4 ** (newAttempts - 1) * 30 * 1000;
     const scheduledFor = new Date(Date.now() + backoffMs);
+    // Validate every transported timestamp before object upload or SQL bind.
+    // This prevents both the R2 key builder and Drizzle timestamp encoder from
+    // receiving a JSON-round-tripped ISO string, and avoids uploading an
+    // orphaned error object before discovering a malformed scheduled value.
+    const createdAt = timestampDate(job.created_at, "created_at");
+    const terminalScheduledFor = timestampDate(job.scheduled_for, "scheduled_for");
 
     const payload = await prepareJobPayload(
       { error },
       {
         id: job.id,
         organization_id: job.organization_id,
-        created_at: job.created_at,
+        created_at: createdAt,
       },
     );
 
@@ -1655,7 +1669,7 @@ export class JobsRepository {
             ? new Date()
             : job.execution_quiesced_at,
           updated_at: new Date(),
-          scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
+          scheduled_for: isFailed ? terminalScheduledFor : scheduledFor,
         })
         .where(
           and(
