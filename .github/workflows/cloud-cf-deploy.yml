@@ -103,9 +103,24 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           SOURCE_REF: ${{ github.ref }}
+          FORCE: ${{ inputs.force == true }}
+          RUN_DEPLOYED_RENDERER_STAGING: ${{ inputs.run_deployed_renderer_staging == true }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
             exit 0
+          fi
+
+          if [ "$RUN_DEPLOYED_RENDERER_STAGING" = "true" ]; then
+            if [ "$TARGET_ENVIRONMENT" != "staging" ]; then
+              echo "::error::The deployed-renderer proof may target only staging."
+              exit 1
+            fi
+            if [ "$FORCE" = "true" ]; then
+              echo "::error::The deployed-renderer proof must keep the canonical freshness guards enabled."
+              exit 1
+            fi
           fi
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then

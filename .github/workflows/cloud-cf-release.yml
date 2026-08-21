@@ -2532,11 +2532,26 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && (vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success' }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
     steps:
+      - name: Require one-shot staging release prerequisites
+        if: ${{ inputs.run_deployed_renderer_staging == true }}
+        env:
+          DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
+          PAGES_DEPLOYED: ${{ needs.deploy-app.outputs.pages_deployed }}
+          VERIFY_ROUTING_RESULT: ${{ needs.verify-routing.result }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_APP_RESULT" != "success" ] \
+            || [ "$PAGES_DEPLOYED" != "true" ] \
+            || [ "$VERIFY_ROUTING_RESULT" != "success" ]; then
+            echo "::error::One-shot deployed-renderer proof requires a successful fresh Pages deployment and routing verification. deploy-app=$DEPLOY_APP_RESULT pages-deployed=$PAGES_DEPLOYED verify-routing=$VERIFY_ROUTING_RESULT"
+            exit 1
+          fi
+
       - name: Checkout exact released source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
