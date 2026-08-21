@@ -267,9 +267,10 @@ export default {
 } satisfies Plugin;\n`,
     );
     const explicitAfterInventory = discover(explicitAfterRoot, [explicitAfter]);
-    expect(
-      explicitAfterInventory.views.map((entry) => entry.id),
-    ).toEqual(["builtin", "explicit-after"]);
+    expect(explicitAfterInventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "explicit-after",
+    ]);
     expect(
       explicitAfterInventory.sources.filter(
         (source) => source.kind === "plugin-manifest",
