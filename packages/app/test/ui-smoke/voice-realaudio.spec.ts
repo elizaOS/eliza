@@ -1179,12 +1179,33 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     ).toEqual(expect.any(String));
 
     // Real cloud TTS returned decoded, non-silent audio that actually played.
+    // Streaming replies fire ONE TTS REQUEST PER CLIP SEGMENT (useVoiceChat),
+    // so a whole-reply equality check can never match a multi-sentence live
+    // turn. A request belongs to this reply when its normalized text is a
+    // non-empty substring of the normalized persisted reply.
+    const normalizeSpokenText = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+    const normalizedReply = normalizeSpokenText(
+      String(streamDone?.fullText ?? ""),
+    );
+    expect(
+      normalizedReply,
+      "the persisted voice reply must contain speakable text",
+    ).not.toBe("");
     const responseMatchesVoiceReply = (response: Response) => {
       try {
         const body = JSON.parse(response.request().postData() ?? "{}") as {
           text?: unknown;
         };
-        return body.text === streamDone?.fullText;
+        if (typeof body.text !== "string") return false;
+        const normalizedSegment = normalizeSpokenText(body.text);
+        return (
+          normalizedSegment.length > 0 &&
+          normalizedReply.includes(normalizedSegment)
+        );
       } catch {
         // error-policy:J3 captured request bodies are untrusted input;
         // malformed candidates cannot match the exact completed turn.
@@ -1194,7 +1215,8 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     await expect
       .poll(() => ttsResponses.some(responseMatchesVoiceReply), {
         timeout: 120_000,
-        message: "cloud TTS must synthesize the exact persisted voice reply",
+        message:
+          "cloud TTS must synthesize a clip segment of the persisted voice reply",
       })
       .toBe(true);
     const ttsResponse = ttsResponses.find(responseMatchesVoiceReply);
