@@ -10,6 +10,10 @@
 import { isReservedNonToolActionName } from "../../action-names";
 import type { Action } from "../../types/components";
 import { trimEndCharacters } from "../../utils/string-boundaries";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
 
 export interface DirectActionInferenceHooks {
 	looksLikeCodingWorkRequest?: (text: string) => boolean;
@@ -18,8 +22,12 @@ export interface DirectActionInferenceHooks {
 	) => string | undefined;
 }
 
-function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
+export function unwrapPlannerIdentifier(value: string): string {
+	const wellFormed = toWellFormedUnicode(value);
+	const safe =
+		wellFormed.length > 10_000
+			? truncateWellFormed(wellFormed, 10_000)
+			: wellFormed;
 	const trimmed = safe
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
