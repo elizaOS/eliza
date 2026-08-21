@@ -10,13 +10,14 @@
  * live in the Workspace admin console and are covered by MAIL-SECURITY.md.
  */
 
+import { createPublicKey } from "node:crypto";
 import { Resolver } from "node:dns/promises";
 
 export const DEFAULT_DOMAIN = "elizaresearch.ai";
 export const DKIM_SELECTOR = "google";
 
 const GOOGLE_MX_HOST = "smtp.google.com";
-const MIN_DKIM_KEY_CHARS = 216;
+const MIN_DKIM_MODULUS_BITS = 2048;
 
 /**
  * Joins the character-string chunks a resolver returns for one TXT record.
@@ -112,17 +113,64 @@ function checkDkim(txt) {
       detail: "the DKIM record has an empty p= tag (revoked key)",
     };
   }
-  if (publicKey.length < MIN_DKIM_KEY_CHARS) {
+  if (
+    !/^[A-Za-z0-9+/]+={0,2}$/u.test(publicKey) ||
+    publicKey.length % 4 === 1
+  ) {
     return {
       id: "dkim",
       ok: false,
-      detail: `the DKIM key is shorter than a 2048-bit key (${publicKey.length} base64 chars)`,
+      detail: "the DKIM p= tag is not strict base64",
+    };
+  }
+  const paddedPublicKey = publicKey.padEnd(
+    publicKey.length + ((4 - (publicKey.length % 4)) % 4),
+    "=",
+  );
+  const der = Buffer.from(paddedPublicKey, "base64");
+  if (
+    der.length === 0 ||
+    der.toString("base64").replace(/=+$/u, "") !== publicKey.replace(/=+$/u, "")
+  ) {
+    return {
+      id: "dkim",
+      ok: false,
+      detail: "the DKIM p= tag is not canonical base64",
+    };
+  }
+  let key;
+  try {
+    key = createPublicKey({ key: der, format: "der", type: "spki" });
+    // error-policy:J3 malformed public key material is an explicit failed DNS control.
+  } catch {
+    return {
+      id: "dkim",
+      ok: false,
+      detail: "the DKIM p= tag is not a valid DER SubjectPublicKeyInfo key",
+    };
+  }
+  if (key.asymmetricKeyType !== "rsa") {
+    return {
+      id: "dkim",
+      ok: false,
+      detail: `the DKIM key algorithm is ${key.asymmetricKeyType ?? "unknown"}, not RSA`,
+    };
+  }
+  const modulusLength = key.asymmetricKeyDetails?.modulusLength;
+  if (
+    typeof modulusLength !== "number" ||
+    modulusLength < MIN_DKIM_MODULUS_BITS
+  ) {
+    return {
+      id: "dkim",
+      ok: false,
+      detail: `the DKIM RSA modulus is ${modulusLength ?? "unknown"} bits; at least ${MIN_DKIM_MODULUS_BITS} are required`,
     };
   }
   return {
     id: "dkim",
     ok: true,
-    detail: `2048-bit key on selector ${DKIM_SELECTOR}`,
+    detail: `${modulusLength}-bit RSA key on selector ${DKIM_SELECTOR}`,
   };
 }
 

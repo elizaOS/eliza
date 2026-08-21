@@ -6,9 +6,17 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 import { evaluateMailSecurity } from "./mail-security.mjs";
 
-const VALID_DKIM_KEY = "A".repeat(392);
+function publicKeyBase64(type, options) {
+  const { publicKey } = generateKeyPairSync(type, options);
+  return publicKey.export({ type: "spki", format: "der" }).toString("base64");
+}
+
+const VALID_DKIM_KEY = publicKeyBase64("rsa", { modulusLength: 2048 });
+const WEAK_DKIM_KEY = publicKeyBase64("rsa", { modulusLength: 1024 });
+const WRONG_ALGORITHM_KEY = publicKeyBase64("ed25519");
 
 function baseline(overrides = {}) {
   return {
@@ -114,13 +122,34 @@ describe("evaluateMailSecurity", () => {
     ).toContain("revoked");
   });
 
-  it("rejects a DKIM key shorter than 2048 bits", () => {
+  it("rejects an RSA DKIM key with a modulus shorter than 2048 bits", () => {
+    expect(
+      check(baseline({ dkimTxt: [`v=DKIM1;k=rsa;p=${WEAK_DKIM_KEY}`] }), "dkim")
+        .ok,
+    ).toBe(false);
+  });
+
+  it("rejects malformed base64 DKIM key material", () => {
+    expect(
+      check(baseline({ dkimTxt: ["v=DKIM1;k=rsa;p=AAAA!AAA"] }), "dkim").detail,
+    ).toContain("strict base64");
+  });
+
+  it("rejects base64 that is not a DER public key", () => {
+    const notDer = Buffer.from("not a public key").toString("base64");
+    expect(
+      check(baseline({ dkimTxt: [`v=DKIM1;k=rsa;p=${notDer}`] }), "dkim")
+        .detail,
+    ).toContain("DER SubjectPublicKeyInfo");
+  });
+
+  it("rejects a valid non-RSA public key", () => {
     expect(
       check(
-        baseline({ dkimTxt: [`v=DKIM1;k=rsa;p=${"A".repeat(120)}`] }),
+        baseline({ dkimTxt: [`v=DKIM1;k=rsa;p=${WRONG_ALGORITHM_KEY}`] }),
         "dkim",
-      ).ok,
-    ).toBe(false);
+      ).detail,
+    ).toContain("not RSA");
   });
 
   it("fails a missing DKIM key", () => {
@@ -142,7 +171,7 @@ describe("evaluateMailSecurity", () => {
     // Resolvers return long keys as chunks; the CLI flattens them, so a
     // flattened long key must still parse as one valid record.
     const records = baseline({
-      dkimTxt: [`v=DKIM1;k=rsa;p=${"B".repeat(400)}`],
+      dkimTxt: [`v=DKIM1;k=rsa;p=${VALID_DKIM_KEY}`],
     });
     expect(check(records, "dkim").ok).toBe(true);
   });
