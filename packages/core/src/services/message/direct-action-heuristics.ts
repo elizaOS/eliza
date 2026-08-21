@@ -382,6 +382,7 @@ export function isShellDirectActionName(
  */
 export type DirectCurrentRequestCandidateKind =
 	| "shell"
+	| "app-lifecycle"
 	| "coding"
 	| "settings-write"
 	| "owner-goals"
@@ -1073,6 +1074,17 @@ export function inferDirectCurrentRequestCandidateInference(
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
 	}
+	// APP owns the complete create/edit -> verify -> register -> launch-link
+	// lifecycle. This must run before generic coding inference: otherwise a
+	// perfectly valid "update my site and open it" request is reduced to a raw
+	// sub-agent file edit, which has no verifier or truthful open-link receipt.
+	if (looksLikeAppLifecycleWorkRequest(messageText)) {
+		const appAction = findAvailableActionName(
+			actions,
+			APP_CONTROL_ACTION_NAMES,
+		);
+		if (appAction) return { names: [appAction], kind: "app-lifecycle" };
+	}
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
 		if (codingAction) return { names: [codingAction], kind: "coding" };
@@ -1495,6 +1507,39 @@ const APP_CONTROL_ACTION_NAMES = [
 	"LIST_APPS",
 	"LAUNCH_APP",
 ] as const;
+
+function looksLikeAppLifecycleWorkRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized))
+		return false;
+	// Explicit repo/code/file targets are ordinary coding work even when the
+	// artifact happens to be an app. APP is for user-facing app lifecycle work,
+	// not a replacement for editing source in a named repository.
+	if (
+		/\b(?:repo|repository|codebase|source tree|branch|pull request|\bpr\b|file|directory|folder)\b/iu.test(
+			normalized,
+		) ||
+		/(?:^|\s)(?:\/[^\s]+|~\/|\.\/|\.\.\/)/u.test(normalized)
+	) {
+		return false;
+	}
+	const appArtifact =
+		/\b(?:app|application|website|web site|site|webpage|web page|landing page|dashboard|widget)\b/iu.test(
+			normalized,
+		);
+	if (!appArtifact) return false;
+	const createsApp =
+		/\b(?:build|create|make|scaffold|generate|spin up)\b/iu.test(normalized);
+	const editsApp =
+		/\b(?:edit|update|change|modify|revise|tweak|fix|redeploy)\b/iu.test(
+			normalized,
+		);
+	const userFacingLifecycle =
+		/\b(?:my|our|existing|installed|named|called|open|preview|launch|host|hosted|publish|published|live)\b/iu.test(
+			normalized,
+		);
+	return createsApp || (editsApp && userFacingLifecycle);
+}
 
 // Cloud-apps action names/similes, in preference order. Mirrors the cloud-apps
 // action's own simile vocabulary (plugin-cloud-apps LIST_CLOUD_APPS); consulted

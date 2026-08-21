@@ -658,6 +658,23 @@ describe("live routing regressions", () => {
 		expect(routed.plan.candidateActions).toContain("TASKS");
 	});
 
+	it("routes a normal existing-site edit with an open request through APP", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "APP", similes: ["UPDATE_WEBSITE"], tags: ["apps"] },
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT"],
+				tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+			},
+		];
+		const messageText =
+			"Please update my Nubs Color Pebble site so the button says Choose a new color. Then open it for me when it is ready.";
+
+		expect(
+			inferDirectCurrentRequestCandidateActions(actions, messageText),
+		).toEqual(["APP"]);
+	});
+
 	it("replaces a weak SHELL-only guess with the promoted coding sub-agent for a normie program request", () => {
 		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
 			{

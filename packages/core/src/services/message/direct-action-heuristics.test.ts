@@ -1109,6 +1109,54 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 	});
 });
 
+describe("app lifecycle work inference", () => {
+	const appAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "APP",
+		similes: ["CREATE_APP", "UPDATE_WEBSITE"],
+		tags: ["apps"],
+	};
+	const tasksAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "TASKS_SPAWN_AGENT",
+		similes: ["SPAWN_AGENT"],
+		tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+	};
+
+	it.each([
+		"make me a website",
+		"build a small app for tracking colors",
+		"update my Nubs Color Pebble site and open it when it is ready",
+		"change the button on the existing website and let me preview it",
+	])("routes %j to APP before generic coding delegation", (text) => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[appAction, tasksAction],
+				text,
+				{
+					looksLikeCodingWorkRequest: () => true,
+					findCodingDelegationActionName: () => tasksAction.name,
+				},
+			),
+		).toEqual({ names: ["APP"], kind: "app-lifecycle" });
+	});
+
+	it.each([
+		"edit this Python file",
+		"update the website in /tmp/project",
+		"fix the app in this repository",
+	])("leaves explicit source work %j on the coding path", (text) => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[appAction, tasksAction],
+				text,
+				{
+					looksLikeCodingWorkRequest: () => true,
+					findCodingDelegationActionName: () => tasksAction.name,
+				},
+			),
+		).toEqual({ names: ["TASKS_SPAWN_AGENT"], kind: "coding" });
+	});
+});
+
 // Regression fence: a cloud-qualified app ask ("list my cloud apps") must
 // surface the cloud-apps action in the app slot, not the local APP control
 // action. With only [VIEWS, APP] hinted, the planner answered cloud-apps asks
