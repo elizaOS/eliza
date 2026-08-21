@@ -257,6 +257,13 @@ export function useElizaAppProvisioningChat(
               );
               return;
             }
+            if (newStatus === "deletion_failed") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Removing your previous Dedicated agent failed. Contact support.",
+              );
+              return;
+            }
           }
         } else {
           const res = await elizacloudAuthFetch<ChatResponse>(
@@ -291,6 +298,13 @@ export function useElizaAppProvisioningChat(
               stoppedRef.current = true;
               setProvisioningError(
                 "Provisioning failed. Please try again or contact support.",
+              );
+              return;
+            }
+            if (newStatus === "deletion_failed") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Removing your previous Dedicated agent failed. Contact support.",
               );
               return;
             }

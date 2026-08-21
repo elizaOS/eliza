@@ -363,6 +363,20 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     unmount();
   });
 
+  test("deletion failure is terminal and cannot time out", async () => {
+    nextStatus = "deletion_failed";
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+
+    expect(getState().containerStatus).toBe("deletion_failed");
+    expect(getState().provisioningError).toBe(
+      "Removing your previous Dedicated agent failed. Contact support.",
+    );
+    expect([...activeTimers].filter((timer) => !timer.cleared)).toHaveLength(0);
+    unmount();
+  });
+
   test("immediate poll sends statusOnly:true with no message field", async () => {
     const { unmount } = mountHook(true, "platform:blooio:+123****7890");
 

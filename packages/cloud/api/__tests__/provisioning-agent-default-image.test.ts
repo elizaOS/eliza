@@ -113,6 +113,33 @@ describe("provisioning-agent observation-only route", () => {
     });
   });
 
+  test("GET surfaces a newer failed deletion instead of falling back to an older running row", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "older-running",
+        bridgeUrl: "https://older.example",
+        createdAt: new Date("2026-08-20T01:00:00Z"),
+      }),
+      sandbox({
+        id: "newer-failed-deletion",
+        status: "deletion_failed",
+        deletionAttemptId: "delete-attempt-1",
+        createdAt: new Date("2026-08-20T02:00:00Z"),
+      }),
+    ]);
+
+    const response = await app.fetch(request("GET"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        status: "deletion_failed",
+        agentId: "newer-failed-deletion",
+      },
+    });
+  });
+
   test("GET does not expose another organization member's Dedicated target", async () => {
     listByOrganization.mockResolvedValue([
       sandbox({ id: "other-user", userId: "user-2" }),

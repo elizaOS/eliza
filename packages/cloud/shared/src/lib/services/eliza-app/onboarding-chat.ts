@@ -1400,11 +1400,7 @@ function fingerprintSession(session: unknown): string {
     // would make the fingerprint always differ and the guard never fire —
     // leaving the save unconditional and costing two serializations for
     // nothing. Compare everything else.
-    return (
-      JSON.stringify(session, (key, value) =>
-        key === "updatedAt" ? undefined : value,
-      ) ?? ""
-    );
+    return JSON.stringify(session, (key, value) => (key === "updatedAt" ? undefined : value)) ?? "";
   } catch {
     // error-policy:J4 unfingerprintable session falls back to always-save.
     return `unfingerprintable:${Math.random()}`;
@@ -1570,7 +1566,15 @@ export async function runOnboardingChatWithStore(
     const canonicalLaunchUrl = canonicalAgentId ? controlPanelUrl(canonicalAgentId) : undefined;
     const handoffReceiptMatchesCanonicalTarget =
       !session.handoffCopiedAt || session.launchUrl === canonicalLaunchUrl;
-    if (session.agentId !== canonicalAgentId || !handoffReceiptMatchesCanonicalTarget) {
+    const retainHealthyHandoffWhileDeletionFailureIsVisible =
+      provisioning.status === "deletion_failed" &&
+      !!session.agentId &&
+      !!session.handoffCopiedAt &&
+      !!session.launchUrl;
+    if (
+      !retainHealthyHandoffWhileDeletionFailureIsVisible &&
+      (session.agentId !== canonicalAgentId || !handoffReceiptMatchesCanonicalTarget)
+    ) {
       // The status selector is the current authority. A target change (or no
       // eligible target) invalidates every handoff result tied to the old id.
       // The URL check also self-heals legacy sessions where an older reader
@@ -1646,10 +1650,7 @@ export async function runOnboardingChatWithStore(
   // An idle poll must not write: the Worker path turns every save into a
   // durable transaction, so polling a settled session was re-persisting
   // identical bytes on every turn.
-  if (
-    shouldAppendReply ||
-    fingerprintSession(session) !== sessionFingerprintBeforeTurn
-  ) {
+  if (shouldAppendReply || fingerprintSession(session) !== sessionFingerprintBeforeTurn) {
     await store.save(session);
   }
 
