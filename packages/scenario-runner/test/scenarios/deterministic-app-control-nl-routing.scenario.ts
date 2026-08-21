@@ -29,7 +29,10 @@ type RuntimeWithScenarioModelFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
+  evaluators: unknown[];
 };
+
+let previousEvaluators: unknown[] | null = null;
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -181,6 +184,18 @@ function postToolReplyFixture(
         toolCalls: [],
       },
     },
+  };
+}
+
+function toolResultRescueFixture(text: string): ScenarioModelFixture {
+  return {
+    name: `tool-result-rescue-${text.split("\n", 1)[0]}`,
+    match: {
+      modelType: "TEXT_LARGE",
+      input: { includes: text },
+      toolNames: [],
+    },
+    response: { text },
   };
 }
 
@@ -420,6 +435,12 @@ function appControlModelFixtures(): ScenarioModelFixture[] {
       { action: "delete", view: "remote-ledger", confirm: true },
       "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
     ),
+    toolResultRescueFixture("Launched Feed. Run ID: run-feed-nl-1."),
+    toolResultRescueFixture("Relaunched Feed. New run ID: run-feed-nl-2."),
+    toolResultRescueFixture(
+      "Registered 1 app from /tmp/eliza-app-control-nl-routing/apps:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.",
+    ),
+    toolResultRescueFixture("Canceled. No app changes made."),
   ];
 }
 
@@ -446,6 +467,13 @@ export default scenario({
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+
+        // Post-turn field evaluators are outside the app-control routing
+        // contract. Isolate them explicitly so strict diagnostics cover every
+        // model call owned by this scenario, then restore the shared runtime in
+        // cleanup.
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
 
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
@@ -689,7 +717,12 @@ export default scenario({
     {
       type: "custom",
       name: "remove app-control source fixtures",
-      apply: async () => {
+      apply: async (ctx) => {
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        if (previousEvaluators !== null) {
+          runtime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
           recursive: true,
