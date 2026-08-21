@@ -410,6 +410,10 @@ export interface ElizaCuratedAppDefinition {
   slug: string;
   canonicalName: string;
   aliases: string[];
+  /** Absolute source directory for a runtime-registered local app. */
+  directory?: string;
+  /** Display label preserved by the runtime app registry. */
+  displayName?: string;
 }
 
 export interface AppStopResult {

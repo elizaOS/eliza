@@ -87,6 +87,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: unknown;
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -105,7 +106,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -149,6 +150,69 @@ function sanitizeExpectedFavorites(values: readonly string[]): string[] {
 }
 
 describe("handleAppsRoutes", () => {
+  it("serves only verified dist assets for a registered directory app", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "local-app-route-"));
+    try {
+      const appDir = path.join(root, "preview");
+      await mkdir(path.join(appDir, "dist", "assets"), { recursive: true });
+      await writeFile(
+        path.join(appDir, "dist", "index.html"),
+        '<script type="module" src="./assets/app.js"></script>',
+      );
+      await writeFile(path.join(appDir, "dist", "assets", "app.js"), "ok");
+      await writeFile(path.join(appDir, "secret.txt"), "do not serve");
+      const runtime = {
+        getService: (type: string) =>
+          type === "app-registry"
+            ? {
+                list: async () => [
+                  {
+                    slug: "preview",
+                    canonicalName: "preview",
+                    aliases: [],
+                    directory: appDir,
+                  },
+                ],
+              }
+            : null,
+      };
+
+      const index = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/local/preview/",
+        runtime,
+      });
+      expect(index.handled).toBe(true);
+      expect(index.res.status).toBe(200);
+      expect(Buffer.from(index.res.body as Buffer).toString("utf8")).toContain(
+        "./assets/app.js",
+      );
+      expect(index.res.headers["Content-Type"]).toBe(
+        "text/html; charset=utf-8",
+      );
+
+      const asset = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/local/preview/assets/app.js",
+        runtime,
+      });
+      expect(asset.res.status).toBe(200);
+      expect(Buffer.from(asset.res.body as Buffer).toString("utf8")).toBe("ok");
+
+      const traversal = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/local/preview/%2e%2e/secret.txt",
+        runtime,
+      });
+      expect(traversal.res.status).toBe(403);
+      expect(traversal.res.body).toMatchObject({
+        error: expect.stringContaining("escapes"),
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects relative app directories at the host boundary", async () => {
     const result = await callRoute({
       method: "POST",

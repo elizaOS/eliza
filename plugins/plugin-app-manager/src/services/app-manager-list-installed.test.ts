@@ -41,9 +41,10 @@ vi.mock("@elizaos/agent/services/registry-client-queries", () => ({
   toSearchResults: () => [],
 }));
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerCuratedApp } from "@elizaos/shared";
 import { AppManager } from "./app-manager.ts";
 
 /** A registry entry the app-manager treats as an installable app. */
@@ -158,6 +159,49 @@ describe("AppManager.listInstalled registry cache", () => {
 
     expect(pm.refreshRegistry).not.toHaveBeenCalled();
     expect(registry.getRegistryPlugins).toHaveBeenCalledTimes(2);
+  });
+
+  it("lists and launches a runtime-registered directory app without treating it as an npm plugin", async () => {
+    const slug = "local-preview-test";
+    const appDir = join(stateDir, slug);
+    mkdirSync(join(appDir, "dist"), { recursive: true });
+    writeFileSync(
+      join(appDir, "package.json"),
+      JSON.stringify({
+        name: slug,
+        version: "1.2.3",
+        elizaos: { app: { displayName: "Local Preview Test" } },
+      }),
+    );
+    writeFileSync(join(appDir, "dist", "index.html"), "<h1>preview</h1>");
+    registerCuratedApp({
+      slug,
+      canonicalName: slug,
+      aliases: [],
+      directory: appDir,
+      displayName: "Local Preview Test",
+    });
+
+    registry.getRegistryPlugins.mockResolvedValue(new Map());
+    const pm = makePluginManager("unrelated");
+    const manager = new AppManager({ stateDir });
+
+    const installed = await manager.listInstalled(pm.pluginManager);
+    expect(installed).toContainEqual(
+      expect.objectContaining({
+        name: slug,
+        displayName: "Local Preview Test",
+        version: "1.2.3",
+      }),
+    );
+
+    const launched = await manager.launch(pm.pluginManager, slug);
+    expect(launched.pluginInstalled).toBe(true);
+    expect(launched.needsRestart).toBe(false);
+    expect(launched.launchType).toBe("local");
+    expect(launched.launchUrl).toBe(`/api/apps/local/${slug}/`);
+    expect(launched.viewer?.url).toBe(`/api/apps/local/${slug}/`);
+    expect(launched.run?.status).toBe("running");
   });
 });
 

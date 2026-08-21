@@ -94,6 +94,165 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
 
 const APP_HERO_REGISTRY_CACHE_TTL_MS = 30_000;
 
+const LOCAL_APP_ASSET_CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
+
+interface RuntimeDirectoryAppEntry {
+  slug: string;
+  canonicalName: string;
+  aliases: string[];
+  directory: string;
+}
+
+async function resolveRuntimeDirectoryApp(
+  runtime: unknown,
+  slug: string,
+): Promise<RuntimeDirectoryAppEntry | null> {
+  const registry = (
+    runtime as {
+      getService?: (type: string) => {
+        list?: () => Promise<unknown>;
+      } | null;
+    } | null
+  )?.getService?.("app-registry");
+  if (!registry?.list) return null;
+  const rawEntries = await registry.list();
+  if (!Array.isArray(rawEntries)) return null;
+  const needle = slug.trim().toLowerCase();
+  for (const raw of rawEntries) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    if (
+      typeof entry.slug !== "string" ||
+      typeof entry.canonicalName !== "string" ||
+      typeof entry.directory !== "string" ||
+      !Array.isArray(entry.aliases)
+    ) {
+      continue;
+    }
+    const aliases = entry.aliases.filter(
+      (value): value is string => typeof value === "string",
+    );
+    const names = [entry.slug, entry.canonicalName, ...aliases].map((value) =>
+      value.toLowerCase(),
+    );
+    if (names.includes(needle)) {
+      return {
+        slug: entry.slug,
+        canonicalName: entry.canonicalName,
+        aliases,
+        directory: entry.directory,
+      };
+    }
+  }
+  return null;
+}
+
+async function serveRuntimeDirectoryAppAsset(
+  ctx: AppsRouteContext,
+): Promise<boolean> {
+  const prefix = "/api/apps/local/";
+  if (ctx.method !== "GET" || !ctx.pathname.startsWith(prefix)) return false;
+  const suffix = ctx.pathname.slice(prefix.length);
+  const slash = suffix.indexOf("/");
+  const encodedSlug = slash >= 0 ? suffix.slice(0, slash) : suffix;
+  let slug: string;
+  let requestedPath: string;
+  try {
+    slug = decodeURIComponent(encodedSlug);
+    requestedPath = decodeURIComponent(
+      slash >= 0 ? suffix.slice(slash + 1) : "",
+    );
+  } catch {
+    ctx.error(ctx.res, "path segment is not valid percent-encoding", 400);
+    return true;
+  }
+  if (!slug || slug.includes("/") || slug.includes("\\")) {
+    ctx.error(ctx.res, "app slug is invalid", 400);
+    return true;
+  }
+
+  const entry = await resolveRuntimeDirectoryApp(ctx.runtime, slug);
+  if (!entry) {
+    ctx.error(ctx.res, `No registered local app matches ${slug}`, 404);
+    return true;
+  }
+  const distRoot = path.join(entry.directory, "dist");
+  const realDistRoot = await fs.realpath(distRoot).catch(() => null);
+  if (!realDistRoot) {
+    ctx.error(
+      ctx.res,
+      `${entry.canonicalName} has no verified dist output`,
+      409,
+    );
+    return true;
+  }
+
+  const relativeRequest = requestedPath || "index.html";
+  const candidate = path.resolve(realDistRoot, relativeRequest);
+  const relative = path.relative(realDistRoot, candidate);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    ctx.error(ctx.res, "local app asset path escapes its dist directory", 403);
+    return true;
+  }
+  let filePath = await fs.realpath(candidate).catch(() => null);
+  if (!filePath && !path.extname(relativeRequest)) {
+    filePath = await fs
+      .realpath(path.join(realDistRoot, "index.html"))
+      .catch(() => null);
+  }
+  if (!filePath) {
+    ctx.error(ctx.res, "local app asset was not found", 404);
+    return true;
+  }
+  const realRelative = path.relative(realDistRoot, filePath);
+  if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
+    ctx.error(
+      ctx.res,
+      "local app asset symlink escapes its dist directory",
+      403,
+    );
+    return true;
+  }
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) {
+    ctx.error(ctx.res, "local app asset was not found", 404);
+    return true;
+  }
+
+  const body = await fs.readFile(filePath);
+  const contentType =
+    LOCAL_APP_ASSET_CONTENT_TYPES[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream";
+  ctx.res.writeHead(200, {
+    "Content-Type": contentType,
+    "Content-Length": body.byteLength,
+    "Cache-Control":
+      path.basename(filePath) === "index.html"
+        ? "no-cache"
+        : "public, max-age=31536000, immutable",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy":
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; frame-ancestors 'self'",
+  });
+  ctx.res.end(body);
+  return true;
+}
+
 type AppHeroRegistryCache = {
   expiresAt: number;
   promise: Promise<Map<string, RegistryPluginInfo>>;
@@ -925,6 +1084,8 @@ export async function handleAppsRoutes(
     installPluginDirect,
     actorRole,
   } = ctx;
+
+  if (await serveRuntimeDirectoryAppAsset(ctx)) return true;
 
   if (method === "GET" && pathname === "/api/apps") {
     const pluginManager = getPluginManager();

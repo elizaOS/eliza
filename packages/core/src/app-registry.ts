@@ -10,6 +10,8 @@ export interface ElizaCuratedAppDefinition {
 	slug: string;
 	canonicalName: string;
 	aliases: string[];
+	directory?: string;
+	displayName?: string;
 }
 
 interface CuratedAppRegistryStore {

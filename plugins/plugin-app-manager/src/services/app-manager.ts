@@ -52,7 +52,9 @@ import {
   type AppSessionState,
   type AppStopResult,
   type AppViewerAuthMessage,
+  getCuratedAppDefinitions,
   getElizaCuratedAppCatalogOrder,
+  getElizaCuratedAppDefinition,
   getElizaCuratedAppLookupNames,
   hasAppInterface,
   type InstalledAppInfo,
@@ -86,6 +88,8 @@ const MAX_RUN_EVENTS = 20;
 const RUN_HEARTBEAT_TIMEOUT_MS = 90_000;
 /** How often the sweeper wakes to look for stale runs. */
 const RUN_HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
+
+const DIRECTORY_APP_REGISTRY_KIND = "runtime-directory-app";
 
 type AgentsListSnapshot = unknown[] | undefined;
 
@@ -408,11 +412,105 @@ async function resolveCuratedAppInfo(
   }
 
   if (!appInfo) {
+    appInfo = await resolveRuntimeDirectoryAppInfo(name);
+  }
+  if (!appInfo) {
     return null;
   }
 
   appInfo.appMeta = resolveEffectiveAppMeta(canonicalName, appInfo);
   return flattenAppInfo(appInfo);
+}
+
+async function resolveRuntimeDirectoryAppInfo(
+  name: string,
+): Promise<RegistryAppPlugin | null> {
+  const definition = getElizaCuratedAppDefinition(name);
+  const directory = definition?.directory?.trim();
+  if (!definition || !directory || !path.isAbsolute(directory)) return null;
+
+  const packagePath = path.join(directory, "package.json");
+  let parsed: Record<string, unknown>;
+  try {
+    const raw = await fs.promises.readFile(packagePath, "utf8");
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      return null;
+    parsed = value as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  if (parsed.name !== definition.canonicalName) return null;
+  const elizaos =
+    parsed.elizaos && typeof parsed.elizaos === "object"
+      ? (parsed.elizaos as Record<string, unknown>)
+      : null;
+  const rawMeta =
+    elizaos?.app && typeof elizaos.app === "object"
+      ? (elizaos.app as Record<string, unknown>)
+      : {};
+  const readText = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  const readTexts = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter(
+          (item): item is string =>
+            typeof item === "string" && item.trim().length > 0,
+        )
+      : [];
+  const launchUrl =
+    readText(rawMeta.launchUrl) ??
+    `/api/apps/local/${encodeURIComponent(definition.slug)}/`;
+  const launchType =
+    readText(rawMeta.launchType) === "connect" ? "connect" : "local";
+  const displayName =
+    readText(rawMeta.displayName) ??
+    definition.displayName ??
+    packageNameToAppDisplayName(definition.canonicalName);
+  const version = readText(parsed.version);
+
+  return {
+    name: definition.canonicalName,
+    displayName,
+    launchType,
+    launchUrl,
+    gitRepo: "",
+    gitUrl: "",
+    directory,
+    description:
+      readText(parsed.description) ?? `${displayName} local application`,
+    homepage: null,
+    topics: [],
+    stars: 0,
+    language: "TypeScript",
+    npm: {
+      package: definition.canonicalName,
+      v0Version: null,
+      v1Version: null,
+      v2Version: version,
+    },
+    git: { v0Branch: null, v1Branch: null, v2Branch: null },
+    supports: { v0: false, v1: false, v2: false },
+    localPath: directory,
+    kind: "app",
+    registryKind: DIRECTORY_APP_REGISTRY_KIND,
+    origin: "third-party",
+    source: "runtime-directory",
+    support: "community",
+    appMeta: {
+      displayName,
+      category: readText(rawMeta.category) ?? "utility",
+      launchType,
+      launchUrl,
+      icon: readText(rawMeta.icon),
+      heroImage: readText(rawMeta.heroImage),
+      capabilities: readTexts(rawMeta.capabilities),
+      minPlayers: null,
+      maxPlayers: null,
+      visibleInAppStore: true,
+    },
+  };
 }
 
 async function resolveNamedAppInfo(
@@ -1990,7 +2088,8 @@ export class AppManager {
     }
 
     const skipPluginRegistration =
-      launchPreparation.skipRuntimePluginRegistration === true;
+      launchPreparation.skipRuntimePluginRegistration === true ||
+      appInfo.registryKind === DIRECTORY_APP_REGISTRY_KIND;
 
     let runtimePluginRegistered = false;
     if (!skipPluginRegistration) {
@@ -2232,7 +2331,7 @@ export class AppManager {
       .filter(isAppRegistryPlugin)
       .map(flattenAppInfo);
 
-    return appEntries
+    const pluginApps = appEntries
       .map((appInfo): InstalledAppInfo | null => {
         const pluginName =
           appInfo.runtimePlugin ?? resolvePluginPackageName(appInfo);
@@ -2250,5 +2349,36 @@ export class AppManager {
         };
       })
       .filter((app): app is InstalledAppInfo => app !== null);
+
+    const seen = new Set(pluginApps.map((app) => app.name));
+    const directoryApps = await Promise.all(
+      getCuratedAppDefinitions().map(async (definition) => {
+        if (!definition.directory || seen.has(definition.canonicalName)) {
+          return null;
+        }
+        const appInfo = await resolveRuntimeDirectoryAppInfo(
+          definition.canonicalName,
+        );
+        if (!appInfo) return null;
+        const packagePath = path.join(definition.directory, "package.json");
+        const stat = await fs.promises.stat(packagePath).catch(() => null);
+        return {
+          name: definition.canonicalName,
+          displayName: appInfo.displayName ?? definition.canonicalName,
+          pluginName: definition.canonicalName,
+          version:
+            appInfo.npm.v2Version ??
+            appInfo.npm.v1Version ??
+            appInfo.npm.v0Version ??
+            "local",
+          installedAt: stat?.mtime.toISOString() ?? "",
+        } satisfies InstalledAppInfo;
+      }),
+    );
+
+    return [
+      ...pluginApps,
+      ...directoryApps.filter((app): app is InstalledAppInfo => app !== null),
+    ];
   }
 }
