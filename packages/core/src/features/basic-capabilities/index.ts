@@ -396,8 +396,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						descriptionPreview:
-							described.description.substring(0, 100) || undefined,
+						descriptionPreview: described.description
+							? truncateWellFormed(
+									toWellFormedUnicode(described.description),
+									100,
+								)
+							: undefined,
 					},
 					"Generated description",
 				);
@@ -448,8 +452,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						textPreview:
-							processedAttachment.text.substring(0, 100) || undefined,
+						textPreview: processedAttachment.text
+							? truncateWellFormed(
+									toWellFormedUnicode(processedAttachment.text),
+									100,
+								)
+							: undefined,
 					},
 					"Extracted text content",
 				);
@@ -474,7 +482,9 @@ export async function processAttachments(
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						textLength: textContent.length,
-						textPreview: textContent.substring(0, 100) || undefined,
+						textPreview: textContent
+							? truncateWellFormed(toWellFormedUnicode(textContent), 100)
+							: undefined,
 					},
 					"Extracted PDF text content",
 				);
@@ -1089,7 +1099,9 @@ const events: PluginEvents = {
 					new Error(
 						"outbound message contains external-content envelope markers",
 					),
-					{ preview: sentText.slice(0, 120) },
+					{
+						preview: truncateWellFormed(toWellFormedUnicode(sentText), 120),
+					},
 				);
 			}
 		},
