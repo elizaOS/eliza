@@ -161,6 +161,23 @@ describe("runtime-surface production inventory", () => {
     expect(new Set(realInventory.rows.map((surface) => surface.id)).size).toBe(
       realInventory.rows.length,
     );
+    expect(
+      realInventory.rows.filter((surface) =>
+        [
+          "@elizaos/core:scheduled-worker:onetime_test_task",
+          "@elizaos/core:scheduled-worker:repeating_test_task",
+          "@elizaos/core:scheduled-worker:taskname",
+        ].includes(surface.id),
+      ),
+    ).toEqual([]);
+    const ids = new Set(realInventory.rows.map((surface) => surface.id));
+    expect(ids.has("@elizaos/agent:service:media_generation")).toBe(true);
+    expect(ids.has("@elizaos/agent:service:eliza_permissions_registry")).toBe(
+      true,
+    );
+    expect(ids.has("@elizaos/agent:service:agentmediagenerationservice")).toBe(
+      false,
+    );
   });
 
   test("accounts for every maintained plugin and host package, including packages with no registration", () => {
@@ -394,8 +411,16 @@ describe("runtime-surface production inventory", () => {
       realInventory.gaps.byScenarioLane["missing-deterministic"]?.length,
     ).toBeGreaterThan(0);
     expect(Object.keys(realInventory.gaps.byWorkstream).sort()).toEqual(
-      expect.arrayContaining(["#22899", "#22901", "#22904", "unassigned"]),
+      expect.arrayContaining([
+        "#22899",
+        "#22901",
+        "#22902",
+        "#22904",
+        "#23268",
+        "#23270",
+      ]),
     );
+    expect(realInventory.gaps.byWorkstream.unassigned).toBeUndefined();
   });
 });
 
@@ -466,6 +491,21 @@ describe("runtime-surface adversarial ratchet", () => {
       runtimeSurfaceIds: [],
       lane: "live-only",
     });
+    expect(
+      scenarioMetadataFromSource(`
+        export default scenario({
+          id: 'wrapped-canonical',
+          lane: 'pr-deterministic',
+          requires: { plugins: ['@elizaos/plugin-real'] },
+          runtimeSurfaceIds: ['@elizaos/plugin-real:service:real'],
+        });
+      `),
+    ).toEqual({
+      id: "wrapped-canonical",
+      plugins: ["@elizaos/plugin-real"],
+      runtimeSurfaceIds: ["@elizaos/plugin-real:service:real"],
+      lane: "pr-deterministic",
+    });
   });
 
   test("requires an explicit full id and exact executable boundary signal", () => {
@@ -479,10 +519,76 @@ describe("runtime-surface adversarial ratchet", () => {
         finalChecks() { ${body} },
       };
     `;
+    const serviceId = "@elizaos/plugin-test:service:notesservice";
+    const nestedServiceScenario = (predicate: string): string => `
+      export default scenario({
+        id: 'notes-service',
+        lane: 'pr-deterministic',
+        requires: { plugins: ['@elizaos/plugin-test'] },
+        runtimeSurfaceIds: ['${serviceId}'],
+        finalChecks: [{ type: 'custom', predicate: ${predicate} }],
+      });
+    `;
     expect(
       isExecutableBoundaryEvidence(
         action,
         actionScenario("// actionName: 'SEND_MESSAGE'"),
+        actionId,
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "service", name: "NotesService" },
+        nestedServiceScenario(
+          `(ctx) => ctx.runtime.getService('NotesService') ? undefined : 'missing'`,
+        ),
+        serviceId,
+      ),
+    ).toBe(true);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "service", name: "NotesService" },
+        `export default scenario({
+          id: 'seed-decoy', lane: 'pr-deterministic',
+          runtimeSurfaceIds: ['${serviceId}'],
+          seed: { predicate: () => expect(runtime.getService('NotesService')) },
+          finalChecks: [],
+        });`,
+        serviceId,
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "service", name: "NotesService" },
+        nestedServiceScenario(
+          `() => expect(runtime.getService(OtherService /* 'NotesService' */))`,
+        ),
+        serviceId,
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        `export default scenario({
+          id: 'structured-action', lane: 'pr-deterministic',
+          runtimeSurfaceIds: ['${actionId}'],
+          turns: [{
+            actionName: 'SEND_MESSAGE',
+            assertTurn: (execution) => execution.actionsCalled.length ? undefined : 'missing',
+          }],
+        });`,
+        actionId,
+      ),
+    ).toBe(true);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        `export default scenario({
+          id: 'structured-action-decoy', lane: 'pr-deterministic',
+          runtimeSurfaceIds: ['${actionId}'],
+          seed: { actionName: 'SEND_MESSAGE', assertTurn: () => undefined },
+          turns: [{ actionName: 'SEND_MESSAGE', assertTurn: false }],
+        });`,
         actionId,
       ),
     ).toBe(false);
@@ -592,6 +698,13 @@ describe("runtime-surface adversarial ratchet", () => {
     });
     expect(first).toBe("@elizaos/plugin-test:action:send_message");
     expect(second).toBe(first);
+    expect(
+      runtimeSurfaceId({
+        kind: "scheduled-worker",
+        name: "* * * * *",
+        package: { packageName: "@elizaos/cloud-api" },
+      }),
+    ).toBe("@elizaos/cloud-api:scheduled-worker:star-star-star-star-star");
   });
 
   test("extracts queue and cron bindings from JSONC and TOML syntax", () => {
