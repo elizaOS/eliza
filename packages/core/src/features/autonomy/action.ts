@@ -21,6 +21,10 @@ import type {
 	State,
 } from "../../types";
 import { stringToUuid } from "../../utils";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 const ESCALATE_SUBACTIONS = ["admin", "owner", "third_party"] as const;
@@ -135,7 +139,11 @@ async function escalateToAdmin(
 
 	await runtime.createMemory(adminMessage, "memories");
 
-	const successMessage = `Message sent to admin in room ${targetRoomId.slice(0, 8)}...`;
+	const roomPreview = truncateWellFormed(
+		toWellFormedUnicode(String(targetRoomId)),
+		8,
+	);
+	const successMessage = `Message sent to admin in room ${roomPreview}...`;
 
 	if (callback) {
 		await callback({
