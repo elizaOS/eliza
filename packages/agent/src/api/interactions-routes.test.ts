@@ -405,11 +405,11 @@ describe("parseShortcutBody surrogate handling", () => {
       JSON.stringify({ shortcutId: "open-command-palette", context: ctx2 }),
     );
     expect(parsed?.context).toBeDefined();
-    expect(parsed!.context!.length).toBeLessThanOrEqual(120);
-    expect(parsed!.context!.length).toBe(119);
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
-    expect(parsed!.context).not.toContain(emoji);
+    expect(parsed?.context?.length).toBeLessThanOrEqual(120);
+    expect(parsed?.context?.length).toBe(119);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
+    expect(parsed?.context).not.toContain(emoji);
   });
 
   it("preserves a fitting emoji under the cap", () => {
@@ -419,8 +419,8 @@ describe("parseShortcutBody surrogate handling", () => {
       JSON.stringify({ shortcutId: "open-command-palette", context }),
     );
     expect(parsed?.context).toBe(context);
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 
   it("sanitizes lone surrogates before truncation", () => {
@@ -429,8 +429,8 @@ describe("parseShortcutBody surrogate handling", () => {
       JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
     );
     expect(parsed?.context).toContain("�");
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 
   it("sanitizes lone surrogates without truncation when under limit", () => {
@@ -439,7 +439,7 @@ describe("parseShortcutBody surrogate handling", () => {
       JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
     );
     expect(parsed?.context).toBe(`ok � end`);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 });
 
@@ -457,11 +457,11 @@ describe("parseComposerBody surrogate handling", () => {
       }),
     );
     expect(parsed?.conversationId).toBeDefined();
-    expect(parsed!.conversationId!.length).toBeLessThanOrEqual(128);
-    expect(parsed!.conversationId!.length).toBe(127);
-    expect(parsed!.conversationId!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
-    expect(parsed!.conversationId).not.toContain(emoji);
+    expect(parsed?.conversationId?.length).toBeLessThanOrEqual(128);
+    expect(parsed?.conversationId?.length).toBe(127);
+    expect(parsed?.conversationId?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.conversationId ?? "")).toBe(true);
+    expect(parsed?.conversationId).not.toContain(emoji);
   });
 
   it("preserves a fitting emoji in conversationId under cap", () => {
@@ -477,7 +477,7 @@ describe("parseComposerBody surrogate handling", () => {
       }),
     );
     expect(parsed?.conversationId).toBe(conversationId);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+    expect(isWellFormed(parsed?.conversationId ?? "")).toBe(true);
   });
 
   it("sanitizes lone surrogates in conversationId", () => {
@@ -492,7 +492,7 @@ describe("parseComposerBody surrogate handling", () => {
       }),
     );
     expect(parsed?.conversationId).toBe(`ok � end`);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+    expect(isWellFormed(parsed?.conversationId ?? "")).toBe(true);
   });
 
   it("never emits lone surrogates at every boundary around 128", () => {

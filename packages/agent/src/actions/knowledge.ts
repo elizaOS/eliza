@@ -30,9 +30,10 @@ import {
   logger,
   type Media,
   type Memory,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   asRecord,
   asUuid,
@@ -431,7 +432,10 @@ export const searchKnowledgeAction: Action = {
             "Untitled",
           mediaFormat: documentMediaFormat(meta, tags),
           similarity: r.similarity,
-          snippet: truncateWellFormed(toWellFormedUnicode(r.content.text ?? ""), 240),
+          snippet: truncateWellFormed(
+            toWellFormedUnicode(r.content.text ?? ""),
+            240,
+          ),
         };
       });
 

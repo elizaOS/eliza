@@ -24,7 +24,7 @@ function isWellFormed(s: string): boolean {
 
 describe("wallet-evm-balance surrogate handling", () => {
   it("NFT description 200 backs off at surrogate", () => {
-    const input = "a".repeat(199) + "🦊" + "b".repeat(20);
+    const input = `${"a".repeat(199)}🦊${"b".repeat(20)}`;
     const out = truncateDescription(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(200);
@@ -32,14 +32,14 @@ describe("wallet-evm-balance surrogate handling", () => {
   });
 
   it("NFT description preserves fitting emoji", () => {
-    const input = "a".repeat(198) + "🦊";
+    const input = `${"a".repeat(198)}🦊`;
     const out = truncateDescription(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(198) + "🦊");
+    expect(out).toBe(`${"a".repeat(198)}🦊`);
   });
 
   it("error text 200 sanitizes lone surrogate", () => {
-    const lone = "error \ud800 details " + "a".repeat(300);
+    const lone = `error \ud800 details ${"a".repeat(300)}`;
     const out = truncateError(lone, "HTTP 500");
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);
@@ -48,7 +48,7 @@ describe("wallet-evm-balance surrogate handling", () => {
 
   it("errors join 400 stays well-formed sweep", () => {
     for (let off = 0; off < 20; off++) {
-      const errs = ["a".repeat(380 + off) + "🦊", "b".repeat(100)];
+      const errs = [`${"a".repeat(380 + off)}🦊`, "b".repeat(100)];
       const out = truncateErrors(errs);
       expect(isWellFormed(out)).toBe(true);
       expect(out.length).toBeLessThanOrEqual(400);
