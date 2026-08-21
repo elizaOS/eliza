@@ -1711,6 +1711,20 @@ export class SubAgentRouter extends Service {
           deliverable = lastProofBlockOutput(trimmed);
         }
       }
+      this.log("warn", "completion deliverable capture", {
+        sessionId,
+        deliverable: deliverable?.slice(0, 100),
+        responseLen: (
+          pickPayloadString(data, "response") ??
+          pickPayloadString(data, "finalText") ??
+          ""
+        ).length,
+        responseHead: (
+          pickPayloadString(data, "response") ??
+          pickPayloadString(data, "finalText") ??
+          "(none)"
+        ).slice(0, 150),
+      });
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
