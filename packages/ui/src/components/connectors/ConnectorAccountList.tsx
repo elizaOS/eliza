@@ -270,7 +270,6 @@ export function ConnectorAccountList({
       account,
       incrementalScopeRequest(
         readConnectorAccountCapabilityAccess(account),
-        oauthCapabilities,
         capabilityId,
       ),
       `${account.id}:${capabilityId}`,

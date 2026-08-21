@@ -51,13 +51,15 @@ export interface ConnectorAccountStatusPresentation {
 
 /** Metadata keys that historically carry granted capability/scope ids. The
  * first key present wins so a provider that reports both granted and requested
- * sets is read from its authoritative granted set. */
+ * sets is read from its authoritative granted set. Intent-only keys such as
+ * `requestedCapabilities` are deliberately excluded: they are written by this
+ * client before the OAuth round trip, so a denied or partially granted consent
+ * must read as unreported, never as granted. */
 const GRANTED_CAPABILITY_METADATA_KEYS = [
   "grantedCapabilities",
   "grantedScopes",
   "capabilities",
   "scopes",
-  "requestedCapabilities",
 ] as const;
 
 function sanitizeCapabilityIds(value: unknown): ReadonlySet<string> | null {
@@ -157,19 +159,19 @@ export function presentConnectorAccountStatus(
  * Computes the scope list for an incremental-scope OAuth restart: the union of
  * every currently granted capability and the newly requested one, so a grant
  * never narrows existing access. When access was never reported the request
- * carries only the new capability plus every declared capability the provider
- * requires, keeping the reauth from silently dropping unknown grants.
+ * fails closed to only the clicked capability — the declared catalog is a set
+ * of least-privilege choices, not required scopes, so an unreported account
+ * must not have one Grant click expand into the whole catalog. (The Grant
+ * affordance is only rendered for reported access; this fallback guards
+ * direct callers.)
  */
 export function incrementalScopeRequest(
   access: ConnectorCapabilityAccess,
-  declared: readonly ConnectorOAuthCapabilityDeclaration[],
   requestedCapabilityId: string,
 ): string[] {
   const scopes = new Set<string>();
   if (access.reported) {
     for (const id of access.granted) scopes.add(id);
-  } else {
-    for (const capability of declared) scopes.add(capability.id);
   }
   scopes.add(requestedCapabilityId);
   return [...scopes].sort();

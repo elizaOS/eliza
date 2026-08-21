@@ -43,6 +43,27 @@ describe("readConnectorAccountCapabilityAccess", () => {
     });
   });
 
+  it("never reads client-written intent as a grant: requested-but-denied stays unreported", () => {
+    // `requestedCapabilities` is written by this client before the OAuth
+    // round trip; a denied or cancelled consent leaves only that key behind.
+    expect(
+      readConnectorAccountCapabilityAccess({
+        metadata: { requestedCapabilities: ["gmail.read", "gmail.send"] },
+      }),
+    ).toEqual({ reported: false });
+  });
+
+  it("reports a partial grant exactly, not the requested superset", () => {
+    expect(
+      readConnectorAccountCapabilityAccess({
+        metadata: {
+          grantedCapabilities: ["gmail.read"],
+          requestedCapabilities: ["gmail.read", "gmail.send"],
+        },
+      }),
+    ).toEqual({ reported: true, granted: new Set(["gmail.read"]) });
+  });
+
   it("keeps an explicitly empty grant set distinct from unreported", () => {
     expect(
       readConnectorAccountCapabilityAccess({
@@ -154,7 +175,6 @@ describe("incrementalScopeRequest", () => {
     expect(
       incrementalScopeRequest(
         { reported: true, granted: new Set(["gmail.read"]) },
-        DECLARED,
         "gmail.send",
       ),
     ).toEqual(["gmail.read", "gmail.send"]);
@@ -164,15 +184,14 @@ describe("incrementalScopeRequest", () => {
     expect(
       incrementalScopeRequest(
         { reported: true, granted: new Set(["gmail.read", "gmail.send"]) },
-        DECLARED,
         "gmail.read",
       ),
     ).toEqual(["gmail.read", "gmail.send"]);
   });
 
-  it("falls back to every declared capability when access is unreported", () => {
-    expect(
-      incrementalScopeRequest({ reported: false }, DECLARED, "gmail.send"),
-    ).toEqual(["gmail.read", "gmail.send"]);
+  it("fails closed to only the clicked capability when access is unreported", () => {
+    expect(incrementalScopeRequest({ reported: false }, "gmail.send")).toEqual([
+      "gmail.send",
+    ]);
   });
 });

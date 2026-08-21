@@ -166,6 +166,53 @@ describe("ConnectorAccountList incremental scope", () => {
     expect(screen.queryByTestId("capability-chips")).toBeNull();
   });
 
+  it("treats requested-but-denied consent as unreported, never as granted chips", () => {
+    // A denied/cancelled OAuth return leaves only the client-written
+    // `requestedCapabilities` intent behind — no chip may render granted and
+    // no per-capability Grant affordance may be offered.
+    currentAccounts = [
+      account({
+        metadata: { requestedCapabilities: ["gmail.read", "gmail.send"] },
+      }),
+    ];
+    render(<ConnectorAccountList provider="google" connectorId="google" />);
+    expect(screen.getByTestId("capability-access-unreported")).toBeTruthy();
+    expect(screen.queryByTestId("capability-chips")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Grant / })).toBeNull();
+  });
+
+  it("keeps a provider scope reduction authoritative: revoked scopes render missing again", () => {
+    currentAccounts = [
+      account({
+        metadata: { grantedCapabilities: ["gmail.read", "gmail.send"] },
+      }),
+    ];
+    const view = render(
+      <ConnectorAccountList provider="google" connectorId="google" />,
+    );
+    expect(
+      screen
+        .getByTestId("capability-chip-gmail.send")
+        .getAttribute("data-state"),
+    ).toBe("granted");
+
+    // The provider (or user, via the provider console) narrows the grant.
+    currentAccounts = [
+      account({ metadata: { grantedCapabilities: ["gmail.read"] } }),
+    ];
+    view.rerender(
+      <ConnectorAccountList provider="google" connectorId="google" />,
+    );
+    expect(
+      screen
+        .getByTestId("capability-chip-gmail.send")
+        .getAttribute("data-state"),
+    ).toBe("missing");
+    expect(
+      screen.getByRole("button", { name: "Grant Send Gmail" }),
+    ).toBeTruthy();
+  });
+
   it("does not offer Reconnect on a healthy connected account", () => {
     currentAccounts = [
       account({ metadata: { grantedCapabilities: ["gmail.read"] } }),
