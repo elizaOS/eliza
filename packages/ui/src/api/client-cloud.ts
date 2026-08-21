@@ -1589,7 +1589,6 @@ declare module "./client-base" {
     enqueueCloudRemoteCommand(input: {
       sessionId: string;
       commandId: string;
-      claimAttempt: number;
       sequence: number;
       expiresAt: number;
       envelope: EncryptedRemoteCommand;
@@ -1602,6 +1601,7 @@ declare module "./client-base" {
     completeCloudRemoteCommand(input: {
       sessionId: string;
       commandId: string;
+      claimAttempt: number;
       hostId: string;
       hostToken: string;
       claimAttempt: number;

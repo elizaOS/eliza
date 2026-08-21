@@ -317,4 +317,71 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+
+  it("binds claimAttempt to completion and omits it from enqueue", async () => {
+    const enqueue = vi.fn((_url: string, _init?: RequestInit) =>
+      jsonResponse(202, { success: true }),
+    );
+    const complete = vi.fn((_url: string, _init?: RequestInit) =>
+      jsonResponse(200, { success: true }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      routeFetch({
+        "/api/v1/remote/sessions/session-1/commands": enqueue,
+        "/api/v1/remote/sessions/session-1/commands/command-1": complete,
+      }),
+    );
+    const envelope = {
+      version: 1 as const,
+      algorithm: "ECDH-P256-HKDF-SHA256+A256GCM" as const,
+      senderKeyId: "sender-key",
+      recipientKeyId: "recipient-key",
+      ephemeralPublicKeyJwk: {
+        kty: "EC",
+        crv: "P-256",
+        x: "x",
+        y: "y",
+      },
+      salt: "salt",
+      iv: "iv",
+      ciphertext: "ciphertext",
+    };
+
+    await client.enqueueCloudRemoteCommand({
+      sessionId: "session-1",
+      commandId: "command-1",
+      sequence: 7,
+      expiresAt: 123_456,
+      envelope,
+    });
+    await client.completeCloudRemoteCommand({
+      sessionId: "session-1",
+      commandId: "command-1",
+      claimAttempt: 3,
+      hostId: "host-1",
+      hostToken: "host-token",
+      resultEnvelope: envelope,
+    });
+
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          commandId: "command-1",
+          sequence: 7,
+          expiresAt: 123_456,
+          envelope,
+        }),
+      }),
+    );
+    expect(complete).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ claimAttempt: 3, resultEnvelope: envelope }),
+      }),
+    );
+  });
 });
