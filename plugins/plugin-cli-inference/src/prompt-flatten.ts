@@ -124,7 +124,12 @@ function toBoundedJsonValue(
 ): JsonSafe | undefined {
   if (value === null) return null;
   const kind = typeof value;
-  if (kind === "string") return value as string;
+  // Charge nested strings too. `toolOutputToText` charges the strings it
+  // produces, but the JSON projection used to hand back every string free, so
+  // an object could carry unlimited 3 MiB fields past a 4 MiB declared cap
+  // while the node budget saw only one node per field. The pre-charge check in
+  // `chargeChars` still lets the first oversized body through unchanged.
+  if (kind === "string") return chargeChars(budget, value as string);
   if (kind === "number") return Number.isFinite(value as number) ? (value as number) : null;
   if (kind === "boolean") return value as boolean;
   if (kind === "bigint") return (value as bigint).toString();
@@ -218,7 +223,12 @@ function toolOutputToText(
   // projection below treats it as a fresh root rather than as a back-edge onto
   // itself. This is exactly what "path-local" buys: an honest value is never
   // mistaken for a cycle.
-  return chargeChars(budget, stringifyToolPayload(output, budget, depth));
+  // The projection already charged every string it kept, so charging the
+  // serialized result again would double-count a single large body and turn it
+  // into the over-budget marker — the opposite of the documented "first
+  // oversized body comes back whole" contract that the bare-string path at the
+  // top of this function still honors.
+  return stringifyToolPayload(output, budget, depth);
 }
 
 /**
