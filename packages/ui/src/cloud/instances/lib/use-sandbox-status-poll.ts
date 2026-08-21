@@ -75,6 +75,17 @@ export function useSandboxStatusPoll(
     cancelledRef.current = false;
     statusRef.current = "pending";
     consecutiveErrorsRef.current = 0;
+    // Reset the visible result too, not just the ref. Otherwise the previous
+    // agent's terminal status stays on screen and is attributed to the new one
+    // — and if the new agent's first fetch fails, the catch only bumps an error
+    // counter, so that borrowed "running" persists indefinitely. A status we
+    // have not loaded must not render as a healthy one we did.
+    setResult({
+      status: "pending",
+      lastHeartbeat: null,
+      error: null,
+      isLoading: true,
+    });
 
     const poll = async () => {
       if (cancelledRef.current) return;
