@@ -649,15 +649,8 @@ app.post("/", async (c) => {
       "platform",
       trustedDelivery,
     );
-    if (result.timing) {
-      logger.info("[personal-shared-messaging] shared provider timing", {
-        selectedProvider: result.timing.selectedProvider,
-        callCount: result.timing.callCount,
-        fallbackCount: result.timing.fallbackCount,
-        replayed: result.timing.replayed,
-        durationMs: result.timing.durationMs,
-      });
-    }
+    // The same values ship on `Server-Timing` below; a second uncorrelated
+    // per-turn log on the hot path would only duplicate them.
     const providerTiming = sharedTurnServerTiming(result.timing);
     c.header(
       "Server-Timing",

@@ -16,10 +16,45 @@ export interface SharedRuntimeInferenceSpan {
   durationMs: number;
 }
 
-export type SharedModelProvider = "cerebras" | "openrouter" | "other";
+/**
+ * Provider that actually served a model call. `other` is deliberately coarse:
+ * it means a pooled credential, Groq, or Vast model, none of which the Shared
+ * turn needs to attribute individually.
+ */
+export type SharedModelProvider = "cerebras" | "openrouter" | "openai" | "anthropic" | "other";
+
+/**
+ * `unobserved` marks a call whose provider selection never fired — the model
+ * threw before any provider succeeded, or provider resolution itself failed.
+ * It is never a `selectedProvider`, so a failed turn can never be read as a
+ * healthy call against a real provider.
+ */
+export type SharedModelCallProvider = SharedModelProvider | "unobserved";
+
+const SHARED_MODEL_PROVIDERS: readonly SharedModelProvider[] = [
+  "cerebras",
+  "openrouter",
+  "openai",
+  "anthropic",
+  "other",
+];
+
+function isSharedModelProvider(value: unknown): value is SharedModelProvider {
+  return SHARED_MODEL_PROVIDERS.includes(value as SharedModelProvider);
+}
+
+function isSharedModelCallProvider(value: unknown): value is SharedModelCallProvider {
+  return value === "unobserved" || isSharedModelProvider(value);
+}
+
+/** Provider attribution supplied by the AI SDK wrapper once a call succeeds. */
+export interface SharedModelCallSelection {
+  provider: SharedModelProvider;
+  fallback: boolean;
+}
 
 export interface SharedModelCallTiming {
-  provider: SharedModelProvider;
+  provider: SharedModelCallProvider;
   durationMs: number;
   fallback: boolean;
 }
@@ -28,11 +63,15 @@ export interface SharedModelCallTiming {
  * Privacy-bounded model timing safe for Shared REST and SSE clients.
  * `callCount` and `fallbackCount` describe every call. `calls` contains the
  * first 16 calls only, and `callsTruncated` is true exactly when later calls
- * were omitted.
+ * were omitted. `clamped` is true when a single call or the running total
+ * exceeded `MAX_SHARED_PROVIDER_TIMING_MS`, in which case `durationMs` is the
+ * bound rather than the measured value — a pathologically slow turn must stay
+ * visible instead of collapsing to zero or being discarded.
  */
 export interface SharedProviderTimingReceipt {
   replayed: boolean;
   durationMs: number;
+  clamped: boolean;
   callCount: number;
   fallbackCount: number;
   selectedProvider: SharedModelProvider | "mixed" | "none";
@@ -40,7 +79,12 @@ export interface SharedProviderTimingReceipt {
   calls: SharedModelCallTiming[];
 }
 
-/** Validate and canonicalize an untrusted provider receipt at a transport boundary. */
+/**
+ * Validate and canonicalize an untrusted provider receipt at a transport
+ * boundary. Every aggregate is re-derived from `calls` and rejected when it
+ * cannot describe any real turn, and the returned object is rebuilt field by
+ * field so undeclared keys never reach a public response.
+ */
 export function parseSharedProviderTimingReceipt(
   value: unknown,
 ): SharedProviderTimingReceipt | undefined {
@@ -54,19 +98,19 @@ export function parseSharedProviderTimingReceipt(
     callCount < 0 ||
     callCount > MAX_SHARED_PROVIDER_TIMING_CALL_COUNT ||
     typeof receipt.callsTruncated !== "boolean" ||
+    typeof receipt.clamped !== "boolean" ||
     !Array.isArray(calls) ||
     calls.length !== Math.min(callCount, MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) ||
     receipt.callsTruncated !== callCount > calls.length
   ) {
     return undefined;
   }
+  const clamped = receipt.clamped;
   const safeCalls = calls.every((call) => {
     if (!call || typeof call !== "object") return false;
     const entry = call as Record<string, unknown>;
     return (
-      (entry.provider === "cerebras" ||
-        entry.provider === "openrouter" ||
-        entry.provider === "other") &&
+      isSharedModelCallProvider(entry.provider) &&
       typeof entry.durationMs === "number" &&
       Number.isFinite(entry.durationMs) &&
       entry.durationMs >= 0 &&
@@ -79,9 +123,7 @@ export function parseSharedProviderTimingReceipt(
   const modelCalls = calls as SharedModelCallTiming[];
   const selectedProvider = receipt.selectedProvider;
   if (
-    selectedProvider !== "cerebras" &&
-    selectedProvider !== "openrouter" &&
-    selectedProvider !== "other" &&
+    !isSharedModelProvider(selectedProvider) &&
     selectedProvider !== "mixed" &&
     selectedProvider !== "none"
   ) {
@@ -90,13 +132,27 @@ export function parseSharedProviderTimingReceipt(
   const recordedFallbacks = modelCalls.filter((call) => call.fallback).length;
   const fallbackCount = receipt.fallbackCount;
   const hiddenCalls = callCount - calls.length;
-  const providers = new Set(modelCalls.map((call) => call.provider));
+  // Unobserved calls carry duration but never attribution, so they must not
+  // decide `selectedProvider` nor force `mixed`.
+  const observedProviders = new Set(
+    modelCalls
+      .map((call) => call.provider)
+      .filter((provider): provider is SharedModelProvider => provider !== "unobserved"),
+  );
   const providerIsPossible =
     callCount === 0
       ? selectedProvider === "none"
-      : selectedProvider === "mixed"
-        ? providers.size > 1 || (hiddenCalls > 0 && providers.size === 1)
-        : selectedProvider !== "none" && providers.size === 1 && providers.has(selectedProvider);
+      : hiddenCalls > 0
+        ? selectedProvider === "mixed" ||
+          observedProviders.size === 0 ||
+          (observedProviders.size === 1 &&
+            isSharedModelProvider(selectedProvider) &&
+            observedProviders.has(selectedProvider))
+        : observedProviders.size === 0
+          ? selectedProvider === "none"
+          : observedProviders.size > 1
+            ? selectedProvider === "mixed"
+            : isSharedModelProvider(selectedProvider) && observedProviders.has(selectedProvider);
   const fallbackCountIsPossible =
     typeof fallbackCount === "number" &&
     Number.isInteger(fallbackCount) &&
@@ -111,21 +167,27 @@ export function parseSharedProviderTimingReceipt(
     Number.isFinite(durationMs) &&
     durationMs >= 0 &&
     durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
-    (receipt.callsTruncated ? durationMs >= recordedDurationMs : durationMs === recordedDurationMs);
+    (clamped
+      ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS
+      : receipt.callsTruncated
+        ? durationMs >= recordedDurationMs
+        : durationMs === recordedDurationMs);
   const replayed = receipt.replayed;
   const emptyReceiptIsConsistent =
     callCount !== 0 ||
     (durationMs === 0 &&
       fallbackCount === 0 &&
       selectedProvider === "none" &&
-      receipt.callsTruncated === false);
+      receipt.callsTruncated === false &&
+      clamped === false);
   const replayIsConsistent =
     replayed === false ||
     (durationMs === 0 &&
       callCount === 0 &&
       fallbackCount === 0 &&
       selectedProvider === "none" &&
-      receipt.callsTruncated === false);
+      receipt.callsTruncated === false &&
+      clamped === false);
   if (
     !(
       typeof replayed === "boolean" &&
@@ -141,6 +203,7 @@ export function parseSharedProviderTimingReceipt(
   return {
     replayed,
     durationMs,
+    clamped,
     callCount,
     fallbackCount,
     selectedProvider,
@@ -192,6 +255,20 @@ function boundedDuration(startedAt: number | null, completedAt: number | null): 
   return Math.round(value * 10) / 10;
 }
 
+/**
+ * Bound a single model-call duration without losing the pathological case: an
+ * over-bound call reports the bound and marks the receipt clamped rather than
+ * collapsing to zero, because a call slower than the bound is exactly what the
+ * receipt exists to expose.
+ */
+function clampedCallDuration(measured: number): { value: number; clamped: boolean } | null {
+  if (!Number.isFinite(measured) || measured < 0) return null;
+  if (measured > MAX_SHARED_PROVIDER_TIMING_MS) {
+    return { value: MAX_SHARED_PROVIDER_TIMING_MS, clamped: true };
+  }
+  return { value: Math.round(measured * 10) / 10, clamped: false };
+}
+
 function boundedMeasuredDuration(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
   if (value > MAX_SHARED_PROVIDER_TIMING_MS) return null;
@@ -223,6 +300,7 @@ export class SharedRuntimeTimingCollector {
   #modelFallbackCount = 0;
   #modelProviders = new Set<SharedModelProvider>();
   #modelCalls: SharedModelCallTiming[] = [];
+  #modelClamped = false;
 
   constructor(
     readonly traceId: string,
@@ -261,15 +339,18 @@ export class SharedRuntimeTimingCollector {
     this.#providerFirstTextAt ??= this.#now();
   }
 
+  /**
+   * Track one model call. `select` is invoked by the provider wrapper only when
+   * a provider actually served the call; a call that finishes without it is
+   * recorded as `unobserved` so a failed or unattributed call is never reported
+   * as a healthy call against a real provider.
+   */
   prepareModelCall(): {
-    select: (selection: { provider: SharedModelProvider; fallback: boolean }) => void;
+    select: (selection: SharedModelCallSelection) => void;
     begin: () => void;
     finish: () => void;
   } {
-    let selection: { provider: SharedModelProvider; fallback: boolean } = {
-      provider: "other",
-      fallback: false,
-    };
+    let selection: SharedModelCallSelection | null = null;
     let startedAt: number | null = null;
     let finished = false;
     return {
@@ -282,18 +363,22 @@ export class SharedRuntimeTimingCollector {
       finish: () => {
         if (finished || startedAt === null) return;
         finished = true;
-        const durationMs = boundedDuration(startedAt, this.#now()) ?? 0;
+        const measured = clampedCallDuration(this.#now() - startedAt);
+        if (measured === null) return;
+        if (measured.clamped) this.#modelClamped = true;
         this.#modelCallCount += 1;
-        if (selection.fallback) {
+        const call: SharedModelCallTiming = selection
+          ? { ...selection, durationMs: measured.value }
+          : { provider: "unobserved", fallback: false, durationMs: measured.value };
+        if (call.fallback) {
           this.#modelFallbackCount += 1;
         }
-        this.#modelDurationMs = Math.min(
-          Math.round((this.#modelDurationMs + durationMs) * 10) / 10,
-          MAX_SHARED_PROVIDER_TIMING_MS,
-        );
-        this.#modelProviders.add(selection.provider);
+        const total = Math.round((this.#modelDurationMs + measured.value) * 10) / 10;
+        if (total > MAX_SHARED_PROVIDER_TIMING_MS) this.#modelClamped = true;
+        this.#modelDurationMs = Math.min(total, MAX_SHARED_PROVIDER_TIMING_MS);
+        if (call.provider !== "unobserved") this.#modelProviders.add(call.provider);
         if (this.#modelCalls.length < MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) {
-          this.#modelCalls.push({ ...selection, durationMs });
+          this.#modelCalls.push(call);
         }
       },
     };
@@ -361,6 +446,7 @@ export class SharedRuntimeTimingCollector {
       model: {
         replayed: false,
         durationMs: this.#modelDurationMs,
+        clamped: this.#modelClamped,
         callCount: this.#modelCallCount,
         fallbackCount: this.#modelFallbackCount,
         selectedProvider:
@@ -385,6 +471,7 @@ export function replayedSharedProviderTiming(): SharedProviderTimingReceipt {
   return {
     replayed: true,
     durationMs: 0,
+    clamped: false,
     callCount: 0,
     fallbackCount: 0,
     selectedProvider: "none",

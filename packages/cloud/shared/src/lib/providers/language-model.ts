@@ -10,6 +10,7 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import type { SharedModelCallSelection } from "../services/shared-runtime/shared-runtime-timing";
 import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
 import { logger } from "../utils/logger";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
@@ -489,15 +490,20 @@ async function invokeOpenRouterFallback<T>(
  * the native call returns a retryable error. A no-op when OPENROUTER_API_KEY is
  * unset, so direct-only deployments are unchanged.
  */
+/**
+ * `nativeProvider` names the provider serving `primaryModel` so a successful
+ * native call is attributed to itself rather than to the catch-all `other`.
+ */
 function withOpenRouterFallback(
   primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
   model: string,
+  nativeProvider: InteractiveLanguageModelSelection["provider"],
   onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
 ) {
   if (!getOpenRouterApiKey()) {
     return withSuccessfulProviderSelection(
       primaryModel,
-      { provider: "other", fallback: false },
+      { provider: nativeProvider, fallback: false },
       onProviderSelected,
     );
   }
@@ -508,7 +514,7 @@ function withOpenRouterFallback(
     wrapGenerate: async ({ doGenerate, params }) => {
       try {
         const result = await doGenerate();
-        notifyProviderSelected(onProviderSelected, { provider: "other", fallback: false });
+        notifyProviderSelected(onProviderSelected, { provider: nativeProvider, fallback: false });
         return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) {
@@ -529,7 +535,7 @@ function withOpenRouterFallback(
     wrapStream: async ({ doStream, params }) => {
       try {
         const result = await doStream();
-        notifyProviderSelected(onProviderSelected, { provider: "other", fallback: false });
+        notifyProviderSelected(onProviderSelected, { provider: nativeProvider, fallback: false });
         return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) {
@@ -706,8 +712,13 @@ function withCerebrasInteractiveFailover(
   return wrapLanguageModel({ model: primaryModel, middleware });
 }
 
+/**
+ * Provider attribution reported to a timing observer once a call succeeds.
+ * `other` is the deliberate catch-all for pooled, Groq, and Vast models, whose
+ * individual identity the Shared timing receipt does not need.
+ */
 export interface InteractiveLanguageModelSelection {
-  provider: "cerebras" | "openrouter" | "other";
+  provider: SharedModelCallSelection["provider"];
   fallback: boolean;
 }
 
@@ -891,13 +902,14 @@ export function getLanguageModel(
     const primary = getProviderKey("OPENAI_BASE_URL")
       ? getOpenAIClient().chat(modelId)
       : getOpenAIClient().languageModel(modelId);
-    return withOpenRouterFallback(primary, model, onProviderSelected);
+    return withOpenRouterFallback(primary, model, "openai", onProviderSelected);
   }
 
   if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
     return withOpenRouterFallback(
       getAnthropicClient().languageModel(normalizeAnthropicModelId(model)),
       model,
+      "anthropic",
       onProviderSelected,
     );
   }

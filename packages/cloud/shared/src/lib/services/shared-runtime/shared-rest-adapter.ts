@@ -36,7 +36,7 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 /** Serialize the privacy-bounded provider receipt into finite Server-Timing metrics. */
 export function sharedTurnServerTiming(receipt: SharedProviderTimingReceipt | undefined): string {
   if (!receipt) return "";
-  return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0}"`;
+  return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0} clamped=${receipt.clamped ? 1 : 0}"`;
 }
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */

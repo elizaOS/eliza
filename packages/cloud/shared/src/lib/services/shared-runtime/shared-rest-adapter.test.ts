@@ -49,11 +49,12 @@ const {
   sharedRestFirstRunStatus,
   sharedRestHealth,
   sharedRestMessageSend,
-  sharedTurnServerTiming,
   sharedRestMessagesGet,
   sharedRestStatus,
   sharedRestViews,
+  sharedTurnServerTiming,
 } = await import("./shared-rest-adapter");
+const { MAX_SHARED_PROVIDER_TIMING_MS } = await import("./shared-runtime-timing");
 
 // Restore the real module so this file's process-global mock doesn't strand
 // later test files that use the full elizaSandboxService surface.
@@ -312,6 +313,7 @@ describe("shared-rest-adapter — messages", () => {
     const timing = {
       replayed: false,
       durationMs: 8.1,
+      clamped: false,
       callCount: 2,
       fallbackCount: 1,
       selectedProvider: "mixed" as const,
@@ -344,6 +346,7 @@ describe("shared-rest-adapter — messages", () => {
     expect(out.timing).toEqual({
       replayed: false,
       durationMs: 8.1,
+      clamped: false,
       callCount: 2,
       fallbackCount: 1,
       selectedProvider: "mixed",
@@ -354,7 +357,7 @@ describe("shared-rest-adapter — messages", () => {
       ],
     });
     expect(sharedTurnServerTiming(out.timing)).toBe(
-      'shared_model;dur=8.1;desc="provider=mixed calls=2 fallbacks=1 replayed=0"',
+      'shared_model;dur=8.1;desc="provider=mixed calls=2 fallbacks=1 replayed=0 clamped=0"',
     );
   });
 
@@ -363,6 +366,7 @@ describe("shared-rest-adapter — messages", () => {
       {
         replayed: false,
         durationMs: 1,
+        clamped: false,
         callCount: 1,
         fallbackCount: 1,
         selectedProvider: "mixed",
@@ -372,6 +376,7 @@ describe("shared-rest-adapter — messages", () => {
       {
         replayed: false,
         durationMs: 1,
+        clamped: false,
         callCount: 1,
         fallbackCount: 1,
         selectedProvider: "cerebras",
@@ -381,6 +386,7 @@ describe("shared-rest-adapter — messages", () => {
       {
         replayed: false,
         durationMs: 2,
+        clamped: false,
         callCount: 1,
         fallbackCount: 0,
         selectedProvider: "cerebras",
@@ -390,11 +396,34 @@ describe("shared-rest-adapter — messages", () => {
       {
         replayed: false,
         durationMs: 0,
+        clamped: false,
         callCount: 0,
         fallbackCount: 0,
         selectedProvider: "openrouter",
         callsTruncated: false,
         calls: [],
+      },
+      // A receipt with no `clamped` field cannot be told apart from a clamped
+      // one, so the boundary rejects it rather than guessing.
+      {
+        replayed: false,
+        durationMs: 1,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      // `unobserved` describes a call, never the provider that served the turn.
+      {
+        replayed: false,
+        durationMs: 1,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "unobserved",
+        callsTruncated: false,
+        calls: [{ provider: "unobserved", durationMs: 1, fallback: false }],
       },
     ];
     for (const timing of impossibleReceipts) {
@@ -423,6 +452,7 @@ describe("shared-rest-adapter — messages", () => {
         timing: {
           replayed: false,
           durationMs: 17,
+          clamped: false,
           callCount: 17,
           fallbackCount: 1,
           selectedProvider: "mixed",
@@ -447,6 +477,42 @@ describe("shared-rest-adapter — messages", () => {
       callsTruncated: true,
       calls,
     });
+  });
+
+  test("POST keeps a clamped over-bound receipt instead of discarding it", async () => {
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed-clamped",
+      result: {
+        text: "four",
+        timing: {
+          replayed: false,
+          durationMs: MAX_SHARED_PROVIDER_TIMING_MS,
+          clamped: true,
+          callCount: 2,
+          fallbackCount: 0,
+          selectedProvider: "cerebras",
+          callsTruncated: false,
+          calls: [
+            { provider: "cerebras", durationMs: MAX_SHARED_PROVIDER_TIMING_MS, fallback: false },
+            { provider: "cerebras", durationMs: 12, fallback: false },
+          ],
+        },
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    // The summed call durations exceed the bound; the old exact-sum rule would
+    // have dropped the whole receipt for the very turn it exists to diagnose.
+    expect(out.timing).toMatchObject({ clamped: true, durationMs: MAX_SHARED_PROVIDER_TIMING_MS });
+    expect(sharedTurnServerTiming(out.timing)).toContain("clamped=1");
   });
 
   test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {
