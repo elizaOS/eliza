@@ -480,7 +480,32 @@ function previewBytes(): number {
 }
 
 function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
+  // Count UTF-8 bytes without materializing a second payload-sized buffer.
+  // These helpers run specifically on values large enough to threaten SQL;
+  // TextEncoder.encode() would transiently duplicate a 250 MB dump before the
+  // ceiling could reject or clamp it.
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      // BMP code points and unpaired surrogates encode to three bytes; the
+      // latter matches TextEncoder's U+FFFD replacement behavior.
+      bytes += 3;
+    }
+  }
+  return bytes;
 }
 
 function shouldOffload(value: string): boolean {

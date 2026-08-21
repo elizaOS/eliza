@@ -120,6 +120,27 @@ describe("inline payload ceiling", () => {
     expect(clamped.includes("�")).toBe(false);
   });
 
+  test("clamping never allocates a payload-sized TextEncoder copy", () => {
+    const originalTextEncoder = globalThis.TextEncoder;
+    Object.defineProperty(globalThis, "TextEncoder", {
+      configurable: true,
+      value: class {
+        encode(): never {
+          throw new Error("TextEncoder.encode must not run at the ceiling boundary");
+        }
+      },
+    });
+    try {
+      const clamped = clampInlineDiagnosticText("x".repeat(5000));
+      expect(clamped).toContain("truncated: 5000-byte payload");
+    } finally {
+      Object.defineProperty(globalThis, "TextEncoder", {
+        configurable: true,
+        value: originalTextEncoder,
+      });
+    }
+  });
+
   test("a ceiling below the 1024-byte floor falls back to the 1 MiB default", () => {
     process.env.SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES = "10";
     expect(inlinePayloadCeilingBytes()).toBe(1024 * 1024);
