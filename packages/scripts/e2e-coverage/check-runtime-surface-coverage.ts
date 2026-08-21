@@ -13,7 +13,9 @@ import { fileURLToPath } from "node:url";
 import {
   buildRuntimeSurfaceInventory,
   discoverRuntimeSurfaces,
+  type ExternalServiceDependency,
   loadRuntimeSurfaceBaseline,
+  type MockDependency,
   RUNTIME_SURFACE_SCHEMA,
   RUNTIME_SURFACE_STATUSES,
   type RuntimeSurfaceBaseline,
@@ -27,6 +29,7 @@ export interface RuntimeSurfaceGateResult {
   silentlyCovered: string[];
   invalidClassifications: string[];
   invalidCoverage: string[];
+  invalidDependencyOwnership: string[];
   duplicateRows: string[];
   unclassifiedPackages: string[];
   stalePackageClassifications: string[];
@@ -97,6 +100,14 @@ export function evaluateRuntimeSurfaceCoverage(
     )
     .map((row) => row.id)
     .sort();
+  const invalidDependencyOwnership = inventory.rows
+    .filter(
+      (row) =>
+        row.status === "covered" &&
+        row.dependencyDisposition === "mock-missing",
+    )
+    .map((row) => row.id)
+    .sort();
   const zeroSurfacePackages = inventory.packages
     .filter((entry) => entry.registrationState === "no-runtime-registration")
     .map((entry) => entry.packageDir)
@@ -155,6 +166,7 @@ export function evaluateRuntimeSurfaceCoverage(
     silentlyCovered,
     invalidClassifications,
     invalidCoverage,
+    invalidDependencyOwnership,
     duplicateRows: [...new Set(duplicateRows)].sort(),
     unclassifiedPackages,
     stalePackageClassifications,
@@ -168,6 +180,7 @@ export function evaluateRuntimeSurfaceCoverage(
       silentlyCovered.length === 0 &&
       invalidClassifications.length === 0 &&
       invalidCoverage.length === 0 &&
+      invalidDependencyOwnership.length === 0 &&
       duplicateRows.length === 0 &&
       unclassifiedPackages.length === 0 &&
       stalePackageClassifications.length === 0 &&
@@ -227,7 +240,8 @@ function loadDevelopBaseline(
 export function candidateClassification(
   kind: string,
   platformRequirements: readonly string[],
-  externalDependencies: readonly string[],
+  externalServiceDependencies: readonly ExternalServiceDependency[],
+  mockDependencies: readonly MockDependency[],
   context?: { packageName: string; surfaceName: string; workstream: string },
 ): { status: Exclude<RuntimeSurfaceStatus, "covered">; reason: string } {
   const subject = context
@@ -243,14 +257,18 @@ export function candidateClassification(
       reason: `${subject} requires a supported native host or device target; deterministic platform composition is tracked by ${workstream}.`,
     };
   }
-  if (kind === "model-handler") {
+  const hasMissingMock = mockDependencies.some(
+    (dependency) => dependency.availability === "missing",
+  );
+  if (kind === "model-handler" && hasMissingMock) {
     return {
       status: "provider-qualified-only",
       reason: `${subject} has only real-provider qualification; strict deterministic model fixtures are tracked by ${workstream}.`,
     };
   }
   if (
-    externalDependencies.length > 0 &&
+    externalServiceDependencies.length > 0 &&
+    hasMissingMock &&
     ["provider", "connector-ingress", "connector-egress"].includes(kind)
   ) {
     return {
@@ -293,7 +311,8 @@ function bootstrapReviewedBaseline(
         candidateClassification(
           row.kind,
           row.platformRequirements,
-          row.externalDependencies,
+          row.externalServiceDependencies,
+          row.mockDependencies,
           {
             packageName: row.packageName,
             surfaceName: row.surfaceName,
@@ -348,6 +367,10 @@ function printFailures(result: RuntimeSurfaceGateResult): void {
     [
       "invalidCoverage",
       "covered rows lack an executable artifact and exact boundary signal",
+    ],
+    [
+      "invalidDependencyOwnership",
+      "covered external-service rows lack an explicit mock owner and source",
     ],
     ["duplicateRows", "duplicate canonical row ids were generated"],
     [

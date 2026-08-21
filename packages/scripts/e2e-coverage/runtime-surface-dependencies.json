@@ -1,0 +1,501 @@
+{
+  "schema": "eliza.synthetic-world-dependencies/v1",
+  "upstreamCatalog": {
+    "pullRequest": 23185,
+    "head": "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
+    "path": "packages/cloud/test-mocks/provider-mock-catalog.json",
+    "relationship": "This inventory catalog is the fail-closed surface-to-protocol index. PR #23185 remains the richer provider implementation and conformance catalog and must consume these canonical service IDs when the stacks are combined."
+  },
+  "rules": [
+    {
+      "packageName": "@elizaos/agent",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Agent providers and routes expose in-process runtime state and the authenticated local agent HTTP API; connector and model protocols are registered by their owning plugins."
+    },
+    {
+      "packageName": "@elizaos/cloud-api",
+      "kinds": ["route"],
+      "noExternalServiceReason": "Cloud API route registrations are inbound control-plane boundaries; queues, workers, databases, and object stores are inventoried as their own runtime surfaces rather than inferred from npm imports."
+    },
+    {
+      "packageName": "@elizaos/core",
+      "kinds": ["connector-ingress", "provider", "route"],
+      "noExternalServiceReason": "Core registrations define framework-local message, context, and test routes and do not select an external provider protocol."
+    },
+    {
+      "packageName": "@elizaos/plugin-agent-orchestrator",
+      "kinds": ["route"],
+      "noExternalServiceReason": "Orchestrator routes are authenticated local runtime control endpoints."
+    },
+    {
+      "packageName": "@elizaos/plugin-agent-skills",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Skill providers and routes expose the local installed-skill registry and package state."
+    },
+    {
+      "packageName": "@elizaos/plugin-anthropic",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "anthropic-api",
+          "protocol": "Anthropic Messages API v1",
+          "mockOwner": "anthropic",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-anthropic-proxy",
+      "kinds": ["route"],
+      "externalServices": [
+        {
+          "id": "anthropic-api",
+          "protocol": "Anthropic Messages API v1",
+          "mockOwner": "anthropic",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-app-control",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "App-control context is supplied by the local application host."
+    },
+    {
+      "packageName": "@elizaos/plugin-app-manager",
+      "kinds": ["route"],
+      "noExternalServiceReason": "App-manager routes mutate the local installed application registry."
+    },
+    {
+      "packageName": "@elizaos/plugin-blocker",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Blocker providers read local runtime state."
+    },
+    {
+      "packageName": "@elizaos/plugin-bluebubbles",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "bluebubbles-server",
+          "protocol": "BlueBubbles REST API and webhook protocol",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/bluebubbles.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "kinds": ["provider", "route"],
+      "externalServices": [
+        {
+          "id": "browser-automation",
+          "protocol": "Browser workspace HTTP and automation protocol",
+          "mockOwner": "browser-workspace",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/browser-workspace.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-calendar",
+      "kinds": ["provider", "route"],
+      "externalServices": [
+        {
+          "id": "google-calendar-api",
+          "protocol": "Google Calendar API v3",
+          "mockOwner": "google-workspace",
+          "mockSource": "packages/scenario-runner/test/mocks/mockoon/calendar.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-capacitor-bridge",
+      "kinds": ["model-handler"],
+      "noExternalServiceReason": "Capacitor model handlers delegate to the local native bridge; native-host requirements are recorded separately."
+    },
+    {
+      "packageName": "@elizaos/plugin-cli-inference",
+      "kinds": ["model-handler"],
+      "noExternalServiceReason": "CLI inference handlers launch an operator-selected local subprocess rather than a fixed external service protocol."
+    },
+    {
+      "packageName": "@elizaos/plugin-cloud-apps",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Cloud-app context is read from the local runtime application registry."
+    },
+    {
+      "packageName": "@elizaos/plugin-codex-cli",
+      "kinds": ["model-handler"],
+      "noExternalServiceReason": "Codex CLI handlers launch the locally installed Codex subprocess rather than a network provider client."
+    },
+    {
+      "packageName": "@elizaos/plugin-coding-tools",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Coding-tools context is assembled from the local workspace and runtime."
+    },
+    {
+      "packageName": "@elizaos/plugin-commands",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Command providers expose the local registered-command set."
+    },
+    {
+      "packageName": "@elizaos/plugin-companion",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Companion context is runtime-local."
+    },
+    {
+      "packageName": "@elizaos/plugin-computeruse",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Computer-use registrations target the local host automation service; platform requirements are tracked independently."
+    },
+    {
+      "packageName": "@elizaos/plugin-contacts",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Contacts context reads the shared local entity store."
+    },
+    {
+      "packageName": "@elizaos/plugin-discord",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "discord-api",
+          "protocol": "Discord REST, Gateway, and interaction webhook protocols",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/discord.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-documents",
+      "kinds": ["route"],
+      "noExternalServiceReason": "Document routes operate on the local content-addressed media and document services."
+    },
+    {
+      "packageName": "@elizaos/plugin-elizacloud",
+      "kinds": ["provider", "model-handler", "route"],
+      "externalServices": [
+        {
+          "id": "eliza-cloud-api",
+          "protocol": "Eliza Cloud authenticated HTTP and model APIs",
+          "mockOwner": "eliza-cloud-managed",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/cloud-managed.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-embeddings",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "configured-embedding-provider",
+          "protocol": "elizaOS model-provider embedding contract",
+          "missingMockReason": "The handler delegates to a runtime-selected provider; no single resettable wire mock owns every selectable provider."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-fish-audio",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "fish-audio-api",
+          "protocol": "Fish Audio HTTP API",
+          "missingMockReason": "No resettable Fish Audio production-client mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-form",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Form providers expose runtime-local form state."
+    },
+    {
+      "packageName": "@elizaos/plugin-github",
+      "kinds": ["route"],
+      "externalServices": [
+        {
+          "id": "github-api",
+          "protocol": "GitHub REST, OAuth 2.0, and webhook protocols",
+          "mockOwner": "github",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/github.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-google-genai",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "google-generative-language-api",
+          "protocol": "Google Gemini Generative Language API",
+          "missingMockReason": "The Google Workspace mock does not implement the production Gemini model protocol."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-google-workspace",
+      "kinds": ["connector-ingress", "connector-egress"],
+      "externalServices": [
+        {
+          "id": "google-workspace-api",
+          "protocol": "Google Workspace OAuth 2.0, Gmail, and Calendar APIs",
+          "mockOwner": "google-workspace",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/google.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-imessage",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "imessage-bridge",
+          "protocol": "iMessage bridge command and event protocol",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/imessage.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-inbox",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Inbox providers and routes operate on the shared local message store."
+    },
+    {
+      "packageName": "@elizaos/plugin-instagram",
+      "kinds": ["connector-ingress", "connector-egress"],
+      "externalServices": [
+        {
+          "id": "instagram-graph-api",
+          "protocol": "Meta Instagram Graph API and webhooks",
+          "missingMockReason": "No resettable Instagram production-client and webhook mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-local-inference",
+      "kinds": ["model-handler", "route"],
+      "noExternalServiceReason": "Local-inference handlers and routes execute an embedded local model runtime."
+    },
+    {
+      "packageName": "@elizaos/plugin-matrix",
+      "kinds": ["connector-ingress", "connector-egress"],
+      "externalServices": [
+        {
+          "id": "matrix-client-server-api",
+          "protocol": "Matrix Client-Server API",
+          "missingMockReason": "No resettable Matrix homeserver mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-mcp",
+      "kinds": ["provider"],
+      "externalServices": [
+        {
+          "id": "configured-mcp-server",
+          "protocol": "Model Context Protocol",
+          "missingMockReason": "MCP servers are runtime-selected and no canonical resettable MCP server fixture owns this provider."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-meetings",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Meeting providers and routes operate on the local meeting record and media services."
+    },
+    {
+      "packageName": "@elizaos/plugin-messages",
+      "kinds": ["connector-ingress"],
+      "noExternalServiceReason": "The messages connector is an internal normalization ingress; transport-specific protocols are owned by channel plugins."
+    },
+    {
+      "packageName": "@elizaos/plugin-native-inference",
+      "kinds": ["model-handler"],
+      "noExternalServiceReason": "Native inference handlers execute through the local native host; platform requirements are recorded separately."
+    },
+    {
+      "packageName": "@elizaos/plugin-notes",
+      "kinds": ["provider", "route"],
+      "noExternalServiceReason": "Notes providers and routes operate on the local notes service."
+    },
+    {
+      "packageName": "@elizaos/plugin-openai",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "openai-api",
+          "protocol": "OpenAI API v1",
+          "mockOwner": "openai",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/openai.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-personal-assistant",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Personal-assistant providers assemble local domain state; scheduled delivery transports are inventoried separately."
+    },
+    {
+      "packageName": "@elizaos/plugin-phone",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Phone context reads local call state; telephony transport boundaries are registered separately."
+    },
+    {
+      "packageName": "@elizaos/plugin-pty",
+      "kinds": ["route"],
+      "noExternalServiceReason": "PTY routes control a local subprocess terminal."
+    },
+    {
+      "packageName": "@elizaos/plugin-registry",
+      "kinds": ["route"],
+      "externalServices": [
+        {
+          "id": "plugin-registry-upstream",
+          "protocol": "elizaOS plugin registry HTTP and package metadata protocols",
+          "missingMockReason": "No resettable production-client registry upstream mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-relationships",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Relationship context reads the shared local entity and relationship stores."
+    },
+    {
+      "packageName": "@elizaos/plugin-scheduling",
+      "kinds": ["route"],
+      "noExternalServiceReason": "Scheduling routes operate on the canonical local scheduled-task state machine."
+    },
+    {
+      "packageName": "@elizaos/plugin-signal",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "signal-bridge-api",
+          "protocol": "Signal bridge REST and event protocol",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/signal.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-slack",
+      "kinds": ["connector-ingress", "connector-egress"],
+      "externalServices": [
+        {
+          "id": "slack-api",
+          "protocol": "Slack Web API, Events API, and OAuth 2.0",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/slack.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-telegram",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "telegram-bot-api",
+          "protocol": "Telegram Bot API and webhook protocol",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/telegram.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-todos",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Todo providers read the local todo store."
+    },
+    {
+      "packageName": "@elizaos/plugin-vision",
+      "kinds": ["provider", "route"],
+      "externalServices": [
+        {
+          "id": "vision-analysis-api",
+          "protocol": "Configured vision analysis HTTP/model protocol",
+          "mockOwner": "vision-analysis",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/vision.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-wallet",
+      "kinds": ["provider", "route"],
+      "externalServices": [
+        {
+          "id": "blockchain-rpc",
+          "protocol": "Runtime-selected blockchain JSON-RPC and wallet provider protocols",
+          "missingMockReason": "No single resettable multi-chain RPC and wallet mock owns every supported network and provider."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-wechat",
+      "kinds": ["connector-ingress", "connector-egress"],
+      "externalServices": [
+        {
+          "id": "wechat-api",
+          "protocol": "WeChat messaging API and event protocol",
+          "missingMockReason": "No resettable WeChat production-client mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-whatsapp",
+      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "externalServices": [
+        {
+          "id": "whatsapp-api",
+          "protocol": "WhatsApp Cloud API, webhook, and Baileys transport protocols",
+          "mockOwner": "messaging-webhook-family",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/whatsapp.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-wifi",
+      "kinds": ["provider"],
+      "noExternalServiceReason": "Wi-Fi context is supplied by the local platform network service."
+    },
+    {
+      "packageName": "@elizaos/plugin-workflow",
+      "kinds": ["route"],
+      "noExternalServiceReason": "Workflow routes operate on the embedded local workflow runtime."
+    },
+    {
+      "packageName": "@elizaos/plugin-x",
+      "kinds": ["connector-ingress", "connector-egress", "provider"],
+      "externalServices": [
+        {
+          "id": "x-api",
+          "protocol": "X API v2, OAuth 2.0, and direct-message protocol",
+          "mockOwner": "x-twitter",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/x-twitter.json"
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-zai",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "zai-api",
+          "protocol": "Z.AI OpenAI-compatible model API",
+          "missingMockReason": "No resettable Z.AI production-client mock is registered."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-zerollama",
+      "kinds": ["model-handler"],
+      "externalServices": [
+        {
+          "id": "ollama-api",
+          "protocol": "Ollama local HTTP API",
+          "missingMockReason": "No resettable production-client Ollama server mock is registered."
+        }
+      ]
+    }
+  ]
+}
