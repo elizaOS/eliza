@@ -89,10 +89,36 @@ function chargeChars(budget: PayloadBudget, text: string): string {
   return text;
 }
 
+/**
+ * Charge a property name against the character budget. Nested *values* are
+ * charged as they are projected, but the serialized output also carries every
+ * key, and #23891 removed the terminal charge that used to account for them —
+ * so without this a payload made of megabyte-sized keys is free forever.
+ * Same check-before-charge rule as `chargeChars`; false means the container
+ * must collapse to the budget marker.
+ */
+function chargeKeyChars(budget: PayloadBudget, key: string): boolean {
+  if (budget.chars > MAX_TOOL_PAYLOAD_CHARS) return false;
+  budget.chars += key.length;
+  return true;
+}
+
 /** Charge container width before allocating anything for its elements. */
 function chargeWidth(budget: PayloadBudget, width: number): boolean {
   budget.nodes += width;
   return budget.nodes <= MAX_TOOL_PAYLOAD_NODES;
+}
+
+/** Realm-independent brand, read without invoking anything on the value. */
+function brandOf(value: object): string {
+  return Object.prototype.toString.call(value);
+}
+
+/** Buffer/Uint8Array brand check that does not depend on a `Buffer` global. */
+function isBufferValue(value: object): boolean {
+  return (
+    typeof Buffer !== "undefined" && typeof Buffer.isBuffer === "function" && Buffer.isBuffer(value)
+  );
 }
 
 /**
@@ -135,9 +161,29 @@ function toBoundedJsonValue(
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return undefined; // undefined / function / symbol: dropped, as today
   const object = value as object;
-  if (object instanceof Date) {
-    const time = object.getTime();
-    return Number.isNaN(time) ? null : object.toISOString();
+  // Brand check, not `instanceof`: a Date from another realm fails the
+  // prototype test and used to fall through to the object branch, rendering
+  // `{}` and losing the timestamp entirely. Dispatch through the builtins so an
+  // attacker-supplied `getTime` / `toISOString` override on a Date-shaped
+  // payload can neither run nor throw out of prompt flattening — the same
+  // reason core's `flattenTextValues` uses `Date.prototype.getTime.call`.
+  if (brandOf(object) === "[object Date]") {
+    const time = Date.prototype.getTime.call(object as Date);
+    return Number.isNaN(time) ? null : Date.prototype.toISOString.call(object as Date);
+  }
+  // Buffer and URL both serialize to `{}` or an index map through the generic
+  // object branch, dropping the bytes / the href. Reproduce what the
+  // pre-bounded `JSON.stringify` path produced for each.
+  if (isBufferValue(object)) {
+    // Charge the byte count before materializing: the generic object branch
+    // used to charge one node per index key, so skipping straight to
+    // `Array.from` would let a multi-megabyte buffer through the node bound.
+    const bytes = object as Uint8Array;
+    if (!chargeWidth(budget, bytes.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
+    return { type: "Buffer", data: Array.from(bytes) };
+  }
+  if (brandOf(object) === "[object URL]" || object instanceof URL) {
+    return String(URL.prototype.toString.call(object as URL));
   }
   if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return TOOL_PAYLOAD_DEPTH_MARKER;
   if (budget.ancestors.has(object)) return TOOL_PAYLOAD_CYCLE_MARKER;
@@ -160,12 +206,19 @@ function toBoundedJsonValue(
   if (!chargeWidth(budget, keys.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
   budget.ancestors.add(object);
   try {
-    const projected: Record<string, JsonSafe> = {};
+    // Null-prototype staging: on a plain `{}` an assignment of a
+    // `JSON.parse`-produced own `"__proto__"` key hits the `Object.prototype`
+    // setter and the member vanishes with no marker — silent truncation, which
+    // is exactly what the markers exist to prevent. With no prototype there is
+    // no setter to hit, so the key lands as an own data property.
+    const projected = Object.create(null) as Record<string, JsonSafe>;
     for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
       if (!descriptor || !("value" in descriptor)) continue;
+      if (!chargeKeyChars(budget, key)) return TOOL_PAYLOAD_BUDGET_MARKER;
       const nested = toBoundedJsonValue(descriptor.value, budget, depth + 1);
-      if (nested !== undefined) projected[key] = nested;
+      if (nested === undefined) continue;
+      projected[key] = nested;
     }
     return projected;
   } finally {
