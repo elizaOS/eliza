@@ -920,7 +920,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
       await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
         name: "TimeoutError",
-        message: "Remote runner request timed out.",
+        message: expect.stringMatching(/timed out.*20ms/i),
       });
       expect(bodyWasCancelled).toBe(true);
     } finally {

@@ -1214,7 +1214,7 @@ async function fetchBounded(
   }
   const controller = new AbortController();
   const timeoutError = new DOMException(
-    "Remote runner request timed out.",
+    `Remote runner request timed out after ${options.timeoutMs}ms.`,
     "TimeoutError",
   );
   const timer = setTimeout(
@@ -1266,6 +1266,9 @@ async function fetchBounded(
     }
     controller.abort();
     if (error instanceof RemoteResponseProtocolError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
     throw new ElizaError("Remote HTTP request failed.", {
       code: "REMOTE_HTTP_REQUEST_FAILED",
       severity: "ephemeral",
