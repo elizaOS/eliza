@@ -6943,7 +6943,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "Đang cung cấp agent",
   "cloud.elizaAgentsTable.agentSuspend": "Tạm dừng agent",
   "cloud.elizaAgentsTable.noAgentsYet": "Chưa có agent nào",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "Triển khai agent đầu tiên để bắt đầu.",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "Shared Agent hoặc Dedicated Agent của bạn sẽ xuất hiện ở đây khi khả dụng.",
   "cloud.elizaAgentsTable.searchAgents": "Tìm kiếm agent…",
   "cloud.elizaAgentsTable.allStatuses": "Tất cả trạng thái",
   "cloud.elizaAgentsTable.running": "Đang chạy",

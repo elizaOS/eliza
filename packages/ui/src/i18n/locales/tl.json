@@ -6943,7 +6943,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "Pag-provision ng agent",
   "cloud.elizaAgentsTable.agentSuspend": "Pag-suspend ng agent",
   "cloud.elizaAgentsTable.noAgentsYet": "Wala pang agent",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "Mag-deploy ng iyong unang agent para magsimula.",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "Lalabas dito ang iyong Shared o Dedicated Agent kapag available na ito.",
   "cloud.elizaAgentsTable.searchAgents": "Maghanap ng mga agent…",
   "cloud.elizaAgentsTable.allStatuses": "Lahat ng status",
   "cloud.elizaAgentsTable.running": "Nagpapatakbo",
