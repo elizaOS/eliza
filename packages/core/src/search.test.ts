@@ -103,3 +103,29 @@ describe("BM25.search result ordering", () => {
 		expect(results[0].score).toBe(results[1].score);
 	});
 });
+
+describe("BM25 empty string fields", () => {
+	// Attachment-only memories carry `content.text === ""` into rerankMemories;
+	// the tokenizer rejects falsy input, so empty fields must index as
+	// zero-length docs instead of aborting the whole index build.
+	const docs = [
+		{ title: "11111111-1111-4111-8111-111111111111", content: "" },
+		{ title: "22222222-2222-4222-8222-222222222222", content: "hello world" },
+	];
+
+	it("indexes documents containing empty string fields without throwing", () => {
+		const bm25 = new BM25(docs);
+		expect(bm25.search("hello", 10).map((r) => r.index)).toEqual([1]);
+	});
+
+	it("treats whitespace-only fields as zero-length documents", () => {
+		const bm25 = new BM25([{ content: "   " }, { content: "signal" }]);
+		expect(bm25.search("signal", 10).map((r) => r.index)).toEqual([1]);
+	});
+
+	it("accepts incremental addDocument with empty string fields", async () => {
+		const bm25 = new BM25([{ content: "seed document" }]);
+		await bm25.addDocument({ content: "", body: "later arrival" });
+		expect(bm25.search("arrival", 10).map((r) => r.index)).toEqual([1]);
+	});
+});

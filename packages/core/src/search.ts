@@ -1221,7 +1221,7 @@ export class BM25 {
 			// Iterate through fields of the document
 			for (const field in doc) {
 				const content = doc[field];
-				if (typeof content !== "string") continue; // Skip non-string fields
+				if (typeof content !== "string" || !content) continue; // Skip non-string and empty fields: the tokenizer rejects falsy input, so an empty field must contribute zero length and zero terms instead of throwing
 
 				const fieldBoost = this.fieldBoosts[field] || 1;
 				const { tokens } = this.tokenizer.tokenize(content);
@@ -1524,7 +1524,7 @@ export class BM25 {
 		// --- Process Fields and Tokens ---
 		for (const field in doc) {
 			const content = doc[field];
-			if (typeof content !== "string") continue;
+			if (typeof content !== "string" || !content) continue;
 
 			const fieldBoost = this.fieldBoosts[field] || 1;
 			const { tokens } = this.tokenizer.tokenize(content);
