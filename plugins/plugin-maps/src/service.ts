@@ -7,6 +7,10 @@ import { MapsError } from "./errors.js";
 import { RuntimeSavedPlaceStore, type SavedPlaceStore } from "./store.js";
 import {
   coordinatesSchema,
+  MAX_MAPS_PROVIDERS,
+  type MapsProviderDescription,
+  mapsAttributionSchema,
+  mapsProviderIdSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -22,12 +26,7 @@ import {
 } from "./types.js";
 
 export const MAPS_SERVICE_TYPE = "maps";
-
-export interface MapsProviderDescription {
-  id: string;
-  /** Provider-mandated attribution text, or null when the adapter has none. */
-  attribution: string | null;
-}
+export type { MapsProviderDescription } from "./types.js";
 
 export interface MapsHandoff {
   kind: "share" | "navigate";
@@ -129,6 +128,10 @@ export class MapsService extends Service {
     "Provider-neutral place search, route planning, durable saved places, sharing, and navigation handoffs.";
 
   private readonly adapters = new Map<string, MapsProviderAdapter>();
+  private readonly providerDescriptions = new Map<
+    string,
+    MapsProviderDescription
+  >();
   private defaultAdapterId: string | null = null;
   private readonly store: SavedPlaceStore;
 
@@ -143,33 +146,43 @@ export class MapsService extends Service {
 
   override async stop(): Promise<void> {
     this.adapters.clear();
+    this.providerDescriptions.clear();
     this.defaultAdapterId = null;
   }
 
   registerAdapter(adapter: MapsProviderAdapter, makeDefault = false): void {
+    const providerId = mapsProviderIdSchema.safeParse(adapter.id);
     if (
-      !/^[a-z0-9][a-z0-9_-]*$/i.test(adapter.id) ||
+      !providerId.success ||
       !/^conn_[A-Za-z0-9_-]{16,}$/.test(adapter.connectionId)
     ) {
       throw new MapsError("Maps adapter identity is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        ...(!providerId.success ? { cause: providerId.error } : {}),
       });
     }
-    if (
-      adapter.attribution !== undefined &&
-      (!adapter.attribution.trim() || adapter.attribution.length > 500)
-    ) {
+    const attribution =
+      adapter.attribution === undefined
+        ? null
+        : mapsAttributionSchema.safeParse(adapter.attribution);
+    if (attribution !== null && !attribution.success) {
       throw new MapsError("Maps adapter attribution is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        cause: attribution.error,
       });
     }
-    this.adapters.set(adapter.id, adapter);
+    this.adapters.set(providerId.data, adapter);
+    this.providerDescriptions.set(providerId.data, {
+      id: providerId.data,
+      attribution: attribution?.data ?? null,
+    });
     if (makeDefault || this.defaultAdapterId === null)
-      this.defaultAdapterId = adapter.id;
+      this.defaultAdapterId = providerId.data;
   }
 
   unregisterAdapter(adapterId: string): void {
     this.adapters.delete(adapterId);
+    this.providerDescriptions.delete(adapterId);
     if (this.defaultAdapterId === adapterId) {
       this.defaultAdapterId = this.adapters.keys().next().value ?? null;
     }
@@ -179,12 +192,20 @@ export class MapsService extends Service {
     return [...this.adapters.keys()];
   }
 
-  /** Describes registered providers without exposing credentials or endpoints. */
+  /**
+   * Describes registered providers without exposing credentials or endpoints.
+   * Registration itself stays unlimited; the DTO returned to the view/broker
+   * boundary is bounded here at MAX_MAPS_PROVIDERS so the browser-facing
+   * schema (`mapsProviderDescriptionsSchema`) can never be handed a payload
+   * it will reject.
+   */
   describeProviders(): readonly MapsProviderDescription[] {
-    return [...this.adapters.values()].map((adapter) => ({
-      id: adapter.id,
-      attribution: adapter.attribution?.trim() || null,
-    }));
+    return [...this.providerDescriptions.values()]
+      .slice(0, MAX_MAPS_PROVIDERS)
+      .map((provider) => ({
+        id: provider.id,
+        attribution: provider.attribution,
+      }));
   }
 
   async searchPlaces(

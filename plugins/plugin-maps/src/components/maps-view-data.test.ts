@@ -24,26 +24,28 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
+function providerMetadataResponse(providers: unknown): Response {
+  return response({
+    requestId: "maps-provider-request",
+    success: true,
+    result: {
+      success: true,
+      data: { providers },
+    },
+  });
+}
+
 describe("mapsViewTransport", () => {
   beforeEach(() => fetchWithCsrf.mockReset());
 
   it("validates adapter-owned provider attribution metadata", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
-      response({
-        requestId: "maps-provider-request",
-        success: true,
-        result: {
-          success: true,
-          data: {
-            providers: [
-              {
-                id: "fixture_maps",
-                attribution: "Map data © Fixture Maps",
-              },
-            ],
-          },
+      providerMetadataResponse([
+        {
+          id: "fixture_maps",
+          attribution: "  Map data © Fixture Maps  ",
         },
-      }),
+      ]),
     );
 
     await expect(mapsViewTransport.describeProviders?.()).resolves.toEqual([
@@ -54,22 +56,35 @@ describe("mapsViewTransport", () => {
     ]);
 
     fetchWithCsrf.mockResolvedValueOnce(
-      response({
-        requestId: "maps-bad-provider-request",
-        success: true,
-        result: {
-          success: true,
-          data: {
-            providers: [
-              {
-                id: "fixture_maps",
-                attribution: "x".repeat(501),
-              },
-            ],
-          },
+      providerMetadataResponse([
+        {
+          id: "fixture_maps",
+          attribution: "x".repeat(501),
         },
-      }),
+      ]),
     );
+    await expect(mapsViewTransport.describeProviders?.()).rejects.toThrow();
+  });
+
+  it.each([
+    ["blank attribution", [{ id: "fixture_maps", attribution: "   " }]],
+    ["invalid provider id", [{ id: "fixture maps", attribution: null }]],
+    [
+      "duplicate provider id",
+      [
+        { id: "fixture_maps", attribution: null },
+        { id: "fixture_maps", attribution: "Duplicate" },
+      ],
+    ],
+    [
+      "too many providers",
+      Array.from({ length: 33 }, (_, index) => ({
+        id: `fixture_${index}`,
+        attribution: null,
+      })),
+    ],
+  ])("rejects %s in provider metadata", async (_case, providers) => {
+    fetchWithCsrf.mockResolvedValueOnce(providerMetadataResponse(providers));
     await expect(mapsViewTransport.describeProviders?.()).rejects.toThrow();
   });
 
