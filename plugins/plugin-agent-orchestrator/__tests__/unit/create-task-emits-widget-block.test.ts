@@ -111,6 +111,41 @@ describe("TASKS:create durable-task widget emission", () => {
     );
   });
 
+  it("persists the concrete task as the goal when agents is only a backend hint", async () => {
+    const acp = serviceMock();
+    const createTask = vi.fn(async () => ({
+      id: THREAD_ID,
+      title: "Personal website",
+    }));
+    const runtime = runtimeWithServices({ acp, taskService: { createTask } });
+    const task =
+      "Create a personal website with a bio, social links, and contact section.";
+
+    const result = await createTaskAction.handler(
+      runtime,
+      memory({ text: "just personal for nubs" }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task,
+          agentType: "elizaos",
+          agents: "elizaos",
+          workdir: os.tmpdir(),
+        },
+      },
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    const input = createTask.mock.calls[0]?.[0] as {
+      goal?: string;
+      metadata?: { workspaceMutationExpected?: boolean };
+    };
+    expect(input.goal).toBe(task);
+    expect(input.metadata?.workspaceMutationExpected).toBe(true);
+  });
+
   it("direct runner still succeeds without the widget when createTask throws", async () => {
     const acp = serviceMock();
     const createTask = vi.fn(async () => {

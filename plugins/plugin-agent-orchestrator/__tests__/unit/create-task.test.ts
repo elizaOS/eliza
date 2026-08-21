@@ -169,6 +169,40 @@ describe("TASKS:create", () => {
     );
     expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
+
+  it("keeps the concrete task when a planner also emits agents as a backend hint", async () => {
+    const svc = serviceMock();
+    const task =
+      "Create a personal website with a bio, social links, and contact section.";
+
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({ text: "just personal for nubs" }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task,
+          agentType: "elizaos",
+          agents: "elizaos",
+          workdir: os.tmpdir(),
+        },
+      },
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(svc.sendPrompt).toHaveBeenCalledWith(
+      "abcdef123456",
+      expect.stringContaining(task),
+      expect.anything(),
+    );
+    expect(svc.sendPrompt).not.toHaveBeenCalledWith(
+      "abcdef123456",
+      expect.stringMatching(/--- User Task ---\s*elizaos\s*$/),
+      expect.anything(),
+    );
+  });
   it("handles missing service, auth error, generic failure", async () => {
     expect(
       (

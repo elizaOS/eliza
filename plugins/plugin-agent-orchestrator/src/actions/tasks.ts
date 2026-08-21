@@ -300,8 +300,16 @@ function taskParts(
   content: Record<string, unknown>,
   fallbackText: string,
 ): string[] {
+  // `task` is the canonical single-worker instruction. Some planners emit an
+  // `agents` backend hint alongside it (for example `agents: "elizaos"` even
+  // though `agentType` already carries that choice). Never let that overloaded
+  // compatibility field replace a concrete task: doing so turns a real build
+  // request into the adapter's name. `agents` remains the multi-lane fallback
+  // only when no single task was supplied.
+  const task = pickString(params, content, "task");
+  if (task) return [task];
   const agents = pickString(params, content, "agents");
-  if (!agents) return [pickString(params, content, "task") ?? fallbackText];
+  if (!agents) return [fallbackText];
   return agents
     .split("|")
     .map((part) => part.trim())
@@ -948,7 +956,10 @@ async function runCreateLegacy(
   // criteria, resume prompts), not display — it must never inherit the title's
   // display clamp, or a long planner title silently truncates the instructions.
   const taskGoal =
-    pickString(params, content, "goal") ?? plannerTitle ?? taskTitle;
+    pickString(params, content, "goal") ??
+    tasks.join("\n") ??
+    plannerTitle ??
+    taskTitle;
   const taskPriority = (pickString(params, content, "priority") ?? "normal") as
     | "low"
     | "normal"
