@@ -15,12 +15,14 @@ import {
 	targetReferenceLogView,
 } from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
+import { openLaunchUrlInBrowserView } from "../services/browser-view-navigation.js";
 
 export interface RunLaunchInput {
 	client: AppControlClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	callback?: HandlerCallback;
+	openBrowserView?: (launchUrl: string) => Promise<boolean>;
 }
 
 export async function runLaunch({
@@ -28,6 +30,7 @@ export async function runLaunch({
 	message,
 	options,
 	callback,
+	openBrowserView = openLaunchUrlInBrowserView,
 }: RunLaunchInput): Promise<ActionResult> {
 	const target = extractLaunchTarget(message, options);
 	if (!target) {
@@ -74,6 +77,9 @@ export async function runLaunch({
 		return {
 			success: false,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: { target: targetReferenceLogView(target) },
 		};
 	}
@@ -91,26 +97,51 @@ export async function runLaunch({
 			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
 		);
 		await callback?.({ text });
-		return { success: false, text, error: message };
+		return {
+			success: false,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			error: message,
+		};
 	}
 	const runId = result.run?.runId ?? null;
-	const text = runId
-		? `Launched ${result.displayName}. Run ID: ${runId}.`
-		: `Launched ${result.displayName}.`;
+	const launchUrl = result.launchUrl?.trim() || null;
+	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
 	);
 
-	await callback?.({ text });
 	return {
 		success: true,
-		text,
+		text: JSON.stringify({ effect: "app_launch", status: "completed" }),
+		transcriptVisibility: "internal",
+		// The effect is already complete. Give Eliza a bounded receipt and let the
+		// model own the conversational wording instead of posting canned action copy.
+		modelReplyRequired: true,
 		values: {
 			mode: "launch",
 			appName,
 			displayName: result.displayName,
 			runId,
+			openedInBrowser: opened,
+		},
+		promptData: {
+			operation: "launch_app",
+			outcome: "success",
+			appName,
+			displayName: result.displayName,
+			openedInBrowser: opened,
+			...(launchUrl
+				? {
+						link: {
+							label: `Open ${result.displayName}`,
+							href: launchUrl,
+						},
+					}
+				: {}),
 		},
 		data: { launch: result },
 	};
