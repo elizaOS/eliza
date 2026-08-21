@@ -216,6 +216,13 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
     // usage row records real numeric strings, never "NaN".
     expect(usageCreateCalls).toHaveLength(1);
     expect(usageCreateCalls[0].credits_charged).toBe("1");
+    expect(usageCreateCalls[0]).toMatchObject({
+      base_amount_usd: "0.01",
+      affiliate_fee_usd: "0",
+      platform_fee_usd: "0",
+      total_amount_usd: "0.01",
+      fee_components_known: true,
+    });
     expect(usageCreateCalls[0].creator_earnings).not.toContain("NaN");
   });
 
@@ -358,6 +365,32 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
     expect(usageCreateCalls).toHaveLength(0);
   });
 
+  test("healthy affiliate charge persists the exact fee-inclusive debit receipt", async () => {
+    referrer = { user_id: AFFILIATE_USER, id: AFFILIATE_CODE, markup_percent: "10.00" };
+    const result = await userMcpsService.recordUsage({
+      mcpId: "mcp-1",
+      organizationId: CONSUMER_ORG,
+      userId: BUYER_USER,
+      toolName: "get_weather",
+      paymentType: "credits",
+    });
+    expect(deductCalls[0]?.amount).toBe(0.013);
+    expect(result).toMatchObject({
+      basePriceUsd: 0.01,
+      affiliateFeeUsd: 0.001,
+      platformFeeUsd: 0.002,
+      totalPriceUsd: 0.013,
+    });
+    expect(usageCreateCalls[0]).toMatchObject({
+      credits_charged: "1",
+      base_amount_usd: "0.01",
+      affiliate_fee_usd: "0.001",
+      platform_fee_usd: "0.002",
+      total_amount_usd: "0.013",
+      fee_components_known: true,
+    });
+  });
+
   test("explicit domain zero price stays a legit free-tier value (does not throw)", async () => {
     mcpRow = makeRow({ credits_per_request: "0.0000" as unknown as string });
 
@@ -394,6 +427,13 @@ describe("recordUsageWithoutDeduction, share reads fail closed (#13415)", () => 
     expect(addCreditsCalls[0].amount).toBeCloseTo(0.008, 6);
     expect(usageCreateCalls).toHaveLength(1);
     expect(usageCreateCalls[0].creator_earnings).not.toContain("NaN");
+    expect(usageCreateCalls[0]).toMatchObject({
+      base_amount_usd: "0.01",
+      affiliate_fee_usd: "0",
+      platform_fee_usd: "0",
+      total_amount_usd: "0.01",
+      fee_components_known: true,
+    });
   });
 
   test("REGRESSION: corrupt platform_share_percentage THROWS before recording", async () => {

@@ -38,6 +38,16 @@ export const ORGANIZATION_CREDIT_USD_PRECISION = 6 as const;
 /** Fraction digits the legacy `credits_per_request` column stores. */
 export const LEGACY_MCP_POINTS_FRACTION_DIGITS = 4 as const;
 
+/** Canonical, fee-inclusive receipt persisted for one MCP credit charge. */
+export interface McpUsageChargeReceipt {
+  creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
+  baseAmountUsd: number;
+  affiliateFeeUsd: number;
+  platformFeeUsd: number;
+  totalAmountUsd: number;
+  feeComponentsKnown: true;
+}
+
 export const ORGANIZATION_CREDIT_PRICING = Object.freeze({
   creditUnit: ORGANIZATION_CREDIT_UNIT,
   creditsPerDollar: ORGANIZATION_CREDITS_PER_DOLLAR,
@@ -79,4 +89,30 @@ export function organizationCreditsToLegacyMcpPoints(creditsUsd: number): number
   // 1.1000000000000001); the stored column holds four fraction digits, which
   // is exactly the canonical micro-dollar grid divided by 100.
   return roundUsd(creditsUsd * LEGACY_MCP_POINTS_PER_DOLLAR, LEGACY_MCP_POINTS_FRACTION_DIGITS);
+}
+
+/**
+ * Convert the authoritative legacy-point charge components to one canonical
+ * micro-dollar receipt. The total is the exact sum that callers must debit,
+ * refund, and persist; no route or UI may reconstruct it independently.
+ */
+export function mcpUsageChargeReceiptFromLegacyPoints(input: {
+  basePoints: number;
+  affiliateFeePoints: number;
+  platformFeePoints: number;
+}): McpUsageChargeReceipt {
+  const baseAmountUsd = legacyMcpPointsToOrganizationCredits(input.basePoints);
+  const affiliateFeeUsd = legacyMcpPointsToOrganizationCredits(input.affiliateFeePoints);
+  const platformFeeUsd = legacyMcpPointsToOrganizationCredits(input.platformFeePoints);
+  const totalAmountUsd = quantizeOrganizationCreditUsd(
+    baseAmountUsd + affiliateFeeUsd + platformFeeUsd,
+  );
+  return Object.freeze({
+    creditUnit: ORGANIZATION_CREDIT_UNIT,
+    baseAmountUsd,
+    affiliateFeeUsd,
+    platformFeeUsd,
+    totalAmountUsd,
+    feeComponentsKnown: true,
+  });
 }

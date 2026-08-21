@@ -28,6 +28,14 @@ function base64Of(byteLength: number): string {
   return Buffer.alloc(byteLength, 0x41).toString("base64");
 }
 
+function mimeWrap(base64: string): string {
+  const lines: string[] = [];
+  for (let index = 0; index < base64.length; index += 76) {
+    lines.push(base64.slice(index, index + 76));
+  }
+  return lines.join("\r\n");
+}
+
 function rejection(run: () => unknown): ElizaError {
   try {
     run();
@@ -57,13 +65,24 @@ describe("decodeSocialMediaBase64", () => {
     expect(bytes.length).toBe(SOCIAL_MEDIA_MEDIA_MAX_BYTES);
   });
 
-  test("accepts a MIME line-wrapped payload under the budget", () => {
-    const raw = Buffer.alloc(64 * 1024, 0x42);
-    const wrapped = (raw.toString("base64").match(/.{1,76}/g) ?? []).join("\r\n");
-    expect(wrapped.length).toBeGreaterThan(raw.toString("base64").length);
+  test("accepts an exact-budget MIME line-wrapped payload", () => {
+    const encoded = base64Of(SOCIAL_MEDIA_MEDIA_MAX_BYTES);
+    const wrapped = mimeWrap(encoded);
+    expect(wrapped.length).toBeGreaterThan(encoded.length);
 
     const bytes = decodeSocialMediaBase64(wrapped);
-    expect(bytes.length).toBe(raw.length);
+    expect(bytes.length).toBe(SOCIAL_MEDIA_MEDIA_MAX_BYTES);
+  });
+
+  test("rejects a wrapped payload one byte over the budget after decoding", () => {
+    const wrapped = mimeWrap(base64Of(SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1));
+
+    const error = rejection(() => decodeSocialMediaBase64(wrapped));
+    expect(error.code).toBe("SOCIAL_MEDIA_MEDIA_TOO_LARGE");
+    expect(error.context).toMatchObject({
+      receivedBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1,
+      maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+    });
   });
 
   test("rejects one byte over the budget after decoding — the encoded length is identical", () => {
@@ -82,13 +101,15 @@ describe("decodeSocialMediaBase64", () => {
 
   test("rejects an oversized payload BEFORE the decode allocates", () => {
     const encodedLength = SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH + 4;
-    const error = rejection(() => decodeSocialMediaBase64("A".repeat(encodedLength)));
+    const encoded = ` \t\r\n${"A".repeat(encodedLength)}\r\n `;
+    const error = rejection(() => decodeSocialMediaBase64(encoded));
 
     expect(error.code).toBe("SOCIAL_MEDIA_MEDIA_TOO_LARGE");
     // `encodedLength` is only reported by the pre-allocation branch; the
     // post-decode branch reports `receivedBytes`.
     expect(error.context).toMatchObject({
       encodedLength,
+      rawEncodedLength: encoded.length,
       maxEncodedLength: SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
     });
     expect(error.context).not.toHaveProperty("receivedBytes");

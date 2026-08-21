@@ -1,7 +1,10 @@
 /** Locks exact visible MCP cloud-credit formatting, including micro-prices. */
 
 import { describe, expect, test } from "vitest";
-import { formatCloudCreditUsd } from "./format-cloud-credit";
+import {
+  formatCloudCreditUsd,
+  formatMcpUsageTotal,
+} from "./format-cloud-credit";
 
 describe("formatCloudCreditUsd", () => {
   test.each([
@@ -14,5 +17,14 @@ describe("formatCloudCreditUsd", () => {
 
   test("fails closed for non-finite values", () => {
     expect(formatCloudCreditUsd(Number.NaN)).toBe("—");
+  });
+
+  test("renders the fee-inclusive persisted total instead of the base", () => {
+    expect(formatMcpUsageTotal({ totalCloudCreditsCharged: "0.013000" })).toBe(
+      "$0.013",
+    );
+    expect(
+      formatMcpUsageTotal({ totalCloudCreditsCharged: "999999999999.999999" }),
+    ).toBe("$999,999,999,999.999999");
   });
 });

@@ -4118,11 +4118,30 @@ function ensureGradleProperty(content, key, value) {
   return `${content.replace(/\s*$/, "")}\n${key}=${value}\n`;
 }
 
-function patchAndroidGradleProperties() {
+export function applyAndroidGeneratedBuildTargetProperties(
+  content,
+  { cloudBuild = false } = {},
+) {
+  const withoutPreviousCloudMarker = content.replace(
+    /^elizaCloudBuild=.*\n?/gm,
+    "",
+  );
+  return cloudBuild
+    ? ensureGradleProperty(
+        withoutPreviousCloudMarker,
+        "elizaCloudBuild",
+        "true",
+      )
+    : withoutPreviousCloudMarker;
+}
+
+function patchAndroidGradleProperties({ cloudBuild = false } = {}) {
   const propertiesPath = path.join(androidDir, "gradle.properties");
   if (!fs.existsSync(propertiesPath)) return;
   const current = fs.readFileSync(propertiesPath, "utf8");
-  let patched = current;
+  let patched = applyAndroidGeneratedBuildTargetProperties(current, {
+    cloudBuild,
+  });
   patched = patched.replace(
     /^android\.enableDexingArtifactTransform\.desugaring=.*\n?/m,
     "",
@@ -4214,10 +4233,10 @@ function patchInstalledLlamaCapacitorBuildGradle() {
   }
 }
 
-function patchAndroidGradle() {
+function patchAndroidGradle({ cloudBuild = false } = {}) {
   assertSharedTreeOnlyForEliza("patch gradle identity");
   patchAndroidGradleWrapperForReleaseCompat();
-  patchAndroidGradleProperties();
+  patchAndroidGradleProperties({ cloudBuild });
   patchInstalledLlamaCapacitorBuildGradle();
   syncAndroidAppActionsResources();
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
@@ -7769,7 +7788,9 @@ export async function runAndroidBuild(
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
-  patchAndroidGradle();
+  patchAndroidGradle({
+    cloudBuild: target.env.ELIZA_ANDROID_CLOUD_BUILD === "1",
+  });
   await generateAndroidBrandAssets();
   overlayAndroid(target.overlayOptions);
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();

@@ -10,154 +10,13 @@ on:
         options:
           - staging
           - production
-      recover_staging_blooio_secrets:
-        description: Restore staging Blooio GitHub secrets from the canonical Railway service without deploying
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  recover-staging-blooio-secrets:
-    name: Recover staging Blooio secrets
-    if: inputs.recover_staging_blooio_secrets == true
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    environment: staging
-    env:
-      REQUESTED_ENVIRONMENT: ${{ inputs.environment }}
-      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      GH_TOKEN: ${{ secrets.GH_PAT }}
-    steps:
-      - name: Validate recovery authority and target
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ "$REQUESTED_ENVIRONMENT" = "staging" ] || {
-            echo "::error::Blooio secret recovery is staging-only"
-            exit 1
-          }
-          [ "$GITHUB_REF" = "refs/heads/develop" ] || {
-            echo "::error::Blooio secret recovery must run from develop"
-            exit 1
-          }
-          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID RAILWAY_TOKEN GH_TOKEN; do
-            value="${!name:-}"
-            [ -n "${value//[[:space:]]/}" ] || {
-              echo "::error::Missing required recovery setting: $name"
-              exit 1
-            }
-          done
-          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
-            value="${!name}"
-            [[ "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
-              echo "::error::$name must be a Railway UUID"
-              exit 1
-            }
-          done
-          gh api "repos/$GITHUB_REPOSITORY" --silent
-          echo "Recovery authority and canonical staging target are available."
-
-      - name: Install pinned Railway CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          cli_root="$RUNNER_TEMP/railway-cli"
-          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
-          mkdir -p "$cli_root"
-          curl \
-            --fail \
-            --location \
-            --silent \
-            --show-error \
-            --retry 3 \
-            --output "$archive" \
-            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
-          printf '%s  %s\n' \
-            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
-            "$archive" | sha256sum --check --status
-          tar -xzf "$archive" -C "$cli_root" railway
-          chmod 0755 "$cli_root/railway"
-          echo "$cli_root" >> "$GITHUB_PATH"
-          "$cli_root/railway" --version | grep -F "railway 5.38.0"
-
-      - name: Restore exact Blooio secrets without logging values
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          status_path="$RUNNER_TEMP/blooio-recovery-status.json"
-          variables_path="$RUNNER_TEMP/blooio-recovery-variables.json"
-          cleanup() {
-            for path in "$status_path" "$variables_path"; do
-              if [ -f "$path" ]; then
-                shred -u "$path" 2>/dev/null || rm -f "$path"
-              fi
-            done
-          }
-          trap cleanup EXIT
-
-          railway status \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --json > "$status_path"
-          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null
-          jq -e --arg id "$RAILWAY_ENVIRONMENT_ID" \
-            'any(.environments.edges[]; .node.id == $id and .node.name == "staging")' \
-            "$status_path" >/dev/null
-          jq -e --arg id "$RAILWAY_SERVICE_ID" \
-            'any(.services.edges[]; .node.id == $id and .node.name == "gateway-webhook-stg")' \
-            "$status_path" >/dev/null
-
-          railway variable list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --json > "$variables_path"
-
-          required_names=(
-            ELIZA_APP_BLOOIO_API_KEY
-            ELIZA_APP_BLOOIO_PHONE_NUMBER
-            ELIZA_APP_BLOOIO_WEBHOOK_SECRET
-          )
-          for name in "${required_names[@]}"; do
-            jq -e --arg name "$name" \
-              '.[$name] | type == "string" and test("\\S")' \
-              "$variables_path" >/dev/null || {
-              echo "::error::Canonical Railway staging value is absent or blank: $name"
-              exit 1
-            }
-          done
-          jq -e '.ELIZA_APP_BLOOIO_PHONE_NUMBER == "+18087881821"' \
-            "$variables_path" >/dev/null || {
-            echo "::error::Canonical Railway staging Blooio number is not the Eliza 808 line"
-            exit 1
-          }
-
-          for name in "${required_names[@]}"; do
-            jq -jr --arg name "$name" '.[$name]' "$variables_path" |
-              gh secret set "$name" \
-                --repo "$GITHUB_REPOSITORY" \
-                --env staging
-          done
-
-          inventory="$(gh secret list --repo "$GITHUB_REPOSITORY" --env staging --json name)"
-          for name in "${required_names[@]}"; do
-            jq -e --arg name "$name" 'any(.[]; .name == $name)' <<<"$inventory" >/dev/null || {
-              echo "::error::GitHub did not report restored environment secret name: $name"
-              exit 1
-            }
-          done
-          echo "Restored 3 staging Blooio environment secrets from canonical Railway values; no values were printed."
-
   authorize-target:
     name: Authorize gateway webhook (${{ inputs.environment }})
-    if: inputs.recover_staging_blooio_secrets != true
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     # Approval completes outside the shared mutation lock so a waiting review
@@ -169,7 +28,6 @@ jobs:
 
   deploy:
     name: Deploy gateway webhook (${{ inputs.environment }})
-    if: inputs.recover_staging_blooio_secrets != true
     needs: authorize-target
     runs-on: ubuntu-24.04
     timeout-minutes: 45

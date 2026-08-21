@@ -55,7 +55,6 @@ interface WorkflowJob {
   };
   env?: Record<string, string>;
   environment?: string;
-  if?: string;
   needs?: string;
   steps?: WorkflowStep[];
 }
@@ -70,12 +69,6 @@ interface Workflow {
           required?: boolean;
           type?: string;
         };
-        recover_staging_blooio_secrets?: {
-          default?: boolean;
-          description?: string;
-          required?: boolean;
-          type?: string;
-        };
       };
     };
   };
@@ -85,19 +78,11 @@ interface Workflow {
 const workflow = Bun.YAML.parse(source) as Workflow;
 const deploy = workflow.jobs?.deploy;
 const authorization = workflow.jobs?.["authorize-target"];
-const recovery = workflow.jobs?.["recover-staging-blooio-secrets"];
 const steps = deploy?.steps ?? [];
-const recoverySteps = recovery?.steps ?? [];
 
 function step(name: string): WorkflowStep {
   const found = steps.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`Missing gateway-webhook workflow step: ${name}`);
-  return found;
-}
-
-function recoveryStep(name: string): WorkflowStep {
-  const found = recoverySteps.find((candidate) => candidate.name === name);
-  if (!found) throw new Error(`Missing Blooio recovery workflow step: ${name}`);
   return found;
 }
 
@@ -308,53 +293,6 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
 }
 
 describe("protected gateway-webhook deployment workflow", () => {
-  test("recovers only the exact staging Blooio set without exposing values or deploying", () => {
-    expect(
-      workflow.on?.workflow_dispatch?.inputs?.recover_staging_blooio_secrets,
-    ).toEqual({
-      description:
-        "Restore staging Blooio GitHub secrets from the canonical Railway service without deploying",
-      required: false,
-      default: false,
-      type: "boolean",
-    });
-    expect(recovery?.if).toBe("inputs.recover_staging_blooio_secrets == true");
-    expect(recovery?.environment).toBe("staging");
-    expect(authorization?.if).toBe(
-      "inputs.recover_staging_blooio_secrets != true",
-    );
-    expect(deploy?.if).toBe("inputs.recover_staging_blooio_secrets != true");
-
-    const authority = recoveryStep("Validate recovery authority and target");
-    expect(authority.run).toContain('[ "$REQUESTED_ENVIRONMENT" = "staging" ]');
-    expect(authority.run).toContain('[ "$GITHUB_REF" = "refs/heads/develop" ]');
-    expect(recovery?.env?.GH_TOKEN).toBe(githubExpression("secrets.GH_PAT"));
-
-    const restore = recoveryStep(
-      "Restore exact Blooio secrets without logging values",
-    );
-    expect(restore.run).toContain("umask 077");
-    expect(restore.run).toContain("railway variable list");
-    expect(restore.run).toContain('== "+18087881821"');
-    expect(restore.run).toContain('jq -jr --arg name "$name"');
-    expect(restore.run).toContain('gh secret set "$name"');
-    expect(restore.run).toContain("--env staging");
-    expect(restore.run).toContain('shred -u "$path"');
-    for (const name of blooioNames) expect(restore.run).toContain(name);
-    for (const forbidden of [
-      "railway variable set",
-      'cat "$variables_path"',
-      'echo "$variables_path"',
-      'echo "${!name}"',
-      "gh secret set --body",
-    ]) {
-      expect(restore.run).not.toContain(forbidden);
-    }
-    expect(
-      recoverySteps.some((candidate) => candidate.run?.includes("railway up")),
-    ).toBe(false);
-  });
-
   test("authorizes before the shared protected mutation lock", () => {
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
     expect(workflow.on?.workflow_dispatch?.inputs?.environment).toEqual({

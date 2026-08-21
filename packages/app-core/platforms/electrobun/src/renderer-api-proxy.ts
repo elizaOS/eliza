@@ -35,8 +35,12 @@ const BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS = 255;
 
 function parsePositiveInteger(value: string | undefined): number | null {
   if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  // parseInt stops at the first non-digit, so "1junk" would yield 1 and be
+  // accepted as a deliberate setting. Require the whole value to be decimal.
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function clampBunServeIdleTimeout(seconds: number): number {
