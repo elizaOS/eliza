@@ -178,8 +178,33 @@ async function countRoomMessages(
 async function clearRoomMessages(
 	runtime: IAgentRuntime,
 	roomId: string,
+	preserveMessageId?: UUID,
 ): Promise<number | null> {
 	const before = await countRoomMessages(runtime, roomId);
+	// `/reset` runs while its inbound command memory is still owned by the
+	// message pipeline. Deleting that row here races the pipeline's later
+	// update/embedding pass and turns a successful reset into a visible error.
+	// Keep the in-flight command row and delete the older history explicitly.
+	if (
+		preserveMessageId &&
+		typeof runtime.getMemories === "function" &&
+		typeof runtime.deleteMemory === "function"
+	) {
+		const memories = await runtime.getMemories({
+			roomId: roomId as UUID,
+			tableName: "messages",
+			limit: Math.max(1, before ?? 1_000),
+			orderBy: "createdAt",
+			orderDirection: "desc",
+		});
+		let deleted = 0;
+		for (const memory of memories) {
+			if (!memory.id || memory.id === preserveMessageId) continue;
+			await runtime.deleteMemory(memory.id);
+			deleted += 1;
+		}
+		return deleted;
+	}
 	if (typeof runtime.deleteAllMemories !== "function") return null;
 	await runtime.deleteAllMemories([roomId as UUID], "messages");
 	return before;
@@ -499,7 +524,11 @@ export async function runCommand(
 
 		case "reset": {
 			await clearCommandSettings(runtime, roomId);
-			const deleted = await clearRoomMessages(runtime, roomId);
+			const deleted = await clearRoomMessages(
+				runtime,
+				roomId,
+				context.message?.id,
+			);
 			if (deleted === null) {
 				return reply(
 					"Reset command settings for this room. Message history is unchanged because memory deletion is unavailable.",

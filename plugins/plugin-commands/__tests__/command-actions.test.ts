@@ -4,7 +4,7 @@
  * `resolveCommand` against an in-memory runtime stub — no live model.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	commandActions,
 	commandShortcuts,
@@ -227,6 +227,38 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		});
 		expect(compact.handled).toBe(true);
 		expect(compact.reply).toContain("Compacted 4 older message(s)");
+	});
+
+	it("/reset preserves its in-flight command memory while clearing older history", async () => {
+		const resetMessage = msg("/reset");
+		const oldMessageIds = [
+			"00000000-0000-0000-0000-000000000010",
+			"00000000-0000-0000-0000-000000000011",
+		];
+		const roomMessages = [
+			resetMessage,
+			...oldMessageIds.map(
+				(id, index) =>
+					({
+						...msg(`old-${index}`),
+						id,
+					}) as Memory,
+			),
+		];
+		const deleteMemory = vi.fn(async () => undefined);
+		const resetRuntime = makeRuntime("agent-1", undefined, {
+			countMemories: async () => roomMessages.length,
+			getMemories: async () => roomMessages,
+			deleteMemory,
+		});
+
+		const result = await resolveCommand(resetRuntime, resetMessage, {
+			isAuthorized: true,
+		});
+
+		expect(result.reply).toContain("cleared command settings and 2 message(s)");
+		expect(deleteMemory.mock.calls.map(([id]) => id)).toEqual(oldMessageIds);
+		expect(deleteMemory).not.toHaveBeenCalledWith(resetMessage.id);
 	});
 
 	it("ignores non-command messages", async () => {
