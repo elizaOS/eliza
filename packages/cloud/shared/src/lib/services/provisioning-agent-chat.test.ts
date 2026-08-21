@@ -127,9 +127,11 @@ describe("resolveProvisioningAgentChatTarget", () => {
     ).toBeUndefined();
   });
 
-  test("keeps an inactive Dedicated state observable without inventory fallback", async () => {
-    const { repository, listByOrganization } = reader({
-      requested: sandbox({ id: "dedicated-sleeping", status: "sleeping" }),
+  test("keeps an inactive Dedicated state observable", async () => {
+    const inactive = sandbox({ id: "dedicated-sleeping", status: "sleeping" });
+    const { repository } = reader({
+      requested: inactive,
+      inventory: [inactive],
     });
 
     const result = await resolveProvisioningAgentChatTarget(
@@ -140,7 +142,34 @@ describe("resolveProvisioningAgentChatTarget", () => {
     );
 
     expect(result?.status).toBe("sleeping");
-    expect(listByOrganization).not.toHaveBeenCalled();
+  });
+
+  test("serves the canonical target when the client holds a superseded id", async () => {
+    // The hook used to keep the first agent id it ever saw, so a client can
+    // send an id the status endpoint has already moved past. Chat must not
+    // follow it, or status and chat disagree and the transcript handoff
+    // targets the wrong agent.
+    const older = sandbox({
+      id: "agent-a",
+      createdAt: new Date("2026-08-20T00:00:00Z"),
+    });
+    const newer = sandbox({
+      id: "agent-b",
+      createdAt: new Date("2026-08-20T01:00:00Z"),
+    });
+    const { repository } = reader({
+      requested: older,
+      inventory: [older, newer],
+    });
+
+    const result = await resolveProvisioningAgentChatTarget(
+      "user-1",
+      "org-1",
+      "agent-a",
+      repository,
+    );
+
+    expect(result?.id).toBe("agent-b");
   });
 
   test("returns no target for a Shared-only inventory", async () => {

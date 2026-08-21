@@ -123,8 +123,15 @@ export function useElizaAppProvisioningChat(
       setContainerStatus(provisioning.status);
       setHasObservedStatus(true);
     }
-    if (provisioning?.agentId) setAgentId(provisioning.agentId);
-    if (provisioning?.bridgeUrl) setBridgeUrl(provisioning.bridgeUrl);
+    if (provisioning) {
+      // Same authoritative replacement as the legacy poll branch.
+      setAgentId(provisioning.agentId ?? null);
+      setBridgeUrl(
+        provisioning.status === "running"
+          ? (provisioning.bridgeUrl ?? null)
+          : null,
+      );
+    }
     const nextMessages = toChatMessages(data.messages);
     if (nextMessages.length > 0) {
       setMessages(nextMessages);
@@ -217,11 +224,15 @@ export function useElizaAppProvisioningChat(
             const newStatus = res.data.status ?? containerStatusRef.current;
             setContainerStatus(newStatus);
             if (res.data.status) setHasObservedStatus(true);
-            if (res.data.agentId && !agentIdRef.current)
-              setAgentId(res.data.agentId);
-            if (res.data.bridgeUrl) {
-              setBridgeUrl(res.data.bridgeUrl);
-            }
+            // Replace from the authoritative response rather than keeping the
+            // first id ever seen: the server re-selects the canonical target
+            // every poll, so first-write-wins pinned this client to a
+            // superseded agent while status correctly moved on. A bridge only
+            // belongs to a running target, so it clears with any other status.
+            setAgentId(res.data.agentId ?? null);
+            setBridgeUrl(
+              newStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
+            );
             if (newStatus === "running" && res.data.bridgeUrl) {
               stoppedRef.current = true;
               setMessages((prev) => [
@@ -349,7 +360,7 @@ export function useElizaAppProvisioningChat(
             if (res.data.containerStatus)
               setContainerStatus(res.data.containerStatus);
             if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-            if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
+            if (res.data.agentId) setAgentId(res.data.agentId);
             const reply = res.data.reply;
             if (reply) {
               setMessages((prev) => [

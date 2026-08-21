@@ -1216,6 +1216,12 @@ function fallbackReply(args: {
       return `removal of the previous Dedicated target failed, ${name}. contact support; this chat will not create or restart it.`;
     case "none":
       return `your account is connected, ${name}. no eligible Dedicated target exists; this chat will not create one.`;
+    default:
+      // `status` is plain text on a database several deployables write to,
+      // so an unrecognised value must not fall out of this switch: the
+      // caller sanitizes the reply and would throw on undefined, 500-ing the
+      // whole turn over a status it merely could not name.
+      return `your account is connected, ${name}. I can't read the current Dedicated status; this chat will not create or restart anything.`;
   }
 }
 
@@ -1381,6 +1387,30 @@ export interface OnboardingSessionStore {
   save(session: OnboardingSession): Promise<void>;
 }
 
+/**
+ * Cheap change fingerprint for the idle-poll save guard. Structural equality is
+ * what matters here (was anything about this session rewritten this turn?), and
+ * the turn mutates a single object lineage, so key order is stable. Never
+ * throws: a fingerprint failure degrades to "assume changed" and saves, which
+ * is the pre-existing behavior.
+ */
+function fingerprintSession(session: unknown): string {
+  try {
+    // `updatedAt` is restamped unconditionally every turn, so including it
+    // would make the fingerprint always differ and the guard never fire —
+    // leaving the save unconditional and costing two serializations for
+    // nothing. Compare everything else.
+    return (
+      JSON.stringify(session, (key, value) =>
+        key === "updatedAt" ? undefined : value,
+      ) ?? ""
+    );
+  } catch {
+    // error-policy:J4 unfingerprintable session falls back to always-save.
+    return `unfingerprintable:${Math.random()}`;
+  }
+}
+
 export async function runOnboardingChatWithStore(
   input: OnboardingChatInput,
   resolvedSessionId: string,
@@ -1388,6 +1418,10 @@ export async function runOnboardingChatWithStore(
 ): Promise<OnboardingChatResult> {
   let sessionId = resolvedSessionId;
   let session = await store.load(sessionId);
+  // Change fingerprint for the idle-poll guard at the end of the turn: the
+  // Worker store turns every save into a durable transaction, so a settled
+  // session must not be re-persisted on each poll.
+  const sessionFingerprintBeforeTurn = fingerprintSession(session);
 
   // Browser account authentication is not proof that an arbitrary opaque ID
   // belongs to a bot-issued Telegram session. Strict redemption must resolve
@@ -1492,9 +1526,14 @@ export async function runOnboardingChatWithStore(
         }
       : null;
 
-  // statusOnly is a read-only poll: skip all user-message processing so it
-  // can never mutate session history, name, or preferred-name state, even if
-  // a caller accidentally includes a message field.
+  // statusOnly skips all user-message processing, so a poll can never mutate
+  // session history, name, or preferred-name state even if a caller
+  // accidentally includes a message field. It is observation-only for
+  // COMPUTE and BILLING — it creates, restarts, enqueues and charges nothing.
+  // It is not a pure read: a poll still commits canonical-target corrections
+  // to the session, and a `running` observation still performs the transcript
+  // handoff (that is the only handoff path for a user who never types, since
+  // the browser polls with statusOnly: true).
   const userMessage = input.statusOnly
     ? undefined
     : input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
@@ -1604,7 +1643,15 @@ export async function runOnboardingChatWithStore(
   if (shouldAppendReply) {
     session = appendMessage(session, "assistant", reply);
   }
-  await store.save(session);
+  // An idle poll must not write: the Worker path turns every save into a
+  // durable transaction, so polling a settled session was re-persisting
+  // identical bytes on every turn.
+  if (
+    shouldAppendReply ||
+    fingerprintSession(session) !== sessionFingerprintBeforeTurn
+  ) {
+    await store.save(session);
+  }
 
   return {
     session,

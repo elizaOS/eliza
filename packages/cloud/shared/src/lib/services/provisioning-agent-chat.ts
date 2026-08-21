@@ -98,6 +98,13 @@ export function buildProvisioningChatSystemPrompt(status: ProvisioningChatContai
       statusBlock =
         "The Dedicated container status lookup is currently unavailable. Do not claim that a container exists or that setup is in progress; ask the user to retry shortly.";
       break;
+    default:
+      // Same reason as fallbackReply's catch-all: an unrecognised status must
+      // not leave this unassigned and put the literal "undefined" into the
+      // model's system prompt.
+      statusBlock =
+        "The Dedicated container status could not be recognised. Do not claim that a container exists or that setup is in progress; ask the user to retry shortly.";
+      break;
   }
 
   return `You are Eliza, a warm and knowledgeable AI assistant for the elizaOS platform. You're the serverless Eliza App onboarding and status assistant. You can explain an existing Dedicated agent's state, but you never create, restart, resume, or provision compute.
@@ -134,15 +141,25 @@ export async function resolveProvisioningAgentChatTarget(
   agentId?: string,
   repository: ProvisioningAgentChatSandboxReader = agentSandboxesRepository,
 ): Promise<AgentSandbox | undefined> {
-  let sandbox = agentId ? await repository.findByIdAndOrg(agentId, organizationId) : undefined;
+  // The canonical target is whatever the selector picks over the org's rows —
+  // the same authority the status endpoint reports. A client-supplied id is a
+  // hint, never the answer: running the selector over `[thatRow]` alone only
+  // re-checks ownership, so a client holding a superseded id (the hook keeps
+  // the first id it ever saw) would pin chat to an older agent while status
+  // correctly moved on, and the transcript handoff would follow the wrong one.
+  const canonical = selectElizaAppProvisioningTarget(
+    await repository.listByOrganization(organizationId),
+    userId,
+  );
+  if (!agentId || !canonical || agentId === canonical.id) return canonical;
 
-  if (sandbox) {
-    sandbox = selectElizaAppProvisioningTarget([sandbox], userId);
-  }
-  if (sandbox) return sandbox;
-
-  const sandboxes = await repository.listByOrganization(organizationId);
-  return selectElizaAppProvisioningTarget(sandboxes, userId);
+  // A superseded or foreign id. Not worth a second round-trip per message to
+  // classify it: the canonical target is authoritative either way.
+  logger.info(
+    "[provisioning-agent-chat] ignoring non-canonical client agent id",
+    { requestedAgentId: agentId, canonicalAgentId: canonical.id },
+  );
+  return canonical;
 }
 
 function getCerebrasClient(): ReturnType<typeof createOpenAI> {
