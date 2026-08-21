@@ -7,6 +7,7 @@ import {
   type NewUser,
   organizationsRepository,
   type User,
+  type UserIdentity,
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
@@ -14,6 +15,7 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { invalidateBoundPersonalDeliveryProjection } from "./eliza-app/personal-delivery-projection-contract";
 import {
   invalidateInferenceAuthContextsByKeyHashes,
   invalidateInferenceSessionAuthContexts,
@@ -23,6 +25,43 @@ import {
   setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
+
+type PersonalDeliveryIdentitySource = Pick<
+  User | UserIdentity,
+  "telegram_id" | "discord_id" | "phone_number"
+>;
+
+type PersonalDeliveryRoutingIdentity = {
+  platform: "telegram" | "discord" | "phone";
+  platformUserId: string;
+};
+
+const PERSONAL_DELIVERY_ROUTING_FIELDS = [
+  "organization_id",
+  "is_active",
+  "telegram_id",
+  "discord_id",
+  "phone_number",
+] as const;
+
+function personalDeliveryRoutingIdentities(
+  ...sources: Array<PersonalDeliveryIdentitySource | undefined>
+): PersonalDeliveryRoutingIdentity[] {
+  const identities = new Map<string, PersonalDeliveryRoutingIdentity>();
+  for (const source of sources) {
+    if (!source) continue;
+    const candidates: PersonalDeliveryRoutingIdentity[] = [
+      { platform: "telegram", platformUserId: source.telegram_id?.trim() ?? "" },
+      { platform: "discord", platformUserId: source.discord_id?.trim() ?? "" },
+      { platform: "phone", platformUserId: source.phone_number?.trim() ?? "" },
+    ];
+    for (const identity of candidates) {
+      if (!identity.platformUserId) continue;
+      identities.set(`${identity.platform}:${identity.platformUserId}`, identity);
+    }
+  }
+  return [...identities.values()];
+}
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -58,6 +97,27 @@ function generatePersonalOrgSlug(user: User): string {
  * Service for user operations including organization lookups.
  */
 export class UsersService {
+  private async capturePersonalDeliveryRoutingIdentities(
+    userId: string,
+    canonicalUser: User | undefined,
+  ): Promise<PersonalDeliveryRoutingIdentity[]> {
+    const projectedIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
+    return personalDeliveryRoutingIdentities(canonicalUser, projectedIdentity);
+  }
+
+  private async invalidatePersonalDeliveryRoutingIdentities(
+    identities: readonly PersonalDeliveryRoutingIdentity[],
+  ): Promise<void> {
+    const unique = new Map(
+      identities.map((identity) => [`${identity.platform}:${identity.platformUserId}`, identity]),
+    );
+    await Promise.all(
+      [...unique.values()].map(({ platform, platformUserId }) =>
+        invalidateBoundPersonalDeliveryProjection(platform, platformUserId),
+      ),
+    );
+  }
+
   async invalidateCache(user: User | UserWithOrganization): Promise<void> {
     const promises: Promise<void>[] = [
       cache.del(CacheKeys.user.byId(user.id)),
@@ -290,6 +350,12 @@ export class UsersService {
 
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
     const existing = await usersRepository.findByIdForWrite(id);
+    const personalDeliveryRoutingChanged = PERSONAL_DELIVERY_ROUTING_FIELDS.some((field) =>
+      Object.hasOwn(data, field),
+    );
+    const previousRoutingIdentities = personalDeliveryRoutingChanged
+      ? await this.capturePersonalDeliveryRoutingIdentities(id, existing)
+      : [];
     const movingOrganizations =
       typeof data.organization_id === "string" &&
       data.organization_id !== existing?.organization_id;
@@ -358,6 +424,13 @@ export class UsersService {
       // inactive account is never briefly admitted between serialized writes.
       await setInferenceSubjectActive(result.organization_id, id, result.is_active, "account");
       await setInferenceSubjectActive(result.organization_id, id, true, "membership");
+    }
+    if (personalDeliveryRoutingChanged && result) {
+      const nextRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, result);
+      await this.invalidatePersonalDeliveryRoutingIdentities([
+        ...previousRoutingIdentities,
+        ...nextRoutingIdentities,
+      ]);
     }
     return result;
   }
@@ -470,6 +543,7 @@ export class UsersService {
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
+    const previousRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
     if (user.organization_id) {
       await setInferenceSubjectActive(user.organization_id, id, false, "membership");
     }
@@ -524,6 +598,11 @@ export class UsersService {
     // The revoked keys may still be warm in the inference-auth cache under the
     // old org's identity — evict them so they stop fast-pathing immediately.
     await this.invalidateInferenceAuthForUser(id);
+    const nextRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, updated);
+    await this.invalidatePersonalDeliveryRoutingIdentities([
+      ...previousRoutingIdentities,
+      ...nextRoutingIdentities,
+    ]);
 
     return updated;
   }
@@ -534,6 +613,7 @@ export class UsersService {
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
+    const routingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
 
     const organizationId = user.organization_id;
 
@@ -547,6 +627,7 @@ export class UsersService {
     // the key_hash set must be read while the keys still exist.
     await this.invalidateInferenceAuthForUser(id);
     await usersRepository.delete(id);
+    await this.invalidatePersonalDeliveryRoutingIdentities(routingIdentities);
 
     // Check if this was the last user in the organization
     if (organizationId) {
