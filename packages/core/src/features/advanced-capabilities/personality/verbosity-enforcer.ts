@@ -6,6 +6,11 @@
  * Runs after the model returns so the truncation is observable in the
  * trajectory.
  */
+
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { MAX_TERSE_TOKENS, type VerbosityLevel } from "./types.ts";
 
 /**
@@ -37,7 +42,8 @@ function truncateAtSentenceBoundary(text: string, maxWords: number): string {
 	// rebuilding from split words: `split(/\s+/).join(" ")` flattened newlines,
 	// so a four-bullet reply shipped as one run-on line (observed live on the
 	// Discord group surface with a terse personality slot).
-	const trimmed = text.trim();
+	const wellFormed = toWellFormedUnicode(text);
+	const trimmed = wellFormed.trim();
 	let wordCount = 0;
 	let cutOffset = trimmed.length;
 	for (const match of trimmed.matchAll(/\S+/g)) {
@@ -47,8 +53,8 @@ function truncateAtSentenceBoundary(text: string, maxWords: number): string {
 			break;
 		}
 	}
-	if (cutOffset >= trimmed.length) return text;
-	const block = trimmed.slice(0, cutOffset);
+	if (cutOffset >= trimmed.length) return wellFormed;
+	const block = truncateWellFormed(trimmed, cutOffset);
 
 	// A sentence terminator is [.!?] followed by whitespace or end-of-block. A
 	// bare lastIndexOf(".") treated the dot inside "app/layout.tsx" as a
@@ -60,7 +66,7 @@ function truncateAtSentenceBoundary(text: string, maxWords: number): string {
 		lastTerminator = match.index;
 	}
 	if (lastTerminator > 0) {
-		return block.slice(0, lastTerminator + 1);
+		return truncateWellFormed(block, lastTerminator + 1);
 	}
 	// No clean boundary — hard cut with ellipsis.
 	return `${block.trimEnd()}…`;
