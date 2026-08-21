@@ -33,16 +33,21 @@ const DISCORD_REQUEST_TIMEOUT_MS = 25_000;
 /**
  * Bound every Discord REST hop so a hung or rate-limited Discord API cannot
  * pin the calling worker indefinitely. Matches the 25s bound the message-send
- * path already applies; a caller-provided abort signal wins.
+ * path already applies. A caller-provided signal is composed with the hop
+ * deadline rather than replacing it: a caller that cancels still aborts early,
+ * and a caller whose signal never fires still cannot outlive the bound.
  */
 export function discordFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, deadline])
+      : deadline,
   });
 }
 
