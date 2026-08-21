@@ -1254,7 +1254,16 @@ export class SubAgentRouter extends Service {
       // Keyed on autoVerifyAttempts (persisted BEFORE each correction prompt),
       // so the FIRST completion always relays regardless of subscriber order,
       // and lookup failure fails open (relay as before).
-      const suppressReason = await this.verifyChurnSuppression(sessionId);
+      // A verdict-released relay is the deferral design's ONE authorized
+      // user-facing completion — but it races the task's status write:
+      // releaseDeferredCompletionRelay fires before the store commits
+      // "done", so the churn gate still saw status=validating with
+      // attempts>=1 and suppressed the real completion. The user then got
+      // only a generic model summary with the child's answer dropped (every
+      // "ran it and here is the output" with no output, live 2026-08-21).
+      const suppressReason = this.releasingDeferredRelaySessions.has(sessionId)
+        ? null
+        : await this.verifyChurnSuppression(sessionId);
       if (suppressReason) {
         this.log("info", "suppressing verify-churn completion relay", {
           sessionId,
