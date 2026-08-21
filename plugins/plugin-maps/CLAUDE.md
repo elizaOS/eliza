@@ -20,8 +20,16 @@ saved places, safe sharing, and navigation handoffs.
 - The plugin-local `/maps` view renders normalized results as a deterministic,
   provider-neutral schematic. It never fetches external tiles or invents
   attribution, ratings, availability, route alternatives, or geometry.
-- Commercial provider adapters, provider legal-attribution metadata, and
-  device-specific share/navigation launches belong to their owning connectors.
+- `GoogleMapsAdapter` is the Google Places (New)/Routes integration. Its
+  `api-key` and `managed` credential modes are explicit and never fall back
+  into each other; managed mode sends only an opaque session token and
+  connection id to the Cloud maps gateway and rejects endpoint overrides.
+  Its request budget fails typed (`MAPS_BUDGET_EXHAUSTED`) before dispatch,
+  its place-detail cache TTL must stay within Google's 30-day policy cap, and
+  its legal attribution is exposed through the adapter-level `attribution`
+  contract, never invented per result.
+- Other commercial provider adapters and device-specific share/navigation
+  launches belong to their owning connectors.
 
 ## Public surface
 

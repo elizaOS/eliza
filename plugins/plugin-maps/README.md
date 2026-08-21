@@ -11,6 +11,9 @@ handoffs without selecting a commercial maps provider.
 - `JsonMapsHttpAdapter` — normalized HTTP protocol adapter useful for managed
   bridges and deterministic contract testing; it accepts an injected endpoint
   and credential rather than naming a provider.
+- `GoogleMapsAdapter` — Google Places API (New) and Routes API adapter with
+  two explicit credential modes and mandatory `Google` attribution on every
+  normalized place and route.
 - `PlaceRef`, `RoutePlan`, `SavedPlace` — validated public DTOs.
 - `MAPS` plus promoted `MAPS_PLACE`, `MAPS_ROUTE`, `MAPS_SAVE`, `MAPS_SHARE`,
   and `MAPS_NAVIGATE` actions.
@@ -63,10 +66,40 @@ The generic HTTP protocol is:
 - `GET /places/:providerPlaceId`
 - `POST /routes`
 
-No Google adapter, external tile request, or provider credential is included.
 The view identifies the provider IDs present in normalized DTOs and explicitly
 degrades when route geometry or provider legal-attribution metadata is absent;
 it does not fabricate either.
+
+## Google Maps adapter
+
+`GoogleMapsAdapter` speaks the real Google Places API (New)
+(`POST /v1/places:searchText`, `GET /v1/places/:id` with `X-Goog-FieldMask`)
+and the Routes API (`POST /directions/v2:computeRoutes`), normalizing
+responses into the plugin's `PlaceRef`/`RoutePlan` contracts and exposing the
+mandatory `Google` legal attribution through the adapter-level `attribution`
+field. Two credential modes exist and never silently fall back into each
+other:
+
+- **`api-key` (local/self-hosted):** the operator supplies a server-side
+  Google API key sent as `X-Goog-Api-Key` directly to the public Google
+  origins. Browser keys must never be used here; the key stays server-side and
+  out of URLs, logs, and diagnostics.
+- **`managed` (Eliza Cloud):** the adapter calls the Cloud maps gateway under
+  `/google-maps/places/*` and `/google-maps/routes/*` with an opaque session
+  bearer token and the opaque `conn_…` connection id. The Google key lives
+  only in Cloud credential custody; endpoint overrides are rejected in this
+  mode.
+
+Quotas and costs are explicit: an optional `maxRequests` budget fails with
+`MAPS_BUDGET_EXHAUSTED` before dispatch instead of degrading, and `usage()`
+reports per-operation billed request counts, cache hits, coalesced in-flight
+joins, and remaining budget. Successful place details are cached in-process
+within Google's caching policy bounds (TTL capped at 30 days, default 24
+hours, bounded entries), cached values are isolated from caller mutation, and
+concurrent detail reads for the same place ID coalesce into one upstream call.
+A missing route is a typed `MAPS_NOT_FOUND`, `UNAUTHENTICATED` /
+`PERMISSION_DENIED` map to distinct expired/revoked auth failures, and
+`RESOURCE_EXHAUSTED` retains `retryAfterMs`.
 
 ## Commands
 
