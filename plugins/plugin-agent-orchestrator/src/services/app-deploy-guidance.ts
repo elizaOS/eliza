@@ -26,6 +26,7 @@
  * @module services/app-deploy-guidance
  */
 
+import { detectTaskType } from "./acceptance-criteria.js";
 import { readConfigEnvKey } from "./config-env.js";
 import { APP_DEPLOY_TASK_RE } from "./skill-recommender.js";
 import {
@@ -295,6 +296,16 @@ export function augmentTaskWithDeployGuidance(
     task.includes("--- App Deployment") ||
     task.includes("--- Publishing web apps")
   ) {
+    return task;
+  }
+  // Script deliverables never get the web-publishing contract. The section's
+  // own "If (and only if) your task is to build OR edit a web app … not a
+  // script" conditional is routinely ignored at small-model scale: a python
+  // script ask produced an unrequested "Dinner Picker" web app, and a
+  // run-the-script follow-up produced a JavaScript rewrite inside the apps
+  // dir (both live 2026-08-20). detectTaskType is the same deterministic
+  // classifier the acceptance-criteria contract uses.
+  if (detectTaskType(task) === "script-run" && !isAppBuildTask(task)) {
     return task;
   }
   const resolved = config ?? resolveAppDeployConfig();
