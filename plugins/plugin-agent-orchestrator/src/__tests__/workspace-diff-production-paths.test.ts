@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureBaselineDirty,
   captureBaselineSha,
+  captureBaselineUntracked,
   captureChangeSet,
   parseLsFiles,
   summarizeChangeSet,
@@ -45,6 +46,43 @@ describe("workspace diff production paths", () => {
     expect(result?.diff).toContain("created by tool");
     if (!result) throw new Error("expected a captured change set");
     expect(summarizeChangeSet(result)).toContain("Changed 1 file: session.txt");
+  });
+
+  it("keeps nested workdir evidence in workdir-relative coordinates", async () => {
+    const app = join(dir, "apps", "personal-site");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "app.ts"), "export const title = 'before';\n");
+    writeFileSync(
+      join(dir, "outside.ts"),
+      "export const outside = 'before';\n",
+    );
+    git("add", "apps/personal-site/app.ts", "outside.ts");
+    git("commit", "-q", "-m", "nested baseline");
+
+    const baseline = await captureBaselineSha(app);
+    writeFileSync(join(app, "app.ts"), "export const title = 'after';\n");
+    writeFileSync(join(dir, "outside.ts"), "export const outside = 'after';\n");
+    mkdirSync(join(app, "notes"));
+    writeFileSync(join(app, "notes", "todo.txt"), "inside\n");
+    writeFileSync(join(dir, "outside-untracked.txt"), "outside\n");
+
+    expect(await captureBaselineDirty(app)).toEqual(["app.ts"]);
+    expect(await captureBaselineUntracked(app)).toEqual(["notes/"]);
+
+    const result = await captureChangeSet(
+      app,
+      baseline,
+      ["apps/personal-site/app.ts"],
+      [],
+      [],
+    );
+    expect(result?.changedFiles).toEqual(["app.ts", "notes/todo.txt"]);
+    expect(result?.changedFiles).not.toContain("outside.ts");
+    expect(result?.changedFiles).not.toContain("outside-untracked.txt");
+    if (!result) throw new Error("expected a nested-workdir change set");
+    expect(verifyChangedFilesOnDisk(app, result.changedFiles).verified).toBe(
+      true,
+    );
   });
 
   it("falls back to tool-path evidence outside git and verifies artifacts", async () => {

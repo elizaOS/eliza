@@ -163,7 +163,9 @@ export async function captureBaselineSha(
  */
 export async function captureBaselineDirty(workdir: string): Promise<string[]> {
   if (!(await isWorkTree(workdir))) return [];
-  return ((await git(workdir, ["diff", "--name-only", "HEAD"])) ?? "")
+  return (
+    (await git(workdir, ["diff", "--relative", "--name-only", "HEAD"])) ?? ""
+  )
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
@@ -181,11 +183,25 @@ export async function captureBaselineUntracked(
   workdir: string,
 ): Promise<string[]> {
   if (!(await isWorkTree(workdir))) return [];
+  const gitPrefix = (
+    (await git(workdir, ["rev-parse", "--show-prefix"])) ?? ""
+  ).trim();
   return ((await git(workdir, ["status", "--porcelain"])) ?? "")
     .split("\n")
     .filter((line) => line.startsWith("?? "))
     .map((line) => line.slice(3).trim())
+    .map((line) => gitRootPathToWorkdirRelative(gitPrefix, line))
     .filter((line) => line.length > 0);
+}
+
+/** Convert Git's repository-root-relative porcelain path into workdir space. */
+function gitRootPathToWorkdirRelative(gitPrefix: string, file: string): string {
+  const normalizedPrefix = gitPrefix.replaceAll("\\", "/");
+  const normalizedFile = file.replaceAll("\\", "/");
+  if (!normalizedPrefix) return normalizedFile;
+  return normalizedFile.startsWith(normalizedPrefix)
+    ? normalizedFile.slice(normalizedPrefix.length)
+    : "";
 }
 
 /**
@@ -270,10 +286,19 @@ async function resolveDiffBase(
 }
 
 /** Normalize a tool-call file path to workdir-relative POSIX form. */
-function toWorkdirRelative(workdir: string, file: string): string {
+function toWorkdirRelative(
+  workdir: string,
+  file: string,
+  gitPrefix = "",
+): string {
   const trimmed = file.trim();
   if (!trimmed) return "";
-  const absolute = isAbsolute(trimmed) ? trimmed : resolve(workdir, trimmed);
+  const gitRelative = isAbsolute(trimmed)
+    ? trimmed
+    : gitRootPathToWorkdirRelative(gitPrefix, trimmed) || trimmed;
+  const absolute = isAbsolute(gitRelative)
+    ? gitRelative
+    : resolve(workdir, gitRelative);
   const rel = relative(workdir, absolute);
   const normalized = rel.split("\\").join("/");
   if (
@@ -335,6 +360,9 @@ export async function captureChangeSet(
   // round-1/2). Substitute the empty-tree hash so a fresh repo still surfaces
   // its whole working tree as a change set.
   const base = await resolveDiffBase(workdir, baselineSha);
+  const gitPrefix = (
+    (await git(workdir, ["rev-parse", "--show-prefix"])) ?? ""
+  ).trim();
   // `base === EMPTY_TREE_HASH` iff HEAD was unborn (a FRESH repo, no baseline).
   // A fresh repo safely contributes all non-vendor untracked files. A born repo
   // contributes them only when the caller supplies the spawn-time untracked
@@ -345,14 +373,14 @@ export async function captureChangeSet(
   // touch) UNLESS the agent explicitly wrote them via a tool call this session.
   const agentWrittenSet = new Set(
     toolPaths
-      .map((file) => toWorkdirRelative(workdir, file))
+      .map((file) => toWorkdirRelative(workdir, file, gitPrefix))
       .filter((file) => file.length > 0),
   );
   const dirtyAtSpawn = new Set(
     baselineDirty.filter((file) => !agentWrittenSet.has(file)),
   );
   const tracked = parseNameStatus(
-    await git(workdir, ["diff", "--name-status", base]),
+    await git(workdir, ["diff", "--relative", "--name-status", base]),
   ).filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
