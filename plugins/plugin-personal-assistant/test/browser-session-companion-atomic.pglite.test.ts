@@ -284,13 +284,67 @@ describe("browser companion atomic persistence", () => {
         sessionId: session.id,
         companion: foreign,
         status: "done",
+        expectedActionIndex: session.actions.length,
+        completedActionId: session.actions[1].id,
+        attemptId: secondAttemptId,
         resultPatch: { stolen: true },
         updatedAt: new Date().toISOString(),
       });
     expect(foreignCompletion).toBeNull();
   });
 
-  it("settles competing terminal outcomes once", async () => {
+  it("atomically settles only one concurrent owner confirmation", async () => {
+    const base = queuedSession();
+    const expectedUpdatedAt = new Date().toISOString();
+    const awaiting: LifeOpsBrowserSession = {
+      ...base,
+      status: "awaiting_confirmation",
+      awaitingConfirmationForActionId: base.actions[0].id,
+      updatedAt: expectedUpdatedAt,
+    };
+    await repository.createBrowserSession(awaiting);
+
+    const approved: LifeOpsBrowserSession = {
+      ...awaiting,
+      status: "queued",
+      awaitingConfirmationForActionId: null,
+      metadata: { browserApproval: { confirmedAt: new Date().toISOString() } },
+      updatedAt: new Date(Date.now() + 1).toISOString(),
+    };
+    const denied: LifeOpsBrowserSession = {
+      ...awaiting,
+      status: "cancelled",
+      awaitingConfirmationForActionId: null,
+      finishedAt: new Date().toISOString(),
+      updatedAt: new Date(Date.now() + 2).toISOString(),
+    };
+    const results = await Promise.all(
+      [approved, denied].map((candidate) =>
+        repository.updateBrowserSessionIfAwaitingConfirmation({
+          session: candidate,
+          expectedActionId: awaiting.actions[0].id,
+          expectedUpdatedAt,
+        }),
+      ),
+    );
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const persisted = await repository.getBrowserSession(
+      runtime.agentId,
+      awaiting.id,
+    );
+    expect(["queued", "cancelled"]).toContain(persisted?.status);
+    if (persisted?.status === "queued") {
+      await repository.updateBrowserSession({
+        ...persisted,
+        status: "cancelled",
+        finishedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  it("rejects a stale failed completion after its progress receipt committed", async () => {
     const session = queuedSession();
     await repository.createBrowserSession(session);
     const owner = companion("companion-complete-owner", "profile-complete");
@@ -299,32 +353,55 @@ describe("browser companion atomic persistence", () => {
       owner,
       new Date().toISOString(),
     );
-
-    const results = await Promise.all([
-      repository.completeBrowserSessionFromCompanion({
+    const firstAction = session.actions[0];
+    const attemptId = "attempt-before-lost-progress-response";
+    await repository.beginBrowserSessionActionFromCompanion({
+      agentId: runtime.agentId,
+      sessionId: session.id,
+      companion: owner,
+      currentActionIndex: 0,
+      actionId: firstAction.id,
+      attemptId,
+      startedAt: new Date().toISOString(),
+    });
+    const progressed =
+      await repository.updateBrowserSessionProgressFromCompanion({
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: owner,
-        status: "done",
-        resultPatch: { winner: "done" },
+        expectedActionIndex: 0,
+        completedActionId: firstAction.id,
+        attemptId,
+        currentActionIndex: 1,
+        resultPatch: { first: true },
+        metadataPatch: {
+          browserActionReceipt: {
+            actionId: firstAction.id,
+            actionIndex: 0,
+            attemptId,
+          },
+        },
         updatedAt: new Date().toISOString(),
-      }),
-      repository.completeBrowserSessionFromCompanion({
-        agentId: runtime.agentId,
-        sessionId: session.id,
-        companion: owner,
-        status: "failed",
-        resultPatch: { winner: "failed" },
-        updatedAt: new Date().toISOString(),
-      }),
-    ]);
+      });
+    expect(progressed?.currentActionIndex).toBe(1);
 
-    expect(results.filter(Boolean)).toHaveLength(1);
+    const staleFailure = await repository.completeBrowserSessionFromCompanion({
+      agentId: runtime.agentId,
+      sessionId: session.id,
+      companion: owner,
+      status: "failed",
+      expectedActionIndex: 0,
+      completedActionId: firstAction.id,
+      attemptId,
+      resultPatch: { staleFailure: true },
+      updatedAt: new Date().toISOString(),
+    });
+    expect(staleFailure).toBeNull();
     const persisted = await repository.getBrowserSession(
       runtime.agentId,
       session.id,
     );
-    expect(["done", "failed"]).toContain(persisted?.status);
-    expect(persisted?.currentActionIndex).toBe(session.actions.length);
+    expect(persisted?.status).toBe("running");
+    expect(persisted?.currentActionIndex).toBe(1);
   });
 });

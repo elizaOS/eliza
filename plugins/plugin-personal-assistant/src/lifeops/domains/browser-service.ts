@@ -146,16 +146,29 @@ function browserActionNeedsApproval(
   );
 }
 
+export const MAX_BROWSER_SESSION_APPROVAL_AGE_MS = 2 * 60 * 1000;
+
 function hasCurrentBrowserSessionApproval(
   session: LifeOpsBrowserSession,
+  nowMs = Date.now(),
 ): boolean {
   const approval = session.metadata.browserApproval;
+  const confirmedAt =
+    approval !== null &&
+    typeof approval === "object" &&
+    !Array.isArray(approval) &&
+    typeof (approval as Record<string, unknown>).confirmedAt === "string"
+      ? Date.parse((approval as Record<string, unknown>).confirmedAt as string)
+      : Number.NaN;
   return (
     approval !== null &&
     typeof approval === "object" &&
     !Array.isArray(approval) &&
     (approval as Record<string, unknown>).actionsDigest ===
-      browserSessionActionsDigest(session.actions)
+      browserSessionActionsDigest(session.actions) &&
+    Number.isFinite(confirmedAt) &&
+    confirmedAt <= nowMs &&
+    nowMs - confirmedAt <= MAX_BROWSER_SESSION_APPROVAL_AGE_MS
   );
 }
 
@@ -1206,7 +1219,15 @@ export class BrowserDomain {
           }
         : lifecycle.metadata,
     };
-    await this.ctx.repository.updateBrowserSession(finalizedSession);
+    const persisted =
+      await this.ctx.repository.updateBrowserSessionIfAwaitingConfirmation({
+        session: finalizedSession,
+        expectedActionId: session.awaitingConfirmationForActionId,
+        expectedUpdatedAt: session.updatedAt,
+      });
+    if (!persisted) {
+      fail(409, "browser session confirmation lost a concurrent update");
+    }
     await this.deps.recordBrowserAudit(
       "browser_session_updated",
       finalizedSession.id,
@@ -1600,9 +1621,13 @@ export class BrowserDomain {
       request.result === undefined
         ? undefined
         : requireRecord(request.result, "result");
+    const status = normalizeEnumValue(request.status ?? "done", "status", [
+      "done",
+      "failed",
+    ] as const);
     if (session.status !== "running") {
       if (
-        session.status === (request.status ?? "done") &&
+        session.status === status &&
         recordPatchMatches(session.result, requestedResult)
       ) {
         return session;
@@ -1613,7 +1638,23 @@ export class BrowserDomain {
       );
     }
     const updatedAt = new Date().toISOString();
-    const status = request.status ?? "done";
+    const currentActionIndex = normalizeBrowserSessionActionIndex(
+      request.currentActionIndex,
+      session.actions.length,
+    );
+    if (currentActionIndex !== session.currentActionIndex) {
+      fail(409, "browser session completion checkpoint is stale");
+    }
+    const completedActionId = normalizeOptionalString(
+      request.completedActionId,
+    );
+    const attemptId = normalizeOptionalString(request.attemptId);
+    if ((completedActionId?.length ?? 0) > 128) {
+      fail(400, "completedActionId must be at most 128 characters");
+    }
+    if ((attemptId?.length ?? 0) > 128) {
+      fail(400, "attemptId must be at most 128 characters");
+    }
     if (
       status === "done" &&
       session.currentActionIndex !== session.actions.length
@@ -1622,6 +1663,29 @@ export class BrowserDomain {
         409,
         "browser session cannot complete before every action is acknowledged",
       );
+    }
+    if (status === "done" && session.actions.length > 0) {
+      const lastAction = session.actions[session.actions.length - 1];
+      if (
+        !completedActionId ||
+        completedActionId !== lastAction?.id ||
+        !attemptId
+      ) {
+        fail(
+          409,
+          "browser session completion does not match its final receipt",
+        );
+      }
+    }
+    if (status === "failed") {
+      const activeAction = session.actions[session.currentActionIndex];
+      if (
+        !completedActionId ||
+        completedActionId !== activeAction?.id ||
+        !attemptId
+      ) {
+        fail(409, "browser session failure does not match its active attempt");
+      }
     }
     const lifecycle = mergeBrowserTaskLifecycle({
       session,
@@ -1635,6 +1699,9 @@ export class BrowserDomain {
         sessionId,
         companion,
         status,
+        expectedActionIndex: currentActionIndex,
+        completedActionId,
+        attemptId,
         resultPatch: lifecycle.result,
         updatedAt,
       });

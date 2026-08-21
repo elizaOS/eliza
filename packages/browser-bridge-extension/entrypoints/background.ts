@@ -595,6 +595,26 @@ async function executeSession(
 
   const actionResults: Record<string, unknown> = {};
   let currentTabId = parseNumericId(session.tabId);
+  const priorReceipt = session.metadata.browserActionReceipt;
+  let completionActionId =
+    priorReceipt &&
+    typeof priorReceipt === "object" &&
+    !Array.isArray(priorReceipt) &&
+    typeof (priorReceipt as Record<string, unknown>).actionId === "string"
+      ? ((priorReceipt as Record<string, unknown>).actionId as string)
+      : null;
+  let completionAttemptId =
+    priorReceipt &&
+    typeof priorReceipt === "object" &&
+    !Array.isArray(priorReceipt) &&
+    typeof (priorReceipt as Record<string, unknown>).attemptId === "string"
+      ? ((priorReceipt as Record<string, unknown>).attemptId as string)
+      : null;
+  let activeAttempt: {
+    actionId: string;
+    actionIndex: number;
+    attemptId: string;
+  } | null = null;
 
   try {
     for (
@@ -608,6 +628,11 @@ async function executeSession(
         throw new Error("Browser companion configuration is unavailable.");
       }
       const attemptId = crypto.randomUUID();
+      activeAttempt = {
+        actionId: action.id,
+        actionIndex: index,
+        attemptId,
+      };
       const outcome = await executeAction(
         client,
         config,
@@ -631,9 +656,15 @@ async function executeSession(
           lastActionKind: action.kind,
         },
       });
+      completionActionId = action.id;
+      completionAttemptId = attemptId;
+      activeAttempt = null;
     }
     await client.completeSession(session.id, {
       status: "done",
+      currentActionIndex: session.actions.length,
+      completedActionId: completionActionId,
+      attemptId: completionAttemptId,
       result: {
         actionResults,
       },
@@ -642,16 +673,32 @@ async function executeSession(
       lastSessionStatus: `completed ${session.title}`,
     });
   } catch (error) {
-    const conflict = error instanceof RelayApiError && error.status === 409;
-    if (!conflict) {
-      // error-policy:J1 Session execution owns the terminal failure transition.
-      await client.completeSession(session.id, {
-        status: "failed",
-        result: {
-          actionResults,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
+    let conflict =
+      (error instanceof RelayApiError && error.status === 409) ||
+      activeAttempt === null;
+    if (!conflict && activeAttempt) {
+      try {
+        // error-policy:J1 Session execution owns the terminal failure transition.
+        await client.completeSession(session.id, {
+          status: "failed",
+          currentActionIndex: activeAttempt.actionIndex,
+          completedActionId: activeAttempt.actionId,
+          attemptId: activeAttempt.attemptId,
+          result: {
+            actionResults,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      } catch (completionError) {
+        if (
+          completionError instanceof RelayApiError &&
+          completionError.status === 409
+        ) {
+          conflict = true;
+        } else {
+          throw completionError;
+        }
+      }
     }
     await setState({
       lastError: error instanceof Error ? error.message : String(error),

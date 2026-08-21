@@ -231,6 +231,9 @@ export interface LifeOpsBrowserSession {
 export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
+  currentActionIndex?: number;
+  completedActionId?: string | null;
+  attemptId?: string | null;
 }
 
 export interface BrowserBridgeCompanionSyncResponse {

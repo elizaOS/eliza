@@ -290,6 +290,9 @@ describe("BrowserBridgeRelayClient", () => {
     };
     const completion: CompanionSessionCompleteRequest = {
       status: "done",
+      currentActionIndex: 1,
+      completedActionId: "action-0",
+      attemptId: "attempt-0",
       result: { ok: true },
     };
 

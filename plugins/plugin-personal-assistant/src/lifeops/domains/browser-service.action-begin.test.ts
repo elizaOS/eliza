@@ -14,6 +14,7 @@ import {
   BrowserDomain,
   type BrowserDomainDeps,
   browserSessionActionsDigest,
+  MAX_BROWSER_SESSION_APPROVAL_AGE_MS,
 } from "./browser-service.js";
 
 const companion = {
@@ -165,7 +166,7 @@ describe("BrowserDomain action begin", () => {
       sessionMetadata: {
         browserApproval: {
           actionsDigest: browserSessionActionsDigest([action]),
-          confirmedAt: "2026-08-20T00:01:00.000Z",
+          confirmedAt: new Date().toISOString(),
         },
       },
     });
@@ -178,6 +179,39 @@ describe("BrowserDomain action begin", () => {
       ),
     ).resolves.toMatchObject({ id: "session-1" });
     expect(begin).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      "expired",
+      new Date(
+        Date.now() - MAX_BROWSER_SESSION_APPROVAL_AGE_MS - 1,
+      ).toISOString(),
+    ],
+    ["malformed", "not-a-timestamp"],
+    ["future", new Date(Date.now() + 60_000).toISOString()],
+  ])("rejects a %s owner approval", async (_label, confirmedAt) => {
+    const action = browserAction();
+    const { begin, domain, requireConfirmation } = harness({
+      action,
+      sessionMetadata: {
+        browserApproval: {
+          actionsDigest: browserSessionActionsDigest([action]),
+          confirmedAt,
+        },
+      },
+    });
+
+    await expect(
+      domain.beginBrowserSessionActionFromCompanion(
+        companion.id,
+        "token",
+        "session-1",
+        beginRequest,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(requireConfirmation).toHaveBeenCalledOnce();
+    expect(begin).not.toHaveBeenCalled();
   });
 
   it("still requires explicit action confirmation when account policy is off", async () => {
@@ -222,5 +256,47 @@ describe("BrowserDomain action begin", () => {
       expect.objectContaining({ companionId: companion.id }),
       expect.objectContaining({ requiresOwnerRelease: true }),
     );
+  });
+});
+
+describe("BrowserDomain companion completion", () => {
+  it("rejects a runtime status outside done or failed before persistence", async () => {
+    const action = browserAction({ accountAffecting: false });
+    const session = browserSession(action, {
+      browserActionAttempt: {
+        actionId: action.id,
+        actionIndex: 0,
+        attemptId: "attempt-1",
+      },
+    });
+    const complete = vi.fn();
+    const context = {
+      agentId: () => "agent-1",
+      repository: {
+        completeBrowserSessionFromCompanion: complete,
+      },
+    } as unknown as LifeOpsContext;
+    const domain = new BrowserDomain(context, {
+      recordBrowserAudit: vi.fn(),
+    } as unknown as BrowserDomainDeps);
+    vi.spyOn(domain, "requireBrowserCompanion").mockResolvedValue(companion);
+    vi.spyOn(domain, "requireBrowserSessionForCompanion").mockResolvedValue(
+      session,
+    );
+
+    await expect(
+      domain.completeBrowserSessionFromCompanion(
+        companion.id,
+        "token",
+        session.id,
+        {
+          status: "cancelled",
+          currentActionIndex: 0,
+          completedActionId: action.id,
+          attemptId: "attempt-1",
+        } as never,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(complete).not.toHaveBeenCalled();
   });
 });

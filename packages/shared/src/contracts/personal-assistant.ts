@@ -3752,6 +3752,9 @@ export interface UpdateLifeOpsBrowserSessionProgressRequest {
 export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
+  currentActionIndex?: number;
+  completedActionId?: string | null;
+  attemptId?: string | null;
 }
 
 // ── Settings card prop contracts ─────────────────────────────────────────────

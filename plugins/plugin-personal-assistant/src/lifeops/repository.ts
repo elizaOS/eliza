@@ -7169,6 +7169,34 @@ export class LifeOpsRepository {
     );
   }
 
+  /** Atomically settles one still-current owner confirmation decision. */
+  async updateBrowserSessionIfAwaitingConfirmation(args: {
+    session: LifeOpsBrowserSession;
+    expectedActionId: string;
+    expectedUpdatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const { session } = args;
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET status = ${sqlQuote(session.status)},
+              current_action_index = ${sqlInteger(session.currentActionIndex)},
+              awaiting_confirmation_for_action_id = ${sqlText(session.awaitingConfirmationForActionId)},
+              result_json = ${sqlJson(session.result)},
+              metadata_json = ${sqlJson(session.metadata)},
+              updated_at = ${sqlQuote(session.updatedAt)},
+              finished_at = ${sqlText(session.finishedAt)}
+        WHERE id = ${sqlQuote(session.id)}
+          AND agent_id = ${sqlQuote(session.agentId)}
+          AND status = 'awaiting_confirmation'
+          AND awaiting_confirmation_for_action_id = ${sqlQuote(args.expectedActionId)}
+          AND updated_at = ${sqlQuote(args.expectedUpdatedAt)}
+          AND actions_json = ${sqlJson(session.actions)}
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
   /** Atomically claims the oldest eligible session for one exact companion. */
   async claimBrowserSession(
     agentId: string,
@@ -7331,9 +7359,29 @@ export class LifeOpsRepository {
     sessionId: string;
     companion: BrowserBridgeCompanionStatus;
     status: Extract<LifeOpsBrowserSession["status"], "done" | "failed">;
+    expectedActionIndex: number;
+    completedActionId: string | null;
+    attemptId: string | null;
     resultPatch: Record<string, unknown>;
     updatedAt: string;
   }): Promise<LifeOpsBrowserSession | null> {
+    const executionFence =
+      args.status === "failed"
+        ? `AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+           AND (actions_json::jsonb -> ${sqlInteger(args.expectedActionIndex)} ->> 'id') = ${sqlQuote(args.completedActionId ?? "")}
+           AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionId' = ${sqlQuote(args.completedActionId ?? "")}
+           AND (metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionIndex')::integer = ${sqlInteger(args.expectedActionIndex)}
+           AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'attemptId' = ${sqlQuote(args.attemptId ?? "")}`
+        : args.expectedActionIndex === 0
+          ? `AND current_action_index = 0
+             AND jsonb_array_length(actions_json::jsonb) = 0
+             AND NOT (metadata_json::jsonb ? 'browserActionAttempt')`
+          : `AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+             AND current_action_index = jsonb_array_length(actions_json::jsonb)
+             AND metadata_json::jsonb -> 'browserActionReceipt' ->> 'actionId' = ${sqlQuote(args.completedActionId ?? "")}
+             AND (metadata_json::jsonb -> 'browserActionReceipt' ->> 'actionIndex')::integer = ${sqlInteger(args.expectedActionIndex - 1)}
+             AND metadata_json::jsonb -> 'browserActionReceipt' ->> 'attemptId' = ${sqlQuote(args.attemptId ?? "")}
+             AND NOT (metadata_json::jsonb ? 'browserActionAttempt')`;
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_workflow_browser_sessions
@@ -7348,6 +7396,7 @@ export class LifeOpsRepository {
           AND companion_id = ${sqlQuote(args.companion.id)}
           AND browser = ${sqlQuote(args.companion.browser)}
           AND profile_id = ${sqlQuote(args.companion.profileId)}
+          ${executionFence}
           AND (
             ${sqlQuote(args.status)} = 'failed'
             OR current_action_index = jsonb_array_length(actions_json::jsonb)
