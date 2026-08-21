@@ -437,20 +437,60 @@ describe("in-memory buffer retention (maxMemoryLogs)", () => {
     expect(lineCount(recentLogs())).toBe(100);
   });
 
-  it("ignores non-positive or NaN caps without clearing the buffer", () => {
+  it("ignores invalid caps without clearing the buffer or disabling retention", () => {
     const logger = createLogger({ level: "info", maxMemoryLogs: 4 });
     logger.clear();
     for (let i = 0; i < 4; i++) logger.info(`keep-${i}`);
     const before = recentLogs();
     expect(lineCount(before)).toBe(4);
 
-    // A zero, negative, or NaN cap must be ignored: prior cap and history stand.
-    createLogger({ level: "info", maxMemoryLogs: 0 });
-    createLogger({ level: "info", maxMemoryLogs: -10 });
-    createLogger({ level: "info", maxMemoryLogs: Number.NaN });
+    // Every invalid shape must be ignored so the prior cap (4) and the retained
+    // history both stand. A fractional value such as 0.5 is the specific
+    // fail-open guarded here: floored it would become 0 and empty the ring.
+    const invalidCaps = [
+      0,
+      -10,
+      0.5,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
+    for (const cap of invalidCaps) {
+      createLogger({ level: "info", maxMemoryLogs: cap });
+      const after = recentLogs();
+      expect(after).toBe(before);
+      expect(lineCount(after)).toBe(4);
+    }
+
+    // The prior cap remains 4, not silenced: a fifth write still evicts the
+    // oldest entry rather than growing unbounded or dropping everything.
+    logger.info("keep-4");
+    const grown = recentLogs();
+    expect(lineCount(grown)).toBe(4);
+    expect(grown).toContain("keep-4");
+    expect(grown).not.toContain("keep-0");
+  });
+
+  it("an invalid cap on one logger cannot wipe another logger's shared history", () => {
+    // The in-memory destination is a process-wide singleton, so a bad binding
+    // on any constructed logger must not perturb an unrelated logger's view.
+    const base = createLogger({ level: "info", maxMemoryLogs: 100 });
+    base.clear();
+    base.info("shared-A");
+    base.info("shared-B");
+    const before = recentLogs();
+
+    createLogger({ level: "info", maxMemoryLogs: 0.5 });
+    createLogger({ level: "info", maxMemoryLogs: Number.POSITIVE_INFINITY });
+
+    // A second, unrelated logger reads the same untouched shared buffer.
+    createLogger({ level: "info" });
     const after = recentLogs();
     expect(after).toBe(before);
-    expect(lineCount(after)).toBe(4);
+    expect(after).toContain("shared-A");
+    expect(after).toContain("shared-B");
   });
 });
 

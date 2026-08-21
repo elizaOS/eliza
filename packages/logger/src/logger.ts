@@ -157,9 +157,11 @@ interface InMemoryDestination {
   /**
    * Resize the ring buffer's retention cap in place. Raising the cap keeps
    * existing entries; lowering it trims the oldest entries from the front so
-   * at most `maxLogs` remain. Non-positive or non-finite values are ignored so
-   * a bad binding cannot silently disable retention. Never clears the buffer —
-   * the buffer is shared process-wide, so prior history is preserved.
+   * at most `maxLogs` remain. Only a finite safe integer `>= 1` is honored;
+   * fractional, non-finite, unsafe-integer, and non-positive values are ignored
+   * so a bad binding cannot silently disable or wipe retention. Never clears
+   * the buffer — the buffer is shared process-wide, so prior history is
+   * preserved.
    */
   setMaxLogs: (maxLogs: number) => void;
 }
@@ -1203,11 +1205,15 @@ function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
       logs.length = 0;
     },
     setMaxLogs(nextMaxLogs: number): void {
-      // Ignore non-positive or non-finite caps: a bad binding must not disable
-      // retention or wipe the shared buffer. Only trim when the cap shrinks
-      // below the current fill so existing history is preserved.
-      if (!Number.isFinite(nextMaxLogs) || nextMaxLogs <= 0) return;
-      maxLogs = Math.floor(nextMaxLogs);
+      // A bad binding must not disable retention or wipe the shared buffer, and
+      // there is no public rounding contract, so honor only a finite safe
+      // integer cap of at least 1. `Number.isSafeInteger` rejects fractional
+      // (e.g. 0.5, which would otherwise floor to 0 and empty the ring), NaN,
+      // ±Infinity, and unsafe-integer inputs in one check; the prior cap and
+      // history then stand. Only trim when the cap shrinks below the current
+      // fill so existing history is preserved.
+      if (!Number.isSafeInteger(nextMaxLogs) || nextMaxLogs < 1) return;
+      maxLogs = nextMaxLogs;
       while (logs.length > maxLogs) {
         logs.shift();
       }
@@ -1484,8 +1490,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 
   // Apply the requested retention cap in place. Resizing preserves the shared
   // buffer's existing history instead of destroying every other logger's
-  // recent-logs/streaming window; non-positive or NaN values are ignored by
-  // setMaxLogs so the prior cap stands.
+  // recent-logs/streaming window; fractional, non-finite, unsafe-integer, and
+  // non-positive values are ignored by setMaxLogs so the prior cap stands.
   if (typeof maxMemoryLogs === "number") {
     globalInMemoryDestination.setMaxLogs(maxMemoryLogs);
   }
