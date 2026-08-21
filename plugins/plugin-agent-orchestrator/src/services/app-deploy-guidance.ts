@@ -306,7 +306,18 @@ export function augmentTaskWithDeployGuidance(
   // dir (both live 2026-08-20). detectTaskType is the same deterministic
   // classifier the acceptance-criteria contract uses.
   if (detectTaskType(task) === "script-run" && !isAppBuildTask(task)) {
-    return task;
+    return [
+      task.trimEnd(),
+      "",
+      "--- Script tasks ---",
+      "The deliverable is the script and its run output. Verify by executing the script and capturing its stdout.",
+      // Children self-imposed mypy/flake8 on scratch workspaces with no venv;
+      // the failed check led the completion as a task failure while the
+      // script itself ran clean (live 2026-08-21, 2 of 4 runs).
+      "Do not run linters, type checkers, or test frameworks (mypy, flake8, eslint, tsc, pytest) unless the workspace already has them installed and configured — a failing check you introduced is not a task failure.",
+      "End your final message with the captured run output.",
+    ].join("
+");
   }
   const resolved = config ?? resolveAppDeployConfig();
   // The planner's monetization judgment (model intent, not a keyword match).
