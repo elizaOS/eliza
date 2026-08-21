@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   appDevWsBasePlugin,
+  appShellMetadataPlugin,
   resolveAppShellLocalCspSources,
+  scrubAndroidCloudLocalRouting,
+  stripAndroidCloudIpcBootstrap,
 } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -70,6 +73,60 @@ describe("app shell local connection policy", () => {
       localHttpSources: " http://localhost:* http://127.0.0.1:*",
       localConnectSources: " http: ws:",
     });
+  });
+
+  test("keeps cleartext and local routing out of Android cloud builds", () => {
+    expect(resolveAppShellLocalCspSources("android", false, true)).toEqual({
+      localHttpSources: "",
+      localConnectSources: "",
+    });
+    const scrubbed = scrubAndroidCloudLocalRouting(
+      "http://127.0.0.1:31337 http://10.0.2.2:31338 adb reverse tcp:32437",
+    );
+    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+      expect(scrubbed.toLowerCase()).not.toContain(marker.toLowerCase());
+    }
+  });
+
+  test("physically removes the native local-agent bootstrap from Android cloud HTML", () => {
+    const source = `
+      <head>
+        <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->
+        <script>window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__ = true; fetch("eliza-local-agent://ipc")</script>
+        <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->
+        <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: eliza-local-agent: https://*;" />
+      </head>`;
+    const stripped = stripAndroidCloudIpcBootstrap(source);
+    expect(stripped).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
+    expect(stripped).not.toContain("eliza-local-agent:");
+
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: true,
+      capacitorBuildTarget: "android",
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+    const transformed = plugin.transformIndexHtml(source) as string;
+    expect(transformed).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
+    expect(transformed).not.toContain("eliza-local-agent:");
+  });
+
+  test("retains the native local-agent bootstrap outside Android cloud builds", () => {
+    const source = `
+      <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->
+      <script>fetch("eliza-local-agent://ipc")</script>
+      <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->`;
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: false,
+      capacitorBuildTarget: "android",
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+    expect(plugin.transformIndexHtml(source)).toContain(
+      "eliza-local-agent://ipc",
+    );
   });
 
   test("allows an owner-selected LAN WebSocket outside iOS store builds", () => {

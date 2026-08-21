@@ -125,6 +125,7 @@ import {
 } from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { isStandalonePwa } from "@elizaos/ui/platform";
+import { isAndroidCloudBuild } from "@elizaos/ui/platform/android-runtime";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -691,7 +692,7 @@ installPackagedShellStorageTestBridge();
 // install lands in onboarding; when that build explicitly enables the runtime
 // chooser, the local agent starts on demand only after the user picks it.
 // No-op on iOS/desktop/web and cloud builds.
-if (!hasFirstRunRuntimeOverride()) {
+if (!isAndroidCloudBuild() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
@@ -3522,24 +3523,26 @@ async function main(): Promise<void> {
     (await voiceModuleReady)?.installAecLoopHarness();
   } else if (isAndroid) {
     initializeCapacitorBridge();
-    installAndroidNativeAgentFetchBridge();
-    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
-    // capture requests and serve frames via the Capacitor ScreenCapture
-    // plugin. Idempotent + native-gated; runs only after the Android fetch
-    // bridge is installed so `/api/...` routes resolve to the agent.
-    initVisionBridgesIfEnabled();
-    // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
-    // window.__jniVoice (the in-process JNI voice pipeline — the four fused
-    // voice classifiers running IN the bionic app process via the ElizaVoice
-    // host, replacing the musl bun-agent transport) so both can be driven +
-    // read on-device via CDP.
-    const voice = await voiceModuleReady;
-    if (voice) {
-      voice.installDiarizationPumpHarness();
-      voice.installJniVoiceHarness();
-      // On-device AEC acoustic-loop evidence harness (#11373):
-      // window.__aecLoop plus the `elizaos://aec-loop?...` tap-free trigger.
-      voice.installAecLoopHarness();
+    if (!isAndroidCloudBuild()) {
+      installAndroidNativeAgentFetchBridge();
+      // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+      // capture requests and serve frames via the Capacitor ScreenCapture
+      // plugin. Idempotent + native-gated; runs only after the Android fetch
+      // bridge is installed so `/api/...` routes resolve to the agent.
+      initVisionBridgesIfEnabled();
+      // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
+      // window.__jniVoice (the in-process JNI voice pipeline — the four fused
+      // voice classifiers running IN the bionic app process via the ElizaVoice
+      // host, replacing the musl bun-agent transport) so both can be driven +
+      // read on-device via CDP.
+      const voice = await voiceModuleReady;
+      if (voice) {
+        voice.installDiarizationPumpHarness();
+        voice.installJniVoiceHarness();
+        // On-device AEC acoustic-loop evidence harness (#11373):
+        // window.__aecLoop plus the `elizaos://aec-loop?...` tap-free trigger.
+        voice.installAecLoopHarness();
+      }
     }
   }
   // Desktop fused on-device wake (#10351): forward native libwakeword fires from

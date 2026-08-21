@@ -959,6 +959,9 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
 const CAPACITOR_BUILD_TARGET = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
+const IS_ANDROID_CLOUD_RENDERER_BUILD =
+  CAPACITOR_BUILD_TARGET === "android" &&
+  process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud";
 const USE_CORE_SOURCE_BROWSER_ENTRY =
   IS_CAPACITOR_MOBILE_BUILD ||
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
@@ -972,11 +975,12 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
 export function resolveAppShellLocalCspSources(
   capacitorBuildTarget: string,
   isIosStoreBuild: boolean,
+  isAndroidCloudBuild = false,
 ): {
   localHttpSources: string;
   localConnectSources: string;
 } {
-  if (isIosStoreBuild) {
+  if (isIosStoreBuild || isAndroidCloudBuild) {
     return { localHttpSources: "", localConnectSources: "" };
   }
 
@@ -1078,9 +1082,25 @@ export const VIEWPORT_META_NATIVE =
 export const VIEWPORT_META_WEB =
   "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
+const NATIVE_AGENT_IPC_BRIDGE_BLOCK =
+  /\s*<!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->[\s\S]*?<!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->\s*/;
+
+/**
+ * Removes the native local-agent fetch shim and its CSP scheme from the
+ * standard Android Cloud renderer. Direct Android and iOS builds retain the
+ * bridge unchanged.
+ */
+export function stripAndroidCloudIpcBootstrap(html: string): string {
+  const withoutBridge = html.replace(NATIVE_AGENT_IPC_BRIDGE_BLOCK, "\n");
+  return withoutBridge.replace(
+    /(connect-src\s[^;]*?)\s+eliza-local-agent:/,
+    "$1",
+  );
+}
+
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
-  options: { capacitorBuildTarget?: string } = {},
+  options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
 ): Plugin {
   const capacitorBuildTarget =
     options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
@@ -1090,8 +1110,16 @@ export function appShellMetadataPlugin(
     capacitorBuildTarget === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
+  const isAndroidCloudBuild =
+    options.androidCloudBuild ??
+    (capacitorBuildTarget === "android" &&
+      process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud");
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(capacitorBuildTarget, isIosStoreBuild);
+    resolveAppShellLocalCspSources(
+      capacitorBuildTarget,
+      isIosStoreBuild,
+      isAndroidCloudBuild,
+    );
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1136,6 +1164,9 @@ export function appShellMetadataPlugin(
       let next = html;
       for (const [token, value] of replacements) {
         next = next.replaceAll(token, value);
+      }
+      if (isAndroidCloudBuild) {
+        next = stripAndroidCloudIpcBootstrap(next);
       }
       return next;
     },

@@ -14,6 +14,9 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   androidPlayManifestEvidenceFromAapt,
   createAndroidPlayManifestPolicy,
+  findAndroidCloudPackagedRuntimeOffenders,
+  findAndroidPlayIndexHtmlFindings,
+  findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -22,6 +25,10 @@ const VARIABLES_GRADLE = fs.readFileSync(
 );
 const APP_BUILD_GRADLE = fs.readFileSync(
   new URL("../platforms/android/app/build.gradle", import.meta.url),
+  "utf8",
+);
+const APP_MAIN_SOURCE = fs.readFileSync(
+  new URL("../../app/src/main.tsx", import.meta.url),
   "utf8",
 );
 
@@ -181,6 +188,32 @@ describe("Android Play manifest policy", () => {
     );
     expect(APP_BUILD_GRADLE).toContain(
       'implementation "androidx.work:work-runtime:2.11.0"',
+    );
+  });
+
+  it("rejects an active local-agent bootstrap in packaged Play index HTML", () => {
+    expect(
+      findAndroidPlayIndexHtmlFindings(
+        ["base/assets/public/index.html", "base/assets/public/assets/app.js"],
+        [
+          Buffer.from(
+            "connect-src eliza-local-agent:; window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__ = true;",
+          ),
+          Buffer.from("eliza-local-agent: remains inert in a lazy chunk"),
+        ],
+      ),
+    ).toEqual([
+      "base/assets/public/index.html: active local bootstrap marker __ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+      "base/assets/public/index.html: active local bootstrap marker eliza-local-agent:",
+    ]);
+  });
+
+  it("does not initialize Android local-agent bridges in the Cloud client", () => {
+    expect(APP_MAIN_SOURCE).toContain(
+      "if (!isAndroidCloudBuild() && !hasFirstRunRuntimeOverride())",
+    );
+    expect(APP_MAIN_SOURCE).toContain(
+      "if (!isAndroidCloudBuild()) {\n      installAndroidNativeAgentFetchBridge();",
     );
   });
 });

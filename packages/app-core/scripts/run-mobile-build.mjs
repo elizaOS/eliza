@@ -5842,6 +5842,87 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
 
+export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "10.0.2.2",
+  "adb reverse",
+]);
+
+export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "eliza-local-agent:",
+  "127.0.0.1",
+  "localhost",
+  "remote-mac",
+]);
+
+const ANDROID_PLAY_SECRET_PATTERNS = Object.freeze([
+  ["Google API key", /AIza[0-9A-Za-z_-]{30,}/],
+  ["provider secret", /sk-(?:proj-)?[A-Za-z0-9]{20,}/],
+  ["private key", /BEGIN (?:RSA |OPENSSH )?PRIVATE KEY/],
+  [
+    "Cerebras/Cartesia credential",
+    /(?:CEREBRAS|CARTESIA)_API_KEY.{0,12}[=:].{0,12}["'][A-Za-z0-9_-]{20,}["']/i,
+  ],
+]);
+
+export function findAndroidPlayTextAssetFindings(entries, buffers) {
+  if (!Array.isArray(entries) || !Array.isArray(buffers)) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play text asset evidence must use arrays.",
+    );
+  }
+  if (entries.length !== buffers.length) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play text asset evidence length mismatch.",
+    );
+  }
+  const findings = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const content = Buffer.from(buffers[index]).toString("utf8");
+    for (const marker of ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS) {
+      if (content.toLowerCase().includes(marker.toLowerCase())) {
+        findings.push(`${entries[index]}: local routing marker ${marker}`);
+      }
+    }
+    for (const [label, pattern] of ANDROID_PLAY_SECRET_PATTERNS) {
+      if (pattern.test(content)) findings.push(`${entries[index]}: ${label}`);
+    }
+  }
+  return [...new Set(findings)].sort();
+}
+
+export function findAndroidPlayIndexHtmlFindings(entries, buffers) {
+  if (!Array.isArray(entries) || !Array.isArray(buffers)) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play index HTML evidence must use arrays.",
+    );
+  }
+  if (entries.length !== buffers.length) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play index HTML evidence length mismatch.",
+    );
+  }
+  const findings = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    if (!/(?:^|\/)assets\/public\/index\.html$/i.test(entries[index])) {
+      continue;
+    }
+    const content = Buffer.from(buffers[index]).toString("utf8").toLowerCase();
+    for (const marker of ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS) {
+      if (content.includes(marker.toLowerCase())) {
+        findings.push(
+          `${entries[index]}: active local bootstrap marker ${marker}`,
+        );
+      }
+    }
+  }
+  return [...new Set(findings)].sort();
+}
+
 export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
   return {
     actions: [...ANDROID_PLAY_ALLOWED_ACTIONS],
@@ -8377,6 +8458,43 @@ export function auditAndroidCloudArtifact(
         {
           code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
           context: { artifact, nativeLibraries },
+        },
+      );
+    }
+    const textAssetEntries = entries.filter(
+      (entry) =>
+        /(?:^|\/)assets\//.test(entry) &&
+        /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
+    );
+    const textAssetBuffers = readAndroidArtifactEntryBuffers(
+      artifact,
+      textAssetEntries,
+      javaHome,
+      {
+        artifactBytes: initialSnapshot.bytes,
+        label: "android-cloud Play text asset audit",
+      },
+    );
+    const textAssetFindings = findAndroidPlayTextAssetFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const playTextFindings = [
+      ...textAssetFindings,
+      ...indexHtmlFindings,
+    ].sort();
+    if (playTextFindings.length > 0) {
+      throw mobileBuildError(
+        `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
+          .map((finding) => `  - ${finding}`)
+          .join("\n")}`,
+        {
+          code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
+          context: { artifact, findings: playTextFindings },
         },
       );
     }
