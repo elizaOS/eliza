@@ -28,6 +28,7 @@
 
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
 import type { JSONSchema } from "../types/model";
+import { trimEndCharacters } from "../utils/string-boundaries";
 import { stripJsonStructuralJunkReply } from "./json-output";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
 
@@ -149,10 +150,12 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		const seen = new Set<string>();
 		const result: string[] = [];
 		for (const item of value) {
-			const normalized = String(item ?? "")
-				.trim()
-				.toLowerCase()
-				.replace(/[.!?]+$/, "");
+			const normalized = trimEndCharacters(
+				String(item ?? "")
+					.trim()
+					.toLowerCase(),
+				".!?",
+			);
 			if (!normalized || normalized.length > 80) continue;
 			const key = normalized;
 			if (seen.has(key)) continue;

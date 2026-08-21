@@ -12,6 +12,8 @@
  * into the attacker's account (login CSRF).
  */
 
+import { trimEndCharacters } from "../utils/string-boundaries.js";
+
 export type StewardOAuthProvider = "google" | "discord" | "github" | "twitter";
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
@@ -204,6 +206,6 @@ export function buildStewardOAuthAuthorizeUrl(
   if (options.state) {
     params.set("state", options.state);
   }
-  const stewardApiUrl = options.stewardApiUrl.replace(/\/+$/, "");
+  const stewardApiUrl = trimEndCharacters(options.stewardApiUrl, "/");
   return `${stewardApiUrl}/auth/oauth/${provider}/authorize?${params.toString()}`;
 }

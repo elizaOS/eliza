@@ -21,6 +21,8 @@
  * model path one definition.
  */
 
+import { trimEndCharacters } from "./utils/string-boundaries.js";
+
 /** Conjunctions that strongly suggest the speaker is mid-clause. */
 const TRAILING_CONJUNCTIONS = new Set([
   "and",
@@ -186,7 +188,7 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
     .filter(Boolean);
   if (words.length === 0) return 0.5;
 
-  const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
+  const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
   // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
   // is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
   // ("going to", "and so", "we could") is NOT misread as a complete command.
