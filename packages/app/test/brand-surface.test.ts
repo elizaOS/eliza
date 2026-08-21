@@ -150,6 +150,13 @@ describe("brand surfaces", () => {
     // The launch status bar follows the splash/home, not the brand accent.
     expect(styles).toMatch(/statusBarColor[^<]*@color\/splash_background/);
     expect(styles).not.toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+    // AndroidX SplashScreen backports this un-namespaced attribute to the
+    // app's min SDK. The platform-namespaced form is API 31-only and makes
+    // full release lint fail for API 26-30.
+    expect(styles).toContain(
+      '<item name="windowSplashScreenBackground">@color/splash_background</item>',
+    );
+    expect(styles).not.toContain("android:windowSplashScreenBackground");
 
     for (const rel of ANDROID_SPLASH_TEMPLATE_FILES) {
       expect(await readPngRgb(platformTemplatePath(rel)), rel).toEqual(
