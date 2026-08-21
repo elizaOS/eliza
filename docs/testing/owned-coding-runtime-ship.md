@@ -8,11 +8,11 @@ Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
-This is a local candidate, not a flawless or published release. Per the latest
-owner instruction, none of this coding-agent work is pushed. The final
-exact-output behavior checkpoint is
-`93d8d0a12dfb29f63e34dcc37b7c60c44d1bff32`; this document update is the only
-newer working-tree change before the final local documentation checkpoint.
+This is a local candidate, not a claim of flawless behavior or a published
+release. Per the latest owner instruction, none of this coding-agent work is
+pushed. The latest behavior checkpoint is
+`dc7c658ba6677533a08d701bb9b4eda43a432fdb`; the final documentation commit and
+annotated candidate tag are recorded in the checkpoint ledger.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
 not the current configuration. Interactive browser acceptance uses Cerebras
@@ -42,6 +42,50 @@ task. The browser-only QA used a separate local Eliza process and UI, but it did
 not substitute a test harness for the parent planner or child runtime.
 
 ## What was fixed
+
+### Normal website requests and the `/workspaces/nubs-site` incident
+
+The broken `make me a website` run was not a real app build. Durable task
+`dc6275a4-0491-4877-a658-3a2d0e06c8c8` had collapsed the user's request to the
+literal goal `elizaos`, guessed the nonexistent path `/workspaces/nubs-site`,
+created an empty `elizaos.txt` in an unrelated dirty QA repository, deleted it,
+and then repeatedly reported cleanup as success. Its trajectory and completion
+evidence were preserved as the incident record; the task and contaminated chat
+were archived/deleted from the active UI rather than erased from evidence.
+
+The repair is structural and applies to every user:
+
+- A brand-new hosted app request is handed directly from the parent `TASKS`
+  route to first-party `APP action=create` in the same turn. It does not become
+  a generic ACP task and does not invent a workspace.
+- Existing explicit repository/workdir requests remain locked to that exact
+  path; a missing locked path fails closed instead of falling back to a dirty
+  checkout.
+- APP preserves the full user intent and its own acceptance criteria through
+  the top-level spawn compatibility path. The child installs missing
+  dependencies before verification.
+- Nested app workdirs use app-relative Git evidence, so `src/App.tsx` cannot be
+  doubled into `apps/app-name/apps/app-name/src/App.tsx`, and parent-repository
+  dirt cannot be claimed as the app's work.
+- The APP validator is authoritative for its task. Generic goal verification
+  cannot simultaneously demand an unconfigured public URL or re-engage a
+  successfully verified child. PASS and bounded FAIL results project onto the
+  durable task.
+- A passing directory app is persisted in the runtime app registry, appears in
+  `/api/apps/installed`, resolves through normal `APP launch`, and is served
+  from only its realpath-contained `dist` directory at
+  `/api/apps/local/<slug>/`. Missing builds, traversal attempts, and escaping
+  symlinks fail closed.
+- APP launch owns its final user-facing reply. A second model pass can no
+  longer replace a successful tool result with a contradictory failure.
+
+The last two defects were caught only by live use. Before the fixes,
+`app-registry.json` contained `nubs-ship-preview` while
+`GET /api/apps/installed` returned no match. After the registry/serve fix, the
+tool successfully launched the app, but trajectory
+`step-1787282205614-omqmpm` showed a later model call overwrite
+`Launched Nubs Ship Preview` with `I can't find an app...`. This is why neither
+the persisted registry nor a green tool result alone was accepted.
 
 ### Exact workdir ownership
 
@@ -229,6 +273,12 @@ read/edit calls only and produced a clean final response.
   affected files. The final relay-ordering change additionally passed 177 tests
   across its six completion/routing files, plus package typecheck, build, Biome,
   and `git diff --check`.
+- The final APP incident gate passed 103/103 tests across shared curated-app
+  registration, app-manager inventory/launch/static serving, APP reply
+  ownership, verification/bridge behavior, and orchestrator spawn/retry
+  lifecycle. `plugin-app-manager`, `plugin-app-control`, and
+  `plugin-agent-orchestrator` typechecks passed, and all eight changed runtime
+  files passed Biome.
 
 ### Real parent and concurrent child acceptance
 
@@ -350,6 +400,52 @@ used a stale source-checkout cwd. The second produced a correct child result in
 an isolated `task-*` directory that ACP deleted at stop; it therefore did not
 count as delivery. That failure directly motivated the active-workspace versus
 scratch-root contract above.
+
+### Real normal-person website build and launch acceptance
+
+The final website proof began with one ordinary browser message, not an API
+fixture: “Make a simple personal website called Nubs Ship Preview. It should
+have a big heading saying Welcome to Nubs Ship Preview, a short about paragraph,
+and a blue Contact Me button. Build it and let me preview it here. Keep it local;
+do not publish it.”
+
+The exact-head parent handed the full request to APP, which scaffolded
+`eliza/apps/app-nubs-ship-preview`, spawned the owned Eliza Code child, and ran
+the APP validator. Durable task `1dde413e-32b0-44e6-800c-a5a372e81514`
+finished `done` with summary `App verification passed.` Its acceptance criteria
+were the APP-owned build/typecheck/lint/test/content contract; they did not
+contain the obsolete unconditional public-URL requirement. Seven exact
+app-local artifacts were verified on disk: `package.json`, `src/index.tsx`,
+`vitest.config.ts`, `bun.lock`, `src/App.tsx`, `tests/app.test.tsx`, and
+`tests/setup.ts`. The retained machine evidence is:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/state/trajectories/1dde413e-32b0-44e6-800c-a5a372e81514/completion-evidence.jsonl`
+
+The child needed one bounded proof retry after recoverable intermediate FILE
+and edit mismatches. That is successful recovery, not a flawless first attempt;
+the final validator independently passed typecheck, lint, four tests, and the
+production build before marking the task done.
+
+After the registry and launch-delivery fixes, normal chat text
+`launch nubs-ship-preview` selected APP through real Cerebras Gemma and returned
+`Launched Nubs Ship Preview. Run ID:
+02be9d2a-27b3-4ed0-843a-7750b4ac77c2.` Trajectory
+`step-1787282330397-jrg79i` records the APP tool result as successful and the
+planner provider metadata as `provider=cerebras`, `modelName=gemma-4-31b`.
+The launch response and run both exposed the same viewer URL,
+`/api/apps/local/nubs-ship-preview/`, with status `running`.
+
+The actual browser loaded that URL through UI port `2638` and rendered heading
+`Welcome to Nubs Ship Preview`, the requested about paragraph, and a
+`Contact Me` button. Screenshot evidence is:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/nubs-ship-preview-live-20260820.png`
+
+The two superseded failed app tasks (`7a927a80-...` and `ad9f4bf9-...`) were
+archived. Their misleading failed/unverified notifications and the one newly
+created contradictory launch conversation were deleted by exact ID. Successful
+tasks, the clean launch conversation, child trajectories, completion evidence,
+and the original incident trajectory remain inspectable.
 
 ### Historical normal-person browser coding diagnostic
 
@@ -579,19 +675,27 @@ runtime correctness patch.
 
 ## Test it yourself now
 
-The isolated browser instance is available at `http://127.0.0.1:2638/chat` with
-API `32637`. Suggested normal-person prompts are:
+The isolated browser instance uses UI `2638` and API `32637`. It is currently
+left on the working local Nubs Ship Preview at
+`http://127.0.0.1:2638/api/apps/local/nubs-ship-preview/`. Use the browser Back
+button for chat, or open `http://127.0.0.1:2638/chat`. Suggested normal-person
+prompts are:
 
 1. `Create a Python script named odds.py that prints the odd numbers from 1 through 15, then run it and tell me the exact output.`
 2. `Use a coding sub-agent to edit odds.py so it prints through 21, run it, and tell me the exact output.`
+3. `Make a tiny personal website called My Test Site with a heading, a short about paragraph, and a blue button. Keep it local and let me preview it here.`
+4. After the website reports verified: `launch my-test-site`.
 
 An explicit OpenCode comparison can use: `Use OpenCode to create a Python script
 named countdown.py that prints 5 through 1, run it, and tell me the exact
 output.` Expect OpenCode to remain an optional backend rather than the default.
 
-When testing, require a concise final answer, the exact command output, the file
-persisting in the requested workspace, a stopped child session, and no raw JSON
-or unrelated API-agent result appearing in the chat.
+When testing code, require a concise final answer, the exact command output, the
+file persisting in the requested workspace, a stopped child session, and no raw
+JSON or unrelated API-agent result in chat. For an app, require the durable task
+to end `done`, the build/test/typecheck/lint checks to pass, the exact app-local
+files to be verified, `launch <slug>` to return a real run ID, and the rendered
+viewer—not merely a claim that the app is installed.
 
 ## Deferred VPS handoff
 
