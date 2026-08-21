@@ -4759,7 +4759,9 @@ describe("view management actions", () => {
 				options: {
 					action: "create",
 					editTarget: "Nubs Color Pebble site",
-					intent: "Update the heading",
+					intent: "Update the heading and button",
+					description:
+						'Use heading "Hello Nubs, verified and ready!" and button "Pick another happy color".',
 				},
 				repoRoot: repo.repoRoot,
 			});
@@ -4771,6 +4773,12 @@ describe("view management actions", () => {
 				name: "nubs-color-pebble",
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
+			const handlerOptions = codingHandler.mock.calls[0][3] as {
+				parameters: Record<string, unknown>;
+			};
+			expect(handlerOptions.parameters.task).toContain(
+				'Use heading "Hello Nubs, verified and ready!" and button "Pick another happy color".',
+			);
 		} finally {
 			repo.cleanup();
 		}

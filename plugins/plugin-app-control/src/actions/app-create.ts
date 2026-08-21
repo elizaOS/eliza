@@ -1157,10 +1157,11 @@ export async function runCreate({
 	// with `intent` the canonical carrier.
 	const explicitTitle = readStringOption(options, "title");
 	const explicitDescription = readStringOption(options, "description");
-	const composedIntent = [explicitTitle, explicitDescription]
+	const composedIntent = [explicitIntent, explicitTitle, explicitDescription]
 		.filter((part): part is string => Boolean(part))
+		.filter((part, index, parts) => parts.indexOf(part) === index)
 		.join(" — ");
-	const intent = explicitIntent || composedIntent || userText;
+	const intent = composedIntent || userText;
 	if (!intent) {
 		// The ask is already in-voice; verified provenance stops the evaluator
 		// from re-voicing it as a second message. The result stays unsuccessful
