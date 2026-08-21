@@ -1,5 +1,5 @@
 /**
- * CREATE_APP tests covering the pure parseCreateAppIntent parser and the action end to end. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ * REGISTER_CLOUD_APP tests covering the pure parseCreateAppIntent parser and the action end to end. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
  */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CreateAppInput } from "@elizaos/cloud-sdk";
@@ -58,9 +58,18 @@ describe("parseCreateAppIntent", () => {
   });
 });
 
-describe("CREATE_APP", () => {
+describe("REGISTER_CLOUD_APP", () => {
   beforeEach(() => {
     resetSdk();
+  });
+
+  it("does not compete with the normie-facing app builder", () => {
+    expect(createAppAction.name).toBe("REGISTER_CLOUD_APP");
+    expect(createAppAction.similes).not.toContain("BUILD_APP");
+    expect(createAppAction.similes).not.toContain("MAKE_APP");
+    expect(createAppAction.description).toContain(
+      "does not build product code",
+    );
   });
 
   it("validates only when a Cloud API key is present", async () => {

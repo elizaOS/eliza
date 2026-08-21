@@ -1,5 +1,5 @@
 /**
- * CREATE_APP — "build me an app called X".
+ * REGISTER_CLOUD_APP — register one Cloud app identity.
  *
  * Parses the app name + description + monetization intent from the user's text
  * (planner options win when present), calls the typed `client.createApp({...})`,
@@ -221,11 +221,12 @@ const MONETIZATION_REVIEW_GUIDANCE =
   "once it's approved, enable monetization from the app's monetization settings.";
 
 export const createAppAction: Action = {
-  name: "CREATE_APP",
-  similes: ["BUILD_APP", "MAKE_APP", "NEW_APP", "CREATE_CLOUD_APP"],
+  name: "REGISTER_CLOUD_APP",
+  similes: ["CREATE_CLOUD_APP_RECORD", "REGISTER_APP"],
   description:
-    "Create a new Eliza Cloud app for the user from a name (and optional description / monetization intent). Use when the user asks to build, make, create, or start a new app.",
-  descriptionCompressed: "Create a new Eliza Cloud app from the user's intent.",
+    "Register one Eliza Cloud app identity from a name and optional description or monetization intent. Use after product code exists or when a build workflow explicitly needs an appId; this action does not build product code.",
+  descriptionCompressed:
+    "Register one Cloud app record and appId; does not build app code.",
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
@@ -243,7 +244,10 @@ export const createAppAction: Action = {
   ): Promise<ActionResult> => {
     const client = getCloudClient(runtime);
     if (!client) {
-      await callback?.({ text: NO_KEY_MESSAGE, actions: ["CREATE_APP"] });
+      await callback?.({
+        text: NO_KEY_MESSAGE,
+        actions: ["REGISTER_CLOUD_APP"],
+      });
       return {
         success: false,
         text: "No Eliza Cloud API key configured.",
@@ -257,7 +261,10 @@ export const createAppAction: Action = {
       options,
     );
     if (!intent.name) {
-      await callback?.({ text: NO_NAME_MESSAGE, actions: ["CREATE_APP"] });
+      await callback?.({
+        text: NO_NAME_MESSAGE,
+        actions: ["REGISTER_CLOUD_APP"],
+      });
       return {
         success: false,
         text: "No app name supplied.",
@@ -283,7 +290,7 @@ export const createAppAction: Action = {
       lines.push(`Want me to deploy it now? Just say "deploy ${app.name}".`);
       const reply = lines.join("\n");
 
-      await callback?.({ text: reply, actions: ["CREATE_APP"] });
+      await callback?.({ text: reply, actions: ["REGISTER_CLOUD_APP"] });
       return {
         success: true,
         text: `Created Eliza Cloud app ${app.name}.`,
@@ -298,11 +305,14 @@ export const createAppAction: Action = {
       };
     } catch (err) {
       logger.warn(
-        `[CREATE_APP] Failed to create app "${intent.name}": ${
+        `[REGISTER_CLOUD_APP] Failed to create app "${intent.name}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      await callback?.({ text: ERROR_MESSAGE, actions: ["CREATE_APP"] });
+      await callback?.({
+        text: ERROR_MESSAGE,
+        actions: ["REGISTER_CLOUD_APP"],
+      });
       return {
         success: false,
         text: "Failed to create Eliza Cloud app.",
@@ -317,13 +327,13 @@ export const createAppAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "build me an app called Acme Bot" },
+        content: { text: "register my finished app called Acme Bot on Cloud" },
       },
       {
         name: "{{agent}}",
         content: {
           text: 'Created "Acme Bot" on Eliza Cloud (status: draft).\nWant me to deploy it now? Just say "deploy Acme Bot".',
-          actions: ["CREATE_APP"],
+          actions: ["REGISTER_CLOUD_APP"],
         },
       },
     ],

@@ -147,6 +147,97 @@ describe("runParentAgentBroker", () => {
     expect(creativeResult.text).toContain("advertising.creatives.get");
     expect(creativeResult.text).toContain("advertising.creatives.update");
     expect(creativeResult.text).toContain("advertising.creatives.delete");
+
+    const appResult = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: { mode: "list-cloud-commands", query: "apps.frontend" },
+    });
+    expect(appResult.success).toBe(true);
+    expect(appResult.text).toContain("apps.frontend.deploy");
+    expect(appResult.text).toContain("apps.frontend.activate");
+    expect(appResult.text).toContain("apps.frontend.delete");
+    expect(appResult.text).toContain("/api/v1/apps/{id}/frontend");
+  });
+
+  it("routes canonical app frontend, database, and deploy commands", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = createRuntime();
+
+    const frontendArgs = {
+      mode: "cloud-command" as const,
+      command: "apps.frontend.deploy",
+      params: {
+        id: "app-1",
+        files: [{ path: "index.html", content: "<h1>Hello</h1>" }],
+        activate: true,
+      },
+    };
+    await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes",
+      message: brokerMessage(),
+      args: frontendArgs,
+    });
+    const frontend = await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes",
+      message: brokerMessage("yes"),
+      args: frontendArgs,
+    });
+    expect(frontend.success).toBe(true);
+    let [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/apps/app-1/frontend");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      files: [{ path: "index.html", content: "<h1>Hello</h1>" }],
+      activate: true,
+    });
+
+    const databaseArgs = {
+      mode: "cloud-command" as const,
+      command: "apps.database.update",
+      params: { id: "app-1", mode: "isolated" },
+    };
+    await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes-db",
+      message: brokerMessage(),
+      args: databaseArgs,
+    });
+    await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes-db",
+      message: brokerMessage("yes"),
+      args: databaseArgs,
+    });
+    [url, init] = fetchMock.mock.calls[1] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/apps/app-1/database");
+    expect(init.method).toBe("PUT");
+    expect(init.body).toBe(JSON.stringify({ mode: "isolated" }));
+
+    const status = await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes-status",
+      args: {
+        mode: "cloud-command",
+        command: "apps.deploy.status",
+        params: { id: "app-1" },
+      },
+    });
+    expect(status.success).toBe(true);
+    [url, init] = fetchMock.mock.calls[2] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/apps/app-1/deploy/status");
+    expect(init.method).toBe("GET");
   });
 
   it("runs read-only Cloud commands through the configured Cloud API", async () => {

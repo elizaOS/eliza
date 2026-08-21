@@ -67,6 +67,7 @@ export const SPEND_HINT_PARAM = "spendEstimateUsd";
  */
 export const SELF_SPEND_COMMANDS: ReadonlySet<string> = new Set([
   "domains.buy",
+  "apps.deploy",
   "containers.create",
   "containers.update",
   "media.image.generate",
@@ -95,6 +96,7 @@ export const SELF_SPEND_COMMANDS: ReadonlySet<string> = new Set([
  * the positive-under-declaration residual of #10980).
  */
 export const SERVER_KNOWN_COST_COMMANDS: ReadonlySet<string> = new Set([
+  "apps.deploy",
   "containers.create",
   "containers.update",
 ]);

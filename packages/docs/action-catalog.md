@@ -381,7 +381,7 @@ list. Regenerate this document after changing the registered action surface.
 - `CONNECTOR` — `plugins/plugin-personal-assistant/src/actions/connector.ts`
 - `CONTACT` — `packages/agent/src/actions/contact.ts`
 - `CREATE_AD_SLOT` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
-- `CREATE_APP` — `plugins/plugin-cloud-apps/src/actions/create-app.ts`
+- `REGISTER_CLOUD_APP` — `plugins/plugin-cloud-apps/src/actions/create-app.ts`
 - `CREATE_INFLUENCER_PROFILE` — `plugins/plugin-cloud-apps/src/actions/influencer.ts`
 - `CREATE_OAUTH_INTENT` — `packages/core/src/features/oauth/actions/create-oauth-intent.ts`
 - `CREATIVE_DRAFT` — `plugins/plugin-personal-assistant/src/actions/creative-draft.ts`

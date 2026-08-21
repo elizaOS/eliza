@@ -5,7 +5,7 @@
  * enables monetization at create time. The agent one-shot flow still sends the
  * user's monetization intent; the server creates the app with monetization
  * OFF, persists the markup as a pricing default, and returns the review
- * requirement in `warnings`. This scenario drives the real CREATE_APP action
+ * requirement in `warnings`. This scenario drives the real REGISTER_CLOUD_APP action
  * through the real SDK client against a loopback cloud API implementing that
  * contract and asserts the user gets an app + the review next-step — not a
  * hard failure.
@@ -221,7 +221,7 @@ export default scenario({
     {
       kind: "action",
       name: "monetized create succeeds with review next-step, no dead 403",
-      actionName: "CREATE_APP",
+      actionName: "REGISTER_CLOUD_APP",
       text: "create a monetized app called Coin with 20% markup",
       responseIncludesAll: ["Coin", "review", "deploy"],
       assertTurn: (turn) => {
@@ -270,7 +270,7 @@ export default scenario({
     {
       type: "actionCalled",
       name: "create action executed through scenario runner",
-      actionName: "CREATE_APP",
+      actionName: "REGISTER_CLOUD_APP",
       minCount: 1,
     },
   ],

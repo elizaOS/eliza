@@ -65,7 +65,7 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 - Provider `CLOUD_APPS` — injects the app inventory into planner context.
 
 **Create → deploy → live loop + safe delete**
-- `CREATE_APP` — create from name/description/monetization intent.
+- `REGISTER_CLOUD_APP` — register one Cloud app identity after product code exists; it does not compete with the normie-facing app builder.
 - `DEPLOY_APP` — deploy + COMPLETION GATE (READY, then `/health` 2xx on the
   authoritative `production_url`) before claiming live; records a deploy fact.
 - `GET_APP_DEPLOY_STATUS` — DRAFT/BUILDING/DEPLOYING/READY/ERROR + url.

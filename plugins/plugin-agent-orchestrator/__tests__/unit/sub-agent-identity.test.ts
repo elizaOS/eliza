@@ -53,13 +53,14 @@ describe("writeWorkspaceIdentity", () => {
     expect(manual).toMatch(
       /mutating\/paid\/destructive Cloud commands stay gated/,
     );
-    // #14118: Cloud is broker-first — register + deploy run through the parent
-    // (apps.create / containers.create), and the child is told it does not hold
-    // the owner key; a container-runtime secret comes from the credential bridge.
+    // #14118: Cloud is broker-first — one app identity + its managed frontend
+    // and optional backend deploy run through the parent. The child never gets
+    // the owner key.
     expect(manual).toMatch(/Cloud is BROKER-FIRST/);
     expect(manual).toContain('"command":"apps.create"');
-    expect(manual).toContain('"command":"containers.create"');
-    expect(manual).toContain("environmentVars.ELIZA_CLOUD_API_KEY");
+    expect(manual).toContain('"command":"apps.frontend.deploy"');
+    expect(manual).toContain('"command":"apps.deploy"');
+    expect(manual).not.toContain("environmentVars.ELIZA_CLOUD_API_KEY");
     expect(manual).not.toContain("{{BROKER_SECTION}}");
   });
 

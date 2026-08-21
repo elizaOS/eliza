@@ -179,6 +179,92 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
     risk: "mutating",
   },
   {
+    command: "apps.deploy",
+    description:
+      "Deploy the container backend owned by a Cloud app. Use only when the app needs a server; static frontends use apps.frontend.deploy.",
+    method: "POST",
+    path: "/api/v1/apps/{id}/deploy",
+    pathParams: ["id"],
+    risk: "paid",
+  },
+  {
+    command: "apps.deploy.status",
+    description: "Read the latest container deploy status for a Cloud app.",
+    method: "GET",
+    path: "/api/v1/apps/{id}/deploy/status",
+    pathParams: ["id"],
+    risk: "read",
+  },
+  {
+    command: "apps.database.get",
+    description: "Read a Cloud app's database mode and current deploy binding.",
+    method: "GET",
+    path: "/api/v1/apps/{id}/database",
+    pathParams: ["id"],
+    risk: "read",
+  },
+  {
+    command: "apps.database.update",
+    description:
+      "Set a Cloud app database mode to none or isolated. The change applies on the next app deploy.",
+    method: "PUT",
+    path: "/api/v1/apps/{id}/database",
+    pathParams: ["id"],
+    risk: "mutating",
+  },
+  {
+    command: "apps.frontend.list",
+    description:
+      "List managed static-frontend deployments and the active deployment for a Cloud app.",
+    method: "GET",
+    path: "/api/v1/apps/{id}/frontend",
+    pathParams: ["id"],
+    risk: "read",
+  },
+  {
+    command: "apps.frontend.deploy",
+    description:
+      "Publish a managed static-site bundle for a Cloud app. Pass files as UTF-8 or base64 JSON entries.",
+    method: "POST",
+    path: "/api/v1/apps/{id}/frontend",
+    pathParams: ["id"],
+    risk: "mutating",
+  },
+  {
+    command: "apps.frontend.activate",
+    description:
+      "Activate a managed frontend deployment for a Cloud app; activating an older deployment rolls back.",
+    method: "POST",
+    path: "/api/v1/apps/{id}/frontend/{deploymentId}/activate",
+    pathParams: ["id", "deploymentId"],
+    risk: "mutating",
+  },
+  {
+    command: "apps.frontend.delete",
+    description: "Delete an inactive managed frontend deployment.",
+    method: "DELETE",
+    path: "/api/v1/apps/{id}/frontend/{deploymentId}",
+    pathParams: ["id", "deploymentId"],
+    risk: "destructive",
+  },
+  {
+    command: "apps.review.get",
+    description: "Read the current compliance-review status for a Cloud app.",
+    method: "GET",
+    path: "/api/v1/apps/{id}/review",
+    pathParams: ["id"],
+    risk: "read",
+  },
+  {
+    command: "apps.review.submit",
+    description:
+      "Submit a Cloud app for compliance review before enabling monetization.",
+    method: "POST",
+    path: "/api/v1/apps/{id}/review",
+    pathParams: ["id"],
+    risk: "mutating",
+  },
+  {
     command: "apps.delete",
     description: "Delete a Cloud app.",
     method: "DELETE",
@@ -916,6 +1002,9 @@ function pathParam(
   if (name === "chargeId") {
     return normalizeString(params.charge_id);
   }
+  if (name === "deploymentId") {
+    return normalizeString(params.deployment_id);
+  }
   return undefined;
 }
 
@@ -984,6 +1073,9 @@ function cloudBody(
   }
   if (definition.pathParams?.includes("recordId")) {
     reserved.add("record_id");
+  }
+  if (definition.pathParams?.includes("deploymentId")) {
+    reserved.add("deployment_id");
   }
   const body: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {

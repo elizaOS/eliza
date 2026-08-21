@@ -45,6 +45,9 @@ function fakeStore(): SpendLedgerStore & {
 
 describe("estimateSelfSpendCostUsd", () => {
   it("defaults containers to the base daily cost when no hint is given", () => {
+    expect(estimateSelfSpendCostUsd("apps.deploy")).toBe(
+      CONTAINER_DAILY_COST_USD,
+    );
     expect(estimateSelfSpendCostUsd("containers.create")).toBe(
       CONTAINER_DAILY_COST_USD,
     );

@@ -81,7 +81,7 @@ describe("shouldForwardEnv", () => {
 
   // Broker-first (#14118): the owner's raw ELIZAOS_CLOUD* creds are NOT forwarded
   // into a child by default — a sub-agent reaches Cloud through the parent broker
-  // (apps.create / containers.create, spend-gated). The explicit
+  // (apps.create / apps.frontend.deploy / apps.deploy, spend-gated). The explicit
   // ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
   it("does NOT forward the raw owner cloud creds by default (broker-first)", () => {
     expect(shouldForwardEnv("ELIZAOS_CLOUD_API_KEY")).toBe(false);

@@ -10,13 +10,11 @@
  *
  * Default target is **Eliza Cloud** (the productized path for every user).
  * Cloud register + deploy are BROKER-FIRST (#14118): the guidance tells the
- * child to run `cloud-command apps.create` / `containers.create` through the
- * parent-agent broker (spend-capped, confirmation-gated) rather than curling the
- * Cloud API with a raw owner key it no longer receives by default. The only
- * genuine value a self-serving monetized container still needs — the owner's
- * cloud key as its own runtime bearer (`environmentVars.ELIZA_CLOUD_API_KEY`,
- * since `ELIZAOS_CLOUD_API_KEY` is a platform-reserved container key #9853) —
- * comes from the owner-approved credential bridge, not a raw env leak.
+ * child to use the canonical app-scoped commands (`apps.create`, managed
+ * frontend, optional app database, and optional app-owned container deploy)
+ * through the parent-agent broker. The parent keeps account credentials and
+ * spend/confirmation policy at the trust boundary; child workers never receive
+ * or bridge a raw owner Cloud key.
  *
  * An operator can point the agent at their own **custom static host** entirely
  * through config (a per-user apps dir + public base URL); the framework carries
@@ -140,37 +138,25 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
     lines.push(
       "USE the `build-monetized-app` skill as the canonical implementation contract; do not invent a parallel Cloud SDK, registration, OAuth proxy, or billing path.",
       "- Preserve the skill's OAuth, same-origin proxy, health-check, and `/api/v1/messages` contract with `x-app-id` + `x-affiliate-code`; adapt the product UI, prompt, model choice, assets, and markup.",
-      // Broker-first (#14118): Cloud register + deploy go through the parent
-      // agent, NOT a raw owner key in this child's env. The broker commands map
-      // 1:1 onto the edad README's API calls (apps.create → POST /api/v1/apps,
-      // containers.create → POST /api/v1/containers) and keep the spend cap +
-      // human confirmation gates. Do NOT curl the Cloud API directly with a raw
-      // key — you don't have it by default and shouldn't.",
-      '- Register the app through the PARENT AGENT (you have no raw Cloud key): print one stdout line `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{"name":"<app name>","app_url":"<your app url>","skipGitHubRepo":true}}`. Then enable monetization + an inference markup with `cloud-command apps.monetization.update` (params `{"id":"<appId>","...":...}`). The parent runs these with the owner\'s key server-side and relays the `appId` back; a mutating command needs the owner\'s explicit yes on a follow-up turn.',
-      '- Deploy through the PARENT AGENT with `cloud-command containers.create` (this is the edad README\'s `POST /api/v1/containers`, the ungated container path — do NOT use the gated `/apps/<id>/deploy`). Body keys are camelCase (CreateContainerSchema strips unknown keys, so a snake_case body deploys with NO env vars → dead sign-in + billing): `USE_SKILL parent-agent {"mode":"cloud-command","command":"containers.create","params":{"name":"<app>","projectName":"<app>","port":3000,"cpu":256,"memoryMb":512,"image":"ghcr.io/<owner>/<app>:latest","healthCheckPath":"/health","environmentVars":{"ELIZA_APP_ID":"<appId>","ELIZA_AFFILIATE_CODE":"<code>","ELIZA_CLOUD_URL":"https://api.eliza.app"}}}`. containers.create is a fixed-cost self-spend the parent may auto-authorize within its spend cap.',
-      // The one step the broker cannot fully serve: the container's OWN runtime
-      // needs the owner's cloud key as its upstream bearer, and `ELIZAOS_CLOUD_API_KEY`
-      // is a platform-reserved container env key the deploy route REJECTS (#9853) —
-      // edad's server.ts reads the non-reserved `ELIZA_CLOUD_API_KEY` instead. That
-      // secret is a real value the child must place in environmentVars, so it comes
-      // from the owner-approved credential bridge (single-use), never a raw env leak.
-      '- The container needs the owner\'s Cloud key at RUNTIME as `environmentVars.ELIZA_CLOUD_API_KEY` (NOT `ELIZAOS_CLOUD_API_KEY` — that key is platform-reserved and the deploy route rejects it). You do NOT have this key in your env by default. Request it via the owner-approved credential bridge — `POST /api/coding-agents/<ORCHESTRATOR_SESSION_ID>/credentials/request` with `{"credentialKeys":["ELIZAOS_CLOUD_API_KEY"]}` (see "Requesting a missing credential" in your AGENTS.md/CLAUDE.md for the full request+poll flow), then pass the value as `environmentVars.ELIZA_CLOUD_API_KEY` in the containers.create params. If the owner declines or the bridge is unwired, STOP and report that the container cannot self-bill without the owner\'s Cloud key (the operator can also set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to forward it). Never hardcode the key in image/frontend code.',
+      '- Register exactly ONE Cloud app through the PARENT AGENT (you have no raw Cloud key): `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{"name":"<app name>","app_url":"https://placeholder.invalid","skipGitHubRepo":true}}`. Reuse the returned `appId` for every frontend, database, deploy, review, monetization, and follow-up operation; never create a second registry record for the same project.',
+      '- Publish the product UI with `apps.frontend.deploy` using `{"id":"<appId>","files":[{"path":"index.html","content":"..."}],"entrypoint":"index.html","spaFallback":true,"activate":true}`. This is the canonical managed static frontend with version history and rollback. Use `apps.frontend.list` to verify the active deployment.',
+      '- If the app needs durable server data, set `apps.database.update` params `{"id":"<appId>","mode":"isolated"}` BEFORE its next backend deploy. Stateless apps keep mode `none`.',
+      "- Only when the app needs a server-side runtime, deploy that SAME app with `apps.deploy` and poll `apps.deploy.status`. The app deploy path owns the container identity, injects `ELIZA_APP_ID`, and injects the app database URL when isolated mode is selected. Do not create a parallel generic container with `containers.create`.",
+      "- Submit `apps.review.submit` and require an approved `apps.review.get` result before `apps.monetization.update`. Then enable the markup and patch the SAME app URL/origins. Review rejection or a disabled/not-allowlisted deploy is a real blocker to report, not a reason to bypass the app lifecycle.",
+      "- The deployed app forwards each signed-in user's bearer token to `/api/v1/messages` with `x-app-id`; it does NOT need or receive the owner's Cloud key. Never request, bridge, store, or inject owner Cloud credentials into child code, frontend files, or app container environment variables.",
     );
   } else {
     lines.push(
       "This task builds an app/site, so it must end up actually HOSTED with a verified live URL — not just local files.",
       "- Build a real, working app and load it to confirm it works before reporting done.",
-      '- Host it on Eliza Cloud through the PARENT AGENT (you have no raw Cloud key): register the app with `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{...}}` to get an `appId`, then deploy with `cloud-command containers.create` (the parent runs both with the owner\'s key server-side, under its spend cap + confirmation gates). Use `mode:"list-cloud-commands"` to discover the full Cloud surface.',
+      '- Host it as exactly ONE Eliza Cloud app through the PARENT AGENT (you have no raw Cloud key): register once with `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{...}}`, then publish static files with `apps.frontend.deploy`. Reuse that `appId` on edits and verify with `apps.frontend.list`; do not create a generic container or a second app record.',
+      "- Use `apps.database.update` + `apps.deploy` only if the product truly needs an isolated database and/or server runtime. Poll `apps.deploy.status`; the app-owned deploy path wires container identity and database settings.",
       "- For auth, use Eliza Cloud OAuth via a same-origin proxy that forwards to `/api/v1/messages` with the user's bearer token + `x-app-id` (add `x-affiliate-code` when monetizing). Use Cloud DB / hosted APIs for persistence.",
       "- Do NOT hardcode owner API keys in frontend code, use mock replies, or hand-roll legacy `/messages` routes. Follow the `build-monetized-app` skill for the canonical registration + deploy + domain flow.",
     );
   }
   lines.push(
-    // The container flow pushes a built image to a registry, and an anonymous
-    // push always 403s. The credential env-var names are the contract here
-    // (values are forwarded by the spawn env allowlist when the operator set
-    // them); absence must surface as a NAMED blocker, not a vague failure.
-    '- If you build a container image, log in BEFORE pushing: `printf \'%s\' "$ELIZA_APP_IMAGE_REGISTRY_TOKEN" | docker login ghcr.io -u "$ELIZA_APP_IMAGE_REGISTRY_USERNAME" --password-stdin` (fallback pair: `GHCR_USERNAME` / `GHCR_TOKEN`). If neither pair is set in your env, STOP and report exactly that — the registry push credential is missing (name the vars) — instead of attempting an anonymous push or reporting a vague failure.',
+    "- Custom backend images must use an operator-approved image namespace and registry publication path. If no approved image or registry capability is available, publish the managed frontend and report the backend-deploy blocker; never fall back to an unrelated template, push anonymously, or leak registry credentials.",
     "- Report ONLY the verified live Cloud URL. If you could not deploy or verify it, say that plainly — never report an unverified or guessed URL.",
   );
   return lines.join("\n");

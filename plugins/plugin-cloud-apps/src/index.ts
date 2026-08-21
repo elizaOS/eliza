@@ -11,7 +11,7 @@
  *   - Provider CLOUD_APPS           — injects the app inventory into planner context.
  *
  * Create → deploy → live loop + safe delete (this layer):
- *   - Action  CREATE_APP            — create an app from name/description/monetization intent.
+ *   - Action  REGISTER_CLOUD_APP    — register one app identity after code exists.
  *   - Action  DEPLOY_APP            — deploy + COMPLETION GATE (READY status, then
  *                                     probe production_url `/health` for 2xx before
  *                                     claiming live) + idempotent facts cache.
