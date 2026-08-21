@@ -3469,8 +3469,9 @@ describe("destructive-bulk confirm gate", () => {
     }
   });
 
-  it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+  it("does not treat full action-surface configuration as destructive authority", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
+    const previousMode = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
     try {
       const { runtime } = await makeRuntime();
@@ -3480,10 +3481,18 @@ describe("destructive-bulk confirm gate", () => {
         undefined,
         { command },
       );
-      expect(result.success).toBe(true);
-      expect(await pathExists(target)).toBe(false);
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.data).toMatchObject({
+        destructive_reason: "recursive delete",
+      });
+      expect(await pathExists(target)).toBe(true);
     } finally {
-      delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      if (previousMode === undefined) {
+        delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      } else {
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previousMode;
+      }
       await fs.rm(target, { recursive: true, force: true });
     }
   });

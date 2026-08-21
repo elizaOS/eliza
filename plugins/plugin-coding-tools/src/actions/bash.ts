@@ -1695,10 +1695,12 @@ export const shellAction: Action = {
     // verdict describe the exact command that can reach dispatch. A blocked
     // operation is authorized only when the same requester replies in a later
     // message with `confirm <challenge>` and the planner returns that challenge
-    // alongside confirm=true. Coding sub-agents carry separate upstream task
-    // authorization and remain exempt. Operators may explicitly disable this
-    // chat gate with ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
-    if (!codingSubAgentShell && destructiveGateEnabled) {
+    // alongside confirm=true. ELIZA_PLANNER_FULL_ACTION_SURFACE changes planner
+    // tool exposure and CHAT presentation behavior; it is process-global and
+    // therefore cannot prove authority for an individual invocation. Operators
+    // may explicitly disable this chat gate with
+    // ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
+    if (destructiveGateEnabled) {
       const verdict = classifyDestructiveCommand(
         command,
         resolveCommandPlatform() === "windows" ? "powershell" : "posix",
