@@ -1413,6 +1413,8 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 	it.each([
 		"¿He creado el recordatorio para las 9 a.m.?",
 		"¿Guardé bien tu recordatorio?",
+		"He guardado, por error, el recordatorio?",
+		"Criei, por acaso, o lembrete?",
 		"我把提醒设置好了吗？",
 		"提醒设置好了吧？",
 		"提醒设置好了吗",

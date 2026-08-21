@@ -377,9 +377,26 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 				// question opening past that boundary is a trailing follow-up and
 				// leaves the completion assertion standing.
 				const sentenceEnd = start + sentence.length;
-				const tagOffset = text
-					.slice(matchEnd, sentenceEnd)
-					.search(MULTILINGUAL_CLAUSE_TAG_BOUNDARY);
+				const afterClaim = text.slice(matchEnd, sentenceEnd);
+				let tagOffset = -1;
+				let boundarySearchStart = 0;
+				while (boundarySearchStart < afterClaim.length) {
+					const nextBoundary = afterClaim
+						.slice(boundarySearchStart)
+						.search(MULTILINGUAL_CLAUSE_TAG_BOUNDARY);
+					if (nextBoundary < 0) break;
+					const candidateOffset = boundarySearchStart + nextBoundary;
+					const possibleTag = afterClaim.slice(candidateOffset + 1);
+					// A parenthetical inside the claim can also begin with a comma
+					// ("Criei, por acaso, o lembrete?"). If the remaining question
+					// still names the side-effect object, the terminator governs the
+					// claim rather than a separate courtesy tag.
+					if (!shapes.subjectNoun.test(possibleTag)) {
+						tagOffset = candidateOffset;
+						break;
+					}
+					boundarySearchStart = candidateOffset + 1;
+				}
 				const clauseEnd = tagOffset >= 0 ? matchEnd + tagOffset : sentenceEnd;
 				const claimClause = text.slice(start, clauseEnd);
 				const clauseReachesTerminator = clauseEnd === sentenceEnd;
