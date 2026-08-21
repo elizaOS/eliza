@@ -171,15 +171,6 @@ export class MapsService extends Service {
         cause: attribution.error,
       });
     }
-    if (
-      !this.adapters.has(providerId.data) &&
-      this.adapters.size >= MAX_MAPS_PROVIDERS
-    ) {
-      throw new MapsError(
-        `Maps supports at most ${MAX_MAPS_PROVIDERS} registered providers.`,
-        { code: "MAPS_INVALID_INPUT" },
-      );
-    }
     this.adapters.set(providerId.data, adapter);
     this.providerDescriptions.set(providerId.data, {
       id: providerId.data,
@@ -201,12 +192,20 @@ export class MapsService extends Service {
     return [...this.adapters.keys()];
   }
 
-  /** Describes registered providers without exposing credentials or endpoints. */
+  /**
+   * Describes registered providers without exposing credentials or endpoints.
+   * Registration itself stays unlimited; the DTO returned to the view/broker
+   * boundary is bounded here at MAX_MAPS_PROVIDERS so the browser-facing
+   * schema (`mapsProviderDescriptionsSchema`) can never be handed a payload
+   * it will reject.
+   */
   describeProviders(): readonly MapsProviderDescription[] {
-    return [...this.providerDescriptions.values()].map((provider) => ({
-      id: provider.id,
-      attribution: provider.attribution,
-    }));
+    return [...this.providerDescriptions.values()]
+      .slice(0, MAX_MAPS_PROVIDERS)
+      .map((provider) => ({
+        id: provider.id,
+        attribution: provider.attribution,
+      }));
   }
 
   async searchPlaces(

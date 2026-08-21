@@ -734,8 +734,6 @@ export function MapsView({
       detailRequest.current?.abort();
       detailRequest.current = null;
       invalidateRouteOperation();
-      providerMetadataRequest.current?.abort();
-      providerMetadataRequest.current = null;
       setSelected(null);
       searchRequest.current?.abort();
       setPageBusy(false);
@@ -743,7 +741,12 @@ export function MapsView({
       searchRequest.current = controller;
       setPhase("searching");
       setError(null);
-      setProviders([]);
+      // Leave `places`/`providers` untouched while this replacement search is
+      // pending: the previously rendered results and their attribution are
+      // still the correct, coherent state for what's on screen. The provider
+      // metadata effect below only refetches once new places actually commit
+      // (via the revision bump on success), so a failed replacement never
+      // strips attribution from results that are still displayed.
       setLastQuery(normalized);
       try {
         const page = await transport.search(normalized, controller.signal);

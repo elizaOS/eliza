@@ -343,7 +343,7 @@ describe("MapsService and MAPS action", () => {
     );
   });
 
-  it("keeps registered provider metadata within the browser DTO bounds", () => {
+  it("keeps registration unlimited but bounds the describeProviders DTO", () => {
     const boundedService = new MapsService(runtime);
     expect(() =>
       boundedService.registerAdapter({
@@ -361,13 +361,23 @@ describe("MapsService and MAPS action", () => {
     }
     expect(boundedService.describeProviders()).toHaveLength(MAX_MAPS_PROVIDERS);
 
+    // Registration itself has no cap: the 33rd adapter registers successfully
+    // and remains reachable for search/route/save; only the browser-facing
+    // describeProviders() DTO is bounded, at the describe boundary.
     expect(() =>
       boundedService.registerAdapter({
         ...adapter,
         id: "one_provider_too_many",
         connectionId: "conn_overflow00000000",
       }),
-    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    ).not.toThrow();
+    expect(boundedService.listAdapters()).toHaveLength(MAX_MAPS_PROVIDERS + 1);
+    expect(boundedService.describeProviders()).toHaveLength(MAX_MAPS_PROVIDERS);
+    expect(
+      boundedService
+        .describeProviders()
+        .some((provider) => provider.id === "one_provider_too_many"),
+    ).toBe(false);
 
     boundedService.registerAdapter({
       ...adapter,

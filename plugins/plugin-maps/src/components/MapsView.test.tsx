@@ -171,34 +171,20 @@ describe("MapsView", () => {
     expect(describeProviders).toHaveBeenCalledTimes(2);
   });
 
-  it("ignores stale provider metadata while a replacement search is pending", async () => {
-    let resolveOldMetadata:
-      | ((
-          value: Awaited<
-            ReturnType<NonNullable<MapsViewTransport["describeProviders"]>>
-          >,
-        ) => void)
-      | undefined;
-    let resolveReplacementSearch: ((value: PlacePage) => void) | undefined;
+  it("keeps prior results and attribution coherent while a replacement search is pending, and after it fails", async () => {
     const describeProviders = vi.fn<
       NonNullable<MapsViewTransport["describeProviders"]>
-    >(() => {
-      if (describeProviders.mock.calls.length === 1) {
-        return new Promise((resolve) => {
-          resolveOldMetadata = resolve;
-        });
-      }
-      return Promise.resolve([
-        { id: "fixture_maps", attribution: "Current legal attribution" },
-      ]);
-    });
+    >(async () => [
+      { id: "fixture_maps", attribution: "Current legal attribution" },
+    ]);
+    let rejectReplacementSearch: ((reason: unknown) => void) | undefined;
     const search = vi
       .fn<MapsViewTransport["search"]>()
       .mockResolvedValueOnce({ places: [FERRY], nextCursor: null })
       .mockImplementationOnce(
         () =>
-          new Promise((resolve) => {
-            resolveReplacementSearch = resolve;
+          new Promise((_resolve, reject) => {
+            rejectReplacementSearch = reject;
           }),
       );
     const user = userEvent.setup();
@@ -210,21 +196,31 @@ describe("MapsView", () => {
     expect(
       (await screen.findAllByText("Ferry Building")).length,
     ).toBeGreaterThan(0);
+    expect(await screen.findByText("Current legal attribution")).toBeTruthy();
     await waitFor(() => expect(describeProviders).toHaveBeenCalledTimes(1));
 
     await searchFor(user, "second");
-    resolveOldMetadata?.([
-      { id: "fixture_maps", attribution: "Stale legal attribution" },
-    ]);
-    await act(async () => Promise.resolve());
-    expect(screen.queryByText("Stale legal attribution")).toBeNull();
+    // The replacement search is still in flight: the places list shows its
+    // loading skeleton (expected UI), but the map's attribution — driven by
+    // the still-unchanged `places`/`providers` state, not by search phase —
+    // must keep showing the prior search's legal notice untouched, never a
+    // stripped/mismatched "unavailable" placeholder.
+    expect(screen.getByText("Current legal attribution")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
 
-    resolveReplacementSearch?.({ places: [PLAZA], nextCursor: null });
+    rejectReplacementSearch?.(new Error("search backend unavailable"));
+    await screen.findByText("search backend unavailable");
+
+    // A failed replacement search must not clear the still-valid prior
+    // results or strip their attribution — the {places, providers} pair only
+    // swaps once a replacement search actually succeeds.
     expect(
-      (await screen.findAllByText("Embarcadero Plaza")).length,
+      (await screen.findAllByText("Ferry Building")).length,
     ).toBeGreaterThan(0);
-    expect(await screen.findByText("Current legal attribution")).toBeTruthy();
-    expect(describeProviders).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Current legal attribution")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
   });
 
   it("explicitly reports unavailable legal attribution", async () => {
