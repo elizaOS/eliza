@@ -488,24 +488,32 @@ registerPreset({
 		try {
 			const apiKey = requireCredential(credentials, "apiKey");
 			const { response, signal } = await credentialProbe(
-				"https://queue.fal.run/fal-ai/flux/schnell/requests/00000000-0000-0000-0000-000000000000/status",
+				"https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fflux%2Fdev",
 				{
 					headers: {
 						Authorization: `Key ${apiKey}`,
 					},
 				},
 			);
-			// A deliberately nonexistent request proves authorization without
-			// submitting billable inference. fal documents 404 as "not found".
-			if (response.ok || response.status === 404) {
+			if (!response.ok) {
 				discardProbeBody(response, signal);
-				return { valid: true, identity: "key verified" };
+				return {
+					valid: false,
+					error: `fal.ai returned ${response.status}`,
+				};
 			}
-			discardProbeBody(response, signal);
-			return {
-				valid: false,
-				error: `fal.ai returned ${response.status}`,
-			};
+			// fal's authenticated Platform Pricing API is a read-only metadata
+			// request, so validation cannot enqueue or bill model inference.
+			const data = await readProbeJson(response, signal);
+			if (
+				!isRecord(data) ||
+				!Array.isArray(data.prices) ||
+				typeof data.has_more !== "boolean" ||
+				!(data.next_cursor === null || typeof data.next_cursor === "string")
+			) {
+				throw new CredentialProbeError("response");
+			}
+			return { valid: true, identity: "key verified" };
 		} catch (error) {
 			// error-policy:J1 credential probes expose only bounded, secret-free failures.
 			return invalidProbeResult("fal.ai", error);

@@ -39,7 +39,7 @@ describe("credential probe network boundary", () => {
 		[
 			"fal",
 			{ apiKey: "fal-secret" },
-			"https://queue.fal.run/fal-ai/flux/schnell/requests/00000000-0000-0000-0000-000000000000/status",
+			"https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai%2Fflux%2Fdev",
 		],
 	])(
 		"fences %s redirects and supplies a deadline",
@@ -52,6 +52,13 @@ describe("credential probe network boundary", () => {
 					if (name === "vercel") return Response.json({ projects: [] });
 					if (name === "cloudflare") {
 						return Response.json({ success: true, result: [] });
+					}
+					if (name === "fal") {
+						return Response.json({
+							prices: [],
+							next_cursor: null,
+							has_more: false,
+						});
 					}
 					return new Response(null, { status: 204 });
 				},
@@ -72,7 +79,9 @@ describe("credential probe network boundary", () => {
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValueOnce(new Response(null, { status: 204 }))
-			.mockResolvedValueOnce(new Response(null, { status: 404 }));
+			.mockResolvedValueOnce(
+				Response.json({ prices: [], next_cursor: null, has_more: false }),
+			);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
@@ -86,6 +95,17 @@ describe("credential probe network boundary", () => {
 			expect(init?.method).toBeUndefined();
 			expect(init?.body).toBeUndefined();
 		}
+	});
+
+	it("rejects a method mismatch from the fal credential probe", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(null, { status: 405 })),
+		);
+
+		await expect(preset("fal").validate({ apiKey: "secret" })).resolves.toEqual(
+			{ valid: false, error: "fal.ai returned 405" },
+		);
 	});
 
 	it("rejects an oversized declared JSON response before parsing", async () => {
