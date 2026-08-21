@@ -1,0 +1,279 @@
+/**
+ * Executable contract for the credentials and non-secret variables the
+ * canonical multi-store release legs consume from the protected
+ * `production-release` GitHub Environment.
+ *
+ * The contract is authored here, per store lane, together with the human
+ * ownership required by the provisioning policy (rotation cadence, recovery
+ * path, revocation path). `auditWorkflowCoverage` re-derives the names the
+ * shipped workflows actually reference and fails on drift in either direction,
+ * so this file cannot silently disagree with `.github/workflows`.
+ *
+ * Only names are handled anywhere in this module. Credential values must never
+ * be read, printed, or persisted by the preflight that consumes it.
+ */
+
+export const RELEASE_ENVIRONMENT = "production-release";
+
+/**
+ * Names referenced by the store workflows that are runner/fleet routing
+ * controls rather than store credentials. They are repository-level and are
+ * deliberately outside the environment credential contract.
+ */
+export const NON_CREDENTIAL_VARIABLES = Object.freeze([
+  "HETZNER_FLEET_ONLINE",
+  "RUNNER_WINDOWS",
+]);
+
+/**
+ * @typedef {object} StoreLane
+ * @property {string} id Stable lane identifier used by the CLI and tests.
+ * @property {string} provider Human name of the publisher portal.
+ * @property {string} workflow Workflow file that consumes the lane.
+ * @property {string[]} secrets Environment secret names, publish fails closed without them.
+ * @property {string[]} variables Non-secret environment variable names.
+ * @property {string} prerequisite Account/product state required before provisioning.
+ * @property {string} owner Team accountable for the credential lifecycle.
+ * @property {string} rotation Rotation cadence and mechanism.
+ * @property {string} revocation How the credential is revoked at the provider.
+ */
+
+/** @type {readonly StoreLane[]} */
+export const STORE_LANES = Object.freeze([
+  Object.freeze({
+    id: "snap",
+    provider: "Snap Store",
+    workflow: ".github/workflows/snap-publish.yml",
+    secrets: Object.freeze(["SNAPCRAFT_STORE_CREDENTIALS"]),
+    variables: Object.freeze([]),
+    prerequisite:
+      "Registered `eliza` snap name owned by the company Snapcraft account.",
+    owner: "Release engineering",
+    rotation:
+      "Re-export every 90 days with `snapcraft export-login --snaps eliza --channels edge,beta,candidate,stable --acls package_access,package_push,package_release -`.",
+    revocation:
+      "Revoke the exported macaroon in the Snapcraft account authentication settings, then re-export.",
+  }),
+  Object.freeze({
+    id: "google-play",
+    provider: "Google Play Console",
+    workflow: ".github/workflows/store-mobile-publish.yml",
+    secrets: Object.freeze([
+      "ANDROID_KEYSTORE_BASE64",
+      "ANDROID_KEYSTORE_PASSWORD",
+      "ANDROID_KEY_ALIAS",
+      "ANDROID_KEY_PASSWORD",
+      "PLAY_STORE_SERVICE_ACCOUNT_JSON",
+    ]),
+    variables: Object.freeze([]),
+    prerequisite:
+      "Google Play developer account plus an application record for the release package name.",
+    owner: "Release engineering (upload key custody shared with security)",
+    rotation:
+      "Rotate the Play service-account key every 90 days in Google Cloud IAM; the upload keystore rotates only through a Play upload-key reset.",
+    revocation:
+      "Delete the service-account key in Google Cloud IAM and remove the account from the Play Console users list.",
+  }),
+  Object.freeze({
+    id: "apple",
+    provider: "Apple App Store Connect",
+    workflow: ".github/workflows/store-mobile-publish.yml",
+    secrets: Object.freeze([
+      "APPLE_ID",
+      "APPLE_TEAM_ID",
+      "ITC_TEAM_ID",
+      "APP_STORE_APP_ID",
+      "MATCH_PASSWORD",
+      "MATCH_GIT_URL",
+      "MATCH_GIT_BASIC_AUTHORIZATION",
+      "APP_STORE_API_KEY_ID",
+      "APP_STORE_API_ISSUER_ID",
+      "APP_STORE_API_KEY_P8",
+    ]),
+    variables: Object.freeze([]),
+    prerequisite:
+      "Apple Developer Program organization membership, an App Store Connect app record, and accepted agreements.",
+    owner: "Release engineering (Account Holder actions with the org owner)",
+    rotation:
+      "Rotate the App Store Connect API key every 180 days; rotate the match repository token on the same cadence.",
+    revocation:
+      "Revoke the API key in App Store Connect > Users and Access > Integrations, and revoke the match repository token.",
+  }),
+  Object.freeze({
+    id: "microsoft",
+    provider: "Microsoft Partner Center",
+    workflow: ".github/workflows/store-windows-publish.yml",
+    secrets: Object.freeze([
+      "MICROSOFT_STORE_TENANT_ID",
+      "MICROSOFT_STORE_CLIENT_ID",
+      "MICROSOFT_STORE_CLIENT_SECRET",
+    ]),
+    variables: Object.freeze([
+      "MICROSOFT_STORE_IDENTITY_NAME",
+      "MICROSOFT_STORE_PUBLISHER_ID",
+      "MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME",
+      "MICROSOFT_STORE_APPLICATION_ID",
+    ]),
+    prerequisite:
+      "Microsoft Partner Center account with a reserved app identity and a completed first manual submission.",
+    owner:
+      "Release engineering (Partner Center Manager role with the org owner)",
+    rotation:
+      "Rotate the Entra application client secret every 180 days and update the environment secret in the same change window.",
+    revocation:
+      "Delete the client secret on the Entra app registration and remove the Azure AD tenant association in Partner Center.",
+  }),
+]);
+
+/** Every environment secret name the store lanes require. */
+export function requiredSecretNames() {
+  return [...new Set(STORE_LANES.flatMap((lane) => lane.secrets))].sort();
+}
+
+/** Every environment variable name the store lanes require. */
+export function requiredVariableNames() {
+  return [...new Set(STORE_LANES.flatMap((lane) => lane.variables))].sort();
+}
+
+/**
+ * Extract `secrets.NAME` / `vars.NAME` references from raw workflow YAML.
+ *
+ * @param {string} source Raw workflow file contents.
+ * @returns {{ secrets: string[], variables: string[] }}
+ */
+export function extractWorkflowReferences(source) {
+  const secrets = new Set();
+  const variables = new Set();
+  for (const match of source.matchAll(/\b(secrets|vars)\.([A-Z0-9_]+)\b/g)) {
+    const [, kind, name] = match;
+    if (kind === "secrets") {
+      if (name !== "GITHUB_TOKEN") secrets.add(name);
+    } else {
+      variables.add(name);
+    }
+  }
+  return {
+    secrets: [...secrets].sort(),
+    variables: [...variables].sort(),
+  };
+}
+
+/**
+ * Compare the authored contract with what the workflows actually reference.
+ *
+ * @param {Record<string, string>} workflowSources Workflow path to raw contents.
+ * @returns {{ ok: boolean, missingInWorkflows: string[], missingInContract: string[] }}
+ */
+export function auditWorkflowCoverage(workflowSources) {
+  const referencedSecrets = new Set();
+  const referencedVariables = new Set();
+  const perWorkflow = new Map();
+
+  for (const [path, source] of Object.entries(workflowSources)) {
+    const refs = extractWorkflowReferences(source);
+    perWorkflow.set(path, refs);
+    for (const name of refs.secrets) referencedSecrets.add(name);
+    for (const name of refs.variables) {
+      if (!NON_CREDENTIAL_VARIABLES.includes(name))
+        referencedVariables.add(name);
+    }
+  }
+
+  const missingInWorkflows = [];
+  for (const lane of STORE_LANES) {
+    const refs = perWorkflow.get(lane.workflow);
+    if (!refs) {
+      missingInWorkflows.push(`${lane.workflow} (not supplied)`);
+      continue;
+    }
+    for (const name of lane.secrets) {
+      if (!refs.secrets.includes(name)) {
+        missingInWorkflows.push(`secrets.${name} in ${lane.workflow}`);
+      }
+    }
+    for (const name of lane.variables) {
+      if (!refs.variables.includes(name)) {
+        missingInWorkflows.push(`vars.${name} in ${lane.workflow}`);
+      }
+    }
+  }
+
+  const contractSecrets = new Set(requiredSecretNames());
+  const contractVariables = new Set(requiredVariableNames());
+  const missingInContract = [
+    ...[...referencedSecrets]
+      .filter((name) => !contractSecrets.has(name))
+      .map((name) => `secrets.${name}`),
+    ...[...referencedVariables]
+      .filter((name) => !contractVariables.has(name))
+      .map((name) => `vars.${name}`),
+  ].sort();
+
+  return {
+    ok: missingInWorkflows.length === 0 && missingInContract.length === 0,
+    missingInWorkflows: missingInWorkflows.sort(),
+    missingInContract,
+  };
+}
+
+/**
+ * Reduce a live environment name inventory to the per-lane provisioning state.
+ *
+ * @param {object} live
+ * @param {boolean} live.environmentExists Whether `production-release` exists.
+ * @param {string[]} live.secretNames Secret names present in the environment.
+ * @param {string[]} live.variableNames Variable names present in the environment.
+ * @param {boolean} [live.hasRequiredReviewers] Whether reviewers are configured.
+ * @param {boolean} [live.hasBranchPolicy] Whether a deployment branch/tag policy is set.
+ */
+export function evaluateEnvironmentReadiness(live) {
+  const secretNames = new Set(live.secretNames ?? []);
+  const variableNames = new Set(live.variableNames ?? []);
+
+  const lanes = STORE_LANES.map((lane) => {
+    const missingSecrets = lane.secrets.filter(
+      (name) => !secretNames.has(name),
+    );
+    const missingVariables = lane.variables.filter(
+      (name) => !variableNames.has(name),
+    );
+    return {
+      id: lane.id,
+      provider: lane.provider,
+      ready:
+        live.environmentExists &&
+        missingSecrets.length === 0 &&
+        missingVariables.length === 0,
+      missingSecrets,
+      missingVariables,
+    };
+  });
+
+  const blockers = [];
+  if (!live.environmentExists) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT} does not exist; every store job would be blocked at deployment.`,
+    );
+  } else {
+    if (live.hasRequiredReviewers === false) {
+      blockers.push(
+        `Environment ${RELEASE_ENVIRONMENT} has no required reviewers.`,
+      );
+    }
+    if (live.hasBranchPolicy === false) {
+      blockers.push(
+        `Environment ${RELEASE_ENVIRONMENT} has no deployment branch/tag policy.`,
+      );
+    }
+  }
+  for (const lane of lanes) {
+    for (const name of lane.missingSecrets) {
+      blockers.push(`${lane.provider}: missing secret ${name}`);
+    }
+    for (const name of lane.missingVariables) {
+      blockers.push(`${lane.provider}: missing variable ${name}`);
+    }
+  }
+
+  return { ready: blockers.length === 0, lanes, blockers };
+}

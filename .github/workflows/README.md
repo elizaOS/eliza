@@ -162,6 +162,23 @@ Representative examples:
   `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
   upload still depends on the corresponding organization account, application
   record, agreements, and roles already existing in each publisher portal.
+
+  The authored inventory of those names, together with the prerequisite,
+  owner, rotation cadence, and revocation path for each lane, lives in
+  `packages/scripts/lib/store-release-credentials.mjs`.
+  `bun run release:store-credentials` prints it and fails on drift between the
+  contract and the names these workflows reference.
+  `bun run release:store-credentials:audit` additionally reads the live
+  `production-release` environment through `gh api` and lists what a repository
+  owner still has to provision. Both operations compare names only; the GitHub
+  API never exposes secret values and the preflight never reads, prints, or
+  stores one. Exit codes are `0` ready, `1` contract drift or unreadable live
+  state, `2` live environment not yet provisioned.
+
+  Creating `production-release`, selecting its required reviewers and
+  deployment branch/tag policy, and adding any credential are owner-only
+  actions taken in the GitHub UI with authorized confirmation at action time.
+  No automation in this repository creates them.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
