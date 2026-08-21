@@ -566,6 +566,14 @@ export const NotificationPlatformSchema = z.enum(["discord", "telegram", "slack"
 export const SOCIAL_MEDIA_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
+ * Ceiling for an inline video payload. TikTok chunk-uploads video, so the
+ * 10 MiB image budget would reject ordinary posts — but the decode still
+ * happens in one `Buffer.from` inside the Worker isolate, so it needs a bound
+ * of its own rather than none. Sized to TikTok's documented direct-post limit.
+ */
+export const SOCIAL_MEDIA_VIDEO_MAX_BYTES = 128 * 1024 * 1024;
+
+/**
  * Character ceiling of a base64 payload that can decode to
  * {@link SOCIAL_MEDIA_MEDIA_MAX_BYTES}. Base64 emits 4 characters per 3 raw
  * bytes, so this is the exact encoded equivalent of the byte budget — the same

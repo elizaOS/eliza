@@ -20,6 +20,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
   SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+  SOCIAL_MEDIA_VIDEO_MAX_BYTES,
 } from "../../types/social-media";
 import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "./media-download";
 
@@ -120,5 +121,42 @@ describe("assertSocialMediaBytesWithinBudget", () => {
       maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES,
       platform: "slack",
     });
+  });
+});
+
+// TikTok chunk-uploads video, so the 10 MiB image ceiling would reject
+// ordinary posts — but the decode is still one allocation inside the Worker
+// isolate. It takes the larger video ceiling rather than no bound at all.
+describe("video budget", () => {
+  test("accepts a payload above the image ceiling but under the video ceiling", () => {
+    const bytes = SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1024;
+    expect(() =>
+      assertSocialMediaBytesWithinBudget(
+        bytes,
+        { platform: "tiktok" },
+        SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+      ),
+    ).not.toThrow();
+  });
+
+  test("still rejects a payload above the video ceiling", () => {
+    const rejected = rejection(() =>
+      assertSocialMediaBytesWithinBudget(
+        SOCIAL_MEDIA_VIDEO_MAX_BYTES + 1,
+        { platform: "tiktok" },
+        SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+      ),
+    );
+    expect(rejected.code).toBe("SOCIAL_MEDIA_MEDIA_TOO_LARGE");
+    expect(rejected.context?.maxBytes).toBe(SOCIAL_MEDIA_VIDEO_MAX_BYTES);
+  });
+
+  test("rejects an oversize video before the decode allocates", () => {
+    const encoded = "A".repeat(Math.ceil(SOCIAL_MEDIA_VIDEO_MAX_BYTES / 3) * 4 + 4);
+    const rejected = rejection(() =>
+      decodeSocialMediaBase64(encoded, { platform: "tiktok" }, SOCIAL_MEDIA_VIDEO_MAX_BYTES),
+    );
+    expect(rejected.code).toBe("SOCIAL_MEDIA_MEDIA_TOO_LARGE");
+    expect(rejected.context?.encodedLength).toBeGreaterThan(0);
   });
 });

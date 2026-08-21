@@ -5,8 +5,13 @@
  * URL-backed attachments go through the shared outbound network guard with a
  * hard streaming byte limit. Attachments the caller supplied inline — the
  * `media.data` and `media.base64` siblings of the same provider `if/else` —
- * are charged against that same budget here, so no branch can allocate
- * unbounded bytes inside the Worker isolate.
+ * are charged against that same budget here, so no provider branch can
+ * allocate unbounded bytes inside the Worker isolate.
+ *
+ * The budget is a parameter, not a constant, because TikTok chunk-uploads
+ * video: the image ceiling would reject ordinary video posts, but the decode
+ * still happens in one allocation, so it takes the larger
+ * `SOCIAL_MEDIA_VIDEO_MAX_BYTES` rather than no bound at all.
  */
 import { ElizaError } from "@elizaos/core";
 
@@ -45,12 +50,13 @@ function downloadError(
 export function assertSocialMediaBytesWithinBudget(
   byteLength: number,
   context: Record<string, unknown> = {},
+  maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
 ): void {
-  if (byteLength <= SOCIAL_MEDIA_MEDIA_MAX_BYTES) return;
+  if (byteLength <= maxBytes) return;
   throw downloadError(
     "Media attachment exceeds the media byte limit",
     "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
-    { receivedBytes: byteLength, maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES, ...context },
+    { receivedBytes: byteLength, maxBytes, ...context },
   );
 }
 
@@ -71,22 +77,24 @@ export function assertSocialMediaBytesWithinBudget(
 export function decodeSocialMediaBase64(
   base64: string,
   context: Record<string, unknown> = {},
+  maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
 ): Buffer {
-  if (base64.length > SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH) {
+  const maxEncodedLength = Math.ceil(maxBytes / 3) * 4;
+  if (base64.length > maxEncodedLength) {
     throw downloadError(
       "Media attachment exceeds the media byte limit",
       "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
       {
         encodedLength: base64.length,
-        maxEncodedLength: SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
-        maxBytes: SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+        maxEncodedLength,
+        maxBytes,
         ...context,
       },
     );
   }
 
   const bytes = Buffer.from(base64, "base64");
-  assertSocialMediaBytesWithinBudget(bytes.length, context);
+  assertSocialMediaBytesWithinBudget(bytes.length, context, maxBytes);
   return bytes;
 }
 
