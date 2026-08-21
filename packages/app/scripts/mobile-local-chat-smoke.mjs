@@ -863,35 +863,62 @@ async function launchAndroidEmulatorApp() {
   }
 
   const context = { adb, serial, installed: true };
-  if (androidSelectLocal) {
-    setAndroidE2eApiPortOverride(context, true);
-    removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
-    forceStopConflictingAndroidAgents(context);
-    preseedAndroidLocalRuntime(context);
-  }
-  if (androidStageSmokeModel) {
-    await stageAndroidSmokeModel(context);
-  }
+  const prepareAndLaunch = async () => {
+    if (androidSelectLocal) {
+      removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
+      forceStopConflictingAndroidAgents(context);
+      preseedAndroidLocalRuntime(context);
+    }
+    if (androidStageSmokeModel) {
+      await stageAndroidSmokeModel(context);
+    }
 
-  console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
-  requireExec(
-    adb,
-    ["-s", serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
-    `Failed to launch ${id} on ${serial}.`,
-  );
-  tryExec(adb, [
-    "-s",
-    serial,
-    "shell",
-    "am",
-    "start",
-    "-a",
-    "android.intent.action.VIEW",
-    "-d",
-    "elizaos://chat",
-    id,
-  ]);
-  return context;
+    console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
+    requireExec(
+      adb,
+      ["-s", serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
+      `Failed to launch ${id} on ${serial}.`,
+    );
+    tryExec(adb, [
+      "-s",
+      serial,
+      "shell",
+      "am",
+      "start",
+      "-a",
+      "android.intent.action.VIEW",
+      "-d",
+      "elizaos://chat",
+      id,
+    ]);
+    return context;
+  };
+
+  return androidSelectLocal
+    ? withAndroidE2eApiPortOverride(context, prepareAndLaunch)
+    : prepareAndLaunch();
+}
+
+async function withAndroidE2eApiPortOverride(
+  context,
+  operation,
+  setOverride = setAndroidE2eApiPortOverride,
+) {
+  setOverride(context, true);
+  try {
+    return await operation();
+  } catch (error) {
+    try {
+      setOverride(context, false);
+    } catch (cleanupError) {
+      // error-policy:J6 best-effort teardown; preserve the launch failure while
+      // reporting that the operator-visible API-port override may remain set.
+      console.warn(
+        `[local-chat-smoke] Failed to clear Android API port override after launch preparation failed: ${cleanupError instanceof Error ? cleanupError.message : cleanupError}`,
+      );
+    }
+    throw error;
+  }
 }
 
 function setAndroidE2eApiPortOverride(context, enabled) {
@@ -2881,8 +2908,8 @@ async function main() {
       try {
         setAndroidE2eApiPortOverride(androidContext, false);
       } catch (error) {
-        // error-policy:J6 best-effort teardown; the debug-only property is
-        // ignored by release builds and the runner still needs its root cause.
+        // error-policy:J6 best-effort teardown; preserve the runner's root
+        // failure while reporting the operator-visible override cleanup issue.
         console.warn(
           `[local-chat-smoke] Failed to clear Android debug API port override: ${error instanceof Error ? error.message : error}`,
         );
@@ -2937,6 +2964,7 @@ export {
   verifyIosFullBunSmoke,
   verifySmokeModelFile,
   waitForAndroidProcessStability,
+  withAndroidE2eApiPortOverride,
   withTransientRetry,
   writeAndroidCapacitorPreferences,
   writeAndroidLocalInferenceRegistry,
