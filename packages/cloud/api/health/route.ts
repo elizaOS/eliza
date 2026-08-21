@@ -20,6 +20,9 @@ app.get("/", (c) =>
       // `/api/health` before the app boots, so this route is normally shadowed).
       // Kept identical so the two can never disagree on which env answered.
       environment: (c.env as { ENVIRONMENT?: string }).ENVIRONMENT ?? null,
+      schemaCompatibility: {
+        usageQuotasTombstone: true,
+      },
     },
     200,
     { "Cache-Control": "no-store, max-age=0" },
