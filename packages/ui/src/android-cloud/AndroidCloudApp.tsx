@@ -80,12 +80,20 @@ export function AndroidCloudApp({
   const loginAttemptRef = useRef(0);
 
   const restore = useCallback(
-    async (loginAttempt?: number) => {
+    async (
+      loginAttempt?: number,
+      loginCredential?: { sessionId: string; token: string },
+    ) => {
       const isCurrent = () =>
         loginAttempt === undefined || loginAttemptRef.current === loginAttempt;
       const abandonStaleLogin = async () => {
         if (loginAttempt === undefined || isCurrent()) return false;
-        await client.signOut();
+        if (loginCredential) {
+          await client.discardLoginAttempt(
+            loginCredential.sessionId,
+            loginCredential.token,
+          );
+        }
         return true;
       };
       setError(null);
@@ -190,15 +198,19 @@ export function AndroidCloudApp({
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
         if (loginAttemptRef.current !== attemptNumber) {
-          await client.signOut();
+          await client.discardLoginAttempt(attempt.sessionId, result.token);
           return;
         }
         await closeExternal?.();
         if (loginAttemptRef.current !== attemptNumber) {
-          await client.signOut();
+          await client.discardLoginAttempt(attempt.sessionId, result.token);
           return;
         }
-        await restore(attemptNumber);
+        await restore(attemptNumber, {
+          sessionId: attempt.sessionId,
+          token: result.token,
+        });
+        client.acceptLoginAttempt(attempt.sessionId);
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");

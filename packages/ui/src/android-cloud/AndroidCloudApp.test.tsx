@@ -182,7 +182,9 @@ describe("AndroidCloudApp", () => {
       },
     );
     const pollLogin = vi.spyOn(client, "pollLogin").mockReturnValue(poll);
-    const signOut = vi.spyOn(client, "signOut").mockResolvedValue(undefined);
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockResolvedValue(undefined);
     const openExternal = vi.fn(async () => undefined);
     const closeExternal = vi.fn(async () => undefined);
     accelerateLoginPollTimers();
@@ -202,7 +204,12 @@ describe("AndroidCloudApp", () => {
     expect(signal?.aborted).toBe(true);
     resolvePoll({ status: "authenticated", token: "cancelled-token" });
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(discardLoginAttempt).toHaveBeenCalledWith(
+        "10000000-0000-4000-8000-000000000001",
+        "cancelled-token",
+      ),
+    );
     expect(client.restoreSession).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
@@ -229,7 +236,9 @@ describe("AndroidCloudApp", () => {
           finishRestore = resolve;
         }),
       );
-    const signOut = vi.spyOn(client, "signOut").mockResolvedValue(undefined);
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockResolvedValue(undefined);
     accelerateLoginPollTimers();
 
     render(
@@ -246,8 +255,74 @@ describe("AndroidCloudApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     finishRestore(session);
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(discardLoginAttempt).toHaveBeenCalledWith(
+        "10000000-0000-4000-8000-000000000001",
+        "cancelled-token",
+      ),
+    );
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByText("Ada")).toBeNull();
+  });
+
+  it("does not let stale attempt cleanup replace a newer successful login", async () => {
+    const client = createClient();
+    const newerSession: AndroidCloudSession = {
+      ...session,
+      identity: { ...session.identity, displayName: "Bea" },
+      token: "newer-token",
+    };
+    let finishStaleRestore: (value: AndroidCloudSession | null) => void =
+      () => {};
+    client.restoreSession = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockReturnValueOnce(
+        new Promise<AndroidCloudSession | null>((resolve) => {
+          finishStaleRestore = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(newerSession);
+    vi.spyOn(client, "beginLogin")
+      .mockResolvedValueOnce({
+        sessionId: "10000000-0000-4000-8000-000000000001",
+        browserUrl: "https://cloud.eliza.app/auth/cli-login",
+      })
+      .mockResolvedValueOnce({
+        sessionId: "10000000-0000-4000-8000-000000000002",
+        browserUrl: "https://cloud.eliza.app/auth/cli-login",
+      });
+    vi.spyOn(client, "pollLogin")
+      .mockResolvedValueOnce({ status: "authenticated", token: "stale-token" })
+      .mockResolvedValueOnce({ status: "authenticated", token: "newer-token" });
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockResolvedValue(undefined);
+    accelerateLoginPollTimers();
+
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={vi.fn(async () => undefined)}
+        voice={createVoice()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(client.restoreSession).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Bea")).toBeTruthy();
+    finishStaleRestore(session);
+
+    await waitFor(() =>
+      expect(discardLoginAttempt).toHaveBeenCalledWith(
+        "10000000-0000-4000-8000-000000000001",
+        "stale-token",
+      ),
+    );
+    expect(screen.getByText("Bea")).toBeTruthy();
     expect(screen.queryByText("Ada")).toBeNull();
   });
 

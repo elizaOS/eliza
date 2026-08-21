@@ -160,6 +160,9 @@ export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
+  private credentialMutation: Promise<void> = Promise.resolve();
+  private credentialRevision = 0;
+  private readonly loginCredentialRevisions = new Map<string, number>();
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
@@ -168,11 +171,64 @@ export class AndroidCloudClient {
   }
 
   async readToken(): Promise<string | null> {
-    return (await this.credentialStore.read())?.trim() || null;
+    return (await this.readTokenSnapshot()).token;
+  }
+
+  private async readTokenSnapshot(): Promise<{
+    token: string | null;
+    revision: number;
+  }> {
+    return this.mutateCredential(async () => ({
+      token: (await this.credentialStore.read())?.trim() || null,
+      revision: this.credentialRevision,
+    }));
+  }
+
+  private mutateCredential<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.credentialMutation.then(operation, operation);
+    this.credentialMutation = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private writeToken(token: string): Promise<number> {
+    return this.mutateCredential(async () => {
+      await this.credentialStore.write(token);
+      this.credentialRevision += 1;
+      return this.credentialRevision;
+    });
+  }
+
+  private clearToken(): Promise<void> {
+    return this.mutateCredential(async () => {
+      await this.credentialStore.clear();
+      this.credentialRevision += 1;
+    });
+  }
+
+  private clearTokenIfCurrent(
+    expectedToken: string,
+    expectedRevision?: number,
+  ): Promise<boolean> {
+    return this.mutateCredential(async () => {
+      if (
+        expectedRevision !== undefined &&
+        this.credentialRevision !== expectedRevision
+      ) {
+        return false;
+      }
+      const current = (await this.credentialStore.read())?.trim() || null;
+      if (current !== expectedToken) return false;
+      await this.credentialStore.clear();
+      this.credentialRevision += 1;
+      return true;
+    });
   }
 
   async restoreSession(): Promise<AndroidCloudSession | null> {
-    const token = await this.readToken();
+    const { token, revision } = await this.readTokenSnapshot();
     if (!token) return null;
     const response = await this.fetchImpl(
       `${this.apiBase}/api/v1/eliza/personal`,
@@ -181,7 +237,7 @@ export class AndroidCloudClient {
       },
     );
     if (response.status === 401) {
-      await this.credentialStore.clear();
+      await this.clearTokenIfCurrent(token, revision);
       return null;
     }
     if (!response.ok) {
@@ -281,9 +337,11 @@ export class AndroidCloudClient {
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
       signal?.throwIfAborted();
-      await this.credentialStore.write(token);
+      const credentialRevision = await this.writeToken(token);
+      this.loginCredentialRevisions.set(sessionId, credentialRevision);
       if (signal?.aborted) {
-        await this.credentialStore.clear();
+        await this.clearTokenIfCurrent(token, credentialRevision);
+        this.loginCredentialRevisions.delete(sessionId);
         signal.throwIfAborted();
       }
       return { status: "authenticated", token };
@@ -376,8 +434,38 @@ export class AndroidCloudClient {
       // Remote logout is best-effort. Local credential removal is authoritative
       // for this device and must still complete while offline.
     } finally {
-      await this.credentialStore.clear();
+      await this.clearToken();
     }
+  }
+
+  acceptLoginAttempt(sessionId: string): void {
+    this.loginCredentialRevisions.delete(sessionId);
+  }
+
+  async discardLoginAttempt(sessionId: string, token: string): Promise<void> {
+    const expectedToken = token.trim();
+    if (!expectedToken) return;
+    const expectedRevision = this.loginCredentialRevisions.get(sessionId);
+    this.loginCredentialRevisions.delete(sessionId);
+    if (expectedRevision === undefined) return;
+    await this.mutateCredential(async () => {
+      const current = (await this.credentialStore.read())?.trim() || null;
+      const revisionIsCurrent = this.credentialRevision === expectedRevision;
+      if (!revisionIsCurrent && current === expectedToken) return;
+      if (revisionIsCurrent && current === expectedToken) {
+        await this.credentialStore.clear();
+        this.credentialRevision += 1;
+      }
+      try {
+        await this.fetchImpl(`${this.apiBase}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${expectedToken}` },
+        });
+      } catch {
+        // error-policy:J6 stale-attempt remote logout is best-effort after its
+        // attempt-owned local credential has been compared and removed.
+      }
+    });
   }
 
   async getConversationMessages(
