@@ -30,11 +30,11 @@ import type {
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { formatActionResultsForPrompt } from "../utils/action-results.ts";
+import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
-import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -132,15 +132,30 @@ function trimTailForPrompt(text: string, maxChars: number): string {
 
 function trimHeadAndTailForPrompt(text: string, maxChars: number): string {
 	if (maxChars <= 0) return "";
-	if (text.length <= maxChars) return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxChars) return wellFormed;
 	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
 		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
 	}
 	const contentBudget = maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length;
 	const headBudget = Math.ceil(contentBudget / 3);
 	const tailBudget = contentBudget - headBudget;
-	const tail = tailBudget > 0 ? text.slice(-tailBudget) : "";
-	return `${text.slice(0, headBudget)}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
+	const head = truncateWellFormed(wellFormed, headBudget);
+	let tail = "";
+	if (tailBudget > 0) {
+		let tailStart = wellFormed.length - tailBudget;
+		if (
+			tailStart > 0 &&
+			wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+			wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+			wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+			wellFormed.charCodeAt(tailStart) <= 0xdfff
+		) {
+			tailStart += 1;
+		}
+		tail = wellFormed.slice(tailStart);
+	}
+	return `${head}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
 }
 
 function allocateFairBudgets(lengths: number[], totalBudget: number): number[] {
@@ -791,7 +806,10 @@ export class EvaluatorService extends BaseService {
 						src: "service:evaluator",
 						agentId: this.runtime.agentId,
 						evaluator: evaluator.name,
-						rawSection: truncateWellFormed(toWellFormedUnicode(stringifyForDiagnostics(rawSection)), 500),
+						rawSection: truncateWellFormed(
+							toWellFormedUnicode(stringifyForDiagnostics(rawSection)),
+							500,
+						),
 					},
 					"Evaluator output section did not validate",
 				);
