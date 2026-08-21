@@ -17,6 +17,10 @@ import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  stableJsonString,
+} from "@elizaos/shared/canonical-json";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
@@ -366,20 +370,22 @@ function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
   return localBackupKmsClient;
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out: JsonRecord = {};
-    for (const key of Object.keys(value as JsonRecord).sort()) {
-      out[key] = canonicalize((value as JsonRecord)[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
+/**
+ * Deterministic JSON with recursively sorted object keys — the bytes every
+ * backup integrity hash is taken over.
+ *
+ * Bounded, because both directions run it on content the process does not
+ * control. `assertManifest` canonicalizes `manifest.integrity.componentHashes`
+ * straight out of a stored backup file, and `decryptLocalBackupEnvelope`
+ * canonicalizes the decrypted snapshot BEFORE `assertManifest` has validated
+ * its shape — so the unbounded sorted-key recursion this replaces made the
+ * integrity gate itself `RangeError` on a deep or cyclic payload, leaving a
+ * restore with no reachable error path rather than a clean rejection.
+ * Canonical bytes are unchanged for every payload that hashed before, so
+ * already-written `stateSha256` envelopes stay verifiable.
+ */
 function stableJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
+  return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
 }
 
 function sha256Bytes(bytes: Buffer | string): string {
