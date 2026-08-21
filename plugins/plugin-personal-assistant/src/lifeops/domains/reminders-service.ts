@@ -246,6 +246,7 @@ import {
   getCallerOccurrence,
   getCallerOccurrenceView,
   listCallerDefinitions,
+  nextMutationRevision,
 } from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
@@ -3317,7 +3318,7 @@ export class RemindersDomain {
             reminderAcknowledgedNote: acknowledgementNote,
             reminderAcknowledgedResolution: args.resolution,
           },
-          updatedAt: new Date().toISOString(),
+          updatedAt: nextMutationRevision(occurrence.updatedAt),
         });
       }
     } else {
@@ -6075,15 +6076,26 @@ export class RemindersDomain {
       if (!definition) {
         fail(404, "life-ops reminder not found");
       }
-      await this.ctx.repository.updateOccurrence({
-        ...occurrence,
-        metadata: {
-          ...occurrence.metadata,
-          reminderAcknowledgedAt: acknowledgedAt,
-          reminderAcknowledgedNote: note,
+      await this.ctx.repository.updateOccurrence(
+        {
+          ...occurrence,
+          metadata: {
+            ...occurrence.metadata,
+            reminderAcknowledgedAt: acknowledgedAt,
+            reminderAcknowledgedNote: note,
+          },
+          updatedAt: new Date().toISOString(),
         },
-        updatedAt: new Date().toISOString(),
-      });
+        {
+          definitionScope: {
+            domain: definition.domain,
+            subjectType: definition.subjectType,
+            subjectId: definition.subjectId,
+          },
+          expectedUpdatedAt: occurrence.updatedAt,
+          expectedDefinitionUpdatedAt: definition.updatedAt,
+        },
+      );
     } else {
       const event = (
         await this.ctx.repository.listCalendarEvents(

@@ -100,3 +100,13 @@ export async function listCallerDefinitions(
         left.id.localeCompare(right.id),
     );
 }
+
+/** Produce an ISO revision strictly newer than the persisted predecessor. */
+export function nextMutationRevision(
+  previousUpdatedAt: string,
+  candidate = new Date(),
+): string {
+  return new Date(
+    Math.max(candidate.getTime(), Date.parse(previousUpdatedAt) + 1),
+  ).toISOString();
+}

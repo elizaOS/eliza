@@ -307,6 +307,60 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     );
   });
 
+  it("rejects a stale occurrence mutation after its agent definition moves to another owner", async () => {
+    const now = new Date("2027-01-05T08:30:00.000Z");
+    const ownerBService = new LifeOpsService(runtimeResult.runtime, {
+      ownerEntityId: OWNER_B,
+    });
+    const sharedDefinition: LifeOpsTaskDefinition = {
+      ...makeDefinition(agentId, agentId, "shared agent task"),
+      domain: "agent_ops",
+      subjectType: "agent",
+      subjectId: agentId,
+      visibilityScope: "agent_and_admin",
+      contextPolicy: "never",
+    };
+    await repository.createDefinition(sharedDefinition);
+    const [occurrence] = await service.refreshDefinitionOccurrences(
+      sharedDefinition,
+      now,
+    );
+    if (!occurrence) throw new Error("expected shared occurrence");
+
+    const originalUpdate = service.repository.updateOccurrence.bind(
+      service.repository,
+    );
+    service.repository.updateOccurrence = async (candidate, options) => {
+      await ownerBService.updateDefinition(sharedDefinition.id, {
+        ownership: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: OWNER_B,
+        },
+      });
+      return originalUpdate(candidate, options);
+    };
+
+    try {
+      await expect(
+        service.completeOccurrence(occurrence.id, {}, now),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ElizaError &&
+          error.code === "LIFEOPS_OCCURRENCE_CONFLICT",
+      );
+    } finally {
+      service.repository.updateOccurrence = originalUpdate;
+    }
+    const persisted = await repository.getOccurrence(agentId, occurrence.id);
+    expect(persisted).toMatchObject({
+      state: "pending",
+      domain: "user_lifeops",
+      subjectType: "owner",
+      subjectId: OWNER_B,
+    });
+  });
+
   it("keeps another owner's completed items out of owner recaps", async () => {
     const now = new Date("2027-01-05T10:00:00.000Z");
     const ownDefinition = makeDefinition(agentId, ownerA, "owner A completed");

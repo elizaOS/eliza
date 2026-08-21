@@ -3824,10 +3824,31 @@ export class LifeOpsRepository {
     return rows.map(parseOccurrenceView);
   }
 
-  async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await executeRawSql(
+  /**
+   * Persist an occurrence mutation under the owning definition's current
+   * scope and optional occurrence/definition revisions. Caller-facing flows
+   * pass every guard so an ownership move cannot turn a previously authorized
+   * read into a stale write against another owner's row.
+   */
+  async updateOccurrence(
+    occurrence: LifeOpsOccurrence,
+    options?: {
+      definitionScope?: LifeOpsDefinitionScope;
+      expectedUpdatedAt?: string;
+      expectedDefinitionUpdatedAt?: string;
+    },
+  ): Promise<void> {
+    const occurrenceRevisionPredicate = options?.expectedUpdatedAt
+      ? `
+          AND occurrence.updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const definitionRevisionPredicate = options?.expectedDefinitionUpdatedAt
+      ? `
+          AND definition.updated_at = ${sqlQuote(options.expectedDefinitionUpdatedAt)}`
+      : "";
+    const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
           SET domain = ${sqlQuote(occurrence.domain)},
               subject_type = ${sqlQuote(occurrence.subjectType)},
               subject_id = ${sqlQuote(occurrence.subjectId)},
@@ -3844,9 +3865,32 @@ export class LifeOpsRepository {
               derived_target_json = ${occurrence.derivedTarget ? sqlJson(occurrence.derivedTarget) : "NULL"},
               metadata_json = ${sqlJson(occurrence.metadata)},
               updated_at = ${sqlQuote(occurrence.updatedAt)}
-        WHERE id = ${sqlQuote(occurrence.id)}
-          AND agent_id = ${sqlQuote(occurrence.agentId)}`,
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}${occurrenceRevisionPredicate}${definitionRevisionPredicate}
+       RETURNING occurrence.id`,
     );
+    if (rows.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] occurrence update matched no row for this definition scope and revision",
+        {
+          code: "LIFEOPS_OCCURRENCE_CONFLICT",
+          context: {
+            occurrenceId: occurrence.id,
+            definitionId: occurrence.definitionId,
+            agentId: occurrence.agentId,
+            expectedDomain: options?.definitionScope?.domain ?? null,
+            expectedSubjectType: options?.definitionScope?.subjectType ?? null,
+            expectedSubjectId: options?.definitionScope?.subjectId ?? null,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+            expectedDefinitionUpdatedAt:
+              options?.expectedDefinitionUpdatedAt ?? null,
+          },
+        },
+      );
+    }
   }
 
   async pruneNonTerminalOccurrences(

@@ -46,7 +46,10 @@ import {
   normalizeProgressionRule,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
-import { listCallerDefinitions } from "./definition-authorization.js";
+import {
+  listCallerDefinitions,
+  nextMutationRevision,
+} from "./definition-authorization.js";
 
 // Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
@@ -363,7 +366,7 @@ export class DefinitionsDomain {
               normalizeOptionalRecord(request.metadata, "metadata"),
             )
           : current.definition.metadata,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nextMutationRevision(current.definition.updatedAt),
     };
     const reminderPlanDraft = normalizeReminderPlanDraft(
       request.reminderPlan,
@@ -479,10 +482,16 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (occurrence.state === "completed") {
       const current = await this.ctx.repository.getOccurrenceView(
         this.ctx.agentId(),
         occurrence.id,
+        definitionScope,
       );
       if (!current) {
         fail(404, "life-ops occurrence not found");
@@ -506,9 +515,13 @@ export class DefinitionsDomain {
         metadata: cloneRecord(request.metadata),
         previousState: occurrence.state,
       },
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    await this.ctx.repository.updateOccurrence(updatedOccurrence, {
+      definitionScope,
+      expectedUpdatedAt: occurrence.updatedAt,
+      expectedDefinitionUpdatedAt: definition.updatedAt,
+    });
     await this.ctx.recordAudit(
       "occurrence_completed",
       "occurrence",
@@ -539,6 +552,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after completion");
@@ -587,10 +601,16 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (occurrence.state === "skipped") {
       const current = await this.ctx.repository.getOccurrenceView(
         this.ctx.agentId(),
         occurrence.id,
+        definitionScope,
       );
       if (!current) {
         fail(404, "life-ops occurrence not found");
@@ -608,9 +628,13 @@ export class DefinitionsDomain {
         skippedAt: now.toISOString(),
         previousState: occurrence.state,
       },
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    await this.ctx.repository.updateOccurrence(updatedOccurrence, {
+      definitionScope,
+      expectedUpdatedAt: occurrence.updatedAt,
+      expectedDefinitionUpdatedAt: definition.updatedAt,
+    });
     await this.ctx.recordAudit(
       "occurrence_skipped",
       "occurrence",
@@ -632,6 +656,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after skip");
@@ -648,6 +673,11 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (
       ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
     ) {
@@ -661,14 +691,18 @@ export class DefinitionsDomain {
       ...occurrence,
       state: "snoozed",
       snoozedUntil: snoozedUntil.toISOString(),
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
       metadata: {
         ...occurrence.metadata,
         snoozedAt: now.toISOString(),
         snoozePreset: request.preset ?? null,
       },
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    await this.ctx.repository.updateOccurrence(updatedOccurrence, {
+      definitionScope,
+      expectedUpdatedAt: occurrence.updatedAt,
+      expectedDefinitionUpdatedAt: definition.updatedAt,
+    });
     await this.ctx.recordAudit(
       "occurrence_snoozed",
       "occurrence",
@@ -690,6 +724,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after snooze");
