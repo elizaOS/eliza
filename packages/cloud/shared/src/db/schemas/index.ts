@@ -4,6 +4,7 @@
  * Central export point for all database table schemas.
  */
 
+export * from "./account-deletion-requests";
 export * from "./ad-accounts";
 export * from "./ad-audience-segments";
 export * from "./ad-campaigns";

@@ -6804,8 +6804,6 @@
   "cloud.privacyPanel.exportComingSoon": "La exportación de datos llegará pronto: aún no está disponible en este servidor.",
   "cloud.privacyPanel.exportFailed": "Error al exportar: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "Escribe «{{phrase}}» para confirmar.",
-  "cloud.privacyPanel.deletionScheduled": "Eliminación programada. Tienes 30 días para recuperar tu cuenta antes de la purga.",
-  "cloud.privacyPanel.deletionComingSoon": "La eliminación de cuenta llegará pronto: aún no está disponible en este servidor.",
   "cloud.privacyPanel.deleteRequestFailed": "Error en la solicitud de eliminación: {{message}}",
   "cloud.privacyPanel.title": "Privacidad",
   "cloud.privacyPanel.subtitle": "Controla la captura de datos opcional y ejerce tus derechos sobre los datos.",

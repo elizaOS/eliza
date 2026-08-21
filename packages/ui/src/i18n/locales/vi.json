@@ -6786,8 +6786,6 @@
   "cloud.privacyPanel.exportComingSoon": "Xuất dữ liệu sắp ra mắt — chưa khả dụng trên máy chủ này.",
   "cloud.privacyPanel.exportFailed": "Xuất thất bại: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "Vui lòng nhập \"{{phrase}}\" để xác nhận.",
-  "cloud.privacyPanel.deletionScheduled": "Đã lên lịch xóa. Bạn có 30 ngày để phục hồi trước khi xóa vĩnh viễn.",
-  "cloud.privacyPanel.deletionComingSoon": "Xóa tài khoản sắp ra mắt — chưa khả dụng trên máy chủ này.",
   "cloud.privacyPanel.deleteRequestFailed": "Yêu cầu xóa thất bại: {{message}}",
   "cloud.privacyPanel.title": "Quyền riêng tư",
   "cloud.privacyPanel.subtitle": "Kiểm soát thu thập dữ liệu tùy chọn và thực hiện quyền dữ liệu của bạn.",

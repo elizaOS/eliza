@@ -1891,6 +1891,13 @@
       "when": 1792900000000,
       "tag": "0275_remote_sessions_first_class_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1792986400000,
+      "tag": "0276_account_deletion_requests",
+      "breakpoints": true
     }
   ]
 }

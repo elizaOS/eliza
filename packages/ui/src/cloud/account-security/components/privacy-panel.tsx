@@ -3,9 +3,8 @@
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
  *
- * DSR export/deletion jobs are not exposed by the Worker yet. Keep those
- * controls visible but disabled so the launch surface does not issue dead
- * `/api/v1/me/*` calls or imply a request was scheduled.
+ * Account deletion is backed by the Worker and Steward lifecycle coordinator.
+ * Data export remains visible but unavailable until its export job ships.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
@@ -25,6 +24,7 @@ import {
   setTrajectoryLoggingEnabled,
   setVisionEnabled,
 } from "../data/consent-store";
+import { AccountDeletionDialog } from "./account-deletion-dialog";
 
 export function PrivacyPanel() {
   const t = useCloudT();
@@ -122,25 +122,9 @@ export function PrivacyPanel() {
           })}
           description={t("cloud.privacyPanel.deleteDescription", {
             defaultValue:
-              "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
+              "Disables access immediately and schedules your Steward identity and associated Eliza Cloud data for deletion within 30 days. Records required for legal, tax, fraud, or security purposes may be retained only as necessary.",
           })}
-          control={
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-danger/40 text-danger"
-              disabled
-              title={t("cloud.privacyPanel.deletionComingSoon", {
-                defaultValue:
-                  "Account deletion is coming soon — not yet available on this server.",
-              })}
-              data-testid="delete-account-trigger"
-            >
-              {t("cloud.privacyPanel.deleteUnavailable", {
-                defaultValue: "Deletion unavailable",
-              })}
-            </Button>
-          }
+          control={<AccountDeletionDialog />}
         />
       </SettingsGroup>
     </SettingsStack>
