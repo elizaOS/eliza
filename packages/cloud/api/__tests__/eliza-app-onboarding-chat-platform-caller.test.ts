@@ -43,6 +43,8 @@ mock.module("@/lib/cache/client", () => ({
 mock.module("@/lib/services/eliza-app/provisioning", () => ({
   ...provisioningObservation,
   getElizaAppProvisioningStatus,
+  publicElizaAppProvisioningPayload:
+    provisioningObservation.publicElizaAppProvisioningPayload,
 }));
 
 mock.module("@/lib/services/eliza-app/eliza-managed-launch", () => ({
