@@ -18,6 +18,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
@@ -115,6 +116,29 @@ describe("InlineWidgetText", () => {
     const link = screen.getByRole("link", { name: "Open Notes" });
     expect(link.getAttribute("href")).toBe("/api/apps/local/notes/");
     expect(link.getAttribute("target")).toBeNull();
+  });
+
+  it("opens a local app completion link in the in-app Browser view", () => {
+    const navigations: NavigateViewDetail[] = [];
+    const onNavigate = (event: Event) => {
+      navigations.push((event as CustomEvent<NavigateViewDetail>).detail);
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    try {
+      withApp(
+        <InlineWidgetText content="Ready: [Open Notes](/api/apps/local/notes/)" />,
+      );
+      fireEvent.click(screen.getByRole("link", { name: "Open Notes" }));
+      expect(navigations).toEqual([
+        expect.objectContaining({
+          viewId: "browser",
+          viewPath: `/browser?browse=${encodeURIComponent(`${window.location.origin}/api/apps/local/notes/`)}`,
+          source: "user",
+        }),
+      ]);
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    }
   });
 
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {

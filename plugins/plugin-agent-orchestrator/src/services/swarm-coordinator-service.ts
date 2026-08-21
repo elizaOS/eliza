@@ -1389,6 +1389,7 @@ export class SwarmCoordinatorService
       for (const key of [
         "originRoomId",
         "originSource",
+        "openWhenReady",
         "originConnectorMessageId",
         "replyToExternalMessageId",
         "messageId",

@@ -73,6 +73,7 @@ const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
 interface BridgeEventPayload {
 	originRoomId: string;
 	originSource: string | undefined;
+	openWhenReady: boolean;
 	verdict: "pass" | "fail";
 	method: typeof VERIFY_APP_METHOD | typeof VERIFY_PLUGIN_METHOD;
 	targetName: string;
@@ -105,6 +106,10 @@ function readNumber(
 	return typeof value === "number" && Number.isFinite(value)
 		? value
 		: undefined;
+}
+
+function readBoolean(record: Record<string, unknown>, key: string): boolean {
+	return record[key] === true;
 }
 
 /**
@@ -156,6 +161,7 @@ function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 	return {
 		originRoomId,
 		originSource: readString(event.data, "originSource"),
+		openWhenReady: readBoolean(event.data, "openWhenReady"),
 		verdict,
 		method,
 		targetName,
@@ -165,6 +171,54 @@ function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 		retryCount: readNumber(event.data, "retryCount"),
 		maxRetries: readNumber(event.data, "maxRetries"),
 	};
+}
+
+const VIEW_CAPABLE_APP_SOURCES = new Set([
+	"app",
+	"chat",
+	"client_chat",
+	"dashboard",
+	"user_chat",
+]);
+
+function canOpenBrowserView(payload: BridgeEventPayload): boolean {
+	return (
+		payload.openWhenReady &&
+		payload.originSource !== undefined &&
+		VIEW_CAPABLE_APP_SOURCES.has(payload.originSource.toLowerCase())
+	);
+}
+
+function browserViewPathForLaunchUrl(launchUrl: string): string {
+	const absoluteUrl = new URL(
+		launchUrl,
+		`${getAppControlApiBase()}/`,
+	).toString();
+	return `/browser?browse=${encodeURIComponent(absoluteUrl)}`;
+}
+
+async function openLaunchUrlInBrowserView(launchUrl: string): Promise<boolean> {
+	try {
+		const response = await fetch(
+			`${getAppControlApiBase()}/api/views/browser/navigate`,
+			{
+				method: "POST",
+				headers: createViewsRequestHeaders(),
+				body: JSON.stringify({
+					path: browserViewPathForLaunchUrl(launchUrl),
+					viewType: "gui",
+					source: "agent",
+				}),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		return response.ok;
+	} catch (err) {
+		logger.warn(
+			`[VerificationRoomBridge] Browser view navigation failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return false;
+	}
 }
 
 /**
@@ -237,7 +291,12 @@ async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 					launchable.canonicalName,
 				);
 				if (launched.launchUrl) {
-					return `${launched.displayName} is ready and open: [Open ${launched.displayName}](${launched.launchUrl})`;
+					const opened = canOpenBrowserView(payload)
+						? await openLaunchUrlInBrowserView(launched.launchUrl)
+						: false;
+					return opened
+						? `${launched.displayName} is ready — I opened it in Browser. [Open ${launched.displayName}](${launched.launchUrl})`
+						: `${launched.displayName} is ready: [Open ${launched.displayName}](${launched.launchUrl})`;
 				}
 				return `${payload.targetName} is ready and running.`;
 			} catch (err) {

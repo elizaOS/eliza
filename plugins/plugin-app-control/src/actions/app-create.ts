@@ -328,6 +328,8 @@ interface DispatchInput {
 	originRoomId: string;
 	/** Connector/dashboard source used to broadcast the asynchronous verdict. */
 	originSource?: string;
+	/** True only when the originating request explicitly asked to open/show it. */
+	openWhenReady?: boolean;
 	callback?: HandlerCallback;
 }
 
@@ -437,6 +439,7 @@ async function dispatchCodingAgent({
 	acceptanceCriteria,
 	originRoomId,
 	originSource,
+	openWhenReady,
 	callback,
 	verifyProfile,
 }: DispatchInput): Promise<DispatchResult> {
@@ -495,6 +498,7 @@ async function dispatchCodingAgent({
 				// originating chat room.
 				originRoomId,
 				...(originSource ? { originSource } : {}),
+				...(openWhenReady ? { openWhenReady: true } : {}),
 			},
 		},
 	};
@@ -651,18 +655,29 @@ export function buildEditPrompt(
 		`intent: ${intent}`,
 		`sourceDir: ${workdir}`,
 		"referenceDocs: read SCAFFOLD.md or AGENTS.md if present, otherwise README.md",
+		"editWorkflow: sourceDir is already the exact app root; try the conventional implementation and test paths named by its docs/package.json directly, and only list directories when those paths are absent",
+		"editWorkflow: read the relevant implementation and matching tests before editing so requested copy changes and test expectations are updated together",
+		"editWorkflow: batch related replacements into one FILE write/edit per changed file instead of one tool call per string",
 		"implementation: minimal requested change; no unrelated refactors",
-		"setupCommand: run `bun install` before verification when dependencies are not installed",
+		"dependencyRule: do not run `bun install` for an edit unless a validation command first fails specifically because dependencies are missing or package.json dependencies changed",
 		"verificationCommands[3]:",
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+		"verificationRule: after implementation and test expectations are updated, run the three verification commands in one shell call; do not prepend an install command",
 		"completionFiles: list every changed deliverable file as a nonempty relative path array; use the actual paths in this app, never a guessed example path",
 		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
 		`APP_CREATE_DONE {"appName":"${app.name}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
 	].join("\n");
+}
+
+/** Whether the human explicitly requested the finished app to be shown. */
+export function shouldOpenAppWhenReady(intent: string): boolean {
+	return /\b(?:open|show|preview|launch)\s+(?:it|the\s+(?:app|site|website)|my\s+(?:app|site|website))\b/i.test(
+		intent,
+	);
 }
 
 async function findExistingIntentTask(
@@ -912,6 +927,7 @@ async function createNewApp({
 		acceptanceCriteria: appAcceptanceCriteria(name, publish),
 		originRoomId,
 		originSource,
+		openWhenReady: shouldOpenAppWhenReady(intent),
 		callback,
 	});
 
@@ -1025,6 +1041,7 @@ async function editExistingApp({
 		acceptanceCriteria: appAcceptanceCriteria(app.name, null),
 		originRoomId,
 		originSource,
+		openWhenReady: shouldOpenAppWhenReady(intent),
 		callback,
 	});
 

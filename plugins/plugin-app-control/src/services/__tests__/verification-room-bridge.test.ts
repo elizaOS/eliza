@@ -225,12 +225,16 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 	// A scaffolded app lives at <repoRoot>/eliza/apps/app-<name>; the
 	// load-from-directory route scans a PARENT for app subdirs, so the bridge
 	// must register the workdir's parent, not the workdir itself.
-	function appPassEvent() {
+	function appPassEvent(
+		options: { originSource?: string; openWhenReady?: boolean } = {},
+	) {
 		return {
 			type: "task_complete",
 			sessionId: "app-pass",
 			data: {
 				originRoomId: "room-99",
+				...(options.originSource ? { originSource: options.originSource } : {}),
+				...(options.openWhenReady ? { openWhenReady: true } : {}),
 				label: "create-app:notes",
 				workdir: "/repo/eliza/apps/app-notes",
 				verification: {
@@ -247,7 +251,7 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		};
 	}
 
-	it("registers and launches the built app, then posts its clean open link (#11954)", async () => {
+	it("registers and launches the built app, then posts its clean preview link (#11954)", async () => {
 		vi.mocked(globalThis.fetch)
 			.mockResolvedValueOnce({
 				ok: true,
@@ -303,10 +307,63 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(table).toBe("messages");
 		expect(memory.roomId).toBe("room-99");
 		const text = memory.content.text as string;
-		expect(text).toBe(
-			"Notes is ready and open: [Open Notes](/api/apps/local/notes/)",
-		);
+		expect(text).toBe("Notes is ready: [Open Notes](/api/apps/local/notes/)");
 		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("opens the preview through the Browser view when the app user asked for it", async () => {
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({
+					ok: true,
+					items: [{ slug: "notes", canonicalName: "notes" }],
+				}),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				text: async () =>
+					JSON.stringify({
+						pluginInstalled: false,
+						needsRestart: false,
+						displayName: "Notes",
+						launchType: "embedded",
+						launchUrl: "/api/apps/local/notes/",
+						run: null,
+					}),
+			} as Response)
+			.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const sendMessageToTarget = vi.fn(async () => []);
+		Object.assign(runtime, { sendMessageToTarget });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(
+			appPassEvent({ originSource: "client_chat", openWhenReady: true }),
+		);
+		await flush();
+
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("/api/views/browser/navigate"),
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining(
+					'"path":"/browser?browse=http%3A%2F%2F127.0.0.1%3A',
+				),
+			}),
+		);
+		expect(sendMessageToTarget).toHaveBeenCalledWith(
+			{ source: "client_chat", roomId: "room-99" },
+			expect.objectContaining({
+				text: "Notes is ready — I opened it in Browser. [Open Notes](/api/apps/local/notes/)",
+			}),
+		);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
 
 		await service.stop();
 	});
