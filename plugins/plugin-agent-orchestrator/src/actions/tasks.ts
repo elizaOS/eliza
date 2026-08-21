@@ -4678,8 +4678,14 @@ function claimCreateForMessage(
   for (const [id, at] of claims) {
     if (now - at > RECENT_CREATE_CLAIM_TTL_MS) claims.delete(id);
   }
-  if (claims.has(messageId)) return false;
+  if (claims.has(messageId)) {
+    logger(runtime).warn(
+      `[TASKS] create claim DENIED for origin ${messageId} (already launched this origin)`,
+    );
+    return false;
+  }
   claims.set(messageId, now);
+  logger(runtime).warn(`[TASKS] create claim recorded for origin ${messageId}`);
   return true;
 }
 
