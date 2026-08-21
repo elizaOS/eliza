@@ -338,8 +338,29 @@ function knownGapFor(
 }
 
 function bundleRelativeFileFor(model: CatalogModel, file: string): string {
-	const cleanFile = file.replace(/^\/+/, "");
-	const cleanPrefix = model.hfPathPrefix?.replace(/^\/+|\/+$/g, "");
+	let fileStart = 0;
+	while (fileStart < file.length && file.charCodeAt(fileStart) === 47) {
+		fileStart += 1;
+	}
+	const cleanFile = fileStart === 0 ? file : file.slice(fileStart);
+	const rawPrefix = model.hfPathPrefix;
+	let prefixStart = 0;
+	let prefixEnd = rawPrefix?.length ?? 0;
+	while (
+		rawPrefix &&
+		prefixStart < prefixEnd &&
+		rawPrefix.charCodeAt(prefixStart) === 47
+	) {
+		prefixStart += 1;
+	}
+	while (
+		rawPrefix &&
+		prefixEnd > prefixStart &&
+		rawPrefix.charCodeAt(prefixEnd - 1) === 47
+	) {
+		prefixEnd -= 1;
+	}
+	const cleanPrefix = rawPrefix?.slice(prefixStart, prefixEnd);
 	if (cleanPrefix && cleanFile.startsWith(`${cleanPrefix}/`)) {
 		return cleanFile.slice(cleanPrefix.length + 1);
 	}

@@ -60,10 +60,14 @@ export function extractShouldRespondDecision(
 ): { decision: string; reasoning?: string } | null {
   const text = call.response.trim();
   if (!text) return null;
-  const m = text.match(/\{[\s\S]*\}/);
-  if (m) {
+  const objectStart = text.indexOf("{");
+  const objectEnd = text.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd >= objectStart) {
     try {
-      const obj = JSON.parse(m[0]) as Record<string, unknown>;
+      const obj = JSON.parse(text.slice(objectStart, objectEnd + 1)) as Record<
+        string,
+        unknown
+      >;
       const a = obj.action ?? obj.decision ?? obj.shouldRespond;
       if (typeof a === "string" && a.length > 0) {
         const r = obj.reasoning ?? obj.rationale;
