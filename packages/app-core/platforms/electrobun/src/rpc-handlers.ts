@@ -308,12 +308,10 @@ export function buildBunRpcHandlers({
   sendToWebview,
   shellControllerEndpoint,
   closeCurrentWindow,
-  revealCurrentWindow,
 }: {
   sendToWebview: SendToWebview;
   shellControllerEndpoint?: ShellControllerEndpoint;
   closeCurrentWindow?: () => void | Promise<void>;
-  revealCurrentWindow?: () => void | Promise<void>;
 }): BunRpcHandlers {
   const agent = getAgentManager();
   const camera = getCameraManager();
@@ -862,7 +860,6 @@ export function buildBunRpcHandlers({
       desktop,
       appName: getBrandConfig().appName,
       closeCurrentWindow,
-      revealCurrentWindow,
     }),
     ...buildDynamicViewRpcHandlers({
       registry: dynamicViewRegistry,

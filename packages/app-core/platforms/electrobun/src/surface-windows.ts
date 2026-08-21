@@ -28,8 +28,6 @@ export interface ManagedWindowFrame {
 
 export interface ManagedWindowLike {
   focus(): void;
-  show?: () => void;
-  hide?: () => void;
   maximize?: () => void;
   setAlwaysOnTop(flag: boolean): void;
   on(
@@ -68,7 +66,6 @@ export interface CreateManagedWindowOptions {
   frame: ManagedWindowFrame;
   titleBarStyle: "hidden" | "hiddenInset" | "default";
   transparent: boolean;
-  hidden?: boolean;
 }
 
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
@@ -555,10 +552,6 @@ export class SurfaceWindowManager {
           ? "hiddenInset"
           : "default",
       transparent: false,
-      // A Workspace is a full application surface. Keep it off-screen until
-      // its renderer explicitly reports the ready shell; otherwise WKWebView's
-      // empty backing layer appears as a branded black/white loading window.
-      hidden: surface === "workspace",
     });
     if (alwaysOnTop) {
       window.setAlwaysOnTop(true);

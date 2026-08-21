@@ -1639,10 +1639,6 @@ export type ElizaDesktopRPCSchema = {
         params: { routePath?: string; maximize?: boolean } | undefined;
         response: undefined;
       };
-      desktopRendererReady: {
-        params: undefined;
-        response: undefined;
-      };
       desktopOpenSettingsWindow: {
         params: { tabHint?: string } | undefined;
         response: undefined;
@@ -2548,7 +2544,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:getWebGpuBrowserStatus": "desktopGetWebGpuBrowserStatus",
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
-  "desktop:rendererReady": "desktopRendererReady",
   "desktop:workspaceNavigate": "desktopWorkspaceNavigate",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
