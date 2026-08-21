@@ -130,6 +130,30 @@ describe("verifyPlaidWebhook", () => {
     ).rejects.toMatchObject({ status: 401 });
   });
 
+  it("rejects a future-dated iat beyond the skew allowance with 401", async () => {
+    const signed = await signWebhook({
+      body: SYNC_BODY,
+      iatOffsetSeconds: 3600,
+    });
+    await expect(
+      verifyPlaidWebhook({
+        rawBody: signed.rawBody,
+        verificationJwt: signed.verificationJwt,
+        getKey: keyLookup(signed),
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("accepts the exact raw bytes as a Buffer (route receivers hash bytes, not strings)", async () => {
+    const signed = await signWebhook({ body: SYNC_BODY });
+    const payload = await verifyPlaidWebhook({
+      rawBody: Buffer.from(signed.rawBody, "utf8"),
+      verificationJwt: signed.verificationJwt,
+      getKey: keyLookup(signed),
+    });
+    expect(payload.item_id).toBe("item-1");
+  });
+
   it("rejects an unexpected alg with 401", async () => {
     const signed = await signWebhook({ body: SYNC_BODY, alg: "none" });
     await expect(

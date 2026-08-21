@@ -24,6 +24,7 @@ import {
   type AgentRuntime,
   logger,
   type Memory,
+  readRequestBodyBuffer,
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
@@ -47,6 +48,7 @@ import {
   sanitizePaymentSourceForClient,
 } from "@elizaos/plugin-finances/finances-service";
 import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
+import { PLAID_WEBHOOK_MAX_BODY_BYTES } from "@elizaos/plugin-finances/plaid-webhook";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -2578,6 +2580,44 @@ export async function handleLifeOpsRoutes(
         sinceDays: Number.isFinite(sinceDays) ? sinceDays : null,
       });
       json(res, { charges });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/plaid/webhook") {
+    // Public route: the only authentication is the Plaid-Verification ES256
+    // JWT, checked by FinancesService.handlePlaidWebhook against the exact
+    // raw bytes BEFORE any lookup or state change. The body read is bounded
+    // and the stream destroyed on overflow so an unauthenticated sender
+    // cannot make this receiver buffer arbitrary bytes.
+    if (rateLimitRequest(ctx, "default")) return true;
+    const verificationHeader = req.headers["plaid-verification"];
+    const verificationJwt = Array.isArray(verificationHeader)
+      ? verificationHeader[0]
+      : verificationHeader;
+    if (typeof verificationJwt !== "string" || verificationJwt.length === 0) {
+      ctx.error(res, "Missing Plaid-Verification header.", 401);
+      return true;
+    }
+    const rawBody = await readRequestBodyBuffer(req, {
+      maxBytes: PLAID_WEBHOOK_MAX_BODY_BYTES,
+      returnNullOnError: true,
+      returnNullOnTooLarge: true,
+      destroyOnTooLarge: true,
+    });
+    if (!rawBody || rawBody.length === 0) {
+      ctx.error(
+        res,
+        `Plaid webhook body is missing, unreadable, or exceeds ${PLAID_WEBHOOK_MAX_BODY_BYTES} bytes.`,
+        413,
+      );
+      return true;
+    }
+    return runFinancesRoute(ctx, async (service) => {
+      const result = await service.handlePlaidWebhook({
+        rawBody,
+        verificationJwt,
+      });
+      json(res, result);
     });
   }
 

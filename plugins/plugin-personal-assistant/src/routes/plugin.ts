@@ -352,6 +352,16 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/money/plaid/link-token" },
   { type: "POST", path: "/api/lifeops/money/plaid/complete" },
   { type: "POST", path: "/api/lifeops/money/plaid/sync" },
+  {
+    type: "POST",
+    path: "/api/lifeops/money/plaid/webhook",
+    public: true,
+    name: "lifeops.money.plaid.webhook",
+    publicReason:
+      "Plaid delivers Item/transaction webhooks directly to the callback URL registered at link time; Plaid cannot hold the local gate token.",
+    publicWrite:
+      "Authenticated out-of-band by the Plaid-Verification ES256 JWT: signature against Plaid's JWK (kid lookup through Eliza Cloud), exact raw-body SHA-256 pinning, and a bounded iat freshness window — all verified before any lookup or state change.",
+  },
   { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
   { type: "POST", path: "/api/lifeops/money/paypal/complete" },
   { type: "POST", path: "/api/lifeops/money/paypal/sync" },

@@ -18,6 +18,14 @@ import { createHash } from "node:crypto";
 import { fail } from "./finance-normalize.ts";
 
 const WEBHOOK_MAX_AGE_SECONDS = 5 * 60;
+/** Signed `iat` values further in the future than this are rejected: a real
+ * Plaid delivery is signed at send time, so a large forward skew is either a
+ * badly broken clock or a captured-token replay staged for later. */
+const WEBHOOK_MAX_FUTURE_SKEW_SECONDS = 60;
+/** Upper bound on accepted webhook bodies. Plaid webhook payloads are small
+ * JSON envelopes (well under 4 KiB); the cap exists so an unauthenticated
+ * sender cannot make the receiver buffer arbitrary bytes. */
+export const PLAID_WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 
 export interface PlaidWebhookPayload {
   webhook_type: string;
@@ -120,7 +128,7 @@ function parsePayloadBody(rawBody: string): PlaidWebhookPayload {
 
 export interface VerifyPlaidWebhookArgs {
   /** The exact raw request body bytes as received (hash is over these). */
-  rawBody: string;
+  rawBody: string | Buffer;
   /** The `Plaid-Verification` request header (compact ES256 JWT). */
   verificationJwt: string;
   /** Key lookup by JWT `kid`, normally PlaidManagedClient.getWebhookVerificationKey. */
@@ -178,15 +186,22 @@ export async function verifyPlaidWebhook(
   if (iat === null || nowSeconds - iat > WEBHOOK_MAX_AGE_SECONDS) {
     fail(401, "Plaid webhook JWT is missing iat or is too old (replay).");
   }
+  if (iat - nowSeconds > WEBHOOK_MAX_FUTURE_SKEW_SECONDS) {
+    fail(401, "Plaid webhook JWT iat is too far in the future (clock skew).");
+  }
   const expectedBodyHash = claims.request_body_sha256;
   if (typeof expectedBodyHash !== "string" || expectedBodyHash.length === 0) {
     fail(401, "Plaid webhook JWT is missing request_body_sha256.");
   }
+  const rawBodyBytes =
+    typeof args.rawBody === "string"
+      ? Buffer.from(args.rawBody, "utf8")
+      : args.rawBody;
   const actualBodyHash = createHash("sha256")
-    .update(args.rawBody, "utf8")
+    .update(rawBodyBytes)
     .digest("hex");
   if (actualBodyHash !== expectedBodyHash) {
     fail(401, "Plaid webhook body hash does not match the signed hash.");
   }
-  return parsePayloadBody(args.rawBody);
+  return parsePayloadBody(rawBodyBytes.toString("utf8"));
 }
