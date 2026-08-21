@@ -283,6 +283,30 @@ describe("deterministic account selection", () => {
 		expect(result).toEqual(riskDenial);
 	});
 
+	it("rejects malformed account status before applying the categorical risk denial", () => {
+		expect(() =>
+			selectConnectedAccount(
+				overRiskIntent,
+				[
+					{
+						...baseAccount,
+						accountId: "acct-a",
+						status: "malformed" as unknown as typeof baseAccount.status,
+					},
+				],
+				RISK_DENYING_POLICY,
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
 	it("still reports account unavailability when the intent is within policy risk", () => {
 		const result = selectConnectedAccount(
 			{ ...intent, riskLevel: "R1" },

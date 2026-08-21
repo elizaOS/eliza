@@ -17,6 +17,7 @@ import {
 	type CapabilityPolicyDenialCode,
 	type CapabilityRiskLevel,
 	type CapabilityUnavailableCode,
+	CONNECTED_ACCOUNT_STATUSES,
 	type ConnectedAccount,
 	type ConnectedAccountMode,
 } from "../types/provider-integrations";
@@ -143,6 +144,12 @@ function validateSelectionFacts(
 		}
 	}
 	for (const account of accounts) {
+		if (!CONNECTED_ACCOUNT_STATUSES.includes(account.status)) {
+			invalidSelectionInput("Connected account has an unknown status.", {
+				accountId: account.accountId,
+				status: account.status,
+			});
+		}
 		if (!signalsById.has(account.accountId)) {
 			invalidSelectionInput(
 				"Every connected account requires a selection signal.",
