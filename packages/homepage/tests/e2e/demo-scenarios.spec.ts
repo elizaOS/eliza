@@ -1,9 +1,7 @@
 /** Review-board coverage for the development-only full script view. */
 import { expect, test } from "playwright/test";
 
-test("shows all five rooms, 20 messages each, with distinct casts", async ({
-  page,
-}) => {
+test("shows all five rooms and the Friends place preview", async ({ page }) => {
   await page.goto("/demo-scenarios", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -17,10 +15,21 @@ test("shows all five rooms, 20 messages each, with distinct casts", async ({
   const rooms = page.locator("[data-demo-review-room]");
   await expect(rooms).toHaveCount(5);
 
-  for (const room of await rooms.all()) {
+  await expect(
+    page.locator('[data-demo-review-room="friends"] [data-demo-review-step]'),
+  ).toHaveCount(21);
+  await expect(
+    page.locator(
+      '[data-demo-review-room]:not([data-demo-review-room="friends"])',
+    ),
+  ).toHaveCount(4);
+  for (const room of await page
+    .locator('[data-demo-review-room]:not([data-demo-review-room="friends"])')
+    .all()) {
     await expect(room.locator("[data-demo-review-step]")).toHaveCount(20);
   }
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
+  await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
   await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
 
   const castSources = await page

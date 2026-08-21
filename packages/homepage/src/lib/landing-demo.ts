@@ -154,7 +154,22 @@ export type LandingDemoStep =
       text: string;
     }
   | { kind: "member"; name: string; text: string }
-  | { kind: "user"; text: string };
+  | { kind: "user"; text: string }
+  | {
+      capability: "public-web-search";
+      kind: "place";
+      place: LandingDemoPlace;
+    };
+
+export interface LandingDemoPlace {
+  category: string;
+  distance: string;
+  feature: string;
+  fit: string;
+  name: string;
+  neighborhood: string;
+  rating: string;
+}
 
 export type LandingDemoScenarioId =
   | "friends"
@@ -247,6 +262,19 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         capability: "public-web-search",
         kind: "eliza",
         text: "Yes. Their current policy uses separate tools and a manager check at the table. Cypress Table is the best fit: quiet patio, indoor backup, good vegetarian mains, and a peanut protocol. I saved a verified backup too.",
+      },
+      {
+        capability: "public-web-search",
+        kind: "place",
+        place: {
+          category: "Italian",
+          distance: "0.4 mi",
+          feature: "Quiet patio",
+          fit: "Vegetarian menu · peanut protocol checked",
+          name: "Cypress Table",
+          neighborhood: "Noe Valley",
+          rating: "4.8",
+        },
       },
     ],
   },
@@ -555,5 +583,14 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] =
   });
 
 export function landingDemoStepText(step: LandingDemoStep): string {
-  return step.text;
+  if (step.kind !== "place") return step.text;
+  return [
+    step.place.name,
+    step.place.category,
+    step.place.neighborhood,
+    step.place.distance,
+    step.place.rating,
+    step.place.feature,
+    step.place.fit,
+  ].join(" ");
 }

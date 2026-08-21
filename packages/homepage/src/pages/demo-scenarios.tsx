@@ -1,5 +1,6 @@
 /** Development-only board for reviewing every landing demo room at once. */
 
+import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
@@ -29,7 +30,7 @@ function stepCapability(step: LandingDemoStep): LandingDemoCapability | null {
 }
 
 function senderAvatar(step: LandingDemoStep): string | null {
-  if (step.kind === "eliza") {
+  if (step.kind === "eliza" || step.kind === "place") {
     return "/brand/logos/logo_white_orangebg.svg";
   }
   if (step.kind === "user") return null;
@@ -41,7 +42,9 @@ function senderAvatar(step: LandingDemoStep): string | null {
 }
 
 function stepKey(step: LandingDemoStep): string {
-  return `${step.kind}-${step.text}`;
+  return step.kind === "place"
+    ? `${step.kind}-${step.place.name}`
+    : `${step.kind}-${step.text}`;
 }
 
 function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
@@ -76,7 +79,11 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
             </span>
           ) : null}
         </div>
-        <p>{step.text}</p>
+        {step.kind === "place" ? (
+          <LandingPlaceAttachment place={step.place} />
+        ) : (
+          <p>{step.text}</p>
+        )}
       </div>
     </li>
   );

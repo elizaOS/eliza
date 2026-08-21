@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
@@ -70,13 +71,20 @@ function DeferredShaderBackground(): React.JSX.Element | null {
 
 type DemoStep = LandingDemoStep;
 
-type DemoItem = {
-  from: "eliza" | "member" | "user";
-  id: number;
-  kind: "text";
-  name?: string;
-  text: string;
-};
+type DemoItem =
+  | {
+      from: "eliza" | "member" | "user";
+      id: number;
+      kind: "text";
+      name?: string;
+      text: string;
+    }
+  | {
+      from: "eliza";
+      id: number;
+      kind: "place";
+      place: Extract<LandingDemoStep, { kind: "place" }>["place"];
+    };
 
 interface DemoSender {
   avatar: string;
@@ -106,6 +114,7 @@ const ELIZA_TYPING_MS = 900;
 const BEAT_PAUSE_MS = 700;
 const PRE_USER_MS = 800;
 const PRE_ELIZA_MS = 240;
+const PRE_ATTACHMENT_MS = 650;
 const SEND_HOLD_MS = 420;
 const SCENARIO_OPENING_PAUSE_MS = 2_500;
 const SCENARIO_READING_HOLD_MS = 8_500;
@@ -190,13 +199,22 @@ function scenarioItems(
   scenario: LandingDemoScenario,
   scenarioIndex: number,
 ): DemoItem[] {
-  return scenario.steps.map((step, index) => ({
-    id: scenarioIndex * 100 + index,
-    from: step.kind,
-    kind: "text",
-    name: step.kind === "member" ? step.name : undefined,
-    text: step.text,
-  }));
+  return scenario.steps.map((step, index) =>
+    step.kind === "place"
+      ? {
+          from: "eliza",
+          id: scenarioIndex * 100 + index,
+          kind: "place",
+          place: step.place,
+        }
+      : {
+          id: scenarioIndex * 100 + index,
+          from: step.kind,
+          kind: "text",
+          name: step.kind === "member" ? step.name : undefined,
+          text: step.text,
+        },
+  );
 }
 
 function senderForItem(item: DemoItem | undefined): DemoSender | null {
@@ -320,6 +338,13 @@ function PhoneMockup() {
           setItems((previous) => [
             ...previous,
             { id, from: "eliza", kind: "text", text: step.text },
+          ]);
+        } else {
+          await sleep(PRE_ATTACHMENT_MS);
+          if (cancelled) return;
+          setItems((previous) => [
+            ...previous,
+            { id, from: "eliza", kind: "place", place: step.place },
           ]);
         }
         await sleep(
@@ -529,7 +554,7 @@ function PhoneMockup() {
               <div
                 key={item.id}
                 data-demo-item="true"
-                className={`landing-message landing-message--${item.from}`}
+                className={`landing-message landing-message--${item.from}${item.kind === "place" ? " landing-message--attachment" : ""}`}
               >
                 {sender ? (
                   <span className="landing-message-avatar-slot">
@@ -542,9 +567,15 @@ function PhoneMockup() {
                       {sender.name}
                     </span>
                   ) : null}
-                  <p className={`landing-bubble landing-bubble--${item.from}`}>
-                    {item.text}
-                  </p>
+                  {item.kind === "place" ? (
+                    <LandingPlaceAttachment place={item.place} />
+                  ) : (
+                    <p
+                      className={`landing-bubble landing-bubble--${item.from}`}
+                    >
+                      {item.text}
+                    </p>
+                  )}
                 </div>
               </div>
             );

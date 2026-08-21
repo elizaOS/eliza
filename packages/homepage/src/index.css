@@ -2066,6 +2066,195 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 }
 
+.landing-message--attachment {
+  max-width: 94%;
+}
+
+.landing-place-attachment {
+  width: min(15.8rem, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  background: #f7f7f8;
+  color: #111;
+  opacity: 0;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
+}
+
+.landing-place-map {
+  position: relative;
+  height: 7.1rem;
+  overflow: hidden;
+  background: #e8ece5;
+}
+
+.landing-place-map > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-map-park {
+  fill: #cfe4c5;
+}
+
+.landing-map-block {
+  fill: #f5f1e7;
+  stroke: #ded9cd;
+  stroke-width: 1;
+}
+
+.landing-map-street {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 13;
+  stroke-linecap: round;
+}
+
+.landing-map-street--minor {
+  stroke-width: 7;
+}
+
+.landing-map-route {
+  fill: none;
+  stroke: #1687ff;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.landing-map-user-ring {
+  fill: #fff;
+  opacity: 0.95;
+}
+
+.landing-map-user {
+  fill: #1687ff;
+}
+
+.landing-map-pin path {
+  fill: #ff3b30;
+}
+
+.landing-map-pin circle {
+  fill: #fff;
+}
+
+.landing-place-map-label {
+  position: absolute;
+  top: 0.72rem;
+  right: 0.6rem;
+  max-width: 8.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 0.12rem 0.45rem rgb(0 0 0 / 14%);
+  font-size: 0.66rem;
+  font-weight: 650;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.landing-place-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 0.75rem 0.5rem;
+}
+
+.landing-place-copy > div {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-place-copy strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+}
+
+.landing-place-copy span:not(.landing-place-directions) {
+  margin-top: 0.1rem;
+  color: #6e6e73;
+  font-size: 0.7rem;
+}
+
+.landing-place-directions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: #e6f1ff;
+  color: #087cff;
+}
+
+.landing-place-directions svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.landing-place-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0 0.75rem 0.55rem;
+  color: #515156;
+  font-size: 0.68rem;
+}
+
+.landing-place-meta > span:not(:last-child)::after {
+  margin-left: 0.42rem;
+  color: #b0b0b5;
+  content: "·";
+}
+
+.landing-place-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+}
+
+.landing-place-rating svg {
+  width: 0.62rem;
+  height: 0.62rem;
+  fill: #ff9f0a;
+}
+
+.landing-place-fit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.75rem 0.62rem;
+  border-top: 1px solid rgb(0 0 0 / 7%);
+  background: #fff;
+  color: #3a3a3c;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.landing-place-fit svg {
+  flex: 0 0 auto;
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: #30a14e;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
 .landing-composer-row {
   display: flex;
   align-items: center;

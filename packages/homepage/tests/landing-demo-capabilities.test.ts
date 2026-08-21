@@ -73,7 +73,11 @@ describe("landing Shared-agent capability contract", () => {
           step.capability !== "conversation-memory",
       );
       expect(connectedSteps.length).toBeGreaterThan(0);
-      expect(connectedSteps.every((step) => step.kind === "eliza")).toBe(true);
+      expect(
+        connectedSteps.every(
+          (step) => step.kind === "eliza" || step.kind === "place",
+        ),
+      ).toBe(true);
     }
   });
 
@@ -100,8 +104,10 @@ describe("landing Shared-agent capability contract", () => {
 
   test("gives every room a longer mini-story with evolving recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      expect(scenario.steps).toHaveLength(20);
-      expect(scenario.steps.at(-1)?.kind).toBe("eliza");
+      expect(scenario.steps).toHaveLength(scenario.id === "friends" ? 21 : 20);
+      expect(scenario.steps.at(-1)?.kind).toBe(
+        scenario.id === "friends" ? "place" : "eliza",
+      );
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
       ).toBeGreaterThanOrEqual(5);
@@ -117,6 +123,22 @@ describe("landing Shared-agent capability contract", () => {
       ).toBe(true);
       expect(scenario.steps[4]?.kind).toBe("eliza");
     }
+  });
+
+  test("uses one real place attachment as the Friends visual prototype", () => {
+    const attachments = LANDING_DEMO_SCENARIOS.flatMap((scenario) =>
+      scenario.steps.filter((step) => step.kind === "place"),
+    );
+
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0]).toMatchObject({
+      capability: "public-web-search",
+      kind: "place",
+      place: {
+        name: "Cypress Table",
+        neighborhood: "Noe Valley",
+      },
+    });
   });
 
   test("keeps every attributed speaker inside that room's member list", () => {
