@@ -1,3 +1,13 @@
+/**
+ * Fail-closed browser fallback for the native secure store.
+ *
+ * Every operation reports `unavailable` rather than reaching for a web storage
+ * API: `localStorage` and IndexedDB are readable by any script on the origin,
+ * so silently degrading to them would turn "stored in the Keychain/Keystore"
+ * into "stored in the clear" without the caller ever learning the guarantee
+ * changed. Callers must treat `ok: false, error: "unavailable"` as a real
+ * absence of secure storage, never as an empty store.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   ElizaSecureStorePlugin,
@@ -8,7 +18,7 @@ import type {
 const unavailable = (): ElizaSecureStoreResult => ({
   ok: false,
   error: "unavailable",
-  message: "Apple Keychain is available only in the native Eliza app.",
+  message: "Secure storage is available only in the native Eliza app.",
 });
 
 export class ElizaSecureStoreWeb
@@ -36,7 +46,7 @@ export class ElizaSecureStoreWeb
       synchronized: false,
       accessGroup: "app_only",
       error: "unavailable",
-      message: "Apple Keychain is available only in the native Eliza app.",
+      message: "Secure storage is available only in the native Eliza app.",
     };
   }
 }
