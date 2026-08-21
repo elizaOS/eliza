@@ -32,6 +32,8 @@ export interface DeployAppRequest {
 }
 
 export interface AppDeployRunOptions {
+  /** Explicit prebuilt image, validated by the app deploy image gate. */
+  image?: string;
   /** Build context override, normally a git URL supplied to POST /deploy. */
   repoUrl?: string;
   /** Git branch/SHA/tag to build. */

@@ -285,6 +285,9 @@ describe("app-deploy-guidance", () => {
       expect(out).toContain("apps.frontend.deploy");
       expect(out).toContain("apps.database.update");
       expect(out).toContain("apps.deploy");
+      expect(out).toContain(
+        '"image":"ghcr.io/<approved-namespace>/<app>@sha256:<digest>"',
+      );
       expect(out).toContain("apps.review.submit");
       expect(out).toContain("apps.monetization.update");
       expect(out).toContain("Do not create a parallel generic container");

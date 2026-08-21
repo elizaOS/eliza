@@ -153,6 +153,23 @@ describe("ElizaCloudClient typed app methods", () => {
     });
   });
 
+  it("deployApp sends an explicit prebuilt image", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      deploymentId: "dep_image",
+      status: "building",
+      startedAt: "2026-06-29T00:00:00.000Z",
+    });
+    await client.deployApp("app_1", {
+      image: "ghcr.io/elizaos/custom-app@sha256:abc",
+    });
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/apps/app_1/deploy",
+      method: "POST",
+      body: { image: "ghcr.io/elizaos/custom-app@sha256:abc" },
+    });
+  });
+
   it("deployAppFrontend POSTs /api/v1/apps/:id/frontend with the bundle", async () => {
     const { client, requests } = createClientRecorder({
       success: true,

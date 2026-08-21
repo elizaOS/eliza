@@ -19,7 +19,7 @@ in step 3:
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `Image '<ref>' is not permitted ... outside the allowed image namespaces` | `metadata.imageTag` / `APP_DEFAULT_IMAGE` is outside the first-party `ghcr.io/elizaos/*` allowlist (`APPS_DEPLOY_IMAGE_ALLOWLIST`, fail-closed) | Use an allowlisted `ghcr.io/elizaos/*` image — the stamped template default already is. Do NOT push your own image to an arbitrary registry; that path is denied. |
-| `builds from a git repo, but build-from-repo is disabled` | A repo-linked app has no prebuilt image and build-from-repo is off (no `APPS_IMAGE_REGISTRY`) | Register as a template app (`skipGitHubRepo: true`) so the first-party template image is stamped, or set an explicit allowlisted `metadata.imageTag`. |
+| `builds from a git repo, but build-from-repo is disabled` | A repo-linked app has no published image and build-from-repo is off (no `APPS_IMAGE_REGISTRY`) | Publish the custom backend as an operator-approved prebuilt image and pass it explicitly to `deployApp`; never substitute the example image and call it the requested product. |
 | `No image to deploy ... set app.metadata.imageTag, or APP_DEFAULT_IMAGE` | Neither a stamped template image nor a prebuilt override resolved | Re-create the app with `skipGitHubRepo: true` (stamps the template image), or set `APP_DEFAULT_TEMPLATE_IMAGE` on the deploy backend. |
 
 ## Deploy failures (step 3)
@@ -31,7 +31,7 @@ in step 3:
 | `503 { code: "apps_deploy_disabled" }` from `deployApp` | `APPS_DEPLOY_ENABLED` is not `1` on the Worker | The apps-deploy backend isn't armed for this environment. Report to the human; do not work around it. |
 | `403` from `deployApp` | Org is not on the production deploy allowlist | Report to the human — the org must be allowlisted for apps deploy. |
 | `402 insufficient_balance` | Org has zero credits AND zero earnings | Tell the human to top up at `/cloud/billing`. There's no auto-recovery — an agent that can't pay can't deploy. |
-| `getAppDeployStatus().status === "error"` | The deploy failed (image-allowlist reject, image pull, crash on boot) | Read `status.error` and surface it. There is NO per-container logs/health/metrics SDK route; the deploy status error string is the only signal. |
+| `getAppDeployStatus().status === "ERROR"` | The deploy failed (image-allowlist reject, image pull, crash on boot) | Read `status.error` and surface it. There is no public per-app-container logs/health/metrics SDK route; deploy status is the current app-owner signal. |
 | `status` stuck on `pending` / `building` for >10 min | Image pull slow or scheduler congested | Wait up to ~10 min before declaring failure, then surface `status.error`. |
 
 ## Monetization configuration (step 4)

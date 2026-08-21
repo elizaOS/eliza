@@ -87,7 +87,7 @@ function parseDeployOptions(value: unknown): AppDeployRunOptions | undefined {
   const raw = value as Record<string, unknown>;
   const options: AppDeployRunOptions = {};
 
-  for (const key of ["repoUrl", "ref", "dockerfile"] as const) {
+  for (const key of ["image", "repoUrl", "ref", "dockerfile"] as const) {
     const next = raw[key];
     if (next !== undefined) {
       if (typeof next !== "string" || next.length === 0) {

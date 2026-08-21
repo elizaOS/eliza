@@ -56,6 +56,7 @@ describe("AppDeploymentsService", () => {
       appId: APP_ID,
       organizationId: ORG_ID,
       userId: USER_ID,
+      image: "ghcr.io/elizaos/workout-app@sha256:abc",
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
       dockerfile: "apps/example/Dockerfile",
@@ -69,6 +70,7 @@ describe("AppDeploymentsService", () => {
       organizationId: ORG_ID,
       userId: USER_ID,
       options: {
+        image: "ghcr.io/elizaos/workout-app@sha256:abc",
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
         dockerfile: "apps/example/Dockerfile",
@@ -78,12 +80,14 @@ describe("AppDeploymentsService", () => {
       deployment_status: "building",
       metadata: {
         databaseMode: "none",
+        imageTag: "ghcr.io/elizaos/workout-app@sha256:abc",
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
         dockerfile: "apps/example/Dockerfile",
       },
     });
     expect(appStore.current?.metadata.repoUrl).toBe("https://github.com/elizaOS/eliza.git");
+    expect(appStore.current?.metadata.imageTag).toBe("ghcr.io/elizaos/workout-app@sha256:abc");
   });
 
   test("returns startedAt from cached ISO-string deployment timestamps", async () => {

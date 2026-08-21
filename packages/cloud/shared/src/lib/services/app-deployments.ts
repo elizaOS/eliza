@@ -29,6 +29,8 @@ export interface CreateDeploymentInput {
   appId: string;
   organizationId: string;
   userId: string;
+  /** Optional prebuilt image; persisted as metadata.imageTag for redeploys. */
+  image?: string;
   /**
    * Optional: explicit repo URL. Falls back to `app.github_repo` when omitted.
    */
@@ -57,11 +59,14 @@ export interface DeploymentRecord {
 
 function deployMetadataFor(
   current: Record<string, unknown>,
-  input: Pick<CreateDeploymentInput, "dockerfile" | "ref" | "repoUrl">,
+  input: Pick<CreateDeploymentInput, "dockerfile" | "image" | "ref" | "repoUrl">,
 ): Record<string, unknown> | undefined {
-  if (!input.repoUrl && !input.ref && !input.dockerfile) return undefined;
+  if (!input.image && !input.repoUrl && !input.ref && !input.dockerfile) {
+    return undefined;
+  }
   return {
     ...current,
+    ...(input.image ? { imageTag: input.image } : {}),
     ...(input.repoUrl ? { repoUrl: input.repoUrl } : {}),
     ...(input.ref ? { ref: input.ref } : {}),
     ...(input.dockerfile ? { dockerfile: input.dockerfile } : {}),
@@ -179,6 +184,7 @@ export class AppDeploymentsService {
       repoUrl: input.repoUrl ?? updated.github_repo ?? null,
       ref: input.ref ?? null,
       dockerfile: input.dockerfile ?? null,
+      image: input.image ?? null,
       envKeys: input.env ? Object.keys(input.env).length : 0,
     });
 
@@ -222,6 +228,7 @@ export const appDeploymentsService = new AppDeploymentsService();
 
 function deploymentOptionsFor(input: CreateDeploymentInput): AppDeployRunOptions | undefined {
   const options: AppDeployRunOptions = {
+    ...(input.image ? { image: input.image } : {}),
     ...(input.repoUrl ? { repoUrl: input.repoUrl } : {}),
     ...(input.ref ? { ref: input.ref } : {}),
     ...(input.dockerfile ? { dockerfile: input.dockerfile } : {}),

@@ -28,41 +28,45 @@ An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the
 
 This is why the skill exists: making money is how the agent stays online.
 
-## Default flow
+## Default flow: one app identity, custom product code
 
 ```ts
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 
 const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZAOS_CLOUD_API_KEY });
 
-// 1. register the app. skipGitHubRepo: true makes this a TEMPLATE app — the
-//    cloud stamps the first-party template image onto it, so create -> deploy
-//    resolves to a prebuilt, allowlisted image with NO build step.
+// 1. Register exactly one app identity. The placeholder is replaced after the
+//    managed frontend/backend has a verified production URL.
 const { app, apiKey } = await cloud.createApp({
   name,
   app_url: "https://placeholder.invalid",
   skipGitHubRepo: true,
 });
 
-// 2. the app image: PREBUILT + first-party only. Apps deploy an allowlisted
-//    `ghcr.io/elizaos/*` image (default `ghcr.io/elizaos/example-edad:showcase`,
-//    override APP_DEFAULT_TEMPLATE_IMAGE). You do NOT build or push your own
-//    image to an arbitrary registry — build-from-repo is disabled.
-// 3. deploy: await cloud.deployApp(app.id); then poll cloud.getAppDeployStatus(app.id).
-//    GATED: returns 503 { code: "apps_deploy_disabled" } unless APPS_DEPLOY_ENABLED=1
-//    on the Worker AND the org is allowlisted.
-// 4. enable monetization: await cloud.updateMonetization(app.id, { ... })
-// 5. patch app_url + allowed_origins to the deployed URL: await cloud.updateApp(app.id, { ... })
-// 6. report URLs to the human (the auto-assigned *.apps.eliza.app
-//    subdomain is the default; if the user wants a custom branded domain
-//    instead, hand off to the `eliza-cloud-buy-domain` skill)
+// 2. Publish the CUSTOM product UI with deployAppFrontend(app.id, bundle).
+// 3. If the product needs a server-side OAuth/inference proxy, publish an
+//    operator-approved prebuilt image and deploy that SAME app id:
+//    await cloud.deployApp(app.id, { image: "ghcr.io/<approved>/<app>@sha256:<digest>" })
+//    Select isolated DB mode before deploy when the app needs durable data.
+// 4. Patch app_url + allowed_origins to the verified live URL.
+// 5. Submit the app for review; require approval.
+// 6. Enable monetization only after approval, then verify one real billed call.
 ```
 
+`skipGitHubRepo: true` is registration behavior, not permission to ship the
+generic template as the requested product. A static product should use managed
+frontend hosting and its version/rollback history. A monetized AI product needs
+its own server-side proxy image; pass that explicit image to `deployApp`. The
+deploy gate enforces the platform allowlist plus any operator-granted namespace
+for the owning organization. Never report the default example image as custom
+work and never create a parallel generic container for the same app.
+
 If this flow is being executed by a spawned coding agent, use the `parent-agent`
-Cloud command bridge for account-bound app creation, deployment, monetization,
-charges, x402 requests, domains, media, and advertising. The direct SDK examples
-show the parent/app runtime shape; they are not permission to pass raw owner
-API keys or wallet keys to child workers.
+Cloud command bridge for `apps.create`, `apps.frontend.deploy`, optional
+`apps.database.update`, optional `apps.deploy`, `apps.review.submit`, and
+`apps.monetization.update`. The direct SDK examples show the trusted parent
+shape; they are not permission to pass raw owner API keys or wallet keys to
+child workers or deployed apps.
 
 ## ViewKind contract for Cloud app views
 
@@ -128,7 +132,7 @@ For a static-hosted AI app:
    `{"monetizationEnabled":true,"inferenceMarkupPercentage":100,"purchaseSharePercentage":10}`.
 4. Store only non-secret app config next to the frontend: `appId`, `cloudUrl`, `apiBase`, optional `affiliateCode`, and a model such as `openai/gpt-5-mini`. `cloudUrl` is the browser-facing Cloud frontend/OAuth base that serves `/app-auth/authorize`; `apiBase` is the Cloud API base. Use `ELIZA_CLOUD_PUBLIC_URL` if set, otherwise `ELIZA_CLOUD_URL`, otherwise use `ELIZA_CLOUD_BASE_URL` only when that origin also serves the frontend. In local testing, if `apiBase` is `http://localhost:8787/api/v1` and no `ELIZA_CLOUD_PUBLIC_URL` is configured, `cloudUrl` must be `http://127.0.0.1:3000`. Do not point OAuth at an API-only local worker such as `:8787`, and do not silently mix a localhost API base with production OAuth.
 5. The browser must use app auth: fetch config, redirect to `/app-auth/authorize`, verify `state`, store the returned user token, and send it as `x-user-token`.
-6. The browser must call a same-origin proxy that forwards to Eliza Cloud `/api/v1/apps/<appId>/chat` with `Authorization: Bearer <user_jwt>`. Do not put owner API keys in frontend code and do not fake model responses in local JavaScript.
+6. The browser must call a same-origin proxy that forwards to Eliza Cloud `/api/v1/messages` with `Authorization: Bearer <user_jwt>` plus `x-app-id: <appId>` (and optional `x-affiliate-code`). Do not put owner API keys in frontend code and do not fake model responses in local JavaScript.
 7. Verify the app route, config route, that `${cloudUrl}/app-auth/authorize?...` returns the Cloud frontend HTML/redirect rather than JSON `resource_not_found`, and that chat without a user token returns `401 not_signed_in`. If the upstream provider fails, report that as a Cloud provider issue instead of replacing it with a mock assistant.
 
 ## Read these references in order

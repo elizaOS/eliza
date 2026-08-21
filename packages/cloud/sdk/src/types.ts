@@ -960,6 +960,8 @@ export interface AppMonetizationResponse {
 
 /** `POST /api/v1/apps/:id/deploy` request body — all fields optional. */
 export interface DeployAppInput {
+  /** Prebuilt image for this app, subject to Cloud's platform/per-org allowlist. */
+  image?: string;
   repoUrl?: string;
   ref?: string;
   dockerfile?: string;

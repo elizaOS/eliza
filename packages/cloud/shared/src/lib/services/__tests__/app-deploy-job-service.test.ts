@@ -20,6 +20,7 @@ describe("readAppDeployJobData", () => {
         data: {
           appId: "app-1",
           options: {
+            image: "ghcr.io/elizaos/custom-app@sha256:abc",
             repoUrl: "https://github.com/elizaOS/eliza.git",
             ref: "develop",
             dockerfile: "apps/example/Dockerfile",
@@ -30,6 +31,7 @@ describe("readAppDeployJobData", () => {
     ).toEqual({
       appId: "app-1",
       options: {
+        image: "ghcr.io/elizaos/custom-app@sha256:abc",
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
         dockerfile: "apps/example/Dockerfile",

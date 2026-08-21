@@ -1,10 +1,11 @@
 /**
  * /api/v1/containers
  *
- * Generic Cloud container deploy + read surface. Backs the parent-agent
- * broker's `containers.*` commands and the `build-monetized-app` deploy step
- * ("deploy container with POST /api/v1/containers using `image`"). A deployed
- * container is a row in the `containers` table provisioned by the
+ * Generic standalone Cloud container deploy + read surface. Backs the
+ * parent-agent broker's `containers.*` infrastructure commands. Agent-built
+ * Cloud apps use the app-owned `/api/v1/apps/:id/deploy` lifecycle instead so
+ * identity, database, review, monetization, and container linkage stay on one
+ * app record. A deployed generic container is a row in the `containers` table provisioned by the
  * Hetzner-Docker client; once it reports `running` it is billed daily by the
  * container-billing cron — so an app that earns can fund its own hosting.
  *
@@ -13,6 +14,8 @@
  *   - GET    /api/v1/containers/quota  container quota + credit runway
  *   - GET    /api/v1/containers/:id    fetch one container
  *   - POST   /api/v1/containers        deploy a container for the org
+ *   - PATCH  /api/v1/containers/:id    restart | setEnv | scale
+ *   - DELETE /api/v1/containers/:id    stop or delete
  *
  * NOTE: provisioning runs the image on the Docker-on-Hetzner node pool, so POST
  * requires that pool (real infra / a Docker-enabled host); the read endpoints
@@ -27,8 +30,6 @@
  *
  * KNOWN FOLLOW-UP SURFACE (Commandment 10 — endpoints the cloud-sdk client
  * already calls that 404 here today; intentionally NOT implemented yet):
- *   - PATCH  /api/v1/containers/:id              updateContainer
- *   - DELETE /api/v1/containers/:id              deleteContainer
  *   - GET    /api/v1/containers/:id/health       getContainerHealth
  *   - GET    /api/v1/containers/:id/metrics      getContainerMetrics
  *   - GET    /api/v1/containers/:id/logs         getContainerLogs

@@ -4,7 +4,7 @@
  * Kicks off a deploy for the app. Body is fully optional — defaults pull
  * from the app's linked GitHub repo and stored env config:
  *
- *   { repoUrl?: string; ref?: string; dockerfile?: string;
+ *   { image?: string; repoUrl?: string; ref?: string; dockerfile?: string;
  *     env?: Record<string, string> }
  *
  * Completes the cloud half of `elizaos deploy` (PR #7786). The CLI keel
@@ -118,6 +118,7 @@ app.post("/", async (c) => {
     logger.info("[Deploy POST] deployment queued", {
       appId,
       deploymentId: record.deploymentId,
+      hasExplicitImage: Boolean(parsed.data.image),
       userId: user.id,
       organizationId: user.organization_id,
     });

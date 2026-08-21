@@ -58,6 +58,7 @@ describe("AppDeploymentsService deploy options", () => {
       appId: APP_ID,
       organizationId: ORG_ID,
       userId: USER_ID,
+      image: "ghcr.io/acme/repo-built@sha256:abc",
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
       dockerfile: "apps/example/Dockerfile",
@@ -70,6 +71,7 @@ describe("AppDeploymentsService deploy options", () => {
         organizationId: ORG_ID,
         userId: USER_ID,
         options: {
+          image: "ghcr.io/acme/repo-built@sha256:abc",
           repoUrl: "https://github.com/elizaOS/eliza.git",
           ref: "develop",
           dockerfile: "apps/example/Dockerfile",
@@ -90,6 +92,7 @@ describe("AppDeploymentsService deploy options", () => {
       appId: APP_ID,
       organizationId: ORG_ID,
       userId: USER_ID,
+      image: "ghcr.io/acme/repo-built@sha256:def",
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
       dockerfile: "apps/example/Dockerfile",
@@ -99,6 +102,7 @@ describe("AppDeploymentsService deploy options", () => {
       [
         APP_ID,
         {
+          image: "ghcr.io/acme/repo-built@sha256:def",
           repoUrl: "https://github.com/elizaOS/eliza.git",
           ref: "develop",
           dockerfile: "apps/example/Dockerfile",

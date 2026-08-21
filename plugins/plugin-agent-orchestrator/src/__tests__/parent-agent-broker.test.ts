@@ -238,6 +238,33 @@ describe("runParentAgentBroker", () => {
     [url, init] = fetchMock.mock.calls[2] as [URL, RequestInit];
     expect(url.pathname).toBe("/api/v1/apps/app-1/deploy/status");
     expect(init.method).toBe("GET");
+
+    const deployArgs = {
+      mode: "cloud-command" as const,
+      command: "apps.deploy",
+      params: {
+        id: "app-1",
+        image: "ghcr.io/elizaos/custom-app@sha256:abc",
+      },
+    };
+    await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes-deploy",
+      message: brokerMessage(),
+      args: deployArgs,
+    });
+    await runParentAgentBroker({
+      runtime,
+      sessionId: "app-routes-deploy",
+      message: brokerMessage("yes"),
+      args: deployArgs,
+    });
+    [url, init] = fetchMock.mock.calls[3] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/apps/app-1/deploy");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({ image: "ghcr.io/elizaos/custom-app@sha256:abc" }),
+    );
   });
 
   it("runs read-only Cloud commands through the configured Cloud API", async () => {
