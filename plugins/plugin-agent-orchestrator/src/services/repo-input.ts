@@ -40,7 +40,10 @@ export function normalizeRepositoryInput(repo: string): string {
     return trimmed;
   }
 
-  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end -= 1;
+  const withoutTrailingSlash =
+    end === trimmed.length ? trimmed : trimmed.slice(0, end);
 
   if (/^https?:\/\//i.test(withoutTrailingSlash)) {
     try {

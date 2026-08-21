@@ -361,10 +361,34 @@ function findExecutableOnPath(name: string): string | undefined {
 export function normalizeClaudeAcpModelId(
   model: string | undefined,
 ): string | undefined {
-  const normalized = model
-    ?.trim()
-    .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
-    .trim();
+  const value = model?.trim();
+  if (!value) return undefined;
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "]") {
+    const tokenStart = value.lastIndexOf("[", end - 1);
+    if (tokenStart < 0) break;
+    const token = value.slice(tokenStart + 1, end - 1);
+    let cursor = 0;
+    while (
+      cursor < token.length &&
+      (token[cursor] ?? "") >= "0" &&
+      (token[cursor] ?? "") <= "9"
+    ) {
+      cursor += 1;
+    }
+    const digitEnd = cursor;
+    while (
+      cursor < token.length &&
+      (((token[cursor] ?? "") >= "A" && (token[cursor] ?? "") <= "Z") ||
+        ((token[cursor] ?? "") >= "a" && (token[cursor] ?? "") <= "z"))
+    ) {
+      cursor += 1;
+    }
+    if (digitEnd === 0 || cursor === digitEnd || cursor !== token.length) break;
+    end = tokenStart;
+    while (end > 0 && value[end - 1]?.trim() === "") end -= 1;
+  }
+  const normalized = value.slice(0, end).trim();
   return normalized || undefined;
 }
 

@@ -557,16 +557,80 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // memory rewriting lands upstream, intercept user-facing text and replace
 // the teardown-retry phrases with the canonical self-heal recovery line so
 // the user never sees instructions to do something the runtime already does.
-const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
-  /[^.!?\n]*\b(restart|kick(?:[\s-]?off)?|bounce)[^.!?\n]*\bacpx[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bacpx[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\b(clear|clean|wipe)[^.!?\n]*\bstale\s+sessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bmanually\s+clear[^.!?\n]*\bsessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bdaemon\b[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-];
-
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
+
+function containsWord(value: string, word: string): boolean {
+  let cursor = 0;
+  while (cursor < value.length) {
+    const index = value.indexOf(word, cursor);
+    if (index < 0) return false;
+    const before = value[index - 1] ?? " ";
+    const after = value[index + word.length] ?? " ";
+    const isWord = (character: string): boolean => /[a-z0-9_]/.test(character);
+    if (!isWord(before) && !isWord(after)) return true;
+    cursor = index + 1;
+  }
+  return false;
+}
+
+function isForbiddenCleanupSentence(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  const hasRecoveryVerb =
+    containsWord(lower, "restart") ||
+    containsWord(lower, "reboot") ||
+    containsWord(lower, "bounce") ||
+    containsWord(lower, "kick") ||
+    lower.includes("not accepting") ||
+    lower.includes("isn't accepting") ||
+    lower.includes("isnt accepting");
+  if (containsWord(lower, "acpx") && hasRecoveryVerb) return true;
+  if (containsWord(lower, "daemon") && hasRecoveryVerb) return true;
+  const clears =
+    containsWord(lower, "clear") ||
+    containsWord(lower, "clean") ||
+    containsWord(lower, "wipe");
+  if (clears && lower.includes("stale session")) return true;
+  return lower.includes("manually clear") && containsWord(lower, "session");
+}
+
+function stripForbiddenCleanupSentences(text: string): string {
+  const out: string[] = [];
+  let segmentStart = 0;
+  for (let index = 0; index <= text.length; index += 1) {
+    const character = text[index];
+    const boundary =
+      index === text.length ||
+      character === "." ||
+      character === "!" ||
+      character === "?" ||
+      character === "\n";
+    if (!boundary) continue;
+    const includePunctuation = character !== "\n" && index < text.length;
+    const segmentEnd = index + (includePunctuation ? 1 : 0);
+    const segment = text.slice(segmentStart, segmentEnd);
+    if (!isForbiddenCleanupSentence(segment)) out.push(segment);
+    if (character === "\n") out.push("\n");
+    segmentStart = index + 1;
+  }
+  return out.join("");
+}
+
+function collapseWhitespaceRuns(text: string): string {
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (text[cursor]?.trim() !== "") {
+      out.push(text[cursor] ?? "");
+      cursor += 1;
+      continue;
+    }
+    const start = cursor;
+    while (cursor < text.length && text[cursor]?.trim() === "") cursor += 1;
+    out.push(cursor - start >= 2 ? " " : (text[start] ?? ""));
+  }
+  return out.join("");
+}
 
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
@@ -699,12 +763,9 @@ export function plannerAlreadyAckedSpawn(
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
-  let cleaned = text;
-  for (const pattern of FORBIDDEN_CLEANUP_PATTERNS) {
-    cleaned = cleaned.replace(pattern, "");
-  }
+  let cleaned = stripForbiddenCleanupSentences(text);
   if (cleaned === text) return text;
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  cleaned = collapseWhitespaceRuns(cleaned).trim();
   return cleaned.length > 0
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;

@@ -328,6 +328,14 @@ describe("ElizaCloudClient.createContainer wire contract", () => {
 });
 
 describe("ElizaCloudClient path parameter encoding", () => {
+  it("normalizes 100k trailing API base-url slashes", () => {
+    const client = new ElizaCloudClient({
+      apiBaseUrl: `https://api.eliza.app/api/v1${"/".repeat(100_000)}`,
+    });
+
+    expect(client.apiBaseUrl).toBe("https://api.eliza.app/api/v1");
+  });
+
   it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
     const { client, requests } = createClientRecorder();
 
@@ -349,6 +357,22 @@ describe("ElizaCloudClient path parameter encoding", () => {
         skipAuth: true,
       }),
     ).toThrow("Missing path parameter: sessionId");
+  });
+
+  it("leaves 100k unmatched template openers unchanged without backtracking", async () => {
+    const { client, requests } = createClientRecorder();
+    const unmatched = "{".repeat(100_000);
+
+    await client.callEndpoint("GET", `/api/literal/${unmatched}`, {
+      pathParams: { unused: "value" },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(
+      decodeURIComponent(new URL(requests[0]?.url ?? "").pathname).endsWith(
+        unmatched,
+      ),
+    ).toBe(true);
   });
 });
 

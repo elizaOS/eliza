@@ -432,7 +432,25 @@ function resolveSubaction(
 }
 
 function hasExplicitOffset(value: string): boolean {
-  return /T.+(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  const timeSeparator = value.indexOf("T");
+  if (timeSeparator < 0 || timeSeparator >= value.length - 1) return false;
+  if (value.endsWith("Z") || value.endsWith("z")) {
+    return value.length - 1 > timeSeparator + 1;
+  }
+  const compactStart = value.length - 5;
+  const colonStart = value.length - 6;
+  const offsetStart = value[colonStart + 3] === ":" ? colonStart : compactStart;
+  if (offsetStart <= timeSeparator + 1) return false;
+  const sign = value[offsetStart];
+  if (sign !== "+" && sign !== "-") return false;
+  const digits =
+    offsetStart === colonStart
+      ? `${value.slice(offsetStart + 1, offsetStart + 3)}${value.slice(offsetStart + 4)}`
+      : value.slice(offsetStart + 1);
+  return (
+    digits.length === 4 &&
+    [...digits].every((digit) => digit >= "0" && digit <= "9")
+  );
 }
 
 function validInstantRange(range: ConflictRange): boolean {

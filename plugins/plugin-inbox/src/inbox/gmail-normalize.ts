@@ -39,6 +39,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "@elizaos/shared";
+import { extractLooseEmailAddress } from "./email-address.ts";
 
 export type SyncedGoogleGmailMessageSummary = Omit<
   LifeOpsGmailMessageSummary,
@@ -192,17 +193,7 @@ export function extractNormalizedEmailAddress(value: string): string | null {
   if (!trimmed) {
     return null;
   }
-  const angleMatch = trimmed.match(/<\s*([^<>\s@]+@[^<>\s@]+)\s*>/u);
-  const rawCandidate =
-    angleMatch?.[1] ??
-    trimmed.match(/([^\s<>()"';,]+@[^\s<>()"';,]+)/u)?.[1] ??
-    trimmed;
-  const normalized = rawCandidate
-    .trim()
-    .replace(/^["']+|["']+$/g, "")
-    .replace(/[>;,\s]+$/g, "")
-    .toLowerCase();
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(normalized) ? normalized : null;
+  return extractLooseEmailAddress(trimmed);
 }
 
 export function normalizeOptionalMessageIdArray(
@@ -1262,7 +1253,19 @@ export function buildFallbackGmailReplyDraftBody(args: {
 export function normalizeGeneratedGmailReplyDraftBody(
   value: string,
 ): string | null {
-  const withoutThink = value.replace(/<think>[\s\S]*?<\/think>/gi, " ").trim();
+  const lowerValue = value.toLowerCase();
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const opener = lowerValue.indexOf("<think>", cursor);
+    if (opener < 0) break;
+    const closer = lowerValue.indexOf("</think>", opener + 7);
+    if (closer < 0) break;
+    fragments.push(value.slice(cursor, opener), " ");
+    cursor = closer + 8;
+  }
+  fragments.push(value.slice(cursor));
+  const withoutThink = fragments.join("").trim();
   if (!withoutThink) {
     return null;
   }

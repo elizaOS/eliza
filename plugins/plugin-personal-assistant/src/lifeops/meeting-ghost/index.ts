@@ -96,21 +96,130 @@ export interface MeetingGhostAnalysis {
 // the speaker + a commitment verb ("will send the plan by Friday"), not on a
 // literal "Action:" prefix a human would never say aloud. The prefixed forms
 // are still accepted for transcripts that carry structured annotations.
-const DECISION_PREFIX_RE =
-  /^(?:decision|decided|we decided|decision is)\s*[:-]\s*(.+)$/i;
-// A leading "we/the team decided (to)? X" spoken sentence.
-const SPOKEN_DECISION_RE =
-  /^(?:we|the team|everyone|the group)\s+(?:agreed|decided|settled|concluded)\s+(?:that\s+|to\s+|on\s+)?(?<body>.+?)[.;]?$/i;
-const COMMITMENT_PREFIX_RE =
-  /^(?:action|commitment|follow-up)\s*[:-]\s*(?<body>.+)$/i;
-// "Mira will send the deck by Friday" / "Ben is taking the calendar update"
-const NAMED_COMMITMENT_RE =
-  /^(?<who>[A-Z][A-Za-z .'-]{1,60}?)\s+(?:will|to|owns|is taking|committed to|is going to|can)\s+(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/;
-// First-person, who = the speaker. Requires an explicit commitment verb
-// ("I will…", "I'll…", "we can…", "I am going to…") so a bare first-person
-// remark ("I think…") is not mistaken for an action item.
-const SPEAKER_COMMITMENT_RE =
-  /^(?:i|we)\s*(?:'ll\s+|will\s+|can\s+|am going to\s+|are going to\s+)(?<what>.+?)(?:\s+by\s+(?<due>[^.;]+))?[.;]?$/i;
+function stripOneTerminalPunctuation(value: string): string {
+  const last = value[value.length - 1];
+  return last === "." || last === ";" ? value.slice(0, -1) : value;
+}
+
+function extractStructuredBody(
+  value: string,
+  prefixes: readonly string[],
+): string | null {
+  const lower = value.toLowerCase();
+  for (const prefix of prefixes) {
+    if (!lower.startsWith(prefix)) continue;
+    let cursor = prefix.length;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+    if (value[cursor] !== ":" && value[cursor] !== "-") continue;
+    cursor += 1;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+    return value.slice(cursor) || null;
+  }
+  return null;
+}
+
+function extractSpokenDecision(value: string): string | null {
+  const lower = value.toLowerCase();
+  for (const subject of ["we", "the team", "everyone", "the group"]) {
+    if (!lower.startsWith(`${subject} `)) continue;
+    let cursor = subject.length + 1;
+    const verb = ["agreed", "decided", "settled", "concluded"].find(
+      (candidate) => lower.startsWith(`${candidate} `, cursor),
+    );
+    if (!verb) continue;
+    cursor += verb.length + 1;
+    for (const connector of ["that ", "to ", "on "]) {
+      if (lower.startsWith(connector, cursor)) {
+        cursor += connector.length;
+        break;
+      }
+    }
+    return stripOneTerminalPunctuation(value.slice(cursor)) || null;
+  }
+  return null;
+}
+
+function splitCommitmentDue(value: string): {
+  what: string;
+  due: string | null;
+} {
+  const unpunctuated = stripOneTerminalPunctuation(value);
+  const separator = unpunctuated.toLowerCase().indexOf(" by ");
+  if (separator < 0) return { what: unpunctuated, due: null };
+  const due = unpunctuated.slice(separator + 4);
+  if (due.includes(".") || due.includes(";")) {
+    return { what: unpunctuated, due: null };
+  }
+  return {
+    what: unpunctuated.slice(0, separator),
+    due,
+  };
+}
+
+function parseNamedCommitment(value: string): {
+  who: string;
+  what: string;
+  due: string | null;
+} | null {
+  const lower = value.toLowerCase();
+  const verbs = [
+    "is going to",
+    "committed to",
+    "is taking",
+    "will",
+    "owns",
+    "can",
+    "to",
+  ];
+  let earliest:
+    | { markerStart: number; marker: string; verbIndex: number }
+    | undefined;
+  for (const [verbIndex, verb] of verbs.entries()) {
+    const marker = ` ${verb} `;
+    const markerStart = lower.indexOf(marker);
+    if (markerStart < 1) continue;
+    if (
+      !earliest ||
+      markerStart < earliest.markerStart ||
+      (markerStart === earliest.markerStart && verbIndex < earliest.verbIndex)
+    ) {
+      earliest = { markerStart, marker, verbIndex };
+    }
+  }
+  if (!earliest) return null;
+  const who = value.slice(0, earliest.markerStart);
+  if (who.length < 2 || who.length > 61 || !/[A-Z]/.test(who[0] ?? ""))
+    return null;
+  if ([...who].some((character) => !/[A-Za-z .'-]/.test(character)))
+    return null;
+  const split = splitCommitmentDue(
+    value.slice(earliest.markerStart + earliest.marker.length),
+  );
+  return split.what ? { who, ...split } : null;
+}
+
+function parseSpeakerCommitment(value: string): {
+  what: string;
+  due: string | null;
+} | null {
+  const lower = value.toLowerCase();
+  for (const subject of ["i", "we"]) {
+    if (!lower.startsWith(subject)) continue;
+    let cursor = subject.length;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+    const verb = [
+      "'ll ",
+      "will ",
+      "can ",
+      "am going to ",
+      "are going to ",
+    ].find((candidate) => lower.startsWith(candidate, cursor));
+    if (!verb) continue;
+    const split = splitCommitmentDue(value.slice(cursor + verb.length));
+    if (split.what) return split;
+  }
+  return null;
+}
 
 const WEEKDAYS = new Map([
   ["sunday", 0],
@@ -177,8 +286,13 @@ function parseDecision(
 ): MeetingGhostDecision | null {
   const text = compact(segment.text);
   const decision =
-    text.match(DECISION_PREFIX_RE)?.[1] ??
-    text.match(SPOKEN_DECISION_RE)?.groups?.body ??
+    extractStructuredBody(text, [
+      "decision",
+      "decided",
+      "we decided",
+      "decision is",
+    ]) ??
+    extractSpokenDecision(text) ??
     null;
   const compacted = decision ? compact(decision) : "";
   if (!compacted) return null;
@@ -195,21 +309,23 @@ function parseCommitmentBody(text: string): {
   what: string;
   dueText: string | null;
 } | null {
-  const body = text.match(COMMITMENT_PREFIX_RE)?.groups?.body ?? text;
-  const named = compact(body).match(NAMED_COMMITMENT_RE);
-  if (named?.groups?.what) {
+  const body =
+    extractStructuredBody(text, ["action", "commitment", "follow-up"]) ?? text;
+  const compactedBody = compact(body);
+  const named = parseNamedCommitment(compactedBody);
+  if (named?.what) {
     return {
-      who: compact(named.groups.who ?? ""),
-      what: compact(named.groups.what),
-      dueText: named.groups.due ? compact(named.groups.due) : null,
+      who: compact(named.who),
+      what: compact(named.what),
+      dueText: named.due ? compact(named.due) : null,
     };
   }
-  const speaker = compact(body).match(SPEAKER_COMMITMENT_RE);
-  if (speaker?.groups?.what) {
+  const speaker = parseSpeakerCommitment(compactedBody);
+  if (speaker?.what) {
     return {
       who: null,
-      what: compact(speaker.groups.what),
-      dueText: speaker.groups.due ? compact(speaker.groups.due) : null,
+      what: compact(speaker.what),
+      dueText: speaker.due ? compact(speaker.due) : null,
     };
   }
   return null;

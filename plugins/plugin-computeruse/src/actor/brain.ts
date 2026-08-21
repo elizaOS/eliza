@@ -543,17 +543,30 @@ export function brainPromptFor(
   ].join("\n");
 }
 
-const FENCE_RE = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+function extractFencedBrainBody(value: string): string | null {
+  const opener = value.indexOf("```");
+  if (opener < 0) return null;
+  let bodyStart = opener + 3;
+  if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
+    bodyStart += 4;
+  }
+  while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
+    bodyStart += 1;
+  }
+  const closer = value.indexOf("```", bodyStart);
+  if (closer < 0) return null;
+  let bodyEnd = closer;
+  while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
+    bodyEnd -= 1;
+  }
+  return value.slice(bodyStart, bodyEnd);
+}
 
 export function parseBrainOutput(raw: string): BrainOutput {
   const trimmed = raw.trim();
   let body = trimmed;
-  const fenceMatch = FENCE_RE.exec(trimmed);
-  if (fenceMatch) {
-    const fencedBody = fenceMatch[1];
-    if (fencedBody === undefined) {
-      throw new BrainParseError("Brain response markdown fence was empty", raw);
-    }
+  const fencedBody = extractFencedBrainBody(trimmed);
+  if (fencedBody !== null) {
     body = fencedBody.trim();
   }
   // Allow a leading prose paragraph by snipping to the first `{`.
