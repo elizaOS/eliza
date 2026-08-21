@@ -40,7 +40,10 @@ platform/account/thread/window/cap selection with deterministic ts-then-id
 ordering, and enforces a scrub floor that defaults to `verified` — unscrubbed
 rows never reach a consumer unless a test explicitly loosens
 `minScrubState`. Any validation issue aborts the load (`CorpusLoadError`)
-rather than serving a partial corpus. The committed synthetic tree under
+rather than serving a partial corpus, and an unrecognized `minScrubState` or a
+malformed numeric bound is rejected as a `CorpusSelectionError` at the call
+boundary. Message-id uniqueness and reply resolution are evaluated over the
+whole selected corpus, not per shard. The committed synthetic tree under
 `fixtures/sample-corpus/` exercises the whole path in CI; the scenario-runner
 Gmail mock consumes this loader via `ELIZA_CORPUS_DIR` /
 `startMocks({ corpusDir })` (see
