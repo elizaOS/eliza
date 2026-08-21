@@ -7614,6 +7614,15 @@ export class AgentRuntime implements IAgentRuntime {
 							providerRecorded: recordingState.recorded,
 						});
 					};
+					// The provider's `text` promise can settle one microtask before its
+					// stream finalizer records the same call. Yield one event-loop turn so
+					// a concurrently consumed stream can mark `recordingState.recorded`
+					// first. If nobody consumes the stream, the generic backstop still
+					// records the call on the next turn.
+					const recordAfterProviderFinalizerOpportunity = async () => {
+						await new Promise<void>((resolve) => setTimeout(resolve, 0));
+						await recordOnce();
+					};
 					// Guaranteed terminal record: if the consumer never iterates
 					// the textStream and never awaits .text, the provider's text
 					// promise still resolves (or rejects) eventually. Attach a
@@ -7625,9 +7634,9 @@ export class AgentRuntime implements IAgentRuntime {
 							if (accumulatedChunks.length === 0 && resolvedText) {
 								accumulatedChunks.push(resolvedText);
 							}
-							void recordOnce();
+							void recordAfterProviderFinalizerOpportunity();
 						},
-						() => void recordOnce(),
+						() => void recordAfterProviderFinalizerOpportunity(),
 					);
 					resultRef.current = {
 						...streamResult,
@@ -7676,7 +7685,7 @@ export class AgentRuntime implements IAgentRuntime {
 									const t = await streamResult.text;
 									accumulatedChunks.length = 0;
 									accumulatedChunks.push(t);
-									await recordOnce();
+									await recordAfterProviderFinalizerOpportunity();
 									return t;
 								}),
 							);
