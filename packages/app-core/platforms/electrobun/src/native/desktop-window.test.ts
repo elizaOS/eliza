@@ -1,6 +1,18 @@
 /** Exercises desktop window behavior with deterministic app-core test fixtures. */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  type AgentRuntime,
+  type IAgentRuntime,
+  ServiceType,
+  type Task,
+  TaskService,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
 import { Screen } from "electrobun/bun";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ScenarioBackgroundRuntime } from "../../../../../scenario-runner/src/background-runtime";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
@@ -1009,6 +1021,150 @@ describe("DesktopManager notifications", () => {
 
     manager.clearNotificationDiagnostics();
     expect(manager.getNotificationDiagnostics()).toEqual([]);
+  });
+
+  it("fans one exact-due scheduled item through desktop and mobile notification boundaries", async () => {
+    const manager = new DesktopManager();
+    const rows = new Map<string, Task>();
+    const workers = new Map<string, TaskWorker>();
+    const services = new Map<string, unknown>();
+    const agentId = "00000000-0000-0000-0000-000000022902" as UUID;
+    const epoch = "2026-08-20T12:00:00.000Z";
+    const runtime = {
+      agentId,
+      serverless: true,
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      adapter: {
+        getTasks: async () =>
+          [...rows.values()].filter((task) => task.tags?.includes("queue")),
+      },
+      registerTaskWorker(worker: TaskWorker) {
+        workers.set(worker.name, worker);
+      },
+      unregisterTaskWorker(name: string) {
+        return workers.delete(name);
+      },
+      getTaskWorker(name: string) {
+        return workers.get(name);
+      },
+      async getTasks() {
+        return [...rows.values()].filter((task) =>
+          task.tags?.includes("queue"),
+        );
+      },
+      async getTask(id: UUID) {
+        return rows.get(String(id)) ?? null;
+      },
+      async createTask(task: Task) {
+        const id = (task.id ?? "scheduled-notification") as UUID;
+        rows.set(String(id), { ...task, id, agentId });
+        return id;
+      },
+      async updateTask(id: UUID, patch: Partial<Task>) {
+        const task = rows.get(String(id));
+        if (!task) throw new Error(`missing task ${String(id)}`);
+        rows.set(String(id), { ...task, ...patch });
+      },
+      async deleteTask(id: UUID) {
+        rows.delete(String(id));
+      },
+      getService(type: string) {
+        return services.get(type) ?? null;
+      },
+      async getServiceLoadPromise(type: string) {
+        const service = services.get(type);
+        if (!service) throw new Error(`missing service ${type}`);
+        return service;
+      },
+      reportError: vi.fn(),
+      getRecentReportedErrors: () => [],
+    } as unknown as IAgentRuntime;
+    const taskService = (await TaskService.start(runtime)) as TaskService;
+    services.set(ServiceType.TASK, taskService);
+
+    const scope = globalThis as unknown as {
+      self?: unknown;
+      __elizaPush?: {
+        buildNotification(payload: unknown): {
+          title: string;
+          options: Record<string, unknown>;
+        };
+      };
+    };
+    scope.self = globalThis;
+    const swSource = readFileSync(
+      resolve(__dirname, "../../../../../app/public/sw-push.js"),
+      "utf8",
+    );
+    new Function("module", "self", swSource)({ exports: {} }, globalThis);
+    const push = scope.__elizaPush;
+    if (!push) throw new Error("service-worker push boundary unavailable");
+    const showMobileNotification = vi.fn(async () => undefined);
+
+    runtime.registerTaskWorker({
+      name: "CROSS_PLATFORM_NOTIFICATION",
+      execute: async () => {
+        const payload = {
+          title: "Scheduled check-in",
+          body: "Time for the exact-due check-in.",
+          tag: "schedule:check-in",
+          data: { deepLink: "/?conversation=check-in" },
+        };
+        await manager.showNotification(payload);
+        const mobile = push.buildNotification(payload);
+        await showMobileNotification(mobile.title, mobile.options);
+        return undefined;
+      },
+    });
+    await runtime.createTask({
+      name: "CROSS_PLATFORM_NOTIFICATION",
+      tags: ["queue"],
+      dueAt: Date.parse(epoch) + 1_000,
+      roomId: agentId,
+      entityId: agentId,
+    });
+    const background = new ScenarioBackgroundRuntime(
+      runtime as unknown as AgentRuntime,
+      {
+        namespace: "scenario:cross-platform-notification",
+        epoch,
+        workers: ["CROSS_PLATFORM_NOTIFICATION"],
+      },
+    );
+    await background.captureBaseline();
+    await background.start();
+    await background.step(999);
+    expect(manager.getNotificationDiagnostics()).toEqual([]);
+    expect(showMobileNotification).not.toHaveBeenCalled();
+
+    await background.step(1);
+    expect(manager.getNotificationDiagnostics()).toEqual([
+      expect.objectContaining({
+        title: "Scheduled check-in",
+        body: "Time for the exact-due check-in.",
+      }),
+    ]);
+    expect(electrobunMock.Utils.showNotification).toHaveBeenCalledOnce();
+    expect(showMobileNotification).toHaveBeenCalledWith(
+      "Scheduled check-in",
+      expect.objectContaining({
+        body: "Time for the exact-due check-in.",
+        tag: "schedule:check-in",
+        data: expect.objectContaining({
+          deepLink: "/?conversation=check-in",
+        }),
+      }),
+    );
+    expect(rows.size).toBe(0);
+
+    await background.resetSharedRuntime();
+    await background.stop();
+    await taskService.stop();
   });
 
   it("documents closeNotification as an Electrobun no-op", async () => {
