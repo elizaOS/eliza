@@ -635,7 +635,11 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
 }
 
 function normalizeHostname(hostname: string | undefined): string | null {
-  const normalized = hostname?.trim().toLowerCase().replace(/\.+$/, "");
+  const value = hostname?.trim().toLowerCase();
+  if (!value) return null;
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 46) end--;
+  const normalized = value.slice(0, end);
   return normalized || null;
 }
 

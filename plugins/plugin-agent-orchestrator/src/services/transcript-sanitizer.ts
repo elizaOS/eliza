@@ -37,17 +37,32 @@ export const DEFAULT_MAX_RELAY_CHARS = 2000;
  */
 export function stripToolTranscript(text: string): string {
   if (!text) return "";
-  return (
-    text
-      // Well-formed and empty-title blocks (non-greedy body up to the fence).
-      .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
-      // Unterminated trailing block: dangling opener with no closing fence.
-      // Only fires if a `[tool output:` marker remains AFTER the pass above,
-      // which means it was never closed — strip it to end of string.
-      .replace(/\[tool output:[\s\S]*$/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-  );
+  const opener = "[tool output:";
+  const closer = "[/tool output]";
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const blockStart = text.indexOf(opener, cursor);
+    if (blockStart < 0) break;
+    const titleEnd = text.indexOf("]", blockStart + opener.length);
+    if (titleEnd < 0) {
+      fragments.push(text.slice(cursor, blockStart));
+      cursor = text.length;
+      break;
+    }
+    const blockEnd = text.indexOf(closer, titleEnd + 1);
+    fragments.push(text.slice(cursor, blockStart));
+    if (blockEnd < 0) {
+      cursor = text.length;
+      break;
+    }
+    cursor = blockEnd + closer.length;
+  }
+  fragments.push(text.slice(cursor));
+  return fragments
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**

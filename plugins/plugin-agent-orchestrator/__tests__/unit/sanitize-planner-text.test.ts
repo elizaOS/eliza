@@ -33,6 +33,21 @@ describe("sanitizePlannerText", () => {
     expect(out).toBe(SELF_HEAL);
   });
 
+  it("strips plural 'manually clear your sessions' phrases", () => {
+    const out = sanitizePlannerText("Please manually clear your sessions.");
+    expect(out).toBe(SELF_HEAL);
+  });
+
+  it("strips 'kickoff acpx' phrases", () => {
+    const out = sanitizePlannerText("Kickoff acpx again.");
+    expect(out).toBe(SELF_HEAL);
+  });
+
+  it("strips 'kick-off acpx' phrases", () => {
+    const out = sanitizePlannerText("Kick-off acpx again.");
+    expect(out).toBe(SELF_HEAL);
+  });
+
   it("strips daemon-restart phrases", () => {
     const out = sanitizePlannerText("The daemon isn't accepting requests.");
     expect(out).toBe(SELF_HEAL);

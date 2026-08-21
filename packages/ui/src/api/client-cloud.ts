@@ -77,6 +77,7 @@ import {
   DIRECT_ELIZA_CLOUD_API_BY_HOST,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
+  stripTrailingSlashes,
 } from "./direct-cloud-endpoints";
 import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 import { fetchAgentTransport } from "./transport";
@@ -3412,11 +3413,10 @@ export function resolveCloudAgentApiBase(args: {
   /** Resolved direct-cloud origin — required to derive from `agentId`. */
   cloudApiBase?: string | null;
 }): string {
-  const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
   const candidate =
-    args.webUiUrl?.trim() || stripTrailingSlash(args.bridgeUrl ?? "");
+    args.webUiUrl?.trim() || stripTrailingSlashes(args.bridgeUrl ?? "");
   const normalized = candidate
-    ? normalizeDirectCloudSharedAgentApiBase(stripTrailingSlash(candidate))
+    ? normalizeDirectCloudSharedAgentApiBase(stripTrailingSlashes(candidate))
     : "";
   // A server URL that is missing/blank, or collapsed to the agent-id-less Eliza
   // Cloud collection (`.../api/v1/eliza/agents`), is unusable — every `/api/*`
@@ -3441,7 +3441,7 @@ function resolveDirectCloudAgentBridgeUrl(
   cloudApiBase: string,
   agentId: string,
 ): string {
-  return `${cloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
+  return `${stripTrailingSlashes(cloudApiBase)}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
 }
 
 function resolveDedicatedCloudAgentApiBase(args: {
@@ -3569,7 +3569,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     // fallback for callers that explicitly allow shared runtime.
     const sharedWebUiUrl =
       immediateWebUiUrl ??
-      `${resolvedCloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+      `${stripTrailingSlashes(resolvedCloudApiBase)}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
     return {
       bridgeUrl: resolveDirectCloudAgentBridgeUrl(
         resolvedCloudApiBase,
