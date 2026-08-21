@@ -254,12 +254,18 @@ fills the host-agent URL, submits first-run, and writes
 
 ## Cloud-onboarding lane hygiene
 
-The live cloud-onboarding lanes (`test:e2e:android:cloud-onboarding`,
-`test:e2e:ios:cloud-onboarding`) sign in with the shared deterministic e2e
+`test:e2e:android:cloud-onboarding` uses the documented
+`ELIZA_CLOUD_AUTH_TOKEN` real-device credential. It writes the bearer only to
+the Play shell's Keystore-backed bridge, proves authenticated chat and reload
+persistence, and removes the local credential afterward. It is distinct from
+`test:e2e:android:cloud-browser-handoff`, which proves only system-browser
+launch and cancellation and must never be cited as authenticated evidence.
+
+The iOS Cloud-onboarding lane still signs in with the shared deterministic e2e
 SIWE wallet against real Eliza Cloud. A red tap-mode run can strand the
-dedicated agent it provisioned on that wallet's org, which drains real
-credits and makes later runs look less like a first run. Before rerunning
-the lanes, reconcile the org with the cleanup lane from the repo root:
+dedicated agent it provisioned on that wallet's org, which drains real credits
+and makes later runs look less like a first run. Before rerunning that lane,
+reconcile the org with the cleanup lane from the repo root:
 
 ```bash
 bun run cloud:e2e:agents:cleanup -- --report /tmp/cloud-agent-dry-run.json

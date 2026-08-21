@@ -6,7 +6,6 @@
 import path from "node:path";
 
 export const ANDROID_CLOUD_ONBOARDING_STILL_NAMES = [
-  "sign-in-greeting",
   "home-landing",
   "reply-liveness",
 ] as const;

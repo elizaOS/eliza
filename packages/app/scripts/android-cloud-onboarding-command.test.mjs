@@ -16,13 +16,37 @@ const packageJson = JSON.parse(
 );
 
 describe("Android cloud-onboarding command", () => {
-  it("builds, installs, and drives first-run without a local-agent gate", () => {
+  it("builds, installs, and drives authenticated chat without a local-agent gate", () => {
     const command = packageJson.scripts["test:e2e:android:cloud-onboarding"];
 
     expect(command).toMatch(/build:android:cloud:debug/);
     expect(command).toMatch(/install:android:adb/);
     expect(command).toMatch(/ELIZA_ANDROID_ALLOW_FIRST_RUN=1/);
     expect(command).toMatch(/ELIZA_ANDROID_REQUIRE_AGENT=0/);
+    expect(command).toMatch(/ELIZA_ANDROID_CLEAR_APP_DATA=1/);
     expect(command).toMatch(/cloud-onboarding\.android\.spec\.ts/);
+  });
+
+  it("keeps the browser-handoff smoke distinct from authenticated onboarding", () => {
+    const command =
+      packageJson.scripts["test:e2e:android:cloud-browser-handoff"];
+
+    expect(command).toMatch(/build:android:cloud:debug/);
+    expect(command).toMatch(/ELIZA_ANDROID_REQUIRE_AGENT=0/);
+    expect(command).toMatch(/ELIZA_ANDROID_CLEAR_APP_DATA=1/);
+    expect(command).toMatch(/cloud-browser-handoff\.android\.spec\.ts/);
+  });
+
+  it("uses only the documented Keystore-backed live-device credential", () => {
+    const spec = fs.readFileSync(
+      path.join(appRoot, "test/android/cloud-onboarding.android.spec.ts"),
+      "utf8",
+    );
+
+    expect(spec).toContain("ELIZA_CLOUD_AUTH_TOKEN");
+    expect(spec).toContain("ElizaSecureCredentials");
+    expect(spec).toContain('trace: "off"');
+    expect(spec).not.toContain("ELIZA_E2E_WALLET_PK");
+    expect(spec).not.toContain("eliza:e2e-wallet:pk");
   });
 });

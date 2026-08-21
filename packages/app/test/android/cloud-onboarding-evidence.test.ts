@@ -11,9 +11,8 @@ import {
 } from "./cloud-onboarding-evidence";
 
 describe("Android Cloud-onboarding still evidence", () => {
-  it("emits greeting, home, and live-reply captures as JPEG artifacts", () => {
+  it("emits authenticated home and live-reply captures as JPEG artifacts", () => {
     expect(ANDROID_CLOUD_ONBOARDING_STILL_NAMES).toEqual([
-      "sign-in-greeting",
       "home-landing",
       "reply-liveness",
     ]);
