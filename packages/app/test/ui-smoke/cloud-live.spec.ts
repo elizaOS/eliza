@@ -22,6 +22,8 @@ import {
   seedCloudLiveBrowserAuth,
 } from "../cloud-live-browser-auth";
 import {
+  assertCloudLiveNamedWarmingMode,
+  assertCloudLiveNamedWarmingProof,
   type CloudLiveBindingReuse,
   type CloudLiveContinuityEvidenceInput,
   type CloudLiveHistoryObservation,
@@ -29,6 +31,7 @@ import {
   compareCloudLiveRuntimeBindings,
   createCloudLiveContinuityEvidence,
   createCloudLiveNetworkAudit,
+  installCloudLiveAnchoredRetryChipObserver,
   writeCloudLiveContinuityEvidence,
 } from "../cloud-live-continuity-contract";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
@@ -50,6 +53,8 @@ const DEPLOYED_RENDERER_ENABLED =
 const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v1";
+const REQUIRE_NAMED_WARMING =
+  process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 
 const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS = 180_000;
 const PERSONAL_IDENTITY_ATTEMPTS = 2;
@@ -401,13 +406,54 @@ function installNetworkAudit(context: BrowserContext) {
     audit.observeRequest(request.method(), request.url(), request.postData());
   });
   context.on("response", (response) => {
+    const responseHeaders = response.headers();
+    const contentType = responseHeaders["content-type"];
+    const contentEncoding = responseHeaders["content-encoding"]
+      ?.trim()
+      .toLowerCase();
     audit.observeResponse(
       response.request().method(),
       response.url(),
       response.status(),
+      {
+        contentType,
+        async read(maxBytes) {
+          if (contentEncoding && contentEncoding !== "identity") return null;
+          if (await response.finished()) return null;
+          const { responseBodySize } = await response.request().sizes();
+          if (
+            !Number.isSafeInteger(responseBodySize) ||
+            responseBodySize <= 0 ||
+            responseBodySize > maxBytes
+          )
+            return null;
+          const bytes = await response.body();
+          return bytes.byteLength <= maxBytes ? bytes : null;
+        },
+      },
     );
   });
   return audit;
+}
+
+async function armAnchoredRetryChipObserver(
+  page: Page,
+  turnAnchorToken: string,
+): Promise<{ stop(): Promise<boolean> }> {
+  const observation = await page.evaluateHandle(
+    installCloudLiveAnchoredRetryChipObserver,
+    turnAnchorToken,
+  );
+
+  return {
+    async stop() {
+      try {
+        return await observation.evaluate((state) => state.stop());
+      } finally {
+        await observation.dispose();
+      }
+    },
+  };
 }
 
 async function proveAnchoredTurnHistory(
@@ -417,9 +463,11 @@ async function proveAnchoredTurnHistory(
   turnAnchorToken: string,
 ): Promise<CloudLiveHistoryObservation> {
   await expect
-    .poll(() => audit.snapshot().successfulHistoryGetCount > priorCount, {
-      timeout: 120_000,
-    })
+    .poll(
+      async () =>
+        (await audit.snapshot()).successfulHistoryGetCount > priorCount,
+      { timeout: 120_000 },
+    )
     .toBe(true);
   await expect
     .poll(
@@ -481,11 +529,11 @@ async function resolvePersonalIdentity(
 test.describe("real cloud login + personal identity + chat", () => {
   test.setTimeout(900_000);
   test.skip(
-    !CLOUD_LIVE_ENABLED,
+    !CLOUD_LIVE_ENABLED && !REQUIRE_NAMED_WARMING,
     "set ELIZA_UI_SMOKE_CLOUD_LIVE=1 and ELIZA_UI_SMOKE_LIVE_STACK=1 to run against real Eliza Cloud",
   );
   test.skip(
-    !HAS_CLOUD_KEY,
+    !HAS_CLOUD_KEY && !REQUIRE_NAMED_WARMING,
     "set ELIZAOS_CLOUD_API_KEY to authenticate to real Eliza Cloud",
   );
 
@@ -521,6 +569,17 @@ test.describe("real cloud login + personal identity + chat", () => {
       originContract.reason ??
         `resolved Cloud API origin: ${originContract.origin}`,
     ).toBe(true);
+    // Reject an impossible opt-in before a staging bearer can reach any page.
+    // The authoritative renderer attestation still runs after protected boot.
+    assertCloudLiveNamedWarmingMode({
+      required: REQUIRE_NAMED_WARMING,
+      deployedRenderer: DEPLOYED_RENDERER_ENABLED,
+      cloudEnvironment: originContract.environment,
+    });
+    test.info().annotations.push({
+      type: "named-warming-proof-required",
+      description: String(REQUIRE_NAMED_WARMING),
+    });
 
     const stagingLatencyEvidencePath =
       process.env.ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH?.trim() ??
@@ -549,6 +608,14 @@ test.describe("real cloud login + personal identity + chat", () => {
     const primaryAudit = installNetworkAudit(context);
     const { deployedRenderer, rendererApiOrigin } =
       await openProtectedCloudBlankStart(page, baseURL, originContract.origin);
+    // Dormant #18045 proof must never turn a local renderer or production run
+    // into evidence merely because its opt-in flag was set. This uses the
+    // verified public + authenticated renderer attestation above, not env shape.
+    assertCloudLiveNamedWarmingMode({
+      required: REQUIRE_NAMED_WARMING,
+      deployedRenderer: deployedRenderer !== null,
+      cloudEnvironment: originContract.environment,
+    });
     test.info().annotations.push({
       type: "renderer-cloud-origin",
       description: rendererApiOrigin,
@@ -558,8 +625,9 @@ test.describe("real cloud login + personal identity + chat", () => {
     // identity through the read-only Personal endpoint. It persists the
     // account-owned binding without creating dedicated compute.
     const referenceBinding = await resolvePersonalIdentity(page);
+    const identityAudit = await primaryAudit.snapshot();
     expect(
-      primaryAudit.snapshot().successfulPersonalIdentityGetCount,
+      identityAudit.successfulPersonalIdentityGetCount,
       "Personal Eliza resolution must include a successful canonical identity GET",
     ).toBeGreaterThan(0);
 
@@ -571,7 +639,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     await openAppPath(page, "/chat");
     const turnAnchorToken = randomBytes(8).toString("hex");
     const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;
-    const auditBeforeLiveness = primaryAudit.snapshot();
+    const auditBeforeLiveness = await primaryAudit.snapshot();
     const domBeforeLiveness = await page.evaluate(() => ({
       userRowCount: document.querySelectorAll(
         '[data-testid="thread-line"][data-role="user"]',
@@ -580,108 +648,169 @@ test.describe("real cloud login + personal identity + chat", () => {
         '[data-testid="thread-line"][data-role="assistant"]',
       ).length,
     }));
-    const liveness = await (async () => {
-      try {
-        return await assertOnboardingLivenessWithTiming(page, {
-          label: "cloud-live",
-          prompt: turnPrompt,
-          turnAnchorToken,
-        });
-      } catch (error) {
-        // error-policy:J3 reduce the original assertion and live browser state
-        // to an allowlisted name plus counts/booleans only. Never emit the draft,
-        // challenge, response text, request URL, or any account/runtime ID.
-        const auditAfterLiveness = primaryAudit.snapshot();
-        const [domSnapshotResult] = await Promise.allSettled([
-          page.evaluate((before) => {
-            const userRows = Array.from(
-              document.querySelectorAll(
-                '[data-testid="thread-line"][data-role="user"]',
-              ),
-            );
-            const assistantRows = Array.from(
-              document.querySelectorAll<HTMLElement>(
-                '[data-testid="thread-line"][data-role="assistant"]',
-              ),
-            );
-            const freshAssistantRows = assistantRows.slice(
-              before.assistantRowCount,
-            );
-            const composer = document.querySelector<
-              HTMLTextAreaElement | HTMLInputElement
-            >('[data-testid="chat-composer-textarea"]');
-            return {
-              draftCleared: composer
-                ? composer.value.trim().length === 0
-                : null,
-              newUserRowCount: Math.max(
-                0,
-                userRows.length - before.userRowCount,
-              ),
-              newAssistantRowCount: Math.max(
-                0,
-                assistantRows.length - before.assistantRowCount,
-              ),
-              failureRowPresent: freshAssistantRows.some((row) =>
-                Boolean(row.dataset.failure?.trim()),
-              ),
-              retryRowPresent: freshAssistantRows.some((row) =>
-                Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
-              ),
-              interruptedRowPresent: freshAssistantRows.some(
-                (row) => row.dataset.interrupted === "true",
-              ),
-              widgetOnlyReplyRowPresent: freshAssistantRows.some((row) => {
-                const body = row.querySelector<HTMLElement>(
-                  '[data-testid="overlay-assistant-turn-body"]',
-                );
-                return (
-                  body?.dataset.phase === "reply" &&
-                  body.dataset.hasMessageText === "false"
-                );
-              }),
-            };
-          }, domBeforeLiveness),
-        ]);
-        const domSnapshot =
-          domSnapshotResult?.status === "fulfilled"
-            ? domSnapshotResult.value
-            : null;
-        const originalErrorName =
-          error instanceof Error &&
-          ["Error", "AssertionError", "LivenessAssertionError"].includes(
-            error.name,
-          )
-            ? error.name
-            : "UnknownError";
-        const diagnostic = [
-          `originalErrorName=${originalErrorName}`,
-          `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
-          `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
-          `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
-          `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
-          `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
-          `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
-          `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
-          `domSnapshotAvailable=${domSnapshot !== null}`,
-          `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
-          `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
-          `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
-          `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
-          `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
-          `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
-          `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
-        ].join("; ");
-        throw new Error(
-          `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
-        );
-      }
-    })();
+    // Arm before the liveness helper performs its single send click. A final
+    // DOM snapshot cannot prove that a Retry chip never flashed and vanished.
+    const retryObserverAttempt = await armAnchoredRetryChipObserver(
+      page,
+      turnAnchorToken,
+    ).then(
+      (observer) => ({ ok: true as const, observer }),
+      () => ({ ok: false as const }),
+    );
+    if (!retryObserverAttempt.ok && REQUIRE_NAMED_WARMING) {
+      throw new Error(
+        "Cloud live Retry-chip observer failed to arm; named warming proof is unavailable",
+      );
+    }
+    const livenessAttempt = await assertOnboardingLivenessWithTiming(page, {
+      label: "cloud-live",
+      prompt: turnPrompt,
+      turnAnchorToken,
+    }).then(
+      (liveness) => ({ ok: true as const, liveness }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    const retryObservation = retryObserverAttempt.ok
+      ? await retryObserverAttempt.observer.stop().then(
+          (retryChipEverObserved) => ({
+            ok: true as const,
+            retryChipEverObserved,
+          }),
+          () => ({ ok: false as const }),
+        )
+      : { ok: false as const };
+    test.info().annotations.push(
+      {
+        type: "anchored-retry-chip-observation-available",
+        description: String(retryObservation.ok),
+      },
+      {
+        type: "anchored-retry-chip-ever-observed",
+        description: retryObservation.ok
+          ? String(retryObservation.retryChipEverObserved)
+          : "unavailable",
+      },
+    );
+
+    if (!livenessAttempt.ok) {
+      const { error } = livenessAttempt;
+      // error-policy:J3 reduce the original assertion and live browser state
+      // to an allowlisted name plus counts/booleans only. Never emit the draft,
+      // challenge, response text, request URL, or any account/runtime ID.
+      const auditAfterLiveness = await primaryAudit.snapshot();
+      const [domSnapshotResult] = await Promise.allSettled([
+        page.evaluate((before) => {
+          const userRows = Array.from(
+            document.querySelectorAll(
+              '[data-testid="thread-line"][data-role="user"]',
+            ),
+          );
+          const assistantRows = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '[data-testid="thread-line"][data-role="assistant"]',
+            ),
+          );
+          const freshAssistantRows = assistantRows.slice(
+            before.assistantRowCount,
+          );
+          const composer = document.querySelector<
+            HTMLTextAreaElement | HTMLInputElement
+          >('[data-testid="chat-composer-textarea"]');
+          return {
+            draftCleared: composer ? composer.value.trim().length === 0 : null,
+            newUserRowCount: Math.max(0, userRows.length - before.userRowCount),
+            newAssistantRowCount: Math.max(
+              0,
+              assistantRows.length - before.assistantRowCount,
+            ),
+            failureRowPresent: freshAssistantRows.some((row) =>
+              Boolean(row.dataset.failure?.trim()),
+            ),
+            retryRowPresent: freshAssistantRows.some((row) =>
+              Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
+            ),
+            interruptedRowPresent: freshAssistantRows.some(
+              (row) => row.dataset.interrupted === "true",
+            ),
+            widgetOnlyReplyRowPresent: freshAssistantRows.some((row) => {
+              const body = row.querySelector<HTMLElement>(
+                '[data-testid="overlay-assistant-turn-body"]',
+              );
+              return (
+                body?.dataset.phase === "reply" &&
+                body.dataset.hasMessageText === "false"
+              );
+            }),
+          };
+        }, domBeforeLiveness),
+      ]);
+      const domSnapshot =
+        domSnapshotResult?.status === "fulfilled"
+          ? domSnapshotResult.value
+          : null;
+      const originalErrorName =
+        error instanceof Error &&
+        ["Error", "AssertionError", "LivenessAssertionError"].includes(
+          error.name,
+        )
+          ? error.name
+          : "UnknownError";
+      const diagnostic = [
+        `originalErrorName=${originalErrorName}`,
+        `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
+        `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
+        `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
+        `namedWarmingResponseDelta=${Math.max(0, auditAfterLiveness.namedWarmingResponseCount - auditBeforeLiveness.namedWarmingResponseCount)}`,
+        `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
+        `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
+        `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
+        `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
+        `retryObservationAvailable=${retryObservation.ok}`,
+        `retryChipEverObserved=${retryObservation.ok ? retryObservation.retryChipEverObserved : "unavailable"}`,
+        `domSnapshotAvailable=${domSnapshot !== null}`,
+        `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
+        `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
+        `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
+        `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
+        `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
+        `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
+        `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
+      ].join("; ");
+      throw new Error(
+        `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
+      );
+    }
+    if (!retryObservation.ok && REQUIRE_NAMED_WARMING) {
+      throw new Error(
+        "Cloud live Retry-chip observer failed; named warming proof is unavailable",
+      );
+    }
+    const { liveness } = livenessAttempt;
+    const retryChipEverObserved = retryObservation.ok
+      ? retryObservation.retryChipEverObserved
+      : false;
     test.info().annotations.push({
       type: "first-turn-latency-ms",
       description: String(liveness.firstTurnLatencyMs),
     });
-    const challengeAudit = primaryAudit.snapshot();
+    const challengeAudit = await primaryAudit.snapshot();
+    assertCloudLiveNamedWarmingProof({
+      required: REQUIRE_NAMED_WARMING,
+      terminalLivenessPassed: isLiveReply(liveness.reply),
+      chatSendAttemptCount:
+        challengeAudit.chatSendAttemptCount -
+        auditBeforeLiveness.chatSendAttemptCount,
+      logicalChatSendCount:
+        challengeAudit.logicalChatSendCount -
+        auditBeforeLiveness.logicalChatSendCount,
+      unidentifiedChatSendAttemptCount:
+        challengeAudit.unidentifiedChatSendAttemptCount -
+        auditBeforeLiveness.unidentifiedChatSendAttemptCount,
+      namedWarmingResponseCount:
+        challengeAudit.namedWarmingResponseCount -
+        auditBeforeLiveness.namedWarmingResponseCount,
+      retryChipEverObserved,
+    });
     const challengeLogicalChatSendCount = challengeAudit.logicalChatSendCount;
     expect(challengeLogicalChatSendCount).toBe(1);
     expect(challengeAudit.unidentifiedChatSendAttemptCount).toBe(0);
@@ -689,8 +818,8 @@ test.describe("real cloud login + personal identity + chat", () => {
     // Reload the same document partition. A successful server history GET plus
     // both turn-anchored rows proves the turn did not survive merely in React
     // memory. Private binding values are reduced to booleans before evidence.
-    const reloadHistoryBefore =
-      primaryAudit.snapshot().successfulHistoryGetCount;
+    const reloadHistoryBefore = (await primaryAudit.snapshot())
+      .successfulHistoryGetCount;
     await page.reload({ waitUntil: "domcontentloaded" });
     const reload = await proveAnchoredTurnHistory(
       page,
@@ -735,8 +864,8 @@ test.describe("real cloud login + personal identity + chat", () => {
           expect(freshDeployedRenderer).toEqual(deployedRenderer);
         }
         const freshBinding = await resolvePersonalIdentity(freshPage);
-        const freshHistoryBefore =
-          freshAudit.snapshot().successfulHistoryGetCount;
+        const freshHistoryBefore = (await freshAudit.snapshot())
+          .successfulHistoryGetCount;
         await openAppPath(freshPage, "/chat");
         const history = await proveAnchoredTurnHistory(
           freshPage,
@@ -754,14 +883,14 @@ test.describe("real cloud login + personal identity + chat", () => {
             referenceBinding,
             freshBinding,
           ),
-          audit: freshAudit.snapshot(),
+          audit: await freshAudit.snapshot(),
         };
       } finally {
         await freshContext.close();
       }
     })();
 
-    const primarySnapshot = primaryAudit.snapshot();
+    const primarySnapshot = await primaryAudit.snapshot();
     const personalIdentityEndpointPassed =
       primarySnapshot.successfulPersonalIdentityGetCount > 0 &&
       freshResult.audit.successfulPersonalIdentityGetCount > 0;
