@@ -8,6 +8,17 @@
  * organization-only row that still has `deleting` container rows to consume,
  * and terminally fail a pending row whose payload can never identify an owner.
  *
+ * Tenant authority comes from the jobs row's own `organization_id` column, not
+ * from the payload. The executor's recovery branch derives its delete scope
+ * from `data.organizationId` with only a nonblank-string check, so requeueing a
+ * row whose payload names a different tenant would hand one organization's
+ * `deleting` containers to another organization's job. Every payload
+ * organization is therefore required to be a canonical UUID equal to the
+ * persisted owner; anything else is classified `organization-mismatch` and
+ * fails closed — never requeued — and the `deleting` inventory is always scoped
+ * to the authoritative owner so a corrupt payload cannot enumerate a foreign
+ * tenant's rows.
+ *
  * Every mutation is guarded on the status the classification observed, so
  * concurrent daemons or a second reconciler run cannot double-apply a
  * transition; the report counts only rows this run actually changed. The
@@ -28,6 +39,7 @@ export type ReconcilerDatabase = Pick<typeof dbWrite, "select" | "update">;
 export type ContainerDeleteJobClassification =
   | "valid"
   | "recoverable-organization-only"
+  | "organization-mismatch"
   | "unrecoverable";
 
 export type ContainerDeleteJobPlannedAction = "none" | "requeue" | "mark-failed";
@@ -40,8 +52,12 @@ export interface ContainerDeleteJobInventoryEntry {
   maxAttempts: number;
   createdAt: string;
   classification: ContainerDeleteJobClassification;
+  /** Authoritative owner from the jobs row; the only tenant scope trusted. */
+  ownerOrganizationId: string;
   /** Present when the payload carried a usable owning organization. */
   organizationId: string | null;
+  /** Whether the payload organization is a canonical UUID equal to the owner. */
+  payloadOrganizationMatchesOwner: boolean;
   /** Present only when the payload passed the canonical codec. */
   containerId: string | null;
   /** For organization-only rows: ids of that org's `deleting` container rows. */
@@ -60,6 +76,8 @@ export interface ContainerDeleteJobReconciliationReport {
   scannedJobs: number;
   validJobs: number;
   recoverableJobs: number;
+  /** Payload named a tenant that is not the row's authoritative owner. */
+  organizationMismatchJobs: number;
   unrecoverableJobs: number;
   requeuedJobs: number;
   markedFailedJobs: number;
@@ -73,8 +91,17 @@ export const UNRECOVERABLE_DELETE_JOB_ERROR =
   "reconciler (#15821). Any live container is swept by the orphan reconciler " +
   "using its immutable host id.";
 
+/** Error text stamped on pending rows whose payload names a foreign tenant. */
+export const ORGANIZATION_MISMATCH_DELETE_JOB_ERROR =
+  "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH: legacy job payload names an " +
+  "organization that is not this job row's owner; terminally failed by the " +
+  "container-delete reconciler (#15821) so no worker can consume it into a " +
+  "foreign tenant. Escalate to an operator.";
+
 /** Statuses that are already settled and must never be touched. */
 const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function readOrganizationId(data: unknown): string | null {
   if (typeof data !== "object" || data === null) return null;
@@ -84,10 +111,35 @@ function readOrganizationId(data: unknown): string | null {
     : null;
 }
 
-/** Classify one persisted payload through the executor's own codec. */
-export function classifyContainerDeleteJobData(data: unknown): ContainerDeleteJobClassification {
+/**
+ * Classify one persisted payload against the row's authoritative owner.
+ *
+ * `ownerOrganizationId` is the jobs row's own `organization_id` column. A
+ * payload organization is only trusted when it is a canonical UUID equal to
+ * that owner, because the executor's recovery branch turns the payload value
+ * directly into a cross-tenant delete scope.
+ */
+export function classifyContainerDeleteJobData(
+  data: unknown,
+  ownerOrganizationId: string,
+): ContainerDeleteJobClassification {
+  const payloadOrganizationId = readOrganizationId(data);
+  if (
+    payloadOrganizationId !== null &&
+    !organizationMatchesOwner(payloadOrganizationId, ownerOrganizationId)
+  ) {
+    return "organization-mismatch";
+  }
   if (isContainerDeleteJobData(data)) return "valid";
-  return readOrganizationId(data) === null ? "unrecoverable" : "recoverable-organization-only";
+  return payloadOrganizationId === null ? "unrecoverable" : "recoverable-organization-only";
+}
+
+function organizationMatchesOwner(
+  payloadOrganizationId: string,
+  ownerOrganizationId: string,
+): boolean {
+  if (!CANONICAL_UUID.test(payloadOrganizationId)) return false;
+  return payloadOrganizationId.toLowerCase() === ownerOrganizationId.toLowerCase();
 }
 
 interface ScannedJobRow {
@@ -109,7 +161,7 @@ function planEntry(
   row: ScannedJobRow,
   deletingRows: Array<{ id: string; hasHostId: boolean }>,
 ): PlannedEntry {
-  const classification = classifyContainerDeleteJobData(row.data);
+  const classification = classifyContainerDeleteJobData(row.data, row.organization_id);
   const payloadOrganizationId = readOrganizationId(row.data);
   const base: ContainerDeleteJobInventoryEntry = {
     jobId: row.id,
@@ -118,7 +170,11 @@ function planEntry(
     maxAttempts: row.max_attempts,
     createdAt: row.created_at.toISOString(),
     classification,
+    ownerOrganizationId: row.organization_id,
     organizationId: payloadOrganizationId,
+    payloadOrganizationMatchesOwner:
+      payloadOrganizationId !== null &&
+      organizationMatchesOwner(payloadOrganizationId, row.organization_id),
     containerId:
       classification === "valid" &&
       typeof row.data === "object" &&
@@ -135,6 +191,21 @@ function planEntry(
 
   if (classification === "valid") {
     base.reason = "payload passes the canonical codec; normal worker path owns it";
+    return { entry: base, guardStatus: null };
+  }
+  if (classification === "organization-mismatch") {
+    // Fail closed: the executor's recovery branch would take its delete scope
+    // straight from this payload, so a pending row is actively dangerous.
+    if (row.status === "pending") {
+      base.plannedAction = "mark-failed";
+      base.reason =
+        "payload names an organization that is not this row's owner; terminally " +
+        "fail so no worker can consume it into a foreign tenant";
+      return { entry: base, guardStatus: "pending" };
+    }
+    base.reason =
+      `payload organization is not the row owner (status ${row.status}); ` +
+      "never requeued — escalate to an operator";
     return { entry: base, guardStatus: null };
   }
   if (TERMINAL_JOB_STATUSES.has(row.status) && row.status !== "failed") {
@@ -192,11 +263,16 @@ export async function reconcileContainerDeleteJobs(
     .where(eq(jobs.type, JOB_TYPES.CONTAINER_DELETE))
     .orderBy(jobs.created_at)) as ScannedJobRow[];
 
+  // Scope the deleting-container lookup to each row's authoritative owner. A
+  // corrupt payload must never widen this set to a foreign tenant, so the
+  // payload organization is not consulted here at all.
   const organizationIds = new Set<string>();
   for (const row of rows) {
-    if (classifyContainerDeleteJobData(row.data) === "recoverable-organization-only") {
-      const organizationId = readOrganizationId(row.data);
-      if (organizationId) organizationIds.add(organizationId);
+    if (
+      classifyContainerDeleteJobData(row.data, row.organization_id) ===
+      "recoverable-organization-only"
+    ) {
+      organizationIds.add(row.organization_id);
     }
   }
 
@@ -227,6 +303,7 @@ export async function reconcileContainerDeleteJobs(
     scannedJobs: rows.length,
     validJobs: 0,
     recoverableJobs: 0,
+    organizationMismatchJobs: 0,
     unrecoverableJobs: 0,
     requeuedJobs: 0,
     markedFailedJobs: 0,
@@ -234,15 +311,25 @@ export async function reconcileContainerDeleteJobs(
   };
 
   for (const row of rows) {
-    const organizationId = readOrganizationId(row.data);
-    const deletingRows = organizationId ? (deletingByOrganization.get(organizationId) ?? []) : [];
+    const deletingRows = deletingByOrganization.get(row.organization_id) ?? [];
     const { entry, guardStatus } = planEntry(row, deletingRows);
     if (entry.classification === "valid") report.validJobs += 1;
     else if (entry.classification === "recoverable-organization-only") report.recoverableJobs += 1;
+    else if (entry.classification === "organization-mismatch") report.organizationMismatchJobs += 1;
     else report.unrecoverableJobs += 1;
 
     if (apply && guardStatus !== null && entry.plannedAction !== "none") {
-      const changed = await applyTransition(db, row.id, entry.plannedAction, guardStatus);
+      const failureError =
+        entry.classification === "organization-mismatch"
+          ? ORGANIZATION_MISMATCH_DELETE_JOB_ERROR
+          : UNRECOVERABLE_DELETE_JOB_ERROR;
+      const changed = await applyTransition(
+        db,
+        row.id,
+        entry.plannedAction,
+        guardStatus,
+        failureError,
+      );
       entry.applied = changed;
       if (changed && entry.plannedAction === "requeue") report.requeuedJobs += 1;
       if (changed && entry.plannedAction === "mark-failed") report.markedFailedJobs += 1;
@@ -257,6 +344,7 @@ async function applyTransition(
   jobId: string,
   action: Exclude<ContainerDeleteJobPlannedAction, "none">,
   guardStatus: string,
+  failureError: string,
 ): Promise<boolean> {
   const values =
     action === "requeue"
@@ -269,7 +357,7 @@ async function applyTransition(
         }
       : {
           status: "failed" as const,
-          error: UNRECOVERABLE_DELETE_JOB_ERROR,
+          error: failureError,
           completed_at: new Date(),
           updated_at: new Date(),
         };
