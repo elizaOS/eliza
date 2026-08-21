@@ -123,13 +123,6 @@ export async function writeFileHandler(
 
   const resolved = validated.resolved;
 
-  const gate = await fileState.assertWritable(conversationId, resolved);
-  if (gate.ok === false) {
-    const reason =
-      gate.reason === "stale_read" ? "stale_read" : "invalid_param";
-    return failureToActionResult({ reason, message: gate.message });
-  }
-
   const secrets = detectSecrets(content);
   if (secrets.length > 0) {
     const names = secrets.map((s) => s.name).join(", ");
@@ -137,6 +130,40 @@ export async function writeFileHandler(
       reason: "invalid_param",
       message: `refusing to write content containing detected secret patterns: ${names}`,
     });
+  }
+
+  const gate = await fileState.assertWritable(conversationId, resolved);
+  if (gate.ok === false) {
+    // Repeated natural-language requests commonly generate the same file name
+    // and complete contents. Preserve the read-before-overwrite guard for real
+    // changes, but accept a byte-identical write as a verified no-op: it cannot
+    // clobber a human edit and should not poison an otherwise successful run.
+    if (gate.reason === "must_read_first") {
+      try {
+        const existing = await fs.readFile(resolved, "utf8");
+        if (existing === content) {
+          await fileState.recordRead(conversationId, resolved);
+          const bytes = Buffer.byteLength(content, "utf8");
+          const text = `No changes needed; ${resolved} already has the requested contents.`;
+          if (callback) await callback({ text, source: "coding-tools" });
+          return {
+            ...userFacingSuccessResult(text, {
+              path: resolved,
+              bytes,
+              unchanged: true,
+            }),
+            verifiedUserFacing: true,
+            turnComplete: true,
+          };
+        }
+      } catch {
+        // Keep the original guard failure. A transient read error must not turn
+        // into overwrite permission or hide the actionable read-first message.
+      }
+    }
+    const reason =
+      gate.reason === "stale_read" ? "stale_read" : "invalid_param";
+    return failureToActionResult({ reason, message: gate.message });
   }
 
   const routed = await writeWithCapabilityRouter({

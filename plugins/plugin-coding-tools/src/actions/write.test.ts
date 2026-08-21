@@ -150,6 +150,26 @@ describe("WRITE", () => {
     expect(onDisk).toBe("original");
   });
 
+  it("accepts a byte-identical write as a verified no-op without a prior read", async () => {
+    const file = path.join(env.tmpDir, "already-correct.txt");
+    await fs.writeFile(file, "already correct", "utf8");
+
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, content: "already correct" },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("already has the requested contents");
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.data).toMatchObject({
+      path: file,
+      bytes: 15,
+      unchanged: true,
+    });
+    expect(await fs.readFile(file, "utf8")).toBe("already correct");
+    expect(env.fileState.get("test-room", file)).toBeDefined();
+  });
+
   it("allows overwriting after a previous recordRead with matching mtime", async () => {
     const file = path.join(env.tmpDir, "tracked.txt");
     await fs.writeFile(file, "original", "utf8");
