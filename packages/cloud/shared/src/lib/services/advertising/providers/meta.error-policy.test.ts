@@ -11,7 +11,7 @@ mock.module("../../../utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 
-const { metaAdsProvider } = await import("./meta");
+const { metaAdsProvider, metaFetch } = await import("./meta");
 
 const originalFetch = globalThis.fetch;
 
@@ -124,5 +124,38 @@ describe("metaAdsProvider.getCampaignMetrics failure vs legitimately-empty", () 
     // distinction from the failure branch, not any derived monetary amount.
     expect(result.success).toBe(true);
     expect(result.metrics?.spend).toBe(0);
+  });
+});
+
+describe("metaFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Meta Graph API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(metaFetch("https://graph.facebook.com/v24.0/me", undefined, 100)).rejects.toThrow(
+      /aborted/i,
+    );
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await metaFetch("https://graph.facebook.com/v24.0/me", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

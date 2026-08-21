@@ -20,6 +20,23 @@ import type {
 const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION || "v24.0";
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
+const META_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Meta Graph API hop so a hung or rate-limited API cannot pin the
+ * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ */
+export function metaFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = META_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 const RETRY_CONFIG = {
   maxAttempts: 3,
   baseDelayMs: 1000,
@@ -139,7 +156,7 @@ async function graphApiRequest<T>(
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= RETRY_CONFIG.maxAttempts; attempt++) {
-    const response = await fetch(url.toString(), {
+    const response = await metaFetch(url.toString(), {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -738,7 +755,7 @@ export const metaAdsProvider: AdProvider = {
       form.set("bytes", downloaded.base64);
       form.set("name", downloaded.fileName);
 
-      const response = await fetch(`${GRAPH_API_BASE}/${actAccountId}/adimages`, {
+      const response = await metaFetch(`${GRAPH_API_BASE}/${actAccountId}/adimages`, {
         method: "POST",
         body: form,
       });
