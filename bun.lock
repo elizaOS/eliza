@@ -252,6 +252,7 @@
         "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-maps": "workspace:*",
         "@elizaos/plugin-messages": "workspace:*",
         "@elizaos/plugin-native-settings": "workspace:*",
         "@elizaos/plugin-notes": "workspace:*",

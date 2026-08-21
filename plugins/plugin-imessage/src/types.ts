@@ -36,8 +36,6 @@ export type IMessageChatType = "direct" | "group";
  * Configuration settings for the iMessage plugin
  */
 export interface IMessageSettings {
-  /** Path to iMessage CLI tool */
-  cliPath: string;
   /** Path to iMessage database */
   dbPath?: string;
   /** Polling interval in ms */
@@ -199,13 +197,6 @@ export class IMessageNotSupportedError extends IMessagePluginError {
   constructor(message: string = "iMessage is only supported on macOS") {
     super(message, "NOT_SUPPORTED");
     this.name = "IMessageNotSupportedError";
-  }
-}
-
-export class IMessageCliError extends IMessagePluginError {
-  constructor(message: string, exitCode?: number) {
-    super(message, "CLI_ERROR", exitCode !== undefined ? { exitCode } : undefined);
-    this.name = "IMessageCliError";
   }
 }
 

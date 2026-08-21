@@ -2952,6 +2952,16 @@ export const INVALID_TRACER_PROVIDER = {};
               "platform/empty-node-module.ts",
             ),
           },
+          // Shared browser facades import this duplicate-safe leaf directly.
+          // Bind it to source before the bare-core alias so fast-dist builds do
+          // not fall through to the package's Node/default compatibility shim.
+          {
+            find: /^@elizaos\/core\/client-public$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/client-public.ts",
+            ),
+          },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all

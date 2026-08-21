@@ -5,8 +5,11 @@
  * SAME storage identities the ephemeral Workerd runtime projects (agent/entity
  * uuids from the Todo storage scope when present, room/world derived from the
  * agent key) — so a later Dedicated cutover or retrieval pass reads rows that
- * line up with what the runtime actually saw. Off (the default), the store is
- * never constructed and the turn path is byte-identical to before.
+ * line up with what the runtime actually saw. Extracted knowledge (parity P4)
+ * lands in the same table under the core `facts` discriminator with
+ * fact-text-derived row ids, so re-extraction replays instead of duplicating.
+ * Off (the default), the store is never constructed and the turn path is
+ * byte-identical to before.
  */
 
 import { stringToUuid, validateUuid } from "@elizaos/core/edge";
@@ -18,6 +21,7 @@ import {
   sharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import { logger } from "../../utils/logger";
+import { normalizeSharedFact, SHARED_FACTS_MEMORY_TYPE } from "./shared-facts";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import {
   type SharedTodoStorageScope,
@@ -99,6 +103,79 @@ export class SharedMemoryStore {
       embedding,
       limit,
     );
+  }
+
+  /**
+   * Newest-first fact texts previously extracted for this tenant scope
+   * (parity P4). Rows whose content carries no text are skipped rather than
+   * rendered as empty bullets.
+   */
+  async listFacts(limit: number): Promise<string[]> {
+    const agentId = this.scope.storage?.agentId ?? stringToUuid(this.scope.agentKey);
+    const rows = await this.reader.listRecentByType(
+      {
+        organizationId: this.scope.organizationId,
+        userId: this.scope.userId,
+        agentId,
+      },
+      SHARED_FACTS_MEMORY_TYPE,
+      limit,
+    );
+    return rows
+      .map((row) => (row.content as { text?: unknown })?.text)
+      .filter((text): text is string => typeof text === "string" && text.trim().length > 0);
+  }
+
+  /**
+   * Durably record extracted facts under the core `facts` discriminator with
+   * the same storage identities as the transcript rows. Row ids derive from
+   * the normalized fact text, so re-extracting a known fact replays the same
+   * id and no-ops instead of accumulating duplicates. Embeddings, when
+   * configured, land in one batched sidecar call and degrade to vector-less
+   * rows on failure — the knowledge write itself is never lost to the sidecar.
+   */
+  async recordFacts(facts: string[]): Promise<void> {
+    const renderable = facts.map((fact) => fact.trim()).filter((fact) => fact.length > 0);
+    if (renderable.length === 0) return;
+    const agentId = this.scope.storage?.agentId ?? stringToUuid(this.scope.agentKey);
+    const entityId = this.scope.storage?.entityId ?? stringToUuid(`${this.scope.agentKey}:owner`);
+    const roomId = sharedRuntimeConversationRoomId(this.scope.agentKey);
+    const worldId = sharedRuntimeWorldId(this.scope.agentKey);
+    const scope = {
+      organizationId: this.scope.organizationId,
+      userId: this.scope.userId,
+      agentId,
+    };
+    let vectors: number[][] | undefined;
+    if (this.embed) {
+      try {
+        vectors = await this.embed.embedTexts(renderable);
+      } catch (error) {
+        // error-policy:J4 embedding is an enhancement on the durable write;
+        // its loss is visible (rows without vectors never match recall).
+        logger.warn(
+          `[SharedMemoryStore] facts embedding failed; writing rows without vectors: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const landedAt = Date.now();
+    for (const [index, fact] of renderable.entries()) {
+      await this.writer.insertMemory({
+        id: stringToUuid(`${this.scope.agentKey}:fact:${normalizeSharedFact(fact)}`),
+        scope,
+        entityId,
+        roomId,
+        worldId,
+        type: SHARED_FACTS_MEMORY_TYPE,
+        content: { text: fact, source: "shared-facts-extraction" },
+        ...(vectors?.[index] && this.embed
+          ? { embedding: vectors[index], embeddingModel: this.embed.model }
+          : {}),
+        createdAt: new Date(landedAt + index),
+      });
+    }
   }
 
   /**

@@ -44,8 +44,18 @@ const CLEANUP_RESERVE_MS = 3 * 60_000;
 const CREATE_RECOVERY_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 2_000;
 const MAX_CREATE_RECOVERY_ATTEMPTS = 4;
-const MAX_CHAT_ATTEMPTS_PER_PATH = 2;
+const MAX_CHAT_ATTEMPTS_PER_PATH = 15;
 const TERMINAL_JOB_STATUSES = new Set(["failed", "cancelled", "canceled"]);
+const SHARED_RUNTIME_WARMING_CODES = new Set([
+  "agent_cache_warming",
+  "shared_runtime_cache_warming",
+]);
+
+interface JsonResponse {
+  status: number;
+  body: JsonObject;
+  retryAfterMs: number | null;
+}
 
 interface AgentIdentity {
   id: string;
@@ -128,6 +138,22 @@ function stringField(value: JsonObject | null, key: string): string | null {
 
 function dataRecord(body: JsonObject): JsonObject | null {
   return isRecord(body.data) ? body.data : null;
+}
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (value === null || value.trim() === "") return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1_000 : null;
+}
+
+function isSharedRuntimeWarming(response: JsonResponse): boolean {
+  const code = response.body.code;
+  return (
+    response.status === 503 &&
+    response.body.retryable === true &&
+    typeof code === "string" &&
+    SHARED_RUNTIME_WARMING_CODES.has(code)
+  );
 }
 
 function asExecutionTier(value: string | null): AgentExecutionTier | null {
@@ -357,7 +383,7 @@ export async function runSharedStagingOnboardingSmoke(
     expectedStatuses: readonly number[] = [200],
     timeoutMs = requestTimeoutMs,
     deadline = operationDeadline,
-  ): Promise<{ status: number; body: JsonObject }> {
+  ): Promise<JsonResponse> {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${apiKey}`);
     headers.set("accept", "application/json");
@@ -407,10 +433,17 @@ export async function runSharedStagingOnboardingSmoke(
         `invalid_response_shape_http_${response.status}`,
       );
     }
-    return { status: response.status, body: parsed };
+    return {
+      status: response.status,
+      body: parsed,
+      retryAfterMs: parseRetryAfterMs(response.headers.get("Retry-After")),
+    };
   }
 
-  async function requestStream(path: string, body: string): Promise<Response> {
+  async function requestStream(
+    path: string,
+    body: string,
+  ): Promise<Response | JsonResponse> {
     let response: Response;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
@@ -437,7 +470,28 @@ export async function runSharedStagingOnboardingSmoke(
       throw new SharedSmokeFailure("sse", "redirect_refused");
     }
     if (response.status !== 200) {
-      throw new SharedSmokeFailure("sse", `unexpected_http_${response.status}`);
+      let parsed: unknown;
+      try {
+        const text = await response.text();
+        parsed = text ? JSON.parse(text) : {};
+      } catch {
+        // error-policy:J3 Untrusted SSE responses fail closed on malformed JSON.
+        throw new SharedSmokeFailure(
+          "sse",
+          `invalid_json_response_http_${response.status}`,
+        );
+      }
+      if (!isRecord(parsed)) {
+        throw new SharedSmokeFailure(
+          "sse",
+          `invalid_response_shape_http_${response.status}`,
+        );
+      }
+      return {
+        status: response.status,
+        body: parsed,
+        retryAfterMs: parseRetryAfterMs(response.headers.get("Retry-After")),
+      };
     }
     if (!response.body) throw new SharedSmokeFailure("sse", "missing_body");
     return response;
@@ -491,11 +545,11 @@ export async function runSharedStagingOnboardingSmoke(
     phase: string,
     method: string,
     params: JsonObject = {},
-  ): Promise<JsonObject> {
+  ): Promise<JsonResponse> {
     if (!identity) {
       throw new SharedSmokeFailure(phase, "agent_not_initialized");
     }
-    const { body } = await request(
+    return request(
       phase,
       `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}/bridge`,
       {
@@ -507,7 +561,15 @@ export async function runSharedStagingOnboardingSmoke(
           params,
         }),
       },
+      [200, 503],
     );
+  }
+
+  function rpcResult(response: JsonResponse, phase: string): JsonObject {
+    if (response.status !== 200) {
+      throw new SharedSmokeFailure(phase, `unexpected_http_${response.status}`);
+    }
+    const { body } = response;
     if (body.error !== undefined) {
       throw new SharedSmokeFailure(phase, "rpc_error");
     }
@@ -523,13 +585,30 @@ export async function runSharedStagingOnboardingSmoke(
     for (let attempt = 0; attempt < MAX_CHAT_ATTEMPTS_PER_PATH; attempt += 1) {
       evidence.capacity.chatRequests += 1;
       try {
-        const result = await jsonRpc("bridge", "message.send", {
+        const response = await jsonRpc("bridge", "message.send", {
           text: `Include the token ${token} in one short sentence.`,
           roomId: `shared-smoke-bridge-${suffix}`,
           userId: `shared-smoke-user-${suffix}`,
           mode: "simple",
         });
-        const verdict = classifyBridgeReply(result, token);
+        if (isSharedRuntimeWarming(response)) {
+          lastFailure = new SharedSmokeFailure(
+            "bridge",
+            `unexpected_http_${response.status}`,
+          );
+          if (attempt + 1 < MAX_CHAT_ATTEMPTS_PER_PATH) {
+            await sleepWithin(
+              "bridge",
+              response.retryAfterMs ?? pollIntervalMs,
+            );
+            continue;
+          }
+          break;
+        }
+        const verdict = classifyBridgeReply(
+          rpcResult(response, "bridge"),
+          token,
+        );
         if (verdict.ok && verdict.transport === "shared-runtime") {
           evidence.path.bridgeTransport = "shared-runtime";
           evidence.path.bridgeReply = true;
@@ -540,14 +619,12 @@ export async function runSharedStagingOnboardingSmoke(
       } catch (error) {
         lastFailure = asFailure(error);
       }
-      if (attempt + 1 < MAX_CHAT_ATTEMPTS_PER_PATH) {
-        await sleepWithin("bridge", pollIntervalMs);
-      }
+      break;
     }
     throw lastFailure;
   }
 
-  async function streamTurn(token: string): Promise<void> {
+  async function streamTurn(token: string): Promise<JsonResponse | null> {
     if (!identity) {
       throw new SharedSmokeFailure("sse", "agent_not_initialized");
     }
@@ -564,6 +641,10 @@ export async function runSharedStagingOnboardingSmoke(
         },
       }),
     );
+    if (!(response instanceof Response)) {
+      if (isSharedRuntimeWarming(response)) return response;
+      throw new SharedSmokeFailure("sse", `unexpected_http_${response.status}`);
+    }
     const stream = response.body;
     if (!stream) throw new SharedSmokeFailure("sse", "missing_body");
     const reader = stream.getReader();
@@ -602,21 +683,27 @@ export async function runSharedStagingOnboardingSmoke(
     if (!verdict.ok) {
       throw new SharedSmokeFailure("sse", "invalid_shared_reply");
     }
+    return null;
   }
 
   async function proveSse(): Promise<void> {
     const token = `shared-sse-${suffix}`;
     for (let attempt = 0; attempt < MAX_CHAT_ATTEMPTS_PER_PATH; attempt += 1) {
       evidence.capacity.chatRequests += 1;
-      try {
-        await streamTurn(token);
-        evidence.path.sseCompleted = true;
-        evidence.path.successfulPaths += 1;
-        return;
-      } catch (error) {
-        if (attempt + 1 >= MAX_CHAT_ATTEMPTS_PER_PATH) throw error;
-        await sleepWithin("sse", pollIntervalMs);
+      const warming = await streamTurn(token);
+      if (warming) {
+        if (attempt + 1 < MAX_CHAT_ATTEMPTS_PER_PATH) {
+          await sleepWithin("sse", warming.retryAfterMs ?? pollIntervalMs);
+          continue;
+        }
+        throw new SharedSmokeFailure(
+          "sse",
+          `unexpected_http_${warming.status}`,
+        );
       }
+      evidence.path.sseCompleted = true;
+      evidence.path.successfulPaths += 1;
+      return;
     }
   }
 

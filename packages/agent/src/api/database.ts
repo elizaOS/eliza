@@ -682,11 +682,13 @@ async function handleTestConnection(
     } satisfies ConnectionTestResult);
   } catch (err) {
     const durationMs = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
+    // error-policy:J1 retain driver diagnostics in structured logs without
+    // returning server paths, SQL, or connection internals to the caller.
+    logger.error({ err }, "[database-api] PostgreSQL connection test failed");
     sendJson(res, {
       success: false,
       serverVersion: null,
-      error: message,
+      error: "Database connection failed",
       durationMs,
     } satisfies ConnectionTestResult);
   } finally {

@@ -49,6 +49,55 @@ export function isBlockedPath(p: string): boolean {
   return false;
 }
 
+/**
+ * Detect blocked pseudo-paths before realpath erases an intermediate symlink.
+ * This is a policy inspection, not a replacement for the separate descriptor-
+ * relative TOCTOU boundary tracked by #23210.
+ */
+export async function traversesBlockedPath(p: string): Promise<boolean> {
+  let candidate = path.resolve(p);
+  const seen = new Set<string>();
+
+  for (let hop = 0; hop < 40; hop += 1) {
+    if (isBlockedPath(candidate)) return true;
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+
+    const parsed = path.parse(candidate);
+    const parts = candidate
+      .slice(parsed.root.length)
+      .split(path.sep)
+      .filter(Boolean);
+    let current = parsed.root;
+    let followedLink = false;
+
+    for (let index = 0; index < parts.length; index += 1) {
+      current = path.join(current, parts[index]);
+      if (isBlockedPath(current)) return true;
+      try {
+        const stat = await fs.lstat(current);
+        if (!stat.isSymbolicLink()) continue;
+        const target = await fs.readlink(current);
+        const expandedTarget = path.isAbsolute(target)
+          ? path.resolve(target)
+          : path.resolve(path.dirname(current), target);
+        if (isBlockedPath(expandedTarget)) return true;
+        candidate = path.join(expandedTarget, ...parts.slice(index + 1));
+        followedLink = true;
+        break;
+      } catch {
+        // error-policy:J3 Missing, cyclic, or unreadable tails retain the
+        // existing lexical policy result; the consuming operation remains
+        // authoritative for its filesystem error.
+        return false;
+      }
+    }
+
+    if (!followedLink) return false;
+  }
+  return false;
+}
+
 export function normalizeAbsolute(p: string): string {
   return path.resolve(p);
 }

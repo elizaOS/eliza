@@ -16,7 +16,7 @@ export const CERTIFICATION_SCHEMA =
   "eliza.cloud.staging-release-certification/v1";
 export const CERTIFICATION_WORKFLOW = ".github/workflows/cloud-cf-deploy.yml";
 export const CERTIFICATION_ENVIRONMENT = "staging";
-export const CERTIFICATION_EVENT = "push";
+export const CERTIFICATION_EVENTS = ["push", "workflow_dispatch"];
 export const CERTIFICATION_REF = "refs/heads/develop";
 export const CERTIFICATION_ARTIFACT_PREFIX = "cloud-staging-certification-v1-";
 export const CERTIFICATION_FILENAME = "staging-cloud-certification.json";
@@ -86,6 +86,7 @@ export function createStagingReleaseCertification({
   sourceSha,
   treeSha,
   workflowSha256,
+  event = "push",
   artifactName = artifactNameForTree(treeSha),
   issuedAt = new Date().toISOString(),
   expiresAt,
@@ -96,6 +97,10 @@ export function createStagingReleaseCertification({
   requireString(sourceSha, "source SHA", SHA40);
   requireString(treeSha, "tree SHA", SHA40);
   requireString(workflowSha256, "workflow SHA-256", SHA256);
+  requireString(event, "event");
+  if (!CERTIFICATION_EVENTS.includes(event)) {
+    fail("event is not an admitted staging release trigger");
+  }
   if (artifactName !== artifactNameForTree(treeSha)) {
     fail("artifact name does not bind the certified tree");
   }
@@ -113,7 +118,7 @@ export function createStagingReleaseCertification({
     workflow: CERTIFICATION_WORKFLOW,
     workflow_sha256: workflowSha256,
     environment: CERTIFICATION_ENVIRONMENT,
-    event: CERTIFICATION_EVENT,
+    event,
     ref: CERTIFICATION_REF,
     run_id: String(runId),
     run_attempt: String(runAttempt),
@@ -154,8 +159,11 @@ export function verifyStagingReleaseCertification({
   if (cert.environment !== CERTIFICATION_ENVIRONMENT) {
     fail("environment is not staging");
   }
-  if (cert.event !== CERTIFICATION_EVENT || cert.ref !== CERTIFICATION_REF) {
-    fail("certificate is not from a develop push");
+  if (
+    !CERTIFICATION_EVENTS.includes(cert.event) ||
+    cert.ref !== CERTIFICATION_REF
+  ) {
+    fail("certificate is not from an admitted develop release");
   }
   requireString(cert.source_sha, "certificate source SHA", SHA40);
   requireString(cert.tree_sha, "certificate tree SHA", SHA40);
@@ -197,7 +205,8 @@ export function verifyStagingReleaseCertification({
     fail("originating run did not complete successfully");
   }
   if (
-    runMetadata.event !== CERTIFICATION_EVENT ||
+    !CERTIFICATION_EVENTS.includes(runMetadata.event) ||
+    runMetadata.event !== cert.event ||
     runMetadata.head_branch !== "develop" ||
     runMetadata.path !== CERTIFICATION_WORKFLOW
   ) {
@@ -287,6 +296,7 @@ function runCli(argv) {
       sourceSha: args["source-sha"],
       treeSha: args["tree-sha"],
       workflowSha256: sha256File(workflowFile),
+      event: args.event ?? "push",
       artifactName: args["artifact-name"],
       issuedAt: args["issued-at"] ?? new Date().toISOString(),
     });

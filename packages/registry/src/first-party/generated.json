@@ -2658,14 +2658,6 @@
           "help": "Enable or disable this feature",
           "advanced": false
         },
-        "IMESSAGE_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to CLI binary",
-          "advanced": false
-        },
         "IMESSAGE_DM_POLICY": {
           "type": "string",
           "required": false,

@@ -3,6 +3,7 @@
  * bounded reads, cancellation, stable errors, proportional schema validation,
  * search mapping, and the official latest-version detail endpoint.
  */
+import { getEventListeners } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getMcpServerDetails,
@@ -128,6 +129,69 @@ describe("MCP marketplace client", () => {
         isLatest: true,
       }),
     ]);
+  });
+
+  it("detaches the caller abort listener once a request settles on its own", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        registryList({
+          name: "io.example/files",
+          description: "Files",
+          version: "1.0.0",
+        })
+      )
+    );
+    const caller = new AbortController();
+    const addListener = vi.spyOn(caller.signal, "addEventListener");
+    const removeListener = vi.spyOn(caller.signal, "removeEventListener");
+
+    await searchMcpMarketplace(undefined, 10, { signal: caller.signal });
+
+    const abortListener = addListener.mock.calls.find(([type]) => type === "abort")?.[1];
+    expect(abortListener).toBeTypeOf("function");
+    expect(removeListener).toHaveBeenCalledWith("abort", abortListener);
+  });
+
+  it("keeps a shared caller signal flat across repeated settled searches", async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse(
+        registryList({
+          name: "io.example/files",
+          description: "Files",
+          version: "1.0.0",
+        })
+      )
+    );
+    const caller = new AbortController();
+
+    for (let index = 0; index < 12; index += 1) {
+      await searchMcpMarketplace(undefined, 10, { signal: caller.signal });
+      expect(getEventListeners(caller.signal, "abort")).toHaveLength(0);
+    }
+  });
+
+  it("detaches the caller abort listener on detail success and handled 404", async () => {
+    const caller = new AbortController();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        server: {
+          name: "io.example/files",
+          description: "Files",
+          version: "1.0.0",
+        },
+      })
+    );
+
+    await expect(
+      getMcpServerDetails("io.example/files", { signal: caller.signal })
+    ).resolves.toMatchObject({ name: "io.example/files" });
+    expect(getEventListeners(caller.signal, "abort")).toHaveLength(0);
+
+    fetchMock.mockResolvedValueOnce(new Response("missing", { status: 404 }));
+    await expect(
+      getMcpServerDetails("io.example/missing", { signal: caller.signal })
+    ).resolves.toBeNull();
+    expect(getEventListeners(caller.signal, "abort")).toHaveLength(0);
   });
 
   it("fails closed on invalid JSON or a consumed field with the wrong type", async () => {

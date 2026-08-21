@@ -1,15 +1,15 @@
 # @elizaos/plugin-imessage
 
-iMessage connector for Eliza agents on macOS — inbound polling via chat.db and outbound sending via AppleScript or a CLI tool.
+iMessage connector for Eliza agents on macOS — local inbound reads from chat.db and outbound delivery through Apple's Messages automation surface.
 
 ## Purpose / role
 
-Adds iMessage send/receive capability to an Eliza agent running on macOS. The plugin registers `IMessageService`, which polls `~/Library/Messages/chat.db` for inbound messages and delivers outbound messages through `osascript` (Messages.app) or an optional iMessage CLI tool. It also registers the service as a `MessageConnector` so the standard `MESSAGE` operation routes through it. Auto-enabled when `config.connectors.imessage` is present and not explicitly disabled; opt-in otherwise.
+Adds iMessage send/receive capability to an Eliza agent running on macOS without BlueBubbles, a third-party daemon, a network service, or an auxiliary CLI. The plugin registers `IMessageService`, which polls `~/Library/Messages/chat.db` for inbound messages and delivers outbound messages through the built-in `osascript` interface to Messages.app. It also registers the service as a `MessageConnector` so the standard `MESSAGE` operation routes through it. Auto-enabled when `config.connectors.imessage` is present and not explicitly disabled; opt-in otherwise.
 
 ## Plugin surface
 
 **Services**
-- `IMessageService` (`src/service.ts`) — core service; polls chat.db, dispatches inbound messages through `runtime.messageService.handleMessage`, sends via AppleScript or CLI, registers the `MessageConnector` with `resolveTargets`, `listRecentTargets`, `listRooms`, `fetchMessages`, `searchMessages`, `getChatContext`, `getUserContext`. Static `serviceType = "imessage"`.
+- `IMessageService` (`src/service.ts`) — core service; polls chat.db, dispatches inbound messages through `runtime.messageService.handleMessage`, sends through Messages.app via AppleScript, and registers the `MessageConnector` with `resolveTargets`, `listRecentTargets`, `listRooms`, `fetchMessages`, `searchMessages`, `getChatContext`, `getUserContext`. Static `serviceType = "imessage"`.
 
 **Actions** — none registered. Sending goes through the `MessageConnector` path (`MESSAGE` / `operation=send`).
 
@@ -31,8 +31,8 @@ Adds iMessage send/receive capability to an Eliza agent running on macOS. The pl
 - `PATCH  /api/imessage/contacts/:id` — update a contact
 - `DELETE /api/imessage/contacts/:id` — delete a contact
 
-*Legacy HTTP handler exports* (`src/api/imessage-routes.ts`, `src/api/bluebubbles-routes.ts`):
-- `handleIMessageRoute` / `handleBlueBubblesRoute` — raw `http.IncomingMessage` handlers for the agent's legacy HTTP router; not re-registered as `Route[]`.
+*Legacy HTTP handler export* (`src/api/imessage-routes.ts`):
+- `handleIMessageRoute` — raw `http.IncomingMessage` handler for the agent's legacy HTTP router; not re-registered as `Route[]`.
 
 **Events emitted** (`src/types.ts` — `IMessageEventTypes`):
 - `IMESSAGE_CONNECTION_READY`, `IMESSAGE_MESSAGE_RECEIVED`, `IMESSAGE_MESSAGE_SENT`, `IMESSAGE_REACTION_RECEIVED`, `IMESSAGE_SYSTEM_EVENT`, `IMESSAGE_ERROR`
@@ -50,7 +50,6 @@ plugins/plugin-imessage/
     accounts.ts                 Multi-account helpers; DEFAULT_ACCOUNT_ID = "default"
     chatdb-reader.ts            chat.db SQLite reader (bun:sqlite / node:sqlite)
     contacts-reader.ts          Apple Contacts reader via CNContactStore
-    rpc.ts                      IMessageRpcClient — optional RPC bridge
     connector-account-provider.ts  ConnectorAccountProvider adapter
     setup-routes.ts             /api/setup/imessage/* route handlers
     data-routes.ts              /api/imessage/* CRUD route handlers
@@ -59,7 +58,6 @@ plugins/plugin-imessage/
       index.ts                  (reserved)
     api/
       imessage-routes.ts        Legacy raw HTTP handler (exported, not re-registered)
-      bluebubbles-routes.ts     BlueBubbles webhook handler (exported, not re-registered)
   auto-enable.ts                elizaos.plugin.autoEnableModule entry point
   package.json
   build.ts
@@ -87,7 +85,6 @@ All read via `runtime.getSetting(key)` with `process.env[key]` fallback. None re
 
 | Env var | Default | Description |
 |---|---|---|
-| `IMESSAGE_CLI_PATH` | `"imsg"` | Path to an iMessage CLI binary; fallback to AppleScript when absent or path not found |
 | `IMESSAGE_DB_PATH` | `~/Library/Messages/chat.db` | Override chat.db path |
 | `IMESSAGE_POLL_INTERVAL_MS` | `5000` | How often (ms) to poll chat.db for new rows; `0` disables polling |
 | `IMESSAGE_HEARTBEAT_INTERVAL_MS` | `60000` | How often (ms) to run the heartbeat health check against chat.db |
@@ -137,13 +134,15 @@ Config block in character settings:
 
 - **macOS only.** `IMessageService.start()` throws `IMessageNotSupportedError` on non-darwin platforms. The plugin still loads on other platforms but the service never starts; all route handlers return 503.
 - **chat.db requires Full Disk Access.** Without it, `openChatDb` returns `null` and the service runs send-only. Guide the user to `System Settings > Privacy & Security > Full Disk Access`. The `createFullDiskAccessAction()` helper in `chatdb-reader.ts` builds the structured action object the UI needs.
+- **Sending requires Automation permission.** The first user-triggered send may produce macOS's Automation prompt for Messages. Service startup does not probe Messages.app, so enabling inbound reads cannot launch Messages or create unrelated permission pressure.
 - **Contacts permission is lazy.** `loadContacts()` is NOT called at service start — it fires on the first inbound message that needs handle→name resolution. This avoids a macOS TCC dialog at app launch.
 - **Bun:sqlite / node:sqlite dual runtime.** `chatdb-reader.ts` tries `bun:sqlite` first, then `node:sqlite`. Neither runtime ships both. If chat.db can't be opened, the service degrades silently (logs a warning, returns send-only status).
 - **Single macOS account model.** `DEFAULT_ACCOUNT_ID = "default"`. `assertLocalIMessageAccount` throws if a caller passes any other accountId. `accounts.ts` exposes connector-account inventory and config merging for the local Messages account; run separate agent processes for separate macOS user sessions.
 - **Polling reentrancy guard.** `pollInFlight` prevents concurrent ticks from racing on the same cursor. If dispatch takes longer than `IMESSAGE_POLL_INTERVAL_MS`, ticks are dropped (not queued). This is intentional.
+- **Attachment ownership.** Downloaded inbound files are copied from the Messages attachment directory into `IFileStorageService` before Memory creation, so only canonical `/api/media/<sha256>.<ext>` handles enter runtime state. Outbound media-store handles use `runtime.fetch`; remote URLs use the core SSRF-guarded connector resolver; both paths are byte-capped and staged only for the duration of the Messages send.
 - **DM `pairing` uses the core PairingService.** The connector has no pairing handshake of its own; unknown DM senders are held until the owner approves their pairing code. The pairing-code reply is an autonomous outbound text, so it is only sent when `IMESSAGE_AUTO_REPLY=true` (the same consent gate as agent-generated replies); pending requests are always visible in the pairing UI.
-- **Message chunking.** Messages over 4000 chars (`MAX_IMESSAGE_MESSAGE_LENGTH`) are split at newlines or spaces and sent as sequential AppleScript calls.
-- **BlueBubbles support.** `src/api/bluebubbles-routes.ts` exports a webhook handler for BlueBubbles (a third-party iMessage relay). It is exported from the plugin index but not auto-registered as a `Route[]`; the agent must mount it manually.
+- **Message chunking.** Messages over 4000 chars (`MAX_IMESSAGE_MESSAGE_LENGTH`) are split at newlines or spaces and sent as sequential AppleScript calls. A supplied attachment is sent exactly once after all text chunks succeed.
+- **Transport ownership.** This plugin has no BlueBubbles or auxiliary-CLI configuration. The separate `@elizaos/plugin-bluebubbles` package retains legacy/remote deployments; it is not an alias of this connector.
 - **No npm build deps.** Only `@elizaos/core` and `zod` at runtime. The build uses `build.ts` (not a tsdown config file) invoked via `bun run build.ts`.
 
 ## Verification
