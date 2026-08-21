@@ -276,13 +276,14 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
   },
   "kimi-coding": {
     providerId: "kimi-coding",
-    displayName: "Kimi Code",
+    displayName: "Kimi Coding Endpoint Key",
     selectionIds: ["kimi-coding-subscription"],
     allowedClient: "Kimi Code endpoint",
     billingMode: codingProviderSubscriptionBillingMode("kimi-coding"),
     authMode: codingProviderSubscriptionAuthMode("kimi-coding"),
     availability: codingProviderEnrollmentAvailability("kimi-coding"),
-    setupHint: "Add a Kimi Code credential for the dedicated coding endpoint.",
+    setupHint:
+      "Add a Kimi coding-endpoint key for model inference. Kimi ACP uses a separate kimi login OAuth session.",
     directProviderId: "moonshot-api",
     defaultBaseUrl: CODING_PLAN_PROVIDER_BASE_URL["kimi-coding"],
     probePath: "/models",

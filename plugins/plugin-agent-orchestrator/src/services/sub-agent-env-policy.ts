@@ -110,6 +110,11 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
   "CLAUDE_CODE_EFFORT_LEVEL",
   "CODEX_HOME",
+  // Subscription CLI homes carry provider-managed OAuth state. They are
+  // forwarded as locations, while the subscription adapter strips direct API
+  // credentials that could silently switch the child to pay-as-you-go billing.
+  "KIMI_CODE_HOME",
+  "GROK_HOME",
   // Container-registry PUSH credential for app-image builds (docker login
   // ghcr.io before the deploy contract's docker push). Narrow by design:
   // these are the dedicated registry-scoped names (a packages:write PAT),

@@ -2460,6 +2460,26 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
+export {
+  assertSubscriptionCodingAdapterReady,
+  classifySubscriptionRuntimeFailure,
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTER_IDS,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  type SubscriptionAdapterProbeStatus,
+  type SubscriptionBillingSource,
+  type SubscriptionCodingAdapterDescriptor,
+  SubscriptionCodingAdapterError,
+  type SubscriptionCodingAdapterErrorCode,
+  type SubscriptionCodingAdapterId,
+  type SubscriptionCodingAdapterProbe,
+  type SubscriptionCodingAdapterProbeOptions,
+  type SubscriptionExecutionMode,
+  type SubscriptionLoginCommand,
+  stripSubscriptionApiEnvironment,
+  subscriptionCodingAdapterCommand,
+} from "./services/subscription-coding-adapters.js";
 // SWARM_COORDINATOR adapter — discoverable by the server's coordinator-bridge
 // wiring and plugin-app-control's verification-room-bridge.
 export {

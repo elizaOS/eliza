@@ -116,9 +116,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * that the bridge can actually materialize for the selected executable.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * Kimi and Grok native adapters authenticate through provider-owned CLI state,
+ * not pooled API credentials, so they remain deliberately absent here. The
+ * same is true for z.ai / GLM backends without a bridge-owned spawn route.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>

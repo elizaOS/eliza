@@ -79,6 +79,20 @@ describe("coding-agent capability mapping", () => {
         commandConfigKey: "ELIZA_CODEX_ACP_COMMAND",
         commandResolution: "managed-codex",
       },
+      kimi: {
+        requiredRuntime: "kimi-cli",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_KIMI_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "kimi acp",
+      },
+      grok: {
+        requiredRuntime: "grok-build-cli",
+        discoveryPolicy: "configured-command-or-path",
+        commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
+        commandResolution: "literal",
+        defaultCommand: "grok agent stdio",
+      },
     });
     for (const backend of CODING_AGENT_BACKENDS) {
       const providers = CODING_AGENT_BACKEND_PROVIDERS[backend];

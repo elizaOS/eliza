@@ -59,7 +59,7 @@
   "accounts.provider.deepseekApi": "DeepSeek API",
   "accounts.provider.deepseekCoding": "Subscription sa DeepSeek coding",
   "accounts.provider.geminiCli": "Subscription sa Gemini CLI",
-  "accounts.provider.kimiCoding": "Kimi Code",
+  "accounts.provider.kimiCoding": "Key ng coding endpoint ng Kimi",
   "accounts.provider.moonshotApi": "Kimi / Moonshot API",
   "accounts.provider.openaiApi": "OpenAI API",
   "accounts.provider.openaiCodex": "Subscription sa OpenAI Codex",
