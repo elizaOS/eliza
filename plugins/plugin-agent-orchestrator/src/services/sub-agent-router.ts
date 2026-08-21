@@ -1689,17 +1689,25 @@ export class SubAgentRouter extends Service {
           ),
         );
         deliverable = extractAskedOutputDeliverable(data, ask);
-        this.log("warn", "asked-output deliverable probe", {
-          sessionId,
-          askHead: ask.slice(0, 80),
-          askMatched: OUTPUT_ASK_RE.test(ask),
-          responseHead: (
-            pickPayloadString(data, "response") ??
-            pickPayloadString(data, "finalText") ??
-            "(none)"
-          ).slice(0, 120),
-          deliverable: deliverable?.slice(0, 80),
-        });
+      }
+      if (deliverable === undefined) {
+        // Ask-regex-independent floor: a very short final response with no
+        // tool-transcript markers IS the answer ("Tonight's dinner idea is:
+        // …"), and every re-narration pass lost it ("ran the script and got
+        // the output" with no output, three phrasings in a row, live
+        // 2026-08-21). Verbatim relay of ≤400 bytes cannot leak a transcript.
+        const response =
+          pickPayloadString(data, "response") ??
+          pickPayloadString(data, "finalText");
+        const trimmed = response?.trim();
+        if (
+          trimmed &&
+          Buffer.byteLength(trimmed, "utf8") <= 400 &&
+          !trimmed.includes("[tool output") &&
+          !/https?:\/\//.test(trimmed)
+        ) {
+          deliverable = trimmed;
+        }
       }
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that

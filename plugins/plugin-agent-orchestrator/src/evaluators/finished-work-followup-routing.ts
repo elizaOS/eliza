@@ -50,7 +50,14 @@ export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
     }
     const routed = (Array.isArray(sessions) ? sessions : []).filter((s) => {
       const meta = s.metadata as Record<string, unknown> | undefined;
-      return typeof meta?.roomId === "string" && meta.roomId.length > 0;
+      if (typeof meta?.roomId !== "string" || meta.roomId.length === 0) {
+        return false;
+      }
+      // Quarantine lanes born from sprayed planner args (serialized param
+      // junk in the label/task) — redirect chains otherwise propagate the
+      // garbage title into every successor (live 2026-08-21).
+      const label = `${String(meta.label ?? "")} ${String(meta.initialTask ?? "").slice(0, 200)}`;
+      return !/appMonetized\s*[:=]|approvalPreset\s*[:=]/.test(label);
     });
     // A live lane owns its own follow-up routing (send/queue paths).
     if (routed.some((s) => !TERMINAL_SESSION_STATUSES.has(s.status))) {

@@ -3777,9 +3777,16 @@ async function runSend(
       const meta = target.session.metadata as
         | Record<string, unknown>
         | undefined;
-      const priorTask = userTaskFromInitialTask(
+      const rawPriorTask = userTaskFromInitialTask(
         typeof meta?.initialTask === "string" ? meta.initialTask : "",
       );
+      // A predecessor born from sprayed planner args carries serialized junk
+      // as its task; merging it forward gave every successor a garbage title.
+      const priorTask = /appMonetized\s*[:=]|approvalPreset\s*[:=]/.test(
+        rawPriorTask,
+      )
+        ? ""
+        : rawPriorTask;
       logger(runtime).info(
         `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
       );
