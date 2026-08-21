@@ -552,6 +552,94 @@ export class JobsRepository {
   }
 
   /**
+   * Serializes the agent-delete authority decision with acknowledged DELETE
+   * upgrades. The lifecycle advisory lock makes the worker's freeze and the
+   * request-side reuse upgrade mutually exclusive: whichever commits first is
+   * authoritative at the destructive boundary.
+   */
+  async freezeAgentDeleteStateLossAuthority(
+    claimedJob: Job,
+    executionOwnerId: string,
+    afterLifecycleLock?: () => Promise<void>,
+  ): Promise<Job> {
+    if (claimedJob.type !== JOB_TYPES.AGENT_DELETE || !claimedJob.agent_id) {
+      throw new Error(`Job ${claimedJob.id} is not an agent deletion`);
+    }
+    const generation = requireExecutionGeneration(claimedJob);
+    return await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(
+          hashtext(${claimedJob.organization_id}),
+          hashtext(${claimedJob.agent_id})
+        )`,
+      );
+      await afterLifecycleLock?.();
+      const [current] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                AND ${jobExecutionLeases.execution_generation} = ${generation}
+                AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!current) throw new StaleJobExecutionError(claimedJob.id);
+      if (
+        current.data_storage !== "inline" ||
+        !current.data ||
+        typeof current.data !== "object" ||
+        Array.isArray(current.data)
+      ) {
+        throw new Error(`Agent deletion ${claimedJob.id} has invalid inline authority data`);
+      }
+
+      const claimedAcknowledged =
+        claimedJob.data &&
+        typeof claimedJob.data === "object" &&
+        !Array.isArray(claimedJob.data) &&
+        (claimedJob.data as Record<string, unknown>).stateLossAcknowledged === true;
+      const currentData = current.data as Record<string, unknown>;
+      const stateLossAcknowledged =
+        claimedAcknowledged || currentData.stateLossAcknowledged === true;
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          data: {
+            ...currentData,
+            ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+            stateLossAuthorityFinalized: true,
+          },
+          data_storage: "inline",
+          data_key: null,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+          ),
+        )
+        .returning();
+      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      return await hydrateJob(updated);
+    });
+  }
+
+  /**
    * Reads every durable job in one admin canary rollout from the primary.
    * Canary payloads are forced inline, so the JSON predicate is authoritative.
    */

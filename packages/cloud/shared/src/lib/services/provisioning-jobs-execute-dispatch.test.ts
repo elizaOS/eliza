@@ -99,9 +99,15 @@ function harness(job: Job) {
   );
   const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
-  // agent_delete re-reads durable job data under the lease right before the
-  // destructive boundary; by default the durable row matches the claimed one.
-  const durableReadSpy = spyOn(jobsRepository, "findByIdForWrite").mockResolvedValue(job);
+  // agent_delete freezes durable authority under the lifecycle advisory lock
+  // right before the destructive boundary; by default it matches the claim.
+  const durableReadSpy = spyOn(
+    jobsRepository,
+    "freezeAgentDeleteStateLossAuthority",
+  ).mockResolvedValue({
+    ...job,
+    data: { ...job.data, stateLossAuthorityFinalized: true },
+  });
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
@@ -747,8 +753,8 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_delete honors an acknowledgement upgraded after this execution was claimed", async () => {
     // Race regression: the claimed in-memory job snapshot has no waiver, but a
-    // concurrent acknowledged DELETE upgraded the durable row via upgradeReuse.
-    // The pre-destructive durable re-read must observe and honor it.
+    // concurrent acknowledged DELETE upgraded the durable row before the
+    // authority freeze. The destructive boundary must observe and honor it.
     const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
     ctx.durableReadSpy.mockResolvedValue({
       ...ctx.job,
@@ -775,9 +781,12 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
-  test("agent_delete stays unacknowledged when the durable row was deleted mid-execution", async () => {
+  test("agent_delete stays unacknowledged when the durable authority freeze rejects upgrades", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
-    ctx.durableReadSpy.mockResolvedValue(undefined);
+    ctx.durableReadSpy.mockResolvedValue({
+      ...ctx.job,
+      data: { ...ctx.job.data, stateLossAuthorityFinalized: true },
+    });
     const executeDeletionSpy = stub("executeDeletion", {
       success: true,
       containerStopped: true,
@@ -873,6 +882,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
       expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ captureRetryCount: 1 });
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.data).toEqual(ctx.job.data);
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

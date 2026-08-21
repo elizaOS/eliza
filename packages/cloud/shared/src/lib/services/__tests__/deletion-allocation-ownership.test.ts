@@ -33,6 +33,7 @@ import { apiKeys } from "../../../db/schemas/api-keys";
 import { containers } from "../../../db/schemas/containers";
 import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { generations } from "../../../db/schemas/generations";
+import { jobExecutionLeases } from "../../../db/schemas/job-execution-leases";
 import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
 import { usageRecords } from "../../../db/schemas/usage-records";
@@ -53,11 +54,21 @@ let agentSandboxesRepository: typeof import("../../../db/repositories/agent-sand
 let countAllocatedWorkloadsOnNodeWithDatabase: typeof import("../docker-node-workload-queries").countAllocatedWorkloadsOnNodeWithDatabase;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
 let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+let jobsRepository: typeof import("../../../db/repositories/jobs").jobsRepository;
+let JOB_TYPES: typeof import("../provisioning-job-types").JOB_TYPES;
 
 let seq = 0;
 function uniq(p: string): string {
   seq += 1;
   return `${p}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 beforeAll(async () => {
@@ -69,11 +80,13 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ agentSandboxesRepository } = await import("../../../db/repositories/agent-sandboxes"));
+    ({ jobsRepository } = await import("../../../db/repositories/jobs"));
     ({ countAllocatedWorkloadsOnNodeWithDatabase } = await import(
       "../docker-node-workload-queries"
     ));
     ({ ElizaSandboxService } = await import("../eliza-sandbox"));
     ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+    ({ JOB_TYPES } = await import("../provisioning-job-types"));
 
     const schema = {
       organizations,
@@ -84,6 +97,7 @@ beforeAll(async () => {
       generations,
       usageRecords,
       jobs,
+      jobExecutionLeases,
       dockerNodes,
       containers,
     };
@@ -833,6 +847,139 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       });
       expect(reusedWithoutAuthority.created).toBe(false);
       expect(reusedWithoutAuthority.job.data.stateLossAcknowledged).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a worker freeze serializes and rejects an acknowledgement already waiting behind it",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const service = new ProvisioningJobService();
+      const pending = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+      const executionOwnerId = crypto.randomUUID();
+      const [claimed] = await jobsRepository.claimPendingJobs({
+        type: JOB_TYPES.AGENT_DELETE,
+        organizationId: orgId,
+        limit: 1,
+        executionOwnerId,
+        executionLeaseMs: 60_000,
+      });
+      expect(claimed?.id).toBe(pending.job.id);
+      if (!claimed) throw new Error("Expected the pending delete job to be claimed");
+
+      const entered = deferred();
+      const release = deferred();
+      const frozenPromise = jobsRepository.freezeAgentDeleteStateLossAuthority(
+        claimed,
+        executionOwnerId,
+        async () => {
+          entered.resolve();
+          await release.promise;
+        },
+      );
+      await entered.promise;
+      let acknowledgementSettled = false;
+      const acknowledgementPromise = service
+        .enqueueAgentDeleteOnce({
+          agentId,
+          organizationId: orgId,
+          userId,
+          authorization: "user_request",
+          stateLossAcknowledged: true,
+        })
+        .finally(() => {
+          acknowledgementSettled = true;
+        });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(acknowledgementSettled).toBe(false);
+        release.resolve();
+        const frozen = await frozenPromise;
+        expect(frozen.data).toMatchObject({ stateLossAuthorityFinalized: true });
+        expect(frozen.data.stateLossAcknowledged).toBeUndefined();
+        await expect(acknowledgementPromise).rejects.toThrow(
+          "already crossed the state-loss authority boundary",
+        );
+        expect((await jobsRepository.findByIdForWrite(claimed.id))?.data).toMatchObject({
+          stateLossAuthorityFinalized: true,
+        });
+        expect(
+          (await jobsRepository.findByIdForWrite(claimed.id))?.data.stateLossAcknowledged,
+        ).toBeUndefined();
+      } finally {
+        release.resolve();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an acknowledgement holding the lifecycle lock is committed before the worker freeze",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const entered = deferred();
+      const release = deferred();
+      const service = new ProvisioningJobService({
+        agentDeleteAuthorityBarrier: {
+          afterUpgradeLock: async () => {
+            entered.resolve();
+            await release.promise;
+          },
+        },
+      });
+      const pending = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+      const executionOwnerId = crypto.randomUUID();
+      const [claimed] = await jobsRepository.claimPendingJobs({
+        type: JOB_TYPES.AGENT_DELETE,
+        organizationId: orgId,
+        limit: 1,
+        executionOwnerId,
+        executionLeaseMs: 60_000,
+      });
+      expect(claimed?.id).toBe(pending.job.id);
+      if (!claimed) throw new Error("Expected the pending delete job to be claimed");
+
+      const acknowledgementPromise = service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      });
+      await entered.promise;
+      let freezeSettled = false;
+      const frozenPromise = jobsRepository
+        .freezeAgentDeleteStateLossAuthority(claimed, executionOwnerId)
+        .finally(() => {
+          freezeSettled = true;
+        });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(freezeSettled).toBe(false);
+        release.resolve();
+        const acknowledged = await acknowledgementPromise;
+        expect(acknowledged.job.data.stateLossAcknowledged).toBe(true);
+        const frozen = await frozenPromise;
+        expect(frozen.data).toMatchObject({
+          stateLossAcknowledged: true,
+          stateLossAuthorityFinalized: true,
+        });
+      } finally {
+        release.resolve();
+      }
     },
     PGLITE_TIMEOUT,
   );

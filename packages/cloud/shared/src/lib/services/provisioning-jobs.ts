@@ -179,6 +179,11 @@ export interface AgentDeleteJobData {
   authorization?: DeleteAuthorization;
   /** Explicit customer/operator acceptance that the current live delta may be lost. */
   stateLossAcknowledged?: boolean;
+  /**
+   * Durable barrier set immediately before deletion chooses whether state-loss
+   * authority applies. Once set, a later request must not upgrade this job.
+   */
+  stateLossAuthorityFinalized?: true;
 }
 
 export interface AgentSuspendJobData {
@@ -540,6 +545,10 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     typeof value === "object" && value !== null
       ? (value as { stateLossAcknowledged?: unknown }).stateLossAcknowledged
       : undefined;
+  const stateLossAuthorityFinalized =
+    typeof value === "object" && value !== null
+      ? (value as { stateLossAuthorityFinalized?: unknown }).stateLossAuthorityFinalized
+      : undefined;
   return (
     typeof value === "object" &&
     value !== null &&
@@ -549,7 +558,8 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     (authorization === undefined ||
       authorization === "user_request" ||
       authorization === "billing_request") &&
-    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean")
+    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean") &&
+    (stateLossAuthorityFinalized === undefined || stateLossAuthorityFinalized === true)
   );
 }
 
@@ -1321,6 +1331,10 @@ export class ProvisioningJobService {
   private readonly executionLeaseMs: number;
   private readonly executionLeaseHeartbeatMs: number;
   private readonly settlementRetryBaseMs: number;
+  private readonly agentDeleteAuthorityBarrier?: {
+    afterFreezeLock?: () => Promise<void>;
+    afterUpgradeLock?: () => Promise<void>;
+  };
 
   constructor(options?: {
     executeJob?: (job: Job) => Promise<void>;
@@ -1329,6 +1343,11 @@ export class ProvisioningJobService {
     executionLeaseMs?: number;
     executionLeaseHeartbeatMs?: number;
     settlementRetryBaseMs?: number;
+    /** Deterministic concurrency barrier used only by repository-backed tests. */
+    agentDeleteAuthorityBarrier?: {
+      afterFreezeLock?: () => Promise<void>;
+      afterUpgradeLock?: () => Promise<void>;
+    };
   }) {
     this.executionOverride = options?.executeJob;
     this.executionTimeoutMs = options?.executionTimeoutMs ?? resolvePerJobTimeoutMs;
@@ -1337,6 +1356,7 @@ export class ProvisioningJobService {
     this.executionLeaseHeartbeatMs =
       options?.executionLeaseHeartbeatMs ?? EXECUTION_LEASE_HEARTBEAT_MS;
     this.settlementRetryBaseMs = options?.settlementRetryBaseMs ?? SETTLEMENT_RETRY_BASE_MS;
+    this.agentDeleteAuthorityBarrier = options?.agentDeleteAuthorityBarrier;
     if (
       this.executionLeaseMs < 1 ||
       this.executionLeaseHeartbeatMs < 1 ||
@@ -1727,6 +1747,14 @@ export class ProvisioningJobService {
         ? async (tx, existing) => {
             const existingData = readAgentDeleteJobData(existing);
             if (existingData.stateLossAcknowledged === true) return existing;
+            if (existingData.stateLossAuthorityFinalized === true) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                "Agent deletion already crossed the state-loss authority boundary",
+              );
+            }
+            await this.agentDeleteAuthorityBarrier?.afterUpgradeLock?.();
             const [upgraded] = await tx
               .update(jobs)
               .set({
@@ -5335,11 +5363,14 @@ export class ProvisioningJobService {
     // primary under the execution lease immediately before the destructive
     // boundary. Authority is monotonic: the durable read may strengthen the
     // claimed snapshot, never weaken it.
-    const durableJob = await jobsRepository.findByIdForWrite(job.id);
+    const durableJob = await jobsRepository.freezeAgentDeleteStateLossAuthority(
+      job,
+      this.executionOwnerId,
+      this.agentDeleteAuthorityBarrier?.afterFreezeLock,
+    );
     const stateLossAcknowledged =
       data.stateLossAcknowledged === true ||
-      (durableJob !== undefined &&
-        readAgentDeleteJobData(durableJob).stateLossAcknowledged === true);
+      readAgentDeleteJobData(durableJob).stateLossAcknowledged === true;
     const delResult = stateLossAcknowledged
       ? await elizaSandboxService.executeDeletion(
           data.agentId,
@@ -5369,6 +5400,17 @@ export class ProvisioningJobService {
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
       const retrySnapshot = await this.updateClaimedExecution(job, {
+        ...(delResult.retryable && !captureRetryExhausted
+          ? {
+              // Capture refusal occurs before any destructive provider call.
+              // Re-open the authority choice while the job is safely pending
+              // so an explicit acknowledgement can authorize the next try.
+              data: agentDeleteJobDataToRecord({
+                ...data,
+                ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+              }),
+            }
+          : {}),
         result: agentDeleteJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
