@@ -35,6 +35,15 @@ app.options("/", (c) => {
 
 app.get("/", async (c) => {
   const corsHeaders = cliSessionCorsHeaders(c.req.header("origin") ?? null);
+  // Hono globally dispatches HEAD through GET before route matching. Inspect
+  // the immutable raw method before touching the single-use reveal state so a
+  // health/proxy probe cannot consume plaintext and discard it with the body.
+  if (c.req.raw.method === "HEAD") {
+    return new Response(null, {
+      status: 405,
+      headers: { ...corsHeaders, Allow: "GET, PATCH, DELETE, OPTIONS" },
+    });
+  }
   try {
     const sessionId = c.req.param("sessionId");
     if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {

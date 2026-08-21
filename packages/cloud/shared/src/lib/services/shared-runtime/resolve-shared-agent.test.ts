@@ -140,6 +140,12 @@ function apiKeyContext(agentId?: string) {
   return contextWithAgentId(agentId, { "X-API-Key": "eliza_testkey" });
 }
 
+function cliApiKeyContext(agentId?: string) {
+  return contextWithAgentId(agentId, {
+    "X-API-Key": `eliza_cli_${"a".repeat(64)}`,
+  });
+}
+
 function agent(overrides: Record<string, unknown> = {}) {
   const timestamp = new Date("2026-01-01T00:00:00.000Z");
   return {
@@ -312,6 +318,30 @@ describe("resolveSharedAgent", () => {
     expect(cacheGet).toHaveBeenCalledTimes(1);
     expect(cacheGet).toHaveBeenCalledWith(validationKey);
     expect(findByIdAndOrg).not.toHaveBeenCalled();
+  });
+
+  test("cache-only CLI credentials converge through primary-consistent revalidation", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    const waited: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise: Promise<unknown>) => waited.push(promise) },
+    };
+
+    await expect(
+      resolveSharedAgent(cliApiKeyContext("agent-1") as never, options),
+    ).resolves.toMatchObject({ status: 503, code: "agent_cache_warming" });
+    await Promise.all(waited.splice(0));
+
+    await expect(
+      resolveSharedAgent(cliApiKeyContext("agent-1") as never, options),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(validateApiKey).toHaveBeenCalledOnce();
+
+    validateBehavior = async () => null;
+    await expect(
+      resolveSharedAgent(cliApiKeyContext("agent-1") as never, options),
+    ).resolves.toMatchObject({ status: 503 });
   });
 
   test("cache-only does not freeze a non-shared decision after the agent becomes shared", async () => {

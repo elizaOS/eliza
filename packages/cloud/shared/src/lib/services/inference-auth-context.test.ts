@@ -78,6 +78,7 @@ mock.module("./api-keys", () => ({
     },
   },
   isMobileApiKeySecret: (value: string) => /^eliza_mobile_[0-9a-f]{64}$/.test(value),
+  isCliApiKeySecret: (value: string) => /^eliza_cli_[0-9a-f]{64}$/.test(value),
 }));
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
@@ -123,6 +124,7 @@ const {
 
 const KEY = "test-api-key";
 const MOBILE_KEY = `eliza_mobile_${"a".repeat(64)}`;
+const CLI_KEY = `eliza_cli_${"b".repeat(64)}`;
 
 function reqWithApiKey(key = KEY): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -264,6 +266,54 @@ describe("resolveInferenceAuthContext", () => {
       cacheWrite.mockRestore();
       await invalidateInferenceAuthContextByKeyHash(keyHash);
     }
+  });
+
+  test("CLI credentials bypass a stale inference cache and authorize from the primary", async () => {
+    const keyHash = hashApiKey(CLI_KEY);
+    await writeInferenceAuthContext({
+      v: 1,
+      cachedAt: Date.now(),
+      userId: "stale-cli-user",
+      orgId: "stale-cli-org",
+      apiKeyId: "stale-cli-key",
+      keyHash,
+    });
+    const availability = spyOn(cache, "isAvailable");
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const cacheWrite = spyOn(cache, "setWithOutcome");
+
+    try {
+      await expect(resolveInferenceAuthContext(reqWithApiKey(CLI_KEY))).resolves.toMatchObject({
+        kind: "authorized",
+        source: "origin",
+        ctx: { userId: "user-1", orgId: "org-1", apiKeyId: "key-1" },
+      });
+      expect(bypassCacheCalls).toEqual([true]);
+      expect(incrementUsageCalls).toEqual([]);
+      expect(availability).toHaveBeenCalled();
+      expect(cacheRead).not.toHaveBeenCalled();
+      expect(cacheWrite).not.toHaveBeenCalled();
+    } finally {
+      availability.mockRestore();
+      cacheRead.mockRestore();
+      cacheWrite.mockRestore();
+      await invalidateInferenceAuthContextByKeyHash(keyHash);
+    }
+  });
+
+  test("an inactive CLI credential fails the authoritative path even in cache-only Worker mode", async () => {
+    const { AuthenticationError } = await import("../api/cloud-worker-errors");
+    authImpl = async () => {
+      throw AuthenticationError("Invalid or expired API key");
+    };
+
+    await expect(
+      resolveInferenceAuthContext(reqWithApiKey(CLI_KEY), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(bypassCacheCalls).toEqual([true]);
   });
 
   test("miss -> runs authoritative chain, authorizes, and caches", async () => {

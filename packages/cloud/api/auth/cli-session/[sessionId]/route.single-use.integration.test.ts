@@ -27,8 +27,8 @@ const OTHER_USER_ID = "44444444-4444-4444-8444-444444444444";
 const ORG_ID = "22222222-2222-4222-8222-222222222222";
 const API_KEY_ID = "33333333-3333-4333-8333-333333333333";
 const OTHER_API_KEY_ID = "55555555-5555-4555-8555-555555555555";
-const PLAINTEXT = "eliza_single_winner_plaintext";
-const OTHER_PLAINTEXT = "eliza_newer_login_plaintext";
+const PLAINTEXT = `eliza_cli_${"a".repeat(64)}`;
+const OTHER_PLAINTEXT = `eliza_cli_${"b".repeat(64)}`;
 
 let decryptMode: "success" | "failure" = "success";
 let decryptCalls = 0;
@@ -168,6 +168,25 @@ async function readSession(
   return result.rows[0] as Record<string, unknown>;
 }
 
+async function readCredentialState(sessionId: string): Promise<{
+  sessionStatus: string;
+  consumedAt: string | null;
+  keyActive: boolean;
+}> {
+  const result = await dbWrite.execute(
+    `SELECT s.status AS session_status, s.consumed_at, k.is_active AS key_active
+       FROM cli_auth_sessions s
+       JOIN api_keys k ON k.id = s.api_key_id
+      WHERE s.session_id = '${sessionId}'`,
+  );
+  const row = result.rows[0] as Record<string, unknown>;
+  return {
+    sessionStatus: String(row.session_status),
+    consumedAt: row.consumed_at ? String(row.consumed_at) : null,
+    keyActive: row.key_active === true,
+  };
+}
+
 async function within<T>(promise: Promise<T>, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -211,6 +230,24 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       error: "Invalid session ID format",
+    });
+  });
+
+  test("HEAD never consumes an authenticated session's single-use credential", async () => {
+    const sessionId = "16161616-1616-4616-8616-161616161616";
+    await seedAuthenticatedSession(sessionId);
+
+    const response = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      { method: "HEAD" },
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET, PATCH, DELETE, OPTIONS");
+    expect(decryptCalls).toBe(0);
+    await expect(readSession(sessionId)).resolves.toMatchObject({
+      status: "authenticated",
+      consumed_at: null,
     });
   });
 
@@ -279,6 +316,12 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
       status: "authenticated",
       consumed_at: expect.any(String),
     });
+    await expect(
+      apiKeysService.validateApiKey(PLAINTEXT),
+    ).resolves.toMatchObject({
+      id: API_KEY_ID,
+      is_active: true,
+    });
   });
 
   test("exact consumed-key revocation disables only abandoned A while B remains valid", async () => {
@@ -341,6 +384,12 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
       status: "pending",
       consumed_at: expect.any(String),
     });
+    await expect(readCredentialState(sessionId)).resolves.toEqual({
+      sessionStatus: "pending",
+      consumedAt: expect.any(String),
+      keyActive: false,
+    });
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
 
     await dbWrite.execute(
       `UPDATE cli_auth_sessions SET expires_at = now() - interval '1 second' WHERE session_id = '${sessionId}'`,
@@ -359,6 +408,12 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     );
     expect(revealed.status).toBe(200);
     expect(await revealed.json()).toMatchObject({ apiKey: PLAINTEXT });
+    await expect(readCredentialState(sessionId)).resolves.toEqual({
+      sessionStatus: "pending",
+      consumedAt: expect.any(String),
+      keyActive: false,
+    });
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
 
     const mismatched = await pollApp.request(
       `/api/auth/cli-session/${sessionId}`,
@@ -382,6 +437,17 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
       status: "authenticated",
       consumed_at: expect.any(String),
     });
+    await expect(readCredentialState(sessionId)).resolves.toEqual({
+      sessionStatus: "authenticated",
+      consumedAt: expect.any(String),
+      keyActive: true,
+    });
+    await expect(
+      apiKeysService.validateApiKey(PLAINTEXT),
+    ).resolves.toMatchObject({
+      id: API_KEY_ID,
+      is_active: true,
+    });
 
     await dbWrite.execute(
       `UPDATE cli_auth_sessions SET expires_at = now() - interval '1 second' WHERE session_id = '${sessionId}'`,
@@ -391,6 +457,67 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     await expect(
       apiKeysRepository.findByIdConsistent(API_KEY_ID),
     ).resolves.toMatchObject({ id: API_KEY_ID, is_active: true });
+  });
+
+  test("canceling an unacknowledged delivery terminalizes it so a later acknowledgement cannot reactivate it", async () => {
+    const sessionId = "14141414-1414-4414-8414-141414141414";
+    await seedAuthenticatedSession(sessionId);
+    const revealed = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}?delivery=acknowledgement-required`,
+    );
+    expect(revealed.status).toBe(200);
+
+    const canceled = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(canceled.status).toBe(204);
+
+    const lateAcknowledgement = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(lateAcknowledgement.status).toBe(403);
+    await expect(readCredentialState(sessionId)).resolves.toEqual({
+      sessionStatus: "expired",
+      consumedAt: expect.any(String),
+      keyActive: false,
+    });
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
+  });
+
+  test("concurrent cancellation and acknowledgement cannot leave the credential active", async () => {
+    const sessionId = "15151515-1515-4515-8515-151515151515";
+    await seedAuthenticatedSession(sessionId);
+    const revealed = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}?delivery=acknowledgement-required`,
+    );
+    expect(revealed.status).toBe(200);
+
+    const [canceled, acknowledged] = await Promise.all([
+      pollApp.request(`/api/auth/cli-session/${sessionId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      }),
+      pollApp.request(`/api/auth/cli-session/${sessionId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      }),
+    ]);
+    expect(canceled.status).toBe(204);
+    expect([204, 403]).toContain(acknowledged.status);
+    await expect(readCredentialState(sessionId)).resolves.toEqual({
+      sessionStatus: "expired",
+      consumedAt: expect.any(String),
+      keyActive: false,
+    });
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
   });
 
   test("a decrypt failure does not consume the session and a retry can win", async () => {

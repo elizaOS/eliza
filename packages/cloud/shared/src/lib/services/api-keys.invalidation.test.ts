@@ -47,6 +47,8 @@ const MOBILE_CREDENTIAL_ID = "11111111-1111-4111-8111-111111111111";
 const MOBILE_APP_ID = "22222222-2222-4222-8222-222222222222";
 const MOBILE_USER_ID = "33333333-3333-4333-8333-333333333333";
 const MOBILE_ORG_ID = "44444444-4444-4444-8444-444444444444";
+const CLI_SECRET = `eliza_cli_${"c".repeat(64)}`;
+const CLI_HASH = createHash("sha256").update(CLI_SECRET).digest("hex");
 
 function fakeMobileKey(overrides: Partial<ApiKey> = {}): ApiKey {
   return {
@@ -111,6 +113,38 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
       is_active: true,
     });
     expect(set).not.toHaveBeenCalled();
+  });
+
+  test("CLI credentials bypass every validation cache and read the primary each time", async () => {
+    const inactive = {
+      ...fakeKey(),
+      key_hash: CLI_HASH,
+      key_prefix: "eliza_cli_cc",
+      is_active: false,
+    } as ApiKey;
+    const active = { ...inactive, is_active: true } as ApiKey;
+    const lookup = track(
+      spyOn(apiKeysRepository, "findActiveByHashConsistent")
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(active),
+    );
+    const get = track(spyOn(cache, "get").mockResolvedValue(inactive));
+    const set = track(spyOn(cache, "set").mockResolvedValue(undefined));
+
+    await expect(apiKeysService.validateApiKey(CLI_SECRET)).resolves.toBeNull();
+    await expect(apiKeysService.validateApiKey(CLI_SECRET)).resolves.toBe(active);
+
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(lookup).toHaveBeenNthCalledWith(1, CLI_HASH);
+    expect(lookup).toHaveBeenNthCalledWith(2, CLI_HASH);
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("generates exact-shape CLI credentials without changing ordinary keys", () => {
+    expect(apiKeysService.generateCliApiKey().key).toMatch(/^eliza_cli_[0-9a-f]{64}$/);
+    expect(apiKeysService.generateApiKey().key).toMatch(/^eliza_[0-9a-f]{64}$/);
+    expect(apiKeysService.generateApiKey().key).not.toStartWith("eliza_cli_");
   });
 
   test("recovery summaries expose a corrupt missing expiry as invalid, never active", async () => {

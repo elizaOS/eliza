@@ -7,6 +7,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const createSessionCalls: string[] = [];
+const acknowledgeCalls: Array<{ sessionId: string; token: string }> = [];
+const revokeCalls: Array<{ sessionId: string; token: string }> = [];
 const activeSessions = new Map<
   string,
   { session_id: string; status: string; expires_at: Date }
@@ -28,6 +30,14 @@ mock.module("@/lib/services/cli-auth-sessions", () => ({
       status: "unavailable",
       reason: "consumed",
     }),
+    acknowledgeConsumedCredential: async (sessionId: string, token: string) => {
+      acknowledgeCalls.push({ sessionId, token });
+      return true;
+    },
+    revokeConsumedCredential: async (sessionId: string, token: string) => {
+      revokeCalls.push({ sessionId, token });
+      return true;
+    },
   },
   looksLikeCliAuthSessionId: (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -53,6 +63,8 @@ const PENDING_ID = "bbbbbbbb-2222-4333-8444-cccccccccccc";
 
 beforeEach(() => {
   createSessionCalls.length = 0;
+  acknowledgeCalls.length = 0;
+  revokeCalls.length = 0;
   activeSessions.clear();
 });
 
@@ -121,6 +133,39 @@ describe("createCliSessionThinApp", () => {
       );
       expect(res.status).toBe(200);
     }
+  });
+
+  test("acknowledges an exact delivered credential on the thin route", async () => {
+    const app = createCliSessionThinApp();
+    const res = await app.request(
+      `/api/auth/cli-session/${PENDING_ID}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: "Bearer eliza_cli_ack" },
+      },
+      ENV,
+    );
+    expect(res.status).toBe(204);
+    expect(acknowledgeCalls).toEqual([
+      { sessionId: PENDING_ID, token: "eliza_cli_ack" },
+    ]);
+    expect(res.headers.get("Cache-Control")).toBeNull();
+  });
+
+  test("revokes an abandoned delivered credential on the thin route", async () => {
+    const app = createCliSessionThinApp();
+    const res = await app.request(
+      `/api/auth/cli-session/${PENDING_ID}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: "Bearer eliza_cli_cancel" },
+      },
+      ENV,
+    );
+    expect(res.status).toBe(204);
+    expect(revokeCalls).toEqual([
+      { sessionId: PENDING_ID, token: "eliza_cli_cancel" },
+    ]);
   });
 
   test("rejects a cookie-authenticated cross-origin create (CSRF guard parity with the full app)", async () => {

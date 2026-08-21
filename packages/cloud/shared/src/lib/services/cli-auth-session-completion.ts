@@ -119,7 +119,7 @@ export class CliAuthSessionCompletionService {
     userId: string,
     organizationId: string,
   ): Promise<{ apiKey: NewApiKey }> {
-    const { key, hash, prefix } = apiKeysService.generateApiKey();
+    const { key, hash, prefix } = apiKeysService.generateCliApiKey();
     const id = crypto.randomUUID();
     const encrypted = await encryptApiKey(organizationId, id, key);
 

@@ -10,6 +10,7 @@ export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
 const LOGIN_POLL_MS = 1_500;
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
+const BROWSER_OPEN_TIMEOUT_MS = 5_000;
 const BROWSER_CLOSE_TIMEOUT_MS = 5_000;
 export const ANDROID_CLOUD_COMPOSE_EVENT = "eliza:android-cloud-compose";
 
@@ -81,10 +82,11 @@ export function AndroidCloudApp({
   const loginAttemptRef = useRef(0);
   const browserOperationRef = useRef<Promise<void>>(Promise.resolve());
   const pendingLoginCleanupRef = useRef<{
+    owner: number;
     sessionId: string;
     token: string;
+    cleanup?: Promise<void>;
   } | null>(null);
-  const pendingLoginCleanupPromiseRef = useRef<Promise<void> | null>(null);
   const voiceAttemptRef = useRef(0);
   const voicePhaseRef = useRef<"idle" | "starting" | "listening" | "stopping">(
     "idle",
@@ -96,52 +98,64 @@ export function AndroidCloudApp({
       operation: () => Promise<void> | void,
       timeoutMs?: number,
     ): Promise<void> => {
-      const underlying = browserOperationRef.current.then(operation, operation);
-      browserOperationRef.current = underlying.then(
+      const previous = browserOperationRef.current;
+      const bounded = previous.then(async () => {
+        const underlying = Promise.resolve().then(operation);
+        if (timeoutMs === undefined) return await underlying;
+        let timeout: number | undefined;
+        try {
+          await Promise.race([
+            underlying,
+            new Promise<never>((_resolve, reject) => {
+              timeout = window.setTimeout(
+                () =>
+                  reject(
+                    new Error("The sign-in browser did not close in time."),
+                  ),
+                timeoutMs,
+              );
+            }),
+          ]);
+        } finally {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+        }
+      });
+      // The bounded result, rather than the potentially never-settling native
+      // promise, owns the queue tail. A broken Browser.close therefore remains
+      // visible to its caller without permanently wedging later sign-ins.
+      browserOperationRef.current = bounded.then(
         () => undefined,
         () => undefined,
       );
-      if (timeoutMs === undefined) return underlying;
-      let timeout: ReturnType<typeof window.setTimeout> | undefined;
-      return Promise.race([
-        underlying,
-        new Promise<never>((_resolve, reject) => {
-          timeout = window.setTimeout(
-            () =>
-              reject(new Error("The sign-in browser did not close in time.")),
-            timeoutMs,
-          );
-        }),
-      ]).finally(() => {
-        if (timeout !== undefined) window.clearTimeout(timeout);
-      });
+      return bounded;
     },
     [],
   );
 
-  const discardPendingLogin = useCallback(async () => {
-    if (pendingLoginCleanupPromiseRef.current) {
-      await pendingLoginCleanupPromiseRef.current;
-      return;
-    }
-    const pending = pendingLoginCleanupRef.current;
-    if (!pending) return;
-    const cleanup = client
-      .discardLoginAttempt(pending.sessionId, pending.token)
-      .then(() => {
-        if (pendingLoginCleanupRef.current === pending) {
-          pendingLoginCleanupRef.current = null;
-        }
-      });
-    pendingLoginCleanupPromiseRef.current = cleanup;
-    try {
-      await cleanup;
-    } finally {
-      if (pendingLoginCleanupPromiseRef.current === cleanup) {
-        pendingLoginCleanupPromiseRef.current = null;
+  const discardPendingLogin = useCallback(
+    async (owner?: number) => {
+      const pending = pendingLoginCleanupRef.current;
+      if (!pending || (owner !== undefined && pending.owner !== owner)) return;
+      if (pending.cleanup) {
+        await pending.cleanup;
+        return;
       }
-    }
-  }, [client]);
+      const cleanup = client
+        .discardLoginAttempt(pending.sessionId, pending.token)
+        .then(() => {
+          if (pendingLoginCleanupRef.current === pending) {
+            pendingLoginCleanupRef.current = null;
+          }
+        });
+      pending.cleanup = cleanup;
+      try {
+        await cleanup;
+      } finally {
+        if (pending.cleanup === cleanup) pending.cleanup = undefined;
+      }
+    },
+    [client],
+  );
 
   const restore = useCallback(
     async (
@@ -268,7 +282,7 @@ export function AndroidCloudApp({
       await runBrowserOperation(async () => {
         if (loginAttemptRef.current !== attemptNumber) return;
         await openExternal(attempt.browserUrl);
-      });
+      }, BROWSER_OPEN_TIMEOUT_MS);
       if (loginAttemptRef.current !== attemptNumber) return;
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
@@ -283,11 +297,12 @@ export function AndroidCloudApp({
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
         pendingLoginCleanupRef.current = {
+          owner: attemptNumber,
           sessionId: attempt.sessionId,
           token: result.token,
         };
         if (loginAttemptRef.current !== attemptNumber) {
-          await discardPendingLogin();
+          await discardPendingLogin(attemptNumber);
           return;
         }
         await runBrowserOperation(async () => {
@@ -295,7 +310,7 @@ export function AndroidCloudApp({
           await closeExternal?.();
         }, BROWSER_CLOSE_TIMEOUT_MS);
         if (loginAttemptRef.current !== attemptNumber) {
-          await discardPendingLogin();
+          await discardPendingLogin(attemptNumber);
           return;
         }
         const restoredCurrentSession = await restore(attemptNumber, {
@@ -304,12 +319,12 @@ export function AndroidCloudApp({
         });
         if (!restoredCurrentSession) {
           if (loginAttemptRef.current === attemptNumber) {
-            await discardPendingLogin();
+            await discardPendingLogin(attemptNumber);
           }
           return;
         }
         if (loginAttemptRef.current !== attemptNumber) {
-          await discardPendingLogin();
+          await discardPendingLogin(attemptNumber);
           return;
         }
         client.acceptLoginAttempt(attempt.sessionId);
@@ -320,9 +335,9 @@ export function AndroidCloudApp({
     } catch (signInError) {
       loginController.abort();
       let reportedError: unknown = signInError;
-      if (pendingLoginCleanupRef.current) {
+      if (pendingLoginCleanupRef.current?.owner === attemptNumber) {
         try {
-          await discardPendingLogin();
+          await discardPendingLogin(attemptNumber);
         } catch (cleanupError) {
           reportedError = new AggregateError(
             [signInError, cleanupError],
@@ -359,13 +374,14 @@ export function AndroidCloudApp({
   ]);
 
   const cancelSignIn = useCallback(() => {
+    const canceledAttempt = loginAttemptRef.current;
     loginAttemptRef.current += 1;
     loginAbortRef.current?.abort();
     loginAbortRef.current = null;
     setBusy(false);
     setSession(null);
     setPhase("signed-out");
-    void discardPendingLogin().catch((cleanupError) => {
+    void discardPendingLogin(canceledAttempt).catch((cleanupError) => {
       setError(
         `Sign-in was canceled, but credential cleanup needs attention: ${errorMessage(cleanupError)}`,
       );

@@ -1,8 +1,8 @@
 /**
  * Thin Hono shell for the CLI-session login hot path (#22948).
  *
- * The desktop/CLI login flow polls `POST /api/auth/cli-session` +
- * `GET /api/auth/cli-session/:id` at low frequency from varied colos, so with
+ * The desktop/CLI login flow uses `POST /api/auth/cli-session` plus the
+ * `GET`/`PATCH`/`DELETE /api/auth/cli-session/:id` lifecycle from varied colos, so with
  * Smart Placement it lands on a cold isolate nearly every request and pays the
  * monolithic bootstrap (677 route modules) as multi-second dispatch time —
  * invisible in `full_app_module_init` because workerd's clock freezes across

@@ -11,6 +11,7 @@ import type { Context } from "hono";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { ApiError } from "../../api/cloud-worker-errors";
+import { isCliApiKeySecret } from "../../auth/cli-api-key";
 import {
   apiKeyScopeHashPrefix,
   isStagingSessionScopeCandidate,
@@ -217,19 +218,25 @@ async function revalidateCachedScope(
       : null) ||
     null;
   if (!apiKey) return false;
-  const validated = cacheOnly
-    ? await cache.get<{
-        is_active?: boolean;
-        organization_id?: string;
-        expires_at?: Date | string | null;
-      }>(
-        CacheKeys.apiKey.validation(
-          createHash("sha256").update(apiKey).digest("hex").substring(0, 16),
-        ),
-      )
-    : await import("../../services/api-keys").then(({ apiKeysService }) =>
-        apiKeysService.validateApiKey(apiKey),
-      );
+  // CLI delivery credentials deliberately never populate the positive
+  // validation cache: acknowledgement and cancellation are primary-consistent
+  // transitions. Even on a cache-only scope hit, validate this recognizable
+  // credential against the primary instead of turning every request into an
+  // endless scope re-hydration loop.
+  const validated =
+    cacheOnly && !isCliApiKeySecret(apiKey)
+      ? await cache.get<{
+          is_active?: boolean;
+          organization_id?: string;
+          expires_at?: Date | string | null;
+        }>(
+          CacheKeys.apiKey.validation(
+            createHash("sha256").update(apiKey).digest("hex").substring(0, 16),
+          ),
+        )
+      : await import("../../services/api-keys").then(({ apiKeysService }) =>
+          apiKeysService.validateApiKey(apiKey),
+        );
   if (!validated || !validated.is_active) return false;
   if (validated.expires_at && new Date(validated.expires_at) < new Date()) return false;
   // The key must still be scoped to the org the cached agent belongs to. A

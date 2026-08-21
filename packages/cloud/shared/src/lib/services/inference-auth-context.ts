@@ -12,8 +12,9 @@
  * lifecycle invalidation of an eventually consistent cache is not a strong
  * revocation boundary. Wallet signatures remain on the general non-Worker path
  * because their timestamped proof cannot be replayed as asynchronous cache
- * hydration. Mobile lifecycle credentials always take the authoritative path
- * because their revocation invariants are stricter than this cache's fixed TTL.
+ * hydration. Mobile and CLI lifecycle credentials always take the
+ * authoritative path because their activation/revocation invariants are
+ * stricter than this cache's fixed TTL.
  *
  * Safety invariants:
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
@@ -30,7 +31,7 @@ import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
-import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
+import { apiKeysService, isCliApiKeySecret, isMobileApiKeySecret } from "./api-keys";
 import { contentModerationService } from "./content-moderation";
 import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
@@ -247,7 +248,10 @@ export type InferenceAuthResolution =
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
   | { kind: "warming"; hydration?: Promise<unknown> }
-  | { kind: "slow_path"; reason: "mobile_api_key" | "non_api_key" };
+  | {
+      kind: "slow_path";
+      reason: "mobile_api_key" | "non_api_key";
+    };
 
 /**
  * Extract a cacheable API-key credential from the request, mirroring the
@@ -500,6 +504,7 @@ export async function resolveInferenceAuthContext(
     if (isMobileApiKeySecret(credential.rawKey)) {
       return { kind: "slow_path", reason: "mobile_api_key" };
     }
+    const isCliCredential = isCliApiKeySecret(credential.rawKey);
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
     trace.controlledProbe = probeDiscriminator ? "on" : "off";
@@ -511,7 +516,7 @@ export async function resolveInferenceAuthContext(
     trace.cacheBackend = cache.getBackendKind();
 
     const keyHash = hashApiKey(credential.rawKey);
-    if (authCacheEnabled && cacheAvailable && !options.forceAuthoritative) {
+    if (authCacheEnabled && cacheAvailable && !options.forceAuthoritative && !isCliCredential) {
       const cacheReadStartedAt = performance.now();
       const cached = await readInferenceAuthContextWithOutcome(
         keyHash,
@@ -569,7 +574,12 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    if (authCacheEnabled && options.cacheOnly && !hydrationEscapeActive(keyHash)) {
+    if (
+      authCacheEnabled &&
+      options.cacheOnly &&
+      !isCliCredential &&
+      !hydrationEscapeActive(keyHash)
+    ) {
       trace.authoritative = "not_run";
       trace.result = "warming";
       if (cacheAvailable && options.executionCtx) {
@@ -579,7 +589,7 @@ export async function resolveInferenceAuthContext(
       }
       return { kind: "warming" };
     }
-    if (authCacheEnabled && options.cacheOnly) {
+    if (authCacheEnabled && options.cacheOnly && !isCliCredential) {
       // Escape hatch: repeated hydration failures/timeouts mean "retry
       // shortly" has become a lie — resolve authoritatively inline instead.
       // The successful resolve below writes the cache, healing the loop.
@@ -593,6 +603,7 @@ export async function resolveInferenceAuthContext(
     trace.authoritative = "error";
     trace.result = "error";
     const bypassAuthoritativeCaches =
+      isCliCredential ||
       options.forceAuthoritative === true ||
       trace.controlledProbe === "on" ||
       trace.cacheRead === "invalid" ||
@@ -660,6 +671,12 @@ export async function resolveInferenceAuthContext(
     }
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
+    // CLI activation and revocation are primary-consistent. Never write a
+    // positive IAC entry that could outlive a later acknowledgement/cancel
+    // transition; every inference request re-enters this authoritative path.
+    if (isCliCredential) {
+      return { kind: "authorized", ctx, source: "origin" };
+    }
     const cacheWriteStartedAt = performance.now();
     if (!authCacheEnabled) {
       return { kind: "authorized", ctx, source: "origin" };

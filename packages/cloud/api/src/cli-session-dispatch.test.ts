@@ -32,6 +32,8 @@ mock.module("@/lib/services/cli-auth-sessions", () => ({
       status: "unavailable",
       reason: "consumed",
     }),
+    acknowledgeConsumedCredential: async () => true,
+    revokeConsumedCredential: async () => true,
   },
   looksLikeCliAuthSessionId: (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -104,4 +106,26 @@ describe("thin CLI-session dispatch (#22948)", () => {
       "cli_session_module_init",
     );
   });
+
+  test.each(["PATCH", "DELETE"])(
+    "answers %s credential lifecycle requests on the thin path",
+    async (method) => {
+      const res = await worker.fetch(
+        new Request(
+          "https://api.example.test/api/auth/cli-session/bbbbbbbb-2222-4333-8444-cccccccccccc",
+          {
+            method,
+            headers: { Authorization: "Bearer eliza_cli_exact" },
+          },
+        ),
+        env,
+        executionCtx,
+      );
+      expect(res.status).toBe(204);
+      expect(res.headers.get("X-Eliza-Cli-Session-Path")).toBe("thin");
+      expect(res.headers.get("Server-Timing")).not.toContain(
+        "full_app_dispatch",
+      );
+    },
+  );
 });

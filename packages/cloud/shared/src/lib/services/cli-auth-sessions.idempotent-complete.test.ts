@@ -306,17 +306,18 @@ describe("cliAuthSessionsService lifecycle", () => {
   });
 
   test("delegates expired-session reaping to the repository and reports counts", async () => {
-    const reap = track(
-      spyOn(cliAuthSessionsRepository, "reapExpiredSessions").mockResolvedValue({
-        deletedSessions: 3,
-        revokedOrphanKeys: [],
-      }),
+    const prepare = track(
+      spyOn(cliAuthSessionsRepository, "prepareExpiredSessionsForReap").mockResolvedValue([]),
+    );
+    const remove = track(
+      spyOn(cliAuthSessionsRepository, "deleteExpiredSessions").mockResolvedValue(3),
     );
 
     await expect(cliAuthSessionsService.cleanupExpiredSessions()).resolves.toEqual({
       deletedSessions: 3,
       revokedOrphanKeys: 0,
     });
-    expect(reap).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

@@ -12,6 +12,7 @@ import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
+import { CLI_API_KEY_PREFIX, isCliApiKeySecret } from "../auth/cli-api-key";
 import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -25,6 +26,7 @@ import { revokeInferenceApiKey } from "./inference-credential-revocation";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export { CLI_API_KEY_PREFIX, isCliApiKeySecret } from "../auth/cli-api-key";
 export { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
 
 function isUuid(value: unknown): value is string {
@@ -189,6 +191,11 @@ export class ApiKeysService {
     return this.generatePrefixedApiKey("eliza_");
   }
 
+  /** CLI credentials are recognizable before lookup and bypass auth caches. */
+  generateCliApiKey(): GeneratedApiKey {
+    return this.generatePrefixedApiKey(CLI_API_KEY_PREFIX);
+  }
+
   /** Mobile credentials are recognizable before lookup and bypass auth caches. */
   generateMobileApiKey(): GeneratedApiKey {
     return this.generatePrefixedApiKey(MOBILE_API_KEY_PREFIX);
@@ -201,6 +208,15 @@ export class ApiKeysService {
    */
   async validateApiKey(key: string): Promise<ApiKey | null> {
     const hash = crypto.createHash("sha256").update(key).digest("hex");
+
+    // CLI login can deliver a credential before an acknowledgement-sensitive
+    // client has durably stored it. Never authorize that lifecycle through a
+    // positive cache: the primary row is the activation/revocation authority
+    // for every request, so neither a pre-ACK request nor a stale refill can
+    // outlive the atomic session transition.
+    if (isCliApiKeySecret(key)) {
+      return (await apiKeysRepository.findActiveByHashConsistent(hash)) ?? null;
+    }
 
     if (isMobileApiKeySecret(key)) {
       const mobileMissCacheKey = CacheKeys.apiKey.mobileValidationMiss(hash);

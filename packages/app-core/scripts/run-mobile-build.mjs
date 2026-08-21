@@ -6352,7 +6352,12 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             call.reject("Speech recognition is unavailable.", "SPEECH_RECOGNITION_UNAVAILABLE");
             return;
         }
-        stopRecognizer();
+        try {
+            stopRecognizer();
+        } catch (RuntimeException error) {
+            call.reject("Previous voice dictation could not be stopped.", "SPEECH_RECOGNITION_STOP_FAILED", error);
+            return;
+        }
         recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
         recognizer.setRecognitionListener(this);
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -6370,15 +6375,23 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             result.put("started", true);
             call.resolve(result);
         } catch (RuntimeException error) {
-            stopRecognizer();
+            try {
+                stopRecognizer();
+            } catch (RuntimeException cleanupError) {
+                error.addSuppressed(cleanupError);
+            }
             call.reject("Voice dictation could not start.", "SPEECH_RECOGNITION_START_FAILED", error);
         }
     }
 
     @PluginMethod
     public void stopDictation(PluginCall call) {
-        stopRecognizer();
-        call.resolve();
+        try {
+            stopRecognizer();
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Voice dictation could not be stopped.", "SPEECH_RECOGNITION_STOP_FAILED", error);
+        }
     }
 
     @PluginMethod
@@ -6421,7 +6434,11 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
 
     @Override
     protected void handleOnDestroy() {
-        stopRecognizer();
+        try {
+            stopRecognizer();
+        } catch (RuntimeException ignored) {
+            // error-policy:J6 Android process teardown has no remaining caller.
+        }
         super.handleOnDestroy();
     }
 
@@ -6433,10 +6450,27 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
 
     private void stopRecognizer() {
         if (recognizer == null) return;
-        try { recognizer.stopListening(); } catch (RuntimeException ignored) {}
-        recognizer.cancel();
-        recognizer.destroy();
+        SpeechRecognizer current = recognizer;
         recognizer = null;
+        RuntimeException failure = null;
+        try {
+            current.stopListening();
+        } catch (RuntimeException error) {
+            failure = error;
+        }
+        try {
+            current.cancel();
+        } catch (RuntimeException error) {
+            if (failure == null) failure = error;
+            else failure.addSuppressed(error);
+        }
+        try {
+            current.destroy();
+        } catch (RuntimeException error) {
+            if (failure == null) failure = error;
+            else failure.addSuppressed(error);
+        }
+        if (failure != null) throw failure;
     }
 
     private void publishTranscript(Bundle results, boolean isFinal) {

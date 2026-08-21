@@ -1,4 +1,5 @@
 /** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
+import { ElizaError } from "@elizaos/core";
 import { and, eq, exists, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys } from "../schemas/api-keys";
@@ -13,6 +14,18 @@ export type { CliAuthSession, NewCliAuthSession };
 export interface CliAuthApiKeyRevealState {
   session: CliAuthSession;
   apiKey: ApiKey | null;
+}
+
+function atomicCredentialTransitionError(
+  sessionId: string,
+  apiKeyId: string,
+  transition: "activation" | "deactivation",
+): ElizaError {
+  return new ElizaError(`CLI delivery ${transition} did not update its bound credential`, {
+    code: "CLI_AUTH_SESSION_ATOMIC_TRANSITION_FAILED",
+    context: { sessionId, apiKeyId, transition },
+    severity: "fatal",
+  });
 }
 
 /**
@@ -142,46 +155,69 @@ export class CliAuthSessionsRepository {
     requireAcknowledgement?: boolean;
   }): Promise<CliAuthSession | undefined> {
     const consumedAt = new Date();
-    const [claimed] = await dbWrite
-      .update(cliAuthSessions)
-      .set({
-        consumed_at: consumedAt,
-        // Android's cancellation-sensitive flow uses `pending` + a non-null
-        // consumed_at as a durable delivered-but-unacknowledged state. This
-        // reuses the existing schema while keeping legacy CLI reveals on the
-        // authenticated state they have always used.
-        ...(input.requireAcknowledgement ? { status: "pending" as const } : {}),
-        updated_at: consumedAt,
-      })
-      .where(
-        and(
-          eq(cliAuthSessions.session_id, input.sessionId),
-          eq(cliAuthSessions.status, "authenticated"),
-          eq(cliAuthSessions.api_key_id, input.apiKeyId),
-          eq(cliAuthSessions.user_id, input.userId),
-          gt(cliAuthSessions.expires_at, consumedAt),
-          isNull(cliAuthSessions.consumed_at),
-          exists(
-            dbWrite
-              .select({ id: apiKeys.id })
-              .from(apiKeys)
-              .where(
-                and(
-                  eq(apiKeys.id, input.apiKeyId),
-                  eq(apiKeys.user_id, input.userId),
-                  eq(apiKeys.organization_id, input.organizationId),
-                  eq(apiKeys.key_hash, input.keyHash),
-                  eq(apiKeys.is_active, true),
-                  isNull(apiKeys.deleted_at),
-                  or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, consumedAt)),
+    return await dbWrite.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(cliAuthSessions)
+        .set({
+          consumed_at: consumedAt,
+          // Android's cancellation-sensitive flow uses `pending` + a non-null
+          // consumed_at as a durable delivered-but-unacknowledged state. This
+          // reuses the existing schema while keeping legacy CLI reveals on the
+          // authenticated state they have always used.
+          ...(input.requireAcknowledgement ? { status: "pending" as const } : {}),
+          updated_at: consumedAt,
+        })
+        .where(
+          and(
+            eq(cliAuthSessions.session_id, input.sessionId),
+            eq(cliAuthSessions.status, "authenticated"),
+            eq(cliAuthSessions.api_key_id, input.apiKeyId),
+            eq(cliAuthSessions.user_id, input.userId),
+            gt(cliAuthSessions.expires_at, consumedAt),
+            isNull(cliAuthSessions.consumed_at),
+            exists(
+              tx
+                .select({ id: apiKeys.id })
+                .from(apiKeys)
+                .where(
+                  and(
+                    eq(apiKeys.id, input.apiKeyId),
+                    eq(apiKeys.user_id, input.userId),
+                    eq(apiKeys.organization_id, input.organizationId),
+                    eq(apiKeys.key_hash, input.keyHash),
+                    eq(apiKeys.is_active, true),
+                    isNull(apiKeys.deleted_at),
+                    or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, consumedAt)),
+                  ),
                 ),
-              ),
+            ),
           ),
-        ),
-      )
-      .returning();
+        )
+        .returning();
 
-    return claimed;
+      if (!claimed || !input.requireAcknowledgement) return claimed;
+
+      const [deactivated] = await tx
+        .update(apiKeys)
+        .set({ is_active: false, updated_at: consumedAt })
+        .where(
+          and(
+            eq(apiKeys.id, input.apiKeyId),
+            eq(apiKeys.user_id, input.userId),
+            eq(apiKeys.organization_id, input.organizationId),
+            eq(apiKeys.key_hash, input.keyHash),
+            eq(apiKeys.is_active, true),
+            isNull(apiKeys.deleted_at),
+            or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, consumedAt)),
+          ),
+        )
+        .returning({ id: apiKeys.id });
+      if (!deactivated) {
+        throw atomicCredentialTransitionError(input.sessionId, input.apiKeyId, "deactivation");
+      }
+
+      return claimed;
+    });
   }
 
   /** Atomically confirms that the exact delivered credential reached its client. */
@@ -193,38 +229,144 @@ export class CliAuthSessionsRepository {
     keyHash: string;
   }): Promise<CliAuthSession | undefined> {
     const acknowledgedAt = new Date();
-    const [acknowledged] = await dbWrite
-      .update(cliAuthSessions)
-      .set({ status: "authenticated", updated_at: acknowledgedAt })
-      .where(
-        and(
-          eq(cliAuthSessions.session_id, input.sessionId),
-          eq(cliAuthSessions.status, "pending"),
-          isNotNull(cliAuthSessions.consumed_at),
-          gt(cliAuthSessions.expires_at, acknowledgedAt),
-          eq(cliAuthSessions.api_key_id, input.apiKeyId),
-          eq(cliAuthSessions.user_id, input.userId),
-          exists(
-            dbWrite
-              .select({ id: apiKeys.id })
-              .from(apiKeys)
-              .where(
-                and(
-                  eq(apiKeys.id, input.apiKeyId),
-                  eq(apiKeys.user_id, input.userId),
-                  eq(apiKeys.organization_id, input.organizationId),
-                  eq(apiKeys.key_hash, input.keyHash),
-                  eq(apiKeys.is_active, true),
-                  isNull(apiKeys.deleted_at),
-                  or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, acknowledgedAt)),
+    return await dbWrite.transaction(async (tx) => {
+      const [acknowledged] = await tx
+        .update(cliAuthSessions)
+        .set({ status: "authenticated", updated_at: acknowledgedAt })
+        .where(
+          and(
+            eq(cliAuthSessions.session_id, input.sessionId),
+            eq(cliAuthSessions.status, "pending"),
+            isNotNull(cliAuthSessions.consumed_at),
+            gt(cliAuthSessions.expires_at, acknowledgedAt),
+            eq(cliAuthSessions.api_key_id, input.apiKeyId),
+            eq(cliAuthSessions.user_id, input.userId),
+            exists(
+              tx
+                .select({ id: apiKeys.id })
+                .from(apiKeys)
+                .where(
+                  and(
+                    eq(apiKeys.id, input.apiKeyId),
+                    eq(apiKeys.user_id, input.userId),
+                    eq(apiKeys.organization_id, input.organizationId),
+                    eq(apiKeys.key_hash, input.keyHash),
+                    eq(apiKeys.is_active, false),
+                    isNull(apiKeys.deleted_at),
+                    or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, acknowledgedAt)),
+                  ),
                 ),
-              ),
+            ),
           ),
-        ),
-      )
-      .returning();
+        )
+        .returning();
 
-    return acknowledged;
+      if (!acknowledged) return undefined;
+
+      const [activated] = await tx
+        .update(apiKeys)
+        .set({ is_active: true, updated_at: acknowledgedAt })
+        .where(
+          and(
+            eq(apiKeys.id, input.apiKeyId),
+            eq(apiKeys.user_id, input.userId),
+            eq(apiKeys.organization_id, input.organizationId),
+            eq(apiKeys.key_hash, input.keyHash),
+            eq(apiKeys.is_active, false),
+            isNull(apiKeys.deleted_at),
+            or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, acknowledgedAt)),
+          ),
+        )
+        .returning({ id: apiKeys.id });
+      if (!activated) {
+        throw atomicCredentialTransitionError(input.sessionId, input.apiKeyId, "activation");
+      }
+
+      return acknowledged;
+    });
+  }
+
+  /** Atomically terminalizes an exact delivered session and deactivates its key. */
+  async revokeConsumed(input: {
+    sessionId: string;
+    apiKeyId: string;
+    userId: string;
+    organizationId: string;
+    keyHash: string;
+  }): Promise<CliAuthSession | undefined> {
+    const revokedAt = new Date();
+    return await dbWrite.transaction(async (tx) => {
+      const exactCredentialExists = exists(
+        tx
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(
+            and(
+              eq(apiKeys.id, input.apiKeyId),
+              eq(apiKeys.user_id, input.userId),
+              eq(apiKeys.organization_id, input.organizationId),
+              eq(apiKeys.key_hash, input.keyHash),
+            ),
+          ),
+      );
+      const exactSession = and(
+        eq(cliAuthSessions.session_id, input.sessionId),
+        isNotNull(cliAuthSessions.consumed_at),
+        eq(cliAuthSessions.api_key_id, input.apiKeyId),
+        eq(cliAuthSessions.user_id, input.userId),
+        exactCredentialExists,
+      );
+      const [revoked] = await tx
+        .update(cliAuthSessions)
+        .set({ status: "expired", updated_at: revokedAt })
+        .where(
+          and(
+            exactSession,
+            or(eq(cliAuthSessions.status, "authenticated"), eq(cliAuthSessions.status, "pending")),
+          ),
+        )
+        .returning();
+
+      let terminalSession = revoked;
+      if (!terminalSession) {
+        [terminalSession] = await tx
+          .select()
+          .from(cliAuthSessions)
+          .where(and(exactSession, eq(cliAuthSessions.status, "expired")))
+          .limit(1);
+      }
+      if (!terminalSession) return undefined;
+
+      await tx
+        .update(apiKeys)
+        .set({ is_active: false, updated_at: revokedAt })
+        .where(
+          and(
+            eq(apiKeys.id, input.apiKeyId),
+            eq(apiKeys.user_id, input.userId),
+            eq(apiKeys.organization_id, input.organizationId),
+            eq(apiKeys.key_hash, input.keyHash),
+            eq(apiKeys.is_active, true),
+          ),
+        );
+      const [credential] = await tx
+        .select({ isActive: apiKeys.is_active })
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.id, input.apiKeyId),
+            eq(apiKeys.user_id, input.userId),
+            eq(apiKeys.organization_id, input.organizationId),
+            eq(apiKeys.key_hash, input.keyHash),
+          ),
+        )
+        .limit(1);
+      if (!credential || credential.isActive) {
+        throw atomicCredentialTransitionError(input.sessionId, input.apiKeyId, "deactivation");
+      }
+
+      return terminalSession;
+    });
   }
 
   /**
@@ -241,58 +383,73 @@ export class CliAuthSessionsRepository {
   }
 
   /**
-   * Reaps every expired CLI auth session and revokes the orphan credentials
-   * they minted, in one primary transaction.
+   * Revokes credentials owned by expired sessions before those sessions are
+   * deleted.
    *
    * An abandoned sign-in ends `authenticated` with `consumed_at = NULL`: the
    * key row exists and is active, but its plaintext was never revealed to any
    * caller (`getAndClearApiKey` is the only reveal path and it stamps
    * `consumed_at`). Deleting such a session without touching its key would
    * strand a live credential nobody holds — the #22551 orphan population — so
-   * the key is deactivated in the same transaction that removes the session.
+   * the key is deactivated before post-commit cache denial is confirmed and
+   * the session is removed.
    * A cancellation-sensitive reveal remains `pending` until its client proves
    * receipt with the exact bearer. Expired unacknowledged reveals are revoked;
    * acknowledged and legacy consumed sessions leave their keys active.
    *
-   * Returns the revoked keys' hashes so the caller can invalidate auth caches
-   * AFTER commit (write-then-invalidate; a pre-commit invalidation could be
-   * repopulated from the not-yet-revoked row).
+   * Returns every cleanup candidate, including a key already made inactive by
+   * an earlier failed cleanup pass. The expired session remains as the durable
+   * retry carrier until the service confirms every post-commit cache
+   * invalidation and calls {@link deleteExpiredSessions}.
    */
-  async reapExpiredSessions(now: Date = new Date()): Promise<{
-    deletedSessions: number;
-    revokedOrphanKeys: { id: string; key_hash: string }[];
-  }> {
+  async prepareExpiredSessionsForReap(
+    now: Date = new Date(),
+  ): Promise<{ id: string; key_hash: string }[]> {
     return await dbWrite.transaction(async (tx) => {
-      const orphanKeyIds = tx
-        .select({ id: cliAuthSessions.api_key_id })
-        .from(cliAuthSessions)
+      const cleanupKeys = await tx
+        .select({ id: apiKeys.id, key_hash: apiKeys.key_hash })
+        .from(apiKeys)
+        .innerJoin(cliAuthSessions, eq(cliAuthSessions.api_key_id, apiKeys.id))
         .where(
           and(
             lt(cliAuthSessions.expires_at, now),
-            or(isNull(cliAuthSessions.consumed_at), eq(cliAuthSessions.status, "pending")),
-            isNotNull(cliAuthSessions.api_key_id),
+            or(
+              isNull(cliAuthSessions.consumed_at),
+              eq(cliAuthSessions.status, "pending"),
+              and(eq(cliAuthSessions.status, "expired"), eq(apiKeys.is_active, false)),
+            ),
+            isNull(apiKeys.deleted_at),
           ),
         );
 
-      const revokedOrphanKeys = await tx
-        .update(apiKeys)
-        .set({ is_active: false, updated_at: now })
-        .where(
-          and(
-            inArray(apiKeys.id, orphanKeyIds),
-            eq(apiKeys.is_active, true),
-            isNull(apiKeys.deleted_at),
-          ),
-        )
-        .returning({ id: apiKeys.id, key_hash: apiKeys.key_hash });
+      if (cleanupKeys.length > 0) {
+        await tx
+          .update(apiKeys)
+          .set({ is_active: false, updated_at: now })
+          .where(
+            and(
+              inArray(
+                apiKeys.id,
+                cleanupKeys.map((key) => key.id),
+              ),
+              eq(apiKeys.is_active, true),
+              isNull(apiKeys.deleted_at),
+            ),
+          );
+      }
 
-      const deleted = await tx
-        .delete(cliAuthSessions)
-        .where(lt(cliAuthSessions.expires_at, now))
-        .returning({ id: cliAuthSessions.id });
-
-      return { deletedSessions: deleted.length, revokedOrphanKeys };
+      return cleanupKeys;
     });
+  }
+
+  /** Deletes expired sessions only after their cache denial is confirmed. */
+  async deleteExpiredSessions(now: Date = new Date()): Promise<number> {
+    const deleted = await dbWrite
+      .delete(cliAuthSessions)
+      .where(lt(cliAuthSessions.expires_at, now))
+      .returning({ id: cliAuthSessions.id });
+
+    return deleted.length;
   }
 }
 

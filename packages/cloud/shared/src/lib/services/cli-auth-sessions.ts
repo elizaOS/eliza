@@ -8,7 +8,7 @@ import { decryptApiKey } from "../../db/crypto/api-keys";
 import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
-import { apiKeysService } from "./api-keys";
+import { apiKeysService, isCliApiKeySecret } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
 
 /**
@@ -296,6 +296,14 @@ export class CliAuthSessionsService {
       return { status: "unavailable", reason: "claim-lost" };
     }
 
+    // Sessions minted just before this deployment still carry the historical
+    // generic `eliza_` prefix. The inactive row is already committed, so clear
+    // any positive validation/IAC refill before returning its plaintext. New
+    // `eliza_cli_` credentials never enter either cache and need no delete.
+    if (options.requireAcknowledgement && !isCliApiKeySecret(plaintext)) {
+      await apiKeysService.confirmRevocationAfterCommit([apiKeyRecord.key_hash]);
+    }
+
     return {
       status: "revealed",
       apiKey: plaintext,
@@ -317,8 +325,8 @@ export class CliAuthSessionsService {
       !state.apiKey ||
       state.apiKey.id !== state.session.api_key_id ||
       state.apiKey.user_id !== state.session.user_id ||
-      !state.apiKey.is_active ||
-      state.apiKey.deleted_at
+      state.apiKey.deleted_at ||
+      (state.apiKey.expires_at && state.apiKey.expires_at <= new Date())
     ) {
       return false;
     }
@@ -332,17 +340,27 @@ export class CliAuthSessionsService {
       return false;
     }
 
-    if (state.session.status === "authenticated") return true;
+    if (state.session.status === "authenticated") {
+      if (!state.apiKey.is_active) return false;
+      if (!isCliApiKeySecret(token)) {
+        await apiKeysService.invalidateCache(state.apiKey.key_hash);
+      }
+      return true;
+    }
     if (state.session.status !== "pending") return false;
-    return Boolean(
-      await cliAuthSessionsRepository.acknowledgeConsumed({
-        sessionId,
-        apiKeyId: state.apiKey.id,
-        userId: state.apiKey.user_id,
-        organizationId: state.apiKey.organization_id,
-        keyHash: state.apiKey.key_hash,
-      }),
-    );
+    if (state.apiKey.is_active) return false;
+    const acknowledged = await cliAuthSessionsRepository.acknowledgeConsumed({
+      sessionId,
+      apiKeyId: state.apiKey.id,
+      userId: state.apiKey.user_id,
+      organizationId: state.apiKey.organization_id,
+      keyHash: state.apiKey.key_hash,
+    });
+    if (!acknowledged) return false;
+    if (!isCliApiKeySecret(token)) {
+      await apiKeysService.invalidateCache(state.apiKey.key_hash);
+    }
+    return true;
   }
 
   /**
@@ -358,7 +376,9 @@ export class CliAuthSessionsService {
     const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
     if (
       !state ||
-      (state.session.status !== "authenticated" && state.session.status !== "pending") ||
+      (state.session.status !== "authenticated" &&
+        state.session.status !== "pending" &&
+        state.session.status !== "expired") ||
       !state.session.consumed_at ||
       !state.session.api_key_id ||
       !state.session.user_id ||
@@ -378,16 +398,18 @@ export class CliAuthSessionsService {
       return false;
     }
 
-    if (state.apiKey.is_active && !state.apiKey.deleted_at) {
-      const revoked = await apiKeysService.update(state.apiKey.id, {
-        is_active: false,
-      });
-      return Boolean(revoked && !revoked.is_active);
-    }
+    const revoked = await cliAuthSessionsRepository.revokeConsumed({
+      sessionId,
+      apiKeyId: state.apiKey.id,
+      userId: state.apiKey.user_id,
+      organizationId: state.apiKey.organization_id,
+      keyHash: state.apiKey.key_hash,
+    });
+    if (!revoked) return false;
 
-    // A prior response may have been lost after the database mutation but
-    // before cache invalidation was confirmed. Retrying the exact credential
-    // must re-confirm that denial boundary before reporting success.
+    // A response may be lost after the atomic database mutation but before
+    // cache invalidation is confirmed. An exact retry re-enters the terminal
+    // session and confirms denial again before reporting success.
     await apiKeysService.invalidateCache(state.apiKey.key_hash);
     return true;
   }
@@ -405,12 +427,16 @@ export class CliAuthSessionsService {
     deletedSessions: number;
     revokedOrphanKeys: number;
   }> {
-    const { deletedSessions, revokedOrphanKeys } =
-      await cliAuthSessionsRepository.reapExpiredSessions();
-
-    for (const key of revokedOrphanKeys) {
-      await apiKeysService.invalidateCache(key.key_hash);
-    }
+    // Pin one cutoff across both phases. A later deletion cutoff could remove
+    // a session that expired after candidate selection without first revoking
+    // and invalidating its credential.
+    const cutoff = new Date();
+    const revokedOrphanKeys = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
+    // This helper attempts every hash before throwing. If any invalidation is
+    // unconfirmed, the expired session rows remain as durable retry carriers;
+    // the next cron pass re-offers even already-inactive keys.
+    await apiKeysService.confirmRevocationAfterCommit(revokedOrphanKeys.map((key) => key.key_hash));
+    const deletedSessions = await cliAuthSessionsRepository.deleteExpiredSessions(cutoff);
 
     return { deletedSessions, revokedOrphanKeys: revokedOrphanKeys.length };
   }

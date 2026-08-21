@@ -277,6 +277,29 @@ describe("Android Cloud renderer behavior", () => {
     expect(playEntry.voiceStart).not.toHaveBeenCalled();
   });
 
+  it("tears down a native start that settles after stop overtakes it", async () => {
+    let finishStart: (value: { started: boolean }) => void = () => {};
+    playEntry.voiceStart.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishStart = resolve;
+      }),
+    );
+
+    const starting = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(playEntry.voiceStart).toHaveBeenCalledOnce());
+    const stopping = entry.androidCloudVoice.stop();
+    await vi.waitFor(() =>
+      expect(playEntry.voiceStop).toHaveBeenCalledTimes(2),
+    );
+
+    finishStart({ started: true });
+
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    await expect(stopping).resolves.toBeUndefined();
+    expect(playEntry.voiceStop).toHaveBeenCalledTimes(3);
+    expect(playEntry.voiceListeners.size).toBe(0);
+  });
+
   it("observes native-event voice teardown failures", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());

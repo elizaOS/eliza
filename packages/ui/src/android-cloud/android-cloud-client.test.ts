@@ -135,6 +135,53 @@ describe("AndroidCloudClient", () => {
     await expect(restarted.restoreSession()).resolves.toBeNull();
   });
 
+  it("reconciles a durable provisional reveal after ACK response loss and failed cleanup", async () => {
+    let storedToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const firstFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "provisional-token" }),
+      )
+      .mockRejectedValueOnce(new Error("ACK response lost"))
+      .mockRejectedValueOnce(new Error("DELETE unavailable"));
+    const firstClient = new AndroidCloudClient({
+      fetchImpl: firstFetch,
+      credentialStore,
+    });
+
+    await expect(firstClient.pollLogin(SESSION_ID)).rejects.toThrow(
+      "could not be acknowledged or revoked",
+    );
+    expect(storedToken).not.toBe("provisional-token");
+    expect(storedToken).toContain(SESSION_ID);
+
+    const restartedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const restarted = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: restartedFetch,
+    });
+    await expect(restarted.restoreSession()).resolves.toBeNull();
+    expect(restartedFetch).toHaveBeenCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bearer provisional-token" },
+      }),
+    );
+    expect(storedToken).toBeNull();
+  });
+
   it("clears a token when sign-in is cancelled during durable persistence", async () => {
     let storedToken: string | null = null;
     let releaseWrite: () => void = () => {};
@@ -156,6 +203,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
@@ -194,6 +242,7 @@ describe("AndroidCloudClient", () => {
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -208,6 +257,78 @@ describe("AndroidCloudClient", () => {
       fetchImpl: vi.fn<typeof fetch>(),
     });
     await expect(restarted.restoreSession()).resolves.toBeNull();
+  });
+
+  it("still revokes and clears an accepted credential when quarantine persistence fails", async () => {
+    let storedToken: string | null = null;
+    let writes = 0;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        writes += 1;
+        if (writes === 3) throw new Error("secure quarantine unavailable");
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "cancelled-token" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await client.pollLogin(SESSION_ID);
+    await expect(
+      client.discardLoginAttempt(SESSION_ID, "cancelled-token"),
+    ).resolves.toBeUndefined();
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(storedToken).toBeNull();
+  });
+
+  it("fails closed locally when both quarantine persistence and remote revocation fail", async () => {
+    let storedToken: string | null = null;
+    let writes = 0;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        writes += 1;
+        if (writes === 3) throw new Error("secure quarantine unavailable");
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "cancelled-token" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockRejectedValueOnce(new Error("DELETE unavailable"));
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await client.pollLogin(SESSION_ID);
+    await expect(
+      client.discardLoginAttempt(SESSION_ID, "cancelled-token"),
+    ).rejects.toThrow("could not be quarantined or revoked");
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(storedToken).toBeNull();
   });
 
   it("writes a non-authenticating tombstone when secure clear rejects", async () => {
@@ -226,6 +347,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
@@ -248,7 +370,11 @@ describe("AndroidCloudClient", () => {
     const credentialStore = {
       read: vi.fn(async () => storedToken),
       write: vi.fn(async (token: string) => {
-        if (token !== "cancelled-token" && rejectTombstone) {
+        if (
+          token !== "cancelled-token" &&
+          !token.startsWith("eliza_pending_login_credential_v1:") &&
+          rejectTombstone
+        ) {
           throw new Error("secure tombstone unavailable");
         }
         storedToken = token;
@@ -266,6 +392,8 @@ describe("AndroidCloudClient", () => {
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -273,8 +401,9 @@ describe("AndroidCloudClient", () => {
     await expect(
       client.discardLoginAttempt(SESSION_ID, "cancelled-token"),
     ).rejects.toThrow("could not be removed");
-    expect(storedToken).toBe("cancelled-token");
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(storedToken).not.toBe("cancelled-token");
+    expect(storedToken).toContain(SESSION_ID);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
 
     rejectTombstone = false;
     await client.discardLoginAttempt(SESSION_ID, "cancelled-token");
@@ -307,6 +436,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "shared-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -319,7 +449,7 @@ describe("AndroidCloudClient", () => {
 
     expect(storedToken).toBe("shared-token");
     expect(credentialStore.clear).not.toHaveBeenCalled();
-    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
   });
 
   it("revokes a distinct stale bearer without clearing the newer login", async () => {
@@ -498,6 +628,21 @@ describe("AndroidCloudClient", () => {
     expect(credentialStore.clear).toHaveBeenCalledOnce();
     expect(secureToken).toBeNull();
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+  });
+
+  it("never authenticates a malformed pending credential envelope", async () => {
+    const malformedPending =
+      'eliza_pending_login_credential_v1:{"sessionId":"not-a-session"}';
+    const credentialStore = {
+      read: vi.fn(async () => malformedPending),
+      write: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await expect(client.restoreSession()).resolves.toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("restores only valid visible user and assistant transcript messages", async () => {

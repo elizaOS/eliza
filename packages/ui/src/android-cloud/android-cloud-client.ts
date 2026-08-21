@@ -22,6 +22,7 @@ const SESSION_ID_PATTERN =
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
 const CANCELLED_CREDENTIAL_TOMBSTONE = "eliza_cancelled_login_credential_v1";
+const PENDING_LOGIN_CREDENTIAL_PREFIX = "eliza_pending_login_credential_v1:";
 const DEFAULT_LOGIN_REVOCATION_TIMEOUT_MS = 5_000;
 
 export interface AndroidCloudIdentity {
@@ -78,6 +79,11 @@ const browserCredentialStore: AndroidCloudCredentialStore = {
 
 type JsonRecord = Record<string, unknown>;
 
+interface PendingLoginCredential {
+  sessionId: string;
+  token: string;
+}
+
 function record(value: unknown): JsonRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
@@ -86,6 +92,31 @@ function record(value: unknown): JsonRecord | null {
 
 function stringField(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function encodePendingLoginCredential(
+  credential: PendingLoginCredential,
+): string {
+  return `${PENDING_LOGIN_CREDENTIAL_PREFIX}${JSON.stringify(credential)}`;
+}
+
+function decodePendingLoginCredential(
+  value: string | null,
+): PendingLoginCredential | null {
+  if (!value?.startsWith(PENDING_LOGIN_CREDENTIAL_PREFIX)) return null;
+  try {
+    const parsed = record(
+      JSON.parse(value.slice(PENDING_LOGIN_CREDENTIAL_PREFIX.length)),
+    );
+    const sessionId = stringField(parsed?.sessionId);
+    const token = stringField(parsed?.token);
+    if (!sessionId || !SESSION_ID_PATTERN.test(sessionId) || !token) {
+      return null;
+    }
+    return { sessionId, token };
+  } catch {
+    return null;
+  }
 }
 
 async function responseJson(response: Response): Promise<JsonRecord> {
@@ -187,6 +218,22 @@ export class AndroidCloudClient {
     token: string | null;
     revision: number;
   }> {
+    const snapshot = await this.mutateCredential(async () => ({
+      raw: await this.credentialStore.read(),
+      revision: this.credentialRevision,
+    }));
+    const pending = decodePendingLoginCredential(snapshot.raw);
+    if (!pending) {
+      return {
+        token: this.normalizeStoredToken(snapshot.raw),
+        revision: snapshot.revision,
+      };
+    }
+    this.loginCredentials.set(pending.sessionId, {
+      revision: snapshot.revision,
+      token: pending.token,
+    });
+    await this.discardLoginAttempt(pending.sessionId, pending.token);
     return this.mutateCredential(async () => ({
       token: this.normalizeStoredToken(await this.credentialStore.read()),
       revision: this.credentialRevision,
@@ -195,7 +242,10 @@ export class AndroidCloudClient {
 
   private normalizeStoredToken(value: string | null): string | null {
     const token = value?.trim() || null;
-    return token === CANCELLED_CREDENTIAL_TOMBSTONE ? null : token;
+    return token === CANCELLED_CREDENTIAL_TOMBSTONE ||
+      token?.startsWith(PENDING_LOGIN_CREDENTIAL_PREFIX)
+      ? null
+      : token;
   }
 
   private mutateCredential<T>(operation: () => Promise<T>): Promise<T> {
@@ -207,9 +257,30 @@ export class AndroidCloudClient {
     return result;
   }
 
-  private writeToken(token: string): Promise<number> {
+  private writePendingLoginCredential(
+    credential: PendingLoginCredential,
+  ): Promise<number> {
     return this.mutateCredential(async () => {
-      await this.credentialStore.write(token);
+      await this.credentialStore.write(
+        encodePendingLoginCredential(credential),
+      );
+      this.credentialRevision += 1;
+      return this.credentialRevision;
+    });
+  }
+
+  private promotePendingLoginCredential(
+    credential: PendingLoginCredential,
+    expectedRevision: number,
+  ): Promise<number> {
+    return this.mutateCredential(async () => {
+      if (this.credentialRevision !== expectedRevision) {
+        throw new DOMException(
+          "Sign-in credential ownership changed.",
+          "AbortError",
+        );
+      }
+      await this.credentialStore.write(credential.token);
       this.credentialRevision += 1;
       return this.credentialRevision;
     });
@@ -353,7 +424,9 @@ export class AndroidCloudClient {
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
       signal?.throwIfAborted();
-      const credentialRevision = await this.writeToken(token);
+      const pendingCredential = { sessionId, token };
+      const credentialRevision =
+        await this.writePendingLoginCredential(pendingCredential);
       this.loginCredentials.set(sessionId, {
         revision: credentialRevision,
         token,
@@ -361,6 +434,15 @@ export class AndroidCloudClient {
       try {
         signal?.throwIfAborted();
         await this.acknowledgeLoginCredential(sessionId, token, signal);
+        signal?.throwIfAborted();
+        const activeRevision = await this.promotePendingLoginCredential(
+          pendingCredential,
+          credentialRevision,
+        );
+        this.loginCredentials.set(sessionId, {
+          revision: activeRevision,
+          token,
+        });
         signal?.throwIfAborted();
       } catch (acknowledgementError) {
         try {
@@ -515,14 +597,21 @@ export class AndroidCloudClient {
       );
     }
 
-    const shouldRevoke = await this.mutateCredential(async () => {
-      if (this.credentialRevision === owned.revision) {
+    const neutralizeStoredCredential = () =>
+      this.mutateCredential(async () => {
+        let ownsStoredCredential = this.credentialRevision === owned.revision;
+        if (!ownsStoredCredential) {
+          const pending = decodePendingLoginCredential(
+            await this.credentialStore.read(),
+          );
+          ownsStoredCredential =
+            pending?.sessionId === sessionId && pending.token === expectedToken;
+        }
+        if (!ownsStoredCredential) return;
         try {
           await this.credentialStore.clear();
         } catch (clearError) {
           try {
-            // A non-secret tombstone prevents a failed remove operation from
-            // becoming an authenticated boot on the next app launch.
             await this.credentialStore.write(CANCELLED_CREDENTIAL_TOMBSTONE);
           } catch (tombstoneError) {
             throw new AggregateError(
@@ -532,21 +621,63 @@ export class AndroidCloudClient {
           }
         }
         this.credentialRevision += 1;
-        return true;
-      }
+        owned.revision = this.credentialRevision;
+      });
 
-      const current = this.normalizeStoredToken(
-        await this.credentialStore.read(),
-      );
-      return current !== expectedToken;
-    });
-
-    if (!shouldRevoke) {
-      this.loginCredentials.delete(sessionId);
-      return;
+    let quarantineError: unknown;
+    try {
+      await this.mutateCredential(async () => {
+        let ownsStoredCredential = this.credentialRevision === owned.revision;
+        if (!ownsStoredCredential) {
+          const pending = decodePendingLoginCredential(
+            await this.credentialStore.read(),
+          );
+          ownsStoredCredential =
+            pending?.sessionId === sessionId && pending.token === expectedToken;
+        }
+        if (!ownsStoredCredential) return;
+        await this.credentialStore.write(
+          encodePendingLoginCredential({ sessionId, token: expectedToken }),
+        );
+        this.credentialRevision += 1;
+        owned.revision = this.credentialRevision;
+      });
+    } catch (error) {
+      quarantineError = error;
     }
 
-    await this.revokeLoginCredential(sessionId, expectedToken);
+    // Keep the non-authenticating secure-store record until the server has
+    // confirmed revocation. A response-loss retry or process restart can then
+    // recover both the session binding and exact bearer without exposing it to
+    // ordinary session restoration.
+    let revocationError: unknown;
+    try {
+      await this.revokeLoginCredential(sessionId, expectedToken);
+    } catch (error) {
+      revocationError = error;
+    }
+    if (revocationError) {
+      if (quarantineError) {
+        let neutralizationError: unknown;
+        try {
+          // Neither durable retry nor server revocation succeeded. Fail closed
+          // locally if possible so a reboot cannot authenticate the canceled
+          // bearer; the in-memory ownership record still permits a retry.
+          await neutralizeStoredCredential();
+        } catch (error) {
+          neutralizationError = error;
+        }
+        throw new AggregateError(
+          [quarantineError, revocationError, neutralizationError].filter(
+            (error) => error !== undefined,
+          ),
+          "The canceled sign-in credential could not be quarantined or revoked.",
+        );
+      }
+      throw revocationError;
+    }
+
+    await neutralizeStoredCredential();
     this.loginCredentials.delete(sessionId);
   }
 

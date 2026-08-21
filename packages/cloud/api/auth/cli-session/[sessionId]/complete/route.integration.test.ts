@@ -294,6 +294,7 @@ describe("CLI session completion with real persistence", () => {
     const winner = bodies.find((body) => !body.alreadyAuthenticated);
     const retry = bodies.find((body) => body.alreadyAuthenticated);
     expect(retry?.keyPrefix).toBe(winner?.keyPrefix);
+    expect(winner?.keyPrefix).toStartWith("eliza_cli_");
     expect(bodies.every((body) => !("apiKey" in body))).toBe(true);
 
     const keys = await dbWrite.execute(
@@ -384,11 +385,13 @@ describe("CLI session completion with real persistence", () => {
 
   test("rolls back the session claim when API-key insertion fails", async () => {
     await seedPendingSession(SESSION_IDS.insertFailure);
-    const generate = spyOn(apiKeysService, "generateApiKey").mockReturnValue({
-      key: "eliza_duplicate_plaintext",
-      hash: "hash",
-      prefix: "eliza_duplicate",
-    });
+    const generate = spyOn(apiKeysService, "generateCliApiKey").mockReturnValue(
+      {
+        key: `eliza_cli_${"d".repeat(64)}`,
+        hash: "hash",
+        prefix: "eliza_cli_dd",
+      },
+    );
 
     try {
       const response = await complete(SESSION_IDS.insertFailure);

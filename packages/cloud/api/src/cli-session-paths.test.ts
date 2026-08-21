@@ -1,6 +1,6 @@
 /**
- * Thin CLI-session dispatch predicate: exactly the create POST and the
- * single-segment poll GET go to the thin shell; the authenticated
+ * Thin CLI-session dispatch predicate: the create POST and single-segment
+ * credential lifecycle go to the thin shell; the authenticated
  * `/:sessionId/complete` mutation must always fall through to the full app.
  */
 import { describe, expect, test } from "bun:test";
@@ -13,10 +13,12 @@ describe("isThinCliSessionPath", () => {
     expect(isThinCliSessionPath("post", "/api/auth/cli-session/")).toBe(true);
   });
 
-  test("routes single-segment poll GET/HEAD and preflight to the thin shell", () => {
+  test("routes the single-segment credential lifecycle to the thin shell", () => {
     const poll = "/api/auth/cli-session/bbbbbbbb-2222-4333-8444-cccccccccccc";
     expect(isThinCliSessionPath("GET", poll)).toBe(true);
     expect(isThinCliSessionPath("HEAD", poll)).toBe(true);
+    expect(isThinCliSessionPath("PATCH", poll)).toBe(true);
+    expect(isThinCliSessionPath("DELETE", poll)).toBe(true);
     expect(isThinCliSessionPath("OPTIONS", poll)).toBe(true);
   });
 
@@ -34,9 +36,8 @@ describe("isThinCliSessionPath", () => {
     expect(isThinCliSessionPath("POST", "/api/auth/cli-session/some-id")).toBe(
       false,
     );
-    expect(isThinCliSessionPath("DELETE", "/api/auth/cli-session/x")).toBe(
-      false,
-    );
+    expect(isThinCliSessionPath("POST", "/api/auth/cli-session/x")).toBe(false);
+    expect(isThinCliSessionPath("PUT", "/api/auth/cli-session/x")).toBe(false);
   });
 
   test("leaves unrelated paths to the other dispatchers", () => {

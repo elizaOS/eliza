@@ -328,6 +328,102 @@ describe("AndroidCloudApp", () => {
     );
   });
 
+  it("does not let a timed-out browser close wedge the next sign-in", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = createClient();
+      vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+      vi.spyOn(client, "beginLogin")
+        .mockResolvedValueOnce({
+          sessionId: "10000000-0000-4000-8000-000000000001",
+          browserUrl: "https://cloud.eliza.app/auth/cli-login?attempt=1",
+        })
+        .mockResolvedValueOnce({
+          sessionId: "10000000-0000-4000-8000-000000000002",
+          browserUrl: "https://cloud.eliza.app/auth/cli-login?attempt=2",
+        });
+      vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
+      const openExternal = vi.fn(async () => undefined);
+      const closeExternal = vi.fn(() => new Promise<void>(() => {}));
+
+      render(
+        <AndroidCloudApp
+          client={client}
+          openExternal={openExternal}
+          closeExternal={closeExternal}
+          voice={createVoice()}
+        />,
+      );
+      await act(async () => {});
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+        await vi.advanceTimersByTimeAsync(1_500);
+        fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      });
+
+      expect(openExternal).toHaveBeenCalledTimes(2);
+      expect(openExternal).toHaveBeenLastCalledWith(
+        "https://cloud.eliza.app/auth/cli-login?attempt=2",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let a timed-out browser open wedge cancellation or the next sign-in", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = createClient();
+      vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+      vi.spyOn(client, "beginLogin")
+        .mockResolvedValueOnce({
+          sessionId: "10000000-0000-4000-8000-000000000001",
+          browserUrl: "https://cloud.eliza.app/auth/cli-login?attempt=1",
+        })
+        .mockResolvedValueOnce({
+          sessionId: "10000000-0000-4000-8000-000000000002",
+          browserUrl: "https://cloud.eliza.app/auth/cli-login?attempt=2",
+        });
+      vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
+      const openExternal = vi
+        .fn<() => Promise<void>>()
+        .mockImplementationOnce(() => new Promise<void>(() => {}))
+        .mockResolvedValueOnce(undefined);
+      const closeExternal = vi.fn(async () => undefined);
+
+      render(
+        <AndroidCloudApp
+          client={client}
+          openExternal={openExternal}
+          closeExternal={closeExternal}
+          voice={createVoice()}
+        />,
+      );
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(closeExternal).toHaveBeenCalledOnce();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await act(async () => {});
+      expect(openExternal).toHaveBeenCalledTimes(2);
+      expect(openExternal).toHaveBeenLastCalledWith(
+        "https://cloud.eliza.app/auth/cli-login?attempt=2",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cancels while the authenticated session is being restored", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession")

@@ -78,6 +78,17 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
     expect(source).toContain("new TextToSpeech(getContext()");
     expect(source).toContain("Manifest.permission.RECORD_AUDIO");
+    expect(source).toContain("SpeechRecognizer current = recognizer;");
+    expect(source).toContain("recognizer = null;");
+    expect(source.indexOf("current.stopListening();")).toBeLessThan(
+      source.indexOf("current.cancel();"),
+    );
+    expect(source.indexOf("current.cancel();")).toBeLessThan(
+      source.indexOf("current.destroy();"),
+    );
+    expect(source).toContain("else failure.addSuppressed(error);");
+    expect(source).toContain("if (failure != null) throw failure;");
+    expect(source).toContain('"SPEECH_RECOGNITION_STOP_FAILED"');
     expect(source).not.toMatch(/LocalSocket|HttpURLConnection|apiKey|bionic/i);
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");

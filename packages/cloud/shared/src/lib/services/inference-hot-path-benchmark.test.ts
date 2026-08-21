@@ -95,6 +95,7 @@ mock.module("./api-keys", () => ({
     },
   },
   isMobileApiKeySecret: () => false,
+  isCliApiKeySecret: () => false,
 }));
 const { resolveInferenceAuthContext } = await import("./inference-auth-context");
 const { hashApiKey, invalidateInferenceAuthContextByKeyHash } = await import(

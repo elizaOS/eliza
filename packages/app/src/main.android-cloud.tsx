@@ -273,6 +273,10 @@ let activeVoiceListeners: Array<{ remove: () => Promise<void> }> = [];
 const VOICE_LISTENER_TEARDOWN_TIMEOUT_MS = 1_000;
 const VOICE_NATIVE_STOP_TIMEOUT_MS = 1_000;
 let voiceGeneration = 0;
+let pendingNativeVoiceStart: Promise<{
+  started: boolean;
+  error?: string;
+}> | null = null;
 
 function assertCurrentVoiceGeneration(generation: number): void {
   if (voiceGeneration !== generation) {
@@ -403,6 +407,11 @@ async function teardownVoiceResources(): Promise<void> {
 
 export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript, onError) {
+    if (pendingNativeVoiceStart) {
+      throw new Error(
+        "The previous voice start is still settling; stop it before retrying.",
+      );
+    }
     const generation = ++voiceGeneration;
     try {
       await teardownVoiceResources();
@@ -435,10 +444,39 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         stopVoiceAfterNativeEvent();
       });
       await retainVoiceListener(generation, errorListener, false);
-      const result = await PlayVoice.startDictation({
+      const nativeStart = PlayVoice.startDictation({
         language: navigator.language || "en-US",
       });
-      assertCurrentVoiceGeneration(generation);
+      let trackedStart: Promise<{ started: boolean; error?: string }>;
+      trackedStart = nativeStart
+        .then(async (result) => {
+          if (voiceGeneration !== generation) {
+            const cancellation = new DOMException(
+              "Voice dictation start was canceled.",
+              "AbortError",
+            );
+            try {
+              // stop() may run before the native start becomes live. Once the
+              // late start settles, stop again while this generation still
+              // owns the adapter so no recognizer or listener can escape.
+              await teardownVoiceResources();
+            } catch (cleanupError) {
+              throw new AggregateError(
+                [cancellation, cleanupError],
+                "Canceled native voice start could not be cleaned up.",
+              );
+            }
+            throw cancellation;
+          }
+          return result;
+        })
+        .finally(() => {
+          if (pendingNativeVoiceStart === trackedStart) {
+            pendingNativeVoiceStart = null;
+          }
+        });
+      pendingNativeVoiceStart = trackedStart;
+      const result = await trackedStart;
       if (!result.started) {
         throw new Error(result.error || "Voice dictation could not start.");
       }
@@ -458,7 +496,45 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
   async stop() {
     voiceGeneration += 1;
-    await teardownVoiceResources();
+    const pendingStart = pendingNativeVoiceStart;
+    const teardownErrors: unknown[] = [];
+    try {
+      await teardownVoiceResources();
+    } catch (error) {
+      teardownErrors.push(error);
+    }
+    if (pendingStart) {
+      let timeout: ReturnType<typeof window.setTimeout> | undefined;
+      try {
+        await Promise.race([
+          pendingStart,
+          new Promise<never>((_resolve, reject) => {
+            timeout = window.setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Native voice start did not settle; cleanup remains retryable.",
+                  ),
+                ),
+              VOICE_NATIVE_STOP_TIMEOUT_MS,
+            );
+          }),
+        ]);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          teardownErrors.push(error);
+        }
+      } finally {
+        if (timeout !== undefined) window.clearTimeout(timeout);
+      }
+    }
+    if (teardownErrors.length === 1) throw teardownErrors[0];
+    if (teardownErrors.length > 1) {
+      throw new AggregateError(
+        teardownErrors,
+        "Voice dictation stop failed at multiple boundaries.",
+      );
+    }
   },
   async speak(text) {
     await PlayVoice.speak({ text, language: navigator.language || "en-US" });
