@@ -1025,6 +1025,15 @@ export function applyTrajectoryFieldCap(
 	value: string,
 	capBytes: number,
 ): { value: string; marker: RecordedTruncationMarker | null } {
+	if (!Number.isSafeInteger(capBytes) || capBytes < 0) {
+		throw new ElizaError(
+			"Trajectory field cap must be a non-negative safe integer",
+			{
+				code: "TRAJECTORY_FIELD_CAP_INVALID",
+				context: { capBytes: String(capBytes) },
+			},
+		);
+	}
 	const byteLength = Buffer.byteLength(value, "utf8");
 	if (byteLength <= capBytes) {
 		return { value, marker: null };

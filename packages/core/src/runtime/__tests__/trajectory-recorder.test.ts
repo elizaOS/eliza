@@ -1139,6 +1139,21 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(marker).toBeNull();
 	});
 
+	it.each([17.5, Number.NaN, Number.POSITIVE_INFINITY, -1, 2 ** 53])(
+		"rejects invalid byte cap %s before truncating",
+		(capBytes) => {
+			expect(() =>
+				applyTrajectoryFieldCap("output", "🦊".repeat(10), capBytes),
+			).toThrowError(
+				expect.objectContaining({
+					name: "ElizaError",
+					code: "TRAJECTORY_FIELD_CAP_INVALID",
+					context: { capBytes: String(capBytes) },
+				}),
+			);
+		},
+	);
+
 	it("truncates oversize values and emits a structured marker", () => {
 		const big = "a".repeat(2048);
 		const { value, marker } = applyTrajectoryFieldCap("output", big, 256);
