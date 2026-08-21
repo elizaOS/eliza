@@ -67,6 +67,7 @@ describe("repository ruleset contract", () => {
     );
     expect(codeowners).toContain("are PLACEHOLDERS");
     expect(pullRequest.parameters).toMatchObject({
+      allowed_merge_methods: ["squash", "rebase"],
       dismiss_stale_reviews_on_push: true,
       require_code_owner_review: false,
       require_last_push_approval: true,
@@ -82,16 +83,14 @@ describe("repository ruleset contract", () => {
       strict_required_status_checks_policy: true,
     });
     expect(
-      manifest.rules.map((rule: Record<string, any>) => rule.type),
-    ).toEqual(
-      expect.arrayContaining([
-        "deletion",
-        "non_fast_forward",
-        "pull_request",
-        "required_linear_history",
-        "required_signatures",
-      ]),
-    );
+      manifest.rules.map((rule: Record<string, any>) => rule.type).sort(),
+    ).toEqual([
+      "deletion",
+      "non_fast_forward",
+      "pull_request",
+      "required_linear_history",
+      "required_status_checks",
+    ]);
   });
 
   test("keeps mutation explicit and semantic readback as the default", () => {

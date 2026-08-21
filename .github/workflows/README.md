@@ -37,6 +37,15 @@ paths, then submit a separate reviewed manifest change enabling Code Owner
 review. The current ruleset still requires one approval, last-push approval,
 and review-thread resolution.
 
+The manifest allows squash and rebase only: linear history rejects merge commits.
+Required-signature enforcement is deferred because GitHub cannot generally
+produce a signed web squash for an external contributor unless the merger is
+also the pull-request author, while rebase admission requires every source
+commit to be signed. An owner may propose signature enforcement separately only
+after proving contributor-safe signed squash/rebase canaries; ordinary approval,
+last-push approval, thread resolution, status checks, linear history, and the
+force-push/deletion bans remain active here.
+
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
 
