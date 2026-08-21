@@ -247,6 +247,28 @@ describe("app container terminal-status compare-and-set (real PGlite)", () => {
     TIMEOUT,
   );
 
+  /**
+   * Negative control. One daemon processes its claimed batch strictly
+   * sequentially, so it cannot race itself; a fully-awaited `markRunning`
+   * followed by a `markDeleted` must reach `deleted` and stay there. This case
+   * passes on the pre-fix statement too, and that is the point: it shows the
+   * corruption above needs the delete to land INSIDE the read/write window, not
+   * merely for both operations to run. The window is the cause, not the harness.
+   */
+  test(
+    "sequential execution — one worker, one batch — is never corrupted",
+    async () => {
+      expect(ready).toBe(true);
+      const id = await seedContainer("deploying");
+      const store = buildStore(dbWrite);
+      await store.markRunning(id, PROVISION_RESULT);
+      expect(await statusOf(id)).toBe("running");
+      await store.markDeleted(id, ORG_ID);
+      expect(await statusOf(id)).toBe(TERMINAL_CONTAINER_STATUS);
+    },
+    TIMEOUT,
+  );
+
   test(
     "markError cannot flip a completed delete back to failed",
     async () => {
