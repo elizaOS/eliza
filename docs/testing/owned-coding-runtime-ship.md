@@ -11,7 +11,7 @@ explicit optional ACP backends, but neither is required for the owned path.
 This is a local candidate, not a claim of flawless behavior or a published
 release. Per the latest owner instruction, none of this coding-agent work is
 pushed. The latest behavior checkpoint is
-`dc7c658ba6677533a08d701bb9b4eda43a432fdb`; the final documentation commit and
+`7ca4a8de1d4569e00d366b80add39bade19b160e`; the final documentation commit and
 annotated candidate tag are recorded in the checkpoint ledger.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
@@ -605,6 +605,48 @@ conversation: 17 repeated stale change notifications and seven failed/manual
 QA turns. The successful app launch and the final request, spawn receipt, and
 exact coding result remain, reducing the conversation from 29 messages to five.
 
+### Clean normal-person final-result relay and reset cleanup
+
+The ordinary request “Can you make me a little program that shows the prime
+numbers from 1 to 20? Try it too so I know it works.” exposed a presentation
+bug after the child had already succeeded: the parent appended “I'm doing one
+final check now.” while the durable task was `validating`, then never edited or
+removed that sentence after validation passed.
+
+An initial bounded-wait repair was rejected by live QA because waiting inside
+the parent response handler could block the API long enough for the health
+supervisor to restart it. The forward fix at
+`5b626199eb4337af520755b557b465baff7ff972` is non-blocking: it relays the
+grounded child result immediately, lets durable validation continue
+asynchronously, and emits a later repair note only when validation actually
+fails. Focused orchestrator coverage passed 178 tests, plus package typecheck,
+build, Biome, and `git diff --check`.
+
+The final exact-head browser run used behavior checkpoint
+`7ca4a8de1d4569e00d366b80add39bade19b160e`, task
+`bb5c178a-a9ba-438b-8c48-06fffb9d4109`, and session
+`964f4f09-4fb6-4b06-9fec-02e5e8808fb7`. The owned child wrote `primes.js`, ran
+it with Node in 37 ms with exit code 0, returned the eight correct primes,
+persisted its FILE/SHELL trace, passed the three script-specific acceptance
+criteria, reached `done`, and stopped with zero active sessions. The visible
+chat showed a short natural result with no spawn protocol, raw JSON, absolute
+path, provisional failure, or stale final-check footer. The retained evidence
+is:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/state/trajectories/bb5c178a-a9ba-438b-8c48-06fffb9d4109/completion-evidence.jsonl`
+
+Cleaning the old QA chat then exposed a separate `/reset` race. The command
+deleted its own in-flight memory before the response/embedding pipeline updated
+it, producing a visible `EmbeddingService.generate` / `updateMemory failed`
+message even though embedding inference itself was working. The fix at
+`7ca4a8de1d4569e00d366b80add39bade19b160e` preserves the current command row
+while deleting older history. Its command suite passed 19 tests plus package
+typecheck, build, Biome, and `git diff --check`; a live reset removed the old
+history, persisted only the reset turn and its confirmation, and produced no
+new embedding error. Two superseded prime tasks were archived and their two
+stale notifications were deleted; the final accepted task, its notification,
+and the two real app tasks remain.
+
 ## Reproduce
 
 Install and run the deterministic gates from the repository root:
@@ -655,6 +697,16 @@ for a normal handoff, and it should still be reviewed before publication.
   A live runtime PATCH generated, persisted, read back, and then cleaned a
   finite 384-dimension vector. Fresh boot logs contain no disabled/degraded
   embedding warning.
+- The local GGUF backend still prints its low-level
+  `decode: cannot decode batches with this context (calling encode() instead)`
+  fallback while serving embeddings. It successfully encodes and persists
+  vectors; the visible reset failure above was the deleted-memory race, not a
+  degraded provider result.
+- A `TrajectoryStorage.lateCapture` diagnostic can arrive after a child
+  trajectory is sealed. It is marked `diagnosticOnly`; in the final run the
+  correlated trajectory and completion-evidence bundle were already persisted
+  and complete. It remains log noise to tidy later, not missing acceptance
+  evidence or a user-visible failure.
 - Standalone embedding downloads now stream to `<model>.part` and rename only
   after the byte-count gate succeeds. Focused regression tests prove that an
   in-progress or short download is never published as an installed GGUF.
@@ -713,10 +765,8 @@ runtime correctness patch.
 ## Test it yourself now
 
 The isolated browser instance uses UI `2638` and API `32637`. It is currently
-left on the working local Nubs Ship Preview at
-`http://127.0.0.1:2638/api/apps/local/nubs-ship-preview/`. Use the browser Back
-button for chat, or open `http://127.0.0.1:2638/chat`. Suggested normal-person
-prompts are:
+left on the clean accepted prime-number result at
+`http://127.0.0.1:2638/chat`. Suggested normal-person prompts are:
 
 1. `Create a Python script named odds.py that prints the odd numbers from 1 through 15, then run it and tell me the exact output.`
 2. `Use a coding sub-agent to edit odds.py so it prints through 21, run it, and tell me the exact output.`
