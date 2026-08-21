@@ -18,6 +18,10 @@ import {
 	stripPairedTagBlocks,
 	stripUnclosedTagSuffix,
 } from "../../utils/reasoning-tags";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed";
 
 type ErrorWithStatus = {
 	code?: unknown;
@@ -185,7 +189,7 @@ const BILLING_KEYWORDS_RE =
 /** Cap a value before running a regex scan so a pathological provider payload
  *  cannot turn a substring match into a catastrophic-backtracking DoS. */
 function clampForScan(value: string): string {
-	return value.length > 10_000 ? value.slice(0, 10_000) : value;
+	return truncateWellFormed(toWellFormedUnicode(value), 10_000);
 }
 
 export function isInsufficientCreditsMessage(message: string): boolean {
