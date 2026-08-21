@@ -145,19 +145,27 @@ describe("assertSocialMediaBytesWithinBudget", () => {
   });
 });
 
-// TikTok chunk-uploads video, so the 10 MiB image ceiling would reject
-// ordinary posts — but the decode is still one allocation inside the Worker
-// isolate. It takes the larger video ceiling rather than no bound at all.
+// TikTok accepts larger URL-backed videos, but inline video keeps the encoded
+// input and decoded bytes resident together in the Worker isolate.
 describe("video budget", () => {
-  test("accepts a payload above the image ceiling but under the video ceiling", () => {
-    const bytes = SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1024;
+  test("uses the conservative inline ceiling and accepts it exactly", () => {
+    expect(SOCIAL_MEDIA_VIDEO_MAX_BYTES).toBe(32 * 1024 * 1024);
     expect(() =>
       assertSocialMediaBytesWithinBudget(
-        bytes,
+        SOCIAL_MEDIA_VIDEO_MAX_BYTES,
         { platform: "tiktok" },
         SOCIAL_MEDIA_VIDEO_MAX_BYTES,
       ),
     ).not.toThrow();
+  });
+
+  test("decodes an inline video at exactly the conservative ceiling", () => {
+    const bytes = decodeSocialMediaBase64(
+      base64Of(SOCIAL_MEDIA_VIDEO_MAX_BYTES),
+      { platform: "tiktok" },
+      SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+    );
+    expect(bytes.length).toBe(SOCIAL_MEDIA_VIDEO_MAX_BYTES);
   });
 
   test("still rejects a payload above the video ceiling", () => {

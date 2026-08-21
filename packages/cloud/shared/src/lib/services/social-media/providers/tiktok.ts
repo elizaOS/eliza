@@ -1,6 +1,9 @@
 /**
- * TikTok Provider - Content Posting API
+ * Implements TikTok Content Posting API operations, including bounded inline
+ * video transfer through the provider's sequential ranged-upload protocol.
  */
+
+import { ElizaError } from "@elizaos/core";
 
 import type {
   AccountAnalytics,
@@ -21,6 +24,99 @@ import { withRetry } from "../rate-limit";
 const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
 
 const TIKTOK_REQUEST_TIMEOUT_MS = 30_000;
+const TIKTOK_UPLOAD_CHUNK_BYTES = 10_000_000;
+
+export interface TikTokUploadChunk {
+  firstByte: number;
+  lastByte: number;
+  byteLength: number;
+}
+
+export interface TikTokUploadPlan {
+  chunkSize: number;
+  totalChunkCount: number;
+  chunks: TikTokUploadChunk[];
+}
+
+/**
+ * Plans the sequential ranges required by TikTok's decimal-MB upload
+ * protocol. The final range absorbs the remainder so it cannot become an
+ * undersized trailing chunk.
+ */
+export function createTikTokUploadPlan(videoSize: number): TikTokUploadPlan {
+  if (!Number.isSafeInteger(videoSize) || videoSize <= 0) {
+    throw new ElizaError("TikTok video data must contain a positive whole number of bytes", {
+      code: "TIKTOK_INVALID_VIDEO_SIZE",
+      context: { videoSize },
+      severity: "ephemeral",
+    });
+  }
+
+  const chunkSize = Math.min(videoSize, TIKTOK_UPLOAD_CHUNK_BYTES);
+  const totalChunkCount = Math.floor(videoSize / chunkSize);
+  const chunks = Array.from({ length: totalChunkCount }, (_, index) => {
+    const firstByte = index * chunkSize;
+    const lastByte = index === totalChunkCount - 1 ? videoSize - 1 : firstByte + chunkSize - 1;
+    return {
+      firstByte,
+      lastByte,
+      byteLength: lastByte - firstByte + 1,
+    };
+  });
+
+  return { chunkSize, totalChunkCount, chunks };
+}
+
+function uploadBodyView(videoData: Buffer, chunk: TikTokUploadChunk): Uint8Array<ArrayBuffer> {
+  const chunkView = videoData.subarray(chunk.firstByte, chunk.lastByte + 1);
+  if (videoData.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(videoData.buffer, chunkView.byteOffset, chunkView.byteLength);
+  }
+
+  // Fetch BodyInit requires ArrayBuffer-backed views in the Worker types. A
+  // SharedArrayBuffer input was accepted before ranged uploads, so retain that
+  // compatibility with one bounded copy per outgoing chunk, never a second
+  // full-video allocation.
+  return Uint8Array.from(chunkView);
+}
+
+async function uploadTikTokVideo(
+  uploadUrl: string,
+  videoData: Buffer,
+  plan: TikTokUploadPlan,
+): Promise<void> {
+  for (const [index, chunk] of plan.chunks.entries()) {
+    const finalChunk = index === plan.chunks.length - 1;
+    const expectedStatus = finalChunk ? 201 : 206;
+    const response = await tiktokFetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Length": String(chunk.byteLength),
+        "Content-Range": `bytes ${chunk.firstByte}-${chunk.lastByte}/${videoData.length}`,
+      },
+      body: uploadBodyView(videoData, chunk),
+    });
+
+    if (response.status !== expectedStatus) {
+      throw new ElizaError(
+        `TikTok upload chunk ${index + 1}/${plan.totalChunkCount} returned ${response.status}; expected ${expectedStatus}`,
+        {
+          code: "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
+          context: {
+            chunkIndex: index,
+            totalChunkCount: plan.totalChunkCount,
+            firstByte: chunk.firstByte,
+            lastByte: chunk.lastByte,
+            actualStatus: response.status,
+            expectedStatus,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
+  }
+}
 
 /**
  * Bound every TikTok REST hop so a hung or rate-limited API cannot pin the
@@ -256,7 +352,7 @@ export const tiktokProvider: SocialMediaProvider = {
               { platform: "tiktok" },
               SOCIAL_MEDIA_VIDEO_MAX_BYTES,
             );
-        const videoBody = new Uint8Array(videoData);
+        const uploadPlan = createTikTokUploadPlan(videoData.length);
 
         // Initialize chunked upload
         const initResponse = await tiktokApiRequest<TikTokPublishInfo>(
@@ -269,8 +365,8 @@ export const tiktokProvider: SocialMediaProvider = {
               source_info: {
                 source: "FILE_UPLOAD",
                 video_size: videoData.length,
-                chunk_size: 10 * 1024 * 1024, // 10MB chunks
-                total_chunk_count: Math.ceil(videoData.length / (10 * 1024 * 1024)),
+                chunk_size: uploadPlan.chunkSize,
+                total_chunk_count: uploadPlan.totalChunkCount,
               },
             }),
           },
@@ -280,19 +376,7 @@ export const tiktokProvider: SocialMediaProvider = {
           throw new Error("No upload URL provided");
         }
 
-        // Upload the video
-        const uploadResponse = await tiktokFetch(initResponse.upload_url, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "video/mp4",
-            "Content-Length": String(videoData.length),
-          },
-          body: videoBody,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed: ${uploadResponse.status}`);
-        }
+        await uploadTikTokVideo(initResponse.upload_url, videoData, uploadPlan);
 
         // Wait for publish to complete
         const status = await waitForPublish(credentials.accessToken, initResponse.publish_id);
