@@ -123,7 +123,7 @@ export type FinancesServiceOptions = {
   ownerEntityId?: string | null;
 };
 
-function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
+export function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
   let configKey: string | null = null;
   let configBase: string | null = null;
   try {
