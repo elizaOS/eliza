@@ -600,6 +600,10 @@ after proof and the worktree returned clean. Parent spawn, completion relay, and
 child trajectories are `tj-a40d3eec2cae55`, `tj-a4412f0a21f4bd`, and
 `tj-a42e8e66496df0`. The secret-free evidence package is
 `/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/final-live-repair-acceptance-20260820.json`.
+After evidence capture, 24 exact junk messages were removed from the affected
+conversation: 17 repeated stale change notifications and seven failed/manual
+QA turns. The successful app launch and the final request, spawn receipt, and
+exact coding result remain, reducing the conversation from 29 messages to five.
 
 ## Reproduce
 
