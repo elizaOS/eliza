@@ -89,6 +89,8 @@ export function getContainerExecutorDeps(): ContainerExecutorDeps {
 // ── enqueue ──────────────────────────────────────────────────────────────────
 
 export interface ContainerJobInsert {
+  /** Deterministic id for a generation-owned idempotent insert. */
+  id?: string;
   type: string;
   organizationId: string;
   userId?: string;
@@ -111,6 +113,7 @@ export class ContainerJobEnqueuer {
     containerId: string;
     organizationId: string;
     userId: string;
+    deploymentGeneration?: string;
   }): Promise<{ id: string }> {
     return this.writer.insertJob({
       type: JOB_TYPES.CONTAINER_PROVISION,

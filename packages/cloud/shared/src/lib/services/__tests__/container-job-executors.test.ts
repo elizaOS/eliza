@@ -76,6 +76,9 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
     async deleteById(hostContainerId: string, name: string) {
       calls.push({ op: "deleteById", arg: { hostContainerId, name } });
     },
+    async deletePrimaryById(hostContainerId: string) {
+      calls.push({ op: "deletePrimaryById", arg: hostContainerId });
+    },
     async restart(name: string) {
       calls.push({ op: "restart", arg: name });
     },
@@ -161,7 +164,7 @@ describe("executeContainerProvision", () => {
       {
         provider,
         store,
-        markAppDeployed: async (appId, url) => {
+        markAppDeployed: async (appId, _generation, url) => {
           deployed.push({ appId, url });
         },
       },
@@ -191,6 +194,144 @@ describe("executeContainerProvision", () => {
       ),
     ).rejects.toThrow("docker create failed");
     expect(deployedOnFail).toEqual([]);
+  });
+
+  test("a stale container generation performs no provider or state mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerProvision(
+      job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async (_appId, generation) => {
+          expect(generation).toBe(deploymentGeneration);
+          return false;
+        },
+      },
+    );
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a provision job whose generation disagrees with its row performs no mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration: "22222222-2222-4222-8222-222222222222",
+      }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async () => true,
+      },
+    );
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a generated container fails closed when the generation fence is not wired", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toMatchObject({ code: "APP_DEPLOYMENT_GENERATION_FENCE_MISSING" });
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a generation that becomes stale during provision is discarded before state mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const provisionStarted = Promise.withResolvers<void>();
+    const releaseProvision = Promise.withResolvers<void>();
+    let current = true;
+    const { calls, provider } = fakeProvider({
+      async provision(params: unknown) {
+        calls.push({ op: "provision", arg: params });
+        provisionStarted.resolve();
+        await releaseProvision.promise;
+        return {
+          containerId: "docker-stale-1",
+          hostPort: 49001,
+          network: "app-net-x",
+          nodeId: "node-1",
+          nodeHost: "node.example.test",
+        };
+      },
+    });
+
+    const execution = executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration,
+      }),
+      { provider, store, isAppDeploymentCurrent: async () => current },
+    );
+    await provisionStarted.promise;
+    current = false;
+    releaseProvision.resolve();
+    await execution;
+
+    expect(calls.map((call) => call.op)).toEqual(["provision", "deletePrimaryById"]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
+  });
+
+  test("a generation that becomes stale before markRunning discards the primary and slot", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+    let currentChecks = 0;
+
+    await executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration,
+      }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async () => {
+          currentChecks += 1;
+          return currentChecks < 3;
+        },
+      },
+    );
+
+    expect(currentChecks).toBe(3);
+    expect(calls.map((call) => call.op)).toEqual(["provision", "deletePrimaryById"]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
   });
 
   test("marks error and rethrows when provisioning fails", async () => {

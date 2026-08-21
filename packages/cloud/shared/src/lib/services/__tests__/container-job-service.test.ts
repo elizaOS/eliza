@@ -147,7 +147,12 @@ describe("ContainerJobEnqueuer", () => {
   test("enqueues each lifecycle verb with the right type + data", async () => {
     const { inserts, writer } = fakeWriter();
     const e = new ContainerJobEnqueuer(writer);
-    await e.enqueueProvision({ containerId: "c1", organizationId: "o1", userId: "u1" });
+    await e.enqueueProvision({
+      containerId: "c1",
+      organizationId: "o1",
+      userId: "u1",
+      deploymentGeneration: "11111111-1111-4111-8111-111111111111",
+    });
     await e.enqueueDelete({ containerId: "c1", organizationId: "o1" });
     await e.enqueueUpgrade({ containerId: "c1", organizationId: "o1", image: "ghcr.io/x:2" });
 
@@ -156,7 +161,11 @@ describe("ContainerJobEnqueuer", () => {
       JOB_TYPES.CONTAINER_DELETE,
       JOB_TYPES.CONTAINER_UPGRADE,
     ]);
-    expect(inserts[0].data).toMatchObject({ containerId: "c1", userId: "u1" });
+    expect(inserts[0].data).toMatchObject({
+      containerId: "c1",
+      userId: "u1",
+      deploymentGeneration: "11111111-1111-4111-8111-111111111111",
+    });
     expect(inserts[2].data).toMatchObject({ image: "ghcr.io/x:2" });
   });
 

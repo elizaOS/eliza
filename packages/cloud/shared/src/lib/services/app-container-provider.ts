@@ -233,6 +233,11 @@ export class AppContainerProvider {
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
   }
 
+  /** Remove only one immutable primary container, preserving the app ambassador. */
+  async deletePrimaryById(hostContainerId: string): Promise<void> {
+    await this.removeContainerAndConfirmAbsent(hostContainerId);
+  }
+
   /** Remove one persisted Docker object without trusting its reusable app name. */
   async deleteById(hostContainerId: string, containerName: string): Promise<void> {
     await this.removeContainerAndConfirmAbsent(hostContainerId);

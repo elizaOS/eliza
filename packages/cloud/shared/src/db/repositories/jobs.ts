@@ -729,6 +729,23 @@ export class JobsRepository {
     return await hydrateJob(job);
   }
 
+  /** Inserts a deterministic job id once and reconstructs the committed row on retry. */
+  async createOrGetById(jobData: NewJob & { id: string }): Promise<Job> {
+    const insertData = await prepareJobInsertData({ ...jobData, data_storage: "inline" });
+    const [created] = await dbWrite
+      .insert(jobs)
+      .values(insertData)
+      .onConflictDoNothing({ target: jobs.id })
+      .returning();
+    if (created) return await hydrateJob(created);
+
+    const existing = await this.findByIdForWrite(jobData.id);
+    if (!existing) {
+      throw new Error(`Idempotent job ${jobData.id} conflicted but could not be reconstructed`);
+    }
+    return existing;
+  }
+
   /**
    * Atomically claims pending jobs for processing using FOR UPDATE SKIP LOCKED.
    * This prevents race conditions where multiple workers could grab the same jobs.
