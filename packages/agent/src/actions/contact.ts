@@ -62,6 +62,8 @@ import {
   requireConfirmation,
   resolveWorldForMessage,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { resolveFallbackOwnerEntityId } from "../runtime/owner-entity.ts";
 import { hasOwnerAccess } from "../security/access.ts";
@@ -391,7 +393,9 @@ function formatPersonDetail(detail: RelationshipsPersonDetail): string {
         const ts = msg.createdAt
           ? new Date(msg.createdAt).toISOString().slice(0, 19)
           : "";
-        sections.push(`  ${ts} ${msg.speaker}: ${msg.text.slice(0, 200)}`);
+        sections.push(
+          `  ${ts} ${msg.speaker}: ${truncateWellFormed(toWellFormedUnicode(msg.text), 200)}`,
+        );
       }
       if (convo.messages.length > 5) {
         sections.push(`  ... ${convo.messages.length - 5} more messages`);
