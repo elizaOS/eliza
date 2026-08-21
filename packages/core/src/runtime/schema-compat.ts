@@ -389,8 +389,13 @@ function closedEmptyObjectSchema(): Record<string, unknown> {
 	return { type: "object", properties: {}, additionalProperties: false };
 }
 
-const SCHEMA_ARRAY_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
-const SCHEMA_SINGLE_KEYS = [
+export const JSON_SCHEMA_ARRAY_KEYWORDS = [
+	"anyOf",
+	"oneOf",
+	"allOf",
+	"prefixItems",
+] as const;
+export const JSON_SCHEMA_SINGLE_KEYWORDS = [
 	"contains",
 	"propertyNames",
 	"not",
@@ -403,13 +408,18 @@ const SCHEMA_SINGLE_KEYS = [
 	"contentSchema",
 	"additionalItems",
 ] as const;
-const SCHEMA_MAP_KEYS = [
+export const JSON_SCHEMA_MAP_KEYWORDS = [
 	"properties",
 	"patternProperties",
 	"$defs",
 	"definitions",
 	"dependentSchemas",
 ] as const;
+export const JSON_SCHEMA_MIXED_MAP_KEYWORDS = ["dependencies"] as const;
+
+const SCHEMA_ARRAY_KEYS = JSON_SCHEMA_ARRAY_KEYWORDS;
+const SCHEMA_SINGLE_KEYS = JSON_SCHEMA_SINGLE_KEYWORDS;
+const SCHEMA_MAP_KEYS = JSON_SCHEMA_MAP_KEYWORDS;
 
 function isSchemaRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !safeIsArray(value);

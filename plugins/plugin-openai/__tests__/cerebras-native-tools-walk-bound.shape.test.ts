@@ -8,6 +8,10 @@ import {
   ElizaError,
   type IAgentRuntime,
   isCerebrasSchemaUnbounded,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_NODES,
   MAX_WELL_FORMED_DEPTH,
@@ -23,6 +27,7 @@ import {
   handleTextSmall,
   __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall,
   __INTERNAL_restoreRecordArgToolCalls as restoreRecordArgToolCalls,
+  __INTERNAL_sanitizeSchemaKeywords as sanitizeSchemaKeywords,
 } from "../models/text";
 
 vi.mock("ai", () => ({
@@ -425,6 +430,15 @@ describe("opaque annotations remain inert until the typed wire boundary", () => 
 
 /** Open-map declarations retain their two-sided strict-safe transformation. */
 describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
+  it("keeps sanitizer recursion in parity with the bounded core keyword tables", () => {
+    expect(sanitizeSchemaKeywords).toEqual({
+      arrays: JSON_SCHEMA_ARRAY_KEYWORDS,
+      maps: JSON_SCHEMA_MAP_KEYWORDS,
+      mixedMaps: JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+      singles: JSON_SCHEMA_SINGLE_KEYWORDS,
+    });
+  });
+
   it("emits __eliza_record_entries and records the transform for a schema-valued map", () => {
     const result = normalizeNativeToolsForCall(
       [
@@ -520,6 +534,172 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
       result.recordArgTransformsByTool
     ) as Array<{ input: { customFields: Record<string, unknown> } }>;
     expect(restored[0].input.customFields).toEqual({ team: "core", tier: "gold" });
+  });
+
+  it("restores nested open maps inside additionalProperties values", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              customFields: {
+                type: "object",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    labels: {
+                      type: "object",
+                      additionalProperties: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+    expect(result.recordArgTransformsByTool.probe).toEqual([
+      {
+        path: "$.customFields.*.labels",
+        entriesKey: "__eliza_record_entries",
+        valueMode: "schema",
+      },
+      {
+        path: "$.customFields",
+        entriesKey: "__eliza_record_entries",
+        valueMode: "schema",
+      },
+    ]);
+
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          toolName: "probe",
+          input: {
+            customFields: {
+              __eliza_record_entries: [
+                {
+                  key: "first",
+                  value: {
+                    labels: {
+                      __eliza_record_entries: [{ key: "team", value: "core" }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+      result.recordArgTransformsByTool
+    ) as Array<{
+      input: { customFields: Record<string, { labels: Record<string, unknown> }> };
+    }>;
+    expect(restored[0].input.customFields.first.labels).toEqual({ team: "core" });
+  });
+
+  it("preserves and reverses an open map nested under dependentSchemas", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: { mode: { type: "string" } },
+            dependentSchemas: {
+              mode: {
+                properties: {
+                  metadata: {
+                    type: "object",
+                    additionalProperties: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+
+    expect(result.recordArgTransformsByTool.probe).toContainEqual({
+      path: "$.metadata",
+      entriesKey: "__eliza_record_entries",
+      valueMode: "schema",
+    });
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          toolName: "probe",
+          input: {
+            mode: "advanced",
+            metadata: {
+              __eliza_record_entries: [{ key: "team", value: "core" }],
+            },
+          },
+        },
+      ],
+      result.recordArgTransformsByTool
+    ) as Array<{ input: { metadata: Record<string, unknown> } }>;
+    expect(restored[0].input.metadata).toEqual({ team: "core" });
+  });
+
+  it("preserves and reverses an open map in the matching prefixItems slot", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              rows: {
+                type: "array",
+                prefixItems: [
+                  { type: "object", additionalProperties: { type: "string" } },
+                  { type: "object", additionalProperties: { type: "number" } },
+                ],
+              },
+            },
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+
+    expect(result.recordArgTransformsByTool.probe).toEqual([
+      {
+        path: "$.rows.items[0]",
+        entriesKey: "__eliza_record_entries",
+        valueMode: "schema",
+      },
+      {
+        path: "$.rows.items[1]",
+        entriesKey: "__eliza_record_entries",
+        valueMode: "schema",
+      },
+    ]);
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          toolName: "probe",
+          input: {
+            rows: [
+              { __eliza_record_entries: [{ key: "team", value: "core" }] },
+              { __eliza_record_entries: [{ key: "rank", value: 7 }] },
+            ],
+          },
+        },
+      ],
+      result.recordArgTransformsByTool
+    ) as Array<{ input: { rows: Array<Record<string, unknown>> } }>;
+    expect(restored[0].input.rows).toEqual([{ team: "core" }, { rank: 7 }]);
   });
 
   it("carries the open map all the way to the provider request in handleTextSmall", async () => {

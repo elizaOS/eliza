@@ -19,6 +19,10 @@ import {
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
   ModelType,
@@ -1133,9 +1137,26 @@ function restoreRecordArgAtPath(
     return value.map((item) => restoreRecordArgAtPath(item, rest, transform));
   }
   if (/^items\[\d+\]$/.test(token)) {
-    return Array.isArray(value)
-      ? value.map((item) => restoreRecordArgAtPath(item, rest, transform))
-      : value;
+    if (!Array.isArray(value)) return value;
+    const index = Number.parseInt(token.slice(6, -1), 10);
+    if (index >= value.length) return value;
+    const restored = [...value];
+    restored[index] = restoreRecordArgAtPath(value[index], rest, transform);
+    return restored;
+  }
+  if (token === "*") {
+    const record = asOptionalRecord(value);
+    if (!record) return value;
+    const restored: Record<string, unknown> = Object.create(null);
+    for (const [key, nested] of Object.entries(record)) {
+      Object.defineProperty(restored, key, {
+        configurable: true,
+        enumerable: true,
+        value: restoreRecordArgAtPath(nested, rest, transform),
+        writable: true,
+      });
+    }
+    return restored;
   }
 
   const record = asOptionalRecord(value);
@@ -1353,7 +1374,11 @@ function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
   return `${STRICT_SAFE_RECORD_ENTRIES_KEY}_${index}`;
 }
 
-function strictSafeRecordValueSchema(additionalProperties: unknown): {
+function strictSafeRecordValueSchema(
+  additionalProperties: unknown,
+  transforms?: RecordArgTransform[],
+  path = "$"
+): {
   schema: JSONSchema7;
   mode: RecordArgValueMode;
 } {
@@ -1369,7 +1394,7 @@ function strictSafeRecordValueSchema(additionalProperties: unknown): {
   }
   return {
     mode: "schema",
-    schema: sanitizeJsonSchema(additionalProperties),
+    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms),
   };
 }
 
@@ -1486,7 +1511,9 @@ function sanitizeJsonSchema(
           : {};
       const entriesKey = chooseRecordEntriesKey(properties);
       const { schema: valueSchema, mode } = strictSafeRecordValueSchema(
-        sanitized.additionalProperties
+        sanitized.additionalProperties,
+        transforms,
+        path
       );
       properties[entriesKey] = strictSafeRecordEntriesSchema(valueSchema);
       sanitized.properties = properties;
@@ -1523,37 +1550,68 @@ function sanitizeJsonSchema(
       : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms);
   }
 
-  for (const unionKey of ["anyOf", "oneOf", "allOf"] as const) {
-    const value = sanitized[unionKey];
+  for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
+    const value = sanitized[arrayKey];
     if (Array.isArray(value)) {
-      sanitized[unionKey] = value.map((item, i) =>
-        sanitizeJsonSchema(item, false, `${path}.${unionKey}[${i}]`, transforms)
+      sanitized[arrayKey] = value.map((item, index) =>
+        sanitizeJsonSchema(
+          item,
+          false,
+          arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
+          transforms
+        )
       );
     }
   }
 
-  // Every other schema-bearing keyword must be walked too, or a stripped
-  // keyword nested inside one survives to the wire. `$defs`/`definitions`
-  // matter most in practice: zod's `toJSONSchema` hoists reused/nullable
-  // sub-schemas into `$defs`, so a `.max()`/`.regex()` on a shared field would
-  // otherwise slip through the strip. `contains`/`propertyNames`/`not`/`if`/
-  // `then`/`else` take a single sub-schema; `patternProperties`/`$defs`/
-  // `definitions` are maps of them.
-  for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
+  // Walk the same standard schema-bearing keyword table as the bounded core
+  // clone. `additionalProperties` is handled above because it also creates the
+  // strict-safe record transform. Conditional schemas keep the current
+  // instance path; tuple/item schemas use the array wildcard/index path that
+  // reverse argument restoration understands.
+  for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
+    if (singleKey === "additionalProperties") continue;
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      sanitized[singleKey] = sanitizeJsonSchema(value, false, `${path}.${singleKey}`, transforms);
+      const childPath =
+        singleKey === "contains" ||
+        singleKey === "unevaluatedItems" ||
+        singleKey === "additionalItems"
+          ? `${path}.items`
+          : singleKey === "unevaluatedProperties"
+            ? `${path}.*`
+            : path;
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms);
     }
   }
-  for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
+  for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
+    if (mapKey === "properties") continue;
     const value = sanitized[mapKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
-        walked[key] = sanitizeJsonSchema(sub, false, `${path}.${mapKey}.${key}`, transforms);
+        const childPath =
+          mapKey === "dependentSchemas"
+            ? path
+            : mapKey === "patternProperties"
+              ? `${path}.*`
+              : `${path}.${mapKey}.${key}`;
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms);
       }
       sanitized[mapKey] = walked;
     }
+  }
+  for (const mixedMapKey of JSON_SCHEMA_MIXED_MAP_KEYWORDS) {
+    const value = sanitized[mixedMapKey];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const walked: Record<string, unknown> = {};
+    for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
+      walked[key] =
+        !sub || typeof sub !== "object" || Array.isArray(sub)
+          ? sub
+          : sanitizeJsonSchema(sub, false, path, transforms);
+    }
+    sanitized[mixedMapKey] = walked;
   }
 
   return sanitized as JSONSchema7;
@@ -2797,6 +2855,13 @@ export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
 export const __INTERNAL_normalizeNativeToolsForCall = normalizeNativeToolsForCall;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_restoreRecordArgToolCalls = restoreRecordArgToolCalls;
+/** @internal — exported for schema-keyword parity tests only. */
+export const __INTERNAL_sanitizeSchemaKeywords = {
+  arrays: JSON_SCHEMA_ARRAY_KEYWORDS,
+  maps: JSON_SCHEMA_MAP_KEYWORDS,
+  mixedMaps: JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  singles: JSON_SCHEMA_SINGLE_KEYWORDS,
+};
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */
