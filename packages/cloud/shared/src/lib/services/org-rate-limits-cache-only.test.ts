@@ -36,6 +36,12 @@ mock.module("../../db/repositories/org-rate-limit-overrides", () => ({
   },
 }));
 
+mock.module("../../db/repositories/subscription-entitlements", () => ({
+  subscriptionEntitlementsRepository: {
+    find: async () => undefined,
+  },
+}));
+
 const { cache } = await import("../cache/client");
 const { CacheKeys, CacheTTL } = await import("../cache/keys");
 const { __clearOrgTierHydrationsForTests, getOrgRpmForEndpointCacheOnly, getOrgTierCacheOnly } =
@@ -63,6 +69,9 @@ describe("organization rate-limit tier cache-only resolution", () => {
         embeddingsRpm: 200,
         standardRpm: 60,
         strictRpm: 10,
+        catalogVersion: "v1",
+        entitlementVersion: "legacy:credit-total:7",
+        manualOverrideVersion: null,
       },
       CacheTTL.org.rateLimitTier,
     );
@@ -121,7 +130,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
     ).toEqual({ kind: "warming", cacheRead: "miss" });
     await background[0];
 
-    expect(spendReads).toBe(1);
+    expect(spendReads).toBe(0);
     expect(overrideReads).toBe(1);
     expect(await getOrgTierCacheOnly(org)).toEqual({
       kind: "warming",
@@ -157,7 +166,16 @@ describe("organization rate-limit tier cache-only resolution", () => {
     const org = orgId();
     await cache.set(
       CacheKeys.org.rateLimitTier(org),
-      { tierName: "paid", completionsRpm: -1 },
+      {
+        tierName: "paid",
+        completionsRpm: -1,
+        embeddingsRpm: 200,
+        standardRpm: 60,
+        strictRpm: 10,
+        catalogVersion: "v1",
+        entitlementVersion: "legacy:credit-total:7",
+        manualOverrideVersion: null,
+      },
       CacheTTL.org.rateLimitTier,
     );
 
@@ -166,5 +184,27 @@ describe("organization rate-limit tier cache-only resolution", () => {
       cacheRead: "invalid",
     });
     expect(spendReads).toBe(0);
+  });
+
+  test("rejects a pre-version-fence cache payload instead of serving stale RPM", async () => {
+    const org = orgId();
+    await cache.set(
+      CacheKeys.org.rateLimitTier(org),
+      {
+        tierName: "growth",
+        completionsRpm: 999,
+        embeddingsRpm: 999,
+        standardRpm: 999,
+        strictRpm: 999,
+      },
+      CacheTTL.org.rateLimitTier,
+    );
+
+    expect(await getOrgTierCacheOnly(org)).toEqual({
+      kind: "warming",
+      cacheRead: "invalid",
+    });
+    expect(spendReads).toBe(0);
+    expect(overrideReads).toBe(0);
   });
 });

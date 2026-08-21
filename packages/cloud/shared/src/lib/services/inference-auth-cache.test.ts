@@ -34,6 +34,9 @@ const ADMISSION = {
     embeddingsRpm: 100,
     standardRpm: 30,
     strictRpm: 5,
+    catalogVersion: "v1",
+    entitlementVersion: "free:v1",
+    manualOverrideVersion: null,
   },
 };
 
@@ -133,6 +136,32 @@ describe("api-key IAC validators", () => {
         keyHash: KEY_HASH,
         decision: "rejected",
         status: 401,
+      },
+      60,
+    );
+
+    await expect(readInferenceAuthContextWithOutcome(KEY_HASH)).resolves.toMatchObject({
+      kind: "invalid",
+    });
+    await expect(cache.get(key)).resolves.toBeNull();
+  });
+
+  test("an admission snapshot with an old catalog fence is invalid and evicted", async () => {
+    const key = CacheKeys.inference.authContext(KEY_HASH);
+    await cache.set(
+      key,
+      {
+        v: INFERENCE_AUTH_CONTEXT_VERSION,
+        cachedAt: Date.now(),
+        userId: "user-1",
+        orgId: "org-1",
+        apiKeyId: "key-1",
+        keyHash: KEY_HASH,
+        appScopeId: null,
+        admission: {
+          ...ADMISSION,
+          rateLimits: { ...ADMISSION.rateLimits, catalogVersion: "v0" },
+        },
       },
       60,
     );

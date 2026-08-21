@@ -6,12 +6,15 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const snapshot = {
-  balance: { balanceUsd: 12, balanceAt: 1, balanceRevision: 7 },
+  balance: { balanceUsd: 12, balanceAt: 1, balanceRevision: "7" },
   rateLimits: {
     completionsRpm: 120,
     embeddingsRpm: 80,
     standardRpm: 60,
     strictRpm: 20,
+    catalogVersion: "v1",
+    entitlementVersion: "projection:7",
+    manualOverrideVersion: null,
   },
 };
 let cached: typeof snapshot | null = null;
@@ -25,7 +28,7 @@ mock.module("../cache/client", () => ({
 
 const getOrganizationBalanceSnapshot = mock(async () => ({
   balanceUsd: 12,
-  revision: 7,
+  revision: "7",
 }));
 mock.module("./credits", () => ({
   creditsService: { getOrganizationBalanceSnapshot },
@@ -80,6 +83,26 @@ test("a miss registers authoritative hydration and fails closed", async () => {
   ).rejects.toBeInstanceOf(InferenceAdmissionSnapshotCacheWarmingError);
 
   expect(cacheGet).toHaveBeenCalledTimes(1);
+  expect(background).toHaveLength(1);
+  await background[0];
+  expect(getOrganizationBalanceSnapshot).toHaveBeenCalledTimes(1);
+  expect(recalculateOrgTier).toHaveBeenCalledTimes(1);
+  expect(cacheSet).toHaveBeenCalledTimes(1);
+});
+
+test("a stale catalog-version snapshot fails closed and hydrates replacement", async () => {
+  cached = {
+    ...snapshot,
+    rateLimits: { ...snapshot.rateLimits, catalogVersion: "v0" },
+  };
+  const background: Promise<unknown>[] = [];
+
+  await expect(
+    getInferenceAdmissionSnapshotCacheOnly("org-1", {
+      waitUntil: (promise) => background.push(promise),
+    }),
+  ).rejects.toBeInstanceOf(InferenceAdmissionSnapshotCacheWarmingError);
+
   expect(background).toHaveLength(1);
   await background[0];
   expect(getOrganizationBalanceSnapshot).toHaveBeenCalledTimes(1);

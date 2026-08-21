@@ -43,6 +43,9 @@ export interface InferenceAdmissionSnapshot {
     embeddingsRpm: number;
     standardRpm: number;
     strictRpm: number;
+    catalogVersion: string;
+    entitlementVersion: string;
+    manualOverrideVersion: string | null;
   };
 }
 
@@ -100,7 +103,7 @@ export type InferenceSessionAuthDecision =
 
 export type ResolvedInferenceAuthContext = InferenceAuthContext | InferenceSessionAuthContext;
 
-function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
+export function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<InferenceAdmissionSnapshot>;
   const balance = candidate.balance;
@@ -121,7 +124,13 @@ function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissi
     Number.isSafeInteger(rateLimits?.standardRpm) &&
     (rateLimits?.standardRpm ?? 0) > 0 &&
     Number.isSafeInteger(rateLimits?.strictRpm) &&
-    (rateLimits?.strictRpm ?? 0) > 0
+    (rateLimits?.strictRpm ?? 0) > 0 &&
+    rateLimits?.catalogVersion === "v1" &&
+    typeof rateLimits.entitlementVersion === "string" &&
+    rateLimits.entitlementVersion.length > 0 &&
+    (rateLimits.manualOverrideVersion === null ||
+      (typeof rateLimits.manualOverrideVersion === "string" &&
+        rateLimits.manualOverrideVersion.length > 0))
   );
 }
 

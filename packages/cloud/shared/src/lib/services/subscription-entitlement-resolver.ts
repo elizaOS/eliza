@@ -71,6 +71,7 @@ export interface ReadySubscriptionEntitlement {
   baseSource: "free" | "legacy" | "subscription";
   planKey: "free" | SubscriptionPlanKey;
   lifecycleState: SubscriptionEntitlementLifecycleState;
+  legacySelectorKey: string | null;
   limits: SubscriptionEntitlementLimits;
   catalogVersion: string;
   entitlementVersion: string;
@@ -177,6 +178,7 @@ function freeBase(
     baseSource: "free",
     planKey: "free",
     lifecycleState,
+    legacySelectorKey: null,
     limits: { ...FREE_LIMITS },
     catalogVersion: FREE_CATALOG_VERSION,
     entitlementVersion,
@@ -264,6 +266,7 @@ function resolveProjectionBase(
     baseSource: "subscription",
     planKey: projection.planKey,
     lifecycleState: projection.state,
+    legacySelectorKey: null,
     limits: { ...approved.limits },
     catalogVersion: approved.catalogVersion,
     entitlementVersion,
@@ -300,6 +303,7 @@ function resolveLegacyBase(
     baseSource: "legacy",
     planKey: "free",
     lifecycleState: "free",
+    legacySelectorKey: legacy.selectorKey,
     limits: { ...legacy.limits },
     catalogVersion: FREE_CATALOG_VERSION,
     entitlementVersion,

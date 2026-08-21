@@ -6,7 +6,7 @@ export const CacheKeys = {
     data: (orgId: string) => `org:${orgId}:data:v1`,
     credits: (orgId: string) => `org:${orgId}:credits:v1`,
     dashboard: (orgId: string) => `org:${orgId}:dashboard:v1`,
-    rateLimitTier: (orgId: string) => `orgtier:${orgId}:v1`,
+    rateLimitTier: (orgId: string) => `orgtier:${orgId}:v2`,
     pattern: (orgId: string) => `org:${orgId}:*`,
   },
   analytics: {
@@ -71,7 +71,7 @@ export const CacheKeys = {
      */
     sessionAuthContext: (stewardSubjectHash: string) => `iac:session-auth:${stewardSubjectHash}:v2`,
     /** Shared-runtime balance + rate policy projection used as one cache read. */
-    orgAdmission: (orgId: string) => `iac:org-admission:${orgId}:v1`,
+    orgAdmission: (orgId: string) => `iac:org-admission:${orgId}:v2`,
     /** Org credit-balance snapshot used only as the optimistic fast-path gate hint. */
     orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
     /** Durable pending-charge for Tier-2 optimistic billing; swept by cron backstop. */

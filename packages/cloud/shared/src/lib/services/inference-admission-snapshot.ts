@@ -9,7 +9,10 @@ import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
-import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
+import {
+  type InferenceAdmissionSnapshot,
+  isInferenceAdmissionSnapshot,
+} from "./inference-auth-cache";
 import { type EndpointType, type OrgRateLimitConfig, recalculateOrgTier } from "./org-rate-limits";
 
 const admissionMemoryCache = new InMemoryLRUCache<InferenceAdmissionSnapshot>(1_000, 5_000);
@@ -59,6 +62,9 @@ export async function loadInferenceAdmissionSnapshot(
       embeddingsRpm: tier.embeddingsRpm,
       standardRpm: tier.standardRpm,
       strictRpm: tier.strictRpm,
+      catalogVersion: tier.catalogVersion,
+      entitlementVersion: tier.entitlementVersion,
+      manualOverrideVersion: tier.manualOverrideVersion,
     },
   };
 }
@@ -86,16 +92,16 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
   const local = admissionMemoryCache.get(key);
   if (local) return local;
 
-  let cached: InferenceAdmissionSnapshot | null;
+  let cached: unknown;
   try {
-    cached = await cache.get<InferenceAdmissionSnapshot>(key);
+    cached = await cache.get<unknown>(key);
   } catch (error) {
     // error-policy:J4 inference cannot safely proceed without admission policy.
     throw new InferenceAdmissionSnapshotCacheWarmingError(
       error instanceof Error ? error.message : undefined,
     );
   }
-  if (cached) {
+  if (isInferenceAdmissionSnapshot(cached)) {
     admissionMemoryCache.set(key, cached);
     return cached;
   }

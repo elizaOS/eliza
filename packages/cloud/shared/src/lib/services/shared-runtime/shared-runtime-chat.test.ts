@@ -131,6 +131,9 @@ const admissionSnapshot = {
     embeddingsRpm: 120,
     standardRpm: 120,
     strictRpm: 30,
+    catalogVersion: "v1",
+    entitlementVersion: "projection:7",
+    manualOverrideVersion: null,
   },
 };
 class TestInferenceAdmissionSnapshotCacheWarmingError extends Error {}

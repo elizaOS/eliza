@@ -1,8 +1,8 @@
 /**
  * Per-organization rate limit tier service.
  *
- * Resolves the legacy rate-limit selector from its current credit-ledger input,
- * merges manual overrides, and caches the result for inference admission.
+ * Resolves the central subscription entitlement, preserves audited manual
+ * overrides as highest authority, and caches a version-fenced inference tier.
  * Which economic credit provenances should qualify remains policy work in
  * #23019; selector keys such as `paid` are not subscription labels.
  */
@@ -11,10 +11,21 @@ import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { orgRateLimitOverridesRepository } from "../../db/repositories/org-rate-limit-overrides";
+import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import {
+  FREE_SUBSCRIPTION_ENTITLEMENT_LIMITS,
+  type LegacyEntitlementSelection,
+  type ManualEntitlementOverride,
+  type SubscriptionEntitlementProjection,
+  type SubscriptionEntitlementResolution,
+  SubscriptionEntitlementService,
+  type SubscriptionEntitlementSource,
+  type SubscriptionEntitlementSources,
+} from "./subscription-entitlement-resolver";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +44,9 @@ export interface OrgTierData {
   embeddingsRpm: number;
   standardRpm: number;
   strictRpm: number;
+  catalogVersion: string;
+  entitlementVersion: string;
+  manualOverrideVersion: string | null;
 }
 
 export interface OrgTierOverrideValues {
@@ -113,7 +127,13 @@ function isOrgTierData(value: unknown): value is OrgTierData {
     Number.isSafeInteger(candidate.standardRpm) &&
     (candidate.standardRpm ?? 0) > 0 &&
     Number.isSafeInteger(candidate.strictRpm) &&
-    (candidate.strictRpm ?? 0) > 0
+    (candidate.strictRpm ?? 0) > 0 &&
+    candidate.catalogVersion === "v1" &&
+    typeof candidate.entitlementVersion === "string" &&
+    candidate.entitlementVersion.length > 0 &&
+    (candidate.manualOverrideVersion === null ||
+      (typeof candidate.manualOverrideVersion === "string" &&
+        candidate.manualOverrideVersion.length > 0))
   );
 }
 
@@ -187,6 +207,9 @@ export function resolveOrgTierFromSourceValues(
     embeddingsRpm: matchedTier.embeddingsRpm,
     standardRpm: matchedTier.standardRpm,
     strictRpm: matchedTier.strictRpm,
+    catalogVersion: "v1",
+    entitlementVersion: `legacy:credit-total:${parsedTierSourceCreditTotal}`,
+    manualOverrideVersion: null,
   };
 
   if (override) {
@@ -201,6 +224,11 @@ export function resolveOrgTierFromSourceValues(
       embeddingsRpm: override.embeddings_rpm ?? tierData.embeddingsRpm,
       standardRpm: override.standard_rpm ?? tierData.standardRpm,
       strictRpm: override.strict_rpm ?? tierData.strictRpm,
+      catalogVersion: tierData.catalogVersion,
+      entitlementVersion: hasRpmOverride
+        ? `${tierData.entitlementVersion}|override:legacy-inline`
+        : tierData.entitlementVersion,
+      manualOverrideVersion: hasRpmOverride ? "legacy-inline" : null,
     };
   }
 
@@ -219,29 +247,156 @@ export function resolveOrgTierFromSourceValues(
 // Core functions
 // ---------------------------------------------------------------------------
 
-async function calculateOrgTierFromSources(
-  orgId: string,
-): Promise<{ tierData: OrgTierData; tierSourceCreditTotal: number }> {
-  const [creditResult, override] = await Promise.all([
-    dbRead
-      .select({
-        tierSourceCreditTotal: sql<string>`COALESCE(SUM(${creditTransactions.amount}), '0')`,
-      })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.organization_id, orgId),
-          eq(creditTransactions.type, "credit"),
-          sql`COALESCE(${creditTransactions.metadata}->>'type', '') NOT IN (${sql.join(
-            ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((t) => sql`${t}`),
-            sql`, `,
-          )})`,
-        ),
-      ),
-    orgRateLimitOverridesRepository.findByOrganizationId(orgId),
-  ]);
+function sourceUnavailable<T>(error: unknown): SubscriptionEntitlementSource<T> {
+  return {
+    kind: "unavailable",
+    reason: error instanceof Error ? error.message : "entitlement source failed",
+    retryable: true,
+  };
+}
 
-  return resolveOrgTierFromSourceValues(orgId, creditResult[0]?.tierSourceCreditTotal, override);
+async function readLegacyTierSourceTotal(orgId: string): Promise<unknown> {
+  const creditResult = await dbRead
+    .select({
+      tierSourceCreditTotal: sql<string>`COALESCE(SUM(${creditTransactions.amount}), '0')`,
+    })
+    .from(creditTransactions)
+    .where(
+      and(
+        eq(creditTransactions.organization_id, orgId),
+        eq(creditTransactions.type, "credit"),
+        sql`COALESCE(${creditTransactions.metadata}->>'type', '') NOT IN (${sql.join(
+          ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES.map((t) => sql`${t}`),
+          sql`, `,
+        )})`,
+      ),
+    );
+  return creditResult[0]?.tierSourceCreditTotal;
+}
+
+function mapProjection(
+  row: Awaited<ReturnType<typeof subscriptionEntitlementsRepository.find>>,
+): SubscriptionEntitlementProjection | null {
+  if (!row) return null;
+  return {
+    planKey: row.plan_key,
+    state: row.state,
+    catalogVersion: row.catalog_version,
+    projectionRevision: row.projection_revision,
+    effectiveFrom: row.effective_from,
+    effectiveUntil: row.effective_until,
+    limits: {
+      completionsRpm: row.completions_rpm,
+      embeddingsRpm: row.embeddings_rpm,
+      standardRpm: row.standard_rpm,
+      strictRpm: row.strict_rpm,
+      cloudCharacters: row.cloud_characters_ceiling,
+      agentSandboxes: row.agent_sandboxes_ceiling,
+      containers: row.containers_ceiling,
+      storageGiB: row.storage_gib_ceiling,
+      apps: row.apps_ceiling,
+    },
+  };
+}
+
+const repositoryEntitlementSources: SubscriptionEntitlementSources = {
+  async readProjection(orgId) {
+    try {
+      return {
+        kind: "available",
+        value: mapProjection(await subscriptionEntitlementsRepository.find(orgId)),
+      };
+    } catch (error) {
+      // error-policy:J4 inference entitlement resolution exposes source failure
+      // explicitly and never substitutes a permissive projection.
+      return sourceUnavailable<SubscriptionEntitlementProjection>(error);
+    }
+  },
+  async readManualOverride(orgId) {
+    try {
+      const row = await orgRateLimitOverridesRepository.findByOrganizationId(orgId);
+      if (!row) return { kind: "available", value: null };
+      const fields = {
+        ...(row.completions_rpm !== null && { completionsRpm: row.completions_rpm }),
+        ...(row.embeddings_rpm !== null && { embeddingsRpm: row.embeddings_rpm }),
+        ...(row.standard_rpm !== null && { standardRpm: row.standard_rpm }),
+        ...(row.strict_rpm !== null && { strictRpm: row.strict_rpm }),
+      };
+      if (Object.keys(fields).length === 0) return { kind: "available", value: null };
+      return {
+        kind: "available",
+        value: {
+          auditId: row.id,
+          version: row.updated_at.toISOString(),
+          fields,
+        } satisfies ManualEntitlementOverride,
+      };
+    } catch (error) {
+      // error-policy:J4 inference entitlement resolution exposes override-store
+      // failure explicitly because an unknown override cannot be ignored safely.
+      return sourceUnavailable<ManualEntitlementOverride>(error);
+    }
+  },
+  async readLegacySelection(orgId) {
+    try {
+      const total = await readLegacyTierSourceTotal(orgId);
+      const { tierData, tierSourceCreditTotal } = resolveOrgTierFromSourceValues(orgId, total);
+      return {
+        kind: "available",
+        value: {
+          selectorKey: tierData.tierName,
+          selectorVersion: `credit-total:${tierSourceCreditTotal}`,
+          limits: {
+            ...FREE_SUBSCRIPTION_ENTITLEMENT_LIMITS,
+            completionsRpm: tierData.completionsRpm,
+            embeddingsRpm: tierData.embeddingsRpm,
+            standardRpm: tierData.standardRpm,
+            strictRpm: tierData.strictRpm,
+          },
+        } satisfies LegacyEntitlementSelection,
+      };
+    } catch (error) {
+      // error-policy:J4 malformed or unavailable legacy authority becomes a
+      // typed unavailable result and cannot hydrate a permissive cache entry.
+      return sourceUnavailable<LegacyEntitlementSelection>(error);
+    }
+  },
+};
+
+export const subscriptionEntitlementService = new SubscriptionEntitlementService(
+  repositoryEntitlementSources,
+);
+
+function tierFromEntitlement(
+  organizationId: string,
+  resolution: SubscriptionEntitlementResolution,
+): OrgTierData {
+  if (resolution.kind === "unavailable") {
+    throw new ElizaError("Organization subscription entitlement is unavailable", {
+      code: "ORG_ENTITLEMENT_UNAVAILABLE",
+      context: { organizationId, reason: resolution.reason, detail: resolution.detail },
+      severity: "ephemeral",
+    });
+  }
+  return {
+    tierName:
+      resolution.source === "manual_override"
+        ? "custom"
+        : resolution.baseSource === "subscription"
+          ? resolution.planKey
+          : (resolution.legacySelectorKey ?? resolution.baseSource),
+    completionsRpm: resolution.limits.completionsRpm,
+    embeddingsRpm: resolution.limits.embeddingsRpm,
+    standardRpm: resolution.limits.standardRpm,
+    strictRpm: resolution.limits.strictRpm,
+    catalogVersion: resolution.catalogVersion,
+    entitlementVersion: resolution.entitlementVersion,
+    manualOverrideVersion: resolution.versions.manualOverride,
+  };
+}
+
+async function calculateOrgTierFromSources(orgId: string): Promise<OrgTierData> {
+  return tierFromEntitlement(orgId, await subscriptionEntitlementService.resolve(orgId));
 }
 
 /**
@@ -250,7 +405,7 @@ async function calculateOrgTierFromSources(
  * runtime admission state.
  */
 export async function readOrgTierFromSources(orgId: string): Promise<OrgTierData> {
-  return (await calculateOrgTierFromSources(orgId)).tierData;
+  return await calculateOrgTierFromSources(orgId);
 }
 
 /**
@@ -261,7 +416,7 @@ export async function readOrgTierFromSources(orgId: string): Promise<OrgTierData
  * definition of paid spend; #23019 owns the qualification policy.
  */
 export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
-  const { tierData, tierSourceCreditTotal } = await calculateOrgTierFromSources(orgId);
+  const tierData = await calculateOrgTierFromSources(orgId);
 
   // Cache is non-fatal: a later request can re-read the database.
   try {
@@ -278,7 +433,8 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
   logger.debug("[OrgRateLimits] Tier computed", {
     orgId,
     tier: tierData.tierName,
-    tierSourceCreditTotal,
+    catalogVersion: tierData.catalogVersion,
+    entitlementVersion: tierData.entitlementVersion,
   });
 
   return tierData;
@@ -288,8 +444,8 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
  * Returns the cached tier for an org, computing it lazily on cache miss.
  */
 export async function getOrgTier(orgId: string): Promise<OrgTierData> {
-  const cached = await cache.get<OrgTierData>(CacheKeys.org.rateLimitTier(orgId));
-  if (cached) return cached;
+  const cached = await cache.get<unknown>(CacheKeys.org.rateLimitTier(orgId));
+  if (isOrgTierData(cached)) return cached;
   return recalculateOrgTier(orgId);
 }
 

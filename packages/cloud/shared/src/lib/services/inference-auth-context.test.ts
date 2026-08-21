@@ -35,6 +35,9 @@ const ADMISSION = {
     embeddingsRpm: 100,
     standardRpm: 30,
     strictRpm: 5,
+    catalogVersion: "v1",
+    entitlementVersion: "free:v1",
+    manualOverrideVersion: null,
   },
 };
 
