@@ -204,12 +204,16 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
 class RemoteRunnerHttpClient implements E2BSandboxClient {
   readonly workspacePrepared = true;
   readonly files = {
-    list: (path: string) => this.list(path),
+    list: (
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ) => this.list(path, opts),
     read: (
       path: string,
       opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
     ) => this.read(path, opts),
-    write: (path: string, data: string) => this.write(path, data),
+    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
+      this.write(path, data, opts),
   };
   readonly commands = {
     run: (cmd: string, opts?: SandboxCommandRunOptions) =>
@@ -225,14 +229,17 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
 
   async kill(): Promise<void> {}
 
-  private async list(path: string): Promise<SandboxEntryInfo[]> {
+  private async list(
+    path: string,
+    opts?: { depth?: number; requestTimeoutMs?: number },
+  ): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
     const result = await fetchBounded(
       url,
       { headers: this.headers },
       {
-        timeoutMs: this.requestTimeoutMs,
+        timeoutMs: opts?.requestTimeoutMs ?? this.requestTimeoutMs,
         maxResponseBytes: MAX_REMOTE_JSON_BYTES,
       },
     );
@@ -333,6 +340,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   private async write(
     path: string,
     data: string,
+    opts?: { requestTimeoutMs?: number },
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
@@ -347,7 +355,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
         body: data,
       },
       {
-        timeoutMs: this.requestTimeoutMs,
+        timeoutMs: opts?.requestTimeoutMs ?? this.requestTimeoutMs,
         maxResponseBytes: MAX_REMOTE_ERROR_BYTES,
       },
     );
