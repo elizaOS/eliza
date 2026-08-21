@@ -18,6 +18,7 @@ import {
 	DatabaseAdapter,
 	validateQueryEntitiesPagination,
 } from "../database";
+import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -94,11 +95,13 @@ function asUuid(id: string): UUID {
 }
 
 function randomUuid(): UUID {
-	const gen =
-		typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-			? crypto.randomUUID()
-			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	return asUuid(gen);
+	if (typeof globalThis.crypto?.randomUUID !== "function") {
+		throw new ElizaError(
+			"In-memory record creation requires a cryptographically secure UUID source",
+			{ code: "IN_MEMORY_ADAPTER_CSPRNG_UNAVAILABLE" },
+		);
+	}
+	return asUuid(globalThis.crypto.randomUUID());
 }
 
 function roomTableKey(tableName: string, roomId: UUID): string {
@@ -1192,12 +1195,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}>,
 	): Promise<void> {
 		for (const param of params) {
-			const id =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const id = randomUuid();
 			this.logs.push({
-				id: asUuid(id),
+				id,
 				createdAt: new Date(),
 				entityId: param.entityId,
 				roomId: param.roomId,
@@ -1245,10 +1245,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const { memory, tableName, unique } of memories) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const gen = randomUuid();
 			const id = memory.id ? String(memory.id) : gen;
 			const stored: Memory = {
 				...memory,
@@ -1815,10 +1812,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const task of tasks) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const gen = randomUuid();
 			const id = task.id ? String(task.id) : gen;
 			const taskId = asUuid(id);
 			const stored: Task = { ...task, id: taskId };
@@ -1981,10 +1975,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const request of requests) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const gen = randomUuid();
 			const id = request.id ? String(request.id) : gen;
 			const stored: PairingRequest = { ...request, id: asUuid(id) };
 			this.pairingRequests.set(id, stored);
@@ -2073,10 +2064,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const entry of entries) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const gen = randomUuid();
 			const id = entry.id ? String(entry.id) : gen;
 			const stored: PairingAllowlistEntry = { ...entry, id: asUuid(id) };
 			this.pairingAllowlist.set(id, stored);
