@@ -288,6 +288,26 @@ const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
   },
 ];
 
+async function readChromiumSafeStoragePassword(
+  service: string,
+): Promise<string | null> {
+  if (process.platform !== "darwin") return null;
+  try {
+    const proc = Bun.spawn(
+      ["security", "find-generic-password", "-s", service, "-w"],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return null;
+    const output = await new Response(proc.stdout).text();
+    const trimmed = output.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    // error-policy:J4 browser Safe Storage password unavailable
+    return null;
+  }
+}
+
 function deriveChromiumCookieKey(password: string): Buffer {
   // Chrome on macOS: PBKDF2 with salt='saltysalt', 1003 iterations, 16-byte key
   return crypto.pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
@@ -395,7 +415,9 @@ export async function readChromiumCookies(
     if (!fs.existsSync(dbPath)) continue;
 
     // Get the decryption key from Keychain
-    const password = await readKeychainCredential(browser.keychainService);
+    const password = await readChromiumSafeStoragePassword(
+      browser.keychainService,
+    );
     if (!password) continue;
 
     const key = deriveChromiumCookieKey(password);
