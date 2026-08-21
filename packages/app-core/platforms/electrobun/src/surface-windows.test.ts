@@ -364,6 +364,63 @@ describe("SurfaceWindowManager app windows", () => {
     );
   });
 
+  it("gives every slug-less app window its own managed record instead of sharing one reservation", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({ resolveRendererUrl: () => rendererUrl });
+
+    const first = fixture.manager.openAppWindow({
+      title: "Scratch One",
+      path: "/apps/one",
+    });
+    const second = fixture.manager.openAppWindow({
+      title: "Scratch Two",
+      path: "/apps/two",
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    const [firstSnapshot, secondSnapshot] = await Promise.all([first, second]);
+
+    expect(firstSnapshot.id).not.toBe(secondSnapshot.id);
+    expect(firstSnapshot.title).toBe("Scratch One");
+    expect(secondSnapshot.title).toBe("Scratch Two");
+    expect(fixture.created).toHaveLength(2);
+    expect(fixture.manager.listWindows()).toHaveLength(2);
+  });
+
+  it("notifies the registry when a concurrent open promotes always-on-top after creation", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({ resolveRendererUrl: () => rendererUrl });
+
+    const first = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+      alwaysOnTop: true,
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    await Promise.all([first, second]);
+
+    expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    // Creation notifies once; the post-creation promotion must notify again so
+    // the tray/menu window list does not keep a stale alwaysOnTop flag.
+    expect(fixture.registryChanged.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(fixture.manager.listWindows()).toEqual([
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+    ]);
+  });
+
   it("clears a failed app-slug reservation so a later open can retry", async () => {
     const resolveRendererUrl = vi
       .fn<() => Promise<string>>()

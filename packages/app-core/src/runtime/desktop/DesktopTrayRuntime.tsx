@@ -20,6 +20,7 @@ import {
   dispatchOpenNotificationCenter,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
+import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
@@ -286,9 +287,12 @@ export function DesktopTrayRuntime() {
         // error-policy:J4 Tray commands terminate at this UI boundary, so an
         // RPC failure must remain visibly distinct from successful dispatch.
         setActionNotice(
-          "Unable to complete the desktop action. Please retry.",
+          t("desktop.tray.actionFailed", {
+            defaultValue:
+              "Unable to complete the desktop action. Please retry.",
+          }),
           "error",
-          7_000,
+          TOAST_TTL_MS.notificationInterruptive,
         );
       });
     };

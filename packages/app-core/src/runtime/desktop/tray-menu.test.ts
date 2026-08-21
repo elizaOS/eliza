@@ -13,9 +13,6 @@ import { DESKTOP_TRAY_CLICK_AUDIT, DESKTOP_TRAY_MENU_ITEMS } from "./tray-menu";
 const trayRuntimePath = fileURLToPath(
   new URL("./DesktopTrayRuntime.tsx", import.meta.url),
 );
-const workspaceBridgePath = fileURLToPath(
-  new URL("../../../../ui/src/utils/desktop-workspace.ts", import.meta.url),
-);
 
 describe("desktop tray menu — Notifications entry (#10706)", () => {
   it("exposes desktop views under a native Windows submenu and keeps Quit", () => {
@@ -81,21 +78,16 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
     );
   });
 
-  it("opens Desktop Workspace as the complete managed shell", () => {
+  // The runtime routing itself is exercised behaviorally in
+  // DesktopTrayRuntime.workspace.test.tsx; this only pins the audit row that
+  // the click-audit report renders.
+  it("audits the Desktop Workspace click as the complete managed shell", () => {
     const audit = DESKTOP_TRAY_CLICK_AUDIT.find(
       (entry) => entry.id === "tray-open-desktop-workspace",
     );
-    expect(audit?.expectedAction).toContain("complete Eliza shell");
-
-    const source = readFileSync(trayRuntimePath, "utf8");
-    expect(source).toContain('case "tray-open-desktop-workspace"');
-    expect(source).toContain("await openDesktopWorkspaceWindow()");
-    expect(source).not.toContain('openDesktopSettingsWindow("desktop")');
-
-    const bridgeSource = readFileSync(workspaceBridgePath, "utf8");
-    expect(bridgeSource).toContain('"desktopOpenAppWindow"');
-    expect(bridgeSource).toContain('"desktop:openAppWindow"');
-    expect(bridgeSource).toContain('slug: "workspace"');
-    expect(bridgeSource).toContain('path: "/"');
+    expect(audit?.expectedAction).toBe(
+      "Open the complete Eliza shell in a managed app window.",
+    );
+    expect(audit?.coverage).toBe("automated");
   });
 });

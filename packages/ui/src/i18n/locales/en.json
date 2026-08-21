@@ -8272,6 +8272,8 @@
   "desktop.tray.quit": "Quit",
   "desktop.tray.testNotification.title": "Desktop",
   "desktop.tray.testNotification.body": "Renderer tray actions are wired and responding.",
+  "desktop.tray.actionFailed": "Unable to complete the desktop action. Please retry.",
+  "desktop.workspace.launchFailed": "Unable to open the desktop workspace. Please retry.",
   "mediagalleryview.Download": "Download",
   "mediagalleryview.DownloadFailed": "Could not download {{name}}: {{message}}",
   "mediagalleryview.Share": "Share",

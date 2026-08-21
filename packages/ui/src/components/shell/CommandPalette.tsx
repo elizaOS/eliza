@@ -37,6 +37,7 @@ import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
 import type { Tab } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   openDesktopSettingsWindow,
@@ -165,9 +166,12 @@ export function CommandPalette() {
           // error-policy:J4 a native window launch failure remains visible in
           // the shell instead of becoming an unhandled command rejection.
           setActionNotice(
-            "Unable to open the desktop workspace. Please retry.",
+            t("desktop.workspace.launchFailed", {
+              defaultValue:
+                "Unable to open the desktop workspace. Please retry.",
+            }),
             "error",
-            7_000,
+            TOAST_TTL_MS.notificationInterruptive,
           );
         });
       },
@@ -196,6 +200,7 @@ export function CommandPalette() {
     setActionNotice,
     openBugReport,
     desktopRuntime,
+    t,
   ]);
 
   // Filter commands by query
