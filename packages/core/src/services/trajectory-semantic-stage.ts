@@ -24,6 +24,11 @@ const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
 // rejected and the database mirror never held a planner decision (live
 // 2026-08-21). The byte budget below is the real bound against oversize rows.
 const TRAJECTORY_SEMANTIC_STAGE_MAX_NODES = 50_000;
+// Payload arrays are bounded by the node and byte budgets, not by the stage
+// cap: a toolSearch stage records the tokenized query (message + recent
+// conversation), which runs past 250 entries on a busy room and was rejected
+// whole (live 2026-08-21).
+const TRAJECTORY_SEMANTIC_STAGE_MAX_ARRAY_ITEMS = 5_000;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS = 64 * 1024;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
 const TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES = 1024 * 1024;
@@ -157,7 +162,7 @@ function isJsonValue(
 	if (state.seen.has(value)) return false;
 	state.seen.add(value);
 	if (Array.isArray(value)) {
-		if (value.length > TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) return false;
+		if (value.length > TRAJECTORY_SEMANTIC_STAGE_MAX_ARRAY_ITEMS) return false;
 		const valid = value.every((entry) => isJsonValue(entry, state, depth + 1));
 		state.seen.delete(value);
 		return valid;

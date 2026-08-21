@@ -148,6 +148,16 @@ describe("trajectory semantic stages", () => {
 		}));
 		const planner = { ...semantic, stageId: "planner-1", payload: { model: { tools } } };
 		expect(parseTrajectorySemanticStage(planner).stageId).toBe("planner-1");
+		// A toolSearch query tokenizes the recent conversation too — hundreds
+		// of entries on a busy room; the stage-count cap must not apply here.
+		const tokens = Array.from({ length: 600 }, (_, index) => `tok${index}`);
+		expect(
+			parseTrajectorySemanticStage({
+				...semantic,
+				stageId: "search-1",
+				payload: { toolSearch: { query: { tokens } } },
+			}).stageId,
+		).toBe("search-1");
 		expect(
 			parseTrajectorySemanticStages([
 				planner,
