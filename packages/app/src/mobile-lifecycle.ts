@@ -26,7 +26,14 @@ export interface MobileLifecycleContext {
   isIOS: boolean;
   isAndroid: boolean;
   logPrefix: string;
-  handleDeepLink: (url: string) => void;
+  /**
+   * Most deep-link routes finish synchronously; the top-level-surface
+   * navigation-intent route returns a promise that resolves once the intent
+   * actually landed in the shell (not merely enqueued). `initializeDeepLinks`
+   * awaits it before acknowledging the Android buffer — see
+   * `acknowledgeBufferedUrl` below.
+   */
+  handleDeepLink: (url: string) => undefined | Promise<boolean>;
   androidDeepLinkBuffer?: AndroidDeepLinkBuffer;
 }
 
@@ -63,6 +70,49 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let networkStatusListenerRegistered = false;
   const handledDeepLinks = new Set<string>();
   const pendingDeepLinks = new Map<string, Array<() => void>>();
+  // Acknowledgements queued behind a URL's IN-FLIGHT `ctx.handleDeepLink`
+  // outcome. Android's cold-launch replay polls the still-unacked buffer
+  // every second for up to 15s, redelivering the same URL while the shell is
+  // still applying the first attempt; those redeliveries must queue here
+  // rather than fire immediately, or the "ack only after applied" guarantee
+  // below is defeated by the second poll instead of the first.
+  const pendingDeepLinkAcknowledgements = new Map<string, Array<() => void>>();
+
+  // Runs `ctx.handleDeepLink` and only fires the queued acknowledgements once
+  // the intent is confirmed APPLIED. Synchronous routes (everything except
+  // the top-level-surface navigation intent) return `void`/non-promise and ack
+  // immediately, matching prior behavior. The navigation-intent route returns
+  // a promise from `dispatchNavigateViewRequest`
+  // (packages/ui/src/events/index.ts) that only resolves `true` once the
+  // canonical App listener actually claims + applies it — never on enqueue
+  // alone — so a renderer reload/crash between dispatch and the App mount
+  // effect can no longer tell Android the intent was delivered when it wasn't
+  // (#23350). Shared by `captureDeepLinkOnce` and the ready-flush in
+  // `initializeAppLifecycle`, the two sites that first hand a URL to
+  // `ctx.handleDeepLink`.
+  const applyDeepLink = (
+    trimmed: string,
+    acknowledgements: Array<() => void>,
+  ): void => {
+    if (acknowledgements.length > 0) {
+      const queued = pendingDeepLinkAcknowledgements.get(trimmed) ?? [];
+      queued.push(...acknowledgements);
+      pendingDeepLinkAcknowledgements.set(trimmed, queued);
+    }
+    const result = ctx.handleDeepLink(trimmed);
+    if (result && typeof (result as Promise<boolean>).then === "function") {
+      void (result as Promise<boolean>).then((applied) => {
+        if (!applied) return;
+        const queued = pendingDeepLinkAcknowledgements.get(trimmed);
+        pendingDeepLinkAcknowledgements.delete(trimmed);
+        for (const acknowledge of queued ?? []) acknowledge();
+      });
+      return;
+    }
+    const queued = pendingDeepLinkAcknowledgements.get(trimmed);
+    pendingDeepLinkAcknowledgements.delete(trimmed);
+    for (const acknowledge of queued ?? []) acknowledge();
+  };
 
   function logNativePluginUnavailable(
     pluginName: string,
@@ -147,7 +197,19 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       if (!trimmed) return false;
       if (handledDeepLinks.has(trimmed)) {
         if (deepLinkHandlingReady) {
-          acknowledge?.();
+          if (!acknowledge) return false;
+          const inFlight = pendingDeepLinkAcknowledgements.get(trimmed);
+          if (inFlight) {
+            // First attempt hasn't resolved "applied" yet — queue behind it
+            // instead of confirming delivery this poll never earned.
+            inFlight.push(acknowledge);
+          } else {
+            // No in-flight record: the first attempt already applied (and
+            // cleared) or this URL was never gated on a promise. Either way
+            // this redelivery is a genuine duplicate of an already-delivered
+            // intent — ack it.
+            acknowledge();
+          }
         } else if (acknowledge) {
           pendingDeepLinks.get(trimmed)?.push(acknowledge);
         }
@@ -155,8 +217,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       }
       handledDeepLinks.add(trimmed);
       if (deepLinkHandlingReady) {
-        ctx.handleDeepLink(trimmed);
-        acknowledge?.();
+        applyDeepLink(trimmed, acknowledge ? [acknowledge] : []);
       } else {
         pendingDeepLinks.set(trimmed, acknowledge ? [acknowledge] : []);
       }
@@ -225,8 +286,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     if (!deepLinkHandlingReady) {
       deepLinkHandlingReady = true;
       for (const [url, acknowledgements] of pendingDeepLinks) {
-        ctx.handleDeepLink(url);
-        for (const acknowledge of acknowledgements) acknowledge();
+        applyDeepLink(url, acknowledgements);
       }
       pendingDeepLinks.clear();
     }

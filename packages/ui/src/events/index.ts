@@ -10,6 +10,7 @@
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   CONNECT_EVENT,
   createNavigateViewEvent,
@@ -332,10 +333,29 @@ export function listenForConnectRequests(
   return () => document.removeEventListener(CONNECT_EVENT, handle);
 }
 
-type NavigateViewRequestListener = (event: NavigateViewEvent) => void;
+// A listener reports whether it actually APPLIED the request by returning
+// `true`/`void`; returning `false` (or throwing) means "not applied" so the
+// intent stays eligible for a later-mounting or retried listener instead of
+// being permanently consumed by whichever subscriber happened to mount first.
+type NavigateViewRequestListener = (
+  event: NavigateViewEvent,
+) => boolean | undefined;
+
+interface NavigateViewRequestClaim {
+  claimed: boolean;
+  /** Durably consumes the request: unqueues it and resolves its dispatch promise `true`. */
+  commit: () => void;
+}
 
 const MAX_PENDING_NAVIGATE_VIEW_REQUESTS = 16;
-const navigateViewRequestClaims = new WeakMap<object, () => boolean>();
+const navigateViewRequestClaims = new WeakMap<
+  object,
+  NavigateViewRequestClaim
+>();
+const navigateViewRequestResolvers = new WeakMap<
+  object,
+  (applied: boolean) => void
+>();
 const pendingNavigateViewRequests: NavigateViewDetail[] = [];
 
 function emitNavigateViewRequest(detail: NavigateViewDetail): void {
@@ -343,33 +363,73 @@ function emitNavigateViewRequest(detail: NavigateViewDetail): void {
   window.dispatchEvent(createNavigateViewEvent(detail));
 }
 
+function dropOldestPendingNavigateViewRequest(): void {
+  const dropped = pendingNavigateViewRequests.shift();
+  if (!dropped) return;
+  // error-policy:J4 bounded FIFO — an OS can deliver intents faster than a
+  // listener claims them (or none ever mounts); silently dropping one here
+  // used to be indistinguishable from a healthy delivery. Surface it, and
+  // resolve the dispatcher's promise `false` so a caller gating a native ack
+  // on "applied" (mobile-lifecycle's Android intent buffer) never
+  // acknowledges a request this store just discarded.
+  logger.warn(
+    { viewId: dropped.viewId, viewPath: dropped.viewPath },
+    `[navigate-view-request] dropped oldest pending request past the ${MAX_PENDING_NAVIGATE_VIEW_REQUESTS}-item bound`,
+  );
+  navigateViewRequestResolvers.get(dropped)?.(false);
+  navigateViewRequestResolvers.delete(dropped);
+  navigateViewRequestClaims.delete(dropped);
+}
+
 /**
- * Dispatches a native navigation intent without losing it during cold boot.
- * Requests remain pending until one shell listener claims them; the bounded
- * FIFO preserves ordering when an OS delivers several intents before mount.
+ * Dispatches a native navigation intent without losing it during cold boot,
+ * and resolves only once some listener has actually APPLIED it — never
+ * merely enqueued it. `mobile-lifecycle.ts` (via `main.tsx`'s `handleDeepLink`)
+ * awaits this before acknowledging the Android deep-link buffer: acking on
+ * enqueue would tell Android the intent was delivered even though the queue
+ * below is in-memory only, so a renderer reload/crash between dispatch and
+ * the App mount effect can still lose it. The bounded FIFO preserves ordering
+ * when an OS delivers several intents before mount.
  */
-export function dispatchNavigateViewRequest(detail: NavigateViewDetail): void {
-  if (typeof window === "undefined") return;
-  let claimed = false;
+export function dispatchNavigateViewRequest(
+  detail: NavigateViewDetail,
+): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
   const request: NavigateViewDetail = { ...detail };
-  navigateViewRequestClaims.set(request, () => {
-    if (claimed) return false;
-    claimed = true;
-    const pendingIndex = pendingNavigateViewRequests.indexOf(request);
-    if (pendingIndex >= 0) pendingNavigateViewRequests.splice(pendingIndex, 1);
-    return true;
+  const applied = new Promise<boolean>((resolve) => {
+    navigateViewRequestResolvers.set(request, resolve);
   });
+  const claim: NavigateViewRequestClaim = {
+    claimed: false,
+    commit: () => {
+      claim.claimed = true;
+      const pendingIndex = pendingNavigateViewRequests.indexOf(request);
+      if (pendingIndex >= 0)
+        pendingNavigateViewRequests.splice(pendingIndex, 1);
+      navigateViewRequestResolvers.get(request)?.(true);
+      navigateViewRequestResolvers.delete(request);
+    },
+  };
+  navigateViewRequestClaims.set(request, claim);
   pendingNavigateViewRequests.push(request);
   if (pendingNavigateViewRequests.length > MAX_PENDING_NAVIGATE_VIEW_REQUESTS) {
-    pendingNavigateViewRequests.shift();
+    dropOldestPendingNavigateViewRequest();
   }
   emitNavigateViewRequest(request);
+  return applied;
 }
 
 /**
  * Subscribes to navigation events and synchronously replays unclaimed native
- * intents. Raw legacy CustomEvents still pass through without entering the
- * replay queue.
+ * intents. A request is claimed — durably removed from the replay queue, with
+ * its `dispatchNavigateViewRequest` promise resolved `true` — only after the
+ * listener call returns without throwing and without returning `false`.
+ * `window.dispatchEvent` invokes every attached listener regardless of an
+ * earlier one throwing, so a listener that throws, no-ops, or unmounts before
+ * applying the intent leaves it unclaimed for the next attached listener (or
+ * the next mount's replay) rather than permanently stealing it. Raw legacy
+ * CustomEvents outside this helper (no registered claim) still pass through
+ * without entering the replay queue.
  */
 export function listenForNavigateViewRequests(
   listener: NavigateViewRequestListener,
@@ -379,8 +439,20 @@ export function listenForNavigateViewRequests(
     const detail = (event as CustomEvent<unknown>).detail;
     if (!detail || typeof detail !== "object" || Array.isArray(detail)) return;
     const claim = navigateViewRequestClaims.get(detail);
-    if (claim && !claim()) return;
-    listener(event as NavigateViewEvent);
+    if (claim?.claimed) return;
+    let applied: boolean;
+    try {
+      applied = listener(event as NavigateViewEvent) !== false;
+    } catch (error) {
+      // error-policy:J4 one subscriber's failure must not steal the intent
+      // from the next attached listener or a later mount's replay.
+      logger.warn(
+        { error },
+        "[navigate-view-request] listener threw while applying a navigation intent; leaving it unclaimed for retry",
+      );
+      return;
+    }
+    if (applied) claim?.commit();
   };
 
   window.addEventListener(NAVIGATE_VIEW_EVENT, handle);
