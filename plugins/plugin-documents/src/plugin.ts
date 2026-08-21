@@ -271,7 +271,7 @@ export const documentsPlugin: Plugin = {
   actions: [],
   views: [
     {
-      id: "documents",
+      id: "document-library",
       label: "Documents",
       description: "Browse and search the document store.",
       icon: "FileText",

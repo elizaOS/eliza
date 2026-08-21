@@ -199,7 +199,7 @@ const managerVisibleViewTileCases = [
   { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
-  { viewId: "documents", path: "/documents" },
+  { viewId: "document-library", path: "/documents" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },

@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-documents",
-  viewId: "documents",
+  viewId: "document-library",
   entry: "./src/components/documents/documents-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "DocumentsView",

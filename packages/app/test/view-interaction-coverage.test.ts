@@ -38,6 +38,13 @@ const DECOMPOSED_PA_SPEC =
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
+  "document-library": [
+    {
+      spec: "plugins/plugin-documents/src/components/documents/DocumentsView.test.tsx",
+      proves: "Exercises document library loading, search, and error recovery.",
+      signals: ["runs a search", "Retry that refetches"],
+    },
+  ],
   calendar: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -261,21 +268,9 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
 };
 
-// Every decomposed personal-assistant view has a dedicated interaction owner
-// (apps-personal-assistant-decomposed-interactions.spec.ts) EXCEPT "documents":
-// its `/documents` view path collides with the built-in "documents" tab
-// (App.tsx findView matches `/${tab}`), so registering it in the ui-smoke stub
-// hijacks the `/character/documents` route. It stays tracked debt until that
-// view path is disambiguated.
-const INTERACTION_DEBT: Readonly<Record<string, string>> = {
-  "documents:gui":
-    "The decomposed documents view path `/documents` collides with the built-in " +
-    "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
-    "registered in the ui-smoke stub without hijacking that route. Needs a " +
-    "disambiguated view path before a keyless interaction spec can drive it.",
-};
+const INTERACTION_DEBT: Readonly<Record<string, string>> = {};
 
-const MAX_INTERACTION_DEBT = 1;
+const MAX_INTERACTION_DEBT = 0;
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;

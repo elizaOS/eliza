@@ -22,7 +22,7 @@ describe("documentsPlugin manifest", () => {
   it("registers document routes and the documents view", () => {
     expect(documentsPlugin.routes?.length).toBeGreaterThan(0);
     expect(documentsPlugin.views?.map((view) => view.id)).toEqual([
-      "documents",
+      "document-library",
     ]);
   });
 });
