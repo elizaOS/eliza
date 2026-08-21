@@ -17,6 +17,10 @@ import {
 /**
  * Parse the USD-denominated form value into the integer points expected by the
  * redemption API without passing through binary floating-point arithmetic.
+ *
+ * Unit note (#22960): balances displayed here are canonical USD; points are
+ * purely the API-boundary representation (100 points = $1.00). The ratio is
+ * applied exactly once, here at the boundary.
  */
 export function parseRedemptionUsdToPoints(value: string): number | null {
   const match = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(value);

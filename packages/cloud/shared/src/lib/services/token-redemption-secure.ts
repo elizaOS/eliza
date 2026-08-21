@@ -43,7 +43,6 @@ import {
   REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS,
   REDEMPTION_MAX_POINTS,
   REDEMPTION_MIN_POINTS,
-  REDEMPTION_POINTS_PER_USD,
 } from "../../types/redemption-contract";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
@@ -62,6 +61,7 @@ import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { usdFromPoints } from "./earnings-units";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { normalizeRedemptionClientIp } from "./redemption-client-ip";
@@ -487,7 +487,7 @@ export class SecureTokenRedemptionService {
     // and no elizaOS-token availability check — the payout amount is simply the
     // USD value and the payout processor guards the USDC hot-wallet balance
     // before broadcast. The elizaOS path keeps the full TWAP pricing (Fix #8,#14).
-    const usdValue = new Decimal(pointsAmount).div(REDEMPTION_POINTS_PER_USD);
+    const usdValue = usdFromPoints(pointsAmount);
     let twapPrice: Decimal;
     let elizaAmount: Decimal;
     let quoteExpiresAt: Date;
@@ -935,7 +935,7 @@ export class SecureTokenRedemptionService {
       where: and(eq(redemptionLimits.user_id, userId), gte(redemptionLimits.date, todayUTC)),
     });
 
-    const usdValue = pointsAmount / REDEMPTION_POINTS_PER_USD;
+    const usdValue = usdFromPoints(pointsAmount).toNumber();
 
     if (limits) {
       // Fail-closed: the daily limit gates are money-out anti-sybil controls. A
@@ -988,7 +988,7 @@ export class SecureTokenRedemptionService {
     const now = new Date();
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const usdValue = pointsAmount / REDEMPTION_POINTS_PER_USD;
+    const usdValue = usdFromPoints(pointsAmount).toNumber();
 
     // Check hourly redemption count from this IP
     const hourlyCount = await dbRead.execute(sql`
@@ -1503,7 +1503,7 @@ export class SecureTokenRedemptionService {
         return this.corruptFraudAggregate("app_earnings_transactions(last hour)", userId);
       }
 
-      if (recentCount > 0 && recentTotal > (pointsAmount / REDEMPTION_POINTS_PER_USD) * 0.5) {
+      if (recentCount > 0 && recentTotal > usdFromPoints(pointsAmount).toNumber() * 0.5) {
         return {
           flagged: true,
           warning: `Flagged: ${recentCount} earnings transactions within last hour`,
@@ -1539,7 +1539,7 @@ export class SecureTokenRedemptionService {
       }
 
       if (earned > 0) {
-        const redemptionRatio = (redeemed + pointsAmount / REDEMPTION_POINTS_PER_USD) / earned;
+        const redemptionRatio = (redeemed + usdFromPoints(pointsAmount).toNumber()) / earned;
         if (redemptionRatio >= FRAUD_THRESHOLDS.HIGH_REDEMPTION_RATIO) {
           return {
             flagged: true,
