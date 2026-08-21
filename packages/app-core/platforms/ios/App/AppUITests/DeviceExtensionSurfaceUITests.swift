@@ -87,7 +87,24 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
                     deepLinkOnTap: privilegedTarget
                 )["deepLinkOnTap"]
             )
+            XCTAssertNil(
+                ElizaNotificationTapPayload.safeOpenDestination(
+                    ["deepLinkOnTap": privilegedTarget]["deepLinkOnTap"]
+                ),
+                "Remote notification payloads must cross the same privileged-route guard as locally scheduled notifications."
+            )
         }
+        XCTAssertEqual(
+            ElizaNotificationTapPayload.safeOpenDestination(
+                ["deepLinkOnTap": "elizaos://notifications"]["deepLinkOnTap"]
+            )?.absoluteString,
+            "elizaos://notifications"
+        )
+        XCTAssertNil(
+            ElizaNotificationTapPayload.safeOpenDestination(
+                ["deepLinkOnTap": 42]["deepLinkOnTap"]
+            )
+        )
     }
 
     func testControlCenterGalleryListsElizaControls() throws {

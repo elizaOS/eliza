@@ -45,8 +45,8 @@ enum ElizaNotificationTapPayload {
         if let deepLink, isSafeAppDestination(deepLink) {
             userInfo["cap_extra"] = ["deepLink": deepLink]
         }
-        if let deepLinkOnTap, isSafeOpenDestination(deepLinkOnTap) {
-            userInfo["deepLinkOnTap"] = deepLinkOnTap
+        if let destination = safeOpenDestination(deepLinkOnTap) {
+            userInfo["deepLinkOnTap"] = destination.absoluteString
         }
         return userInfo
     }
@@ -61,18 +61,19 @@ enum ElizaNotificationTapPayload {
         return scheme == "http" || scheme == "https"
     }
 
-    private static func isSafeOpenDestination(_ value: String) -> Bool {
-        guard let url = URL(string: value),
+    static func safeOpenDestination(_ value: Any?) -> URL? {
+        guard let value = value as? String,
+              let url = URL(string: value),
               let scheme = url.scheme?.lowercased() else {
-            return false
+            return nil
         }
         if scheme == "http" || scheme == "https" {
-            return true
+            return url
         }
         guard scheme == "elizaos",
               let destination = url.host?.removingPercentEncoding?.lowercased(),
               !destination.isEmpty else {
-            return false
+            return nil
         }
         let privilegedNativeNamespaces: Set<String> = [
             "aec-loop",
@@ -82,6 +83,6 @@ enum ElizaNotificationTapPayload {
             "keyboard-dictation",
             "share",
         ]
-        return !privilegedNativeNamespaces.contains(destination)
+        return privilegedNativeNamespaces.contains(destination) ? nil : url
     }
 }

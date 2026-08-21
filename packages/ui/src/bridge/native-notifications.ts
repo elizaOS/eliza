@@ -224,10 +224,9 @@ export function initLocalNotificationTapRouting(
     )
     .then(() => undefined)
     .catch((error: unknown) => {
-      // error-policy:J6 clears the memoized attempt so a later caller can retry
-      // registration instead of awaiting a permanently rejected promise. The
-      // error is rethrown unchanged, so nothing is swallowed here — the boot
-      // retry loop in notifications-boot.tsx is what observes it.
+      // error-policy:J5 the boot retry loop in notifications-boot.tsx observes
+      // this same rejection; this handler only clears the failed memoized
+      // attempt so that loop can perform a fresh registration.
       if (localNotificationTapListenerPromise === attempt) {
         localNotificationTapListenerPromise = null;
       }

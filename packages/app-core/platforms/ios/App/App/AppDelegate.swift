@@ -186,8 +186,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if let urlString = userInfo["deepLinkOnTap"] as? String,
-           let url = URL(string: urlString) {
+        if let url = ElizaNotificationTapPayload.safeOpenDestination(
+            userInfo["deepLinkOnTap"]
+        ) {
             // The target can contain producer-supplied notification context.
             // Record the routing event without persisting the URL or query.
             NSLog("[ElizaCompanion] Notification tapped — routing validated deep link")
