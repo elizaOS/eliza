@@ -7,9 +7,9 @@
 import type { Character, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+	type BlueBubblesMultiAccountConfig,
 	listEnabledBlueBubblesAccounts,
 	resolveBlueBubblesAccount,
-	type BlueBubblesMultiAccountConfig,
 } from "./accounts";
 
 function createRuntime(
