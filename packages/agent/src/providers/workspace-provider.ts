@@ -15,6 +15,8 @@ import {
   type Provider,
   type ProviderResult,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   filterInitFilesForSession,
@@ -57,10 +59,12 @@ async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
 /** @internal Exported for testing. */
 export function truncate(content: string, max: number): string {
   if (max <= 0) return "";
-  if (content.length <= max) return content;
+  const wellFormed = toWellFormedUnicode(content);
+  if (wellFormed.length <= max) return wellFormed;
   const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
-  if (max <= suffix.length) return suffix.slice(0, max);
-  return `${content.slice(0, max - suffix.length)}${suffix}`;
+  if (max <= suffix.length) return truncateWellFormed(suffix, max);
+  const budget = Math.max(0, max - suffix.length);
+  return `${truncateWellFormed(wellFormed, budget).trimEnd()}${suffix}`;
 }
 
 /** @internal Exported for testing. */
