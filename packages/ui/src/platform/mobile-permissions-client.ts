@@ -330,8 +330,18 @@ function stateFromScreenTime(
     screenTime.reportAvailable ||
     screenTime.coarseSummaryAvailable ||
     screenTime.thresholdEventsAvailable;
+  // reportAvailable only becomes true after Family Controls authorization is
+  // approved, so a correctly provisioned pre-authorization device has no
+  // usable capability yet. The restricted short-circuit must not swallow that
+  // state or the native authorization prompt becomes unreachable. An approved
+  // host with no usable capability stays fail-closed (restricted) below.
+  const authorizationReachable =
+    (authorizationStatus === "not-determined" ||
+      authorizationStatus === "denied") &&
+    (screenTime.authorization.canRequest ||
+      screenTime.availability === "authorization-required");
 
-  if (!screenTime.android && !hasUsableCapability) {
+  if (!screenTime.android && !hasUsableCapability && !authorizationReachable) {
     return defaultMobileState(
       "screentime",
       screenTime.supported ? "restricted" : "not-applicable",
