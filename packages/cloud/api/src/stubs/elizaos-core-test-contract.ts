@@ -30,6 +30,8 @@ export const canRequesterMutateDocument = unavailableFunction(
   "canRequesterMutateDocument",
 );
 export const ChannelType = unavailableObject("ChannelType");
+export const cloneConnectorJsonObject = <T>(value: T): T =>
+  structuredClone(value);
 export const DatabaseAdapter = unavailableConstructor("DatabaseAdapter");
 export const decryptedCharacter = unavailableFunction("decryptedCharacter");
 export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = Symbol(
@@ -42,11 +44,20 @@ export const documentRoleHasGlobalVisibility = unavailableFunction(
   "documentRoleHasGlobalVisibility",
 );
 export const encryptedCharacter = unavailableFunction("encryptedCharacter");
+export const IDENTITY_AUTHORITY_CONTRACT_VERSION = 1;
+export const IdentityResolutionService = unavailableConstructor(
+  "IdentityResolutionService",
+);
 export const logger = unavailableObject("logger");
 export const normalizePairingPageOptions = unavailableFunction(
   "normalizePairingPageOptions",
 );
 export const Service = unavailableConstructor("Service");
+export const redactConnectorJsonAudit = <T>(value: T): T => value;
+export const toWellFormedUnicode = (text: string): string =>
+  text.toWellFormed();
+export const truncateWellFormed = (text: string, maxLength: number): string =>
+  text.toWellFormed().slice(0, maxLength);
 export const validateDocumentFragmentQueryParams = unavailableFunction(
   "validateDocumentFragmentQueryParams",
 );
@@ -55,6 +66,9 @@ export const validateDocumentListQueryParams = unavailableFunction(
 );
 export const validateDocumentRequesterContext = unavailableFunction(
   "validateDocumentRequesterContext",
+);
+export const validateDocumentRevisionReplacement = unavailableFunction(
+  "validateDocumentRevisionReplacement",
 );
 export const validateQueryEntitiesPagination = unavailableFunction(
   "validateQueryEntitiesPagination",
