@@ -31,6 +31,8 @@ import {
   requireConfirmedSendHandlerDelivery,
   Service,
   ServiceType,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
@@ -1662,7 +1664,10 @@ export class SubAgentRouter extends Service {
       const previewSource = (
         deliverable ?? stripSubAgentHeaderLine(text)
       ).trim();
-      const preview = previewSource.slice(0, 200);
+      const preview = truncateWellFormed(
+        toWellFormedUnicode(previewSource),
+        200,
+      );
       void getNotifier(this.runtime)
         ?.notify({
           title: `${origin.label || "Agent task"} finished`,
