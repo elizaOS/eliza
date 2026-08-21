@@ -10,9 +10,29 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
 import {
+	MAX_REPLY_TARGET_SNIPPET_CHARS,
+	MAX_REPLY_WINDOW_MESSAGE_CHARS,
 	REPLY_CONTEXT_WINDOW_RADIUS,
 	replyContextProvider,
+	truncateSingleLine,
+	withBoundedText,
 } from "./replyContext.ts";
+
+function isWellFormed(value: string): boolean {
+	for (let index = 0; index < value.length; index += 1) {
+		const codeUnit = value.charCodeAt(index);
+		if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+			const next = value.charCodeAt(index + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) {
+				return false;
+			}
+			index += 1;
+		} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+			return false;
+		}
+	}
+	return true;
+}
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -232,5 +252,88 @@ describe("replyContextProvider", () => {
 		);
 
 		expect(result.text).toBe("");
+	});
+});
+
+describe("truncateSingleLine", () => {
+	it("keeps surrogate pairs intact at the max-1 boundary", () => {
+		const text = `hello${"🦊"}world`;
+		const at7 = truncateSingleLine(text, 7);
+		expect(at7).toBe("hello…");
+		expect(isWellFormed(at7)).toBe(true);
+		expect(at7.length).toBeLessThanOrEqual(7);
+		const at8 = truncateSingleLine(text, 8);
+		expect(at8).toBe("hello🦊…");
+		expect(isWellFormed(at8)).toBe(true);
+		expect(at8.length).toBeLessThanOrEqual(8);
+	});
+
+	it("sanitizes lone surrogates before truncation", () => {
+		const lone = `a\uD800bcdef`;
+		const truncated = truncateSingleLine(lone, 4);
+		expect(truncated).toBe(`a�b…`);
+		expect(isWellFormed(truncated)).toBe(true);
+	});
+
+	it("sanitizes lone surrogate without truncation", () => {
+		const lone = `a\uD800bc`;
+		const out = truncateSingleLine(lone, 10);
+		expect(out).toBe(`a�bc`);
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	it("collapses whitespace and trims before well-formed check", () => {
+		const text = `  hello   \n  world  `;
+		const out = truncateSingleLine(text, 20);
+		expect(out).toBe("hello world");
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	it("honors the 300-char reply target cap and never emits lone surrogates", () => {
+		const emoji = "🦊";
+		const long =
+			`a`.repeat(MAX_REPLY_TARGET_SNIPPET_CHARS - 1) + emoji + `b`.repeat(10);
+		const out = truncateSingleLine(long, MAX_REPLY_TARGET_SNIPPET_CHARS);
+		expect(out.length).toBeLessThanOrEqual(MAX_REPLY_TARGET_SNIPPET_CHARS);
+		expect(out.endsWith("…")).toBe(true);
+		expect(isWellFormed(out)).toBe(true);
+	});
+});
+
+describe("withBoundedText", () => {
+	it("keeps surrogate pairs intact at the 1000-char window cap", () => {
+		const emoji = "🦊";
+		const text =
+			`a`.repeat(MAX_REPLY_WINDOW_MESSAGE_CHARS - 1) + emoji + `tail`;
+		const bounded = withBoundedText(mem("m1", USER_ID, text, 100));
+		const out = bounded.content.text as string;
+		expect(out.length).toBeLessThanOrEqual(MAX_REPLY_WINDOW_MESSAGE_CHARS);
+		expect(out.endsWith("…")).toBe(true);
+		expect(isWellFormed(out)).toBe(true);
+		expect(out).not.toContain("\uD83E");
+	});
+
+	it("sanitizes lone surrogates in window text", () => {
+		const lone = `x\uD800` + `y`.repeat(2000);
+		const bounded = withBoundedText(mem("m2", USER_ID, lone, 200));
+		const out = bounded.content.text as string;
+		expect(out).toContain("�");
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	it("returns same reference when already well-formed and under limit", () => {
+		const text = "short well-formed";
+		const memory = mem("m3", USER_ID, text, 300);
+		const bounded = withBoundedText(memory);
+		expect(bounded).toBe(memory);
+	});
+
+	it("returns new memory with sanitized text when lone surrogate present under limit", () => {
+		const lone = `ok \uD800 end`;
+		const memory = mem("m4", USER_ID, lone, 400);
+		const bounded = withBoundedText(memory);
+		expect(bounded).not.toBe(memory);
+		expect(bounded.content.text).toBe(`ok � end`);
+		expect(isWellFormed(bounded.content.text as string)).toBe(true);
 	});
 });
