@@ -56,6 +56,45 @@ function createManager() {
   };
 }
 
+async function captureReactionCallback() {
+  const emitEvent = vi.fn();
+  const reply = vi.fn(async (text: string) => ({
+    message_id: 100,
+    date: 1_700_000_000,
+    text,
+    chat: { id: 123, type: "private" },
+  }));
+  const manager = new MessageManager(
+    {} as never,
+    { agentId: "agent-1", emitEvent } as unknown as IAgentRuntime,
+  );
+
+  await manager.handleReaction({
+    from: { id: 42, first_name: "Ada", is_bot: false },
+    chat: { id: 123, type: "private" },
+    update: {
+      message_reaction: {
+        chat: { id: 123, type: "private" },
+        message_id: 99,
+        date: 1,
+        old_reaction: [],
+        new_reaction: [{ type: "emoji", emoji: "👍" }],
+      },
+    },
+    reply,
+  } as never);
+
+  expect(emitEvent).toHaveBeenCalledTimes(2);
+  const payload = emitEvent.mock.calls[0]?.[1] as
+    | { callback?: (content: { text?: string }) => Promise<unknown> }
+    | undefined;
+  expect(payload?.callback).toBeTypeOf("function");
+  if (!payload?.callback) {
+    throw new Error("expected the reaction event to expose its reply callback");
+  }
+  return { callback: payload.callback, reply };
+}
+
 describe("MessageManager long message splitting", () => {
   it("sends interaction-only replies with fallback text and inline keyboard", async () => {
     const { manager, sendMessage } = createManager();
@@ -490,6 +529,33 @@ describe("MessageManager malformed payload handling", () => {
 
     expect(emitEvent).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["lone high surrogate", `before\ud800after`, "before�after"],
+    ["lone low surrogate", `before\udc00after`, "before�after"],
+    ["exact 4096-unit text", `${"a".repeat(4094)}🦊`, `${"a".repeat(4094)}🦊`],
+    ["4097-unit text", "a".repeat(4097), "a".repeat(4096)],
+    [
+      "astral character crossing the cap",
+      `${"a".repeat(4095)}🦊tail`,
+      "a".repeat(4095),
+    ],
+  ])(
+    "normalizes the reaction callback wire reply for %s",
+    async (_label, input, expected) => {
+      const { callback, reply } = await captureReactionCallback();
+
+      await callback({ text: input });
+
+      expect(reply).toHaveBeenCalledTimes(1);
+      const wireText = reply.mock.calls[0]?.[0];
+      // This observes the production callback argument, so restoring the raw
+      // `ctx.reply(content.text)` path breaks the malformed/over-limit cases.
+      expect(wireText).toBe(expected);
+      expect(wireText?.length).toBeLessThanOrEqual(4096);
+      expect(wireText?.isWellFormed()).toBe(true);
+    },
+  );
 
   it("rejects missing chat context when sending media", async () => {
     const manager = new MessageManager(
