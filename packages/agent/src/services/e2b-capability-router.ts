@@ -1500,10 +1500,7 @@ function commandRunResult(
   return {
     output: `${result.stdout}${stderr}`,
     exitCode: result.exitCode,
-    timedOut:
-      timedOut ||
-      (result as SandboxCommandResult & { timedOut?: unknown }).timedOut ===
-        true,
+    timedOut: timedOut || result.timedOut === true,
   };
 }
 
