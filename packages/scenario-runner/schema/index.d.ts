@@ -236,11 +236,16 @@ type TurnMatcher = string | RegExp;
 type TrustedObservationFilters = {
   observerId?: StringMatcher;
   provider?: StringMatcher;
+  /** Production connector/account namespace, which may differ from the external receipt namespace. */
+  connectorProvider?: StringMatcher;
   accountId?: StringMatcher;
   operation?: StringMatcher;
   resourceId?: StringMatcher;
   state?: StringMatcher;
   minCount?: number;
+  transitionGroupId?: string;
+  transitionIndex?: number;
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 type DefinitionCountRequiredSlot = {
   label?: string;
@@ -418,6 +423,7 @@ export type ScenarioFinalCheck =
       TrustedObservationFilters & {
         /** Require the observation window to cover the full scenario. Defaults to true. */
         intervalCoversScenario?: boolean;
+        intervalEndsBeforeReferencedStage?: boolean;
       })
   | (CheckBase<"scheduledTaskObserved"> & TrustedObservationFilters)
   | (CheckBase<"memoryWriteOccurred"> & {
@@ -528,6 +534,12 @@ export type ScenarioLane = "pr-deterministic" | "live-only";
  * backed by trusted durable/provider observers and hashed trajectories.
  */
 export type ScenarioExecutionProfile = "simulated" | "provider-qualified";
+export type ScenarioEvidenceScope =
+  | "runner-fixture"
+  | "domain-contract"
+  | "model-behavior"
+  | "connector-contract"
+  | "provider-certification";
 export type ScenarioTier = "T1" | "T2" | "T3" | "T4";
 
 /**
@@ -687,6 +699,8 @@ export type ScenarioDefinition = {
    * publishable as provider evidence.
    */
   executionProfile?: ScenarioExecutionProfile;
+  /** Closed classification of what this scenario can truthfully claim. */
+  evidenceScope?: ScenarioEvidenceScope;
   /**
    * Platform-gated deferral. Present only on `live-only` scenarios that cannot
    * run in any current lane because the platform/runner they need does not exist
@@ -730,6 +744,7 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 
 /** Execution profile assumed for legacy scenario definitions. */
 export declare const DEFAULT_SCENARIO_EXECUTION_PROFILE: "simulated";
+export declare const DEFAULT_SCENARIO_EVIDENCE_SCOPE: "runner-fixture";
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
@@ -747,6 +762,18 @@ export declare function isScenarioExecutionProfile(
 export declare function scenarioExecutionProfile(
   value: ScenarioDefinition,
 ): ScenarioExecutionProfile;
+
+export declare function isScenarioEvidenceScope(
+  value: unknown,
+): value is ScenarioEvidenceScope;
+
+export declare function scenarioEvidenceScope(
+  value: ScenarioDefinition,
+): ScenarioEvidenceScope;
+
+export declare function scenarioEvidenceScopeLabel(
+  value: ScenarioEvidenceScope,
+): string;
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
 export declare function scenarioTier(

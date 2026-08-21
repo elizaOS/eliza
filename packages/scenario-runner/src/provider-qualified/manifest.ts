@@ -11,9 +11,14 @@ import type {
   ScenarioDefinition,
   ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
+import {
+  PROVIDER_OPERATION_CONTRACT_BY_KIND,
+  type ProviderOperationBinding,
+  validateProviderOperationBinding,
+} from "./operation-binding.ts";
 
 export const PROVIDER_QUALIFICATION_MANIFEST_SCHEMA =
-  "eliza.provider-qualified-manifest.v1" as const;
+  "eliza.provider-qualified-manifest.v3" as const;
 
 type JsonPrimitive = string | number | boolean | null;
 export type CanonicalJsonValue =
@@ -58,6 +63,9 @@ export type DurableApprovalObservationContract = ObservationContractBase<
 > & {
   operation: string;
   state: string;
+  transitionGroupId?: string;
+  transitionIndex?: number;
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 
 export type DurableDraftObservationContract = ObservationContractBase<
@@ -74,8 +82,8 @@ export type ProviderEffectObservationContract = ObservationContractBase<
   provider: string;
   operation: string;
   providerAcceptanceRequired: true;
-  readbackRequired: boolean;
-  idempotencyRequired: boolean;
+  readbackRequired: true;
+  idempotencyRequired: true;
 };
 
 export type ProviderNoEffectObservationContract = ObservationContractBase<
@@ -85,7 +93,8 @@ export type ProviderNoEffectObservationContract = ObservationContractBase<
   provider: string;
   effectKinds: readonly [string, ...string[]];
   scopeSha256: string;
-  intervalCoverage: "full-scenario";
+  intervalCoverage: "full-scenario" | "before-referenced-stage";
+  trajectoryPhase?: "approval";
 };
 
 export type ScheduledTaskObservationContract = ObservationContractBase<
@@ -114,6 +123,28 @@ export interface ProviderObserverSignerBinding {
   keyId: string;
 }
 
+export type ProviderFailureClass = "authorization-denied" | "provider-rejected";
+
+export interface ProviderFailureProbeContract {
+  probeId: string;
+  observerId: string;
+  sourceKind: "provider-api" | "provider-webhook";
+  system: string;
+  environment: string;
+  provider: string;
+  connectorProvider: string;
+  accountRefSha256: string;
+  connectionRefSha256: string;
+  operation: string;
+  failureClass: ProviderFailureClass;
+  requestPayloadSha256: string;
+  expectedStatusCode: number;
+  expectedErrorCodeSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  maxObservationAgeMs: number;
+}
+
 export interface ProviderRunBindings {
   runId: string;
   runNonce: string;
@@ -129,6 +160,8 @@ export interface ProviderRunBindings {
   target: {
     principalRefSha256: string;
     roomRefSha256: string;
+    /** Typed, hash-only binding for provider-native routing and operation input. */
+    operation: ProviderOperationBinding;
   };
   models: {
     actingAdapter: string;
@@ -172,6 +205,11 @@ export interface ProviderRunBindings {
     ProviderObservationContract,
     ...ProviderObservationContract[],
   ];
+  failureProbes: readonly [
+    ProviderFailureProbeContract,
+    ProviderFailureProbeContract,
+    ...ProviderFailureProbeContract[],
+  ];
 }
 
 export interface ProviderQualificationManifest {
@@ -211,6 +249,7 @@ export interface ProviderQualificationManifest {
   ingress: ProviderRunBindings["ingress"];
   capabilities: ProviderRunBindings["capabilities"];
   requiredObservations: ProviderRunBindings["observationContracts"];
+  requiredFailureProbes: ProviderRunBindings["failureProbes"];
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -219,6 +258,7 @@ const NONCE_PATTERN = /^[A-Za-z0-9_-]{32,}$/;
 const MAX_CONNECTOR_BINDINGS = 64;
 const MAX_CAPABILITY_BINDINGS = 256;
 const MAX_OBSERVATION_CONTRACTS = 128;
+const MAX_FAILURE_PROBES = 64;
 const MAX_OBSERVATION_SLOTS = 256;
 const MAX_MANIFEST_FINAL_CHECKS = 512;
 const MAX_SEMANTIC_CRITERIA = 128;
@@ -573,6 +613,126 @@ function connectorKey(
   return `${provider}\u0000${accountRefSha256}\u0000${connectionRefSha256}`;
 }
 
+function validateFailureProbes(
+  probes: ProviderRunBindings["failureProbes"],
+  connectors: ReadonlyMap<string, ProviderConnectorBinding>,
+  observerSignerById: ReadonlyMap<string, string>,
+): void {
+  if (!Array.isArray(probes) || probes.length < 2) {
+    fail(
+      "bindings.failureProbes",
+      "must contain authorization-denied and provider-rejected probes",
+    );
+  }
+  if (probes.length > MAX_FAILURE_PROBES) {
+    fail("bindings.failureProbes", `cannot exceed ${MAX_FAILURE_PROBES}`);
+  }
+  const probeIds = new Set<string>();
+  const classes = new Set<ProviderFailureClass>();
+  for (const [index, probe] of probes.entries()) {
+    const path = `bindings.failureProbes[${index}]`;
+    requireExactKeys(probe, path, [
+      "probeId",
+      "observerId",
+      "sourceKind",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "accountRefSha256",
+      "connectionRefSha256",
+      "operation",
+      "failureClass",
+      "requestPayloadSha256",
+      "expectedStatusCode",
+      "expectedErrorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+      "maxObservationAgeMs",
+    ]);
+    const probeId = requireNonEmptyString(probe.probeId, `${path}.probeId`);
+    if (probeIds.has(probeId)) fail(`${path}.probeId`, "is duplicated");
+    probeIds.add(probeId);
+    const observerId = requireNonEmptyString(
+      probe.observerId,
+      `${path}.observerId`,
+    );
+    if (!observerSignerById.has(observerId)) {
+      fail(`${path}.observerId`, "must name a bound observer signer");
+    }
+    if (
+      probe.sourceKind !== "provider-api" &&
+      probe.sourceKind !== "provider-webhook"
+    ) {
+      fail(`${path}.sourceKind`, "must be provider-api or provider-webhook");
+    }
+    for (const field of [
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "operation",
+    ] as const) {
+      requireNonEmptyString(probe[field], `${path}.${field}`);
+    }
+    for (const field of [
+      "accountRefSha256",
+      "connectionRefSha256",
+      "requestPayloadSha256",
+      "expectedErrorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+    ] as const) {
+      requireSha256(probe[field], `${path}.${field}`);
+    }
+    if (
+      probe.failureClass !== "authorization-denied" &&
+      probe.failureClass !== "provider-rejected"
+    ) {
+      fail(
+        `${path}.failureClass`,
+        "must be authorization-denied or provider-rejected",
+      );
+    }
+    classes.add(probe.failureClass);
+    if (
+      !Number.isInteger(probe.expectedStatusCode) ||
+      probe.expectedStatusCode < 400 ||
+      probe.expectedStatusCode > 599
+    ) {
+      fail(`${path}.expectedStatusCode`, "must be an HTTP error status");
+    }
+    requirePositiveInteger(
+      probe.maxObservationAgeMs,
+      `${path}.maxObservationAgeMs`,
+    );
+    const connector = connectors.get(
+      connectorKey(
+        probe.connectorProvider,
+        probe.accountRefSha256,
+        probe.connectionRefSha256,
+      ),
+    );
+    if (!connector) {
+      fail(
+        path,
+        "must bind a declared connector provider, account, and connection",
+      );
+    }
+    if (connector.environment !== probe.environment) {
+      fail(`${path}.environment`, "must match the bound connector environment");
+    }
+  }
+  for (const required of [
+    "authorization-denied",
+    "provider-rejected",
+  ] as const) {
+    if (!classes.has(required)) {
+      fail("bindings.failureProbes", `must include ${required} proof`);
+    }
+  }
+}
+
 function validateContractBase(
   contract: ProviderObservationContract,
   index: number,
@@ -639,13 +799,43 @@ function validateContractFields(
       contract,
       path,
       [...baseRequired, "operation", "state"],
-      optional,
+      [...optional, "transitionGroupId", "transitionIndex", "trajectoryPhase"],
     );
     if (contract.sourceKind !== "durable-database") {
       fail(`${path}.sourceKind`, 'must be "durable-database"');
     }
     requireNonEmptyString(contract.operation, `${path}.operation`);
     requireNonEmptyString(contract.state, `${path}.state`);
+    const transitionFields = [
+      contract.transitionGroupId,
+      contract.transitionIndex,
+      contract.trajectoryPhase,
+    ];
+    if (transitionFields.some((value) => value !== undefined)) {
+      if (transitionFields.some((value) => value === undefined)) {
+        fail(
+          path,
+          "must provide all durable transition binding fields together",
+        );
+      }
+      requireNonEmptyString(
+        contract.transitionGroupId,
+        `${path}.transitionGroupId`,
+      );
+      if (
+        !Number.isSafeInteger(contract.transitionIndex) ||
+        (contract.transitionIndex as number) < 0
+      ) {
+        fail(`${path}.transitionIndex`, "must be a non-negative integer");
+      }
+      if (
+        contract.trajectoryPhase !== "proposal" &&
+        contract.trajectoryPhase !== "approval" &&
+        contract.trajectoryPhase !== "completion"
+      ) {
+        fail(`${path}.trajectoryPhase`, "is unsupported");
+      }
+    }
   } else if (contract.kind === "durable-draft") {
     requireExactKeys(contract, path, [...baseRequired, "state"], optional);
     if (contract.sourceKind !== "durable-database") {
@@ -678,10 +868,10 @@ function validateContractFields(
       fail(`${path}.providerAcceptanceRequired`, "must be true");
     }
     if (
-      typeof contract.readbackRequired !== "boolean" ||
-      typeof contract.idempotencyRequired !== "boolean"
+      contract.readbackRequired !== true ||
+      contract.idempotencyRequired !== true
     ) {
-      fail(path, "must declare boolean readback and idempotency requirements");
+      fail(path, "must require provider readback and idempotency verification");
     }
   } else if (contract.kind === "provider-no-effect") {
     requireExactKeys(
@@ -694,7 +884,7 @@ function validateContractFields(
         "scopeSha256",
         "intervalCoverage",
       ],
-      optional,
+      [...optional, "trajectoryPhase"],
     );
     if (contract.sourceKind !== "provider-api") {
       fail(`${path}.sourceKind`, 'must be "provider-api"');
@@ -713,8 +903,26 @@ function validateContractFields(
     if (new Set(contract.effectKinds).size !== contract.effectKinds.length) {
       fail(`${path}.effectKinds`, "cannot contain duplicates");
     }
-    if (contract.intervalCoverage !== "full-scenario") {
-      fail(`${path}.intervalCoverage`, 'must be "full-scenario"');
+    if (
+      contract.intervalCoverage !== "full-scenario" &&
+      contract.intervalCoverage !== "before-referenced-stage"
+    ) {
+      fail(`${path}.intervalCoverage`, "is unsupported");
+    }
+    if (
+      contract.intervalCoverage === "before-referenced-stage" &&
+      contract.trajectoryPhase !== "approval"
+    ) {
+      fail(`${path}.trajectoryPhase`, 'must be "approval"');
+    }
+    if (
+      contract.intervalCoverage === "full-scenario" &&
+      contract.trajectoryPhase !== undefined
+    ) {
+      fail(
+        `${path}.trajectoryPhase`,
+        "is only valid for a stage-bounded interval",
+      );
     }
   } else if (contract.kind === "scheduled-task") {
     requireExactKeys(contract, path, [...baseRequired, "state"], optional);
@@ -749,6 +957,18 @@ function contractMatchesCheck(
   ) {
     fail(path, "observer binding differs from the authored final check");
   }
+  if (contract.kind === "durable-approval") {
+    if (
+      check.transitionGroupId !== contract.transitionGroupId ||
+      check.transitionIndex !== contract.transitionIndex ||
+      check.trajectoryPhase !== contract.trajectoryPhase
+    ) {
+      fail(
+        path,
+        "durable transition binding differs from the authored final check",
+      );
+    }
+  }
   if (scalarString(check.provider, `${path}.provider`) !== contract.system) {
     fail(path, "system binding differs from the authored final check");
   }
@@ -782,6 +1002,22 @@ function contractMatchesCheck(
     fail(`${path}.operation`, "is not supported for this observation kind");
   }
   if (
+    contract.kind === "provider-effect" ||
+    contract.kind === "provider-no-effect"
+  ) {
+    if (
+      scalarString(check.connectorProvider, `${path}.connectorProvider`) !==
+      contract.connectorProvider
+    ) {
+      fail(path, "connector provider differs from the authored final check");
+    }
+  } else if (check.connectorProvider !== undefined) {
+    fail(
+      `${path}.connectorProvider`,
+      "is not supported for this observation kind",
+    );
+  }
+  if (
     contract.kind === "durable-approval" ||
     contract.kind === "durable-draft" ||
     contract.kind === "scheduled-task"
@@ -794,10 +1030,42 @@ function contractMatchesCheck(
   }
   if (
     contract.kind === "provider-no-effect" &&
-    check.type === "providerNoEffectObserved" &&
-    check.intervalCoversScenario === false
+    check.type === "providerNoEffectObserved"
   ) {
-    fail(path, "must require an observation interval covering the scenario");
+    const stageBounded = check.intervalEndsBeforeReferencedStage === true;
+    if (
+      stageBounded !==
+        (contract.intervalCoverage === "before-referenced-stage") ||
+      check.trajectoryPhase !== contract.trajectoryPhase
+    ) {
+      fail(
+        path,
+        "no-effect phase binding differs from the authored final check",
+      );
+    }
+    if (
+      (contract.intervalCoverage === "full-scenario" &&
+        check.intervalCoversScenario === false) ||
+      (contract.intervalCoverage === "before-referenced-stage" &&
+        check.intervalCoversScenario !== false)
+    ) {
+      fail(
+        path,
+        "no-effect interval coverage differs from the authored final check",
+      );
+    }
+  }
+  if (
+    contract.kind !== "durable-approval" &&
+    (check.transitionGroupId !== undefined ||
+      check.transitionIndex !== undefined ||
+      (check.trajectoryPhase !== undefined &&
+        contract.kind !== "provider-no-effect"))
+  ) {
+    fail(
+      path,
+      "durable transition fields are unsupported for this observation kind",
+    );
   }
 }
 
@@ -817,6 +1085,7 @@ function validateBindings(
     "ingress",
     "capabilities",
     "observationContracts",
+    "failureProbes",
   ]);
   requireNonEmptyString(bindings.runId, "bindings.runId");
   if (!NONCE_PATTERN.test(bindings.runNonce)) {
@@ -877,12 +1146,14 @@ function validateBindings(
   requireExactKeys(bindings.target, "bindings.target", [
     "principalRefSha256",
     "roomRefSha256",
+    "operation",
   ]);
   requireSha256(
     bindings.target.principalRefSha256,
     "bindings.target.principalRefSha256",
   );
   requireSha256(bindings.target.roomRefSha256, "bindings.target.roomRefSha256");
+  validateProviderOperationBinding(bindings.target.operation);
 
   requireExactKeys(bindings.models, "bindings.models", [
     "actingAdapter",
@@ -1140,12 +1411,6 @@ function validateBindings(
       );
     }
     if (contract.kind === "provider-effect") {
-      if (contract.provider !== contract.connectorProvider) {
-        fail(
-          `bindings.observationContracts[${index}].provider`,
-          "must match the connector provider",
-        );
-      }
       if (
         !capabilityNames.has(`${boundConnectorKey}\u0000${contract.operation}`)
       ) {
@@ -1156,12 +1421,6 @@ function validateBindings(
       }
       hasProviderBoundary = true;
     } else if (contract.kind === "provider-no-effect") {
-      if (contract.provider !== contract.connectorProvider) {
-        fail(
-          `bindings.observationContracts[${index}].provider`,
-          "must match the connector provider",
-        );
-      }
       for (const effectKind of contract.effectKinds) {
         if (!capabilityNames.has(`${boundConnectorKey}\u0000${effectKind}`)) {
           fail(
@@ -1173,11 +1432,94 @@ function validateBindings(
       hasProviderBoundary = true;
     }
   }
+  const approvalTransitionGroups = new Map<
+    string,
+    DurableApprovalObservationContract[]
+  >();
+  for (const contract of bindings.observationContracts) {
+    if (
+      contract.kind !== "durable-approval" ||
+      contract.transitionGroupId === undefined
+    ) {
+      continue;
+    }
+    const group =
+      approvalTransitionGroups.get(contract.transitionGroupId) ?? [];
+    group.push(contract);
+    approvalTransitionGroups.set(contract.transitionGroupId, group);
+  }
+  const expectedTransition = [
+    { state: "pending", phase: "proposal" },
+    { state: "approved", phase: "approval" },
+    { state: "done", phase: "approval" },
+  ] as const;
+  for (const [groupId, group] of approvalTransitionGroups) {
+    const ordered = [...group].sort(
+      (left, right) =>
+        (left.transitionIndex as number) - (right.transitionIndex as number),
+    );
+    const anchor = ordered[0];
+    if (
+      ordered.length !== expectedTransition.length ||
+      !anchor ||
+      ordered.some((contract, index) => {
+        const expected = expectedTransition[index];
+        return (
+          !expected ||
+          contract.transitionIndex !== index ||
+          contract.state !== expected.state ||
+          contract.trajectoryPhase !== expected.phase ||
+          contract.requiredCount !== 1 ||
+          contract.observerId !== anchor.observerId ||
+          contract.system !== anchor.system ||
+          contract.environment !== anchor.environment ||
+          contract.connectorProvider !== anchor.connectorProvider ||
+          contract.accountRefSha256 !== anchor.accountRefSha256 ||
+          contract.connectionRefSha256 !== anchor.connectionRefSha256 ||
+          contract.operation !== anchor.operation
+        );
+      })
+    ) {
+      fail(
+        "bindings.observationContracts",
+        `transition group "${groupId}" must bind one correlated pending/proposal, approved/approval, and done/approval observation`,
+      );
+    }
+  }
   if (!hasProviderBoundary) {
     fail(
       "bindings.observationContracts",
       "must include provider-effect or provider-no-effect proof",
     );
+  }
+  const targetContract =
+    PROVIDER_OPERATION_CONTRACT_BY_KIND[bindings.target.operation.kind];
+  const matchingTargetContracts = bindings.observationContracts.filter(
+    (contract) => {
+      if (
+        contract.kind !== "provider-effect" &&
+        contract.kind !== "provider-no-effect"
+      ) {
+        return false;
+      }
+      return (
+        contract.provider === targetContract.provider &&
+        contract.connectorProvider === targetContract.connectorProvider &&
+        (contract.kind === "provider-effect"
+          ? contract.operation === targetContract.operation
+          : contract.effectKinds.includes(targetContract.operation))
+      );
+    },
+  );
+  if (matchingTargetContracts.length !== 1) {
+    fail(
+      "bindings.target.operation",
+      "must match exactly one provider-effect or provider-no-effect observation contract",
+    );
+  }
+  const matchingTargetContract = matchingTargetContracts[0];
+  if (!matchingTargetContract) {
+    fail("bindings.target.operation", "has no matching observation contract");
   }
   if (
     contractObserverIds.size !== observerSignerById.size ||
@@ -1198,6 +1540,23 @@ function validateBindings(
       fail(
         "bindings.connectors",
         "contains a connector without an observation contract",
+      );
+    }
+  }
+  validateFailureProbes(bindings.failureProbes, connectors, observerSignerById);
+  for (const [index, probe] of bindings.failureProbes.entries()) {
+    if (
+      probe.provider !== targetContract.provider ||
+      probe.connectorProvider !== targetContract.connectorProvider ||
+      probe.operation !== targetContract.operation ||
+      probe.accountRefSha256 !== matchingTargetContract.accountRefSha256 ||
+      probe.connectionRefSha256 !==
+        matchingTargetContract.connectionRefSha256 ||
+      probe.environment !== matchingTargetContract.environment
+    ) {
+      fail(
+        `bindings.failureProbes[${index}]`,
+        "must exercise the exact target provider, operation, connector, and account",
       );
     }
   }
@@ -1469,6 +1828,7 @@ export function validateProviderQualificationManifest(
     "ingress",
     "capabilities",
     "requiredObservations",
+    "requiredFailureProbes",
   ]);
   if (snapshot.schema !== PROVIDER_QUALIFICATION_MANIFEST_SCHEMA) {
     fail("manifest.schema", "is unsupported");
@@ -1507,6 +1867,7 @@ function providerRunBindingsFromManifest(
     ingress: manifest.ingress,
     capabilities: manifest.capabilities,
     observationContracts: manifest.requiredObservations,
+    failureProbes: manifest.requiredFailureProbes,
   } satisfies ProviderRunBindings;
 }
 
@@ -1584,6 +1945,7 @@ export function createProviderQualificationManifest(input: {
     ingress: bindings.ingress,
     capabilities: bindings.capabilities,
     requiredObservations: bindings.observationContracts,
+    requiredFailureProbes: bindings.failureProbes,
   } satisfies Omit<ProviderQualificationManifest, "manifestSha256">;
   const manifestSha256 = canonicalSha256(core, "manifest");
   return validateProviderQualificationManifest({

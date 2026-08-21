@@ -15,7 +15,9 @@ import type {
   CapturedMemoryWrite,
   CapturedStateTransition,
   ScenarioContext,
+  ScenarioEvidenceScope,
   ScenarioExecutionProfile,
+  ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
@@ -305,6 +307,12 @@ export interface ScenarioReport {
   modelFixtureDiagnostics?: DeterministicModelDiagnostics;
   /** Strict-manifest adoption marker used to guard away the legacy resolver. */
   modelFixtureMode?: ScenarioModelFixtureMode;
+  /** Scheduling lane declared by the scenario. */
+  lane?: ScenarioLane;
+  /** Closed behavioral claim classification; absent only on legacy reports. */
+  evidenceScope?: ScenarioEvidenceScope;
+  /** Migration debt marker: the scenario omitted evidenceScope. */
+  evidenceScopeDefaulted?: boolean;
   /**
    * Execution trust boundary used for this scenario. Optional only while
    * legacy producers migrate; aggregation reports missing values as unreported
