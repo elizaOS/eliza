@@ -315,7 +315,7 @@ export async function handleMiscRoutes(
         : body.url
           ? `Can you analyze this: ${body.url}`
           : body.text
-            ? `What are your thoughts on: ${body.text.slice(0, 100)}`
+            ? `What are your thoughts on: ${truncateWellFormed(toWellFormedUnicode(body.text), 100)}`
             : "What do you think about this shared content?",
       receivedAt: Date.now(),
     };
