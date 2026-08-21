@@ -1,5 +1,29 @@
 /** Coordinates cloud service sandbox provider contracts behind route handlers. */
 
+import { ElizaError } from "@elizaos/core";
+import {
+  type AgentExecutionTier,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "../../db/schemas/agent-sandboxes";
+
+export type ContainerBackedExecutionTier = (typeof CONTAINER_BACKED_EXECUTION_TIERS)[number];
+
+/** Rejects any tier that is not explicitly admitted to own a container. */
+export function assertContainerBackedExecutionTier(
+  executionTier: unknown,
+): asserts executionTier is ContainerBackedExecutionTier {
+  if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === executionTier)) {
+    throw new ElizaError("Sandbox creation requires an explicit container-backed execution tier", {
+      code: "SANDBOX_CREATE_EXECUTION_TIER_NOT_CONTAINER_BACKED",
+      context: {
+        executionTier: typeof executionTier === "string" ? executionTier : null,
+        executionTierType: executionTier === null ? "null" : typeof executionTier,
+      },
+      severity: "fatal",
+    });
+  }
+}
+
 /**
  * Why a readiness probe finished the way it did.
  *
@@ -145,6 +169,8 @@ export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
   organizationId: string;
+  /** Durable placement authority read from the target agent row. */
+  executionTier: AgentExecutionTier;
   environmentVars: Record<string, string>;
   /**
    * Full character config for this agent (the `agent_sandboxes.agent_config`

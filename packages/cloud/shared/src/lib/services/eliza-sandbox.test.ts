@@ -6430,6 +6430,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(res.success).toBe(true);
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: configuredImage,
+        executionTier: "custom",
       });
     } finally {
       findSpy.mockRestore();
@@ -8460,7 +8461,10 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   test("(c) happy path → atomic swap writes blue's node/container/bridge + image_digest=toDigest", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent = liveAgentRow();
+    const agent: AgentSandbox = {
+      ...liveAgentRow(),
+      execution_tier: "dedicated-always",
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode, runtimeFetch } =
@@ -8530,6 +8534,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
       expect(stop).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(1);
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        executionTier: "dedicated-always",
+      });
       expect(checkHealth).toHaveBeenCalledTimes(1);
       expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
         "https://new-bridge.example/api/status",
@@ -8978,12 +8985,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
-    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const agent: AgentSandbox = {
+      ...liveAgentRow(),
+      docker_image: SOURCE_IMAGE,
+      execution_tier: "dedicated-lazy",
+    };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       agent,
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider } = await makeDockerProvider({
+    const { provider, create } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => true,
     });
@@ -9031,6 +9042,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(params).toContain(SOURCE_IMAGE);
       expect(params).toContain(FROM_DIGEST);
       expect(params).toContain(OWNER);
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        executionTier: "dedicated-lazy",
+      });
     } finally {
       primarySpy.mockRestore();
       nodeSpy.mockRestore();
@@ -9838,7 +9852,10 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
 
   test("rollback forces a stored direct-relay opt-in off while restoring the pre-upgrade snapshot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const upgradedAgent = upgradedAgentRow();
+    const upgradedAgent: AgentSandbox = {
+      ...upgradedAgentRow(),
+      execution_tier: "dedicated-always",
+    };
     const agent: AgentSandbox = {
       ...upgradedAgent,
       previous_docker_image: "",
@@ -9913,6 +9930,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(params).toContain(PREV_DIGEST); // image_digest := previous
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: `ghcr.io/elizaos/eliza-agent@${PREV_DIGEST}`,
+        executionTier: "dedicated-always",
         environmentVars: {
           ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
         },
@@ -9941,6 +9959,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       ...upgradedAgentRow(),
       docker_image: SOURCE_IMAGE,
       previous_docker_image: TARGET_IMAGE,
+      execution_tier: "dedicated-lazy",
     };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       agent,
@@ -10005,6 +10024,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(replicaSpy).not.toHaveBeenCalled();
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: `ghcr.io/elizaos/eliza@${PREV_DIGEST}`,
+        executionTier: "dedicated-lazy",
       });
       const params = sqlBoundParams(executedSql);
       expect(params).toContain(TARGET_IMAGE);

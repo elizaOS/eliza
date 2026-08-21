@@ -3248,6 +3248,7 @@ export class ElizaSandboxService {
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
+            executionTier: rec.execution_tier,
             environmentVars: applyRemoteDockerRuntimeMode({
               ...callerEnv,
               ...dbEnv,
@@ -9435,6 +9436,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       // Re-apply the cloud-managed inference defaults on top of the stored env so
       // an agent provisioned BEFORE the embedding-dimension / model pins landed
       // heals on upgrade instead of freezing a stale config (e.g. 1536-d cloud
@@ -9948,6 +9950,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       environmentVars: applyRemoteDockerRuntimeMode({
         ...rollbackEnv,
         ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
