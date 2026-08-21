@@ -327,6 +327,24 @@ describe("resolveSpawnWorkdir", () => {
     expect(result.route).toBeUndefined();
   });
 
+  it("marks a missing explicit workdir instead of silently substituting a repo", () => {
+    delete process.env[ENV_KEY];
+    process.env.ELIZA_WORKSPACE_DIR = appsDir;
+    const missing = path.join(tmpRoot, "planner-invented-workspace");
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "create a personal website",
+      "make me a website",
+      missing,
+    );
+
+    expect(result).toEqual({
+      workdir: appsDir,
+      rejectedExplicitWorkdir: missing,
+    });
+  });
+
   it("uses route when no explicit workdir is supplied", () => {
     process.env[ENV_KEY] = JSON.stringify([
       { id: "static-apps", workdir: appsDir, matchAny: ["build"] },

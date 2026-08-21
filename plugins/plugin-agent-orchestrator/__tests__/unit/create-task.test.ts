@@ -203,6 +203,33 @@ describe("TASKS:create", () => {
       expect.anything(),
     );
   });
+
+  it("refuses a missing planner workdir instead of falling back to another repo", async () => {
+    const svc = serviceMock();
+    const missing = `${os.tmpdir()}/eliza-missing-workdir-${Date.now()}`;
+
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({ text: "make me a website" }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "Create a personal website",
+          workdir: missing,
+        },
+      },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "WORKDIR_NOT_FOUND",
+      data: { rejectedWorkdir: missing },
+    });
+    expect(svc.spawnSession).not.toHaveBeenCalled();
+    expect(svc.sendPrompt).not.toHaveBeenCalled();
+  });
   it("handles missing service, auth error, generic failure", async () => {
     expect(
       (

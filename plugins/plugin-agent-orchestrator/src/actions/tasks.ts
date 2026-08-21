@@ -295,6 +295,24 @@ function guardSpawnTaskIntent(args: {
   return undefined;
 }
 
+async function rejectMissingExplicitWorkdir(
+  callback: HandlerCallback | undefined,
+  rejectedExplicitWorkdir: string | undefined,
+): Promise<ActionResult | undefined> {
+  if (!rejectedExplicitWorkdir) return undefined;
+  const humanText = `The requested coding workspace does not exist: ${rejectedExplicitWorkdir}. No coding agent was started.`;
+  await callbackText(callback, humanText);
+  return {
+    ...errorResult("WORKDIR_NOT_FOUND", humanText),
+    data: {
+      code: "WORKDIR_NOT_FOUND",
+      rejectedWorkdir: rejectedExplicitWorkdir,
+      plannerGuidance:
+        "Retry TASKS without a workdir to use an isolated scratch workspace, or provision/create the intended workspace first. Never substitute a different existing repository.",
+    },
+  };
+}
+
 function taskParts(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1025,6 +1043,19 @@ async function runCreateLegacy(
     }
   }
   const useSmithers = shouldUseSmithersTaskRunner();
+  const firstTask = tasks[0]
+    ? parseAgentPrefix(tasks[0], baseAgentType).task
+    : undefined;
+  const initialWorkdirResolution = firstTask
+    ? resolveSpawnWorkdir(runtime, firstTask, routingRequest, explicitWorkdir, {
+        lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+      })
+    : undefined;
+  const missingWorkdir = await rejectMissingExplicitWorkdir(
+    callback,
+    initialWorkdirResolution?.rejectedExplicitWorkdir,
+  );
+  if (missingWorkdir) return missingWorkdir;
   let threadId: string | null = null;
   try {
     if (!taskService || typeof taskService.createTask !== "function") {
@@ -1039,14 +1070,7 @@ async function runCreateLegacy(
       }
     } else {
       const explicitProjectId = pickString(params, content, "projectId");
-      const first = tasks[0]
-        ? parseAgentPrefix(tasks[0], baseAgentType).task
-        : undefined;
-      const boundWorkdir = first
-        ? resolveSpawnWorkdir(runtime, first, routingRequest, explicitWorkdir, {
-            lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
-          }).workdir
-        : explicitWorkdir;
+      const boundWorkdir = initialWorkdirResolution?.workdir ?? explicitWorkdir;
       const detail = await taskService.createTask({
         title: taskTitle,
         goal: taskGoal,
@@ -1904,11 +1928,7 @@ async function runSpawnAgent(
       // passed. Omitting it keeps unbound tasks falling through to route /
       // convention resolution below.
     });
-    const {
-      workdir,
-      route,
-      isolate: resolvedIsolate,
-    } = resolveSpawnWorkdir(
+    const workdirResolution = resolveSpawnWorkdir(
       runtime,
       task,
       routingRequest,
@@ -1919,6 +1939,12 @@ async function runSpawnAgent(
           pickBoolean(params, content, "lockWorkdir") === true,
       },
     );
+    const missingWorkdir = await rejectMissingExplicitWorkdir(
+      callback,
+      workdirResolution.rejectedExplicitWorkdir,
+    );
+    if (missingWorkdir) return missingWorkdir;
+    const { workdir, route, isolate: resolvedIsolate } = workdirResolution;
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),

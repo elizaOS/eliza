@@ -73,6 +73,14 @@ export interface ResolvedWorkdirRoute {
   urlMappings?: WorkdirRouteUrlMapping[];
 }
 
+export interface ResolvedSpawnWorkdir {
+  workdir: string;
+  route?: ResolvedWorkdirRoute;
+  isolate?: boolean;
+  /** Planner/caller path that was rejected because it does not exist. */
+  rejectedExplicitWorkdir?: string;
+}
+
 export function resolvePinnedAdapter(
   runtime: IAgentRuntime | undefined,
 ): string | undefined {
@@ -104,7 +112,7 @@ export function resolveSpawnWorkdir(
   userRequest: string,
   explicitWorkdir: string | undefined,
   opts: { lockWorkdir?: boolean } = {},
-): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } {
+): ResolvedSpawnWorkdir {
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
     : undefined;
@@ -115,7 +123,7 @@ export function resolveSpawnWorkdir(
   const withContainedRoute = (result: {
     workdir: string;
     isolate?: boolean;
-  }): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } => {
+  }): ResolvedSpawnWorkdir => {
     const contained = resolveRouteForWorkdir(runtime, result.workdir);
     return contained ? { ...result, route: contained } : result;
   };
@@ -146,8 +154,13 @@ export function resolveSpawnWorkdir(
   }
   if (expandedExplicit) {
     logger.warn(
-      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
+      `[workdir-routes] Planner workdir does not exist, refusing silent fallback: ${expandedExplicit}`,
     );
+    return {
+      workdir: fallback.workdir,
+      ...(fallback.isolate ? { isolate: true } : {}),
+      rejectedExplicitWorkdir: expandedExplicit,
+    };
   }
   // `isolate` is only set when the fallback landed on a SHARED scratch root
   // (a configured ELIZA_ACP_WORKSPACE_ROOT / ACPX_DEFAULT_CWD) — spawnSession

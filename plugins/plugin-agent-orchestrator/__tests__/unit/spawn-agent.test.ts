@@ -129,6 +129,35 @@ describe("TASKS:spawn_agent", () => {
     });
   });
 
+  it("refuses a missing explicit workdir before spawning", async () => {
+    const svc = serviceMock();
+    const missing = path.join(
+      os.tmpdir(),
+      `eliza-missing-spawn-workdir-${Date.now()}`,
+    );
+
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "create a personal website" }),
+      state,
+      {
+        parameters: {
+          action: "spawn_agent",
+          task: "create a personal website",
+          workdir: missing,
+        },
+      },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "WORKDIR_NOT_FOUND",
+      data: { rejectedWorkdir: missing },
+    });
+    expect(svc.spawnSession).not.toHaveBeenCalled();
+  });
+
   it("carries the connector message id for platform-threaded final replies", async () => {
     const svc = serviceMock();
     await spawnAgentAction.handler(
