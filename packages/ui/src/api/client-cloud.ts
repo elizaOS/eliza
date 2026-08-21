@@ -70,20 +70,27 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
+import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
   DEFAULT_DIRECT_CLOUD_BASE_URL,
   DIRECT_ELIZA_CLOUD_API_BY_HOST,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
+  stripTrailingSlashes,
 } from "./direct-cloud-endpoints";
+import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
+import { fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
 
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
-const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
+const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
+// Cloud account reads can legitimately take longer than 15 seconds on a cold
+// regional worker. Keep the request bounded, but leave enough room for the
+// billing/credits response the desktop dashboard depends on.
+const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 30_000;
 
 type DirectCloudAgent = {
   id?: string;
@@ -416,22 +423,28 @@ function parseCloudLoginPollData(data: unknown): {
   };
 }
 
-function generateCloudLoginSessionId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-      "",
-    );
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const CLOUD_LOGIN_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cloudLoginSessionIdOrNull(value: unknown): string | null {
+  const sessionId = stringOrNull(value);
+  return sessionId && CLOUD_LOGIN_SESSION_ID_RE.test(sessionId)
+    ? sessionId
+    : null;
+}
+
+function createCloudLoginRequestId(): string | null {
+  return cloudLoginSessionIdOrNull(globalThis.crypto?.randomUUID?.());
 }
 
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
-  if (shouldUseNativeCloudHttp() || typeof window === "undefined") return null;
+  if (
+    shouldUseNativeCloudHttp() ||
+    isElectrobunRuntime() ||
+    typeof window === "undefined"
+  ) {
+    return null;
+  }
   try {
     const { origin, pathname, protocol, search, hash } = window.location;
     if (protocol !== "http:" && protocol !== "https:") return null;
@@ -508,6 +521,22 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
     // helper only rewrites known cloud hosts to same-origin paths.
     return url;
   }
+}
+
+/**
+ * Fetch a direct Cloud API URL through the Electrobun desktop HTTP bridge when
+ * available, bypassing the WKWebView CORS block on loopback renderer origins.
+ * Falls back to a regular fetch() on web/native platforms.
+ */
+async function directCloudFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const transport = desktopHttpTransportForUrl(url);
+  if (transport) {
+    return transport.request(url, init ?? {}, undefined);
+  }
+  return fetchAgentTransport.request(url, init ?? {}, undefined);
 }
 
 /**
@@ -691,46 +720,80 @@ export async function refreshCloudStewardSession(opts?: {
   }
 
   if (typeof fetch === "undefined") return null;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!response.ok) {
-    if (
-      opts?.throwOnTransientHttpFailure &&
-      (response.status === 429 || response.status >= 500)
-    ) {
+  // Cloud account reads can legitimately take longer than 15 seconds on a cold
+  // regional worker. Keep the request bounded at DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+  // but use the portable helper — `AbortSignal.timeout` is missing on iOS
+  // 16.0-16.3 WKWebView and would throw TypeError before fetch is issued.
+  const { signal: stewardSignal, dispose: disposeStewardSignal } =
+    createTimeoutSignal(DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      credentials: "include",
+      signal: stewardSignal,
+    });
+    if (!response.ok) {
+      if (
+        opts?.throwOnTransientHttpFailure &&
+        (response.status === 429 || response.status >= 500)
+      ) {
+        throw new ElizaError(
+          "Steward session refresh is temporarily unavailable",
+          {
+            code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+            context: { endpoint, status: response.status },
+          },
+        );
+      }
+      return null;
+    }
+    // Keep the timeout signal alive through the body stream — headers may
+    // arrive quickly while `response.json()` stalls indefinitely, so the
+    // timeout must abort the body read too.
+    // error-policy:J3 an unparseable refresh body reads as "no refreshed
+    // session" (null) — callers keep/drop the stored token by its own expiry.
+    // Timeout aborts rethrow so the boundary catch below maps them.
+    const parsed = (await response.json().catch((err: unknown) => {
+      if (isTimeoutAbortError(err)) throw err;
+      return null;
+    })) as {
+      token?: string;
+      expiresAt?: number;
+      expiresIn?: number;
+    } | null;
+    if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
+      // A 2xx whose body carries no usable token is out of the endpoint's
+      // success contract (authoritative logout is a 401, never an empty 200):
+      // treat it as an outage artifact so cookie-only recovery preserves the
+      // shared-agent binding instead of tearing it down.
       throw new ElizaError(
-        "Steward session refresh is temporarily unavailable",
+        "Steward session refresh returned a success response without a token",
         {
           code: "STEWARD_SESSION_REFRESH_TRANSIENT",
           context: { endpoint, status: response.status },
         },
       );
     }
-    return null;
+    return parsed;
+  } catch (err) {
+    // error-policy:J2 a timeout abort becomes the typed transient-refresh
+    // error in throwOnTransient mode; otherwise it fails closed to null,
+    // matching every other refresh failure on this endpoint. Non-abort
+    // errors rethrow untouched.
+    if (isTimeoutAbortError(err)) {
+      if (opts?.throwOnTransientHttpFailure) {
+        throw new ElizaError("Steward session refresh timed out", {
+          code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+          context: { endpoint },
+          cause: err,
+        });
+      }
+      return null;
+    }
+    throw err;
+  } finally {
+    disposeStewardSignal();
   }
-  // error-policy:J3 an unparseable refresh body reads as "no refreshed
-  // session" (null) — callers keep/drop the stored token by its own expiry.
-  const parsed = (await response.json().catch(() => null)) as {
-    token?: string;
-    expiresAt?: number;
-    expiresIn?: number;
-  } | null;
-  if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
-    // A 2xx whose body carries no usable token is out of the endpoint's
-    // success contract (authoritative logout is a 401, never an empty 200):
-    // treat it as an outage artifact so cookie-only recovery preserves the
-    // shared-agent binding instead of tearing it down.
-    throw new ElizaError(
-      "Steward session refresh returned a success response without a token",
-      {
-        code: "STEWARD_SESSION_REFRESH_TRANSIENT",
-        context: { endpoint, status: response.status },
-      },
-    );
-  }
-  return parsed;
 }
 
 function isDirectCloudAuthMissing(client: ElizaClient): boolean {
@@ -840,7 +903,7 @@ async function fetchDirectCloudWithTimeout(
   }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
 
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await directCloudFetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (timedOut) {
       throw new Error(
@@ -934,7 +997,6 @@ async function directCloudRequest<T>(
   const apiBase = resolveDirectCloudClientApiBase(client);
   if (!apiBase) return null;
 
-  const isDedicatedRequest = isDedicatedCloudAgentClient(client);
   const token = readDirectCloudToken(client);
   if (!token) return null;
 
@@ -963,7 +1025,7 @@ async function directCloudRequest<T>(
       }),
       { method, url },
     );
-    if (res.status === 401 && isDedicatedRequest) {
+    if (res.status === 401) {
       clearStoredStewardTokenIfCurrent(token);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
@@ -987,7 +1049,7 @@ async function directCloudRequest<T>(
     { ...init, method, headers },
     { method, url },
   );
-  if (res.status === 401 && isDedicatedRequest) {
+  if (res.status === 401) {
     clearStoredStewardTokenIfCurrent(token);
   }
   const data = await res.json().catch(async () => ({
@@ -3200,7 +3262,13 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
-  const sessionId = generateCloudLoginSessionId();
+  const requestSessionId = createCloudLoginRequestId();
+  if (!requestSessionId) {
+    return {
+      ok: false,
+      error: "Login failed: a secure UUID generator is unavailable",
+    };
+  }
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3208,13 +3276,21 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: { sessionId },
+        data: { sessionId: requestSessionId },
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
       });
       if (res.status < 200 || res.status >= 300) {
         return { ok: false, error: `Login failed (${res.status})` };
+      }
+      const responseData = recordOrNull(parseDirectCloudJsonSafe(res.data));
+      const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+      if (!sessionId) {
+        return {
+          ok: false,
+          error: "Login failed: Eliza Cloud returned an invalid session ID",
+        };
       }
       return {
         ok: true,
@@ -3224,16 +3300,24 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await fetch(
+    const res = await directCloudFetch(
       resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: requestSessionId }),
       },
     );
     if (!res.ok) {
       return { ok: false, error: `Login failed (${res.status})` };
+    }
+    const responseData = recordOrNull(await res.json());
+    const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+    if (!sessionId) {
+      return {
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      };
     }
     return {
       ok: true,
@@ -3278,7 +3362,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
       return parseCloudLoginPollData(parseDirectCloudJsonSafe(res.data));
     }
 
-    const res = await fetch(
+    const res = await directCloudFetch(
       resolveBrowserCloudApiRequestUrl(
         `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
       ),
@@ -3329,11 +3413,10 @@ export function resolveCloudAgentApiBase(args: {
   /** Resolved direct-cloud origin — required to derive from `agentId`. */
   cloudApiBase?: string | null;
 }): string {
-  const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
   const candidate =
-    args.webUiUrl?.trim() || stripTrailingSlash(args.bridgeUrl ?? "");
+    args.webUiUrl?.trim() || stripTrailingSlashes(args.bridgeUrl ?? "");
   const normalized = candidate
-    ? normalizeDirectCloudSharedAgentApiBase(stripTrailingSlash(candidate))
+    ? normalizeDirectCloudSharedAgentApiBase(stripTrailingSlashes(candidate))
     : "";
   // A server URL that is missing/blank, or collapsed to the agent-id-less Eliza
   // Cloud collection (`.../api/v1/eliza/agents`), is unusable — every `/api/*`
@@ -3358,7 +3441,7 @@ function resolveDirectCloudAgentBridgeUrl(
   cloudApiBase: string,
   agentId: string,
 ): string {
-  return `${cloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
+  return `${stripTrailingSlashes(cloudApiBase)}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
 }
 
 function resolveDedicatedCloudAgentApiBase(args: {
@@ -3486,7 +3569,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     // fallback for callers that explicitly allow shared runtime.
     const sharedWebUiUrl =
       immediateWebUiUrl ??
-      `${resolvedCloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+      `${stripTrailingSlashes(resolvedCloudApiBase)}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
     return {
       bridgeUrl: resolveDirectCloudAgentBridgeUrl(
         resolvedCloudApiBase,
@@ -4533,7 +4616,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   // dedicated container subdomain). Both accept the cloud session token —
   // the dedicated-agent proxy swaps it for the container's own token.
   const authedFetch: AuthedAgentFetch = async (base, path, init) => {
-    const res = await fetch(`${base}${path}`, {
+    const res = await directCloudFetch(`${base}${path}`, {
       method: init?.method ?? "GET",
       headers: {
         Accept: "application/json",
@@ -4710,13 +4793,22 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
             { method: "DELETE", url },
           )
         ).status
-      : (
-          await fetch(resolveBrowserCloudApiRequestUrl(url), {
-            method: "DELETE",
-            headers,
-            signal: AbortSignal.timeout(20_000),
-          })
-        ).status;
+      : await (async () => {
+          // Portable 20 s bound — `AbortSignal.timeout` throws on iOS 16.0-16.3;
+          // use the same helper as the steward/bridge/manifest paths.
+          const { signal, dispose } = createTimeoutSignal(20_000);
+          try {
+            return (
+              await directCloudFetch(resolveBrowserCloudApiRequestUrl(url), {
+                method: "DELETE",
+                headers,
+                signal,
+              })
+            ).status;
+          } finally {
+            dispose();
+          }
+        })();
     if (status < 200 || status >= 300) {
       return {
         success: false,

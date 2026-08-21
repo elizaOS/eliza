@@ -212,6 +212,17 @@ describe("resolveServingAxes", () => {
     expect(axes.inference).toBe("external");
   });
 
+  it("keeps direct external inference honest when Cloud calls are disabled", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChat: CEREBRAS,
+      cloudCallsDisabled: true,
+    });
+    expect(axes.inference).toBe("external");
+    expect(axes.combination).toBe("external-inference");
+  });
+
   it("reports unknown, not local, before the server has answered", () => {
     const axes = resolveServingAxes({
       ...base,

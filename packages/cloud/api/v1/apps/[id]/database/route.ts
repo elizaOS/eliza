@@ -23,6 +23,7 @@ import {
   resolveAppDatabaseMode,
 } from "@/lib/services/app-database-mode";
 import { appsService } from "@/lib/services/apps";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -77,12 +78,12 @@ app.put("/", async (c) => {
     return c.json({ success: false, error: loaded.error }, loaded.status);
   }
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
     return c.json({ success: false, error: "Invalid JSON body" }, 400);
   }
+  const body = decodedBody.value;
   const parsed = PutSchema.safeParse(body);
   if (!parsed.success) {
     return c.json(

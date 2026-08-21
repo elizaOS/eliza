@@ -8,6 +8,12 @@
  * the list, and appends a short instruction so the agent can attempt a fix or
  * tell the owner. It renders nothing (and costs no prompt tokens) when there are
  * no recent errors — no prompt bloat on the healthy path.
+ *
+ * Error text is third-party-controlled: a plugin can report an error whose
+ * message or context embeds a credential (a `?key=` URL, an Authorization
+ * header). Everything rendered into the prompt therefore goes through
+ * `runtime.redactSecrets` first, so reported errors can't ship secrets to
+ * external model providers.
  */
 
 import type { ReportedError } from "../errors";
@@ -19,6 +25,11 @@ import type {
 	ProviderResult,
 	State,
 } from "../types";
+import {
+	deepToWellFormedUnicode,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 
 /** Newest N distinct-by-code errors surfaced into the prompt. */
 const MAX_RECENT_ERRORS = 5;
@@ -62,15 +73,19 @@ export function serializeContext(
 	if (!context || Object.keys(context).length === 0) return undefined;
 	let text: string;
 	try {
-		text = JSON.stringify(context);
+		const safeContext = deepToWellFormedUnicode(context);
+		text = JSON.stringify(safeContext);
 	} catch {
 		// error-policy:J3 untrusted-input sanitizing — context may hold a
 		// circular/non-serializable value; drop it rather than fabricate one.
 		return undefined;
 	}
-	return text.length > MAX_CONTEXT_CHARS
-		? `${text.slice(0, MAX_CONTEXT_CHARS - 1)}…`
-		: text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= MAX_CONTEXT_CHARS) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, MAX_CONTEXT_CHARS - 1);
+	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 /**
@@ -98,11 +113,14 @@ function selectRecentErrors(
 		.slice(0, MAX_RECENT_ERRORS);
 }
 
-function renderText(selected: ReportedError[]): string {
+function renderText(
+	selected: ReportedError[],
+	redact: (text: string) => string,
+): string {
 	const lines = selected.map((entry) => {
 		const ctx = serializeContext(entry.context);
-		const suffix = ctx ? ` — ${ctx}` : "";
-		return `- [${entry.scope}] ${entry.code}: ${entry.message}${suffix}`;
+		const suffix = ctx ? ` — ${redact(ctx)}` : "";
+		return `- [${entry.scope}] ${entry.code}: ${redact(entry.message)}${suffix}`;
 	});
 	// The framing must make the block self-quarantining: rendered into a group
 	// turn, an unframed error list reads like conversation topic material — a
@@ -144,7 +162,7 @@ export const recentErrorsProvider: Provider = {
 		const selected = selectRecentErrors(entries, Date.now());
 		if (selected.length === 0) return EMPTY_RESULT;
 
-		const text = renderText(selected);
+		const text = renderText(selected, (value) => runtime.redactSecrets(value));
 		logger.debug(
 			{ src: "agent", count: selected.length },
 			"[RecentErrorsProvider] Surfacing recent reported errors",

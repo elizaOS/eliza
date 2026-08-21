@@ -3,22 +3,32 @@
  * migrations) under a database-wide advisory lock with per-statement failure
  * diagnostics instead of drizzle-kit's opaque errors. Ledger validation and
  * bounded lock retries make concurrent deploys serialize without accepting
- * partial, duplicated, or reordered migration history. Invoked as
- * `db:cloud:migrate` at the repo root and `db:migrate` in
- * packages/cloud/shared, including the deploy pipeline's migrate-db gate;
- * enforces TLS for remote databases.
+ * partial, duplicated, or reordered migration history. The protected database
+ * identity gate runs on this same locked session before the first DDL. Invoked
+ * as `db:cloud:migrate` at the repo root and `db:migrate` in packages/cloud/shared,
+ * including the deploy pipeline's migrate-db gate; enforces TLS for remote
+ * databases.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
+import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
+import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
 import pg from "pg";
 import {
   type CleanupFailure,
   runCleanupSteps,
   runWithCleanup,
 } from "./error-preserving-cleanup";
+import {
+  type DatabaseIdentityConfig,
+  type IdentityPreflightResult,
+  publishDatabaseIdentityResult,
+  readDatabaseIdentityConfig,
+  runDatabaseIdentityPreflight,
+} from "./preflight-database-identity";
 
 const { Client } = pg;
 
@@ -66,13 +76,7 @@ interface AppliedMigration {
 
 interface DatabaseError extends Error {
   code?: string;
-  detail?: string;
-  hint?: string;
   position?: string;
-  schema?: string;
-  table?: string;
-  column?: string;
-  constraint?: string;
 }
 
 interface MigrationClient {
@@ -92,12 +96,40 @@ interface ValidatedMigrationLedger {
   lastAppliedJournalIndex: number;
 }
 
+type IdentityResultReporter = (
+  config: DatabaseIdentityConfig,
+  result: IdentityPreflightResult,
+) => Promise<void>;
+
+type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
+
+/** Executes the historical agent-sandbox drift repair on the locked migration session. */
+export async function convergeAgentSandboxSchemaOnMigrationClient(
+  migrationClient: MigrationClient,
+): Promise<void> {
+  // The migration-only adapter owns SQL rendering without pulling PgDialect
+  // into the Worker-facing schema guard module.
+  await convergeAgentSandboxSchema(
+    createMigrationClientSandboxExecutor((text, params) =>
+      migrationClient.query(text, params),
+    ),
+  );
+}
+
 // Historical SQL files were edited after deployment, so their stored hashes
 // and some deployed schemas have no matching ledger row. The catalog-guard
 // migration is the first immutable checkpoint owned by this runner; hash,
 // order, and completeness identity are enforced from this entry forward.
 const HASH_IDENTITY_ENFORCEMENT_TAG =
   "0194_job_execution_interruptions_catalog_guard";
+const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
+  "0282_drop_unused_usage_quotas_table",
+  "0282_01_restore_usage_quotas_compatibility",
+] as const;
+
+type MigrationReleaseBarrierDecision =
+  | { action: "continue" }
+  | { action: "pause"; stopBeforeJournalIndex: number };
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
@@ -188,25 +220,54 @@ function summarizeStatement(statement: string): string {
   return statement.replace(/\s+/g, " ").slice(0, 500);
 }
 
-function formatDatabaseError(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
+const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
+const POSTGRES_POSITION_PATTERN = /^[1-9][0-9]{0,9}$/;
 
-  const databaseError = error as DatabaseError;
+function allowlistedDatabaseField(
+  value: unknown,
+  pattern: RegExp,
+): string | undefined {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+/**
+ * Format only bounded PostgreSQL metadata that cannot contain row values.
+ *
+ * PostgreSQL's `message`, `detail`, and `hint` fields are deliberately absent:
+ * JSON parse failures copy the offending legacy token into `detail`, while
+ * other error classes may interpolate provider or row data into any of the
+ * three. This formatter is shared by statement, cleanup, and fatal stderr so a
+ * parent process using inherited stdio cannot accidentally re-expose them.
+ */
+function formatDatabaseError(error: unknown): string {
+  let sqlState: string | undefined;
+  let position: string | undefined;
+  try {
+    const databaseError =
+      error instanceof Error ? (error as DatabaseError) : null;
+    sqlState = allowlistedDatabaseField(
+      databaseError?.code,
+      POSTGRES_SQLSTATE_PATTERN,
+    );
+    position = allowlistedDatabaseField(
+      databaseError?.position,
+      POSTGRES_POSITION_PATTERN,
+    );
+  } catch {
+    // error-policy:J3 hostile error accessors yield the static diagnostic.
+  }
   const details = [
-    `message=${databaseError.message}`,
-    databaseError.code ? `code=${databaseError.code}` : null,
-    databaseError.detail ? `detail=${databaseError.detail}` : null,
-    databaseError.hint ? `hint=${databaseError.hint}` : null,
-    databaseError.position ? `position=${databaseError.position}` : null,
-    databaseError.schema ? `schema=${databaseError.schema}` : null,
-    databaseError.table ? `table=${databaseError.table}` : null,
-    databaseError.column ? `column=${databaseError.column}` : null,
-    databaseError.constraint ? `constraint=${databaseError.constraint}` : null,
+    "code=DATABASE_OPERATION_FAILED",
+    sqlState ? `database_code=${sqlState}` : null,
+    position ? `position=${position}` : null,
   ].filter(Boolean);
 
   return details.join(" ");
+}
+
+/** Emits the production fatal boundary without serializing the database error. */
+function reportMigrationFatalFailure(error: unknown): void {
+  console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
 }
 
 function reportMigrationCleanupFailure(failure: CleanupFailure): void {
@@ -348,6 +409,78 @@ export function validateAppliedMigrationLedger(
   return { lastAppliedJournalIndex };
 }
 
+/**
+ * Fences the two-step usage-quotas repair while the compatibility Worker is
+ * being rolled out. Any validated ledger before 0282 may apply its safe prefix
+ * but pauses before the drop so the deploy can continue without exposing the
+ * old Worker to the missing table. Environments that already recorded 0282
+ * must proceed directly to the restoring 0282_01 migration. Any other suffix is
+ * unsafe and fails closed before the first pending migration is applied.
+ */
+export function evaluateMigrationReleaseBarrier(
+  migrations: Migration[],
+  lastAppliedJournalIndex: number,
+): MigrationReleaseBarrierDecision {
+  const journalTags = migrations.map((migration) => migration.entry.tag);
+  const barrierIndexes = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.map((tag) =>
+    journalTags.reduce<number[]>((indexes, candidate, index) => {
+      if (candidate === tag) indexes.push(index);
+      return indexes;
+    }, []),
+  );
+  const presentBarrierTags = barrierIndexes.filter(
+    (indexes) => indexes.length > 0,
+  ).length;
+
+  // Older synthetic histories and checkouts pre-dating 0282 have no barrier.
+  if (presentBarrierTags === 0) return { action: "continue" };
+
+  const expectedSuffix = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.join(", ");
+  if (barrierIndexes.some((indexes) => indexes.length !== 1)) {
+    throw new Error(
+      `Migration release barrier requires exactly one of each suffix entry (${expectedSuffix})`,
+    );
+  }
+
+  const dropIndex = barrierIndexes[0]?.[0];
+  const restoreIndex = barrierIndexes[1]?.[0];
+  // Anchor on ADJACENCY, not on the journal tail. Requiring the pair to be the
+  // last two entries means the next migration anyone appends makes this throw
+  // for every target, including fully-migrated ones — a repo-wide stop-the-
+  // world. What the barrier actually needs is that the restore immediately
+  // follows the drop, so no other migration can interleave between them.
+  if (
+    dropIndex === undefined ||
+    restoreIndex === undefined ||
+    restoreIndex !== dropIndex + 1
+  ) {
+    const actualSuffix = journalTags
+      .slice(Math.max(0, Math.min(dropIndex ?? 0, restoreIndex ?? 0)))
+      .join(", ");
+    throw new Error(
+      `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
+    );
+  }
+
+  if (lastAppliedJournalIndex < dropIndex) {
+    return { action: "pause", stopBeforeJournalIndex: dropIndex };
+  }
+
+  if (lastAppliedJournalIndex === dropIndex) {
+    // Only the NEXT entry has to be the restore — later migrations are none of
+    // this barrier's business, and demanding it be the only pending one is the
+    // same tail-pinning mistake one layer down.
+    const nextTag = journalTags[lastAppliedJournalIndex + 1];
+    if (nextTag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]) {
+      throw new Error(
+        `Migration release barrier expected ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]} immediately after ledgered 0282; found (${nextTag ?? "empty"})`,
+      );
+    }
+  }
+
+  return { action: "continue" };
+}
+
 async function acquireMigrationLock(
   client: MigrationClient,
   options: LockRetryOptions,
@@ -487,12 +620,15 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
 }
 
 async function createPgClient(url: string): Promise<MigrationClient> {
+  console.log("[db:migrate] preparing PostgreSQL client");
   const { url: clientUrl, ssl: clientSsl } = enforceTlsForRemote(url);
   const client = new Client({
     connectionString: clientUrl,
     ...(clientSsl ? { ssl: clientSsl } : {}),
   });
+  console.log("[db:migrate] connecting PostgreSQL client");
   await client.connect();
+  console.log("[db:migrate] PostgreSQL client connected");
   return {
     backend: "postgres",
     query: async <T>(text: string, params?: unknown[]) => {
@@ -508,17 +644,28 @@ export async function runMigrations(
   client: MigrationClient,
   migrations: Migration[],
   retryOptions: LockRetryOptions,
+  identityConfig?: DatabaseIdentityConfig,
+  reportIdentityResult?: IdentityResultReporter,
+  postMigrationConvergence?: PostMigrationConvergence,
 ): Promise<void> {
   let lockHeld = false;
   await runWithCleanup(
     async () => {
       if (client.backend === "postgres") {
+        console.log("[db:migrate] acquiring migration lock");
         await acquireMigrationLock(client, retryOptions);
         lockHeld = true;
       } else {
         console.log(
           "[db:migrate] PGlite backend uses its single-writer database lock",
         );
+      }
+      if (identityConfig) {
+        const identityResult = await runDatabaseIdentityPreflight(
+          identityConfig,
+          client,
+        );
+        await reportIdentityResult?.(identityConfig, identityResult);
       }
       await ensureMigrationsTable(client);
 
@@ -539,13 +686,36 @@ export async function runMigrations(
         }`,
       );
 
+      const releaseBarrier = evaluateMigrationReleaseBarrier(
+        migrations,
+        validatedLedger.lastAppliedJournalIndex,
+      );
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,
+        releaseBarrier.action === "pause"
+          ? releaseBarrier.stopBeforeJournalIndex
+          : undefined,
       );
-      console.log(`[db:migrate] pending migrations: ${pending.length}`);
+      console.log(
+        `[db:migrate] pending migrations: ${migrations.length - validatedLedger.lastAppliedJournalIndex - 1}`,
+      );
+      if (releaseBarrier.action === "pause") {
+        console.log(
+          `[db:migrate] release barrier permits ${pending.length} safe pending migrations before 0282`,
+        );
+      }
 
       for (const migration of pending) {
         await applyMigration(client, migration, retryOptions);
+      }
+
+      await postMigrationConvergence?.(client);
+
+      if (releaseBarrier.action === "pause") {
+        console.warn(
+          `[db:migrate] release barrier paused before ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[0]}; deploy the compatibility Worker before advancing the migration ledger`,
+        );
+        return;
       }
 
       console.log("[db:migrate] migrations complete");
@@ -564,7 +734,8 @@ export async function runMigrations(
 }
 
 async function main(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const environment: Readonly<Record<string, string | undefined>> = process.env;
+  const databaseUrl = environment.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required to run database migrations.");
   }
@@ -574,17 +745,42 @@ async function main(): Promise<void> {
     journal.entries.map((entry) => readMigration(entry)),
   );
   const retryOptions = lockRetryOptions();
+  const configuredIdentityMode =
+    environment.DATABASE_IDENTITY_GATE_MODE?.trim().toLowerCase();
+  const identityConfig =
+    environment.DATABASE_IDENTITY_ENVIRONMENT !== undefined ||
+    (configuredIdentityMode !== undefined && configuredIdentityMode !== "off")
+      ? readDatabaseIdentityConfig(environment)
+      : undefined;
 
   const client: MigrationClient = databaseUrl.startsWith("pglite://")
     ? await createPGliteClient(databaseUrl)
     : await createPgClient(databaseUrl);
 
-  await runMigrations(client, migrations, retryOptions);
+  await runMigrations(
+    client,
+    migrations,
+    retryOptions,
+    identityConfig,
+    async (config, result) => {
+      try {
+        await publishDatabaseIdentityResult(config, result);
+      } catch (error) {
+        // error-policy:J1 report mode must not turn an evidence-output failure
+        // into permission to skip or block the migration identity decision.
+        if (config.mode !== "report") throw error;
+        process.stdout.write(
+          "::warning::database identity report output unavailable; inspect protected operator logs\n",
+        );
+      }
+    },
+    convergeAgentSandboxSchemaOnMigrationClient,
+  );
 }
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
+    reportMigrationFatalFailure(error);
     process.exit(1);
   });
 }

@@ -1,14 +1,19 @@
 /**
  * GET /api/health/operational
  *
- * Operational health check for monitoring. Returns boolean flags for the
- * subsystems whose silent misconfiguration would degrade or break the
- * monetization / payout / sandbox flows. No sensitive data (balances, keys,
- * wallet addresses) is exposed — that surface stays on the user-facing
- * `/api/v1/redemptions/status` (existing) and the admin endpoints.
+ * Operational health check for monitoring. The public, unauthenticated
+ * payload is intentionally collapsed to `{ status, timestamp }` so backend
+ * configuration state (which payout/cron/Steward/OAuth subsystems are live or
+ * misconfigured) is not disclosed to the internet. The per-check detail —
+ * boolean flags for the subsystems whose silent misconfiguration would
+ * degrade or break the monetization / payout / sandbox flows — is returned
+ * only to platform admins. No sensitive data (balances, keys, wallet
+ * addresses) is exposed in either variant — that surface stays on the
+ * user-facing `/api/v1/redemptions/status` (existing) and the admin
+ * endpoints.
  *
  * Intended caller: uptime monitors, ops dashboards, on-call runbooks.
- * Lightweight (no live RPC calls), unauthed.
+ * Lightweight (no live RPC calls).
  *
  * `status` flips from `ok` to `degraded` when any required-for-production
  * check fails so a single boolean grep is enough for alerts.
@@ -16,6 +21,7 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
 import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
@@ -34,7 +40,7 @@ interface PayoutCheckResult {
 
 const app = new Hono<AppEnv>();
 
-app.get("/", (c) => {
+app.get("/", async (c) => {
   try {
     const env = getCloudAwareEnv();
 
@@ -88,9 +94,24 @@ app.get("/", (c) => {
       crons.configured &&
       oauthProvidersCheck.configured;
 
+    const status = allOk ? "ok" : "degraded";
+    const cacheHeaders = { "Cache-Control": "no-store, max-age=0" };
+
+    let isPlatformAdmin = false;
+    try {
+      await requireAdmin(c);
+      isPlatformAdmin = true;
+    } catch {
+      // error-policy:J1 route boundary — a failed admin resolution is not an error for a health probe; the caller receives the collapsed public payload below.
+    }
+
+    if (!isPlatformAdmin) {
+      return c.json({ status, timestamp: Date.now() }, 200, cacheHeaders);
+    }
+
     return c.json(
       {
-        status: allOk ? "ok" : "degraded",
+        status,
         timestamp: Date.now(),
         region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
         checks: {
@@ -102,7 +123,7 @@ app.get("/", (c) => {
         oauth_providers: oauthProviders,
       },
       200,
-      { "Cache-Control": "no-store, max-age=0" },
+      cacheHeaders,
     );
   } catch (error) {
     // error-policy:J1 translate an operational-health boundary failure into the shared API error shape.

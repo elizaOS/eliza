@@ -1464,7 +1464,16 @@ for (const [stem, record] of [...actionsByStem.entries()].sort(([a], [b]) =>
     seedTerms.push(...extractDescriptionTerms(description));
   }
 
-  const base = limitTerms(dedupeTerms(seedTerms), BASE_LIMIT);
+  // Curated terms already shipped in the committed artifact are pinned:
+  // scoreTerm favors multi-word phrases (+5), so at the cap a fresh
+  // description-extract flood would evict the short single tokens
+  // (`web`, `skill`, `install`, ...) that textIncludesKeywordTerm's
+  // word-boundary matching depends on for recall (#22402 review).
+  const base = limitTermsPinned(
+    dedupeTerms([...arrayValue(existing.base)]),
+    dedupeTerms(seedTerms),
+    BASE_LIMIT,
+  );
   const localeEntries = {};
   for (const locale of SUPPORTED_LOCALES) {
     const terms = [
@@ -1677,6 +1686,18 @@ function dedupeTerms(terms) {
     result.push(String(term).trim());
   }
   return result;
+}
+
+function limitTermsPinned(pinnedTerms, terms, limit) {
+  const pinned = pinnedTerms.filter((term) => term.length <= 96);
+  const pinnedKeys = new Set(pinned.map(normalizeTerm));
+  const fill = terms
+    .filter((term) => term.length <= 96 && !pinnedKeys.has(normalizeTerm(term)))
+    .sort((left, right) => scoreTerm(right) - scoreTerm(left))
+    .slice(0, Math.max(0, limit - pinned.length));
+  return [...pinned, ...fill].sort((left, right) =>
+    normalizeTerm(left).localeCompare(normalizeTerm(right)),
+  );
 }
 
 function limitTerms(terms, limit) {

@@ -63,24 +63,24 @@ const BANNED_WORDS: ReadonlyArray<{
  * already be in imperative form, so we flag the rest of the family directly.
  */
 const NON_IMPERATIVE_LEADING_WORDS: ReadonlySet<string> = new Set([
-	"It",
-	"This",
-	"Helps",
-	"Allows",
-	"Should",
-	"Provides",
-	"Retrieves",
-	"Returns",
-	"Generates",
-	"Creates",
-	"Updates",
-	"Deletes",
-	"Sends",
-	"Extracts",
-	"Identifies",
-	"Summarizes",
-	"Compresses",
-	"Automatically",
+	"it",
+	"this",
+	"helps",
+	"allows",
+	"should",
+	"provides",
+	"retrieves",
+	"returns",
+	"generates",
+	"creates",
+	"updates",
+	"deletes",
+	"sends",
+	"extracts",
+	"identifies",
+	"summarizes",
+	"compresses",
+	"automatically",
 ]);
 
 export interface LintDescriptionCompressedResult {
@@ -127,7 +127,7 @@ export function lintDescriptionCompressed(
 	const firstWordMatch = value.trim().match(/^([A-Za-z][A-Za-z0-9_-]*)/);
 	if (firstWordMatch) {
 		const firstWord = firstWordMatch[1];
-		if (NON_IMPERATIVE_LEADING_WORDS.has(firstWord)) {
+		if (NON_IMPERATIVE_LEADING_WORDS.has(firstWord.toLowerCase())) {
 			violations.push(
 				`non-imperative: descriptionCompressed starts with "${firstWord}" — use an imperative verb (e.g. "Send", "Get", "List")`,
 			);

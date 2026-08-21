@@ -7,12 +7,25 @@ import { decryptApiKey } from "../../db/crypto/api-keys";
 import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
+import { apiKeysService } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
 
 /**
  * Session expiry time in minutes.
  */
 const SESSION_EXPIRY_MINUTES = 10; // Sessions expire after 10 minutes
+
+/**
+ * Session ids are server-generated UUIDs (POST /api/auth/cli-session mints
+ * them; client-chosen ids allowed squatting and unbounded row inserts).
+ * Routes validate the format before touching the store.
+ */
+const CLI_AUTH_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function looksLikeCliAuthSessionId(sessionId: string): boolean {
+  return CLI_AUTH_SESSION_ID_PATTERN.test(sessionId);
+}
 
 export type CliAuthApiKeyRevealResult =
   | {
@@ -283,10 +296,26 @@ export class CliAuthSessionsService {
   }
 
   /**
-   * Clean up expired sessions (should be called by a cron job)
+   * Reaps expired sessions and revokes the orphan keys minted by abandoned
+   * sign-ins (cron-driven). The revocation commits first, then each revoked
+   * hash's auth caches are invalidated — matching the write-then-invalidate
+   * ordering the revocation paths use. These keys' plaintext was never
+   * revealed (consumed_at was NULL), so no warm cache entry can exist; the
+   * invalidation is defense-in-depth and an unconfirmed delete surfaces to
+   * the cron boundary rather than being swallowed.
    */
-  async cleanupExpiredSessions(): Promise<void> {
-    await cliAuthSessionsRepository.deleteExpiredSessions();
+  async cleanupExpiredSessions(): Promise<{
+    deletedSessions: number;
+    revokedOrphanKeys: number;
+  }> {
+    const { deletedSessions, revokedOrphanKeys } =
+      await cliAuthSessionsRepository.reapExpiredSessions();
+
+    for (const key of revokedOrphanKeys) {
+      await apiKeysService.invalidateCache(key.key_hash);
+    }
+
+    return { deletedSessions, revokedOrphanKeys: revokedOrphanKeys.length };
   }
 }
 

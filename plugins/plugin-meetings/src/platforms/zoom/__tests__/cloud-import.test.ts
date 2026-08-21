@@ -160,6 +160,87 @@ describe("Zoom cloud import", () => {
     });
   });
 
+  it("rejects a repeated participant pagination token", async () => {
+    let participantCalls = 0;
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/participants")) {
+        participantCalls += 1;
+        if (participantCalls > 2) {
+          throw new Error("participant pagination did not terminate");
+        }
+        return json({ participants: [], next_page_token: "stuck-token" });
+      }
+      if (url.includes("/recordings")) {
+        return json({ recording_files: [] });
+      }
+      return json({ uuid: "meeting-repeated-token" });
+    };
+
+    await expect(
+      importZoomCloudMeeting({
+        meetingId: "meeting-repeated-token",
+        accessToken: TOKEN,
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject<Partial<ZoomCloudImportError>>({
+      code: "invalid_response",
+      status: 502,
+    });
+    expect(participantCalls).toBe(2);
+  });
+
+  it("rejects a non-adjacent participant pagination cycle", async () => {
+    const tokens = ["token-a", "token-b", "token-a"];
+    let participantCalls = 0;
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      if (String(input).includes("/participants")) {
+        const nextPageToken = tokens[participantCalls];
+        participantCalls += 1;
+        return json({ participants: [], next_page_token: nextPageToken });
+      }
+      return json({ uuid: "meeting-token-cycle" });
+    };
+
+    await expect(
+      importZoomCloudMeeting({
+        meetingId: "meeting-token-cycle",
+        accessToken: TOKEN,
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject<Partial<ZoomCloudImportError>>({
+      code: "invalid_response",
+      status: 502,
+    });
+    expect(participantCalls).toBe(3);
+  });
+
+  it("stops before requesting a 101st participant page", async () => {
+    let participantCalls = 0;
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      if (String(input).includes("/participants")) {
+        participantCalls += 1;
+        return json({
+          participants: [],
+          next_page_token: `unique-token-${participantCalls}`,
+        });
+      }
+      return json({ uuid: "meeting-page-limit" });
+    };
+
+    await expect(
+      importZoomCloudMeeting({
+        meetingId: "meeting-page-limit",
+        accessToken: TOKEN,
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject<Partial<ZoomCloudImportError>>({
+      code: "invalid_response",
+      status: 502,
+    });
+    expect(participantCalls).toBe(100);
+  });
+
   it("fails closed when a streamed recording exceeds its byte quota", async () => {
     const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);

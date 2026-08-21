@@ -48,6 +48,7 @@ import {
   resolveDefaultMatrixAccountId,
   resolveMatrixAccountSettings,
 } from "./accounts.js";
+import { waitForMatrixPrepared } from "./matrix-sync.js";
 import {
   getMatrixLocalpart,
   type IMatrixService,
@@ -1422,19 +1423,24 @@ export class MatrixService extends Service implements IMatrixService {
    * Connect to Matrix.
    */
   private async connect(state: MatrixAccountState): Promise<void> {
-    await state.client.startClient({ initialSyncLimit: 10 });
-    state.connected = true;
-
-    // Wait for initial sync
-    await new Promise<void>((resolve) => {
-      const listener = (syncState: string) => {
-        if (syncState === "PREPARED") {
-          state.client.removeListener(sdk.ClientEvent.Sync, listener);
-          resolve();
-        }
-      };
-      state.client.on(sdk.ClientEvent.Sync, listener);
-    });
+    try {
+      await state.client.startClient({ initialSyncLimit: 10 });
+      await waitForMatrixPrepared(state.client, sdk.ClientEvent.Sync);
+      state.connected = true;
+    } catch (error) {
+      state.connected = false;
+      state.syncing = false;
+      try {
+        state.client.stopClient();
+      } catch (stopError) {
+        // error-policy:J6 failed-startup teardown is best effort; preserve the
+        // original connection failure while making cleanup failure visible.
+        logger.warn(
+          `Matrix client cleanup after failed connection failed: ${stopError instanceof Error ? stopError.message : String(stopError)}`
+        );
+      }
+      throw error;
+    }
 
     // Join configured rooms
     for (const room of state.settings.rooms) {

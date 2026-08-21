@@ -2,8 +2,10 @@
  * Local HTTP webhook server that receives inbound messages POSTed by the WeChat
  * proxy service, authenticates them (constant-time token compare), and
  * normalizes the raw proxy payloads into `WechatMessageContext` for the bot.
- * `WECHAT_TYPE_MAP` translates the proxy's numeric message types into the
- * plugin's message-type + private/group scope.
+ * Binds loopback only — the proxy registers a 127.0.0.1 webhook URL and the
+ * static API key travels over plaintext HTTP. `WECHAT_TYPE_MAP` translates the
+ * proxy's numeric message types into the plugin's message-type + private/group
+ * scope.
  */
 import { timingSafeEqual } from "node:crypto";
 import {
@@ -34,6 +36,14 @@ const WECHAT_TYPE_MAP: Record<
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 
+/**
+ * The proxy registers a `http://127.0.0.1:<port>` webhook URL (channel.ts),
+ * so the receiver only ever serves same-host callers. Binding loopback keeps
+ * the static API key — which travels over plaintext HTTP — off every LAN and
+ * external interface.
+ */
+const WEBHOOK_BIND_HOST = "127.0.0.1";
+
 export interface CallbackServerOptions {
   port: number;
   accounts: Array<{ accountId: string; apiKey: string }>;
@@ -51,6 +61,7 @@ export async function startCallbackServer(
 ): Promise<{
   close: () => Promise<void>;
   port: number;
+  host: string;
 }> {
   const {
     port,
@@ -76,7 +87,12 @@ export async function startCallbackServer(
       return;
     }
 
-    let body = "";
+    // Accumulate raw bytes and decode once on "end". Decoding each TCP chunk
+    // independently with Buffer.toString() corrupts any multi-byte UTF-8 code
+    // point (i.e. essentially every CJK character WeChat carries) that
+    // straddles a chunk boundary, replacing it with U+FFFD on both sides of
+    // the split (#22426).
+    const chunks: Buffer[] = [];
     let bodyBytes = 0;
     req.on("data", (chunk: Buffer) => {
       bodyBytes += chunk.length;
@@ -86,7 +102,7 @@ export async function startCallbackServer(
         req.destroy();
         return;
       }
-      body += chunk.toString();
+      chunks.push(chunk);
     });
 
     req.on("end", async () => {
@@ -94,6 +110,7 @@ export async function startCallbackServer(
         return;
       }
 
+      const body = Buffer.concat(chunks).toString("utf8");
       let payload: unknown;
       try {
         payload = JSON.parse(body);
@@ -163,12 +180,14 @@ export async function startCallbackServer(
 
     server.once("listening", handleListening);
     server.once("error", handleError);
-    server.listen(port);
+    server.listen(port, WEBHOOK_BIND_HOST);
   });
 
   const address = server.address() as AddressInfo | null;
   const listeningPort = address?.port ?? port;
-  console.log(`[wechat] Webhook server listening on port ${listeningPort}`);
+  console.log(
+    `[wechat] Webhook server listening on ${WEBHOOK_BIND_HOST}:${listeningPort}`,
+  );
 
   server.on("error", (err: Error) => {
     if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
@@ -193,6 +212,7 @@ export async function startCallbackServer(
   return {
     close: () => closeServer(server),
     port: listeningPort,
+    host: WEBHOOK_BIND_HOST,
   };
 }
 

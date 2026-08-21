@@ -1,6 +1,8 @@
 /**
  * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * whose tabs fold into a switcher sheet, with companion-bridge status.
+ * whose tabs fold into a switcher sheet, with companion-bridge status and the
+ * policy-controlled agent browser session panel (takeover, domain modes,
+ * receipts) when the bridge plugin is available.
  *
  * The builtin registry declares this view `header: "fullscreen"`, so the shell
  * mounts it edge-to-edge and the view owns its chrome: a floating glass
@@ -45,6 +47,7 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
 import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -2945,6 +2948,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   </Button>
                 </div>
               ) : null}
+              {workspace.mode === "web" &&
+              browserBridgeSupported &&
+              !browserBridgeUnsupportedInNativeLocalMode ? (
+                <div className="mt-4 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                    {t("browserworkspace.AgentBrowserSessions", {
+                      defaultValue: "Agent browser sessions",
+                    })}
+                  </div>
+                  <BrowserSessionPolicyPanel api={client} />
+                </div>
+              ) : null}
             </div>
           </div>
         )
@@ -2986,24 +3001,57 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           >
             <div className="flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-border bg-bg-elevated p-6 shadow-lg">
               <div className="text-sm font-semibold text-txt">
-                {t("browserworkspace.NativeSurfaceUnavailable", {
-                  defaultValue: "Browser view unavailable",
-                })}
+                {nativeTabSurfaces.error.permanent
+                  ? t("browserworkspace.NativeSurfaceUnsupported", {
+                      defaultValue: "Secure browsing not supported here",
+                    })
+                  : t("browserworkspace.NativeSurfaceUnavailable", {
+                      defaultValue: "Browser view unavailable",
+                    })}
               </div>
               <div className="text-xs leading-5 text-muted">
-                {t("browserworkspace.NativeSurfaceUnavailableDescription", {
-                  defaultValue:
-                    "The secure browser surface could not connect. Retry without losing your tabs.",
-                })}
+                {nativeTabSurfaces.error.permanent
+                  ? t("browserworkspace.NativeSurfaceUnsupportedDescription", {
+                      defaultValue:
+                        "This device's system WebView cannot provide the isolation Eliza requires, so Eliza will not open pages inside the app. You can open the page in the device browser instead.",
+                    })
+                  : t("browserworkspace.NativeSurfaceUnavailableDescription", {
+                      defaultValue:
+                        "The secure browser surface could not connect. Retry without losing your tabs.",
+                    })}
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={nativeTabSurfaces.retry}
-              >
-                {t("common.retry", { defaultValue: "Retry" })}
-              </Button>
+              {nativeTabSurfaces.error.permanent ? (
+                selectedTab ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busyAction !== null}
+                    onClick={() =>
+                      void runBrowserWorkspaceAction(
+                        `open:external:${selectedTab.id}`,
+                        async () => {
+                          await openExternalUrl(selectedTab.url);
+                        },
+                      )
+                    }
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {t("browserworkspace.OpenExternal", {
+                      defaultValue: "Open external",
+                    })}
+                  </Button>
+                ) : null
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={nativeTabSurfaces.retry}
+                >
+                  {t("common.retry", { defaultValue: "Retry" })}
+                </Button>
+              )}
             </div>
           </div>
         ) : (

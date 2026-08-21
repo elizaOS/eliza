@@ -264,6 +264,11 @@ function watchdogScenarioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-watchdog-stall",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Orchestrator watchdog grills idle sub-agents and warns on round-trip + spend caps",
   domain: "agent-orchestrator",

@@ -35,6 +35,7 @@ electrobun-wgpu {
 @source "..";
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
+@source "../../../../plugins/plugin-maps/src";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the
    default feature-empty stack falls behind the assistant overlay. Compact only
@@ -181,6 +182,13 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   /* biome-ignore lint/complexity/noImportantStyles: cross-asset Tailwind reset */
   translate: none !important;
   transform: translateX(-50%);
+  /* The entry keyframes must not drop the centering transform: CSS animations
+     replace `transform` wholesale, so the utility-picked
+     `shell-overlay-in` (translateY-only) would un-center the panel for the
+     220ms entry. Override only the name — duration/easing still come from the
+     `motion-safe:animate-[shell-overlay-in_220ms_ease-out]` utility (the
+     `-anchored` keyframes are declared in base.css next to the base ones). */
+  animation-name: shell-overlay-in-anchored;
   border-radius: 1.5rem;
   border-color: rgb(255 255 255 / 20%);
 }
@@ -379,29 +387,6 @@ body.pwa-standalone textarea {
 
   75% {
     content: "...";
-  }
-}
-
-/* ── Home pill listening waveform ───────────────────────────────────── */
-
-/*
- * Wispr-Flow-style mic-live bars inside the shell home pill. The bars are
- * fixed-height spans that oscillate scaleY so the capsule reads as "hearing
- * you" without real audio metering; per-bar animation-delay staggers them.
- */
-.home-pill-wave-bar {
-  animation: home-pill-wave 900ms ease-in-out infinite;
-  transform-origin: center;
-}
-
-@keyframes home-pill-wave {
-  0%,
-  100% {
-    transform: scaleY(0.55);
-  }
-
-  50% {
-    transform: scaleY(1.9);
   }
 }
 

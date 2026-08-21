@@ -99,4 +99,12 @@ describe("delete-note owner-text fence", () => {
     );
     expect(removed.value.title).toBe("wifi password");
   });
+
+  it("rejects blank or whitespace-only lookup query as NOTES_NOT_FOUND", async () => {
+    const service = await seeded();
+    await expect(
+      service.deleteNoteByLookupWithCommit("query", "   "),
+    ).rejects.toMatchObject({ code: "NOTES_NOT_FOUND" });
+    expect(service.snapshot().notes).toHaveLength(1);
+  });
 });

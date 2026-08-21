@@ -39,6 +39,11 @@ import {
   type TokenRedemption,
   tokenRedemptions,
 } from "../../db/schemas/token-redemptions";
+import {
+  REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS,
+  REDEMPTION_MAX_POINTS,
+  REDEMPTION_MIN_POINTS,
+} from "../../types/redemption-contract";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
@@ -56,6 +61,7 @@ import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { usdFromPoints } from "./earnings-units";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { normalizeRedemptionClientIp } from "./redemption-client-ip";
@@ -67,8 +73,8 @@ import { twapPriceOracle } from "./twap-price-oracle";
 
 const SECURE_CONFIG = {
   // Amount bounds (prevents integer overflow)
-  MIN_REDEMPTION_POINTS: 100, // $1 minimum
-  MAX_REDEMPTION_POINTS: 100000, // $1000 maximum
+  MIN_REDEMPTION_POINTS: REDEMPTION_MIN_POINTS, // $1 minimum
+  MAX_REDEMPTION_POINTS: REDEMPTION_MAX_POINTS, // $1000 maximum
   ABSOLUTE_MAX_POINTS: 10000000, // $100k absolute cap (for validation)
 
   // Time limits
@@ -118,7 +124,7 @@ const CHAIN_IDS: Record<string, number> = {
 // TYPES
 // ============================================================================
 
-interface SecureRedemptionRequest {
+export interface SecureRedemptionRequest {
   userId: string;
   appId?: string; // Optional - earnings are user-level, not app-level
   pointsAmount: number;
@@ -151,7 +157,7 @@ const IP_RATE_LIMITS = {
 export const REDEMPTION_ORIGIN_VERIFICATION_ERROR =
   "Unable to verify redemption origin. Please try again later.";
 
-interface SecureRedemptionResult {
+export interface SecureRedemptionResult {
   success: boolean;
   redemptionId?: string;
   error?: string;
@@ -160,6 +166,7 @@ interface SecureRedemptionResult {
     usdValue: string; // Use string for precision (Fix #11)
     elizaPriceUsd: string;
     elizaAmount: string;
+    asset: PayoutAsset;
     network: SupportedNetwork;
     payoutAddress: string;
     expiresAt: Date;
@@ -267,6 +274,29 @@ function calculateTokenAmount(usdValue: Decimal, priceUsd: Decimal): Decimal {
 
 export class SecureTokenRedemptionService {
   /**
+   * Recover a previously-created redemption receipt without evaluating mutable
+   * creation gates (origin/IP limits, cooldowns, payout availability, or
+   * emergency controls owned by the HTTP route).
+   *
+   * The lookup is always scoped to the authenticated user. A reused key with a
+   * different intent is a deterministic client error, while a missing key/row
+   * returns `null` so the caller can continue through normal creation.
+   */
+  async replayRedemption(
+    request: Pick<
+      SecureRedemptionRequest,
+      "userId" | "appId" | "pointsAmount" | "network" | "asset" | "payoutAddress" | "idempotencyKey"
+    >,
+  ): Promise<SecureRedemptionResult | null> {
+    if (!request.idempotencyKey) return null;
+
+    const existingByKey = await this.findByIdempotencyKey(request.userId, request.idempotencyKey);
+    if (!existingByKey) return null;
+
+    return this.resolveIdempotentReplay(existingByKey, request);
+  }
+
+  /**
    * Create a secure redemption request.
    *
    * This method addresses all 14 vulnerabilities:
@@ -294,6 +324,16 @@ export class SecureTokenRedemptionService {
     } = request;
 
     const warnings: string[] = [];
+    const replayCurrentIntent = () =>
+      this.replayRedemption({
+        userId,
+        appId,
+        pointsAmount,
+        network,
+        asset,
+        payoutAddress,
+        idempotencyKey,
+      });
 
     // ========================================
     // VALIDATION PHASE
@@ -322,6 +362,12 @@ export class SecureTokenRedemptionService {
       return { success: false, error: "Amount exceeds absolute maximum" };
     }
 
+    // Exact retries recover the durable receipt before any mutable creation
+    // gate. This is also called by the HTTP route before its pause/network/IP
+    // gates; keeping it here protects non-HTTP callers and sequential retries.
+    const replay = await replayCurrentIntent();
+    if (replay) return replay;
+
     const ipAddress = normalizeRedemptionClientIp(metadata?.ipAddress);
     if (!ipAddress) {
       logger.warn("[SecureRedemption] Missing trusted client IP", {
@@ -347,8 +393,11 @@ export class SecureTokenRedemptionService {
     }
 
     // SECURITY: Require signature for large redemptions (>$100)
-    const usdEstimate = pointsAmount / 100;
-    if (usdEstimate > 100 && !signature && network !== "solana") {
+    if (
+      pointsAmount > REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS &&
+      !signature &&
+      network !== "solana"
+    ) {
       return {
         success: false,
         error:
@@ -388,6 +437,14 @@ export class SecureTokenRedemptionService {
     // Fix #3: Check for ANY in-flight redemption (not just "pending")
     const existingInFlight = await this.hasInFlightRedemption(userId);
     if (existingInFlight) {
+      // A concurrent request can commit after the first primary lookup but
+      // before this guard observes its pending row. Re-read the writer now: if
+      // the same idempotency key won, return that durable receipt instead of a
+      // false in-flight conflict. A different intent remains a deterministic
+      // key-reuse error.
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
+
       return {
         success: false,
         error: "You have an in-flight redemption. Please wait for it to complete or be rejected.",
@@ -397,12 +454,16 @@ export class SecureTokenRedemptionService {
     // Fix #2: Enforce cooldown
     const cooldownCheck = await this.checkCooldown(userId);
     if (!cooldownCheck.valid) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
       return { success: false, error: cooldownCheck.error };
     }
 
     // Fix #6: Check daily limits using UTC
     const limitsCheck = await this.checkDailyLimitsUTC(userId, pointsAmount);
     if (!limitsCheck.valid) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
       return { success: false, error: limitsCheck.error };
     }
 
@@ -413,29 +474,9 @@ export class SecureTokenRedemptionService {
         ipAddress: ipAddress.split(".").slice(0, 2).join(".") + ".x.x", // Partially mask
         reason: ipCheck.error,
       });
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
       return { success: false, error: ipCheck.error };
-    }
-
-    // Fix #10: Check idempotency key
-    if (idempotencyKey) {
-      const existingByKey = await this.findByIdempotencyKey(idempotencyKey);
-      if (existingByKey) {
-        // Return the existing redemption instead of creating duplicate
-        return {
-          success: true,
-          redemptionId: existingByKey.id,
-          quote: {
-            pointsAmount: Number(existingByKey.points_amount),
-            usdValue: String(existingByKey.usd_value),
-            elizaPriceUsd: String(existingByKey.eliza_price_usd),
-            elizaAmount: String(existingByKey.eliza_amount),
-            network: existingByKey.network as SupportedNetwork,
-            payoutAddress: existingByKey.payout_address,
-            expiresAt: existingByKey.price_quote_expires_at,
-            requiresReview: existingByKey.requires_review,
-          },
-        };
-      }
     }
 
     // ========================================
@@ -446,7 +487,7 @@ export class SecureTokenRedemptionService {
     // and no elizaOS-token availability check — the payout amount is simply the
     // USD value and the payout processor guards the USDC hot-wallet balance
     // before broadcast. The elizaOS path keeps the full TWAP pricing (Fix #8,#14).
-    const usdValue = new Decimal(pointsAmount).div(100);
+    const usdValue = usdFromPoints(pointsAmount);
     let twapPrice: Decimal;
     let elizaAmount: Decimal;
     let quoteExpiresAt: Date;
@@ -519,6 +560,8 @@ export class SecureTokenRedemptionService {
     const earningsBalance = await redeemableEarningsService.getBalance(userId);
 
     if (!earningsBalance) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
       return {
         success: false,
         error:
@@ -530,6 +573,8 @@ export class SecureTokenRedemptionService {
     const deductionAmount = usdValue;
 
     if (availableBalance.lt(deductionAmount)) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return concurrentReplay;
       return {
         success: false,
         error: `Insufficient redeemable earnings. Available: $${availableBalance.toFixed(2)}, Requested: $${deductionAmount.toFixed(2)}. Only earnings from miniapps, agents, and MCPs can be redeemed.`,
@@ -549,6 +594,36 @@ export class SecureTokenRedemptionService {
         throw new Error(
           "No redeemable earnings found. Only earnings from miniapps, agents, and MCPs can be redeemed.",
         );
+      }
+
+      // The first idempotency lookup can race with another writer.
+      // All creations for a user serialize on this earnings row, so re-checking
+      // the writer after FOR UPDATE observes the winning transaction before any
+      // balance, ledger, limit, or redemption mutation occurs.
+      if (idempotencyKey) {
+        const [existingByKeyAfterLock] = await tx
+          .select()
+          .from(tokenRedemptions)
+          .where(
+            and(
+              eq(tokenRedemptions.user_id, userId),
+              sql`${tokenRedemptions.metadata}->>'idempotency_key' = ${idempotencyKey}`,
+            ),
+          )
+          .limit(1);
+
+        if (existingByKeyAfterLock) {
+          return {
+            kind: "replay" as const,
+            result: this.resolveIdempotentReplay(existingByKeyAfterLock, {
+              appId,
+              pointsAmount,
+              network,
+              asset,
+              payoutAddress,
+            }),
+          };
+        }
       }
 
       const currentAvailable = new Decimal(earningsRecord.available_balance);
@@ -593,8 +668,9 @@ export class SecureTokenRedemptionService {
           entry_type: "redemption",
           amount: `-${deductionAmount.toNumber()}`,
           balance_after: updated.available_balance,
-          description: `Redemption locked: $${deductionAmount.toFixed(2)} for ${elizaAmount.toFixed(4)} elizaOS on ${network}`,
+          description: `Redemption locked: $${deductionAmount.toFixed(2)} for ${elizaAmount.toFixed(4)} ${asset === "usdc" ? "USDC" : "elizaOS"} on ${network}`,
           metadata: {
+            asset,
             idempotency_key: finalIdempotencyKey,
             ip_address: ipAddress,
           },
@@ -636,8 +712,15 @@ export class SecureTokenRedemptionService {
       // Fix #6: Update daily limits with UTC
       await this.updateDailyLimitsUTC(tx, userId, usdValue.toNumber());
 
-      return { redemption, ledgerEntry, originalBalance: currentAvailable };
+      return {
+        kind: "created" as const,
+        redemption,
+        ledgerEntry,
+        originalBalance: currentAvailable,
+      };
     });
+
+    if (result.kind === "replay") return result.result;
 
     // Log with sanitized values (Fix #13)
     logger.info("[SecureRedemption] Redemption created", {
@@ -648,6 +731,7 @@ export class SecureTokenRedemptionService {
       pointsAmount,
       usdValue: usdValue.toString(),
       elizaAmount: elizaAmount.toString(),
+      asset,
       network,
       payoutAddress: maskAddress(payoutAddress),
       requiresReview,
@@ -662,6 +746,7 @@ export class SecureTokenRedemptionService {
         usdValue: usdValue.toString(),
         elizaPriceUsd: twapPrice.toString(),
         elizaAmount: elizaAmount.toString(),
+        asset,
         network,
         payoutAddress,
         expiresAt: quoteExpiresAt,
@@ -850,7 +935,7 @@ export class SecureTokenRedemptionService {
       where: and(eq(redemptionLimits.user_id, userId), gte(redemptionLimits.date, todayUTC)),
     });
 
-    const usdValue = pointsAmount / 100;
+    const usdValue = usdFromPoints(pointsAmount).toNumber();
 
     if (limits) {
       // Fail-closed: the daily limit gates are money-out anti-sybil controls. A
@@ -903,7 +988,7 @@ export class SecureTokenRedemptionService {
     const now = new Date();
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const usdValue = pointsAmount / 100;
+    const usdValue = usdFromPoints(pointsAmount).toNumber();
 
     // Check hourly redemption count from this IP
     const hourlyCount = await dbRead.execute(sql`
@@ -1024,9 +1109,53 @@ export class SecureTokenRedemptionService {
   // ========================================
   // Fix #10: Find by idempotency key
   // ========================================
-  private async findByIdempotencyKey(key: string): Promise<TokenRedemption | null> {
-    const redemption = await dbRead.query.tokenRedemptions.findFirst({
-      where: sql`${tokenRedemptions.metadata}->>'idempotency_key' = ${key}`,
+  private resolveIdempotentReplay(
+    existing: TokenRedemption,
+    request: Pick<
+      SecureRedemptionRequest,
+      "appId" | "pointsAmount" | "network" | "asset" | "payoutAddress"
+    >,
+  ): SecureRedemptionResult {
+    const sameIntent =
+      Number(existing.points_amount) === request.pointsAmount &&
+      existing.network === request.network &&
+      existing.asset === (request.asset ?? "usdc") &&
+      existing.payout_address === request.payoutAddress &&
+      (existing.app_id ?? undefined) === (request.appId ?? undefined);
+
+    if (!sameIntent) {
+      return {
+        success: false,
+        error: "Idempotency key was already used for a different redemption request.",
+      };
+    }
+
+    return {
+      success: true,
+      redemptionId: existing.id,
+      quote: {
+        pointsAmount: Number(existing.points_amount),
+        usdValue: String(existing.usd_value),
+        elizaPriceUsd: String(existing.eliza_price_usd),
+        elizaAmount: String(existing.eliza_amount),
+        asset: existing.asset,
+        network: existing.network as SupportedNetwork,
+        payoutAddress: existing.payout_address,
+        expiresAt: existing.price_quote_expires_at,
+        requiresReview: existing.requires_review,
+      },
+    };
+  }
+
+  private async findByIdempotencyKey(userId: string, key: string): Promise<TokenRedemption | null> {
+    // Idempotency is a read-after-write guarantee: use the primary connection
+    // so a just-committed receipt cannot be hidden by replica lag and then be
+    // rejected by mutable creation gates.
+    const redemption = await dbWrite.query.tokenRedemptions.findFirst({
+      where: and(
+        eq(tokenRedemptions.user_id, userId),
+        sql`${tokenRedemptions.metadata}->>'idempotency_key' = ${key}`,
+      ),
     });
 
     return redemption ?? null;
@@ -1374,7 +1503,7 @@ export class SecureTokenRedemptionService {
         return this.corruptFraudAggregate("app_earnings_transactions(last hour)", userId);
       }
 
-      if (recentCount > 0 && recentTotal > (pointsAmount / 100) * 0.5) {
+      if (recentCount > 0 && recentTotal > usdFromPoints(pointsAmount).toNumber() * 0.5) {
         return {
           flagged: true,
           warning: `Flagged: ${recentCount} earnings transactions within last hour`,
@@ -1410,7 +1539,7 @@ export class SecureTokenRedemptionService {
       }
 
       if (earned > 0) {
-        const redemptionRatio = (redeemed + pointsAmount / 100) / earned;
+        const redemptionRatio = (redeemed + usdFromPoints(pointsAmount).toNumber()) / earned;
         if (redemptionRatio >= FRAUD_THRESHOLDS.HIGH_REDEMPTION_RATIO) {
           return {
             flagged: true,

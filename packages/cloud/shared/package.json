@@ -1,7 +1,8 @@
 {
   "name": "@elizaos/cloud-shared",
-  "version": "2.0.12-beta.0",
+  "version": "0.1.0",
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
+  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -28,14 +29,17 @@
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
+    "reconcile:container-delete-jobs": "bun scripts/reconcile-container-delete-jobs.ts",
     "test": "node scripts/run-bun-tests.mjs",
     "test:vitest": "vitest run",
+    "verify:managed-accounts": "bun scripts/managed-accounts-doctor.mjs",
+    "verify:managed-accounts:strict": "bun scripts/managed-accounts-doctor.mjs --strict",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --conditions=eliza-source ../../../packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
-    "db:migrate:drizzle": "drizzle-kit migrate",
+    "db:migrate:drizzle": "bun run db:migrate",
     "db:studio": "drizzle-kit studio",
     "pglite:server": "bun run ../../../packages/cloud/scripts/admin/dev/pglite-server.ts",
     "generate:email-templates": "node scripts/generate-email-templates.mjs"
@@ -96,10 +100,11 @@
     "viem": "^2.48.8",
     "wadis": "^1.0.2",
     "ws": "^8.21.3",
+    "yaml": "2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
@@ -111,14 +116,15 @@
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.10"
   },
   "elizaos": {
+    "managedIntegration": {
+      "promoted": true,
+      "contractId": "hetzner-cloud"
+    },
     "scripts": {
       "coreBuild": true
     }
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

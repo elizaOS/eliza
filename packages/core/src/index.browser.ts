@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./account-pool-bridge";
 export * from "./action-names";
@@ -41,6 +43,7 @@ export {
 	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 } from "./contracts/service-routing-types";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -244,6 +247,7 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/html-raw-text";
 export * from "./utils/project-memory-scope";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";

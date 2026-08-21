@@ -53,6 +53,7 @@ declare module "./client-base" {
      */
     listScheduledTasks(
       filter?: ScheduledTaskListFilter,
+      options?: { timeoutMs?: number; signal?: AbortSignal },
     ): Promise<ScheduledTaskListResponse>;
 
     /**
@@ -104,10 +105,16 @@ function buildQuery(filter?: ScheduledTaskListFilter): string {
 ElizaClient.prototype.listScheduledTasks = async function (
   this: ElizaClient,
   filter?: ScheduledTaskListFilter,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<ScheduledTaskListResponse> {
-  const res = await this.fetch<{ tasks?: ScheduledTaskView[] }>(
-    `/api/lifeops/scheduled-tasks${buildQuery(filter)}`,
-  );
+  const path = `/api/lifeops/scheduled-tasks${buildQuery(filter)}`;
+  const res = options
+    ? await this.fetch<{ tasks?: ScheduledTaskView[] }>(
+        path,
+        { signal: options.signal },
+        { timeoutMs: options.timeoutMs },
+      )
+    : await this.fetch<{ tasks?: ScheduledTaskView[] }>(path);
   return { tasks: Array.isArray(res?.tasks) ? res.tasks : [] };
 };
 

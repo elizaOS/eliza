@@ -148,6 +148,12 @@ export const mkdir = anyfn;
 export const stat = anyfn;
 export const readdir = () => [];
 export const isIP = () => 0;
+// Browser fixtures never admit operator CIDRs. Keep the Node BlockList surface
+// available to transitive shared imports while making every check fail closed.
+export class BlockList {
+  addSubnet() {}
+  check() { return false; }
+}
 export const statfsSync = anyfn;
 export const cp = anyfn;
 export class AsyncLocalStorage {

@@ -1,4 +1,5 @@
-// Exercises cloud API v1 agents route.test behavior with deterministic Worker route fixtures.
+/** Exercises service-agent creation through deterministic Worker route fixtures. */
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const requireServiceKey = mock(async () => ({
@@ -277,12 +278,19 @@ describe("service agent provisioning route", () => {
         token_address: "0x0000000000000000000000000000000000000009",
         token_chain: "bsc",
       }),
+      {
+        policy: {
+          mode: "trusted",
+          caller: "service-api-v1-agents",
+        },
+      },
     );
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-wallet-org",
         userId: "agent-wallet-user",
         dockerImage: "registry.example.test/waifu-agent:latest",
+        executionTier: "custom",
         agentConfig: expect.objectContaining({
           waifuAgentId: "waifu-smoke-agent",
           account: expect.objectContaining({
@@ -394,9 +402,6 @@ describe("service agent provisioning route", () => {
             primaryWalletAddress: "0x0000000000000000000000000000000000000001",
             chainType: "evm",
           },
-          container: {
-            image: "registry.example.test/waifu-agent:latest",
-          },
         }),
       }),
       { WAIFU_SERVICE_KEY: "svc" },
@@ -411,6 +416,12 @@ describe("service agent provisioning route", () => {
       bridgeUrl: "https://runtime.example.test",
       status: "running",
     });
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dockerImage: undefined,
+        executionTier: "dedicated-always",
+      }),
+    );
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 

@@ -65,4 +65,36 @@ class SwabbleWakeBridgeContractTest {
 
         assertNull(match)
     }
+
+    @Test
+    fun `oversized no-space tokens skip fuzzy match`() {
+        val left = "a".repeat(32_768)
+        val right = "b".repeat(32_768)
+        val hostile = config.copy(triggers = listOf(right))
+        val match = SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$left turn on the lights",
+            segments = emptyList(),
+            config = hostile
+        )
+        assertNull(match)
+    }
+
+    @Test
+    fun `fuzzy token cap accepts 64 UTF-16 units and rejects 65`() {
+        val acceptedTrigger = "a".repeat(64)
+        val acceptedCandidate = "a".repeat(63) + "b"
+        val rejectedTrigger = "a".repeat(65)
+        val rejectedCandidate = "a".repeat(64) + "b"
+
+        assertNotNull(SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$acceptedCandidate run diagnostics",
+            segments = emptyList(),
+            config = config.copy(triggers = listOf(acceptedTrigger))
+        ))
+        assertNull(SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$rejectedCandidate run diagnostics",
+            segments = emptyList(),
+            config = config.copy(triggers = listOf(rejectedTrigger))
+        ))
+    }
 }

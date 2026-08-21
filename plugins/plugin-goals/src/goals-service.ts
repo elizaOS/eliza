@@ -113,7 +113,7 @@ export function scoreGoalSimilarity(args: {
     buildGoalSimilarityTokens({
       title: args.candidate.title,
       description: args.candidate.description,
-      successCriteria: normalizeOptionalRecord(
+      successCriteria: normalizeNullableRecord(
         args.candidate.successCriteria,
         "successCriteria",
       ),

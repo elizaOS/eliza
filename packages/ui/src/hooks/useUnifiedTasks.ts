@@ -9,12 +9,11 @@
  * existing self-hide behaviour of the automations surfaces.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { AutomationListResponse } from "../api/client-types-config";
 import type { ScheduledTaskListResponse } from "../api/client-types-core";
 import { mergeUnifiedTasks } from "../utils/merge-unified-tasks";
-import { withTimeout } from "../utils/with-timeout";
 
 export interface UnifiedTasksState {
   items: ReturnType<typeof mergeUnifiedTasks>;
@@ -74,42 +73,49 @@ export function useUnifiedTasks(options?: UseUnifiedTasksOptions): {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const ownerVisibleOnly = options?.ownerVisibleOnly ?? true;
   const [state, setState] = useState<UnifiedTasksState>(INITIAL_STATE);
+  const activeRequestRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(
-    async (signal: { cancelled: boolean }) => {
+  const load = useCallback(async () => {
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    const { signal } = controller;
+    try {
       const [automations, scheduled] = await Promise.all([
         settle(
-          withTimeout(client.listAutomations(), timeoutMs),
+          client.listAutomations({ timeoutMs, signal }),
           EMPTY_AUTOMATIONS,
         ),
         settle(
-          withTimeout(
-            client.listScheduledTasks({ ownerVisibleOnly }),
-            timeoutMs,
+          client.listScheduledTasks(
+            { ownerVisibleOnly },
+            { timeoutMs, signal },
           ),
           EMPTY_SCHEDULED,
         ),
       ]);
-      if (signal.cancelled) return;
+      if (signal.aborted) return;
       const items = mergeUnifiedTasks(
         Array.isArray(automations.automations) ? automations.automations : [],
         Array.isArray(scheduled.tasks) ? scheduled.tasks : [],
       );
       setState({ items, automations, loading: false, error: null });
-    },
-    [timeoutMs, ownerVisibleOnly],
-  );
+    } finally {
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
+    }
+  }, [timeoutMs, ownerVisibleOnly]);
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void load(signal);
+    void load();
     return () => {
-      signal.cancelled = true;
+      activeRequestRef.current?.abort();
     };
   }, [load]);
 
   const refresh = useCallback(async () => {
-    await load({ cancelled: false });
+    await load();
   }, [load]);
 
   return { state, refresh };

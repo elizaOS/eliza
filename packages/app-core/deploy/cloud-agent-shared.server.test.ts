@@ -214,13 +214,23 @@ describe("startCloudAgent HTTP handlers", () => {
       JSON.stringify({ jsonrpc: "2.0", id: 2, method: "status.get" }),
       auth,
     );
-    expect(parseJson(status)).toMatchObject({
+    const statusBody = parseJson(status);
+    expect(statusBody).toMatchObject({
       result: {
         status: "running",
         memoriesCount: 2,
         database: "ok",
       },
     });
+    // The RPC status boundary must carry the same public projection as HTTP
+    // health: classification fields only, never the internal probe diagnostic.
+    const statusLiveness = (statusBody.result as Record<string, unknown>)
+      .databaseLiveness as Record<string, unknown>;
+    expect(Object.keys(statusLiveness).sort()).toEqual([
+      "ok",
+      "status",
+      "terminal",
+    ]);
 
     const snapshot = await dispatch(
       bridgeServer,

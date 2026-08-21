@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 
 /**
- * Input-validation tests for `CanvasWeb` — malformed size/layer/quality
- * arguments must reject before mutating canvas state or the DOM. Runs
- * against a real `CanvasWeb` instance in jsdom with only the 2D rendering
- * context (`getContext`/`toDataURL`) stubbed, since jsdom has no canvas
- * renderer.
+ * Input-validation and web-view messaging boundary tests for `CanvasWeb`.
+ * Runs real plugin instances in jsdom with only the unavailable 2D rendering
+ * context stubbed; browser-engine postMessage behavior is covered separately
+ * by the review evidence harness.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -159,6 +158,270 @@ describe("CanvasWeb validation", () => {
       await expect(canvas.toImage({ canvasId, quality })).rejects.toThrow(
         /quality must/,
       );
+    },
+  );
+});
+
+describe("CanvasWeb attachment lifecycle", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      createContextStub(),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("composites a layer created before the base canvas is attached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+    const host = document.createElement("div");
+
+    await canvas.attach({ canvasId, element: host });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(2);
+  });
+
+  it("composites a layer created after the base canvas is attached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const host = document.createElement("div");
+    await canvas.attach({ canvasId, element: host });
+
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(2);
+  });
+
+  it("removes the base canvas and every layer when detached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const host = document.createElement("div");
+    await canvas.attach({ canvasId, element: host });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    await canvas.detach({ canvasId });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+  });
+
+  it("reattaches the base canvas and retained layers into a new host", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const firstHost = document.createElement("div");
+    const secondHost = document.createElement("div");
+    await canvas.attach({ canvasId, element: firstHost });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    await canvas.detach({ canvasId });
+    await canvas.attach({ canvasId, element: secondHost });
+
+    expect(firstHost.querySelectorAll("canvas")).toHaveLength(0);
+    expect(secondHost.querySelectorAll("canvas")).toHaveLength(2);
+  });
+});
+
+describe("CanvasWeb eval message source", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("ignores a spoofed eliza:evalResult from a window that is not the web view", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "about:blank" });
+    const iframe = document.querySelector("iframe");
+    const webView = iframe?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const evalPromise = canvas.eval({ script: "1+1" });
+    // Same-page attacker: window.postMessage delivers source === window.
+    window.postMessage({ type: "eliza:evalResult", result: "pwned" }, "*");
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "2" },
+        origin: window.location.origin,
+        source: webView,
+      }),
+    );
+
+    await expect(evalPromise).resolves.toEqual({ result: "2" });
+  });
+
+  it("pins postMessage targetOrigin to the navigation origin, not wildcard *", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const iframe = document.querySelector("iframe");
+    const webView = iframe?.contentWindow;
+    expect(webView).toBeTruthy();
+    if (!webView) throw new Error("Missing webView contentWindow");
+
+    const postMessageSpy = vi.spyOn(webView, "postMessage");
+
+    // 1. a2uiPush
+    await canvas.a2uiPush({
+      messages: [{ role: "assistant", type: "text", content: "hi" }],
+    });
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "eliza:a2uiPush" }),
+      "https://canvas.eliza.how",
+    );
+    expect(postMessageSpy).not.toHaveBeenCalledWith(expect.anything(), "*");
+
+    // 2. a2uiReset
+    postMessageSpy.mockClear();
+    await canvas.a2uiReset();
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      { type: "eliza:a2uiReset" },
+      "https://canvas.eliza.how",
+    );
+    expect(postMessageSpy).not.toHaveBeenCalledWith(expect.anything(), "*");
+
+    // 3. eval
+    postMessageSpy.mockClear();
+    const evalPromise = canvas.eval({ script: "document.title" });
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      { type: "eliza:eval", script: "document.title" },
+      "https://canvas.eliza.how",
+    );
+    expect(postMessageSpy).not.toHaveBeenCalledWith(expect.anything(), "*");
+
+    // Complete eval
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "Canvas App" },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+    await expect(evalPromise).resolves.toEqual({ result: "Canvas App" });
+  });
+
+  it("rejects an eval result from the right WindowProxy at the wrong origin", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const evalPromise = canvas.eval({ script: "document.title" });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "spoofed" },
+        origin: "https://attacker.example",
+        source: webView,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "Canvas App" },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+
+    await expect(evalPromise).resolves.toEqual({ result: "Canvas App" });
+  });
+
+  it("rejects shared web view events from the right WindowProxy at the wrong origin", async () => {
+    const canvas = new CanvasWeb();
+    const onAction = vi.fn();
+    await canvas.addListener("a2uiAction", onAction);
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const message = {
+      type: "eliza:a2uiAction",
+      action: "confirm",
+      data: { accepted: true },
+    };
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: "https://attacker.example",
+        source: webView,
+      }),
+    );
+    expect(onAction).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+    expect(onAction).toHaveBeenCalledOnce();
+    expect(onAction).toHaveBeenCalledWith({
+      action: "confirm",
+      data: { accepted: true },
+      messageId: undefined,
+    });
+  });
+
+  it.each([
+    ["about:blank?canvas#view", window.location.origin],
+    ["blob:https://canvas.eliza.how/6fbed050", "https://canvas.eliza.how"],
+  ])("resolves inherited and creator origins for %s", async (url, origin) => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+    if (!webView) throw new Error("Missing webView contentWindow");
+    const postMessageSpy = vi.spyOn(webView, "postMessage");
+
+    await canvas.a2uiReset();
+
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      { type: "eliza:a2uiReset" },
+      origin,
+    );
+  });
+
+  it.each([
+    "data:text/html,opaque",
+    "vbscript:msgbox(1)",
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "http://[",
+  ])(
+    "rejects non-allowlisted navigation %s before replacing the active view",
+    async (url) => {
+      const canvas = new CanvasWeb();
+      await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+      const originalFrame = document.querySelector("iframe");
+
+      await expect(canvas.navigate({ url })).rejects.toThrow(
+        "Web view URL must use an allowed navigation scheme",
+      );
+
+      expect(document.querySelector("iframe")).toBe(originalFrame);
     },
   );
 });

@@ -6,16 +6,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const executeInboxQueueOperation = vi.fn();
+const triageMock = vi.fn(async () => ({ triaged: [] }));
 
 vi.mock("../src/actions/inbox.ts", () => ({
   executeInboxQueueOperation,
 }));
 
+// The reply/snooze/archive/approve paths never construct InboxService (they go
+// through executeInboxQueueOperation), while the triage-write path does. This
+// stub records the options the route forwards to `triage` so the tests can
+// assert the sanitized `exampleLimit` boundary without a live service.
 vi.mock("../src/inbox/service.ts", () => ({
   InboxService: class {
-    constructor() {
-      throw new Error("InboxService should not be constructed");
-    }
+    triage = triageMock;
   },
 }));
 
@@ -105,5 +108,69 @@ describe("inbox operation error mapping", () => {
     const result = await runReply();
     expect(result?.status).toBe(500);
     expect(result?.body?.error).toMatch(/database connection lost/);
+  });
+});
+
+describe("triage write exampleLimit validation", () => {
+  beforeEach(() => {
+    triageMock.mockClear();
+    triageMock.mockResolvedValue({ triaged: [] });
+  });
+
+  async function postTriage(
+    body: Record<string, unknown>,
+  ): Promise<
+    { status?: number; body?: { ok?: boolean; error?: string } } | undefined
+  > {
+    const { inboxRoutes } = await import("../src/routes/inbox-routes.ts");
+    const route = inboxRoutes.find(
+      (candidate) =>
+        candidate.type === "POST" &&
+        candidate.path === "/api/lifeops/inbox/triage",
+    );
+    return route?.routeHandler?.(
+      makeContext({
+        method: "POST",
+        path: "/api/lifeops/inbox/triage",
+        isTrustedLocal: true,
+        body,
+      }),
+    ) as Promise<
+      { status?: number; body?: { ok?: boolean; error?: string } } | undefined
+    >;
+  }
+
+  it("rejects a non-finite exampleLimit with a clean 400, never reaching the service", async () => {
+    // Regression for #22011: `Infinity` used to flow through the `typeof
+    // === number` guard into `getExamples(Infinity)` and emit `LIMIT
+    // Infinity`, which Postgres rejects as an unhandled 500.
+    const result = await postTriage({
+      messages: [],
+      exampleLimit: Number.POSITIVE_INFINITY,
+    });
+    expect(result?.status).toBe(400);
+    expect(result?.body?.error).toMatch(/exampleLimit/);
+    expect(triageMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive exampleLimit with a 400", async () => {
+    const result = await postTriage({ messages: [], exampleLimit: -5 });
+    expect(result?.status).toBe(400);
+    expect(triageMock).not.toHaveBeenCalled();
+  });
+
+  it("coerces a fractional exampleLimit to an integer before the service call", async () => {
+    const result = await postTriage({ messages: [], exampleLimit: 1.5 });
+    expect(result?.status).toBe(200);
+    expect(triageMock).toHaveBeenCalledTimes(1);
+    const opts = triageMock.mock.calls[0]?.[1] as { exampleLimit?: number };
+    expect(opts.exampleLimit).toBe(1);
+  });
+
+  it("omits exampleLimit entirely when the caller does not supply one", async () => {
+    const result = await postTriage({ messages: [] });
+    expect(result?.status).toBe(200);
+    const opts = triageMock.mock.calls[0]?.[1] as { exampleLimit?: number };
+    expect(opts.exampleLimit).toBeUndefined();
   });
 });

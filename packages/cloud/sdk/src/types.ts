@@ -16,12 +16,32 @@ export type {
   AgentsResponse as AgentListResponse,
   AgentWalletStatus,
   ApiSuccessEnvelope,
+  ConnectedAccountCapabilityDto,
+  ConnectedAccountDetailDto,
+  ConnectedAccountDto,
+  ConnectedAccountModeDto,
+  ConnectedAccountPageDto,
+  ConnectedAccountStatusDto,
+  ConnectedCapabilityStatusDto,
   CreditBalanceResponse,
   CurrentUserDto,
   CurrentUserOrganizationDto,
   CurrentUserResponse,
   CurrentUserResponse as UserProfileResponse,
   IsoDateString,
+  SubscriptionAllowanceDto,
+  SubscriptionBillingInterval,
+  SubscriptionCatalogVersion,
+  SubscriptionCurrency,
+  SubscriptionDto,
+  SubscriptionFundingClass,
+  SubscriptionPlanDto,
+  SubscriptionPlanKey,
+  SubscriptionPlansDto,
+  SubscriptionPlansResponse,
+  SubscriptionPublicState,
+  SubscriptionRateEnvelopeDto,
+  SubscriptionResourceCeilingsDto,
   UpdatedUserDto,
   UpdatedUserResponse,
 } from "./types.cloud-api.js";
@@ -98,6 +118,11 @@ export interface EndpointCallOptions extends CloudRequestOptions {
 }
 
 export interface CliLoginStartOptions {
+  /**
+   * @deprecated The server mints the authoritative session id. This value is
+   * retained for source compatibility but is ignored; the SDK sends its own
+   * fresh compatibility proposal for older deployments.
+   */
   sessionId?: string;
   returnTo?: string;
 }
@@ -240,10 +265,27 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     autoTopUpAmount?: number | null;
     hasPaymentMethod?: boolean;
   };
+  pricing?: {
+    creditUnit: "USD";
+    creditsPerDollar: 1;
+    usdPerCredit: 1;
+    minimumTopUp: number;
+    x402Enabled: boolean;
+  };
 }
 
+/**
+ * Checkout accepts either the canonical `amountUsd` or the deprecated
+ * `credits` alias, which has always denominated the same dollar amount. Both
+ * stay optional so the interface remains extendable by SDK consumers; the
+ * server rejects a request that supplies neither, and rejects conflicting
+ * values when both are supplied.
+ */
 export interface CreateCreditsCheckoutRequest {
-  credits: number;
+  /** Canonical dollar charge and 1:1 organization-credit grant. */
+  amountUsd?: number;
+  /** @deprecated Compatibility alias; must equal amountUsd when both are sent. */
+  credits?: number;
   success_url: string;
   cancel_url: string;
 }
@@ -508,59 +550,12 @@ export interface SettleX402PaymentRequestResponse
   paymentRequest: X402PaymentRequestView;
 }
 
-export type RedemptionNetwork = "ethereum" | "base" | "bnb" | "bsc" | "solana";
-
-export interface CreateRedemptionRequest {
-  appId?: string;
-  pointsAmount: number;
-  network: RedemptionNetwork;
-  payoutAddress: string;
-  signature?: string;
-  idempotencyKey?: string;
-}
-
-export interface CreateRedemptionResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptionId?: string;
-  quote?: Record<string, unknown>;
-  warnings?: string[];
-  message?: string;
-  error?: string;
-}
-
-export interface ListRedemptionsResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptions: Array<Record<string, unknown>>;
-  paused?: boolean;
-}
-
 export interface RedemptionBalanceResponse extends Record<string, unknown> {
   success: boolean;
   balance?: Record<string, unknown>;
   earningsBySource?: Array<Record<string, unknown>>;
   recentEarnings?: Array<Record<string, unknown>>;
   error?: string;
-}
-
-export interface RedemptionQuoteResponse extends Record<string, unknown> {
-  success: boolean;
-  quote?: Record<string, unknown>;
-  canRedeem?: boolean;
-  availableNetworks?: string[];
-  error?: string;
-}
-
-export interface RedemptionStatusResponse extends Record<string, unknown> {
-  success: boolean;
-  operational?: boolean;
-  canRedeem?: boolean;
-  message?: string;
-  availableNetworks?: string[];
-  unavailableNetworks?: string[];
-  wallets?: Record<string, unknown>;
-  networks?: Array<Record<string, unknown>>;
-  warnings?: string[];
-  lastChecked?: string;
 }
 
 export interface AppEarningsResponse extends Record<string, unknown> {

@@ -9,11 +9,30 @@ import type {
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+function sliceGraphemePrefix(value: string, maxCodeUnits: number): string {
+  let end = 0;
+  for (const segment of graphemeSegmenter.segment(value)) {
+    const nextEnd = segment.index + segment.segment.length;
+    if (nextEnd > maxCodeUnits) break;
+    end = nextEnd;
+  }
+  return value.slice(0, end);
+}
+
 function truncateForPreview(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
+  const limit = Number.isFinite(maxLength)
+    ? Math.max(0, Math.floor(maxLength))
+    : 0;
+  if (value.length <= limit) {
     return value;
   }
-  return `${value.slice(0, maxLength).trimEnd()}…`;
+  if (limit === 0) return "";
+  if (limit === 1) return "…";
+  return `${sliceGraphemePrefix(value, limit - 1).trimEnd()}…`;
 }
 
 function formatCalendarDatePart(

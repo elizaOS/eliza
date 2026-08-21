@@ -6,7 +6,8 @@
  *
  * This is the single seam between the agent-facing action surface and the platform
  * drivers: it resolves the active driver, enforces the approval gate before
- * executing input, and caches per-turn scene state.
+ * executing input, and caches per-turn scene state. Snapshot pretty-print for
+ * action `content` is bounded in `computer-use-plain-data.ts`.
  */
 import os from "node:os";
 import path from "node:path";
@@ -123,6 +124,19 @@ import {
   type ScreenStateChange,
   ScreenStateStore,
 } from "../scene/screen-state.js";
+import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
+import { ComputerUseSessionManager } from "../sessions/session-manager.js";
+import type {
+  ComputerUseSessionAction,
+  ComputerUseSessionActionResult,
+  ComputerUseSessionEvent,
+  ComputerUseSessionExecutor,
+  ComputerUseSessionFrame,
+  ComputerUseSessionFrameProvider,
+  ComputerUseSessionSnapshot,
+  ComputerUseSessionTarget,
+  CreateComputerUseSessionInput,
+} from "../sessions/types.js";
 import type {
   ActionHistoryEntry,
   ApprovalMode,
@@ -144,6 +158,7 @@ import type {
   WindowActionParams,
   WindowActionResult,
 } from "../types.js";
+import { stringifyData } from "./computer-use-plain-data.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -164,6 +179,63 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "scroll",
   "drag",
   "set_value",
+]);
+const BROWSER_SESSION_COMMANDS = new Set([
+  "browser_open",
+  "browser_connect",
+  "browser_close",
+  "browser_navigate",
+  "browser_click",
+  "browser_type",
+  "browser_scroll",
+  "browser_screenshot",
+  "browser_dom",
+  "browser_get_dom",
+  "browser_clickables",
+  "browser_get_clickables",
+  "browser_execute",
+  "browser_state",
+  "browser_info",
+  "browser_get_context",
+  "browser_wait",
+  "browser_list_tabs",
+  "browser_open_tab",
+  "browser_close_tab",
+  "browser_switch_tab",
+]);
+const HOST_SESSION_COMMANDS = new Set([
+  "screenshot",
+  "click",
+  "click_with_modifiers",
+  "double_click",
+  "right_click",
+  "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
+  "type",
+  "key_press",
+  "key_combo",
+  "key_down",
+  "key_up",
+  "scroll",
+  "drag",
+  "get_cursor_position",
+  "detect_elements",
+  "ocr",
+  "open",
+  "launch",
+  "kill_app",
+  "set_value",
+  "list_windows",
+  "switch_to_window",
+  "arrange_windows",
+  "move_window",
+  "minimize_window",
+  "maximize_window",
+  "restore_window",
+  "close_window",
+  ...BROWSER_SESSION_COMMANDS,
 ]);
 
 // Every verb the desktop dispatch switch can execute. Used to reject an unknown
@@ -215,40 +287,6 @@ function commandParameters<TParams extends object>(
   return parameters as Omit<TParams, "action">;
 }
 
-function stringifyData(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return renderPlainData(value);
-}
-
-function renderPlainData(value: unknown, indent = 0): string {
-  const prefix = "  ".repeat(indent);
-  if (value === null || value === undefined) {
-    return "none";
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "items[0]:";
-    }
-    return [
-      `items[${value.length}]:`,
-      ...value.map((item) => `${prefix}- ${renderPlainData(item, indent + 1)}`),
-    ].join("\n");
-  }
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, nestedValue]) => {
-        if (nestedValue && typeof nestedValue === "object") {
-          return `${key}:\n${renderPlainData(nestedValue, indent + 1)}`;
-        }
-        return `${key}: ${renderPlainData(nestedValue, indent + 1)}`;
-      })
-      .join("\n");
-  }
-  return String(value);
-}
-
 /**
  * Canonical positive-integer parse for `COMPUTER_USE_ACTION_TIMEOUT_MS`.
  * `Number.parseInt("1e4", 10) === 1` used to apply a 1ms per-action budget —
@@ -283,6 +321,19 @@ export class ComputerUseService extends Service {
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
   private approvalManager = new ComputerUseApprovalManager();
+  private readonly sessionTargetExecutors = new Map<
+    string,
+    ComputerUseSessionExecutor
+  >();
+  private readonly sessionTargetFrameProviders = new Map<
+    string,
+    ComputerUseSessionFrameProvider
+  >();
+  private readonly sessionManager = new ComputerUseSessionManager({
+    executor: (target, action) =>
+      this.executeSessionTargetAction(target, action),
+    frameProvider: (target) => this.captureSessionTargetFrame(target),
+  });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
     log: (msg) => logger.warn(msg),
@@ -474,6 +525,149 @@ export class ComputerUseService extends Service {
           error: `Unknown computer-use command: ${command}`,
         };
     }
+  }
+
+  createSession(
+    input: CreateComputerUseSessionInput,
+  ): ComputerUseSessionSnapshot {
+    return this.sessionManager.create(input);
+  }
+
+  listSessions(): ComputerUseSessionSnapshot[] {
+    return this.sessionManager.list();
+  }
+
+  getSession(id: string): ComputerUseSessionSnapshot | null {
+    return this.sessionManager.get(id);
+  }
+
+  closeSession(id: string): ComputerUseSessionSnapshot {
+    return this.sessionManager.close(id);
+  }
+
+  renewSessionLease(
+    id: string,
+    leaseTtlMs?: number,
+  ): ComputerUseSessionSnapshot {
+    return this.sessionManager.renewHostLease(id, leaseTtlMs);
+  }
+
+  executeSessionAction(
+    id: string,
+    action: ComputerUseSessionAction,
+  ): Promise<{
+    session: ComputerUseSessionSnapshot;
+    result: ComputerUseSessionActionResult;
+  }> {
+    return this.sessionManager.execute(id, action);
+  }
+
+  getSessionEvents(afterEventId = 0): ComputerUseSessionEvent[] {
+    return this.sessionManager.getEvents(afterEventId);
+  }
+
+  captureSessionFrame(id: string): Promise<ComputerUseSessionFrame> {
+    return this.sessionManager.captureFrame(id);
+  }
+
+  subscribeSessions(
+    listener: (event: ComputerUseSessionEvent) => void,
+  ): () => void {
+    return this.sessionManager.subscribe(listener);
+  }
+
+  /** Registers an adapter for one isolated target; target identity stays exclusive. */
+  registerSessionTargetExecutor(
+    target: ComputerUseSessionTarget,
+    executor: ComputerUseSessionExecutor,
+    frameProvider?: ComputerUseSessionFrameProvider,
+  ): () => void {
+    if (target.kind === "host" || !target.targetId) {
+      throw new Error("A session target executor requires targetId");
+    }
+    const key = `${target.kind}:${target.targetId}`;
+    if (this.sessionTargetExecutors.has(key)) {
+      throw new Error(
+        `A session target executor is already registered: ${key}`,
+      );
+    }
+    this.sessionTargetExecutors.set(key, executor);
+    if (frameProvider) this.sessionTargetFrameProviders.set(key, frameProvider);
+    return () => {
+      if (this.sessionTargetExecutors.get(key) === executor) {
+        this.sessionTargetExecutors.delete(key);
+        this.sessionTargetFrameProviders.delete(key);
+      }
+    };
+  }
+
+  private async executeSessionTargetAction(
+    target: ComputerUseSessionTarget,
+    action: ComputerUseSessionAction,
+  ): Promise<ComputerUseSessionActionResult> {
+    if (target.kind === "host") {
+      if (!HOST_SESSION_COMMANDS.has(action.command)) {
+        return {
+          success: false,
+          error: `Command is not allowed in a host computer-use session: ${action.command}`,
+        };
+      }
+      return this.executeCommand(action.command, action.parameters ?? {});
+    }
+
+    const targetId = target.targetId;
+    if (!targetId) {
+      return { success: false, error: "Computer-use targetId is required" };
+    }
+    const registered = this.sessionTargetExecutors.get(
+      `${target.kind}:${targetId}`,
+    );
+    if (registered) return registered(target, action);
+
+    if (target.kind === "browser" && targetId === "default") {
+      if (!BROWSER_SESSION_COMMANDS.has(action.command)) {
+        return {
+          success: false,
+          error: `Command is not allowed in a browser session: ${action.command}`,
+        };
+      }
+      return this.executeCommand(action.command, action.parameters ?? {});
+    }
+
+    return {
+      success: false,
+      error: `No executor is registered for ${target.kind}:${targetId}`,
+    };
+  }
+
+  private async captureSessionTargetFrame(
+    target: ComputerUseSessionTarget,
+  ): Promise<Omit<ComputerUseSessionFrame, "capturedAt">> {
+    if (target.kind === "host") {
+      const result = await this.executeDesktopAction({ action: "screenshot" });
+      if (!result.success || !result.screenshot) {
+        throw new Error(result.error || "Host screenshot did not return bytes");
+      }
+      return { mimeType: "image/png", data: result.screenshot };
+    }
+    const targetId = target.targetId;
+    if (!targetId) throw new Error("Computer-use targetId is required");
+    const registered = this.sessionTargetFrameProviders.get(
+      `${target.kind}:${targetId}`,
+    );
+    if (registered) return registered(target);
+    if (target.kind === "browser" && targetId === "default") {
+      const result = await this.executeBrowserAction({ action: "screenshot" });
+      if (!result.success || !result.screenshot) {
+        throw new Error(
+          result.error || "Browser screenshot did not return bytes",
+        );
+      }
+      return { mimeType: "image/png", data: result.screenshot };
+    }
+    throw new Error(
+      `No frame provider is registered for ${target.kind}:${targetId}`,
+    );
   }
 
   async executeDesktopAction(
@@ -864,7 +1058,19 @@ export class ComputerUseService extends Service {
   async executeBrowserAction(
     rawParams: BrowserActionParams,
   ): Promise<BrowserActionResult> {
-    const params = this.normalizeBrowserActionParams(rawParams);
+    const action = this.normalizeBrowserAction(rawParams.action);
+    let params: BrowserActionParams;
+    try {
+      params = this.normalizeBrowserActionParams(rawParams);
+    } catch (error) {
+      // error-policy:J1 action boundary — reject an invalid navigation target
+      // before its raw value reaches action history or the approval queue.
+      const rejectedEntry = this.createEntry(`browser_${action}`, { action });
+      return this.failEntry(rejectedEntry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
     const entry = this.createEntry(
       `browser_${params.action}`,
       this.toParamsRecord(params),
@@ -1594,6 +1800,9 @@ export class ComputerUseService extends Service {
     const tabIdCandidate = params.tabId ?? params.index ?? params.tab_index;
     return {
       ...params,
+      ...(params.url === undefined
+        ? {}
+        : { url: assertHttpBrowserUrl(params.url) }),
       tabId: tabIdCandidate !== undefined ? String(tabIdCandidate) : undefined,
       action: this.normalizeBrowserAction(params.action),
     };

@@ -13,13 +13,15 @@
  *   - Strong:    Full instructions of #1 match, capped at 2000 chars
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  Service,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type Service,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
@@ -283,9 +285,12 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function truncateDesc(desc: string, maxLen: number): string {
-  if (desc.length <= maxLen) return desc;
-  return `${desc.substring(0, maxLen - 3)}...`;
+export function truncateDesc(desc: string, maxLen: number): string {
+  const wellFormed = toWellFormedUnicode(desc);
+  if (wellFormed.length <= maxLen) return wellFormed;
+  if (maxLen <= 3) return truncateWellFormed(wellFormed, maxLen);
+  const budget = Math.max(0, maxLen - 3);
+  return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
@@ -391,10 +396,11 @@ export function createDynamicSkillProvider(): Provider {
         const instructions = service.getSkillInstructions(topMatch.slug);
         let body = "";
         if (instructions?.body) {
+          const wellFormed = toWellFormedUnicode(instructions.body);
           body =
-            instructions.body.length > MAX_INSTRUCTION_CHARS
-              ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
-              : instructions.body;
+            wellFormed.length > MAX_INSTRUCTION_CHARS
+              ? `${truncateWellFormed(wellFormed, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
+              : wellFormed;
         }
 
         const otherMatches =
@@ -420,6 +426,8 @@ export function createDynamicSkillProvider(): Provider {
           },
         };
       } catch (error) {
+        // error-policy:J4 user-facing degrade — skill matching failure falls back
+        // to a clean empty result rather than aborting the turn.
         return {
           text: "",
           values: { skillMatchTier: "error" as never },

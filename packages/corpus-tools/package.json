@@ -8,7 +8,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "corpus": "./src/cli.ts"
+  },
   "scripts": {
+    "validate": "bun src/cli.ts validate",
+    "corpus:delete": "bun src/cli.ts delete",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "node ../scripts/run-biome-typescript.mjs src check",
@@ -20,6 +25,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "fflate": "^0.8.3",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

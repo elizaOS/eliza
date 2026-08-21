@@ -20,6 +20,7 @@ import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
+	DOCUMENT_LIST_MAX_PINNED_PAGES,
 	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
@@ -45,7 +46,7 @@ import {
 	Service,
 	type UUID,
 } from "../../types";
-import { splitChunks } from "../../utils";
+import { splitChunks, validateUuid } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
@@ -286,6 +287,15 @@ export async function resolveDocumentRequester(
 
 type DocumentRequesterResolver = () => Promise<DocumentRequester>;
 
+function documentListCursorKey(cursor: DocumentListCursor): string {
+	return [
+		cursor.createdAt,
+		cursor.id.toLowerCase(),
+		cursor.snapshotCreatedAt ?? "",
+		cursor.snapshotId?.toLowerCase() ?? "",
+	].join(":");
+}
+
 /**
  * Coalesces requester authorization only for one caller-owned read composition.
  * Rejections are evicted so a retry re-reads the authoritative role and room
@@ -317,6 +327,23 @@ function normalizeDocumentScope(
 		code: "DOCUMENT_SCOPE_INVALID",
 		context: { scope },
 	});
+}
+
+/**
+ * worldId/roomId/entityId are UUID-typed Postgres columns (see
+ * plugins/plugin-sql/src/schema/memory.ts); an explicit "" is not a
+ * representable scope value, only an omitted (undefined) one defaults to
+ * agentId. Reject invalid input at this boundary instead of letting it reach
+ * createMemory, where a real adapter fails opaquely and the in-memory test
+ * adapter accepts an unqueryable row.
+ */
+function requireDocumentScopeUuid(value: UUID, field: string): void {
+	if (validateUuid(value) === null) {
+		throw new ElizaError(`Document ${field} must be a valid UUID`, {
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			context: { field, value },
+		});
+	}
 }
 
 function resolveWriteDocumentScope({
@@ -653,12 +680,16 @@ export class DocumentService extends Service {
 	async composeProviderDocuments(
 		message: Memory,
 		listOptions: DocumentListOptions,
-	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+	): Promise<{
+		relevantFragments: StoredDocument[];
+		documents: Memory[];
+		pinnedDocuments: Memory[];
+	}> {
 		const resolveRequester = createDocumentProviderRequesterResolver(
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, listResult] = await Promise.all([
+		const [relevantFragments, listResult, pinnedDocuments] = await Promise.all([
 			this.searchDocumentsWithRequester(
 				message,
 				undefined,
@@ -668,8 +699,81 @@ export class DocumentService extends Service {
 				resolveRequester,
 			),
 			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+			this.listPinnedDocumentsWithRequester(resolveRequester),
 		]);
-		return { relevantFragments, documents: listResult.documents };
+		return {
+			relevantFragments,
+			documents: listResult.documents,
+			pinnedDocuments,
+		};
+	}
+
+	/** Lists every pinned document visible to the provider's requester. */
+	private async listPinnedDocumentsWithRequester(
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<Memory[]> {
+		const pinnedDocuments: Memory[] = [];
+		let cursor: DocumentListCursor | undefined;
+		const seenCursors = new Set<string>();
+		let pageCount = 0;
+		do {
+			pageCount += 1;
+			if (pageCount > DOCUMENT_LIST_MAX_PINNED_PAGES) {
+				throw new ElizaError(
+					"Pinned document list exceeded maximum page limit",
+					{
+						code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
+						context: {
+							pageCount,
+							maxPages: DOCUMENT_LIST_MAX_PINNED_PAGES,
+						},
+						severity: "fatal",
+					},
+				);
+			}
+			const page = await this.listDocumentsDetailedWithRequester(
+				{
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					...(cursor ? { cursor } : {}),
+				},
+				resolveRequester,
+			);
+			pinnedDocuments.push(
+				...page.documents.filter((document) => {
+					const metadata = document.metadata as
+						| DocumentMemoryMetadata
+						| undefined;
+					return (
+						metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+					);
+				}),
+			);
+			if (!page.hasMore) break;
+			if (!page.nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: { returnedDocuments: page.documents.length },
+						severity: "fatal",
+					},
+				);
+			}
+			const serializedCursor = documentListCursorKey(page.nextCursor);
+			if (seenCursors.has(serializedCursor)) {
+				throw new ElizaError(
+					"Document list reported a repeating pagination cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_LOOP",
+						context: { cursor: page.nextCursor },
+						severity: "fatal",
+					},
+				);
+			}
+			seenCursors.add(serializedCursor);
+			cursor = page.nextCursor;
+		} while (cursor);
+		return pinnedDocuments;
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
@@ -894,6 +998,9 @@ export class DocumentService extends Service {
 		fragmentCount: number;
 	}> {
 		const agentId = options.agentId || (this.runtime.agentId as UUID);
+		requireDocumentScopeUuid(options.worldId, "worldId");
+		requireDocumentScopeUuid(options.roomId, "roomId");
+		requireDocumentScopeUuid(options.entityId, "entityId");
 
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
@@ -1002,6 +1109,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		pinned = false,
 		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
@@ -1153,6 +1261,7 @@ export class DocumentService extends Service {
 				addedAt: Date.now(),
 				ingestionAttemptId,
 				ingestionState: "pending" as const,
+				pinned,
 			};
 
 			const documentMemory = createDocumentMemory({
@@ -1173,6 +1282,8 @@ export class DocumentService extends Service {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
+				// requireDocumentScopeUuid above already rejected an explicit "",
+				// so roomId here is always a real UUID or omitted; || vs ?? is moot.
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
@@ -1227,9 +1338,11 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
+						// requireDocumentScopeUuid above already validated roomId, so
+						// it's always a real UUID here; || vs ?? is moot.
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1251,7 +1364,7 @@ export class DocumentService extends Service {
 						contentType,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -2179,6 +2292,9 @@ export class DocumentService extends Service {
 			timestamp: Date.now(),
 			editedAt: Date.now(),
 			documentRevision: snapshot.revision + 1,
+			// Fences this attempt's staged fragments: concurrent updates stage the
+			// same revision number, so readers additionally match this token.
+			revisionAttemptId: this.runtime.createRunId(),
 		};
 
 		const replacement: Memory = {
@@ -2191,11 +2307,30 @@ export class DocumentService extends Service {
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
 		};
-		const mutation = await this.runtime.adapter.compareAndSwapDocument({
+		const fragments = await this.splitAndCreateFragments(
+			{
+				id: options.documentId,
+				content: { text: options.content },
+				metadata: updatedMetadata,
+			},
+			1500,
+			200,
+			{
+				roomId: existingDocument.roomId,
+				// Original ingestion coerces fragment worldId to the agent id when the
+				// parent document has none; replacement fragments must match or they
+				// fall out of worldId-scoped retrieval that still sees the old ones.
+				worldId: existingDocument.worldId ?? this.runtime.agentId,
+				entityId: existingDocument.entityId,
+			},
+		);
+		await this.prepareDocumentFragmentEmbeddings(fragments);
+		const mutation = await this.runtime.adapter.replaceDocumentRevision({
 			...requestContext,
 			documentId: options.documentId,
 			expected: snapshot,
 			replacement,
+			fragments,
 		});
 		if (mutation.status !== "updated") {
 			throw new ElizaError("Document authorization changed before update", {
@@ -2209,49 +2344,59 @@ export class DocumentService extends Service {
 			});
 		}
 
-		const existingFragments = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
-			agentId: this.runtime.agentId,
-			roomId: existingDocument.roomId,
-			count: 10_000,
-		});
-		const relatedFragments = existingFragments.filter((fragment) => {
-			const metadata = fragment.metadata as Record<string, unknown> | undefined;
-			return (
-				this.isDocumentFragmentMemory(fragment) &&
-				metadata?.documentId === options.documentId
-			);
-		});
-
-		for (const fragment of relatedFragments) {
-			if (typeof fragment.id === "string") {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
-		}
-
-		const fragments = await this.splitAndCreateFragments(
-			{
-				id: options.documentId,
-				content: { text: options.content },
-				metadata: updatedMetadata,
-			},
-			1500,
-			200,
-			{
-				roomId: existingDocument.roomId,
-				worldId: existingDocument.worldId ?? this.runtime.agentId,
-				entityId: existingDocument.entityId,
-			},
-		);
-
-		await this.processDocumentFragmentsBatched(fragments, {
-			continueOnError: false,
-		});
-
 		return {
 			documentId: options.documentId,
 			fragmentCount: fragments.length,
 		};
+	}
+
+	/** Stages every embedding before the atomic parent/fragment replacement. */
+	private async prepareDocumentFragmentEmbeddings(
+		fragments: Memory[],
+	): Promise<void> {
+		if (fragments.length === 0 || !hasDocumentEmbeddingModel(this.runtime))
+			return;
+		const batchModel = this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH);
+		if (batchModel) {
+			try {
+				const texts = fragments.map((fragment) => {
+					if (typeof fragment.content.text !== "string") {
+						throw new Error("Document fragment is missing text");
+					}
+					return fragment.content.text;
+				});
+				const vectors = await this.runtime.useModel(
+					ModelType.TEXT_EMBEDDING_BATCH,
+					{ texts },
+				);
+				if (
+					!Array.isArray(vectors) ||
+					vectors.length !== fragments.length ||
+					vectors.some(
+						(vector) => !Array.isArray(vector) || vector.length === 0,
+					)
+				) {
+					throw new Error(
+						"Batch embedding returned an incomplete fragment set",
+					);
+				}
+				for (let index = 0; index < fragments.length; index++) {
+					fragments[index].embedding = vectors[index];
+				}
+				return;
+			} catch (error) {
+				// error-policy:J4 The serial embedding provider is the documented
+				// fallback, and no storage mutation has happened at this point.
+				this.runtime.reportError(
+					"DocumentService.stageBatchFragmentEmbedding",
+					error,
+					{ fragmentCount: fragments.length },
+				);
+			}
+		}
+		for (const fragment of fragments) {
+			await this.runtime.addEmbeddingToMemory(fragment);
+		}
 	}
 
 	async _internalAddDocument(
@@ -2538,7 +2683,7 @@ export class DocumentService extends Service {
 		document: StoredDocument,
 		targetTokens: number,
 		overlap: number,
-		scope: { roomId: UUID; worldId: UUID; entityId: UUID },
+		scope: { roomId: UUID; worldId?: UUID; entityId: UUID },
 	): Promise<Memory[]> {
 		if (!document.content.text) {
 			return [];

@@ -12,19 +12,23 @@ import {
 	type DocumentListQueryResult,
 	type DocumentMutationSnapshot,
 	type DocumentRequesterContext,
+	type DocumentRevisionReplaceParams,
 	type IDatabaseAdapter,
 	type Memory,
 	MemoryType,
 	type UUID,
 } from "../types";
 
-export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 2 as const;
+export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 3 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
 export const DOCUMENT_LIST_MAX_OFFSET = 10_000;
 export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
 export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
+export const DOCUMENT_LIST_MAX_PINNED_PAGES =
+	Math.floor(DOCUMENT_LIST_MAX_OFFSET / DOCUMENT_LIST_MAX_LIMIT) + 1;
+export const DOCUMENT_REVISION_MAX_FRAGMENTS = 10_000;
 
 export interface DocumentListQueryCapableAdapter {
 	readonly documentListQueryCapability: typeof DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -62,6 +66,118 @@ function invalidPagination(
 
 function isUuid(value: unknown): value is UUID {
 	return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+function normalizeDocumentListCursor(
+	value: unknown,
+): DocumentListCursor | null {
+	if (value === null || typeof value !== "object") return null;
+	const cursor = value as Record<string, unknown>;
+	if (!Number.isSafeInteger(cursor.createdAt) || !isUuid(cursor.id)) {
+		return null;
+	}
+	const hasSnapshotCreatedAt = cursor.snapshotCreatedAt !== undefined;
+	const hasSnapshotId = cursor.snapshotId !== undefined;
+	if (hasSnapshotCreatedAt !== hasSnapshotId) return null;
+	if (!hasSnapshotCreatedAt) {
+		return { createdAt: cursor.createdAt as number, id: cursor.id };
+	}
+	if (
+		!Number.isSafeInteger(cursor.snapshotCreatedAt) ||
+		!isUuid(cursor.snapshotId)
+	) {
+		return null;
+	}
+	if (
+		(cursor.createdAt as number) > (cursor.snapshotCreatedAt as number) ||
+		((cursor.createdAt as number) === (cursor.snapshotCreatedAt as number) &&
+			(cursor.id as UUID).toLowerCase() >
+				(cursor.snapshotId as UUID).toLowerCase())
+	) {
+		return null;
+	}
+	return {
+		createdAt: cursor.createdAt as number,
+		id: cursor.id,
+		snapshotCreatedAt: cursor.snapshotCreatedAt as number,
+		snapshotId: cursor.snapshotId,
+	};
+}
+
+function invalidDocumentListResult(
+	message: string,
+	context: Record<string, unknown>,
+): never {
+	throw new ElizaError(message, {
+		code: "DOCUMENT_LIST_INVALID_RESULT",
+		context,
+		severity: "fatal",
+	});
+}
+
+/** Validates the bounded runtime result returned by a database adapter. */
+export function validateDocumentListQueryResult(
+	value: unknown,
+	params: DocumentListQueryParams,
+): asserts value is DocumentListQueryResult {
+	if (value === null || typeof value !== "object") {
+		invalidDocumentListResult("Document list adapter returned a non-object", {
+			resultType: typeof value,
+		});
+	}
+	const result = value as Record<string, unknown>;
+	for (const field of ["documents", "availableDocuments"] as const) {
+		const rows = result[field];
+		if (
+			!Array.isArray(rows) ||
+			rows.length > params.limit ||
+			rows.some((row) => row === null || typeof row !== "object")
+		) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${field}`,
+				{
+					field,
+					rowCount: Array.isArray(rows) ? rows.length : undefined,
+					maxRows: params.limit,
+				},
+			);
+		}
+	}
+	for (const field of [
+		"totalVisible",
+		"totalAvailable",
+		"totalMatched",
+	] as const) {
+		const count = result[field];
+		if (!Number.isSafeInteger(count) || (count as number) < 0) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${field}`,
+				{ field, count },
+			);
+		}
+	}
+	for (const [moreField, cursorField] of [
+		["hasMore", "nextCursor"],
+		["availableHasMore", "availableNextCursor"],
+	] as const) {
+		const hasMore = result[moreField];
+		const cursor = result[cursorField];
+		if (
+			typeof hasMore !== "boolean" ||
+			hasMore !== (cursor !== undefined) ||
+			(cursor !== undefined && !normalizeDocumentListCursor(cursor))
+		) {
+			invalidDocumentListResult(
+				`Document list adapter returned invalid ${cursorField}`,
+				{
+					moreField,
+					hasMore,
+					cursorField,
+					cursorType: cursor === null ? "null" : typeof cursor,
+				},
+			);
+		}
+	}
 }
 
 export function documentCreatedAt(memory: Memory): number {
@@ -215,6 +331,82 @@ export function readDocumentMutationSnapshot(
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
 	};
+}
+
+/** Rejects malformed revision batches before an adapter begins a transaction. */
+export function validateDocumentRevisionReplacement(
+	params: DocumentRevisionReplaceParams,
+): void {
+	validateDocumentRequesterContext(params);
+	const replacement = params.replacement;
+	const replacementMetadata = replacement.metadata as
+		| Record<string, unknown>
+		| undefined;
+	const revision = replacementMetadata?.documentRevision;
+	const replacementSnapshot = readDocumentMutationSnapshot(replacement);
+	const invalid = (
+		reason: string,
+		context: Record<string, unknown> = {},
+	): never => {
+		throw new ElizaError("Invalid atomic document revision replacement", {
+			code: "DOCUMENT_MUTATION_INVALID_REPLACEMENT",
+			context: { documentId: params.documentId, reason, ...context },
+		});
+	};
+	if (
+		replacement.id !== params.documentId ||
+		replacement.agentId !== params.agentId ||
+		replacementMetadata?.type !== MemoryType.DOCUMENT ||
+		replacementMetadata.documentId !== params.documentId ||
+		typeof replacement.content.text !== "string" ||
+		revision !== params.expected.revision + 1 ||
+		!replacementSnapshot ||
+		replacementSnapshot.scope !== params.expected.scope ||
+		replacementSnapshot.roomId !== params.expected.roomId ||
+		replacementSnapshot.entityId !== params.expected.entityId ||
+		replacementSnapshot.scopedToEntityId !== params.expected.scopedToEntityId ||
+		replacementSnapshot.addedBy !== params.expected.addedBy ||
+		replacementSnapshot.ingestionAttemptId !==
+			params.expected.ingestionAttemptId ||
+		replacementSnapshot.ingestionState !== params.expected.ingestionState
+	) {
+		invalid("parent identity or revision does not match the mutation");
+	}
+	if (params.fragments.length > DOCUMENT_REVISION_MAX_FRAGMENTS) {
+		invalid("fragment batch exceeds the supported bound", {
+			fragmentCount: params.fragments.length,
+		});
+	}
+	const ids = new Set<string>();
+	for (let index = 0; index < params.fragments.length; index++) {
+		const fragment = params.fragments[index];
+		const fragmentId = fragment.id;
+		const metadata = fragment.metadata as Record<string, unknown> | undefined;
+		if (
+			!isUuid(fragmentId) ||
+			fragmentId === params.documentId ||
+			(typeof fragmentId === "string" && ids.has(fragmentId)) ||
+			fragment.agentId !== replacement.agentId ||
+			fragment.roomId !== replacement.roomId ||
+			fragment.worldId !== replacement.worldId ||
+			fragment.entityId !== replacement.entityId ||
+			metadata?.type !== MemoryType.FRAGMENT ||
+			metadata.documentId !== params.documentId ||
+			metadata.documentRevision !== revision ||
+			metadata.position !== index ||
+			typeof fragment.content.text !== "string" ||
+			(fragment.embedding !== undefined &&
+				(!Array.isArray(fragment.embedding) ||
+					fragment.embedding.length === 0 ||
+					fragment.embedding.some((value) => !Number.isFinite(value))))
+		) {
+			invalid("fragment is not a complete member of the replacement revision", {
+				fragmentIndex: index,
+				fragmentId,
+			});
+		}
+		ids.add(fragmentId as UUID);
+	}
 }
 
 /** Canonical read decision shared by list, lookup, and fragment search. */
@@ -527,29 +719,8 @@ export function validateDocumentListQueryParams(
 			{ offset: params.offset },
 		);
 	}
-	if (
-		params.cursor &&
-		(!Number.isSafeInteger(params.cursor.createdAt) ||
-			!isUuid(params.cursor.id))
-	) {
+	if (params.cursor && !normalizeDocumentListCursor(params.cursor)) {
 		invalidPagination("Document list cursor is invalid", {
-			cursor: params.cursor,
-		});
-	}
-	if (
-		params.cursor &&
-		((params.cursor.snapshotCreatedAt === undefined) !==
-			(params.cursor.snapshotId === undefined) ||
-			(params.cursor.snapshotCreatedAt !== undefined &&
-				(!Number.isSafeInteger(params.cursor.snapshotCreatedAt) ||
-					!isUuid(params.cursor.snapshotId))) ||
-			(params.cursor.snapshotCreatedAt !== undefined &&
-				(params.cursor.createdAt > params.cursor.snapshotCreatedAt ||
-					(params.cursor.createdAt === params.cursor.snapshotCreatedAt &&
-						params.cursor.id.toLowerCase() >
-							(params.cursor.snapshotId as UUID).toLowerCase()))))
-	) {
-		invalidPagination("Document list snapshot cursor is invalid", {
 			cursor: params.cursor,
 		});
 	}
@@ -735,6 +906,21 @@ export function queryDocumentFragmentsInMemory(
 			) {
 				return false;
 			}
+			// Attempt fencing: a parent that committed an update attempt token
+			// only exposes fragments staged by that attempt (same rule as the
+			// SQL adapters), so losing concurrent generations stay invisible.
+			const parentAttempt = (
+				(parent.metadata ?? {}) as { revisionAttemptId?: unknown }
+			).revisionAttemptId;
+			const fragmentAttempt = (
+				(memory.metadata ?? {}) as unknown as { revisionAttemptId?: unknown }
+			).revisionAttemptId;
+			if (
+				typeof parentAttempt === "string" &&
+				fragmentAttempt !== parentAttempt
+			) {
+				return false;
+			}
 			if (params.roomId && parent.roomId !== params.roomId) return false;
 			if (params.worldId && parent.worldId !== params.worldId) return false;
 			if (params.entityId && parent.entityId !== params.entityId) return false;
@@ -774,6 +960,7 @@ export function hasDocumentListQueryCapability(
 		getDocument?: unknown;
 		queryDocumentFragments?: unknown;
 		compareAndSwapDocument?: unknown;
+		replaceDocumentRevision?: unknown;
 		deleteDocumentWithSnapshot?: unknown;
 	};
 	return (
@@ -783,6 +970,7 @@ export function hasDocumentListQueryCapability(
 		typeof candidate.getDocument === "function" &&
 		typeof candidate.queryDocumentFragments === "function" &&
 		typeof candidate.compareAndSwapDocument === "function" &&
+		typeof candidate.replaceDocumentRevision === "function" &&
 		typeof candidate.deleteDocumentWithSnapshot === "function"
 	);
 }
@@ -794,7 +982,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 		queryDocuments?: unknown;
 	};
 	throw new ElizaError(
-		"Database adapter must implement document-store capability v2; migrate by adding authorized list, lookup, fragment search, CAS update, and CAS delete methods",
+		"Database adapter must implement document-store capability v3; migrate by adding authorized list, lookup, fragment search, atomic revision replacement, CAS update, and CAS delete methods",
 		{
 			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: {
@@ -803,7 +991,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 				advertisedVersion: candidate.documentListQueryCapability,
 				hasQueryMethod: typeof candidate.queryDocuments === "function",
 				migrationGuide:
-					"Implement IDatabaseAdapter documentListQueryCapability=2 and all document-store methods; no compatibility scan is supported.",
+					"Implement IDatabaseAdapter documentListQueryCapability=3 and all document-store methods, including replaceDocumentRevision; no compatibility scan is supported.",
 			},
 			severity: "fatal",
 		},
@@ -816,5 +1004,29 @@ export async function queryDocumentsWithCapability(
 ): Promise<DocumentListQueryResult> {
 	validateDocumentListQueryParams(params);
 	requireDocumentListQueryCapability(adapter);
-	return adapter.queryDocuments(params);
+	const result: unknown = await adapter.queryDocuments(params);
+	validateDocumentListQueryResult(result, params);
+	return {
+		documents: result.documents,
+		availableDocuments: result.availableDocuments,
+		totalVisible: result.totalVisible,
+		totalAvailable: result.totalAvailable,
+		totalMatched: result.totalMatched,
+		hasMore: result.hasMore,
+		availableHasMore: result.availableHasMore,
+		...(result.nextCursor
+			? {
+					nextCursor: normalizeDocumentListCursor(
+						result.nextCursor,
+					) as DocumentListCursor,
+				}
+			: {}),
+		...(result.availableNextCursor
+			? {
+					availableNextCursor: normalizeDocumentListCursor(
+						result.availableNextCursor,
+					) as DocumentListCursor,
+				}
+			: {}),
+	};
 }

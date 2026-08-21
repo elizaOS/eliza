@@ -370,30 +370,10 @@ function validateDependencyRange({
   range,
   targetVersion,
 }) {
-  if (typeof range !== "string") {
+  if (typeof range !== "string" || range.startsWith("workspace:")) {
     throw new Error(
       `${fromName} ${section}.${dependencyName} must be a published semver range, received ${range}`,
     );
-  }
-  if (range.startsWith("workspace:")) {
-    // Workspace protocol ranges are rewritten to the exact target version at
-    // pack time; the source-tree contract only requires that the rewrite is
-    // well-defined for the range form.
-    const remainder = range.slice("workspace:".length);
-    const rewriteable =
-      remainder === "*" ||
-      remainder === "^" ||
-      remainder === "~" ||
-      (semver.validRange(remainder) !== null &&
-        semver.satisfies(targetVersion, remainder, {
-          includePrerelease: true,
-        }));
-    if (!rewriteable) {
-      throw new Error(
-        `${fromName} ${section}.${dependencyName} workspace range ${range} cannot be rewritten to workspace version ${targetVersion}`,
-      );
-    }
-    return;
   }
   const validRange = semver.validRange(range);
   if (

@@ -6,7 +6,10 @@
  * short TTL because it runs on every getSetting string-decrypt — the hot path
  * avoids re-clearing the env cache, and clearSaltCache() is the test seam. In
  * production a non-default SECRET_SALT is required unless
- * ELIZA_ALLOW_DEFAULT_SECRET_SALT overrides the check.
+ * ELIZA_ALLOW_DEFAULT_SECRET_SALT overrides the check. Outside production an
+ * unset salt no longer falls back to the publicly known constant — a random
+ * per-process salt is generated with a loud warning instead, so ciphertext
+ * can never be keyed by a published value (and does not survive restart).
  *
  * Consumed by the runtime's getSetting/setSetting path and by world/character
  * setup: saltWorldSettings/unsaltWorldSettings (gated on each setting's `secret`
@@ -64,6 +67,22 @@ let saltCache: SaltCache | null = null;
 let saltErrorLogged = false;
 const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
+/** The historical hardcoded fallback — a publicly known key input. */
+const LEGACY_DEFAULT_SECRET_SALT = "secretsalt";
+
+/**
+ * Random per-process salt for the unset-outside-production case. Deliberately
+ * NOT reset by clearSaltCache(): regenerating mid-process would orphan
+ * ciphertext produced earlier in the same process.
+ */
+let ephemeralSalt: string | null = null;
+function getEphemeralSalt(): string {
+	if (!ephemeralSalt) {
+		ephemeralSalt = BufferUtils.toHex(BufferUtils.randomBytes(32));
+	}
+	return ephemeralSalt;
+}
+
 function isEncryptedV1(value: string): boolean {
 	const parts = value.split(":");
 	if (parts.length !== 2) return false;
@@ -112,34 +131,58 @@ export function getSalt(): string {
 
 	// Cache miss / expired: re-read the environment from scratch.
 	getEnvironment().clearCache();
-	const currentEnvSalt = getEnv("SECRET_SALT", "secretsalt") || "secretsalt";
+	const envSalt = getEnv("SECRET_SALT", "") || "";
 	const nodeEnv = (getEnv("NODE_ENV", "") || "").toLowerCase();
 	const isProduction = nodeEnv === "production";
 	const allowDefaultSaltRaw =
 		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
 	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
 
-	if (isProduction && currentEnvSalt === "secretsalt" && !allowDefaultSalt) {
+	const isDefaultOrUnset =
+		envSalt === "" || envSalt === LEGACY_DEFAULT_SECRET_SALT;
+
+	if (isProduction && isDefaultOrUnset && !allowDefaultSalt) {
 		throw new Error(
 			"SECRET_SALT must be set to a non-default value in production. " +
 				"Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
 		);
 	}
 
-	if (currentEnvSalt === "secretsalt" && !saltErrorLogged) {
-		logger.warn(
-			{ src: "core:settings", event: "core.settings.default_secret_salt" },
-			"SECRET_SALT is not set or using default value",
-		);
-		saltErrorLogged = true;
+	let value: string;
+	if (isDefaultOrUnset && !allowDefaultSalt) {
+		// Never key ciphertext by the publicly known constant: derive an
+		// ephemeral random salt instead. The loud trade-off is that settings
+		// encrypted under it are not decryptable after a process restart —
+		// set SECRET_SALT (the agent host persists one at boot) for durable
+		// at-rest encryption.
+		value = getEphemeralSalt();
+		if (!saltErrorLogged) {
+			logger.warn(
+				{ src: "core:settings", event: "core.settings.ephemeral_secret_salt" },
+				"SECRET_SALT is not set — generated an EPHEMERAL random salt for this process. " +
+					"Settings encrypted now will NOT be decryptable after restart. " +
+					"Set SECRET_SALT to a stable random value to persist encrypted settings.",
+			);
+			saltErrorLogged = true;
+		}
+	} else {
+		// Explicit salt, or the legacy constant under an explicit opt-in.
+		value = isDefaultOrUnset ? LEGACY_DEFAULT_SECRET_SALT : envSalt;
+		if (isDefaultOrUnset && !saltErrorLogged) {
+			logger.warn(
+				{ src: "core:settings", event: "core.settings.default_secret_salt" },
+				"SECRET_SALT is not set or using default value",
+			);
+			saltErrorLogged = true;
+		}
 	}
 
 	saltCache = {
-		value: currentEnvSalt,
+		value,
 		timestamp: now,
 	};
 
-	return currentEnvSalt;
+	return value;
 }
 
 /**

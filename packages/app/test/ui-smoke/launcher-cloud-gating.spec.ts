@@ -15,14 +15,14 @@ import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 /**
  * Rendered launcher evidence that the Cloud Applications studio never tiles.
  *
- * The launcher carries exactly ONE apps destination — the My Apps tile. The
- * `cloud-apps` studio is folded into My Apps (its view surfaces as a row inside
- * MyAppsView and via the /cloud-apps deep link), so `curateLauncherPages`
+ * The launcher carries exactly ONE apps destination — the Projects tile. The
+ * `cloud-apps` studio is folded into Projects (its view surfaces as a row in
+ * the Projects Apps segment and via the /cloud-apps deep link), so `curateLauncherPages`
  * drops it unconditionally (`LAUNCHER_HIDDEN_IDS` in launcher-curation.ts,
  * unit-tested in launcher-curation.test.ts). This spec renders the REAL
  * launcher in both cloud states and captures the proof: with a `cloud-apps`
  * view present in the catalog, the tile must be absent whether
- * `/api/cloud/status` reports disconnected or connected, while the My Apps
+ * `/api/cloud/status` reports disconnected or connected, while the Projects
  * tile stays visible — on desktop (1280×800) and mobile (390×844).
  *
  * The `cloud-apps` registration is platform-gated (packages/app/src/
@@ -182,7 +182,7 @@ async function bootLauncher(
 }
 
 const cloudTile = (page: Page) => page.getByTestId("launcher-tile-cloud-apps");
-const myAppsTile = (page: Page) => page.getByTestId("launcher-tile-my-apps");
+const projectsTile = (page: Page) => page.getByTestId("launcher-tile-tasks");
 
 test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
   for (const viewport of VIEWPORTS) {
@@ -191,8 +191,8 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
     }, testInfo) => {
       await bootLauncher(page, viewport, { connected: false });
       // The catalog HAS the cloud-apps view (injected above); the launcher must
-      // still not surface it — My Apps is the one apps destination.
-      await expect(myAppsTile(page)).toBeVisible();
+      // still not surface it — Projects is the one apps destination.
+      await expect(projectsTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
         page,
@@ -206,8 +206,8 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
     }, testInfo) => {
       await bootLauncher(page, viewport, { connected: true });
       // Signed in changes nothing for the studio tile: it is consolidated into
-      // My Apps (the MyAppsView Eliza Cloud row + the /cloud-apps deep link).
-      await expect(myAppsTile(page)).toBeVisible();
+      // Projects (the Apps-segment Eliza Cloud row + the /cloud-apps deep link).
+      await expect(projectsTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
         page,
@@ -234,7 +234,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       const page = await context.newPage();
       const state: CloudStatusState = { connected: false };
       await bootLauncher(page, { width: 1280, height: 800 }, state);
-      await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
+      await expect(projectsTile(page)).toBeVisible({ timeout: 30_000 });
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
@@ -270,7 +270,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
         timeout: 60_000,
       });
       // Navigating through local Settings must not change launcher curation.
-      await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
+      await expect(projectsTile(page)).toBeVisible({ timeout: 30_000 });
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-3-local-launcher-return");
 

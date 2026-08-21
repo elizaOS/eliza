@@ -18,6 +18,8 @@ const realDockerNodes = { ...realDockerNodesNs };
 const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
 const realHetznerCloudApi = { ...realHetznerCloudApiNs };
 const realNodeBootstrap = { ...realNodeBootstrapNs };
+const originalFirewallIds = process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
+const originalEnvironment = process.env.ENVIRONMENT;
 
 // The source narrows the swallow to `err instanceof HetznerCloudError &&
 // err.code === "not_found"`, so the thrown error must be an instance of the
@@ -38,6 +40,7 @@ const mocks = {
   deleteNode: mock(),
   countRetained: mock(),
   isConfigured: mock(),
+  getServer: mock(),
   deleteServer: mock(),
 };
 
@@ -56,7 +59,10 @@ mock.module("../docker-node-workloads", () => ({
 
 mock.module("./hetzner-cloud-api", () => ({
   HetznerCloudError: FakeHetznerCloudError,
-  getHetznerCloudClient: () => ({ deleteServer: mocks.deleteServer }),
+  getHetznerCloudClient: () => ({
+    getServer: mocks.getServer,
+    deleteServer: mocks.deleteServer,
+  }),
   isHetznerCloudConfigured: mocks.isConfigured,
 }));
 
@@ -69,6 +75,10 @@ afterAll(() => {
   mock.module("../docker-node-workloads", () => realDockerNodeWorkloads);
   mock.module("./hetzner-cloud-api", () => realHetznerCloudApi);
   mock.module("./node-bootstrap", () => realNodeBootstrap);
+  if (originalFirewallIds === undefined) delete process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
+  else process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = originalFirewallIds;
+  if (originalEnvironment === undefined) delete process.env.ENVIRONMENT;
+  else process.env.ENVIRONMENT = originalEnvironment;
 });
 
 const NODE_ID = "drain-node";
@@ -91,7 +101,11 @@ function makeNode(): DockerNode {
       provider: "hetzner-cloud",
       autoscaled: true,
       hcloudServerId: HCLOUD_SERVER_ID,
+      environment: "local",
     },
+    fleet_kind: "cloud",
+    infrastructure_provider: "hetzner",
+    provider_server_id: String(HCLOUD_SERVER_ID),
     created_at: new Date("2026-05-15T12:00:00Z"),
     updated_at: new Date("2026-05-15T12:00:00Z"),
   } as DockerNode;
@@ -99,7 +113,10 @@ function makeNode(): DockerNode {
 
 // Inject a ComputeProvider whose only exercised method is deleteServer — the
 // documented constructor seam (#8919) — so drainNode routes deletes to it.
-const provider = { deleteServer: mocks.deleteServer } as unknown as ComputeProvider;
+const provider = {
+  getServer: mocks.getServer,
+  deleteServer: mocks.deleteServer,
+} as unknown as ComputeProvider;
 
 async function drainDeprovision(): Promise<void> {
   const { NodeAutoscaler } = await import("./node-autoscaler");
@@ -114,6 +131,7 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
     mocks.deleteNode.mockReset();
     mocks.countRetained.mockReset();
     mocks.isConfigured.mockReset();
+    mocks.getServer.mockReset();
     mocks.deleteServer.mockReset();
 
     mocks.findByNodeId.mockResolvedValue(makeNode());
@@ -121,6 +139,23 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
     mocks.deleteNode.mockResolvedValue(true);
     mocks.countRetained.mockResolvedValue(0);
     mocks.isConfigured.mockReturnValue(true);
+    process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = "8101,8102";
+    process.env.ENVIRONMENT = "local";
+    mocks.getServer.mockResolvedValue({
+      id: HCLOUD_SERVER_ID,
+      name: NODE_ID,
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": NODE_ID,
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "applied" },
+      ],
+    });
   });
 
   test("propagates a typed Hetzner API failure and KEEPS the DB row (no orphaned server)", async () => {
@@ -166,5 +201,29 @@ describe("NodeAutoscaler drain deprovision — fail-closed error policy (#13415)
 
     expect(mocks.deleteNode).toHaveBeenCalledTimes(1);
     expect(mocks.deleteNode).toHaveBeenCalledWith("db-1");
+  });
+
+  test("does not delete when provider read-back returns a different server ID", async () => {
+    mocks.getServer.mockResolvedValueOnce({
+      id: 9999,
+      name: NODE_ID,
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": NODE_ID,
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "applied" },
+      ],
+    });
+
+    await expect(drainDeprovision()).rejects.toThrow(
+      "returned server 9999 for requested server 4242",
+    );
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+    expect(mocks.deleteNode).not.toHaveBeenCalled();
   });
 });

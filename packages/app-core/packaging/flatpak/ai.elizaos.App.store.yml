@@ -1,10 +1,9 @@
-# Flatpak manifest — Flathub (store) variant for elizaOS App.
+# RETIRED CLI EXPERIMENT — DO NOT SUBMIT TO FLATHUB.
 #
-# This is the LOCKED-DOWN sandbox build, intended for distribution through
-# Flathub. It is the Flatpak equivalent of an app-store / MAS / MSIX build:
-# the runtime cannot reach the host shell, cannot execute arbitrary CLIs from
-# `$PATH`, and cannot read or write outside its own per-app data directory or
-# user-granted portal-mediated paths.
+# This manifest installs the elizaOS CLI rather than the Electrobun desktop,
+# needs build-time network access, and is retained only to document the former
+# experiment. The canonical release workflow packages the real desktop with
+# package-electrobun-flatpak.mjs; see README.md for the Flathub blockers.
 #
 # When you want the unrestricted, power-user experience that mirrors the
 # AppImage / .deb / .rpm distribution (full $HOME access, host shell, host

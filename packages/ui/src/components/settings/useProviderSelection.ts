@@ -11,7 +11,7 @@ import {
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
@@ -149,7 +149,7 @@ export function useProviderSelection(
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
   );
-  const hasClickedProviderPanel = useRef(false);
+  const [hasClickedProviderPanel, setHasClickedProviderPanel] = useState(false);
   const [selectedProviderPanelId, setSelectedProviderPanelId] =
     useState<ProviderPanelId | null>(() =>
       readRememberedProviderPanel(elizaCloudConnected),
@@ -359,39 +359,20 @@ export function useProviderSelection(
     isCloudSelected,
     resolvedSelectedId,
   });
+  // Keep the default panel derived instead of mirroring it into state from a
+  // passive effect. Besides avoiding an unnecessary render, this prevents a
+  // provider section mounted during Settings navigation from recursively
+  // scheduling updates while React is still committing that screen (#20974).
   const visibleProviderPanelId: ProviderPanelId =
-    selectedProviderPanelId ?? activeProviderPanelId;
-
-  useEffect(() => {
-    if (
-      cloudRuntimeLocked &&
-      elizaCloudConnected &&
-      selectedProviderPanelId === "__local__"
-    ) {
-      hasClickedProviderPanel.current = false;
-      setSelectedProviderPanelId("__cloud__");
-      return;
-    }
-    // A restored Cloud pin (or a boot-time connected=true flip) must not
-    // keep Cloud open once we know the account is disconnected — unless the
-    // user clicked Cloud this session to inspect it.
-    if (
-      !elizaCloudConnected &&
-      selectedProviderPanelId === "__cloud__" &&
-      !hasClickedProviderPanel.current
-    ) {
-      setSelectedProviderPanelId("__local__");
-      rememberProviderPanel("__local__");
-      return;
-    }
-    if (hasClickedProviderPanel.current) return;
-    setSelectedProviderPanelId(activeProviderPanelId);
-  }, [
-    activeProviderPanelId,
-    cloudRuntimeLocked,
-    elizaCloudConnected,
-    selectedProviderPanelId,
-  ]);
+    cloudRuntimeLocked &&
+    elizaCloudConnected &&
+    selectedProviderPanelId === "__local__"
+      ? "__cloud__"
+      : !elizaCloudConnected &&
+          selectedProviderPanelId === "__cloud__" &&
+          !hasClickedProviderPanel
+        ? "__local__"
+        : (selectedProviderPanelId ?? activeProviderPanelId);
 
   const handleProviderPanelSelect = useCallback(
     (panelId: string) => {
@@ -402,7 +383,7 @@ export function useProviderSelection(
       ) {
         return;
       }
-      hasClickedProviderPanel.current = true;
+      setHasClickedProviderPanel(true);
       setSelectedProviderPanelId(panelId);
       rememberProviderPanel(panelId);
     },

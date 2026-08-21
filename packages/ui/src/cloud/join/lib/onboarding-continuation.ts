@@ -9,7 +9,8 @@
  * `public-pages/lib/login-return-to.ts` — and redeemed exactly once after
  * authentication by POSTing the onboarding chat endpoint with the Steward
  * bearer. Ordinary continuations are explicitly confirmed after login. A
- * Telegram personal-account claim is purpose-marked separately and consumed by
+ * Telegram personal-account claim is purpose-marked separately, confirmed
+ * against the read-only claim preview on the landing page, and consumed by
  * Steward sync before generic account creation, preserving its existing user,
  * organization, and transcript. The purpose marker is routing metadata only;
  * the server validates all authority from the opaque token.
@@ -77,13 +78,29 @@ export function storePendingOnboardingSession(
 ): boolean {
   const sanitized = sanitizeOnboardingSessionToken(token);
   if (!sanitized) return false;
+  const storages = eachStorage();
+  let expiresAt = Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS;
+  // The expiry also orders mirrored entries. Advance beyond either existing
+  // value so same-millisecond links and partial storage writes stay ordered.
+  for (const storage of storages) {
+    try {
+      const existing = parseStored(
+        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
+      );
+      if (existing && existing.expiresAt >= expiresAt) {
+        expiresAt = existing.expiresAt + 1;
+      }
+    } catch {
+      // error-policy:J3 unreadable storage cannot contribute ordering state.
+    }
+  }
   const stored = JSON.stringify({
     token: sanitized,
-    expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
+    expiresAt,
     purpose,
   } satisfies StoredPendingOnboardingSession);
   let persisted = false;
-  for (const storage of eachStorage()) {
+  for (const storage of storages) {
     try {
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
       persisted = true;
@@ -121,19 +138,22 @@ function parseStored(
 export function peekPendingOnboardingSession(
   purpose?: PendingOnboardingPurpose,
 ): string | null {
+  let newest: StoredPendingOnboardingSession | null = null;
   for (const storage of eachStorage()) {
     try {
       const pending = parseStored(
         storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
       );
-      if (pending && (!purpose || pending.purpose === purpose)) {
-        return pending.token;
+      if (pending && (!newest || pending.expiresAt >= newest.expiresAt)) {
+        newest = pending;
       }
     } catch {
       // error-policy:J3 unreadable storage reads as no pending token.
     }
   }
-  return null;
+  return newest && (!purpose || newest.purpose === purpose)
+    ? newest.token
+    : null;
 }
 
 /** Drop the pending token from every storage (post-success, single-use). */
@@ -145,6 +165,35 @@ export function clearPendingOnboardingSession(): void {
       // error-policy:J6 best-effort cleanup; an expired leftover is inert.
     }
   }
+}
+
+/**
+ * Drop only the exact continuation that just succeeded. A different claim may
+ * have been stored while the request was in flight (another tab or link); that
+ * newer authority must not be consumed by an older response.
+ */
+export function clearPendingOnboardingSessionIfMatches(
+  token: string,
+  purpose: PendingOnboardingPurpose,
+): boolean {
+  const sanitized = sanitizeOnboardingSessionToken(token);
+  if (!sanitized) return false;
+  let cleared = false;
+  for (const storage of eachStorage()) {
+    try {
+      const pending = parseStored(
+        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
+      );
+      if (pending?.token === sanitized && pending.purpose === purpose) {
+        storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
+        cleared = true;
+      }
+    } catch {
+      // error-policy:J6 best-effort post-success cleanup; the server remains
+      // authoritative and the leftover expires without granting new access.
+    }
+  }
+  return cleared;
 }
 
 /** The transport seam, injectable for tests. */
@@ -198,5 +247,5 @@ export async function completePendingOnboardingContinuation(
     platform: "web",
     confirmPlatformLink: true,
   });
-  clearPendingOnboardingSession();
+  clearPendingOnboardingSessionIfMatches(sanitized, "link");
 }

@@ -31,13 +31,6 @@ const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 /** Matches the bare `[BACKGROUND]` picker marker — lockstep with BACKGROUND_RE. */
 const DASHBOARD_BACKGROUND_MARKER_RE = /\[BACKGROUND\]/g;
 
-/** Matches `[CHECKLIST]\n{json}\n[/CHECKLIST]` — lockstep with the dashboard's CHECKLIST_RE. */
-const DASHBOARD_CHECKLIST_BLOCK_RE =
-	/\[CHECKLIST\]\n([\s\S]*?)\n\[\/CHECKLIST\]/g;
-
-/** Matches `[WORKFLOW]\n{json}\n[/WORKFLOW]` — lockstep with the dashboard's WORKFLOW_RE. */
-const DASHBOARD_WORKFLOW_BLOCK_RE = /\[WORKFLOW\]\n([\s\S]*?)\n\[\/WORKFLOW\]/g;
-
 /** Marker glyphs for checklist item statuses (`- [x]` renders as a task list on markdown surfaces). */
 const CHECKLIST_STATUS_GLYPHS: Record<string, string> = {
 	completed: "[x]",
@@ -118,15 +111,40 @@ function workflowBodyToPlainText(body: string): string | null {
 }
 
 function degradeWidgetBlocks(text: string): string {
-	return text
-		.replace(
-			DASHBOARD_CHECKLIST_BLOCK_RE,
-			(_match, body: string) => checklistBodyToPlainText(body) ?? body.trim(),
-		)
-		.replace(
-			DASHBOARD_WORKFLOW_BLOCK_RE,
-			(_match, body: string) => workflowBodyToPlainText(body) ?? body.trim(),
+	return replaceDashboardBlocks(
+		replaceDashboardBlocks(
+			text,
+			"CHECKLIST",
+			(body) => checklistBodyToPlainText(body) ?? body.trim(),
+		),
+		"WORKFLOW",
+		(body) => workflowBodyToPlainText(body) ?? body.trim(),
+	);
+}
+
+function replaceDashboardBlocks(
+	text: string,
+	kind: "CHECKLIST" | "WORKFLOW",
+	render: (body: string) => string,
+): string {
+	const opening = `[${kind}]\n`;
+	const closing = `\n[/${kind}]`;
+	const chunks: string[] = [];
+	let cursor = 0;
+	while (cursor < text.length) {
+		const start = text.indexOf(opening, cursor);
+		if (start < 0) break;
+		const end = text.indexOf(closing, start + opening.length);
+		if (end < 0) break;
+		chunks.push(
+			text.slice(cursor, start),
+			render(text.slice(start + opening.length, end)),
 		);
+		cursor = end + closing.length;
+	}
+	if (chunks.length === 0) return text;
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
 }
 
 /**

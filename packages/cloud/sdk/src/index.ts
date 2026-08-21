@@ -5,6 +5,7 @@ export {
   type BuildAppAuthorizeUrlOptions,
   buildAppAuthorizeUrl,
 } from "./app-auth.js";
+export { isCliLoginSessionId } from "./cli-login.js";
 export { createElizaCloudClient, ElizaCloudClient } from "./client.js";
 export {
   CloudApiClient,
@@ -27,6 +28,7 @@ export {
   ELIZA_CLOUD_PUBLIC_ENDPOINTS,
   ElizaCloudPublicRoutesClient,
 } from "./public-routes.js";
+export * from "./redemption-contract.js";
 export type * from "./types.js";
 export {
   buildWalletProvisionChallenge,

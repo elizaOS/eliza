@@ -34,9 +34,43 @@ const PROD_OPS_DIR = join(
   "hetzner",
   "prod-ops",
 );
+const HETZNER_CONTROL_PLANE_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "control-plane",
+);
+const HETZNER_APPS_SHARED_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "hetzner",
+  "apps-shared",
+);
 
 function readK8sTerraform(file: string): string {
   return readFileSync(join(K8S_TERRAFORM_DIR, file), "utf-8");
+}
+
+function terraformResource(source: string, type: string, name: string): string {
+  const declaration = `resource "${type}" "${name}"`;
+  const declarationStart = source.indexOf(declaration);
+  expect(declarationStart).toBeGreaterThanOrEqual(0);
+
+  const blockStart = source.indexOf("{", declarationStart);
+  expect(blockStart).toBeGreaterThan(declarationStart);
+
+  let depth = 0;
+  for (let index = blockStart; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") depth -= 1;
+    if (depth === 0) return source.slice(blockStart + 1, index);
+  }
+
+  throw new Error(`Unclosed Terraform resource: ${type}.${name}`);
 }
 
 describe("Terraform redis-rest deployment", () => {
@@ -132,6 +166,71 @@ describe("Protected production-operations runner", () => {
   });
 });
 
+describe("Persistent Hetzner resource safeguards", () => {
+  const controlPlane = readFileSync(
+    join(HETZNER_CONTROL_PLANE_DIR, "main.tf"),
+    "utf-8",
+  );
+  const appsShared = readFileSync(
+    join(HETZNER_APPS_SHARED_DIR, "main.tf"),
+    "utf-8",
+  );
+
+  test("protects and backs up persistent control-plane servers", () => {
+    const server = terraformResource(
+      controlPlane,
+      "hcloud_server",
+      "control_plane",
+    );
+
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
+  });
+
+  test("attaches every control plane to its protected private network", () => {
+    const network = terraformResource(
+      controlPlane,
+      "hcloud_network",
+      "data_plane",
+    );
+    const attachment = terraformResource(
+      controlPlane,
+      "hcloud_server_network",
+      "control_plane",
+    );
+
+    expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
+    expect(attachment).toContain("for_each = hcloud_server.control_plane");
+    expect(attachment).toContain("server_id = each.value.id");
+    expect(attachment).toContain(
+      "subnet_id = hcloud_network_subnet.data_plane.id",
+    );
+    expect(attachment).not.toContain("network_id =");
+  });
+
+  test("protects and backs up the shared tenant database failure domain", () => {
+    const network = terraformResource(appsShared, "hcloud_network", "apps");
+    const volume = terraformResource(
+      appsShared,
+      "hcloud_volume",
+      "tenant_db_data",
+    );
+    const server = terraformResource(appsShared, "hcloud_server", "tenant_db");
+
+    expect(network).toContain("delete_protection = true");
+    expect(network).toContain("prevent_destroy = true");
+    expect(volume).toContain("delete_protection = true");
+    expect(volume).toContain("prevent_destroy = true");
+    expect(server).toContain("backups            = true");
+    expect(server).toContain("delete_protection  = true");
+    expect(server).toContain("rebuild_protection = true");
+    expect(server).toContain("prevent_destroy = true");
+  });
+});
+
 describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
   const HETZNER_APPS_SHARED = join(
     import.meta.dir,
@@ -188,6 +287,227 @@ describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
     );
     // The admin/DDL DSN must stay on :5432 (never through the pooler).
     expect(outputsTf).toContain(":5432/postgres?sslmode=require");
+  });
+});
+
+describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
+  const HETZNER_APPS_SHARED = join(
+    import.meta.dir,
+    "..",
+    "cloud",
+    "terraform",
+    "hetzner",
+    "apps-shared",
+  );
+  const tenantDbInit = readFileSync(
+    join(HETZNER_APPS_SHARED, "cloud-init", "tenant-db.yaml.tftpl"),
+    "utf-8",
+  );
+  const mainTf = readFileSync(join(HETZNER_APPS_SHARED, "main.tf"), "utf-8");
+  const variablesTf = readFileSync(
+    join(HETZNER_APPS_SHARED, "variables.tf"),
+    "utf-8",
+  );
+  const outputsTf = readFileSync(
+    join(HETZNER_APPS_SHARED, "outputs.tf"),
+    "utf-8",
+  );
+
+  test("marks every backup credential variable sensitive", () => {
+    for (const name of [
+      "backup_s3_access_key",
+      "backup_s3_secret_key",
+      "backup_encryption_passphrase",
+    ]) {
+      const start = variablesTf.indexOf(`variable "${name}"`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const block = variablesTf.slice(start, variablesTf.indexOf("}\n", start));
+      expect(block).toContain("sensitive   = true");
+    }
+  });
+
+  test("refuses the terraform state bucket as the backup destination", () => {
+    expect(variablesTf).toContain(
+      'var.backup_s3_bucket != "eliza-terraform-state"',
+    );
+  });
+
+  test("enforces passphrase strength and a retention floor", () => {
+    expect(variablesTf).toContain(
+      'var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32',
+    );
+    expect(variablesTf).toContain("var.backup_retention_days >= 7");
+  });
+
+  test("bounds backup_s3_prefix at plan time so the purge sweep can't widen to the bucket root", () => {
+    const start = variablesTf.indexOf('variable "backup_s3_prefix"');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const block = variablesTf.slice(start, variablesTf.indexOf("}\n", start));
+    expect(block).toContain("validation {");
+    expect(block).toContain('regex("^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"');
+    expect(block).toContain('regex("\\\\.\\\\.", var.backup_s3_prefix)');
+    expect(block).toContain('endswith(var.backup_s3_prefix, "/")');
+  });
+
+  test("arms all-or-nothing via a server precondition", () => {
+    expect(mainTf).toContain("backup_enabled = alltrue(");
+    const server = terraformResource(mainTf, "hcloud_server", "tenant_db");
+    expect(server).toContain("precondition");
+    expect(server).toContain("local.backup_enabled");
+  });
+
+  test("encrypts on-node before upload and keeps credentials root-only", () => {
+    // Env file with the bucket credential + passphrase is 0600 root and only
+    // rendered when the full variable set is present.
+    expect(tenantDbInit).toContain("%{ if backup_enabled ~}");
+    const envIndex = tenantDbInit.indexOf(
+      "- path: /etc/eliza/tenant-db-backup.env",
+    );
+    expect(envIndex).toBeGreaterThanOrEqual(0);
+    expect(tenantDbInit.slice(envIndex, envIndex + 400)).toContain("'0600'");
+    // AES-256 with PBKDF2 before rclone ever sees the bytes.
+    expect(tenantDbInit).toContain(
+      "openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt",
+    );
+    const sourceAt = tenantDbInit.indexOf('. "$ENV_FILE"');
+    const stopExportAt = tenantDbInit.indexOf("set +a", sourceAt);
+    const decodeAt = tenantDbInit.indexOf("base64 --decode", sourceAt);
+    expect(stopExportAt).toBeGreaterThan(sourceAt);
+    expect(stopExportAt).toBeLessThan(decodeAt);
+    expect(tenantDbInit).toContain(
+      'BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE"',
+    );
+    expect(
+      tenantDbInit.indexOf("unset BACKUP_ENCRYPTION_PASSPHRASE"),
+    ).toBeLessThan(tenantDbInit.indexOf("export RCLONE_S3_PROVIDER"));
+    expect(tenantDbInit).toContain("rclone copyto backup.tar.gz.enc");
+  });
+
+  test("takes application-consistent dumps with globals-before-databases ordering", () => {
+    expect(tenantDbInit).toContain("pg_dumpall --globals-only");
+    expect(tenantDbInit).toContain("pg_dump --format=custom");
+    expect(tenantDbInit.indexOf("pg_dumpall --globals-only")).toBeLessThan(
+      tenantDbInit.indexOf("pg_dump --format=custom"),
+    );
+    expect(tenantDbInit).toContain("checksums.sha256");
+  });
+
+  test("keeps tenant database names out of logs and object keys", () => {
+    // Dump files are keyed by truncated sha256 of the db name; the real-name
+    // map travels only inside the encrypted archive.
+    expect(tenantDbInit).toContain("sha256sum | cut -c1-12");
+    expect(tenantDbInit).toContain("dbmap.tsv");
+    // The success log line reports counts/bytes/duration only.
+    expect(tenantDbInit).toContain(
+      'log "uploaded set $STAMP: $COUNT databases, $ENC_BYTES encrypted bytes',
+    );
+  });
+
+  test("schedules nightly runs with retention pruning and an inert-when-unarmed gate", () => {
+    expect(tenantDbInit).toContain("- rclone");
+    expect(tenantDbInit).toContain("OnCalendar=*-*-* 02:15:00 UTC");
+    expect(tenantDbInit).toContain("Persistent=true");
+    expect(tenantDbInit).toContain(
+      "systemctl enable --now tenant-db-backup.timer",
+    );
+    expect(tenantDbInit).toContain("rclone purge");
+    expect(tenantDbInit).toContain(
+      'RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")',
+    );
+    expect(tenantDbInit).toContain(
+      '[[ "$listed_dir" =~ ^[0-9]{8}T[0-9]{6}Z/$ ]]',
+    );
+    expect(tenantDbInit.indexOf('[[ "$listed_dir" =~')).toBeLessThan(
+      tenantDbInit.indexOf("rclone purge"),
+    );
+    expect(tenantDbInit).not.toContain(
+      'rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true',
+    );
+    expect(tenantDbInit).toContain(
+      'log "off-host backup not configured; skipping."',
+    );
+  });
+
+  describe("BACKUP_S3_PREFIX runtime validation", () => {
+    const snippetStart = tenantDbInit.indexOf(
+      "# --- begin BACKUP_S3_PREFIX validation",
+    );
+    const snippetEnd = tenantDbInit.indexOf(
+      "# --- end BACKUP_S3_PREFIX validation ---",
+    );
+    const snippet =
+      snippetStart >= 0 && snippetEnd > snippetStart
+        ? tenantDbInit.slice(snippetStart, snippetEnd)
+        : "";
+
+    test("is present and runs before the retention purge loop and the upload destination is built", () => {
+      expect(snippetStart).toBeGreaterThanOrEqual(0);
+      expect(snippetEnd).toBeGreaterThan(snippetStart);
+      const purgeIndex = tenantDbInit.indexOf("rclone purge");
+      const copyIndex = tenantDbInit.indexOf("rclone copyto backup.tar.gz.enc");
+      const destIndex = tenantDbInit.indexOf('DEST=":s3:$BACKUP_S3_BUCKET');
+      expect(snippetStart).toBeLessThan(destIndex);
+      expect(snippetStart).toBeLessThan(copyIndex);
+      expect(snippetStart).toBeLessThan(purgeIndex);
+    });
+
+    // Executes the extracted bash guard directly (bash -u so an unset
+    // BACKUP_S3_PREFIX itself errors, matching the script's `set -u`) against
+    // representative values, proving the guard's actual runtime behavior
+    // rather than only its presence in the template text.
+    function runGuard(
+      prefix: string | undefined,
+    ): ReturnType<typeof spawnSync> {
+      const script = [
+        "#!/usr/bin/env bash",
+        "set -u",
+        "log() { :; }",
+        prefix === undefined
+          ? ""
+          : `BACKUP_S3_PREFIX=${JSON.stringify(prefix)}`,
+        snippet,
+        "echo ACCEPTED",
+      ].join("\n");
+      return spawnSync("bash", ["-c", script], { encoding: "utf-8" });
+    }
+
+    test("accepts the documented default and other safe prefixes", () => {
+      for (const prefix of ["tenant-db", "tenant-db/eu", "a", "A.b_c-9/x"]) {
+        const result = runGuard(prefix);
+        expect(result.stdout.trim()).toBe("ACCEPTED");
+        expect(result.status).toBe(0);
+      }
+    });
+
+    test("fails closed on empty, whitespace, and unset values", () => {
+      for (const prefix of ["", " ", "\t", undefined]) {
+        const result = runGuard(prefix);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).not.toContain("ACCEPTED");
+      }
+    });
+
+    test("fails closed on traversal-ish, absolute, and oversized values", () => {
+      for (const prefix of [
+        "../etc/passwd",
+        "tenant-db/../../etc",
+        "/etc/passwd",
+        "tenant-db/",
+        "a".repeat(201),
+      ]) {
+        const result = runGuard(prefix);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).not.toContain("ACCEPTED");
+      }
+    });
+  });
+
+  test("exposes arming state without exposing credentials", () => {
+    expect(outputsTf).toContain('output "tenant_db_backup_configured"');
+    const start = outputsTf.indexOf('output "tenant_db_backup_configured"');
+    const block = outputsTf.slice(start, outputsTf.indexOf("}", start));
+    expect(block).toContain("local.backup_enabled");
+    expect(block).not.toContain("sensitive   = true");
   });
 });
 
@@ -441,7 +761,9 @@ describe("Cloudflare Pages domain durability", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("options: [plan, apply, state-rm]");
     expect(workflow).toContain("terraform apply -no-color -input=false");
-    expect(workflow).toContain('entry.status !== "active"');
+    expect(workflow).toContain(
+      'canonical.certificate_packs?.[key]?.status !== "active"',
+    );
     expect(workflow).toContain(
       "TF_VAR_railway_tunnel_dns_records: $" +
         "{{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}",
@@ -454,8 +776,18 @@ describe("Cloudflare Pages domain durability", () => {
     );
     expect(workflow).toContain("allowEmpty || Object.keys(value).length > 0");
     expect(workflow).toContain("terraform output -json railway_tunnel_dns");
-    expect(workflow).toContain("record.proxied !== false");
-    expect(workflow).toContain("record.roles?.includes(role)");
+    // The record-shape checks moved from inline workflow script into the
+    // dedicated validator the workflow invokes after apply.
+    expect(workflow).toContain("validate-terraform-pages-domain-state.mjs");
+    const validator = readFileSync(
+      join(
+        import.meta.dir,
+        "../../../../packages/scripts/validate-terraform-pages-domain-state.mjs",
+      ),
+      "utf-8",
+    );
+    expect(validator).toContain("record?.proxied !== false");
+    expect(validator).toContain("record?.roles?.includes(role)");
     expect(workflow).toContain("--require-beacon");
     expect(workflow).not.toContain("bun install");
     expect(workflow).not.toContain("push:");

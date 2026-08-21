@@ -106,6 +106,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemory,
   persistExactConversationMemoryResult,
+  persistInterruptedAssistantReceipt,
   readChatRequestPayload,
   releaseChatMessageId,
   resolveNoResponseFallback,
@@ -136,6 +137,7 @@ import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
 import {
   buildUserMessages,
+  decodePathComponent,
   getErrorMessage,
   resolveAppUserName,
   resolveConversationGreetingText,
@@ -1304,6 +1306,7 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "accountConnect",
   "localInference",
   "noResponseReason",
+  "interrupted",
 ]);
 
 function isChannelType(value: unknown): value is ChannelType {
@@ -1415,7 +1418,9 @@ function parseDurableConversationChatOutcome(
     (outcome.localInference !== undefined &&
       !isRecord(outcome.localInference)) ||
     (outcome.noResponseReason !== undefined &&
-      outcome.noResponseReason !== "ignored")
+      outcome.noResponseReason !== "ignored") ||
+    (outcome.interrupted !== undefined &&
+      typeof outcome.interrupted !== "boolean")
   ) {
     return null;
   }
@@ -1468,6 +1473,7 @@ function parseDurableConversationChatOutcome(
     ...(outcome.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(outcome.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1532,6 +1538,7 @@ function buildRecoveredConversationChatOutcome(
     ...(content.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(content.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1974,6 +1981,7 @@ function buildConversationJsonOutcome(
     ...(outcome.noResponseReason
       ? { noResponseReason: outcome.noResponseReason }
       : {}),
+    ...(outcome.interrupted ? { interrupted: true } : {}),
   };
 }
 
@@ -2297,6 +2305,14 @@ type ConversationRouteMessageRecord = {
    * the renderer's inline AddAccountDialog entry point survives a reload.
    */
   accountConnect?: AccountConnectRequest;
+  /**
+   * The turn ended by explicit Stop/disconnect abort. Persisted on the
+   * assistant memory as `content.interrupted` by
+   * `persistInterruptedAssistantReceipt`; round-tripped here so reload
+   * recovery renders the interrupted terminal state (zero-token receipts
+   * included) instead of a healthy reply or a missing row.
+   */
+  interrupted?: boolean;
 };
 
 // Greeting lookup and persistence share the room's history-writer boundary.
@@ -2871,7 +2887,12 @@ export async function handleConversationRoutes(
     method === "GET" &&
     /^\/api\/conversations\/[^/]+\/messages$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -2979,6 +3000,7 @@ export async function handleConversationRoutes(
             content.accountConnect,
           );
           const role = m.entityId === agentId ? "assistant" : "user";
+          const interrupted = content.interrupted === true;
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
             actionCallbackHistory,
@@ -3068,6 +3090,7 @@ export async function handleConversationRoutes(
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
             ...(accountConnect ? { accountConnect } : {}),
+            ...(interrupted ? { interrupted: true } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -3075,7 +3098,13 @@ export async function handleConversationRoutes(
         // Without this filter they appear as blank chat bubbles. Image-only
         // turns (uploaded or generated media with no caption) are kept.
         .filter(
-          (m) => m.text.trim().length > 0 || (m.attachments?.length ?? 0) > 0,
+          (m) =>
+            m.text.trim().length > 0 ||
+            (m.attachments?.length ?? 0) > 0 ||
+            // A zero-token interrupted receipt has no text but IS the turn's
+            // terminal state; dropping it would leave the user turn unanswered
+            // on reload and invite regeneration.
+            m.interrupted === true,
         );
       const discordMessages = messages.filter((message) =>
         mayNeedDiscordMessageEnrichment(message.source),
@@ -3202,7 +3231,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/import$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawImport === null) return true;
     const rawMessages = rawImport.messages;
@@ -3599,7 +3633,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages\/truncate$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3695,8 +3734,14 @@ export async function handleConversationRoutes(
     /^\/api\/conversations\/[^/]+\/messages\/[^/]+$/.test(pathname)
   ) {
     const segments = pathname.split("/");
-    const convId = decodeURIComponent(segments[3]);
-    const messageId = decodeURIComponent(segments[5]);
+    const convId = decodePathComponent(segments[3], res, "conversation id");
+    if (convId === null) return true;
+    const messageId = decodePathComponent(
+      segments[5],
+      res,
+      "conversation message id",
+    );
+    if (messageId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3776,7 +3821,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages\/stream$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -3887,6 +3937,17 @@ export async function handleConversationRoutes(
       preferredLanguage,
       metadata: chatMetadata,
     });
+    const settleTurnReservationInMemory = (
+      outcome: ChatMessageIdOutcome,
+    ): void => {
+      setChatMessageIdOutcome(
+        chatIdempotencyScope,
+        clientMessageId ?? null,
+        outcome,
+        chatReservation,
+      );
+      reservationSettled = true;
+    };
     const settleTurnReservation = async (
       outcome: ChatMessageIdOutcome,
     ): Promise<void> => {
@@ -3907,13 +3968,7 @@ export async function handleConversationRoutes(
           runtimeTurnLease,
         );
       }
-      setChatMessageIdOutcome(
-        chatIdempotencyScope,
-        clientMessageId ?? null,
-        outcome,
-        chatReservation,
-      );
-      reservationSettled = true;
+      settleTurnReservationInMemory(outcome);
     };
     const idempotencyAdmission = await awaitConversationChatAdmission(
       chatIdempotencyScope,
@@ -4399,16 +4454,93 @@ export async function handleConversationRoutes(
             }
           } else if (isTurnAbortError(terminalError)) {
             logger.info(
-              { conversationId: conv.id, roomId: conv.roomId },
-              "[ConversationStream] generation aborted",
+              {
+                conversationId: conv.id,
+                roomId: conv.roomId,
+                streamedTextLength: streamedText.length,
+              },
+              "[ConversationStream] generation aborted; persisting interrupted receipt",
             );
+            // Stop/disconnect is a terminal outcome of the turn, not a
+            // discarded one: persist the interrupted receipt (partial text or
+            // the zero-token case) and settle the idempotency key so reload
+            // recovery and a retried clientMessageId adopt this durable state
+            // instead of regenerating (#17216).
             if (
               !getChatMessageIdOutcome(
                 chatIdempotencyScope,
                 clientMessageId ?? null,
               )
             ) {
-              releaseTurnReservation();
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const receiptId = crypto.randomUUID() as UUID;
+                const persisted = await persistInterruptedAssistantReceipt(
+                  runtime,
+                  conv.roomId,
+                  streamedText,
+                  channelType,
+                  messageToStore.id,
+                  receiptId,
+                  runtimeTurnLease,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const interruptedOutcome: ChatMessageIdOutcome = {
+                  text: streamedText,
+                  agentName: state.agentName,
+                  ...(persisted.id ? { messageId: persisted.id } : {}),
+                  userMessageId: messageToStore.id,
+                  interrupted: true,
+                };
+                try {
+                  await settleTurnReservation(interruptedOutcome);
+                } catch (settlementError) {
+                  // error-policy:J7 the receipt is already durable and remains
+                  // recoverable through its deterministic in-reply-to link;
+                  // preserve that terminal outcome locally while reporting the
+                  // failed optimization that writes it onto the user marker.
+                  settleTurnReservationInMemory(interruptedOutcome);
+                  runtime.reportError(
+                    "ConversationStream.interruptedReceiptSettlement",
+                    settlementError,
+                    {
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      clientMessageId,
+                      receiptId: persisted.id,
+                    },
+                  );
+                  logger.warn(
+                    {
+                      err: getErrorMessage(settlementError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      receiptId: persisted.id,
+                    },
+                    "[ConversationStream] interrupted receipt persisted but outcome marker settlement failed",
+                  );
+                }
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, interruptedOutcome);
+                }
+              } catch (persistErr) {
+                // error-policy:J4 the interrupted receipt is best-effort
+                // terminal state for an already-severed transport; on write
+                // failure the key is released so the client's next send owns a
+                // fresh turn rather than replaying a half-settled outcome.
+                logger.warn(
+                  {
+                    err: getErrorMessage(persistErr),
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                  },
+                  "[ConversationStream] failed to persist interrupted receipt",
+                );
+                releaseTurnReservation();
+              }
             }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
@@ -4671,7 +4803,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/messages$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5163,7 +5300,12 @@ export async function handleConversationRoutes(
     method === "POST" &&
     /^\/api\/conversations\/[^/]+\/greeting$/.test(pathname)
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5255,7 +5397,12 @@ export async function handleConversationRoutes(
     /^\/api\/conversations\/[^/]+$/.test(pathname) &&
     !pathname.endsWith("/messages")
   ) {
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     if (!conv) {
       error(res, "Conversation not found", 404);
@@ -5445,7 +5592,12 @@ export async function handleConversationRoutes(
     !pathname.endsWith("/messages")
   ) {
     if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
-    const convId = decodeURIComponent(pathname.split("/")[3]);
+    const convId = decodePathComponent(
+      pathname.split("/")[3],
+      res,
+      "conversation id",
+    );
+    if (convId === null) return true;
     const conv = await getConversationWithRestore(state, convId);
     const runtime = state.runtime;
     if (conv?.roomId && runtime) {

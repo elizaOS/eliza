@@ -11,8 +11,17 @@
  * `null` and a whitespace-only string are not.
  */
 
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { flattenTextValues, toMultilineText } from "./text-normalize";
+import { ElizaError } from "../errors.ts";
+import {
+	flattenTextValues,
+	MAX_TEXT_NORMALIZE_DEPTH,
+	MAX_TEXT_NORMALIZE_EDGES,
+	MAX_TEXT_NORMALIZE_NODES,
+	TEXT_NORMALIZE_UNBOUNDED,
+	toMultilineText,
+} from "./text-normalize";
 
 describe("flattenTextValues", () => {
 	describe("strings", () => {
@@ -115,11 +124,74 @@ describe("flattenTextValues", () => {
 		});
 	});
 
+	describe("dates", () => {
+		const timestamp = "2026-01-01T00:00:00.000Z";
+		const date = new Date(timestamp);
+
+		it("renders a Date as a deterministic ISO-8601 fragment", () => {
+			expect(flattenTextValues(date)).toEqual([timestamp]);
+		});
+
+		it("preserves Dates nested in arrays and object properties", () => {
+			expect(flattenTextValues(["created", date])).toEqual([
+				"created",
+				timestamp,
+			]);
+			expect(flattenTextValues({ createdAt: date })).toEqual([
+				`createdAt: ${timestamp}`,
+			]);
+		});
+
+		it("renders an invalid Date without throwing", () => {
+			expect(flattenTextValues(new Date(Number.NaN))).toEqual(["Invalid Date"]);
+		});
+
+		it("recognizes Dates created in another JavaScript realm", () => {
+			const crossRealmDate = runInNewContext(
+				`new Date(${JSON.stringify(timestamp)})`,
+			) as Date;
+
+			expect(crossRealmDate instanceof Date).toBe(false);
+			expect(flattenTextValues(crossRealmDate)).toEqual([timestamp]);
+		});
+
+		it("uses intrinsic Date operations instead of overridden methods", () => {
+			class MisleadingDate extends Date {
+				override getTime(): number {
+					throw new Error("overridden getTime must not run");
+				}
+
+				override toISOString(): string {
+					return "spoofed ISO value";
+				}
+
+				override toString(): string {
+					return "spoofed string value";
+				}
+			}
+
+			expect(flattenTextValues(new MisleadingDate(timestamp))).toEqual([
+				timestamp,
+			]);
+			expect(flattenTextValues(new MisleadingDate(Number.NaN))).toEqual([
+				"Invalid Date",
+			]);
+		});
+
+		it("does not trust a spoofed Date toStringTag", () => {
+			expect(
+				flattenTextValues({
+					[Symbol.toStringTag]: "Date",
+					value: "kept",
+				}),
+			).toEqual(["value: kept"]);
+		});
+	});
+
 	describe("non-plain objects have no enumerable own entries and are dropped", () => {
-		// Worth pinning: these coerce to nothing rather than to their toString(),
-		// so a Date or Map handed to prompt assembly vanishes without an error.
+		// Map and Set do not have a canonical prompt representation, so they retain
+		// the existing empty-object behavior rather than relying on their toString().
 		it.each([
-			["a Date", new Date("2026-01-01T00:00:00.000Z")],
 			["a Map", new Map([["k", "v"]])],
 			["a Set", new Set(["a"])],
 		])("drops %s", (_label, value) => {
@@ -137,5 +209,79 @@ describe("toMultilineText", () => {
 	it("returns an empty string when nothing survives", () => {
 		expect(toMultilineText(null)).toBe("");
 		expect(toMultilineText([null, "  ", {}])).toBe("");
+	});
+});
+
+describe("flattenTextValues budget", () => {
+	function nestArray(depth: number): unknown {
+		let value: unknown = "leaf";
+		for (let i = 0; i < depth; i++) {
+			value = [value];
+		}
+		return value;
+	}
+
+	it(`accepts a ${MAX_TEXT_NORMALIZE_DEPTH}-deep array nest`, () => {
+		expect(flattenTextValues(nestArray(MAX_TEXT_NORMALIZE_DEPTH))).toEqual([
+			"leaf",
+		]);
+	});
+
+	it(`throws ${TEXT_NORMALIZE_UNBOUNDED} one past depth ${MAX_TEXT_NORMALIZE_DEPTH}`, () => {
+		expect(() =>
+			flattenTextValues(nestArray(MAX_TEXT_NORMALIZE_DEPTH + 1)),
+		).toThrowError(ElizaError);
+		try {
+			flattenTextValues(nestArray(MAX_TEXT_NORMALIZE_DEPTH + 1));
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(TEXT_NORMALIZE_UNBOUNDED);
+			expect(error).not.toBeInstanceOf(RangeError);
+		}
+	});
+
+	it(`throws ${TEXT_NORMALIZE_UNBOUNDED} past ${MAX_TEXT_NORMALIZE_NODES} nodes`, () => {
+		const siblings = Array.from(
+			{ length: MAX_TEXT_NORMALIZE_NODES },
+			(_, i) => `v${i}`,
+		);
+		expect(() => flattenTextValues(siblings)).toThrowError(ElizaError);
+	});
+
+	it("counts sparse array holes against the work budget", () => {
+		const sparse = new Array(MAX_TEXT_NORMALIZE_EDGES + 1);
+		expect(() => flattenTextValues(sparse)).toThrowError(
+			expect.objectContaining({ code: TEXT_NORMALIZE_UNBOUNDED }),
+		);
+	});
+
+	it("does not eagerly read object properties beyond the work budget", () => {
+		let outOfBudgetGetterRead = false;
+		const value: Record<string, unknown> = {};
+		for (let index = 0; index < MAX_TEXT_NORMALIZE_NODES; index += 1) {
+			value[`value${index}`] = "kept";
+		}
+		Object.defineProperty(value, "outOfBudget", {
+			enumerable: true,
+			get() {
+				outOfBudgetGetterRead = true;
+				return "must not be read";
+			},
+		});
+
+		expect(() => flattenTextValues(value)).toThrowError(
+			expect.objectContaining({ code: TEXT_NORMALIZE_UNBOUNDED }),
+		);
+		expect(outOfBudgetGetterRead).toBe(false);
+	});
+
+	it("does not RangeError a 20k array nest", () => {
+		expect(() => flattenTextValues(nestArray(20_000))).toThrowError(ElizaError);
+		try {
+			flattenTextValues(nestArray(20_000));
+		} catch (error) {
+			expect((error as ElizaError).code).toBe(TEXT_NORMALIZE_UNBOUNDED);
+			expect(error).not.toBeInstanceOf(RangeError);
+		}
 	});
 });

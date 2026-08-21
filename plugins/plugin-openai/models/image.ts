@@ -38,6 +38,10 @@ interface ExtendedImageGenerationParams extends ImageGenerationParams {
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Please analyze this image and provide a title and detailed description.";
 
+const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
+
+const IMAGE_DESCRIPTION_TIMEOUT_MS = 45_000;
+
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
@@ -90,6 +94,7 @@ export async function handleImageGeneration(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(IMAGE_GENERATION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -114,13 +119,49 @@ export async function handleImageGeneration(
   }));
 }
 
-function parseTitleFromResponse(content: string): string {
-  const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
-  return titleMatch?.[1]?.trim() ?? "Image Analysis";
-}
+const DEFAULT_IMAGE_TITLE = "Image Analysis";
 
-function parseDescriptionFromResponse(content: string): string {
-  return content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
+// A genuine title line must be the first non-blank content the model emitted,
+// e.g. "Title: <text>". Anchoring to the start prevents a mid-sentence mention
+// of the word "title" (books, posters, signs, UI screenshots) from hijacking
+// the split and truncating the description the agent reasons over.
+const LEADING_TITLE_LINE = /^\s*title\s*[:-]\s*(.*?)(?:\r?\n|$)/i;
+const LEADING_DESCRIPTION_LABEL = /^\s*description\s*[:-]\s*/i;
+
+/**
+ * Splits a vision model's reply into a `{ title, description }` pair. The
+ * documented contract shape is a leading `Title:` line followed by the
+ * description body (optionally prefixed with a `Description:` label). Any reply
+ * that does not start with a title line is treated as description-only so the
+ * required `description` field always carries the real image content instead of
+ * a silently truncated or emptied value.
+ */
+function parseImageDescriptionResponse(content: string): {
+  title: string;
+  description: string;
+} {
+  const trimmed = content.trim();
+  const titleLine = trimmed.match(LEADING_TITLE_LINE);
+
+  if (!titleLine) {
+    return { title: DEFAULT_IMAGE_TITLE, description: trimmed };
+  }
+
+  const titleText = titleLine[1]?.trim() ?? "";
+  const remainder = trimmed.slice(titleLine[0].length).trim();
+
+  if (remainder.length > 0) {
+    const description = remainder.replace(LEADING_DESCRIPTION_LABEL, "").trim();
+    return {
+      title: titleText.length > 0 ? titleText : DEFAULT_IMAGE_TITLE,
+      description,
+    };
+  }
+
+  // Single labelled line with no separate body: the labelled text is the only
+  // content the model returned, so preserve it as the description rather than
+  // dropping it and fall back to the default title.
+  return { title: DEFAULT_IMAGE_TITLE, description: titleText };
 }
 
 export async function handleImageDescription(
@@ -133,7 +174,6 @@ export async function handleImageDescription(
     typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
       ? paramsWithMaxTokens.maxTokens
       : getImageDescriptionMaxTokens(runtime);
-
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
   let imageUrl: string;
@@ -152,6 +192,11 @@ export async function handleImageDescription(
   }
 
   const baseURL = getImageDescriptionBaseURL(runtime);
+  const timeoutSignal = AbortSignal.timeout(IMAGE_DESCRIPTION_TIMEOUT_MS);
+  const signal =
+    typeof params === "object" && params.signal
+      ? AbortSignal.any([params.signal, timeoutSignal])
+      : timeoutSignal;
 
   const requestBody = {
     model: modelName,
@@ -184,6 +229,7 @@ export async function handleImageDescription(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok) {
@@ -227,8 +273,5 @@ export async function handleImageDescription(
     throw new Error("OpenAI API returned empty image description");
   }
 
-  return {
-    title: parseTitleFromResponse(content),
-    description: parseDescriptionFromResponse(content),
-  };
+  return parseImageDescriptionResponse(content);
 }

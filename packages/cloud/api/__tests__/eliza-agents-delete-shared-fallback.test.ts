@@ -32,10 +32,20 @@ type CancelAgentDeletionResult =
 const cancelAgentDeletion = mock(
   async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
 );
-const enqueueAgentDeleteOnce = mock(async () => ({
-  created: true,
-  job: { id: "delete-job-1", status: "pending" },
-}));
+type EnqueueAgentDeleteOnceResult = {
+  created: boolean;
+  job: {
+    id: string;
+    status: string;
+    data?: Record<string, unknown>;
+  };
+};
+const enqueueAgentDeleteOnce = mock(
+  async (): Promise<EnqueueAgentDeleteOnceResult> => ({
+    created: true,
+    job: { id: "delete-job-1", status: "pending" },
+  }),
+);
 const triggerImmediate = mock(async () => undefined);
 
 const loggerInfo = mock(() => undefined);
@@ -122,6 +132,8 @@ const { default: agentRoute } = await import(
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId", agentRoute);
 
+const DEPLOY_COMMIT = "a".repeat(40);
+
 function sharedAgent(overrides: Record<string, unknown> = {}) {
   return {
     id: "agent-1",
@@ -147,7 +159,10 @@ function sharedAgent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function deleteRequest(body?: Record<string, unknown> | string) {
+async function deleteRequest(
+  body?: Record<string, unknown> | string,
+  deployCommit = DEPLOY_COMMIT,
+) {
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents/agent-1", {
       method: "DELETE",
@@ -158,6 +173,7 @@ async function deleteRequest(body?: Record<string, unknown> | string) {
           }
         : {}),
     }),
+    { ELIZA_DEPLOY_COMMIT: deployCommit },
   );
 }
 
@@ -254,6 +270,107 @@ describe("agent deletion lifecycle", () => {
       authorization: "user_request",
     });
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("persists an explicit state-loss acknowledgement on the async delete job", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "delete-job-1",
+        status: "pending",
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "user-1",
+          stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+        },
+      },
+    });
+    const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        jobId: "delete-job-1",
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: "user-1",
+        stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+      },
+    });
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      authorization: "user_request",
+      stateLossAcknowledged: true,
+    });
+  });
+
+  test("fails closed instead of claiming a waiver when reuse did not persist authority", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: { id: "delete-job-1", status: "pending", data: {} },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority has no acknowledging actor", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "legacy-delete-job",
+        status: "in_progress",
+        data: { stateLossAcknowledged: true },
+      },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority provenance is malformed", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "malformed-delete-job",
+        status: "in_progress",
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "",
+          stateLossAcknowledgedAt: "not-an-iso-timestamp",
+        },
+      },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("does not infer the waiver when stateLossAcknowledged is false", async () => {
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(202);
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      authorization: "user_request",
+    });
+  });
+
+  test("rejects partial conditional identity even when the waiver is explicit", async () => {
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      stateLossAcknowledged: true,
+    });
+
+    expect(response.status).toBe(400);
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
   });
 
   test("keeps the synchronous fast path for a sandbox-less shared delete", async () => {
@@ -388,12 +505,56 @@ describe("agent deletion lifecycle", () => {
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 
+  test("rejects a conditional delete when the serving deploy changed before deletion", async () => {
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "2026-07-07T08:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+      expectedDeployCommit: "b".repeat(40),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Conditional delete deploy mismatch",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("accepts a conditional delete bound to the serving deploy", async () => {
+    getAgent.mockResolvedValueOnce(
+      sharedAgent({
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "2026-07-07T08:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+      expectedDeployCommit: DEPLOY_COMMIT,
+    });
+
+    expect(response.status).toBe(202);
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledTimes(1);
+  });
+
   test("rejects an invalid conditional delete before queueing", async () => {
     const response = await deleteRequest({
       expectedAgentName: "Canary Agent",
       expectedCreatedAt: "not-a-timestamp",
       expectedExecutionTier: "dedicated-always",
     });
+
+    expect(response.status).toBe(400);
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("rejects a non-boolean state-loss acknowledgement", async () => {
+    const response = await deleteRequest({ stateLossAcknowledged: "true" });
 
     expect(response.status).toBe(400);
     expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();

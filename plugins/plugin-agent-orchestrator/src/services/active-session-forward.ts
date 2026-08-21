@@ -369,10 +369,10 @@ export function createActiveSessionForwardHandler(
             // planner pipeline runs on this same MESSAGE_RECEIVED and routes
             // the user's redirect; we do not re-deliver to the dead session.
             subAgentInbox.clear(active.id);
-            // Stamp FIRST: the terminal relay and the verify-retry gate both
-            // read this to keep a user-initiated stop from narrating as a
-            // task failure ("coin-flip — stopped before completion", live
-            // 2026-08-19) or being auto-retried.
+            // Stamp FIRST: the coordinator's stopped/cancelled synthesis and
+            // the verify-retry gate read this so a user-initiated interrupt
+            // never narrates as a task failure ("stopped before completion")
+            // or gets auto-retried.
             await markSessionAdministrativelyStopped(
               acp,
               active.id,

@@ -26,6 +26,7 @@ import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
 
 /**
  * Chat-only application loaded by the thin Worker entrypoint.
@@ -35,6 +36,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * resolution, so mounting global auth here would only evaluate the unrelated
  * protected-route auth/audit tree. Billing and SSE remain wholly owned by the
  * canonical route module.
+ *
+ * The cookie-mutation CSRF guard is NOT optional the way global auth is: these
+ * routes authenticate the ambient session cookie, and the shell parses bodies
+ * content-type-agnostically, so a cross-origin "simple" request from same-site
+ * hosted user content would otherwise ride a victim's cookie into billable
+ * inference. The guard is lane-selecting — programmatic Bearer/API-key callers
+ * pass through untouched — and mirrors the full-app verdicts exactly.
  */
 export function createInferenceApp(
   mountPath: string,
@@ -140,6 +148,10 @@ export function createInferenceApp(
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
+
+  // CSRF: same mount point as bootstrap-app (immediately before the routes,
+  // after the global limiter). See middleware/cookie-mutation-guard.ts.
+  app.use("*", cookieMutationGuardMiddleware);
 
   app.route(mountPath, route);
   app.notFound((c) =>

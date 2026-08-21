@@ -4,10 +4,8 @@
  * it rather than only at the seed itself.
  *
  * Deterministic and self-contained: the seed and the shared-turn projection are
- * pure, and the one turn that reaches a provider drives the real exported
- * `runSharedAgentTurn` with the `ai` SDK and the model router stubbed via
- * `mock.module`, capturing the system prompt the model would have received. No
- * network, no database, no live model.
+ * pure, and the turn boundary captures the character passed to AgentRuntime.
+ * No network, database, or live model is involved.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -25,17 +23,20 @@ import { buildWarmClaimCharacterPayload } from "./warm-claim-character-push";
 let capturedSystem: string | undefined;
 
 mock.module("../providers/language-model", () => ({
-  getLanguageModel: () => ({ __sentinel: "model" }),
-  getInteractiveCerebrasLanguageModel: () => ({ __sentinel: "interactive-model" }),
   hasLanguageModelProviderConfigured: () => true,
 }));
 
-mock.module("ai", () => ({
-  generateText: async (options?: { system?: string }) => {
-    capturedSystem = options?.system;
-    return { text: "ok reply" };
+mock.module("./shared-runtime/shared-eliza-runtime", () => ({
+  runSharedElizaRuntimeTurn: async (input: Record<string, unknown>) => {
+    capturedSystem = (input.character as { system: string }).system;
+    return {
+      reply: "ok reply",
+      history: [],
+      model: String(input.model),
+      degraded: false,
+    };
   },
-  streamText: () => {
+  runSharedElizaRuntimeTurnStream: () => {
     throw new Error("streaming is not exercised by this suite");
   },
 }));
@@ -70,6 +71,7 @@ describe("default agent character seed", () => {
     expect(seed.topics).toEqual(preset.topics);
     expect(seed.style).toEqual(preset.style);
     expect(seed.postExamples).toEqual(preset.postExamples);
+    expect(seed.templates).toEqual(preset.templates);
     // Flat keys only: the container env loader, the warm-claim push, and the
     // first-boot bootstrap agent all read agent_config at the top level.
     expect(Object.keys(seed).sort()).toEqual([
@@ -79,6 +81,7 @@ describe("default agent character seed", () => {
       "postExamples",
       "style",
       "system",
+      "templates",
       "topics",
     ]);
   });
@@ -124,13 +127,32 @@ describe("default agent character seed", () => {
   });
 
   test("completes the legacy first-run request that supplied only the default preset bio", () => {
-    const legacyBio = [...getDefaultStylePreset().bio];
+    const legacyBio = [
+      "Helps with the day: plans, reminders, writing, research, decisions.",
+      "Answers short. Goes long only when it's worth it.",
+      "Does the thing, then says what happened.",
+      'Says "I don\'t know" instead of guessing.',
+      "Will tell you a plan has a hole in it.",
+      "No emoji, no filler, no fake enthusiasm.",
+      "Eliza is made by Eliza Research in San Francisco.",
+      "Open source and self-hostable: https://github.com/elizaOS/eliza",
+      "Named after the 1966 original. A fair bit has changed.",
+    ];
     const seeded = withDefaultAgentCharacter({ bio: legacyBio });
     const canonical = buildCloudElizaPersona();
 
     expect(seeded.system).toBe(canonical.system);
     expect(seeded.bio).toEqual(canonical.bio);
     expect(seeded.style).toEqual(canonical.style);
+  });
+
+  test("never mistakes an edited legacy bio for the stock default", () => {
+    const customizedBio = [
+      "Helps with the day: plans, reminders, writing, research, decisions.",
+      "This sentence is mine.",
+    ];
+
+    expect(withDefaultAgentCharacter({ bio: customizedBio })).toEqual({ bio: customizedBio });
   });
 
   test("agentConfigHasCharacter distinguishes a persona from unrelated config", () => {
@@ -169,6 +191,11 @@ describe("a newly created cloud agent's character", () => {
     expect(character.name).toBe("Nyx");
     expect(character.system).toBe(buildCloudElizaPersona().system);
     expect(character.bio?.length).toBeGreaterThan(0);
+    expect(character.adjectives).toEqual(buildCloudElizaPersona().adjectives);
+    expect(character.topics).toEqual(buildCloudElizaPersona().topics);
+    expect(character.style).toEqual(buildCloudElizaPersona().style);
+    expect(character.messageExamples?.length).toBeGreaterThan(0);
+    expect(character.templates).toEqual(buildCloudElizaPersona().templates);
     expect(character.system).not.toBe("You are Nyx, a helpful assistant.");
 
     const result = await runSharedAgentTurn({

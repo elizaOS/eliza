@@ -46,6 +46,36 @@ const liveActivityBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
   "utf8",
 );
+const bridgeViewControllerSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaBridgeViewController.swift"),
+  "utf8",
+);
+const screenTimeReportSwift = readFileSync(
+  path.join(
+    iosAppRoot,
+    "App/DeviceActivityReportExtension/DeviceActivityReportExtension.swift",
+  ),
+  "utf8",
+);
+const mobileSignalsSwiftRoot = path.join(
+  repoRoot,
+  "plugins/plugin-native-mobile-signals/ios/Sources/MobileSignalsPlugin",
+);
+const mobileSignalsPluginSwift = readFileSync(
+  path.join(mobileSignalsSwiftRoot, "MobileSignalsPlugin.swift"),
+  "utf8",
+);
+const screenTimeSupportSwift = readFileSync(
+  path.join(mobileSignalsSwiftRoot, "ScreenTimeSupport.swift"),
+  "utf8",
+);
+const mobileSignalsAndroid = readFileSync(
+  path.join(
+    repoRoot,
+    "plugins/plugin-native-mobile-signals/android/src/main/java/ai/eliza/plugins/mobilesignals/MobileSignalsPlugin.kt",
+  ),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -251,6 +281,23 @@ describe("native assistant entry contracts", () => {
     expect(pbxproj).toContain("ElizaAppIntents.swift */");
   });
 
+  it("registers every App-target in-app Capacitor plugin exactly once", () => {
+    for (const pluginClass of [
+      "GlassBridge",
+      "ElizaIntentPlugin",
+      "ElizaKeyboardPlugin",
+      "ElizaLiveActivityPlugin",
+      "NativeTranscriptPlugin",
+    ]) {
+      expect(
+        bridgeViewControllerSwift.match(
+          new RegExp(`registerPluginInstance\\(${pluginClass}\\(\\)\\)`, "g"),
+        ),
+        `${pluginClass} must have one native registration authority`,
+      ).toHaveLength(1);
+    }
+  });
+
   it("exposes the expected iOS Siri and Shortcuts launch surfaces", () => {
     for (const intentName of [
       "AskElizaIntent",
@@ -285,12 +332,15 @@ describe("native assistant entry contracts", () => {
       "Ask, talk, and plan with Eliza from your Home and Lock Screen.",
       "Eliza Voice",
       "Keyboard dictation",
-      "Stop Dictation",
-      "Save Dictation",
       "Recording",
+      "Ready",
+      "Listening",
       "Transcribing",
       "Thinking",
       "Speaking",
+      "Error",
+      "Ended",
+      "Stop",
       "Voice session",
     ];
 
@@ -365,6 +415,41 @@ describe("native assistant entry contracts", () => {
     ).toBe(1);
   });
 
+  it("aggregates Screen Time only inside the report extension", () => {
+    expect(screenTimeReportSwift).toContain("for await deviceActivity in data");
+    expect(screenTimeReportSwift).toContain("segment.categories");
+    expect(screenTimeReportSwift).toContain("DeviceActivityReport.Context");
+    expect(screenTimeReportSwift).not.toMatch(
+      /UserDefaults|URLSession|appGroup|containerURL/,
+    );
+  });
+
+  it("ships an authorization-gated native DeviceActivity presenter", () => {
+    expect(mobileSignalsPluginSwift).toContain(
+      'CAPPluginMethod(name: "presentScreenTimeReport"',
+    );
+    expect(mobileSignalsPluginSwift).toContain(
+      "AuthorizationCenter.shared.requestAuthorization(for: .individual)",
+    );
+    expect(screenTimeSupportSwift).toContain(
+      "DeviceActivityReport(.elizaScreenTimeSummary, filter: filter)",
+    );
+  });
+
+  it("keeps Android host summaries distinct from iOS DeviceActivity reports", () => {
+    expect(mobileSignalsAndroid).toContain(
+      'usageGranted -> "host-summary-available"',
+    );
+    expect(mobileSignalsAndroid).toContain('else -> "usage-access-required"');
+    expect(mobileSignalsAndroid).toContain('put("reportAvailable", false)');
+    expect(mobileSignalsAndroid).toContain(
+      'put("coarseSummaryAvailable", usageGranted)',
+    );
+    expect(mobileSignalsAndroid).toContain(
+      '!usagePermissionDeclared -> "provisioning-missing"',
+    );
+  });
+
   it("builds the ElizaWidgets extension target with widget + controls sources", () => {
     expect(pbxproj).toContain('PBXNativeTarget "ElizaWidgets"');
     expect(pbxproj).toContain("com.apple.product-type.app-extension");
@@ -423,16 +508,21 @@ describe("native assistant entry contracts", () => {
     expect(dictationAttributesSwift).toContain("@available(iOS 16.1, *)");
 
     // Live Activity rendering: ActivityConfiguration + Dynamic Island + the
-    // interactive Stop/Save buttons routing the elizaos:// spine.
+    // interactive Stop button routing the elizaos:// spine.
     expect(dictationLiveActivitySwift).toContain(
       "struct ElizaDictationLiveActivity: Widget",
     );
     expect(dictationLiveActivitySwift).toContain("ActivityConfiguration");
     expect(dictationLiveActivitySwift).toContain("DynamicIsland");
-    expect(dictationLiveActivitySwift).toContain("StopElizaDictationIntent");
-    expect(dictationLiveActivitySwift).toContain("SaveElizaDictationIntent");
+    expect(dictationLiveActivitySwift).toContain("StopElizaVoiceIntent");
+    expect(dictationLiveActivitySwift).not.toContain(
+      "SaveElizaDictationIntent",
+    );
     expect(dictationLiveActivitySwift).toContain(
-      'ElizaWidgetDeepLink.dictation(action: "stop")',
+      'ElizaWidgetDeepLink.dictation(action: "stop-voice")',
+    );
+    expect(dictationLiveActivitySwift).not.toContain(
+      "context.state.transcriptSnippet",
     );
 
     // The bundle registers the Live Activity behind the iOS 16.1 gate.
@@ -446,6 +536,18 @@ describe("native assistant entry contracts", () => {
     );
     expect(liveActivityBridgeSwift).toContain('jsName = "ElizaLiveActivity"');
     expect(liveActivityBridgeSwift).toContain("Activity.request");
+    expect(liveActivityBridgeSwift).toContain(
+      "private static var lifecycleGeneration = 0",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      "@MainActor private static var currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      "let ownsCurrent = explicitId == nil || explicitId == Self.currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain("if ownsCurrent {");
+    expect(liveActivityBridgeSwift).toContain("await Self.endActivities(");
+    expect(liveActivityBridgeSwift).toContain('transcriptSnippet: ""');
 
     // pbxproj: the shared attributes file is a member of BOTH the App and the
     // ElizaWidgets Sources phases; the render + bridge files land in their

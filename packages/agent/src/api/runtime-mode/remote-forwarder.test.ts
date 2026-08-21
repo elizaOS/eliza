@@ -2,7 +2,7 @@
  * Unit coverage for the remote-mode request forwarder that a local controller
  * uses to relay traffic to its private remote Eliza target.
  * `shouldForwardToRemoteTarget` decides which cloud-auth mutations get forwarded
- * (POST login/disconnect and billing/v1 writes — never GETs or unrelated paths),
+ * (cloud settings and push-token writes — never GETs or unrelated paths),
  * and `buildForwardHeaders` rewrites the outbound header set: preserving
  * multi-valued `set-cookie`, stripping hop-by-hop headers, rewriting Host to the
  * target, and injecting a Bearer token only when a remote access token is set.
@@ -10,8 +10,41 @@
 import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,
+  buildRemoteTargetUrl,
+  redactPushTokenRequestUrl,
   shouldForwardToRemoteTarget,
 } from "./remote-forwarder.ts";
+
+describe("buildRemoteTargetUrl", () => {
+  test("keeps the configured origin for absolute-form request targets", () => {
+    const target = buildRemoteTargetUrl(
+      "https://attacker.invalid/api/cloud/login?next=1",
+      "http://127.0.0.1:31337",
+    );
+
+    expect(target.origin).toBe("http://127.0.0.1:31337");
+    expect(target.pathname).toBe("/api/cloud/login");
+    expect(target.search).toBe("?next=1");
+  });
+
+  test("treats a double-slash pathname as a path, not a network-path reference", () => {
+    const target = buildRemoteTargetUrl(
+      "http://controller.invalid//attacker.invalid/api/cloud/login",
+      "https://target.local:8443",
+    );
+
+    expect(target.origin).toBe("https://target.local:8443");
+    expect(target.pathname).toBe("//attacker.invalid/api/cloud/login");
+  });
+});
+
+test("legacy push-token URLs are redacted before agent diagnostics", () => {
+  expect(
+    redactPushTokenRequestUrl(
+      "/api/notifications/push-tokens/token%2Fwith%2Bslash?trace=1",
+    ),
+  ).toBe("/api/notifications/push-tokens/[redacted]?trace=1");
+});
 
 describe("shouldForwardToRemoteTarget", () => {
   test("forwards POST /api/cloud/login", () => {
@@ -40,6 +73,24 @@ describe("shouldForwardToRemoteTarget", () => {
     expect(shouldForwardToRemoteTarget("/api/cloud/v1/agents", "DELETE")).toBe(
       true,
     );
+  });
+
+  test("forwards push-token registration and revocation mutations", () => {
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "POST"),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "DELETE"),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget(
+        "/api/notifications/push-tokens/token%2Fwith%2Bslash",
+        "DELETE",
+      ),
+    ).toBe(true);
+    expect(
+      shouldForwardToRemoteTarget("/api/notifications/push-tokens", "GET"),
+    ).toBe(false);
   });
 
   test("does not forward GET requests", () => {

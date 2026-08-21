@@ -1018,8 +1018,17 @@ Quote tweet:`;
         conversationId: tweet.conversationId || tweet.id,
       });
 
+      // Dedup marker: key the memory by the bare tweet id so the
+      // `processTweets` guard (which reads `createUniqueUuid(runtime, tweet.id)`)
+      // finds this write on the next cycle. A suffixed `${tweet.id}-${type}` key
+      // is never read back, so it silently let discovery re-like/re-reply/re-quote
+      // — and re-retry 403-skipped tweets — every cycle (#22710). Each discovered
+      // tweet gets exactly one engagement type per cycle, and `createMemorySafe`
+      // treats a duplicate-key write as a no-op, so this stays idempotent. The
+      // engagement type remains in `content.metadata.engagementType` for
+      // reporting.
       const memory: Memory = {
-        id: createUniqueUuid(this.runtime, `${tweet.id}-${engagementType}`),
+        id: createUniqueUuid(this.runtime, tweet.id),
         entityId: context.entityId,
         content: {
           text: `${engagementType} tweet from @${tweet.username}: ${tweet.text}`,

@@ -11,7 +11,7 @@ This wraps existing primitives — it does not duplicate them:
 | Provider | What it uses |
 |---|---|
 | `vast` | [`dispatch-vast.sh`](dispatch-vast.sh), the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` |
-| `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
+| `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../train_vast.sh) (its GPU mapping, checkpoint pull, teardown) |
 | `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 2b/4b/9b, `gpu-h200x2` + FSDP for 27b/27b-256k); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
 | `nebius` + `kernel-verify`/`bench` | [`dispatch-nebius.sh`](dispatch-nebius.sh), delegating VM lifecycle to `../train_nebius.sh` |
 
@@ -90,7 +90,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 |---|---|
 | `kernel-verify` | `packages/inference/verify/hardware-results/cuda-linux-<gpu>-<date>.json` |
 | `bench` | `packages/inference/verify/bench_results/cuda_<gpu>_<tier>_<date>.json` |
-| `train` | checkpoints pulled by `train_vast.sh pull-checkpoints` (see `../CLOUD_VAST.md`) |
+| `train` | checkpoints pulled by `train_vast.sh pull-checkpoints` (see `../train_vast.sh`) |
 
 ## Teardown / safety
 
@@ -106,5 +106,5 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 ## When you DON'T need cloud
 
 If this box's NVIDIA dGPU has been brought up by the operator, run the verify
-locally instead — see
-[`../../inference/reports/porting/2026-05-11/cuda-bringup-operator-steps.md`](../../inference/reports/porting/2026-05-11/cuda-bringup-operator-steps.md).
+locally instead (the CUDA bring-up operator report cited here was never
+committed to this repository).

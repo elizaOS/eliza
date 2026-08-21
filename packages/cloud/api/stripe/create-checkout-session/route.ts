@@ -12,11 +12,12 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
-import { organizationsService } from "@/lib/services/organizations";
+import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -48,11 +49,16 @@ const checkoutRequestSchema = z
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
 
-    const stripeCurrency = c.env.STRIPE_CURRENCY || "usd";
+    const stripeCurrency = (c.env.STRIPE_CURRENCY || "usd")
+      .trim()
+      .toLowerCase();
+    if (!/^[a-z]{3}$/.test(stripeCurrency)) {
+      return c.json({ error: "Payment currency is misconfigured" }, 503);
+    }
     const allowedOrigins = [
       c.env.NEXT_PUBLIC_APP_URL,
       "http://localhost:3000",
@@ -79,6 +85,19 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     const { creditPackId, amount, hardwareColor, hardwareSku, returnUrl } =
       validationResult.data;
+    const clientRequestKey = c.req.header("idempotency-key")?.trim();
+    if (!hardwareSku && !clientRequestKey) {
+      return c.json(
+        { error: "Idempotency-Key header is required for credit purchases" },
+        400,
+      );
+    }
+    if (
+      clientRequestKey &&
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(clientRequestKey)
+    ) {
+      return c.json({ error: "Idempotency-Key header is invalid" }, 400);
+    }
     if (!isStripeConfigured()) {
       return c.json({ error: "Payment processing is not configured" }, 503);
     }
@@ -91,6 +110,12 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     >[number];
     let lineItems: LineItem[];
     let sessionMetadata: Record<string, string>;
+    let creditQuote: {
+      purchaseType: "credit_pack" | "custom_amount";
+      creditPackId: string | null;
+      creditsToGrant: string;
+      chargeAmountCents: number;
+    } | null = null;
 
     const organizationId = user.organization_id;
 
@@ -121,12 +146,29 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         type: "hardware_preorder",
       };
     } else if (creditPackId) {
+      if (stripeCurrency !== "usd") {
+        return c.json({ error: "Credit purchases require USD billing" }, 503);
+      }
       const creditPack = await creditsService.getCreditPackById(creditPackId);
       if (!creditPack?.is_active) {
         return c.json({ error: "Invalid or inactive credit pack" }, 404);
       }
 
-      lineItems = [{ price: creditPack.stripe_price_id, quantity: 1 }];
+      const stripePrice = await requireStripe().prices.retrieve(
+        creditPack.stripe_price_id,
+      );
+      if (
+        !stripePrice.active ||
+        stripePrice.currency.toLowerCase() !== "usd" ||
+        stripePrice.unit_amount !== creditPack.price_cents ||
+        stripePrice.recurring
+      ) {
+        return c.json(
+          { error: "Credit pack price is unavailable or out of sync" },
+          503,
+        );
+      }
+      lineItems = [{ price: stripePrice.id, quantity: 1 }];
       sessionMetadata = {
         organization_id: organizationId,
         user_id: user.id,
@@ -134,7 +176,20 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         credits: creditPack.credits.toString(),
         type: "credit_pack",
       };
+      creditQuote = {
+        purchaseType: "credit_pack",
+        creditPackId,
+        creditsToGrant: canonicalCredits(creditPack.credits),
+        chargeAmountCents: creditPack.price_cents,
+      };
     } else if (amount) {
+      if (stripeCurrency !== "usd") {
+        return c.json({ error: "Credit purchases require USD billing" }, 503);
+      }
+      const amountCents = amount * 100;
+      if (!Number.isSafeInteger(amountCents)) {
+        return c.json({ error: "Amount must use exact whole cents" }, 400);
+      }
       lineItems = [
         {
           price_data: {
@@ -143,7 +198,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
               name: "Account Balance Top-up",
               description: `Add $${amount.toFixed(2)} to your account balance`,
             },
-            unit_amount: Math.round(amount * 100),
+            unit_amount: amountCents,
           },
           quantity: 1,
         },
@@ -153,6 +208,12 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         user_id: user.id,
         credits: amount.toFixed(2),
         type: "custom_amount",
+      };
+      creditQuote = {
+        purchaseType: "custom_amount",
+        creditPackId: null,
+        creditsToGrant: amount.toFixed(6),
+        chargeAmountCents: amountCents,
       };
     } else {
       return c.json(
@@ -169,28 +230,6 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       billing_email?: string | null;
     };
     let customerId = orgFull.stripe_customer_id ?? null;
-
-    if (!customerId) {
-      const customerData: Stripe.CustomerCreateParams = {
-        name: orgFull.name,
-        metadata: { organization_id: organizationId },
-      };
-      const email = orgFull.billing_email || user.email;
-      if (email) customerData.email = email;
-      if (user.wallet_address) {
-        customerData.metadata = {
-          ...customerData.metadata,
-          wallet_address: user.wallet_address,
-        };
-      }
-      const customer = await requireStripe().customers.create(customerData);
-      customerId = customer.id;
-
-      await organizationsService.update(organizationId, {
-        stripe_customer_id: customerId,
-        updated_at: new Date(),
-      });
-    }
 
     const envAppUrl = c.env.NEXT_PUBLIC_APP_URL;
     const requestOrigin =
@@ -228,22 +267,195 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         ? `${baseUrl}/cloud/settings?tab=billing`
         : `${baseUrl}/cloud/billing?canceled=true`;
 
-    const session = await requireStripe().checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      mode: "payment",
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: sessionMetadata,
-      payment_intent_data: { metadata: sessionMetadata },
-    });
+    const requestDigest = creditQuote
+      ? await sha256Hex(
+          JSON.stringify({
+            purchaseType: creditQuote.purchaseType,
+            creditPackId: creditQuote.creditPackId,
+            creditsToGrant: creditQuote.creditsToGrant,
+            chargeAmountCents: creditQuote.chargeAmountCents,
+            currency: "usd",
+            successUrl,
+            cancelUrl,
+            returnUrl,
+          }),
+        )
+      : null;
+    let checkoutOrder = creditQuote
+      ? await stripeCheckoutOrdersService.create({
+          organizationId,
+          initiatedByUserId: user.id,
+          clientRequestKey: clientRequestKey!,
+          requestDigest: requestDigest!,
+          purchaseType: creditQuote.purchaseType,
+          creditPackId: creditQuote.creditPackId,
+          creditsToGrant: creditQuote.creditsToGrant,
+          chargeAmountCents: creditQuote.chargeAmountCents,
+          currency: stripeCurrency.toLowerCase(),
+          stripeCustomerId: null,
+          metadata: { return_url: returnUrl },
+        })
+      : null;
+    const authoritativeCustomerId = await stripeCustomerAuthorityService.ensure(
+      {
+        organizationId,
+        callerIntent: "interactive_checkout",
+      },
+    );
+    if (checkoutOrder) {
+      if (!checkoutOrder.stripe_customer_id) {
+        checkoutOrder = await stripeCheckoutOrdersService.bindCustomer(
+          checkoutOrder.id,
+          authoritativeCustomerId,
+        );
+      } else if (checkoutOrder.stripe_customer_id !== authoritativeCustomerId) {
+        throw new Error(
+          "Checkout order customer conflicts with Stripe customer authority",
+        );
+      }
+      customerId = checkoutOrder.stripe_customer_id;
+    } else {
+      customerId = authoritativeCustomerId;
+    }
+    if (!customerId) {
+      throw new Error("Stripe customer authority was not established");
+    }
+    if (
+      checkoutOrder?.stripe_checkout_session_id &&
+      (checkoutOrder.status === "delivered" ||
+        checkoutOrder.status === "settled")
+    ) {
+      const replaySession = await requireStripe().checkout.sessions.retrieve(
+        checkoutOrder.stripe_checkout_session_id,
+      );
+      return c.json({ sessionId: replaySession.id, url: replaySession.url });
+    }
+    if (checkoutOrder) {
+      if (
+        checkoutOrder.status === "provider_started" ||
+        checkoutOrder.status === "provider_ambiguous"
+      ) {
+        const recovered = await findCheckoutSessionForOrder(
+          requireStripe(),
+          checkoutOrder,
+        );
+        if (recovered) {
+          await stripeCheckoutOrdersService.bindSession(
+            checkoutOrder.id,
+            recovered.id,
+          );
+          return c.json({ sessionId: recovered.id, url: recovered.url });
+        }
+        if (
+          Date.now() - checkoutOrder.updated_at.getTime() >=
+          23 * 60 * 60 * 1000
+        ) {
+          throw new Error(
+            "Stripe Checkout creation is ambiguous and requires reconciliation",
+          );
+        }
+      }
+      sessionMetadata = {
+        checkout_order_id: checkoutOrder.id,
+        type: checkoutOrder.purchase_type,
+      };
+      await stripeCheckoutOrdersService.markProviderStarted(checkoutOrder.id);
+    }
+
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await requireStripe().checkout.sessions.create(
+        {
+          customer: customerId,
+          ...(checkoutOrder ? { client_reference_id: checkoutOrder.id } : {}),
+          payment_method_types: ["card"],
+          line_items: lineItems,
+          mode: "payment",
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: sessionMetadata,
+          payment_intent_data: { metadata: sessionMetadata },
+        },
+        checkoutOrder
+          ? { idempotencyKey: `checkout-order:${checkoutOrder.id}` }
+          : undefined,
+      );
+    } catch (cause) {
+      // error-policy:J1 Route boundary durably records an ambiguous provider outcome before translating it.
+      if (checkoutOrder) {
+        await stripeCheckoutOrdersService.markProviderAmbiguous(
+          checkoutOrder.id,
+          cause instanceof Error ? cause.name : "unknown_provider_error",
+        );
+      }
+      throw cause;
+    }
+    if (checkoutOrder) {
+      await stripeCheckoutOrdersService.bindSession(
+        checkoutOrder.id,
+        session.id,
+      );
+    }
 
     return c.json({ sessionId: session.id, url: session.url });
   } catch (error) {
+    // error-policy:J1 HTTP boundary translates checkout failures into the shared structured response.
     logger.error("[Stripe Checkout] Error creating checkout session:", error);
     return failureResponse(c, error);
   }
 });
 
 export default app;
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function canonicalCredits(value: string | number): string {
+  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(value));
+  if (!match?.[1]) throw new Error("Credit pack grant is invalid");
+  return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
+}
+
+async function findCheckoutSessionForOrder(
+  stripe: Stripe,
+  order: {
+    id: string;
+    stripe_customer_id: string | null;
+    updated_at: Date;
+  },
+): Promise<Stripe.Checkout.Session | null> {
+  if (!order.stripe_customer_id) {
+    throw new Error("Checkout order has no pinned Stripe customer");
+  }
+  const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
+  let startingAfter: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const sessions = await stripe.checkout.sessions.list({
+      customer: order.stripe_customer_id,
+      created: {
+        gte: Math.max(0, providerAttemptSeconds - 3600),
+        lte: providerAttemptSeconds + 3600,
+      },
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    const match = sessions.data.find(
+      (session) =>
+        session.client_reference_id === order.id &&
+        session.metadata?.checkout_order_id === order.id,
+    );
+    if (match) return match;
+    if (!sessions.has_more || sessions.data.length === 0) return null;
+    startingAfter = sessions.data.at(-1)?.id;
+  }
+  throw new Error(
+    "Stripe Checkout reconciliation exceeded its safe search bound",
+  );
+}

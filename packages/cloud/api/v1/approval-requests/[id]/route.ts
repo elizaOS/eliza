@@ -44,8 +44,26 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: parsedId.error }, 400);
     }
     const { id } = parsedId;
-
-    const isPublic = c.req.query("public") === "1";
+    // The public view is an unauthenticated security boundary, so ambiguous
+    // duplicates and every token other than the documented empty/`1` forms
+    // must fail before authentication or lookup.
+    const requestedPublicValues = c.req.queries("public");
+    const requestedPublic = requestedPublicValues?.[0];
+    if (
+      requestedPublicValues !== undefined &&
+      (requestedPublicValues.length !== 1 ||
+        (requestedPublic !== "" && requestedPublic !== "1"))
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_public",
+          message: 'public must be "1" for the redacted approval view.',
+        },
+        400,
+      );
+    }
+    const isPublic = requestedPublic === "1";
     const service = getApprovalRequestsService();
 
     if (isPublic) {

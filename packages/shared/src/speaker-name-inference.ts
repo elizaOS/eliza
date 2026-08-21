@@ -7,6 +7,8 @@
  * It never reports low-confidence attribution as a confirmed identity.
  */
 
+import { trimEndCharacters } from "./utils/string-boundaries.js";
+
 export type SpeakerNameEvidenceSource =
   | "platform_roster"
   | "calendar_attendee"
@@ -172,18 +174,14 @@ function assertRatio(field: string, value: number): void {
 }
 
 function normalizeName(name: string): string {
-  return name
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.,;:!?]+$/g, "")
-    .toLocaleLowerCase();
+  return trimEndCharacters(
+    name.trim().replace(/\s+/g, " "),
+    ".,;:!?",
+  ).toLocaleLowerCase();
 }
 
 function displayName(name: string): string {
-  return name
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.,;:!?]+$/g, "");
+  return trimEndCharacters(name.trim().replace(/\s+/g, " "), ".,;:!?");
 }
 
 function firstName(name: string): string {
@@ -445,6 +443,7 @@ export function inferSpeakerName(
     (hasStrongSource(chosen) || chosen.sources.length > 1) &&
     !sameFirstNameAmbiguity &&
     !unresolvedConflict &&
+    (!borrowedDeviceConflict || correction !== undefined) &&
     input.sensitiveAttributeGuardrail !== true;
   if (canConfirm) reasonCodes.push("high_confidence_name");
   if (chosen && !canConfirm) reasonCodes.push("low_confidence_name");

@@ -7,7 +7,12 @@
  * runner. Each runtime keeps one runner service, one injected deps set, and one
  * scheduled-task REST route.
  */
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
@@ -28,21 +33,91 @@ import {
   registerStandaloneTickWorker,
 } from "./scheduled-task/standalone-tick.js";
 
+export const SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT =
+  "SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT";
+export const SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED =
+  "SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED";
+
+const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 30_000;
+const DEFAULT_RUNNER_REGISTRATION_POLL_MS = 250;
+
+export interface WaitForScheduledTaskRunnerServiceOptions {
+  registrationTimeoutMs?: number;
+  registrationPollMs?: number;
+}
+
+function requireDuration(
+  value: number | undefined,
+  fallback: number,
+  name: string,
+  allowZero: boolean,
+): number {
+  const duration = value ?? fallback;
+  if (
+    !Number.isFinite(duration) ||
+    !Number.isInteger(duration) ||
+    duration < (allowZero ? 0 : 1)
+  ) {
+    throw new ElizaError(`${name} must be a finite integer in milliseconds`, {
+      code: "SCHEDULED_TASK_RUNNER_WAIT_INVALID",
+      context: { name, value: duration },
+    });
+  }
+  return duration;
+}
+
+/**
+ * Wait for the deferred runner declaration before asking the runtime to load
+ * it. Registration failure is observed immediately; missing registration is
+ * bounded so dependent service startup cannot hang indefinitely.
+ */
 export async function waitForScheduledTaskRunnerService(
   runtime: IAgentRuntime,
+  options: WaitForScheduledTaskRunnerServiceOptions = {},
 ): Promise<ScheduledTaskRunnerService> {
   await runtime.initPromise;
 
-  if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
-    // `registerPlugin` awaits `init()` before recording the same plugin's
-    // service classes. When a plugin is loaded after runtime init, the
-    // already-resolved initPromise can resume this seeder one microtask before
-    // the registerPlugin continuation registers ScheduledTaskRunnerService.
-    await Promise.resolve();
+  const serviceType = ScheduledTaskRunnerService.serviceType;
+  const timeoutMs = requireDuration(
+    options.registrationTimeoutMs,
+    DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS,
+    "registrationTimeoutMs",
+    true,
+  );
+  const pollMs = requireDuration(
+    options.registrationPollMs,
+    DEFAULT_RUNNER_REGISTRATION_POLL_MS,
+    "registrationPollMs",
+    false,
+  );
+  const deadline = Date.now() + timeoutMs;
+
+  while (!runtime.hasService(serviceType)) {
+    const status = runtime.getServiceRegistrationStatus(serviceType);
+    if (status === "failed") {
+      throw new ElizaError("Scheduled task runner registration failed", {
+        code: SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED,
+        context: { serviceType, status },
+      });
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new ElizaError(
+        "Scheduled task runner was not registered before the startup deadline",
+        {
+          code: SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT,
+          context: { serviceType, status, timeoutMs },
+        },
+      );
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollMs, remainingMs)),
+    );
   }
 
   return (await runtime.getServiceLoadPromise(
-    ScheduledTaskRunnerService.serviceType,
+    serviceType,
   )) as ScheduledTaskRunnerService;
 }
 

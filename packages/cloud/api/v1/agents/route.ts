@@ -34,9 +34,11 @@ import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
+import { getAgentTier } from "@/lib/services/shared-runtime/agent-tier";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -161,8 +163,29 @@ app.post("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
 
-    const body = await c.req.json().catch(() => null);
-    if (!body) throw ValidationError("Invalid JSON body");
+    const syncValues = c.req.queries("sync") ?? [];
+    const requestedSync = syncValues[0];
+    if (
+      syncValues.length > 1 ||
+      (requestedSync != null &&
+        requestedSync !== "" &&
+        requestedSync !== "true" &&
+        requestedSync !== "false")
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid sync",
+          message: 'sync must be specified at most once as "true" or "false".',
+        },
+        400,
+      );
+    }
+    const sync = requestedSync === "true";
+
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) throw ValidationError("Invalid JSON body");
+    const body = decodedBody.value;
 
     const parsed = provisionSchema.safeParse(body);
     if (!parsed.success) {
@@ -172,7 +195,6 @@ app.post("/", async (c) => {
     }
 
     const p = parsed.data;
-    const sync = c.req.query("sync") === "true";
     const agentName = p.character?.name || p.tokenName;
     const characterConfig = recordFromUnknown(p.character?.config);
     const waifuAgentId = stringFromRecord(characterConfig, "waifuAgentId");
@@ -267,21 +289,29 @@ app.post("/", async (c) => {
 
     let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
-      character = await charactersService.create({
-        name: agentName,
-        bio: p.character?.bio
-          ? [p.character.bio]
-          : [`Agent for ${p.tokenName}`],
-        user_id: ownerUserId,
-        organization_id: ownerOrganizationId,
-        source: "cloud",
-        character_data: p.character?.config ?? {},
-        avatar_url: p.character?.avatar ?? null,
-        token_address: normalizedTokenAddress,
-        token_chain: p.chain,
-        token_name: p.tokenName,
-        token_ticker: p.tokenTicker,
-      });
+      character = await charactersService.create(
+        {
+          name: agentName,
+          bio: p.character?.bio
+            ? [p.character.bio]
+            : [`Agent for ${p.tokenName}`],
+          user_id: ownerUserId,
+          organization_id: ownerOrganizationId,
+          source: "cloud",
+          character_data: p.character?.config ?? {},
+          avatar_url: p.character?.avatar ?? null,
+          token_address: normalizedTokenAddress,
+          token_chain: p.chain,
+          token_name: p.tokenName,
+          token_ticker: p.tokenTicker,
+        },
+        {
+          policy: {
+            mode: "trusted",
+            caller: "service-api-v1-agents",
+          },
+        },
+      );
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         const existing = await userCharactersRepository.findByTokenAddress(
@@ -434,6 +464,12 @@ app.post("/", async (c) => {
           ELIZA_UI_ENABLE: "true",
         },
         dockerImage: p.container?.image,
+        executionTier: getAgentTier({
+          dockerImage: p.container?.image,
+          // This API always provisions immediately, including when it uses the
+          // managed image rather than a caller-supplied custom image.
+          alwaysOn: true,
+        }),
       }));
     } catch (createErr) {
       try {

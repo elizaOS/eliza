@@ -8,6 +8,7 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { formatSkillsForPrompt } from "../src/formatter.js";
 import {
   loadSkillEntries,
   loadSkills,
@@ -259,6 +260,88 @@ description: Second skill
     } finally {
       rmSync(tempDir1, { recursive: true, force: true });
       rmSync(tempDir2, { recursive: true, force: true });
+    }
+  });
+
+  it("loadSkills honors both kebab-case and snake_case disable-model-invocation", () => {
+    // Regression for #22755: loader.ts read only the kebab key, so a skill
+    // authored with snake_case `disable_model_invocation: true` was still
+    // injected into the system prompt via loadSkills()/formatSkillsForPrompt(),
+    // even though loadSkillEntries()/resolveSkillInvocationPolicy() hid it.
+    for (const key of [
+      "disable-model-invocation",
+      "disable_model_invocation",
+    ]) {
+      const tempDir = createTempDir(`skill-disable-${key}`);
+      try {
+        const skillName = `hidden-${key.replace(/_/g, "-")}`;
+        writeFileSync(
+          join(tempDir, `${skillName}.md`),
+          `---
+name: ${skillName}
+description: Should be hidden from the model
+${key}: true
+---
+# body`,
+        );
+
+        const { skills } = loadSkills({
+          includeDefaults: false,
+          skillPaths: [tempDir],
+        });
+        assert.strictEqual(skills.length, 1);
+        assert.strictEqual(
+          skills[0]?.disableModelInvocation,
+          true,
+          `loadSkills must honor ${key}`,
+        );
+
+        const entries = loadSkillEntries({
+          includeDefaults: false,
+          skillPaths: [tempDir],
+        });
+        assert.strictEqual(entries.length, 1);
+        assert.strictEqual(
+          entries[0]?.invocation.disableModelInvocation,
+          true,
+          `loadSkillEntries must honor ${key}`,
+        );
+
+        const prompt = formatSkillsForPrompt(skills);
+        assert.ok(
+          !prompt.includes(skillName),
+          `formatSkillsForPrompt must exclude a skill hidden via ${key}`,
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("loadSkills keeps a skill visible when disable_model_invocation is false", () => {
+    const tempDir = createTempDir("skill-disable-false");
+    try {
+      writeFileSync(
+        join(tempDir, "visible-skill.md"),
+        `---
+name: visible-skill
+description: Should remain visible to the model
+disable_model_invocation: false
+---
+# body`,
+      );
+
+      const { skills } = loadSkills({
+        includeDefaults: false,
+        skillPaths: [tempDir],
+      });
+      assert.strictEqual(skills.length, 1);
+      assert.strictEqual(skills[0]?.disableModelInvocation, false);
+
+      const prompt = formatSkillsForPrompt(skills);
+      assert.ok(prompt.includes("visible-skill"));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 

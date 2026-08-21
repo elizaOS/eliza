@@ -4,7 +4,10 @@
  * them through the runtime, and dispatches agent replies back to Telegram.
  *
  * Inbound media is transcribed/described and normalized to core `Media`;
- * outbound replies are converted to MarkdownV2 (`utils.ts`), split at Telegram's
+ * attachments persist a token-free `telegram-file:<file_id>` capability
+ * reference, never the `getFileLink` URL (which embeds the bot token) — bytes
+ * are resolved transiently at fetch/enrichment time inside this module.
+ * Outbound replies are converted to MarkdownV2 (`utils.ts`), split at Telegram's
  * 4096-char limit, rendered with inline keyboards (`interactions.ts`), and
  * role-gated for embedded-app launch buttons. Owned by `TelegramService`, which
  * registers this as the connector's send path.
@@ -27,7 +30,11 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  type ResolvedAttachmentBytes,
+  resolveAttachmentBytes,
   ServiceType,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -94,6 +101,61 @@ function contentTypeForMime(mime?: string): ContentType {
   if (mime?.startsWith("video/")) return "video";
   if (mime?.startsWith("audio/")) return "audio";
   return "document";
+}
+
+/**
+ * Scheme prefix for the token-free capability reference persisted on inbound
+ * media attachments. Telegram `getFileLink` URLs embed the bot token
+ * (`https://api.telegram.org/file/bot<TOKEN>/<path>`), so persisting them
+ * would plant the operator's full-control credential in the message store for
+ * any texter to read back. Memories carry only `telegram-file:<file_id>`; the
+ * token is introduced transiently, in memory only, at fetch time inside
+ * {@link MessageManager.fetchTelegramFileBytes}.
+ */
+export const TELEGRAM_FILE_REF_PREFIX = "telegram-file:";
+
+/** Build the stored capability reference for a Telegram file id. */
+export function telegramFileRefUrl(fileId: string): string {
+  return `${TELEGRAM_FILE_REF_PREFIX}${fileId}`;
+}
+
+/** Extract the file id from a stored capability reference, else null. */
+export function telegramFileIdFromRef(url: string | undefined): string | null {
+  if (!url?.startsWith(TELEGRAM_FILE_REF_PREFIX)) return null;
+  const fileId = url.slice(TELEGRAM_FILE_REF_PREFIX.length);
+  return fileId.length > 0 ? fileId : null;
+}
+
+/**
+ * `resolveAttachmentBytes` for a token-bearing Bot API file URL. Core's
+ * `MediaFetchError` messages embed the fetched URL, which for Telegram is the
+ * `getFileLink` URL carrying the bot token — rethrow with only the failure
+ * code so a failed download can never write the credential to a log sink.
+ */
+function sanitizedTelegramFileError(error: unknown): ElizaError {
+  const fetchCode =
+    error instanceof Error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "unknown";
+  const cause = new Error(`Telegram media fetch failed (${fetchCode})`);
+  cause.name = error instanceof Error ? error.name : "MediaFetchError";
+  return new ElizaError("Telegram file download failed", {
+    code: "TELEGRAM_FILE_DOWNLOAD_FAILED",
+    cause,
+    context: { fetchCode },
+  });
+}
+
+async function resolveTelegramFileBytes(
+  url: string,
+): Promise<ResolvedAttachmentBytes> {
+  try {
+    return await resolveAttachmentBytes(url);
+  } catch (error) {
+    // error-policy:J2 Preserve a sanitized transport classification without
+    // retaining the token-bearing URL in the message, cause, or context.
+    throw sanitizedTelegramFileError(error);
+  }
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -405,7 +467,29 @@ export class MessageManager {
   }
 
   /**
-   * Process an image from a Telegram message to extract the image URL and description.
+   * Fetch a Telegram file's bytes. This is the single point where the
+   * token-bearing `getFileLink` URL exists — transiently, in process memory —
+   * before the download goes through core's SSRF-guarded, size-capped fetcher.
+   * The URL is never persisted and never handed to a model handler.
+   */
+  private async fetchTelegramFileBytes(
+    fileId: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    let fileLink: URL;
+    try {
+      fileLink = await this.bot.telegram.getFileLink(fileId);
+    } catch (error) {
+      // error-policy:J2 Apply the same credential-safe boundary to Bot API
+      // lookup failures, whose client error details are not trusted as safe.
+      throw sanitizedTelegramFileError(error);
+    }
+    return resolveTelegramFileBytes(fileLink.toString());
+  }
+
+  /**
+   * Process an image from a Telegram message to extract the image description.
+   * The bytes are fetched first and inlined as a data URL so the vision model
+   * handler never receives the token-bearing Bot API file URL.
    *
    * @param {Message} message - The Telegram message object containing the image.
    * @returns {Promise<{ description: string } | null>} The description of the processed image or null if no image found.
@@ -414,7 +498,7 @@ export class MessageManager {
     message: Message,
   ): Promise<{ description: string } | null> {
     try {
-      let imageUrl: string | null = null;
+      let imageFileId: string | null = null;
 
       logger.debug(
         {
@@ -426,24 +510,22 @@ export class MessageManager {
       );
 
       if ("photo" in message && message.photo.length > 0) {
-        const photo = message.photo[message.photo.length - 1];
-        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
-        imageUrl = fileLink.toString();
+        imageFileId = message.photo[message.photo.length - 1].file_id;
       } else if (
         "document" in message &&
         message.document.mime_type?.startsWith("image/") &&
         !message.document.mime_type.startsWith("application/pdf")
       ) {
-        const fileLink = await this.bot.telegram.getFileLink(
-          message.document.file_id,
-        );
-        imageUrl = fileLink.toString();
+        imageFileId = message.document.file_id;
       }
 
-      if (imageUrl) {
+      if (imageFileId) {
+        const { buffer, contentType } =
+          await this.fetchTelegramFileBytes(imageFileId);
+        const imageDataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
         const { title, description } = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
-          imageUrl,
+          imageDataUrl,
         );
         return { description: `[Image: ${title}\n${description}]` };
       }
@@ -511,7 +593,7 @@ export class MessageManager {
         {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing document",
       );
@@ -573,13 +655,11 @@ export class MessageManager {
         };
       }
 
-      const response = await fetch(documentUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch PDF: ${response.status}`);
-      }
-
-      const pdfBuffer = await response.arrayBuffer();
-      const text = await pdfService.convertPdfToText(Buffer.from(pdfBuffer));
+      // SSRF-guarded + byte-capped connector fetch (repo media invariant) —
+      // the file URL comes from the (possibly self-hosted) Bot API, never
+      // fetch it raw and unbounded.
+      const { buffer: pdfBuffer } = await resolveTelegramFileBytes(documentUrl);
+      const text = await pdfService.convertPdfToText(pdfBuffer);
 
       logger.debug(
         {
@@ -604,7 +684,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing PDF document",
       );
@@ -627,12 +707,9 @@ export class MessageManager {
     documentUrl: string,
   ): Promise<DocumentProcessingResult> {
     try {
-      const response = await fetch(documentUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch text document: ${response.status}`);
-      }
-
-      const text = await response.text();
+      const { buffer: textBuffer } =
+        await resolveTelegramFileBytes(documentUrl);
+      const text = textBuffer.toString("utf8");
 
       logger.debug(
         {
@@ -657,7 +734,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           fileName: document.file_name,
-          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : "UnknownError",
         },
         "Error processing text document",
       );
@@ -698,60 +775,37 @@ export class MessageManager {
       const documentInfo = await this.processDocument(message);
 
       if (documentInfo) {
-        try {
-          const fileLink = await this.bot.telegram.getFileLink(
-            document.file_id,
-          );
+        // Use structured data directly instead of regex parsing
+        const title = documentInfo.title;
+        const fullText = documentInfo.fullText;
 
-          // Use structured data directly instead of regex parsing
-          const title = documentInfo.title;
-          const fullText = documentInfo.fullText;
-
-          // Add document content to processedContent so agent can access it
-          if (fullText) {
-            const documentContent = `\n\n--- DOCUMENT CONTENT ---\nTitle: ${title}\n\nFull Content:\n${fullText}\n--- END DOCUMENT ---\n\n`;
-            processedContent += documentContent;
-          }
-
-          attachments.push({
-            id: document.file_id,
-            url: fileLink.toString(),
-            title,
-            source: document.mime_type?.startsWith("application/pdf")
-              ? "PDF"
-              : "Document",
-            contentType: contentTypeForMime(document.mime_type),
-            description: documentInfo.formattedDescription,
-            text: fullText,
-          });
-          logger.debug(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              fileName: documentInfo.fileName,
-            },
-            "Document processed successfully",
-          );
-        } catch (error) {
-          logger.error(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              fileName: documentInfo.fileName,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error processing document",
-          );
-          // Add a fallback attachment even if processing failed
-          attachments.push({
-            id: document.file_id,
-            url: "",
-            title: `Document: ${documentInfo.fileName}`,
-            source: "Document",
-            description: `Document processing failed: ${documentInfo.fileName}`,
-            text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || "unknown"}`,
-          });
+        // Add document content to processedContent so agent can access it
+        if (fullText) {
+          const documentContent = `\n\n--- DOCUMENT CONTENT ---\nTitle: ${title}\n\nFull Content:\n${fullText}\n--- END DOCUMENT ---\n\n`;
+          processedContent += documentContent;
         }
+
+        attachments.push({
+          id: document.file_id,
+          // Bare capability reference only — the token-bearing Bot API URL is
+          // resolved transiently at fetch time, never persisted.
+          url: telegramFileRefUrl(document.file_id),
+          title,
+          source: document.mime_type?.startsWith("application/pdf")
+            ? "PDF"
+            : "Document",
+          contentType: contentTypeForMime(document.mime_type),
+          description: documentInfo.formattedDescription,
+          text: fullText,
+        });
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            fileName: documentInfo.fileName,
+          },
+          "Document processed successfully",
+        );
       } else {
         // Add a basic attachment even if documentInfo is null
         attachments.push({
@@ -769,63 +823,43 @@ export class MessageManager {
     if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
-        try {
-          const photo = message.photo[message.photo.length - 1];
-          const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
-          attachments.push({
-            id: photo.file_id,
-            url: fileLink.toString(),
-            title: "Image Attachment",
-            source: "Image",
-            contentType: "image",
-            description: imageInfo.description,
-            text: imageInfo.description,
-          });
-        } catch (error) {
-          logger.error(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error attaching processed image",
-          );
-        }
+        const photo = message.photo[message.photo.length - 1];
+        attachments.push({
+          id: photo.file_id,
+          // Bare capability reference only — the token-bearing Bot API URL is
+          // resolved transiently at fetch time, never persisted.
+          url: telegramFileRefUrl(photo.file_id),
+          title: "Image Attachment",
+          source: "Image",
+          contentType: "image",
+          description: imageInfo.description,
+          text: imageInfo.description,
+        });
       }
     }
 
     // Voice / audio / video / animation / sticker attachments. Setting
     // contentType lets processAttachments transcribe audio/video and lets the
-    // attachment round-trip safely back out to any connector.
-    const pushFileAttachment = async (
+    // attachment round-trip safely back out to any connector. The stored URL
+    // is a `telegram-file:` capability reference; bytes are fetched with the
+    // bot token at enrichment time in handleMessage.
+    const pushFileAttachment = (
       fileId: string,
       contentType: ContentType,
       title: string,
       source: string,
-    ): Promise<void> => {
-      try {
-        const fileLink = await this.bot.telegram.getFileLink(fileId);
-        attachments.push({
-          id: fileId,
-          url: fileLink.toString(),
-          title,
-          source,
-          contentType,
-        });
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: this.runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          `Error attaching ${source}`,
-        );
-      }
+    ): void => {
+      attachments.push({
+        id: fileId,
+        url: telegramFileRefUrl(fileId),
+        title,
+        source,
+        contentType,
+      });
     };
 
     if ("voice" in message && message.voice) {
-      await pushFileAttachment(
+      pushFileAttachment(
         message.voice.file_id,
         "audio",
         "Voice Message",
@@ -833,7 +867,7 @@ export class MessageManager {
       );
     }
     if ("audio" in message && message.audio) {
-      await pushFileAttachment(
+      pushFileAttachment(
         message.audio.file_id,
         "audio",
         message.audio.title || message.audio.file_name || "Audio",
@@ -841,15 +875,10 @@ export class MessageManager {
       );
     }
     if ("video" in message && message.video) {
-      await pushFileAttachment(
-        message.video.file_id,
-        "video",
-        "Video",
-        "Video",
-      );
+      pushFileAttachment(message.video.file_id, "video", "Video", "Video");
     }
     if ("video_note" in message && message.video_note) {
-      await pushFileAttachment(
+      pushFileAttachment(
         message.video_note.file_id,
         "video",
         "Video Note",
@@ -857,7 +886,7 @@ export class MessageManager {
       );
     }
     if ("animation" in message && message.animation) {
-      await pushFileAttachment(
+      pushFileAttachment(
         message.animation.file_id,
         "video",
         "Animation",
@@ -865,7 +894,7 @@ export class MessageManager {
       );
     }
     if ("sticker" in message && message.sticker) {
-      await pushFileAttachment(
+      pushFileAttachment(
         message.sticker.file_id,
         "image",
         "Sticker",
@@ -884,6 +913,73 @@ export class MessageManager {
     );
 
     return { processedContent, attachments };
+  }
+
+  /**
+   * Enrich `telegram-file:` reference attachments just before a message enters
+   * the reply path. Core's deferred `processAttachments` enrichment fetches
+   * `attachment.url` itself, and these references are deliberately not servable
+   * URLs — persisting the token-bearing Bot API URL would leak the bot token
+   * into the message store. Bytes are therefore resolved here, through
+   * {@link fetchTelegramFileBytes}, at exactly the point core's enrichment
+   * would have run, using the same model contracts (TRANSCRIPTION for
+   * audio/video, IMAGE_DESCRIPTION for undescribed images). A failure leaves
+   * the attachment un-enriched so the runtime records its own explicit
+   * transient state instead of a fabricated result.
+   */
+  private async enrichFileRefAttachments(
+    attachments: Media[] | undefined,
+  ): Promise<void> {
+    if (!attachments?.length) return;
+    for (const attachment of attachments) {
+      const fileId = telegramFileIdFromRef(attachment.url);
+      if (!fileId) continue;
+      try {
+        if (
+          (attachment.contentType === "audio" ||
+            attachment.contentType === "video") &&
+          !attachment.text
+        ) {
+          const { buffer } = await this.fetchTelegramFileBytes(fileId);
+          const transcript = await this.runtime.useModel(
+            ModelType.TRANSCRIPTION,
+            buffer,
+          );
+          if (typeof transcript === "string" && transcript.trim().length > 0) {
+            attachment.text = transcript.trim();
+            attachment.description = `Transcript: ${transcript.trim()}`;
+          }
+        } else if (
+          attachment.contentType === "image" &&
+          !attachment.description
+        ) {
+          const { buffer, contentType } =
+            await this.fetchTelegramFileBytes(fileId);
+          const result = (await this.runtime.useModel(
+            ModelType.IMAGE_DESCRIPTION,
+            `data:${contentType};base64,${buffer.toString("base64")}`,
+          )) as { title?: string; description?: string } | undefined;
+          if (result?.description) {
+            attachment.description = `[Image: ${result.title ?? attachment.title ?? "Image"}\n${result.description}]`;
+            attachment.text = attachment.description;
+          }
+        }
+      } catch (error) {
+        // error-policy:J4 enrichment is best-effort at the connector boundary:
+        // the attachment stays available un-enriched and core records an
+        // explicit transient failure marker downstream.
+        logger.warn(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId: this.accountId,
+            contentType: attachment.contentType,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to enrich Telegram file attachment; continuing un-enriched",
+        );
+      }
+    }
   }
 
   /**
@@ -1233,7 +1329,13 @@ export class MessageManager {
           : {}),
       };
 
-      if (isUrl) {
+      const fileRefId = telegramFileIdFromRef(mediaPath);
+      if (fileRefId) {
+        // A stored inbound capability reference names a Telegram file_id; the
+        // Bot API re-sends those by id directly, so the round-trip never needs
+        // the token-bearing file URL.
+        await sendFunction(ctx.chat.id, fileRefId, sendOptions);
+      } else if (isUrl) {
         // Handle HTTP URLs
         await sendFunction(ctx.chat.id, mediaPath, sendOptions);
       } else {
@@ -1304,8 +1406,15 @@ export class MessageManager {
         }
 
         if (availableLength > 0) {
-          currentChunk += remaining.slice(0, availableLength);
-          remaining = remaining.slice(availableLength);
+          // A raw slice() can land between the two UTF-16 code units of a
+          // surrogate pair (most emoji), leaving a lone surrogate at the
+          // chunk boundary that corrupts the character on the wire.
+          // truncateWellFormed backs the cut off by one unit instead.
+          const head = truncateWellFormed(remaining, availableLength);
+          if (head.length > 0) {
+            currentChunk += head;
+            remaining = remaining.slice(head.length);
+          }
         }
 
         if (currentChunk) {
@@ -1701,6 +1810,11 @@ export class MessageManager {
           "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
         );
       } else if (this.runtime.messageService) {
+        // The stored attachment URLs are token-free `telegram-file:` capability
+        // references, which core's deferred enrichment cannot fetch — resolve
+        // bytes and enrich here, at the same point of the turn core's
+        // processAttachments would have fetched the old token-bearing URLs.
+        await this.enrichFileRefAttachments(cleanedAttachments);
         await this.runtime.messageService.handleMessage(
           this.runtime,
           memory,
@@ -2206,8 +2320,10 @@ export class MessageManager {
       // Create callback for handling reaction responses
       const callback: HandlerCallback = async (content: Content) => {
         try {
-          // Add null check for content.text
-          const replyText = content.text ?? "";
+          const replyText = truncateWellFormed(
+            toWellFormedUnicode(content.text ?? ""),
+            MAX_MESSAGE_LENGTH,
+          );
           const sentMessage = await ctx.reply(replyText);
           const responseMemory: Memory = {
             id: createUniqueUuid(
@@ -2222,6 +2338,7 @@ export class MessageManager {
             roomId,
             content: {
               ...content,
+              text: sentMessage.text,
               inReplyTo: reactionId,
               metadata: { accountId: this.accountId },
             },

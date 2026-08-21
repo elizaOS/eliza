@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
@@ -234,7 +234,12 @@ function declarationEntryIsGenerated(manifest, specifier, packageName) {
   );
 }
 
-function workspaceSourceEntry(manifest, specifier, packageName, packageDir) {
+export function workspaceSourceEntry(
+  manifest,
+  specifier,
+  packageName,
+  packageDir,
+) {
   const subpath =
     specifier === packageName ? "." : `.${specifier.slice(packageName.length)}`;
   const exports = manifest.exports;
@@ -263,7 +268,7 @@ function workspaceSourceEntry(manifest, specifier, packageName, packageDir) {
       star,
       subpath.length - (pattern.length - star - 1),
     );
-    candidate = candidate.replace("*", captured);
+    candidate = candidate.replaceAll("*", captured);
   }
   const resolved = path.resolve(packageDir, candidate);
   return existsSync(resolved) ? resolved : null;
@@ -614,7 +619,10 @@ export function auditTsconfigWorkspaceResolution(options = {}) {
   return { projects, violations: [...new Set(violations)].sort() };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const result = auditTsconfigWorkspaceResolution();
   console.log(
     `[audit-tsconfig-workspace-resolution] inspected ${result.projects} project(s)`,

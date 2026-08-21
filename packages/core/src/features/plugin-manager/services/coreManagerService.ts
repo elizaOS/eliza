@@ -14,13 +14,13 @@
 import { exec, execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import fs from "fs-extra";
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
 import { Service } from "../../../types/service.ts";
 import { formatError } from "../../../utils/format-error.ts";
+import * as fs from "../../../utils/fs-extra-lite.ts";
 import { resolveStateDir } from "../utils/paths.ts";
 import { getRegistryEntry } from "./pluginRegistryService.ts";
 

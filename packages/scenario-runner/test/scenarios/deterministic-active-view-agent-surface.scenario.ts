@@ -29,7 +29,6 @@ import { ModelType } from "@elizaos/core";
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
   finalMessageUserText,
-  matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   stage1ResponseHandlerFixture,
 } from "@elizaos/core/testing";
@@ -223,6 +222,71 @@ function promptHasActiveViewElements(value: string): boolean {
   ].every((needle) => value.includes(needle));
 }
 
+function postTurnEvaluatorFixture({
+  capability,
+  elementId,
+  input,
+}: {
+  capability: "agent-click" | "agent-fill";
+  elementId: string;
+  input: string;
+}) {
+  const expectedEvaluatorNames = [
+    "factMemory",
+    "preferences",
+    "relationships",
+    "identities",
+    "success",
+    "ftu_goal_discovery",
+    capability === "agent-fill" ? "experiencePatterns" : "skillProposal",
+  ];
+  return {
+    name: `active-view-post-turn-${capability}-${elementId}`,
+    match: (call: DeterministicModelCall) => {
+      if (call.modelType !== ModelType.TEXT_SMALL) return false;
+      const promptText =
+        call.params.prompt ??
+        (Array.isArray(call.params.messages)
+          ? call.params.messages
+              .map((m: { content?: string }) => m.content ?? "")
+              .join("\n")
+          : "");
+      const schema = call.params.responseSchema as
+        | { properties?: Record<string, unknown> }
+        | undefined;
+      const evaluatorNames = Object.keys(schema?.properties ?? {});
+      return (
+        promptText.includes("# Task: Post-turn evaluation") &&
+        promptText.includes(input) &&
+        promptText.includes(capability) &&
+        promptText.includes(elementId) &&
+        evaluatorNames.length === expectedEvaluatorNames.length &&
+        expectedEvaluatorNames.every((name) => evaluatorNames.includes(name))
+      );
+    },
+    response: {
+      factMemory: { ops: [] },
+      preferences: { ops: [] },
+      relationships: { relationships: [] },
+      identities: { identities: [] },
+      success: {
+        completed: true,
+        reason: "The requested active-view interaction completed successfully.",
+      },
+      ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+      ...(capability === "agent-fill"
+        ? { experiencePatterns: { experiences: [] } }
+        : {
+            skillProposal: {
+              extract: false,
+              reason: "This one-off view interaction is not a reusable skill.",
+            },
+          }),
+    },
+    times: 1,
+  };
+}
+
 function plannerFixture({
   capability,
   elementId,
@@ -349,7 +413,9 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-app-control", "scenario-active-view-routes"],
+    // The route wrapper is a scenario-local Plugin registered by the seed.
+    // Required plugins are package specifiers loaded before seed execution.
+    plugins: ["@elizaos/plugin-app-control"],
   },
   seed: [
     {
@@ -398,6 +464,11 @@ export default scenario({
             messageToUser: "Filled the active ledger title.",
             value: "Close Issue 11355",
           }),
+          postTurnEvaluatorFixture({
+            capability: "agent-fill",
+            elementId: "ledger-title",
+            input: FILL_TEXT,
+          }),
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
@@ -416,6 +487,11 @@ export default scenario({
             elementId: "save-ledger",
             input: CLICK_TEXT,
             messageToUser: "Saved the active ledger.",
+          }),
+          postTurnEvaluatorFixture({
+            capability: "agent-click",
+            elementId: "save-ledger",
+            input: CLICK_TEXT,
           }),
         );
         return undefined;

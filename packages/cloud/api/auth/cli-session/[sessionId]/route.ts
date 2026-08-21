@@ -5,7 +5,10 @@
  */
 
 import { Hono } from "hono";
-import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
+import {
+  cliAuthSessionsService,
+  looksLikeCliAuthSessionId,
+} from "@/lib/services/cli-auth-sessions";
 import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -23,8 +26,8 @@ app.get("/", async (c) => {
   const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
   try {
     const sessionId = c.req.param("sessionId");
-    if (!sessionId) {
-      return c.json({ error: "Session ID is required" }, 400, corsHeaders);
+    if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {
+      return c.json({ error: "Invalid session ID format" }, 400, corsHeaders);
     }
 
     const session = await cliAuthSessionsService.getActiveSession(sessionId);

@@ -1,7 +1,18 @@
 // Defines the payment requests Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { apps } from "./apps";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -19,6 +30,7 @@ import { users } from "./users";
  */
 export const PAYMENT_REQUEST_PROVIDERS = ["stripe", "oxapay", "x402", "wallet_native"] as const;
 export type PaymentRequestProvider = (typeof PAYMENT_REQUEST_PROVIDERS)[number];
+export const MAX_PAYMENT_REQUEST_LEDGER_CENTS = 99_999_999;
 
 export const PAYMENT_REQUEST_STATUSES = [
   "pending",
@@ -44,6 +56,12 @@ export const PAYMENT_REQUEST_EVENT_NAMES = [
   "webhook.received",
 ] as const;
 export type PaymentRequestEventName = (typeof PAYMENT_REQUEST_EVENT_NAMES)[number];
+
+export const PAYMENT_PROVIDER_EVENT_DISPOSITIONS = ["settled", "failed"] as const;
+export type PaymentProviderEventDisposition = (typeof PAYMENT_PROVIDER_EVENT_DISPOSITIONS)[number];
+
+export const PAYMENT_CALLBACK_STATES = ["pending", "dispatched", "failed", "superseded"] as const;
+export type PaymentCallbackState = (typeof PAYMENT_CALLBACK_STATES)[number];
 
 export type PaymentContext =
   | { kind: "any_payer" }
@@ -95,6 +113,9 @@ export const paymentRequests = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
+    id_organization_provider_unique: uniqueIndex(
+      "payment_requests_id_organization_provider_unique",
+    ).on(table.id, table.organization_id, table.provider),
     org_created_idx: index("idx_payment_requests_org_created").on(
       table.organization_id,
       table.created_at,
@@ -135,6 +156,18 @@ export const paymentRequestEvents = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    // Provider identity and payload binding make webhook fulfillment durable.
+    // These columns are populated only for webhook.received outbox rows.
+    provider: text("provider").$type<PaymentRequestProvider>(),
+    provider_event_id: text("provider_event_id"),
+    provider_tx_ref: text("provider_tx_ref"),
+    provider_disposition: text("provider_disposition").$type<PaymentProviderEventDisposition>(),
+    payload_digest: text("payload_digest"),
+    callback_state: text("callback_state").$type<PaymentCallbackState>(),
+    callback_attempts: integer("callback_attempts").notNull().default(0),
+    callback_last_error: text("callback_last_error"),
+    callback_next_attempt_at: timestamp("callback_next_attempt_at", { withTimezone: true }),
+    callback_claimed_until: timestamp("callback_claimed_until", { withTimezone: true }),
     occurred_at: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -142,6 +175,17 @@ export const paymentRequestEvents = pgTable(
       table.payment_request_id,
       table.occurred_at,
     ),
+    provider_event_unique: uniqueIndex("payment_request_events_provider_event_unique")
+      .on(table.provider, table.provider_event_id)
+      .where(sql`${table.event_name} = 'webhook.received'`),
+    settled_provider_tx_unique: uniqueIndex("payment_request_events_settled_provider_tx_unique")
+      .on(table.provider, table.provider_tx_ref)
+      .where(
+        sql`${table.event_name} = 'webhook.received' AND ${table.provider_disposition} = 'settled'`,
+      ),
+    callback_due_idx: index("payment_request_events_callback_due_idx")
+      .on(table.callback_state, table.callback_next_attempt_at)
+      .where(sql`${table.event_name} = 'webhook.received'`),
     event_name_check: check(
       "payment_request_events_event_name_check",
       sql`${table.event_name} IN (
@@ -149,6 +193,23 @@ export const paymentRequestEvents = pgTable(
         'payment.settled','payment.failed','payment.canceled','payment.expired',
         'callback.dispatched','callback.failed','webhook.received'
       )`,
+    ),
+    provider_event_shape_check: check(
+      "payment_request_events_provider_event_shape_check",
+      sql`(${table.event_name} <> 'webhook.received' AND ${table.provider} IS NULL AND ${table.provider_event_id} IS NULL AND ${table.provider_tx_ref} IS NULL AND ${table.provider_disposition} IS NULL AND ${table.payload_digest} IS NULL AND ${table.callback_state} IS NULL)
+        OR (${table.event_name} = 'webhook.received' AND ${table.provider} IS NOT NULL AND ${table.provider_event_id} IS NOT NULL AND ${table.provider_tx_ref} IS NOT NULL AND ${table.provider_disposition} IS NOT NULL AND ${table.payload_digest} IS NOT NULL AND ${table.callback_state} IS NOT NULL)`,
+    ),
+    provider_event_provider_check: check(
+      "payment_request_events_provider_event_provider_check",
+      sql`${table.provider} IS NULL OR ${table.provider} IN ('stripe','oxapay','x402','wallet_native')`,
+    ),
+    provider_event_disposition_check: check(
+      "payment_request_events_provider_event_disposition_check",
+      sql`${table.provider_disposition} IS NULL OR ${table.provider_disposition} IN ('settled','failed')`,
+    ),
+    callback_state_check: check(
+      "payment_request_events_callback_state_check",
+      sql`${table.callback_state} IS NULL OR ${table.callback_state} IN ('pending','dispatched','failed','superseded')`,
     ),
   }),
 );

@@ -7,6 +7,7 @@
 
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution";
 import type { JsonValue } from "../types/primitives.ts";
+import type { TrajectorySemanticStageRecord } from "./trajectory-semantic-stage";
 
 // Re-export the canonical retrieval-funnel shapes from `trajectory-recorder`
 // so external consumers depend on the services-layer surface instead of
@@ -259,6 +260,8 @@ export interface TrajectoryStepRecord {
 	 * can isolate the evaluator seam.
 	 */
 	evaluatorName?: string;
+	/** Ordered semantic stages captured during this step's runtime work. */
+	semanticStages?: TrajectorySemanticStageRecord[];
 }
 
 export const TRAJECTORY_STEP_SCRIPT_MAX_CHARS = 4096;

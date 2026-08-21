@@ -1,21 +1,29 @@
-# This workflow is the canonical develop branch-health validation entry point.
-# Pull requests intentionally do not run repository workflows; develop validates
-# the integrated tree after merge.
+# This workflow is the canonical required merge-candidate and develop branch-health
+# validation entry point. Every pull request and merge-group candidate publishes
+# the stable fail-closed `CI / All Tests Passed` admission context.
 name: CI
 
 on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [develop]
+  merge_group:
+    types: [checks_requested]
   workflow_call:
   workflow_dispatch:
 
-# A manual run is a diagnostic: it must not share the push ref group, or a
-# develop push storm parks it `pending` forever and then supersedes it, so
-# branch health can never be read on demand. Give workflow_dispatch its own
-# run-scoped identity — the same shape test.yml already uses.
+# Manual diagnostics keep a run-scoped identity, while PR and merge-queue runs
+# still supersede stale work. A develop push uses a stable terminal-v2 group
+# with the default single-pending queue: the running verification finishes and
+# GitHub retains only the newest waiting tip. The versioned group also avoids
+# inheriting the pre-fix ci-refs/heads/develop run that can remain retained.
+# Do not add queue: max here; it is incompatible with cancellable PR/merge
+# events and would retain every merge-wave push instead of only the latest.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('terminal-v2-{0}', github.ref) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 permissions:
   contents: read
@@ -49,6 +57,24 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
+
+      # A mid-merge tree can carry literal conflict markers into otherwise
+      # buildable source — auth-critical UI files once shipped this way.
+      # Fail in seconds, before install/build spend, when any tracked file
+      # starts a line with the <<<<<<< or >>>>>>> marker.
+      - name: Reject unresolved merge-conflict markers
+        run: |
+          set -euo pipefail
+          status=0
+          git grep -n -E '^(<{7}|>{7})( |$)' -- . || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Unresolved git merge-conflict marker(s) in the tracked files listed above. Finish or abort the merge before landing."
+            exit 1
+          elif [ "$status" -gt 1 ]; then
+            echo "::error::merge-conflict marker scan failed (git grep exit $status)"
+            exit 1
+          fi
+          echo "No unresolved merge-conflict markers in tracked files."
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
@@ -484,6 +510,16 @@ jobs:
   device:
     name: Device bundles
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device')
+    # A workflow_call caller must grant every permission any nested job
+    # requests, even jobs whose `if` can never fire on this event: GitHub
+    # validates the compiled graph before evaluating conditions, and an
+    # uncovered nested request fails the entire CI run at startup. These
+    # mirror the schedule-only reconcile-scheduled-android-status job; the
+    # label gate above keeps the grant off unlabeled PRs entirely.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/device-e2e.yml
 
   secrets:
@@ -502,20 +538,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version=8.30.1
-          archive="$RUNNER_TEMP/gitleaks.tar.gz"
-          curl --fail --location --silent --show-error \
-            --output "$archive" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
-          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          # Version and SHA256 are pinned in the shared installer
+          # (.github/scripts/install-gitleaks.sh); bump them there.
+          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Scan changed commits
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: |
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
@@ -553,7 +586,7 @@ jobs:
             --log-opts "$range"
 
   required:
-    name: Required
+    name: All Tests Passed
     if: always()
     needs:
       [

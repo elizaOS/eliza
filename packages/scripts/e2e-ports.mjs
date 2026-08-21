@@ -17,7 +17,8 @@
  * packages/homepage/scripts/e2e-port.mjs.
  */
 
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 /**
  * Child side: publish the port this process actually bound. The write goes to
@@ -31,9 +32,19 @@ export function advertisePort(portFile, port) {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`advertisePort: not a bound TCP port: ${port}`);
   }
-  const tmp = `${portFile}.${process.pid}.tmp`;
-  writeFileSync(tmp, `${port}\n`, "utf8");
-  renameSync(tmp, portFile);
+  const tmp = `${portFile}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tmp, `${port}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(tmp, portFile);
+  } finally {
+    // error-policy:J6 a failed atomic rename must not leave a stale temporary
+    // advertisement that can confuse later diagnostics or process runs.
+    rmSync(tmp, { force: true });
+  }
 }
 
 /**
@@ -52,21 +63,38 @@ export async function waitForAdvertisedPort(
 ) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if (child && child.exitCode !== null) {
+    if (child && (child.exitCode !== null || child.signalCode !== null)) {
       throw new Error(
-        `waitForAdvertisedPort: child exited with code ${child.exitCode} before advertising a port (${portFile})`,
+        `waitForAdvertisedPort: child exited with ${
+          child.exitCode !== null
+            ? `code ${child.exitCode}`
+            : `signal ${child.signalCode}`
+        } before advertising a port (${portFile})`,
       );
     }
     let raw = null;
     try {
       raw = readFileSync(portFile, "utf8");
-    } catch {
-      // error-policy:J3 an absent port file is the expected pre-advertisement
-      // state while the child boots; only parsed file content below is
-      // treated as a result, and timeout/child-exit surface as errors.
+    } catch (error) {
+      // error-policy:J3 only absence is the expected pre-advertisement state;
+      // permission, descriptor, and filesystem failures are not equivalent to
+      // a child that has not advertised yet.
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      ) {
+        // error-policy:J2 preserve the underlying filesystem failure while
+        // adding the advertisement path the orchestrator needs to diagnose it.
+        throw new Error(`waitForAdvertisedPort: failed to read ${portFile}`, {
+          cause: error,
+        });
+      }
     }
     if (raw !== null) {
-      const port = Number.parseInt(raw.trim(), 10);
+      const value = raw.trim();
+      const port = /^\d+$/.test(value) ? Number.parseInt(value, 10) : NaN;
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
         throw new Error(
           `waitForAdvertisedPort: ${portFile} does not contain a port: ${JSON.stringify(raw)}`,

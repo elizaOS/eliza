@@ -99,6 +99,18 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       setDeviceSettings(settingsResult);
       setSystemStatus(statusResult);
       setBrightness(clampUnit(settingsResult.brightness));
+      // Seed slider positions from the freshly loaded/refreshed server state.
+      // This is the ONLY place the whole map is rebuilt: doing it on every
+      // deviceSettings change would clobber unsaved edits to other streams
+      // whenever a single stream (or brightness) apply replaces the object.
+      setVolumes(
+        Object.fromEntries(
+          settingsResult.volumes.map((volume) => [
+            volume.stream,
+            clampVolumeValue(volume.current, volume.max),
+          ]),
+        ),
+      );
     } catch (err) {
       // error-policy:J4 surface the load failure into the view's error state (three-state UI)
       setError(err instanceof Error ? err.message : String(err));
@@ -110,18 +122,6 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (!deviceSettings) return;
-    setVolumes(
-      Object.fromEntries(
-        deviceSettings.volumes.map((volume) => [
-          volume.stream,
-          clampVolumeValue(volume.current, volume.max),
-        ]),
-      ),
-    );
-  }, [deviceSettings]);
 
   const roles = useMemo(() => systemStatus?.roles ?? [], [systemStatus]);
   const orderedVolumes = useMemo(
@@ -145,6 +145,17 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       });
       setDeviceSettings(next);
       setBrightness(clampUnit(next.brightness));
+      setVolumes((current) =>
+        Object.fromEntries(
+          next.volumes.map((volume) => [
+            volume.stream,
+            clampVolumeValue(
+              current[volume.stream] ?? volume.current,
+              volume.max,
+            ),
+          ]),
+        ),
+      );
       setNotice("Brightness updated.");
     } catch (err) {
       // error-policy:J4 surface the brightness-save failure into the view's error state
@@ -168,6 +179,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           stream: volume.stream,
           volume: nextValue,
         });
+        const mergedCurrent = clampVolumeValue(next.current, next.max);
         setDeviceSettings((current) => {
           if (!current) return current;
           return {
@@ -176,12 +188,18 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               entry.stream === next.stream
                 ? {
                     ...next,
-                    current: clampVolumeValue(next.current, next.max),
+                    current: mergedCurrent,
                   }
                 : entry,
             ),
           };
         });
+        // Only the applied stream's slider snaps to the merged server value;
+        // other streams retain their in-progress unsaved edits.
+        setVolumes((current) => ({
+          ...current,
+          [next.stream]: mergedCurrent,
+        }));
         setNotice(
           `${VOLUME_LABELS[volume.stream] ?? volume.stream} volume updated.`,
         );

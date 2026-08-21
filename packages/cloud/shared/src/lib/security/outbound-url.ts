@@ -1,4 +1,8 @@
-// Defines cloud shared outbound url behavior for backend service consumers.
+/**
+ * SSRF guard for cloud-shared outbound fetches and registration-time URL
+ * screening: rejects credentials, localhost, and private/reserved IP literals,
+ * and resolves+pins DNS at fetch time so rebinding cannot bypass the check.
+ */
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -7,86 +11,99 @@ export function normalizeHostname(hostname: string): string {
   return hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
-function ipv4FromMappedIpv6(address: string): string | null {
-  const normalized = normalizeHostname(address);
-
-  if (normalized.startsWith("::ffff:")) {
-    const mapped = normalized.slice("::ffff:".length);
-    if (mapped.includes(".")) {
-      return mapped;
+/**
+ * Expand an IPv6 address string into its eight 16-bit groups, handling `::`
+ * compression and a dotted-quad tail (`64:ff9b::169.254.169.254`, the
+ * inet_pton mixed form). Returns null when the string is not a syntactically
+ * valid IPv6 address — the caller then falls back to the first-hextet string
+ * classification only. Ported from packages/core/src/network/ssrf.ts so the
+ * two outbound guards classify transition ranges identically.
+ */
+function parseIpv6Hextets(address: string): number[] | null {
+  let input = address;
+  // A dotted tail carries the final 32 bits as IPv4 text; rewrite it in place
+  // as two hex groups so the expansion below stays uniform. Keeping the colon
+  // that precedes the tail preserves a `::` compression spanning it.
+  if (input.includes(".")) {
+    const colon = input.lastIndexOf(":");
+    if (colon === -1) return null;
+    const octetParts = input.slice(colon + 1).split(".");
+    if (octetParts.length !== 4) return null;
+    const octets: number[] = [];
+    for (const part of octetParts) {
+      if (!/^\d{1,3}$/.test(part)) return null;
+      const octet = Number.parseInt(part, 10);
+      if (octet > 255) return null;
+      octets.push(octet);
     }
+    input = `${input.slice(0, colon + 1)}${(((octets[0] << 8) | octets[1]) & 0xffff).toString(16)}:${(((octets[2] << 8) | octets[3]) & 0xffff).toString(16)}`;
+  }
+  const parseGroups = (text: string): number[] | null => {
+    if (!text) return [];
+    const groups: number[] = [];
+    for (const part of text.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
+      groups.push(Number.parseInt(part, 16));
+    }
+    return groups;
+  };
+  const halves = input.split("::");
+  if (halves.length > 2) return null;
+  const head = parseGroups(halves[0] ?? "");
+  if (head === null) return null;
+  if (halves.length === 1) {
+    return head.length === 8 ? head : null;
+  }
+  const tail = parseGroups(halves[1] ?? "");
+  if (tail === null) return null;
+  // "::" must compress at least one all-zero group.
+  const zeros = 8 - (head.length + tail.length);
+  if (zeros < 1) return null;
+  return [...head, ...new Array<number>(zeros).fill(0), ...tail];
+}
 
-    const parts = mapped.split(":");
-    if (parts.length === 2) {
-      const high = Number.parseInt(parts[0], 16);
-      const low = Number.parseInt(parts[1], 16);
-      if (
-        Number.isInteger(high) &&
-        Number.isInteger(low) &&
-        high >= 0 &&
-        high <= 0xffff &&
-        low >= 0 &&
-        low <= 0xffff
-      ) {
-        return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
-      }
+/**
+ * Extract the policy-relevant embedded IPv4 from the transition/coexistence
+ * ranges an attacker can route to internal space: IPv4-compatible `::/96`
+ * (deprecated, still honored by some stacks), IPv4-mapped `::ffff:0:0/96`,
+ * NAT64 `64:ff9b::/96` (RFC 6052 well-known prefix — live on AWS
+ * IPv6-only/DNS64 subnets), 6to4 `2002::/16` (RFC 3056, IPv4 in bits 16..48),
+ * and Teredo `2001:0000::/32` (RFC 4380, client IPv4 XOR-obfuscated in the low
+ * 32 bits). On those network paths a literal URL never touches DNS, so
+ * screening the embedded IPv4 is the only chance to classify the address the
+ * packet actually reaches. Returns null when the address is outside those
+ * ranges. Ported from packages/core/src/network/ssrf.ts.
+ */
+function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
+  const [h0, h1, h2, , , h5, h6, h7] = hextets;
+  const low32ToIpv4 = (): number[] => [(h6 >> 8) & 0xff, h6 & 0xff, (h7 >> 8) & 0xff, h7 & 0xff];
+  // IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96 — the embedded address
+  // is the low 32 bits. (`::` and `::1` are classified by the caller, but their
+  // embedded 0.0.0.0/0.0.0.1 are caught by the IPv4 zero-net rule regardless.)
+  if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
+    if (hextets[4] === 0 && (h5 === 0 || h5 === 0xffff)) {
+      return low32ToIpv4();
     }
   }
-
-  const parts = normalized.split(":");
-  if (
-    parts.length === 8 &&
-    parts.slice(0, 5).every((part) => part === "0") &&
-    parts[5] === "ffff"
-  ) {
-    const high = Number.parseInt(parts[6], 16);
-    const low = Number.parseInt(parts[7], 16);
-    if (
-      Number.isInteger(high) &&
-      Number.isInteger(low) &&
-      high >= 0 &&
-      high <= 0xffff &&
-      low >= 0 &&
-      low <= 0xffff
-    ) {
-      return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+  // NAT64 well-known prefix 64:ff9b::/96 — embedded IPv4 is the low 32 bits.
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && hextets[3] === 0) {
+    if (hextets[4] === 0 && h5 === 0) {
+      return low32ToIpv4();
     }
   }
-
-  // Deprecated IPv4-compatible IPv6 (`::/96`, RFC 4291 §2.5.5.1): `::a.b.c.d` or
-  // its compressed-hex form `::HHHH:LLLL` with the high 96 bits all zero. These
-  // embed an IPv4 address that resolvers may route — `::169.254.169.254` reaches
-  // the cloud metadata endpoint — so decode the IPv4 and screen it. `::` and
-  // `::1` are NOT IPv4-compatible host addresses and are handled elsewhere.
-  if (normalized.startsWith("::") && normalized !== "::" && normalized !== "::1") {
-    const tail = normalized.slice("::".length);
-    if (tail.includes(".")) {
-      // `::a.b.c.d` — the only colon-less, dotted tail after `::`.
-      if (!tail.includes(":")) {
-        return tail;
-      }
-    } else {
-      const tailParts = tail.split(":");
-      if (tailParts.length === 2) {
-        const high = Number.parseInt(tailParts[0], 16);
-        const low = Number.parseInt(tailParts[1], 16);
-        if (
-          Number.isInteger(high) &&
-          Number.isInteger(low) &&
-          high >= 0 &&
-          high <= 0xffff &&
-          low >= 0 &&
-          low <= 0xffff &&
-          // Exclude the tiny low range (`::0`–`::ffff`) that is not a routable
-          // IPv4-compatible host: a single trailing group is `::N`, not `::H:L`.
-          (high !== 0 || low !== 0)
-        ) {
-          return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
-        }
-      }
-    }
+  // 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
+  if (h0 === 0x2002) {
+    return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];
   }
-
+  // Teredo 2001:0000::/32 — client IPv4 is the low 32 bits XOR 0xffffffff.
+  if (h0 === 0x2001 && h1 === 0x0000) {
+    return [
+      ((h6 ^ 0xffff) >> 8) & 0xff,
+      (h6 ^ 0xffff) & 0xff,
+      ((h7 ^ 0xffff) >> 8) & 0xff,
+      (h7 ^ 0xffff) & 0xff,
+    ];
+  }
   return null;
 }
 
@@ -122,14 +139,31 @@ function isForbiddenIpv4(address: string): boolean {
 
 function isForbiddenIpv6(address: string): boolean {
   const normalized = normalizeHostname(address);
-  const mappedIpv4 = ipv4FromMappedIpv6(normalized);
-
-  if (mappedIpv4) {
-    return isForbiddenIpAddress(mappedIpv4);
-  }
 
   if (normalized === "::" || normalized === "::1") return true;
 
+  const hextets = parseIpv6Hextets(normalized);
+  if (hextets) {
+    const [first, second] = hextets;
+    if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+    if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+    if (first === 0x2001 && second === 0x0db8) return true; // 2001:db8::/32 documentation
+
+    // Transition ranges (IPv4-mapped/compatible, NAT64, 6to4, Teredo) embed an
+    // IPv4 the network may translate the literal to — e.g. a daemon on a
+    // NAT64/DNS64 subnet connecting to [64:ff9b::a9fe:a9fe] actually reaches
+    // 169.254.169.254 — so screen that embedded address with the IPv4 policy
+    // too. This also covers the leading-zero-expanded spellings of `::`/`::1`
+    // (0:0:0:0:0:0:0:0 / 0:0:0:0:0:0:0:1) via the zero-net IPv4 rule.
+    const embedded = embeddedIpv4ForPolicy(hextets);
+    if (embedded) {
+      return isForbiddenIpv4(embedded.join("."));
+    }
+    return false;
+  }
+
+  // The address passed isIP but did not expand — keep the historical
+  // first-hextet string classification as the fallback.
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
     return true;
   }
@@ -208,6 +242,27 @@ function validateUrlSyntax(rawUrl: string): URL {
  */
 export function assertSafeOutboundUrlSync(rawUrl: string): URL {
   return validateUrlSyntax(rawUrl);
+}
+
+/**
+ * zod-refine-friendly predicate form of {@link assertSafeOutboundUrlSync} for
+ * registration-time URL fields (e.g. an app's `app_url` / `allowed_origins`).
+ * Null/empty values pass — presence and shape are the schema's job; this only
+ * screens dangerous targets (non-http(s), embedded credentials, localhost,
+ * private/reserved IP literals). DNS-based screening still runs at fetch time
+ * via safeFetch, so a momentarily unresolvable public host is not rejected
+ * here.
+ */
+export function isSafeRegistrationUrl(value: string | null | undefined): boolean {
+  if (value == null || value === "") return true;
+  try {
+    assertSafeOutboundUrlSync(value);
+    return true;
+  } catch {
+    // error-policy:J3 untrusted registration input — a guard rejection is an
+    // explicit invalid result (false), never a swallowed error.
+    return false;
+  }
 }
 
 /**

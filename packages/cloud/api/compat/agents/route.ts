@@ -35,6 +35,7 @@ import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -109,7 +110,12 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const { user, authMethod } = await requireCompatAuth(c);
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
 
     const parsed = createAgentSchema.safeParse(body);
     if (!parsed.success) {
@@ -187,6 +193,10 @@ app.post("/", async (c) => {
         agentName: parsed.data.agentName,
         agentConfig: sanitizedConfig,
         environmentVars: parsed.data.environmentVars,
+        // Compat remains container-free unless this deployment explicitly
+        // owns eager provisioning. Never let the persistence default choose
+        // Shared for a request that will immediately enqueue container work.
+        executionTier: autoProvision ? "dedicated-always" : "shared",
         maxNonTerminalAgents,
       });
     } catch (error) {

@@ -9,6 +9,7 @@ import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { drainAffiliatePayoutOutbox } from "@/lib/services/affiliate-payout-outbox";
 import { sweepPendingAppUsageProjections } from "@/lib/services/app-usage-projections";
 import { creditsService } from "@/lib/services/credits";
+import { reconcileNativeStoragePuts } from "@/lib/services/storage/native-storage-put";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -21,6 +22,10 @@ const app = new Hono<AppEnv>();
 async function handleSweepCreditReservations(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
+    // Native storage owns its provider-backed holds. Reconcile them before the
+    // generic stale-hold sweep so a strong R2 HEAD, not age alone, decides
+    // whether an ambiguous PUT settles or refunds.
+    const nativeStorage = await reconcileNativeStoragePuts(c.env.BLOB);
     const [stats, affiliatePayouts, appUsageProjections] = await Promise.all([
       creditsService.sweepStaleReservations(),
       drainAffiliatePayoutOutbox(),
@@ -34,6 +39,7 @@ async function handleSweepCreditReservations(c: Context<AppEnv>) {
     return c.json({
       success: true,
       stats,
+      nativeStorage,
       affiliatePayouts,
       appUsageProjections,
     });

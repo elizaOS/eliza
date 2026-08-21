@@ -9,7 +9,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -22,6 +22,10 @@ import type {
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
+import {
+  assertSolanaBase58CharBudget,
+  assertSolanaSecretCharBudget,
+} from "./solana-secret-budget.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
@@ -333,6 +337,7 @@ function base58Encode(data: Buffer | Uint8Array): string {
 }
 
 function base58Decode(str: string): Buffer {
+  assertSolanaBase58CharBudget(str);
   if (str.length === 0) return Buffer.alloc(0);
   let num = 0n;
   for (const c of str) {
@@ -355,6 +360,7 @@ const PLACEHOLDER_RE =
   /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
 
 function decodeSolanaPrivateKey(key: string): Buffer {
+  assertSolanaSecretCharBudget(key);
   if (PLACEHOLDER_RE.test(key)) {
     throw new Error("placeholder value");
   }
@@ -951,11 +957,11 @@ function describeRpcEndpoint(url: string): string {
 /** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!res.ok) throw new Error(text.slice(0, 200) || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || `HTTP ${res.status}`);
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(text.slice(0, 200) || "Invalid JSON");
+    throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON");
   }
 }
 
@@ -1161,5 +1167,8 @@ export async function fetchSolanaNativeBalanceViaRpc(
     }
   }
 
-  throw new Error(errors.join(" | ").slice(0, 400) || "Solana RPC unavailable");
+  throw new Error(
+    truncateWellFormed(toWellFormedUnicode(errors.join(" | ")), 400) ||
+      "Solana RPC unavailable",
+  );
 }

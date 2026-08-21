@@ -16,6 +16,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 let dbWrite: typeof import("../helpers").dbWrite;
+let apiKeysRepository: typeof import("./api-keys").apiKeysRepository;
 let strandedAgentKeyRepository: typeof import("./stranded-agent-keys").strandedAgentKeyRepository;
 let closeDatabaseConnectionsForTests: typeof import("../client").closeDatabaseConnectionsForTests;
 
@@ -55,6 +56,7 @@ async function insertKey(params: {
 beforeAll(async () => {
   ({ dbWrite } = await import("../helpers"));
   ({ closeDatabaseConnectionsForTests } = await import("../client"));
+  ({ apiKeysRepository } = await import("./api-keys"));
   ({ strandedAgentKeyRepository } = await import("./stranded-agent-keys"));
 
   // Minimal shapes: the query only touches api_keys columns + agent_sandboxes.id.
@@ -74,6 +76,7 @@ beforeAll(async () => {
         key_kms_key_id text, key_kms_key_version integer,
         organization_id uuid NOT NULL,
         user_id uuid NOT NULL,
+        source_app_id uuid,
         rate_limit integer NOT NULL DEFAULT 1000,
         is_active boolean NOT NULL DEFAULT true,
         usage_count integer NOT NULL DEFAULT 0,
@@ -84,6 +87,200 @@ beforeAll(async () => {
         deleted_at timestamp
       )
     `);
+});
+
+describe("ApiKeysRepository mobile credential boundaries", () => {
+  async function insertMobileKey(params: {
+    id: string;
+    keyHash: string;
+    sourceAppId: string;
+    userId?: string;
+    organizationId?: string;
+    isActive?: boolean;
+    deletedAtSql?: string | null;
+  }): Promise<void> {
+    await dbWrite.execute(sql`
+      INSERT INTO api_keys (
+        id, name, key_hash, key_prefix, key_ciphertext, key_nonce,
+        key_auth_tag, key_kms_key_id, key_kms_key_version,
+        organization_id, user_id, source_app_id, is_active, deleted_at, created_at
+      )
+      VALUES (
+        ${params.id},
+        ${`mobile-${params.id}`},
+        ${params.keyHash},
+        'eliza_mobile',
+        'ciphertext',
+        'nonce',
+        'auth-tag',
+        'kms-key',
+        3,
+        ${params.organizationId ?? ORG_ID},
+        ${params.userId ?? USER_ID},
+        ${params.sourceAppId},
+        ${params.isActive ?? true},
+        ${params.deletedAtSql === undefined ? null : sql.raw(params.deletedAtSql ?? "NULL")},
+        now()
+      )
+    `);
+  }
+
+  test("generic management reads and writes ignore mobile-owned credentials", async () => {
+    const ordinaryId = await insertKey({
+      name: "ordinary-settings-key",
+      createdAtSql: "now()",
+    });
+    const mobileId = "11111111-1111-4111-8111-111111111111";
+    await insertMobileKey({
+      id: mobileId,
+      keyHash: "m".repeat(64),
+      sourceAppId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    await expect(apiKeysRepository.findManageableById(ordinaryId)).resolves.toMatchObject({
+      id: ordinaryId,
+    });
+    await expect(apiKeysRepository.findManageableById(mobileId)).resolves.toBeUndefined();
+    await expect(apiKeysRepository.listByOrganization(ORG_ID)).resolves.toEqual([
+      expect.objectContaining({ id: ordinaryId }),
+    ]);
+
+    await expect(
+      apiKeysRepository.update(mobileId, { name: "should-not-update" }),
+    ).resolves.toBeUndefined();
+    await apiKeysRepository.delete(mobileId);
+    await expect(apiKeysRepository.findByIdConsistent(mobileId)).resolves.toMatchObject({
+      id: mobileId,
+      source_app_id: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
+  test("ordinary key reads, active filtering, updates, and deactivation use real rows", async () => {
+    const activeId = await insertKey({
+      name: "ordinary-active-key",
+      createdAtSql: "now()",
+    });
+    const expiredId = await insertKey({
+      name: "ordinary-expired-key",
+      createdAtSql: "now() - interval '2 days'",
+    });
+    await dbWrite.execute(sql`
+      UPDATE api_keys
+      SET expires_at = now() - interval '1 hour'
+      WHERE id = ${expiredId}
+    `);
+
+    const active = await apiKeysRepository.findById(activeId);
+    expect(active).toMatchObject({ id: activeId, name: "ordinary-active-key" });
+    await expect(apiKeysRepository.findByHash(active!.key_hash)).resolves.toMatchObject({
+      id: activeId,
+    });
+    await expect(apiKeysRepository.findActiveByHash(active!.key_hash)).resolves.toMatchObject({
+      id: activeId,
+    });
+    await expect(
+      apiKeysRepository.findActiveByHashConsistent(active!.key_hash),
+    ).resolves.toMatchObject({ id: activeId });
+
+    const expired = await apiKeysRepository.findByIdConsistent(expiredId);
+    expect(expired).toMatchObject({ id: expiredId });
+    await expect(apiKeysRepository.findActiveByHash(expired!.key_hash)).resolves.toBeUndefined();
+    await expect(
+      apiKeysRepository.findActiveByHashConsistent(expired!.key_hash),
+    ).resolves.toBeUndefined();
+    await expect(
+      apiKeysRepository.findByUserAndName(USER_ID, "ordinary-active-key"),
+    ).resolves.toEqual([expect.objectContaining({ id: activeId })]);
+    await expect(apiKeysRepository.findByName("ordinary-active-key")).resolves.toEqual([
+      expect.objectContaining({ id: activeId }),
+    ]);
+    await expect(apiKeysRepository.listByUser(USER_ID)).resolves.toHaveLength(2);
+
+    await expect(
+      apiKeysRepository.update(activeId, { description: "rotated" }),
+    ).resolves.toMatchObject({
+      id: activeId,
+      description: "rotated",
+    });
+    await apiKeysRepository.incrementUsage(activeId);
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toMatchObject({
+      usage_count: 1,
+    });
+
+    await apiKeysRepository.deactivateUserKeysByName(USER_ID, "ordinary-active-key");
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toMatchObject({
+      is_active: false,
+    });
+    const deleted = await apiKeysRepository.deleteByName("ordinary-active-key");
+    expect(deleted).toEqual([expect.objectContaining({ id: activeId })]);
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toBeUndefined();
+  });
+
+  test("mobile owner recovery lists, resolves, and tombstones only scoped credentials", async () => {
+    const credentialId = "33333333-3333-4333-8333-333333333333";
+    const sourceAppId = "44444444-4444-4444-8444-444444444444";
+    const keyHash = "a".repeat(64);
+    await insertMobileKey({ id: credentialId, keyHash, sourceAppId });
+
+    await expect(apiKeysRepository.findByHashConsistent(keyHash)).resolves.toMatchObject({
+      id: credentialId,
+    });
+    await expect(
+      apiKeysRepository.findExactActiveMobileConsistent(credentialId, keyHash),
+    ).resolves.toMatchObject({ id: credentialId });
+    await expect(apiKeysRepository.listMobileByOwnerConsistent(USER_ID, ORG_ID)).resolves.toEqual([
+      expect.objectContaining({ id: credentialId }),
+    ]);
+    await expect(
+      apiKeysRepository.findMobileByOwnerConsistent(credentialId, USER_ID, ORG_ID),
+    ).resolves.toMatchObject({ id: credentialId });
+    await expect(
+      apiKeysRepository.findMobileByOwnerConsistent(
+        credentialId,
+        "55555555-5555-4555-8555-555555555555",
+        ORG_ID,
+      ),
+    ).resolves.toBeUndefined();
+
+    const revokedAt = new Date("2026-07-18T12:00:00.000Z");
+    await expect(
+      apiKeysRepository.tombstoneMobileByOwner(credentialId, USER_ID, ORG_ID, revokedAt),
+    ).resolves.toMatchObject({
+      id: credentialId,
+      is_active: false,
+      key_ciphertext: null,
+      key_nonce: null,
+      key_auth_tag: null,
+      key_kms_key_id: null,
+      key_kms_key_version: null,
+    });
+    await expect(
+      apiKeysRepository.findExactActiveMobileConsistent(credentialId, keyHash),
+    ).resolves.toBeUndefined();
+  });
+
+  test("exact mobile tombstone keeps an existing receipt stable", async () => {
+    const credentialId = "66666666-6666-4666-8666-666666666666";
+    const sourceAppId = "77777777-7777-4777-8777-777777777777";
+    const keyHash = "b".repeat(64);
+    await insertMobileKey({ id: credentialId, keyHash, sourceAppId });
+
+    const revokedAt = new Date("2026-07-18T12:00:00.000Z");
+    await expect(
+      apiKeysRepository.tombstoneExactMobileCredential(credentialId, keyHash, revokedAt),
+    ).resolves.toMatchObject({ id: credentialId, deleted_at: revokedAt });
+    await expect(
+      apiKeysRepository.tombstoneExactMobileCredential(
+        credentialId,
+        keyHash,
+        new Date("2026-07-19T12:00:00.000Z"),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(apiKeysRepository.findByIdConsistent(credentialId)).resolves.toMatchObject({
+      id: credentialId,
+      deleted_at: revokedAt,
+    });
+  });
 });
 
 beforeEach(async () => {

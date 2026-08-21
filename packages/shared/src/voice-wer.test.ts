@@ -6,7 +6,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { normalizeWerText, wordErrorRate } from "./voice-wer";
+import {
+  MAX_WER_EDIT_CELLS,
+  MAX_WER_INPUT_CHARS,
+  normalizeWerText,
+  wordErrorRate,
+} from "./voice-wer";
 
 // voice-wer is the single source of truth for word-error-rate (#8785) — both the
 // headless metric library and the headful self-test re-export it. It had no
@@ -76,6 +81,45 @@ describe("wordErrorRate", () => {
 
   it("scores a fully wrong same-length hypothesis as 1", () => {
     expect(wordErrorRate("alpha beta", "gamma delta")).toBe(1);
+  });
+
+  it("fails closed before a hostile word pair can exhaust the edit budget", () => {
+    const ref = Array.from({ length: 15_000 }, (_, i) => `w${i}`).join(" ");
+    const hyp = Array.from({ length: 15_000 }, (_, i) => `x${i}`).join(" ");
+    expect(() => wordErrorRate(ref, hyp)).toThrow(RangeError);
+    expect(() => wordErrorRate(ref, hyp)).toThrow(
+      new RegExp(`exceeds ${MAX_WER_EDIT_CELLS} edit cells`),
+    );
+  });
+
+  it("bounds normalization work even for a single enormous token", () => {
+    expect(() =>
+      wordErrorRate("a".repeat(MAX_WER_INPUT_CHARS + 1), "a"),
+    ).toThrow(RangeError);
+    expect(() =>
+      wordErrorRate("a".repeat(MAX_WER_INPUT_CHARS + 1), "a"),
+    ).toThrow(new RegExp(`exceeds ${MAX_WER_INPUT_CHARS} UTF-16 code units`));
+    expect(() =>
+      wordErrorRate("a", "a".repeat(MAX_WER_INPUT_CHARS + 1)),
+    ).toThrow(new RegExp(`exceeds ${MAX_WER_INPUT_CHARS} UTF-16 code units`));
+  });
+
+  it("allows asymmetric inputs when their edit work stays bounded", () => {
+    const hypothesis = Array.from({ length: 2_048 }, (_, i) => `w${i}`).join(
+      " ",
+    );
+    expect(wordErrorRate("w0", hypothesis)).toBe(2_047);
+  });
+
+  it("accepts the edit-cell boundary and rejects the next cell", () => {
+    const reference = Array.from({ length: 512 }, () => "a").join(" ");
+    const atBoundary = Array.from({ length: 512 }, () => "b").join(" ");
+    const aboveBoundary = `${atBoundary} b`;
+
+    expect(wordErrorRate(reference, atBoundary)).toBe(1);
+    expect(() => wordErrorRate(reference, aboveBoundary)).toThrow(
+      new RegExp(`exceeds ${MAX_WER_EDIT_CELLS} edit cells`),
+    );
   });
 });
 

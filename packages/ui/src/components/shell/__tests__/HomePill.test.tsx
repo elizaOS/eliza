@@ -44,6 +44,114 @@ describe("HomePill", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
+  it("expands the resting handle into a compact composer preview on hover", () => {
+    const onPreviewHoverChange = vi.fn();
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+      />,
+    );
+    const btn = screen.getByRole("button");
+    fireEvent.mouseEnter(btn);
+
+    expect(btn.className).toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "h-14",
+    );
+    expect(
+      screen.getByTestId("shell-home-pill-preview-label").textContent,
+    ).toBe("Message Eliza");
+    expect(screen.getByTestId("shell-home-pill-preview-plus")).toBeTruthy();
+    expect(screen.getByTestId("shell-home-pill-preview-waveform")).toBeTruthy();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.mouseLeave(btn);
+    expect(btn.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the real resting pill when its host uses ChatOverlay for the composer", () => {
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        showComposerPreview={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+  });
+
+  it("waits for the native hover frame before painting the wide preview", () => {
+    const onPreviewHoverChange = vi.fn();
+    const { rerender } = render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(true);
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+
+    rerender(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+        previewHostReady
+      />,
+    );
+    expect(button.className).toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+  });
+
+  it("dismisses the wide preview on wheel so scrolling continues behind it", () => {
+    const onPreviewHoverChange = vi.fn();
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        onPreviewHoverChange={onPreviewHoverChange}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+    expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
+
+    fireEvent.wheel(button, { deltaY: 120 });
+
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+    expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("uses the same hover composer while Cloud auth is required", () => {
+    render(
+      <HomePill phase="needs-auth" onOpen={() => {}} onClose={() => {}} />,
+    );
+    fireEvent.mouseEnter(screen.getByRole("button"));
+    expect(
+      screen.getByTestId("shell-home-pill-preview-label").textContent,
+    ).toBe("Message Eliza");
+    expect(screen.queryByTestId("shell-home-pill-sign-in")).toBeNull();
+  });
+
   it("calls onClose when clicked from summoned", () => {
     const onClose = vi.fn();
     render(<HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />);
@@ -92,26 +200,41 @@ describe("HomePill", () => {
     );
   });
 
-  it("grows into a dark chip with waveform bars while listening", () => {
+  it("uses the composer-sized microphone activity lane while listening", () => {
     render(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    // Wispr-style listening chip: larger dark capsule, no colored ring — the
-    // live bars alone carry the "mic is hot" signal.
+    // Fn/hold-to-talk uses the same footprint and bar count as the open
+    // composer's microphone activity lane instead of a separate tiny chip.
     expect(mark.className).toContain("bg-neutral-900/95");
-    expect(mark.className).toContain("h-7");
-    expect(mark.className).toContain("w-20");
+    expect(mark.className).toContain("h-14");
+    expect(mark.className).toContain("w-full");
+    expect(screen.getByRole("button").className).toContain("w-[36rem]");
     expect(mark.className).not.toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
-    expect(bars).toHaveLength(9);
-    // Center-weighted stagger: symmetric around the middle bar, not monotonic.
-    const delays = bars.map((b) => Number.parseInt(b.style.animationDelay, 10));
-    expect(delays).toEqual([...delays].reverse());
-    expect(Math.min(...delays)).toBe(delays[4]);
-    for (const bar of bars) {
-      expect(bar.className).toContain("home-pill-wave-bar");
-      expect(bar.className).toContain("motion-reduce:animate-none");
-    }
+    expect(bars).toHaveLength(15);
+    // Center-weighted silhouette: heights symmetric around the middle bar.
+    const heights = bars.map((b) => Number.parseInt(b.style.height, 10));
+    expect(heights).toEqual([...heights].reverse());
+    expect(Math.max(...heights)).toBe(heights[Math.floor(heights.length / 2)]);
+  });
+
+  it("keeps listening compact until the native shallow host is ready", () => {
+    render(
+      <HomePill
+        phase="listening"
+        onOpen={() => {}}
+        onClose={() => {}}
+        previewHostReady={false}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    const mark = screen.getByTestId("shell-home-pill-mark");
+    expect(button.className).toContain("w-16");
+    expect(button.className).not.toContain("w-[36rem]");
+    expect(mark.className).toContain("w-20");
+    expect(mark.className).not.toContain("w-full");
   });
 
   it("keeps the capsule white with no waveform bars outside listening", () => {
@@ -179,7 +302,7 @@ describe("HomePill", () => {
     expect(mark.className).not.toContain("animate-pulse");
   });
 
-  it("grows into a labeled sign-in chip while needs-auth and does not arm hold", () => {
+  it("keeps the neutral resting handle while needs-auth and does not arm hold", () => {
     const onOpen = vi.fn();
     const hold = holdHandlers();
     render(
@@ -195,22 +318,20 @@ describe("HomePill", () => {
     });
     expect(btn.getAttribute("data-phase")).toBe("needs-auth");
     expect(btn.hasAttribute("aria-pressed")).toBe(false);
-    expect(screen.getByTestId("shell-home-pill-sign-in").textContent).toBe(
-      "Sign in with Eliza Cloud",
-    );
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(btn.className).toContain("h-12");
-    expect(btn.className).toContain("w-[18rem]");
-    expect(mark.className).toContain("h-11");
-    expect(mark.className).toContain("w-full");
-    expect(mark.className).toContain("bg-[#FF5800]");
-    expect(screen.getByTestId("shell-home-pill-sign-in-icon")).toBeTruthy();
+    expect(btn.className).toContain("h-8");
+    expect(btn.className).toContain("w-16");
+    expect(mark.className).toContain("h-2.5");
+    expect(mark.className).toContain("w-12");
+    expect(mark.className).toContain("bg-white/95");
+    expect(mark.className).not.toContain("bg-[#FF5800]");
+    expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
     expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
     fireEvent.click(btn);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the sign-in chip opaque and shows a spinner during Cloud login", () => {
+  it("keeps the neutral handle and accessible busy state during Cloud login", () => {
     render(
       <HomePill
         phase="needs-auth"
@@ -222,7 +343,9 @@ describe("HomePill", () => {
     const mark = screen.getByTestId("shell-home-pill-mark");
     expect(mark.className).not.toContain("opacity-65");
     expect(mark.className).not.toContain("animate-pulse");
-    expect(screen.getByTestId("shell-home-pill-sign-in-spinner")).toBeTruthy();
+    expect(mark.className).toContain("bg-white/95");
+    expect(mark.className).not.toContain("bg-[#FF5800]");
+    expect(screen.queryByTestId("shell-home-pill-sign-in-spinner")).toBeNull();
     expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
     const btn = screen.getByRole("button", {
       name: /signing in to eliza cloud/i,
@@ -282,6 +405,44 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     expect(hold.onHoldEnd).toHaveBeenCalledTimes(1);
     expect(hold.onHoldCancel).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens chat on the next click after a closed-pill voice response", () => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const hold = holdHandlers();
+    const { rerender } = render(
+      <HomePill
+        phase="idle"
+        open={false}
+        onOpen={onOpen}
+        onClose={onClose}
+        {...hold}
+      />,
+    );
+    const btn = screen.getByRole("button");
+
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(HOLD_THRESHOLD_MS + 10);
+    rerender(
+      <HomePill
+        phase="responding"
+        open={false}
+        onOpen={onOpen}
+        onClose={onClose}
+        {...hold}
+      />,
+    );
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+    expect(onOpen).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(btn, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(btn, { clientX: 10, clientY: 10 });
+    fireEvent.click(btn);
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("releasing farther than the slide-off distance cancels instead of sending", () => {
@@ -391,5 +552,158 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     expect(
       screen.getByRole("button", { name: /listening — release to send/i }),
     ).toBeTruthy();
+  });
+});
+
+describe("HomePill live-metered listening bars (#20483)", () => {
+  /** Fake AnalyserNode: hands the effect a controllable time-domain frame. */
+  function fakeAnalyser(fill: number): AnalyserNode {
+    return {
+      fftSize: 64,
+      getByteTimeDomainData(target: Uint8Array) {
+        target.fill(fill);
+      },
+    } as unknown as AnalyserNode;
+  }
+
+  /** Captures rAF callbacks so frames are stepped manually and synchronously. */
+  function stubRaf() {
+    const queue: FrameRequestCallback[] = [];
+    const raf = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((cb) => {
+        queue.push(cb);
+        return queue.length;
+      });
+    const caf = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const step = () => {
+      const frame = queue.shift();
+      if (frame) frame(performance.now());
+    };
+    return {
+      step,
+      framesRequested: () => raf.mock.calls.length,
+      restore: () => {
+        raf.mockRestore();
+        caf.mockRestore();
+      },
+    };
+  }
+
+  it("without an analyser the bars hold a static flatline (mic opening) — no decorative motion", () => {
+    const { framesRequested, restore } = stubRaf();
+    try {
+      render(
+        <HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />,
+      );
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        expect(bar.className).not.toContain("home-pill-wave-bar");
+        expect(bar.dataset.live).toBeUndefined();
+        expect(bar.style.animationDelay).toBe("");
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+      expect(framesRequested()).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("with an analyser silence still flatlines every bar", () => {
+    const { step, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(128)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
+      for (const bar of bars) {
+        expect(bar.className).not.toContain("home-pill-wave-bar");
+        expect(bar.dataset.live).toBe("true");
+        expect(bar.style.animationDelay).toBe("");
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("live audio lifts the bars above the flatline each frame", () => {
+    const { step, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        const scale = Number.parseFloat(
+          bar.style.transform.replace(/scaleY\(|\)/g, ""),
+        );
+        expect(scale).toBeGreaterThan(0.14);
+        expect(scale).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("losing the analyser mid-listen returns the bars to the flatline (device loss)", () => {
+    const { step, restore } = stubRaf();
+    try {
+      const { rerender } = render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      rerender(
+        <HomePill
+          phase="listening"
+          analyser={null}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        expect(bar.dataset.live).toBeUndefined();
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("outside listening the analyser drives nothing (no rAF loop)", () => {
+    const { framesRequested, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="responding"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      expect(framesRequested()).toBe(0);
+      expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(
+        0,
+      );
+    } finally {
+      restore();
+    }
   });
 });

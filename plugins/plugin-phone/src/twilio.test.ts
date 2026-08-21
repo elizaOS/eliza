@@ -71,8 +71,10 @@ describe("Twilio transport", () => {
       expect.objectContaining({
         method: "POST",
         body: "To=%2B15551112222&From=%2B15550000000&Body=hello",
-        headers: expect.objectContaining({
-          "I-Twilio-Idempotency-Token": "approval:req-123:twilio",
+        headers: expect.not.objectContaining({
+          // This is an inbound Twilio webhook retry identifier, not a
+          // documented outbound Messages/Calls idempotency request header.
+          "I-Twilio-Idempotency-Token": expect.anything(),
         }),
       }),
     );
@@ -146,22 +148,19 @@ describe("Twilio transport", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    vi.useFakeTimers();
-    const promise = sendTwilioSms({
-      credentials,
-      to: "+15551112222",
-      body: "hello",
-    });
-    await vi.advanceTimersByTimeAsync(3_000);
-
-    await expect(promise).resolves.toMatchObject({
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
       ok: false,
       status: 503,
       error: "HTTP 503",
-      retryCount: 2,
+      retryCount: 0,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    vi.useRealTimers();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps hostile SMS body bytes inside the form-encoded Body field", async () => {
@@ -242,5 +241,126 @@ describe("Twilio transport", () => {
       error: "message must be a non-empty string",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not replay an SMS create after an ambiguous network failure", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi.fn(async () => {
+      throw new Error("network timeout after send");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "network timeout after send",
+      retryCount: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay a voice create after an ambiguous network failure", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi.fn(async () => {
+      throw new Error("network timeout after send");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendTwilioVoiceCall({
+        credentials,
+        to: "+15551112222",
+        message: "reminder",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "network timeout after send",
+      retryCount: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay a create when a successful response has no receipt", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi.fn(
+      async () => new Response("accepted", { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "Twilio accepted the request without a valid receipt",
+      retryCount: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["missing", {}],
+    ["blank", { sid: "   " }],
+    ["non-string", { sid: 123 }],
+  ])(
+    "rejects a successful response with a %s SID without replaying the create",
+    async (_label, receipt) => {
+      process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+      const fetchMock = vi.fn(async () =>
+        Response.json(receipt, { status: 201 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(
+        sendTwilioSms({
+          credentials,
+          to: "+15551112222",
+          body: "hello",
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        status: null,
+        error: "Twilio accepted the request without a valid receipt",
+        retryCount: 0,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("retries only an explicit known-not-processed 429 response", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    let attempt = 0;
+    const fetchMock = vi.fn(async () => {
+      attempt += 1;
+      if (attempt < 3) {
+        return Response.json({ message: "rate limited" }, { status: 429 });
+      }
+      return Response.json({ sid: "SM999" }, { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    vi.useFakeTimers();
+    const promise = sendTwilioSms({
+      credentials,
+      to: "+15551112222",
+      body: "hello",
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    const result = await promise;
+    vi.useRealTimers();
+
+    expect(result).toMatchObject({ ok: true, status: 201, retryCount: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

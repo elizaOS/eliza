@@ -47,13 +47,17 @@ import {
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
   buildAgentContainerLabelFlags,
+  buildDockerContainerEnvTransport,
+  buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
   ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
+  getContainerSecretEnvPath,
   getVolumePath,
+  getVolumeVaultPassphrasePath,
   parseDockerNodes,
   requiresDockerHostGateway,
   resolveAgentContainerClass,
@@ -91,6 +95,7 @@ import {
   resolveStewardTenantCredentials,
   type StewardTenantCredentials,
 } from "./steward-tenant-config";
+import { tailnetPathMonitor } from "./tailnet-path-monitor";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
@@ -232,6 +237,171 @@ function resolveStewardContainerEnvUrl(): string {
 }
 
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
+const STEWARD_REFRESH_SERVICE_TOKEN_FILE = "/tmp/eliza-steward-refresh-service-token";
+const STEWARD_REFRESH_AUTH_HEADER_FILE = "/tmp/eliza-steward-refresh-authorization.header";
+const MAX_STEWARD_REFRESH_SERVICE_TOKEN_BYTES = 8 * 1024;
+const MAX_MANAGED_ELIZA_RUNTIME_CONFIG_BYTES = 256 * 1024;
+const STEWARD_SSH_STDIN_FRAME_VERSION = "ELIZA_STEWARD_SSH_STDIN_V1";
+const STEWARD_SSH_STDIN_FRAME_END = "ELIZA_STEWARD_SSH_STDIN_END";
+const MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES = 256 * 1024;
+const MAX_STEWARD_SSH_STDIN_BASE64_BYTES = Math.ceil(MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES / 3) * 4;
+
+type StewardSshStdinPurpose = "steward-agent-delete" | "steward-agent-register";
+
+/** A static remote command paired with sensitive bytes transported only on stdin. */
+export interface StewardSshStdinRequest {
+  command: string;
+  input: string;
+}
+
+type ManagedElizaRuntimeConfigTarget =
+  | { kind: "container"; containerName: string }
+  | { kind: "host-volume"; volumePath: string };
+
+function buildAtomicStdinFileWriteScript(
+  directory: string,
+  destination: string,
+  options: { mode?: "0600" | "0644"; preserveExistingMetadata?: boolean } = {},
+): string {
+  const mode = options.mode ?? "0600";
+  const prepareTemporaryFile = options.preserveExistingMetadata
+    ? [
+        // Preserve an existing runtime-owned inode's uid/gid/mode. For the first
+        // pre-seed, 0644 retains the historical readability needed before the
+        // image entrypoint drops from root to `agent`.
+        `if test -e "$destination"; then cp -p "$destination" "$temporary_file"; else : > "$temporary_file"; chmod ${mode} "$temporary_file"; fi`,
+      ]
+    : [': > "$temporary_file"', `chmod ${mode} "$temporary_file"`];
+  return [
+    "set -eu",
+    "umask 077",
+    `destination=${shellQuote(destination)}`,
+    'temporary_file="${destination}.tmp.$$"',
+    "trap 'rm -f \"$temporary_file\"' EXIT",
+    "trap 'exit 129' HUP",
+    "trap 'exit 130' INT",
+    "trap 'exit 143' TERM",
+    `mkdir -p ${shellQuote(directory)}`,
+    ...prepareTemporaryFile,
+    'cat > "$temporary_file"',
+    'mv -f "$temporary_file" "$destination"',
+    "trap - EXIT HUP INT TERM",
+  ].join("; ");
+}
+
+function serializeManagedElizaRuntimeConfig(allEnv: Record<string, string | undefined>): string {
+  const serialized = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
+  const payloadBytes = Buffer.byteLength(serialized, "utf8");
+  if (payloadBytes === 0 || payloadBytes > MAX_MANAGED_ELIZA_RUNTIME_CONFIG_BYTES) {
+    throw new Error("[docker-sandbox] Invalid managed eliza.json stdin payload size");
+  }
+  return serialized;
+}
+
+function buildManagedElizaRuntimeConfigWriteRequest(
+  target: ManagedElizaRuntimeConfigTarget,
+  allEnv: Record<string, string | undefined>,
+): StewardSshStdinRequest {
+  const input = serializeManagedElizaRuntimeConfig(allEnv);
+  if (target.kind === "host-volume") {
+    const directory = `${target.volumePath}/eliza`;
+    return {
+      command: buildAtomicStdinFileWriteScript(directory, `${directory}/eliza.json`, {
+        mode: "0644",
+        preserveExistingMetadata: true,
+      }),
+      input,
+    };
+  }
+
+  const writeScript = buildAtomicStdinFileWriteScript("/root/.eliza", "/root/.eliza/eliza.json", {
+    mode: "0644",
+    preserveExistingMetadata: true,
+  });
+  return {
+    command: `docker exec -i ${shellQuote(target.containerName)} sh -c ${shellQuote(writeScript)}`,
+    input,
+  };
+}
+
+/** Write secret-bearing managed runtime config through SSH stdin, never command argv. */
+export async function writeManagedElizaRuntimeConfig(
+  ssh: DockerSSHClient,
+  target: ManagedElizaRuntimeConfigTarget,
+  allEnv: Record<string, string | undefined>,
+): Promise<void> {
+  const request = buildManagedElizaRuntimeConfigWriteRequest(target, allEnv);
+  await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
+}
+
+function stewardSshStdinFrameHeader(purpose: StewardSshStdinPurpose): string {
+  return `${STEWARD_SSH_STDIN_FRAME_VERSION}:${purpose}`;
+}
+
+function encodeStewardSshStdinFrame(purpose: StewardSshStdinPurpose, payload: string): string {
+  const payloadBytes = Buffer.byteLength(payload, "utf8");
+  if (payloadBytes === 0 || payloadBytes > MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES) {
+    throw new Error("[docker-sandbox] Invalid Steward stdin payload size");
+  }
+  if (payload.includes("\0")) {
+    throw new Error("[docker-sandbox] Invalid NUL byte in Steward stdin payload");
+  }
+  const encoded = Buffer.from(payload, "utf8").toString("base64");
+  return `${stewardSshStdinFrameHeader(purpose)}\n${encoded}\n${STEWARD_SSH_STDIN_FRAME_END}\n`;
+}
+
+/**
+ * Build an operation-specific Python command which validates a bounded,
+ * versioned stdin frame before parsing its JSON payload. Invalid input produces
+ * only a fixed diagnostic and received bytes are never reflected to stderr.
+ */
+function buildStewardFramedPythonCommand(
+  purpose: StewardSshStdinPurpose,
+  operationBody: string,
+): string {
+  const maxFrameBytes = MAX_STEWARD_SSH_STDIN_BASE64_BYTES + 256;
+  const parser = `import base64
+import json
+import sys
+
+MAX_FRAME_BYTES = ${maxFrameBytes}
+EXPECTED_HEADER = ${JSON.stringify(stewardSshStdinFrameHeader(purpose))}
+EXPECTED_END = ${JSON.stringify(STEWARD_SSH_STDIN_FRAME_END)}
+
+
+def invalid_stdin():
+    print("[docker-sandbox] Invalid Steward stdin payload", file=sys.stderr)
+    raise SystemExit(64)
+
+
+raw_frame = sys.stdin.buffer.read(MAX_FRAME_BYTES + 1)
+if not raw_frame or len(raw_frame) > MAX_FRAME_BYTES:
+    invalid_stdin()
+
+frame_parts = raw_frame.split(b"\\n")
+if len(frame_parts) != 4 or frame_parts[3] != b"":
+    invalid_stdin()
+if frame_parts[0] != EXPECTED_HEADER.encode("ascii") or frame_parts[2] != EXPECTED_END.encode("ascii"):
+    invalid_stdin()
+if not frame_parts[1] or len(frame_parts[1]) > ${MAX_STEWARD_SSH_STDIN_BASE64_BYTES}:
+    invalid_stdin()
+
+try:
+    raw_payload_bytes = base64.b64decode(frame_parts[1], validate=True)
+    if base64.b64encode(raw_payload_bytes) != frame_parts[1]:
+        invalid_stdin()
+    if not raw_payload_bytes or len(raw_payload_bytes) > ${MAX_STEWARD_SSH_STDIN_PAYLOAD_BYTES}:
+        invalid_stdin()
+    payload = json.loads(
+        raw_payload_bytes.decode("utf-8"),
+        parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
+    )
+except Exception:
+    invalid_stdin()
+
+${operationBody}`;
+  return `python3 -c ${shellQuote(parser)}`;
+}
 
 export function resolveDockerSandboxImage(
   dockerImage?: string,
@@ -481,19 +651,39 @@ export function shouldCleanupHeadscaleVpn(
   return headscaleVpnEnabled(env) && hasConfiguredValue(registeredNodeName);
 }
 
-function buildStewardRefreshCommand(
-  containerName: string,
-  agentId: string,
-  serviceToken: string,
-): string {
-  const refreshScript = [
+function validateStewardRefreshServiceToken(serviceToken: string): void {
+  const payloadBytes = Buffer.byteLength(serviceToken, "utf8");
+  if (
+    payloadBytes === 0 ||
+    payloadBytes > MAX_STEWARD_REFRESH_SERVICE_TOKEN_BYTES ||
+    /[\0\r\n]/.test(serviceToken)
+  ) {
+    throw new Error("[docker-sandbox] Invalid Steward refresh service token stdin payload");
+  }
+}
+
+/** Build the credential-free in-container loop; exported for exact shell syntax proof. */
+export function buildStewardRefreshLoopScript(agentId: string): string {
+  return [
     "set -eu",
     `agent_id=${shellQuote(agentId)}`,
     `refresh_url=${shellQuote(resolveStewardRefreshUrl())}`,
     `jwt_file=${shellQuote(STEWARD_JWT_FILE)}`,
-    `service_token=${shellQuote(serviceToken)}`,
+    `service_token_file=${shellQuote(STEWARD_REFRESH_SERVICE_TOKEN_FILE)}`,
+    `auth_header_file=${shellQuote(STEWARD_REFRESH_AUTH_HEADER_FILE)}`,
+    'cleanup_refresh_files() { rm -f "$service_token_file" "$auth_header_file"; }',
+    "trap cleanup_refresh_files EXIT",
+    "trap 'exit 129' HUP",
+    "trap 'exit 130' INT",
+    "trap 'exit 143' TERM",
+    'service_token=$(cat "$service_token_file")',
+    "umask 077",
+    'printf "authorization: Bearer %s\\n" "$service_token" > "$auth_header_file"',
+    'chmod 600 "$auth_header_file"',
+    "unset service_token",
+    'rm -f "$service_token_file"',
     "while true; do",
-    '  response=$(curl -fsS -X POST "$refresh_url" -H "content-type: application/json" -H "authorization: Bearer $service_token" --data "{\\"agentId\\":\\"$agent_id\\",\\"ttl\\":900}" || true)',
+    '  response=$(curl -fsS -X POST "$refresh_url" -H "content-type: application/json" -H @"$auth_header_file" --data "{\\"agentId\\":\\"$agent_id\\",\\"ttl\\":900}" || true)',
     '  token=$(printf "%s" "$response" | sed -n "s/.*\\"token\\"[[:space:]]*:[[:space:]]*\\"\\([^\\"]*\\)\\".*/\\1/p")',
     '  if [ -n "$token" ]; then',
     "    umask 077",
@@ -504,9 +694,47 @@ function buildStewardRefreshCommand(
     "  fi",
     "  sleep 600",
     "done",
-  ].join("; ");
+  ].join("\n");
+}
 
-  return `docker exec -d ${shellQuote(containerName)} sh -lc ${shellQuote(refreshScript)}`;
+function buildStewardRefreshRequest(
+  containerName: string,
+  agentId: string,
+  serviceToken: string,
+): StewardSshStdinRequest {
+  validateStewardRefreshServiceToken(serviceToken);
+  const tokenWriteScript = buildAtomicStdinFileWriteScript(
+    "/tmp",
+    STEWARD_REFRESH_SERVICE_TOKEN_FILE,
+  );
+  const cleanupScript = `rm -f ${shellQuote(STEWARD_REFRESH_SERVICE_TOKEN_FILE)} ${shellQuote(
+    STEWARD_REFRESH_AUTH_HEADER_FILE,
+  )}`;
+  const refreshScript = buildStewardRefreshLoopScript(agentId);
+
+  return {
+    command: [
+      "set -eu",
+      `docker exec -i ${shellQuote(containerName)} sh -c ${shellQuote(tokenWriteScript)}`,
+      `if ! docker exec -d ${shellQuote(containerName)} sh -lc ${shellQuote(
+        refreshScript,
+      )}; then docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
+        cleanupScript,
+      )} >/dev/null 2>&1 || true; exit 1; fi`,
+    ].join("; "),
+    input: serviceToken,
+  };
+}
+
+/** Start Steward refresh with its service token transported only through SSH stdin. */
+export async function startStewardRefreshSidecar(
+  ssh: DockerSSHClient,
+  containerName: string,
+  agentId: string,
+  serviceToken: string,
+): Promise<void> {
+  const request = buildStewardRefreshRequest(containerName, agentId, serviceToken);
+  await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
 }
 
 function buildStewardPluginInstallCommand(containerName: string): string {
@@ -751,7 +979,7 @@ function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
   return agentId ? `${base}/${encodeURIComponent(agentId)}` : base;
 }
 
-// Best-effort `curl -X DELETE` against Steward's platform agent endpoint for
+// Best-effort DELETE against Steward's platform agent endpoint for
 // deletion paths (failed container create, missing Headscale registration).
 // Uses the platform-key path so the daemon authenticates as a platform
 // operator instead of impersonating a tenant owner session — Steward's
@@ -760,18 +988,18 @@ function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
 // path `/platform/tenants/:id/agents/:id` is exactly what Steward exposes
 // for this case (scope `platform:agent:delete`). Without signing the call
 // 401s and the agent record stays around as a ghost, blocking retries.
-async function buildSignedDeleteAgentCurl(
+export async function buildSignedDeleteAgentRequest(
   agentId: string,
   stewardTenant: StewardTenantCredentials,
-): Promise<string> {
+): Promise<StewardSshStdinRequest> {
   const path = buildPlatformAgentPath(stewardTenant.tenantId, agentId);
-  const url = `${resolveStewardHostUrl()}${path}`;
   const platformKey = resolveStewardPlatformKey();
   const signingSecret = resolveStewardRequestSigningSecret(stewardTenant.apiKey);
-  const flags = [
-    `-H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)}`,
-    ...(platformKey ? [`-H ${shellQuote(`X-Steward-Platform-Key: ${platformKey}`)}`] : []),
-  ];
+  const headers: Record<string, string> = {
+    "User-Agent": "eliza-cloud-provisioner/1.0",
+    "X-Steward-Tenant": stewardTenant.tenantId,
+    ...(platformKey ? { "X-Steward-Platform-Key": platformKey } : {}),
+  };
   if (signingSecret !== undefined) {
     const signed = await buildStewardSignedHeaders({
       method: "DELETE",
@@ -781,11 +1009,76 @@ async function buildSignedDeleteAgentCurl(
       ...(platformKey === undefined ? {} : { platformKey }),
       signingSecret,
     });
-    for (const [name, value] of Object.entries(signed)) {
-      flags.push(`-H ${shellQuote(`${name}: ${value}`)}`);
-    }
+    Object.assign(headers, signed);
   }
-  return `curl -s -X DELETE ${flags.join(" ")} ${shellQuote(url)} || true`;
+
+  const operationBody = `import urllib.error
+import urllib.request
+
+EXPECTED_KEYS = {"baseUrl", "headers", "path"}
+if type(payload) is not dict or set(payload) != EXPECTED_KEYS:
+    invalid_stdin()
+if any(type(payload[key]) is not str for key in ("baseUrl", "path")):
+    invalid_stdin()
+if type(payload["headers"]) is not dict or len(payload["headers"]) > 32:
+    invalid_stdin()
+
+base_url = payload["baseUrl"]
+path = payload["path"]
+if not base_url.startswith(("http://", "https://")) or any(char in base_url for char in "\\r\\n\\0"):
+    invalid_stdin()
+if not path.startswith("/") or any(char in path for char in "\\r\\n\\0"):
+    invalid_stdin()
+
+headers = {}
+allowed_header_name = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+for name, value in payload["headers"].items():
+    if type(name) is not str or type(value) is not str:
+        invalid_stdin()
+    if not name or any(char not in allowed_header_name for char in name):
+        invalid_stdin()
+    if len(value) > 8192 or any(char in value for char in "\\r\\n\\0"):
+        invalid_stdin()
+    headers[name] = value
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, response_headers, new_url):
+        return None
+
+
+opener = urllib.request.build_opener(NoRedirect())
+try:
+    request = urllib.request.Request(f"{base_url}{path}", headers=headers, method="DELETE")
+    with opener.open(request, timeout=15) as response:
+        response.read(1)
+except urllib.error.HTTPError as error:
+    status = error.code
+    error.close()
+    print(f"[docker-sandbox] Steward agent delete failed with status {status}", file=sys.stderr)
+    raise SystemExit(69)
+except Exception:
+    # The lifecycle callers retain best-effort cleanup semantics by catching
+    # this fixed diagnostic; never reflect response bodies, headers, or input.
+    print("[docker-sandbox] Steward agent delete request failed", file=sys.stderr)
+    raise SystemExit(69)`;
+
+  return {
+    command: buildStewardFramedPythonCommand("steward-agent-delete", operationBody),
+    input: encodeStewardSshStdinFrame(
+      "steward-agent-delete",
+      JSON.stringify({ baseUrl: resolveStewardHostUrl(), headers, path }),
+    ),
+  };
+}
+
+export async function deregisterAgentWithSteward(
+  ssh: DockerSSHClient,
+  agentId: string,
+  stewardTenant: StewardTenantCredentials,
+): Promise<void> {
+  const request = await buildSignedDeleteAgentRequest(agentId, stewardTenant);
+  await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
 }
 
 async function buildStewardSignedHeaders(params: {
@@ -810,8 +1103,8 @@ async function buildStewardSignedHeaders(params: {
   );
   const out: Record<string, string> = {};
   headers.forEach((value, name) => {
-    // Strip tenant/platform-key — the caller injects them via curl flag or
-    // Python shim. Avoid double-injection.
+    // Strip tenant/platform-key — the caller adds them once to the framed
+    // stdin header map. Avoid double-injection into the outbound request.
     if (name === "x-steward-tenant" || name === "x-steward-platform-key") {
       return;
     }
@@ -820,13 +1113,12 @@ async function buildStewardSignedHeaders(params: {
   return out;
 }
 
-async function registerAgentWithSteward(
-  ssh: DockerSSHClient,
+export async function buildRegisterAgentWithStewardRequest(
   agentId: string,
   agentName: string,
   tenantId: string,
   apiKey?: string,
-): Promise<string> {
+): Promise<StewardSshStdinRequest> {
   // The tenant-scoped POST /agents compatibility route requires a session-jwt with
   // owner|admin role (Steward `requireTenantAdminSession`), which a daemon
   // cannot satisfy. Switch to the platform-key path Steward exposes for
@@ -869,58 +1161,140 @@ async function registerAgentWithSteward(
           signingSecret,
         });
 
-  const script = `python3 - <<'PY'
-import json
-import sys
-import urllib.error
+  const commonHeaders = {
+    "Content-Type": "application/json",
+    "User-Agent": "eliza-cloud-provisioner/1.0",
+    "X-Steward-Tenant": tenantId,
+    ...(platformKey ? { "X-Steward-Platform-Key": platformKey } : {}),
+  };
+  const operationBody = `import urllib.error
 import urllib.request
 
-base_url = ${JSON.stringify(resolveStewardHostUrl())}
-platform_key = ${JSON.stringify(platformKey ?? "")}
-tenant_id = ${JSON.stringify(tenantId)}
-agent_path = ${JSON.stringify(agentPath)}
-token_path = ${JSON.stringify(tokenPath)}
-agent_body = ${JSON.stringify(agentBody)}
-token_body = ${JSON.stringify(tokenBody)}
-agent_signed_headers = ${JSON.stringify(agentSignedHeaders)}
-token_signed_headers = ${JSON.stringify(tokenSignedHeaders)}
+EXPECTED_KEYS = {
+    "agentBody",
+    "agentHeaders",
+    "agentPath",
+    "baseUrl",
+    "tokenBody",
+    "tokenHeaders",
+    "tokenPath",
+}
+if type(payload) is not dict or set(payload) != EXPECTED_KEYS:
+    invalid_stdin()
+if any(
+    type(payload[key]) is not str
+    for key in ("agentBody", "agentPath", "baseUrl", "tokenBody", "tokenPath")
+):
+    invalid_stdin()
+if any(type(payload[key]) is not dict for key in ("agentHeaders", "tokenHeaders")):
+    invalid_stdin()
+
+base_url = payload["baseUrl"]
+agent_path = payload["agentPath"]
+token_path = payload["tokenPath"]
+if not base_url.startswith(("http://", "https://")) or any(char in base_url for char in "\\r\\n\\0"):
+    invalid_stdin()
+for path in (agent_path, token_path):
+    if not path.startswith("/") or any(char in path for char in "\\r\\n\\0"):
+        invalid_stdin()
+for body_text in (payload["agentBody"], payload["tokenBody"]):
+    try:
+        body_value = json.loads(body_text)
+    except (TypeError, ValueError):
+        invalid_stdin()
+    if type(body_value) is not dict:
+        invalid_stdin()
 
 
-def post(path, body_text, signed_headers):
-    headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
-    if tenant_id:
-        headers["X-Steward-Tenant"] = tenant_id
-    if platform_key:
-        headers["X-Steward-Platform-Key"] = platform_key
-    headers.update(signed_headers)
-    req = urllib.request.Request(
+def validated_headers(value):
+    if len(value) > 32:
+        invalid_stdin()
+    result = {}
+    allowed_header_name = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+    for name, header_value in value.items():
+        if type(name) is not str or type(header_value) is not str:
+            invalid_stdin()
+        if not name or any(char not in allowed_header_name for char in name):
+            invalid_stdin()
+        if len(header_value) > 8192 or any(char in header_value for char in "\\r\\n\\0"):
+            invalid_stdin()
+        result[name] = header_value
+    return result
+
+
+agent_headers = validated_headers(payload["agentHeaders"])
+token_headers = validated_headers(payload["tokenHeaders"])
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, response_headers, new_url):
+        return None
+
+
+opener = urllib.request.build_opener(NoRedirect())
+
+
+def post(path, body_text, headers, capture_body):
+    request = urllib.request.Request(
         f"{base_url}{path}",
         data=body_text.encode("utf-8"),
         headers=headers,
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            return response.status, response.read().decode("utf-8")
+        with opener.open(request, timeout=15) as response:
+            response_body = response.read(65537) if capture_body else b""
+            return response.status, response_body
     except urllib.error.HTTPError as error:
-        return error.code, error.read().decode("utf-8")
+        status = error.code
+        error.close()
+        return status, b""
+    except Exception:
+        print("[docker-sandbox] Steward request failed", file=sys.stderr)
+        raise SystemExit(69)
 
 
-status, body = post(agent_path, agent_body, agent_signed_headers)
+status, _body = post(agent_path, payload["agentBody"], agent_headers, False)
 if status not in (200, 201, 202, 400, 409):
-    print(body, file=sys.stderr)
     raise SystemExit(f"Steward agent registration failed with status {status}")
-# 400/409 = agent already exists, continue to token minting
+# 400/409 = agent already exists, continue to token minting.
 
-status, body = post(token_path, token_body, token_signed_headers)
+status, body = post(token_path, payload["tokenBody"], token_headers, True)
 if status not in (200, 201):
-    print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
+if len(body) > 65536:
+    raise SystemExit("Steward token response exceeded the bounded size")
+try:
+    print(body.decode("utf-8"))
+except UnicodeDecodeError:
+    raise SystemExit("Steward token response was not UTF-8")`;
 
-print(body)
-PY`;
+  return {
+    command: buildStewardFramedPythonCommand("steward-agent-register", operationBody),
+    input: encodeStewardSshStdinFrame(
+      "steward-agent-register",
+      JSON.stringify({
+        agentBody,
+        agentHeaders: { ...commonHeaders, ...agentSignedHeaders },
+        agentPath,
+        baseUrl: resolveStewardHostUrl(),
+        tokenBody,
+        tokenHeaders: { ...commonHeaders, ...tokenSignedHeaders },
+        tokenPath,
+      }),
+    ),
+  };
+}
 
-  const rawToken = await ssh.exec(script, DOCKER_CMD_TIMEOUT_MS);
+export async function registerAgentWithSteward(
+  ssh: DockerSSHClient,
+  agentId: string,
+  agentName: string,
+  tenantId: string,
+  apiKey?: string,
+): Promise<string> {
+  const request = await buildRegisterAgentWithStewardRequest(agentId, agentName, tenantId, apiKey);
+  const rawToken = await ssh.execStdin(request.command, request.input, DOCKER_CMD_TIMEOUT_MS);
   return extractStewardToken(rawToken);
 }
 
@@ -1037,6 +1411,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 1. Input validation
     validateAgentName(agentName);
     validateAgentId(agentId);
+    // Reject env-file record splitting before node allocation, SSH, volume, or
+    // vault setup can mutate remote state. Errors identify only the key.
+    for (const [key, value] of Object.entries(environmentVars)) {
+      validateEnvKey(key);
+      validateEnvValue(key, value);
+    }
     if (
       (config.onReplacementCreated || config.onReplacementVpnRegistered) &&
       !config.onReplacementCreateIntent
@@ -1322,8 +1702,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       // that lifecycle: it seeds the persisted key on first provision and
       // must match it afterwards (fail-closed on mismatch), so a later
       // replacement launched without the override still reads the same key.
-      const vaultPassphrase = await ensureVolumeVaultPassphrase(
-        (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
+      await ensureVolumeVaultPassphrase(
+        (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
         volumePath,
         DOCKER_CMD_TIMEOUT_MS,
         environmentVars.ELIZA_VAULT_PASSPHRASE,
@@ -1425,14 +1805,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         // provisioned containers (no token + cloud flag = 401).
         AGENT_DISABLE_AUTO_API_TOKEN: "1",
         ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-        // V2 image refuses to boot on headless Linux without a passphrase
-        // (no D-Bus keychain). The key must be STABLE across container
-        // replacement over the same agent volume: the state-dir vault
-        // ciphertext survives on the mount, so a fresh per-launch key would
-        // orphan every stored credential (#18080 / #19225). Always the key
-        // persisted on the agent volume; a caller-injected value only seeds
-        // that key on first provision and must match it afterwards.
-        ELIZA_VAULT_PASSPHRASE: vaultPassphrase,
         // Durable state root on the `${volumePath}/eliza:/root/.eliza` mount.
         // Without it the runtime resolves state (including the vault) to
         // /root/.local/state/eliza in the container's writable layer, which
@@ -1458,6 +1830,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           : {}),
       });
 
+      // The persisted vault value is appended to the stdin-backed env file on
+      // the Docker host; never retain the caller's override in the generic env
+      // map where it could accidentally return to command construction.
+      delete allEnv.ELIZA_VAULT_PASSPHRASE;
+
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays
       // consistent across caller-supplied and provider-generated values.
@@ -1466,9 +1843,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         validateEnvValue(key, value);
       }
 
-      const envFlags = Object.entries(allEnv)
-        .map(([key, value]) => `-e ${shellQuote(`${key}=${value}`)}`)
-        .join(" ");
+      const envTransport = buildDockerContainerEnvTransport(allEnv);
+      const secretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
 
       const dockerCreateCmd = [
         "docker create",
@@ -1522,9 +1898,15 @@ export class DockerSandboxProvider implements SandboxProvider {
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
         `-p ${bridgePort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
         `-p ${webUiPort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
-        envFlags,
+        ...envTransport.commandFlags,
+        `--env-file ${shellQuote(secretEnvPath)}`,
         shellQuote(resolvedImage),
       ].join(" ");
+      const dockerCreateWithSecretEnvCmd = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: dockerCreateCmd,
+        secretEnvPath,
+        vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+      });
 
       const persistReplacementIntent = config.onReplacementCreateIntent;
 
@@ -1573,7 +1955,12 @@ export class DockerSandboxProvider implements SandboxProvider {
                 }
               }
             : undefined,
-          createContainer: () => ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+          createContainer: () =>
+            ssh.execStdin(
+              dockerCreateWithSecretEnvCmd,
+              envTransport.secretInput,
+              DOCKER_CMD_TIMEOUT_MS,
+            ),
         }),
       );
       createdContainerId = containerId;
@@ -1614,16 +2001,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // stays as a fallback (and overwrites with identical content).
       try {
         if (allEnv.ELIZAOS_CLOUD_BASE_URL) {
-          const preSeed = Buffer.from(
-            JSON.stringify(buildManagedElizaRuntimeConfig(allEnv)),
-            "utf-8",
-          ).toString("base64");
-          await ssh.exec(
-            `mkdir -p ${shellQuote(`${volumePath}/eliza`)} && printf %s ${shellQuote(
-              preSeed,
-            )} | base64 -d > ${shellQuote(`${volumePath}/eliza/eliza.json`)}`,
-            DOCKER_CMD_TIMEOUT_MS,
-          );
+          await writeManagedElizaRuntimeConfig(ssh, { kind: "host-volume", volumePath }, allEnv);
           logger.info(`[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`);
         }
       } catch (preSeedErr) {
@@ -1652,10 +2030,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       if (stewardJwt && stewardRefreshServiceToken) {
         try {
-          await ssh.exec(
-            buildStewardRefreshCommand(containerName, agentId, stewardRefreshServiceToken),
-            DOCKER_CMD_TIMEOUT_MS,
-          );
+          await startStewardRefreshSidecar(ssh, containerName, agentId, stewardRefreshServiceToken);
           logger.info(`[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`);
         } catch (refreshErr) {
           logger.warn(
@@ -1678,15 +2053,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               "https://api-staging.eliza.app/api/v1 for staging, https://api.eliza.app/api/v1 for prod).",
           );
         }
-        const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
-        // Base64-encode the JSON before passing it through the shell so an
-        // apiKey/baseUrl containing single quotes can't break out of the
-        // outer sh -c quoting or inject commands on the remote host.
-        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
-        const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
-          `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
-        )}`;
-        await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
+        await writeManagedElizaRuntimeConfig(ssh, { kind: "container", containerName }, allEnv);
         logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
       } catch (configErr) {
         logger.warn(
@@ -1700,10 +2067,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
       try {
-        await ssh.exec(
-          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
-          DOCKER_CMD_TIMEOUT_MS,
-        );
+        await deregisterAgentWithSteward(ssh, agentId, stewardTenant);
         logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
       } catch (cleanupErr) {
         logger.warn(
@@ -1881,8 +2245,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         nodeId,
       });
-      await ssh
-        .exec(await buildSignedDeleteAgentCurl(agentId, stewardTenant), DOCKER_CMD_TIMEOUT_MS)
+      await deregisterAgentWithSteward(ssh, agentId, stewardTenant)
         .then(() => {
           logger.info(
             `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
@@ -2632,6 +2995,10 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(
             `[docker-sandbox] Tailnet health probe passed for ${meta.containerName} (${healthUrl})`,
           );
+          await tailnetPathMonitor.record({
+            containerName: meta.containerName,
+            outcome: "passed",
+          });
           return true;
         }
         logger.debug(
@@ -2653,6 +3020,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.warn(
       `[docker-sandbox] Tailnet health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} (${healthUrl})`,
     );
+    // A run of these across distinct containers is the severed-path signature
+    // (headscale ACL regression); the monitor pages ops instead of letting the
+    // outage hide inside per-container provisioning retries.
+    await tailnetPathMonitor.record({
+      containerName: meta.containerName,
+      outcome: "timed_out",
+    });
     return false;
   }
 

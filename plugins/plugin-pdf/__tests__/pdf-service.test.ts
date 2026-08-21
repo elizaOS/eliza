@@ -4,7 +4,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import { MAX_PDF_BUFFER_BYTES, PdfService } from "../services/pdf";
+import {
+	MAX_PDF_BUFFER_BYTES,
+	MAX_PDF_PAGES,
+	PdfService,
+} from "../services/pdf";
 
 const getDocumentProxyMock = vi.hoisted(() => vi.fn());
 
@@ -16,6 +20,17 @@ interface MockPageInput {
 	items: unknown;
 	width?: number;
 	height?: number;
+}
+
+function makeDeclaredPdf(numPages: number) {
+	return {
+		numPages,
+		getPage: vi.fn(async () => ({
+			getTextContent: vi.fn(async () => ({ items: [{ str: "p" }] })),
+			getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+		})),
+		getMetadata: vi.fn(async () => ({ info: {} })),
+	};
 }
 
 function makePdf(
@@ -89,6 +104,75 @@ describe("PdfService", () => {
 		expect(pdf.getPage).toHaveBeenCalledTimes(2);
 		expect(pdf.getPage).toHaveBeenNthCalledWith(1, 2);
 		expect(pdf.getPage).toHaveBeenNthCalledWith(2, 3);
+	});
+
+	it("rejects a range that begins entirely past the document instead of clamping to the last page", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		const result = await service().convertPdfToTextWithOptions(validPdfBuffer(), {
+			startPage: 5,
+			endPage: 10,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.text).toBeUndefined();
+		expect(result.error).toBe("startPage 5 exceeds document page count 3");
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("names startPage as the cause when startPage exceeds page count and no endPage is supplied", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		const result = await service().convertPdfToTextWithOptions(validPdfBuffer(), {
+			startPage: 5,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("startPage 5 exceeds document page count 3");
+		expect(result.error).not.toContain("endPage");
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("still clamps an oversized endPage down to the last page for an in-range startPage", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), {
+				startPage: 2,
+				endPage: 99,
+			})
+		).resolves.toEqual({ success: true, text: "two\nthree", pageCount: 3 });
+	});
+
+	it("accepts an in-range start/end page range unchanged", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), {
+				startPage: 2,
+				endPage: 3,
+			})
+		).resolves.toEqual({ success: true, text: "two\nthree", pageCount: 3 });
 	});
 
 	it("can preserve item whitespace and skip cleanup when requested", async () => {
@@ -194,6 +278,53 @@ describe("PdfService", () => {
 		expect(getDocumentProxyMock).not.toHaveBeenCalled();
 	});
 
+	it("rejects a declared page count above the page budget before getPage", async () => {
+		const pdf = makeDeclaredPdf(MAX_PDF_PAGES + 1);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
+			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		);
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer()),
+		).resolves.toEqual({
+			success: false,
+			error: `PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		});
+		await expect(service().getDocumentInfo(validPdfBuffer())).rejects.toThrow(
+			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		);
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("extracts a last-fit document at the page budget", async () => {
+		const pdf = makeDeclaredPdf(MAX_PDF_PAGES);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).resolves.toBe(
+			Array.from({ length: MAX_PDF_PAGES }, () => "p").join("\n"),
+		);
+		expect(pdf.getPage).toHaveBeenCalledTimes(MAX_PDF_PAGES);
+	});
+
+	it.each([
+		Number.POSITIVE_INFINITY,
+		1e20,
+		0,
+		-1,
+		1.5,
+		Number.NaN,
+	])("rejects a hostile declared page count before getPage: %s", async (numPages) => {
+		const pdf = makeDeclaredPdf(1);
+		pdf.numPages = numPages as number;
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
+			"PDF page count must be a positive safe integer",
+		);
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
 	it("rejects oversized PDF inputs before extraction", async () => {
 		const oversizedPdf = Buffer.concat([
 			Buffer.from("%PDF-1.7\n"),
@@ -219,7 +350,6 @@ describe("PdfService", () => {
 		[{ startPage: 1.5 }, "startPage must be a positive finite integer"],
 		[{ startPage: Number.NaN }, "startPage must be a positive finite integer"],
 		[{ endPage: Number.POSITIVE_INFINITY }, "endPage must be a positive finite integer"],
-		[{ startPage: 3, endPage: 2 }, "endPage must be greater than or equal to startPage"],
 	])("returns structured errors for hostile extraction options %#", async (options, error) => {
 		getDocumentProxyMock.mockResolvedValue(makePdf([{ items: [{ str: "one" }] }]));
 
@@ -228,6 +358,23 @@ describe("PdfService", () => {
 		).resolves.toEqual({
 			success: false,
 			error,
+		});
+	});
+
+	it("rejects an in-range startPage with an explicit endPage below it", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{ items: [{ str: "one" }] },
+				{ items: [{ str: "two" }] },
+				{ items: [{ str: "three" }] },
+			])
+		);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), { startPage: 3, endPage: 2 })
+		).resolves.toEqual({
+			success: false,
+			error: "endPage must be greater than or equal to startPage",
 		});
 	});
 

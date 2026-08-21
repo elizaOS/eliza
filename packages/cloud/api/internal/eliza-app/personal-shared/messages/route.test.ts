@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
 import { logger } from "@/lib/utils/logger";
+import { markPreverifiedPersonalSharedRequest } from "../preverified-auth";
 
 let activeTarget: {
   id: string;
@@ -16,11 +17,6 @@ const resolvePersonalDelivery = mock(async () => ({
   dedicatedTarget: activeTarget,
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
-}));
-const findOrCreateByPhone = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000012" },
-  organization: { id: "00000000-0000-4000-8000-000000000011" },
-  isNew: true,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
@@ -112,12 +108,18 @@ const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByPhone,
     resolvePersonalDelivery,
   },
 }));
+// The real serializer, not a re-implementation: mocking it meant the header
+// this route exists to emit was never actually produced by the code under
+// test, so the whole route-layer claim went unexercised.
+const { sharedTurnServerTiming } = await import(
+  "@/lib/services/shared-runtime/shared-rest-adapter"
+);
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+  sharedTurnServerTiming,
 }));
 mock.module("@/lib/services/shared-runtime/prewarm-shared-agent", () => ({
   prewarmPersonalSharedAgentTurnCaches,
@@ -203,7 +205,6 @@ const validPhone = {
 
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
-    findOrCreateByPhone.mockClear();
     activeTarget = null;
     personalDeliveryIsNew = false;
     resolvePersonalDelivery.mockClear();
@@ -224,6 +225,74 @@ describe("personal Shared messaging deliveries", () => {
 
   test("requires internal gateway authentication", async () => {
     expect((await request(valid, "")).status).toBe(401);
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  test("accepts an in-isolate preverified identity at the real route boundary", async () => {
+    const preverifiedRequest = new Request("http://localhost/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    markPreverifiedPersonalSharedRequest(preverifiedRequest, {
+      podName: "gateway-1",
+      service: "discord-gateway",
+    });
+    const env = {
+      INTERNAL_SECRET: "test-secret",
+      SHARED_RUNTIME_CONVERSATIONS: namespace,
+      WHISPER_STT_URL: "https://whisper.test",
+    } as never;
+
+    expect(
+      (
+        await app.request(
+          preverifiedRequest,
+          undefined,
+          env,
+          executionCtx as never,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(
+          new Request("http://localhost/", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(valid),
+          }),
+          undefined,
+          env,
+          executionCtx as never,
+        )
+      ).status,
+    ).toBe(401);
+  });
+
+  test("keeps the caller allowlist fail-closed for a preverified identity", async () => {
+    const preverifiedRequest = new Request("http://localhost/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(valid),
+    });
+    markPreverifiedPersonalSharedRequest(preverifiedRequest, {
+      podName: "agent-server-1",
+      service: "agent-server",
+    });
+
+    const response = await app.request(
+      preverifiedRequest,
+      undefined,
+      {
+        INTERNAL_SECRET: "test-secret",
+        SHARED_RUNTIME_CONVERSATIONS: namespace,
+        WHISPER_STT_URL: "https://whisper.test",
+      } as never,
+      executionCtx as never,
+    );
+
+    expect(response.status).toBe(403);
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 
@@ -381,6 +450,54 @@ describe("personal Shared messaging deliveries", () => {
       code: "service_unavailable",
       retryable: true,
     });
+  });
+
+  test("classifies a both-path account resolution failure as a retryable 503", async () => {
+    const { PersonalDeliveryAccountResolutionError } = await import(
+      "@/api-app/personal-delivery-projection"
+    );
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    resolvePersonalDelivery.mockImplementationOnce(async () => {
+      throw new PersonalDeliveryAccountResolutionError(
+        "status-502:TypeError",
+        new Error("private SQL detail"),
+      );
+    });
+
+    try {
+      const response = await request(valid);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(response.headers.get("x-eliza-failure-stage")).toBe(
+        "account_resolution",
+      );
+      expect(response.headers.get("x-eliza-failure-name")).toBe(
+        "PersonalDeliveryAccountResolutionError",
+      );
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error:
+          "Account resolution is temporarily unavailable. Retry this turn shortly.",
+        code: "service_unavailable",
+        retryable: true,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        expect.objectContaining({
+          stage: "account_resolution",
+          errorName: "PersonalDeliveryAccountResolutionError",
+          projectionFailure: "status-502:TypeError",
+        }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "private SQL detail",
+      );
+    } finally {
+      logger.error = originalError;
+    }
   });
 
   test("redacts an unrecognized error name from headers and logs", async () => {
@@ -585,24 +702,35 @@ describe("personal Shared messaging deliveries", () => {
     expect(renewedSession).not.toBe(firstSession);
   });
 
-  test("uses the phone account without provisioning an agent row", async () => {
+  test("auto-registers a first phone message without provisioning an agent row", async () => {
+    personalDeliveryIsNew = true;
     const response = await request(validPhone);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       data: { identity: { id: string }; account: { userId: string } };
     };
-    expect(findOrCreateByPhone).toHaveBeenCalledWith("+15551234567");
-    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
-    expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
-      "00000000-0000-4000-8000-000000000012",
+      "00000000-0000-4000-8000-000000000002",
+    );
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+      { warmConversation: true },
     );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
         id: body.data.identity.id,
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
         execution_tier: "shared",
       }),
       body.data.identity.id,
@@ -620,7 +748,88 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
-  test("routes a linked Discord DM through the same personal room", async () => {
+  test("routes a phone transport to the same Dedicated primary after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request(validPhone);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps a Blooio reminder on Dedicated after cutover without Shared prewarm", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const reminder = "Remind me in 2 minutes to stretch";
+
+    const response = await request({
+      ...validPhone,
+      messageId: "blooio:reminder-42",
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        account: {
+          userId: "00000000-0000-4000-8000-000000000002",
+          organizationId: "00000000-0000-4000-8000-000000000001",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "blooio:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "blooio:reminder-42",
+          platformName: "blooio",
+          source: "blooio",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
+  });
+
+  test("auto-registers a first Discord DM in the same personal room", async () => {
+    personalDeliveryIsNew = true;
     const discordUserId = ["123456789", "012345678"].join("");
     const response = await request({
       platform: "discord",
@@ -644,6 +853,14 @@ describe("personal Shared messaging deliveries", () => {
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
     });
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+      { warmConversation: true },
+    );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
       body.data.identity.id,
@@ -703,6 +920,108 @@ describe("personal Shared messaging deliveries", () => {
         }),
       }),
     );
+  });
+
+  test("keeps a Telegram reminder on Dedicated after cutover without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const reminder = "Remind me in 2 minutes to stretch";
+
+    const response = await request({
+      ...valid,
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "telegram:eliza:42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "telegram:eliza:42",
+          platformName: "telegram",
+          source: "telegram",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
+  });
+
+  test("keeps a Discord reminder on Dedicated after cutover without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const discordUserId = ["123456789", "012345678"].join("");
+    const reminder = "Remind me in 2 minutes to stretch";
+    bridge.mockImplementationOnce(async () => ({
+      jsonrpc: "2.0" as const,
+      id: "discord:reminder-42",
+      result: { text: "hello from Dedicated" },
+    }));
+
+    const response = await request({
+      platform: "discord",
+      discordUserId,
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      messageId: "discord:reminder-42",
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "discord:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "discord:reminder-42",
+          platformName: "discord",
+          source: "discord",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
   test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
@@ -903,7 +1222,37 @@ describe("personal Shared messaging deliveries", () => {
     { ...valid, message: "" },
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
-    expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  // The route's headline claim is that a provider timing receipt reaches the
+  // client as a `shared_model` Server-Timing segment. Every other test here
+  // returns no `timing`, so that segment was never produced — this drives the
+  // real serializer with a real receipt.
+  test("emits the shared_model segment when the turn carries a timing receipt", async () => {
+    sharedRestMessageSend.mockResolvedValueOnce({
+      text: "hello from Eliza",
+      timing: {
+        replayed: false,
+        durationMs: 1234.5,
+        callCount: 2,
+        fallbackCount: 1,
+        selectedProvider: "openrouter",
+        callsTruncated: false,
+        clamped: false,
+        calls: [],
+      },
+    } as never);
+
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+
+    const serverTiming = response.headers.get("server-timing") ?? "";
+    expect(serverTiming).toContain("shared_model;dur=1234.5");
+    expect(serverTiming).toContain("provider=openrouter");
+    expect(serverTiming).toContain("calls=2");
+    expect(serverTiming).toContain("fallbacks=1");
+    expect(serverTiming).toContain("replayed=0");
+    expect(serverTiming).toContain("clamped=0");
   });
 });

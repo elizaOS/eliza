@@ -493,6 +493,29 @@ describe("POST /api/v1/apps (create)", () => {
     expect(json.details).toBeDefined();
   });
 
+  test("400 app_url / allowed_origins targeting localhost or private addresses", async () => {
+    const unsafeBodies = [
+      { name: "Bad", app_url: "http://localhost:3000" },
+      { name: "Bad", app_url: "http://169.254.169.254/latest/meta-data" },
+      { name: "Bad", app_url: "http://10.0.0.8/app" },
+      { name: "Bad", app_url: "https://user:pass@example.com" },
+      {
+        name: "Bad",
+        app_url: "https://ok.example.com",
+        allowed_origins: ["https://ok.example.com", "http://192.168.1.1"],
+      },
+    ];
+    for (const body of unsafeBodies) {
+      const { status, json } = await req("POST", "/api/v1/apps", {
+        key: KEY_A,
+        body,
+      });
+      expect(status).toBe(400);
+      expect(json.error).toBe("Invalid request data");
+    }
+    expect(createApp).not.toHaveBeenCalled();
+  });
+
   test("400 missing required name", async () => {
     const { status, json } = await req("POST", "/api/v1/apps", {
       key: KEY_A,
@@ -862,6 +885,21 @@ describe("PATCH /api/v1/apps/:id (update)", () => {
       body: { app_url: "nope" },
     });
     expect(status).toBe(400);
+  });
+
+  test("400 app_url / allowed_origins retargeted at localhost or private addresses", async () => {
+    const a = seed({ organization_id: ORG_A });
+    for (const body of [
+      { app_url: "http://127.0.0.1:9000/hook" },
+      { allowed_origins: ["http://172.16.0.1"] },
+    ]) {
+      const { status, json } = await req("PATCH", `/api/v1/apps/${a.id}`, {
+        key: KEY_A,
+        body,
+      });
+      expect(status).toBe(400);
+      expect(json.error).toBe("Invalid request data");
+    }
   });
 
   test("200 partial description patch", async () => {

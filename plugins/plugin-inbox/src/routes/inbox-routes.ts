@@ -51,6 +51,22 @@ function queryInt(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+/**
+ * Coerce a request-body `exampleLimit` to a positive integer. A missing value
+ * is accepted (the service applies its own default); a present-but-invalid
+ * value — non-number, non-finite, or non-positive — is rejected so the route
+ * returns a clean 400 rather than forwarding a malformed count into raw SQL.
+ */
+function parseExampleLimit(
+  value: unknown,
+): { ok: true; value?: number } | { ok: false } {
+  if (value === undefined) return { ok: true };
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return { ok: false };
+  }
+  return { ok: true, value: Math.floor(value) };
+}
+
 function firstQuery(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -146,14 +162,21 @@ async function handleTriageWrite(
   if (!Array.isArray(messages)) {
     return json(400, { ok: false, error: "messages array is required" });
   }
+  const exampleLimit = parseExampleLimit(body.exampleLimit);
+  if (!exampleLimit.ok) {
+    return json(400, {
+      ok: false,
+      error: "exampleLimit must be a positive number",
+    });
+  }
   const service = new InboxService(ctx.runtime);
   const result = await service.triage(messages as InboundMessage[], {
     classifyOnly: body.classifyOnly === true,
     ...(typeof body.ownerContext === "string"
       ? { ownerContext: body.ownerContext }
       : {}),
-    ...(typeof body.exampleLimit === "number"
-      ? { exampleLimit: body.exampleLimit }
+    ...(exampleLimit.value !== undefined
+      ? { exampleLimit: exampleLimit.value }
       : {}),
   });
   return json(200, { ok: true, ...result });

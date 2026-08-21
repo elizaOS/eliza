@@ -6,10 +6,13 @@
  * intact for bot/bridge senders — relays carry real human questions — that the
  * always-on standing-preferences lane gate is structural (extractor-assigned
  * `category: "preference"` + sender ownership + prior) so reply/domain-shaped
- * text under a non-preference category never leaks into the lane, and that the
- * provider never requests embeddings. Uses a hand-built deterministic
- * runtime mock — no live model, no DB — whose `useModel` throws to enforce the
- * no-embeddings invariant.
+ * text under a non-preference category never leaks into the lane, and that
+ * the always-on semantic lane unions in lexically-disjoint-but-related facts
+ * (local embedding + bounded fact-table search) while degrading to pure
+ * lexical retrieval when the embedding model is unavailable or the canonical
+ * embedding capability is disabled. Uses a hand-built deterministic runtime
+ * mock — no live model, no DB; `useModel` throws unless the test provides
+ * semantic results, enforcing that embedding failure never breaks retrieval.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
@@ -43,9 +46,17 @@ function makeRuntime(args: {
 	roomFacts?: Memory[];
 	entityFacts?: Memory[];
 	recentMessages?: Memory[];
+	canonicalEmbeddingsDisabled?: boolean;
+	/**
+	 * Semantic-lane results returned by `searchMemories`. When set, `useModel`
+	 * returns a deterministic local embedding instead of throwing. Entries
+	 * should carry a `similarity` value the provider's floor can filter on.
+	 */
+	semanticFacts?: Memory[];
 }): IAgentRuntime & {
 	getMemories: ReturnType<typeof vi.fn>;
 	useModel: ReturnType<typeof vi.fn>;
+	searchMemories: ReturnType<typeof vi.fn>;
 } {
 	const runtime = {
 		agentId,
@@ -68,13 +79,22 @@ function makeRuntime(args: {
 				return [];
 			},
 		),
+		searchMemories: vi.fn(async () => args.semanticFacts ?? []),
+		getSetting: vi.fn((key: string) =>
+			key === "ELIZA_CANONICAL_EMBEDDINGS_ENABLED" &&
+			args.canonicalEmbeddingsDisabled
+				? false
+				: undefined,
+		),
 		useModel: vi.fn(async () => {
-			throw new Error("FACTS provider must not request embeddings");
+			if (args.semanticFacts) return [0.1, 0.2, 0.3];
+			throw new Error("local embedding model unavailable");
 		}),
 	};
 	return runtime as unknown as IAgentRuntime & {
 		getMemories: ReturnType<typeof vi.fn>;
 		useModel: ReturnType<typeof vi.fn>;
+		searchMemories: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -83,7 +103,7 @@ describe("factsProvider keyword retrieval", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("retrieves matching facts with BM25 keywords without calling embeddings", async () => {
+	it("retrieves matching facts with BM25 keywords, degrading past an unavailable embedding model", async () => {
 		const runtime = makeRuntime({
 			recentMessages: [memory("msg-1", "Berlin keeps coming up today")],
 			facts: [
@@ -110,7 +130,9 @@ describe("factsProvider keyword retrieval", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
+		// The semantic lane attempted a LOCAL embedding, failed, and lexical
+		// retrieval still delivered — embedding failure must never break recall.
+		expect(runtime.useModel).toHaveBeenCalled();
 		expect(runtime.getMemories).toHaveBeenCalledWith(
 			expect.objectContaining({ tableName: "facts", count: 120 }),
 		);
@@ -127,6 +149,29 @@ describe("factsProvider keyword retrieval", () => {
 			section.startsWith("Standing preferences"),
 		);
 		expect(preferenceSection).toContain("Tokyo hotels");
+	});
+
+	it("stays on bounded keyword recall when no embedding capability is registered", async () => {
+		const runtime = makeRuntime({
+			canonicalEmbeddingsDisabled: true,
+			recentMessages: [],
+			facts: [
+				memory("fact-1", "the user prefers concise replies", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.9,
+					keywords: ["concise", "replies"],
+				}),
+			],
+		});
+
+		await factsProvider.get(
+			runtime,
+			memory("msg-current", "What is next?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
 	it("uses stored keywords even when the exact query word is not in fact text", async () => {
@@ -633,5 +678,278 @@ describe("factsProvider provenance attribution", () => {
 
 		expect(result.text).toContain("Dr. Okafor");
 		expect(result.data.facts).toEqual([privateOwnerFact]);
+	});
+});
+
+describe("factsProvider out-of-range timestamps", () => {
+	// A microsecond-precision `createdAt` from a connector passes
+	// `Number.isFinite` but falls outside the ±8.64e15 Date range, so
+	// `new Date(ts).toISOString()` throws `RangeError: Invalid time value`.
+	// That escaped `formatSince` and surfaced as FACTS_PROVIDER_READ_FAILED,
+	// dropping every fact for the turn instead of one unreadable date.
+	const MICROSECOND_TIMESTAMP = 1.7e18;
+
+	it("renders a current fact whose createdAt is outside the Date range", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "where am I working from now?")],
+			facts: [
+				memory(
+					"fact-1",
+					"the user is working from Lisbon",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "lisbon"],
+					},
+					MICROSECOND_TIMESTAMP,
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "where am I working from now?"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is working from Lisbon");
+		expect(result.text).toContain("since unknown");
+	});
+
+	it("keeps readable facts when one row carries an unreadable timestamp", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "remind me where I am working")],
+			facts: [
+				memory(
+					"fact-bad",
+					"the user is working from Lisbon",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "lisbon"],
+					},
+					MICROSECOND_TIMESTAMP,
+				),
+				memory(
+					"fact-good",
+					"the user is working from Porto on Fridays",
+					{
+						kind: "current",
+						category: "location",
+						confidence: 0.9,
+						keywords: ["working", "porto"],
+					},
+					Date.now(),
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "remind me where I am working"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is working from Porto on Fridays");
+		expect(result.text).toContain("the user is working from Lisbon");
+	});
+
+	// 8.64e15 is the largest value `Date` can represent. One millisecond past it
+	// is the first input that `Number.isFinite` accepts and `Date` cannot.
+	it("treats a timestamp one millisecond past the Date range as unknown", async () => {
+		const runtime = makeRuntime({
+			recentMessages: [memory("msg-1", "what is my current setup")],
+			facts: [
+				memory(
+					"fact-1",
+					"the user is running the beta setup",
+					{
+						kind: "current",
+						category: "status",
+						confidence: 0.9,
+						keywords: ["running", "beta", "setup"],
+					},
+					8.64e15 + 1,
+				),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "what is my current setup"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("the user is running the beta setup");
+		expect(result.text).toContain("since unknown");
+	});
+});
+
+/**
+ * The factlink gap (2026-08-21): the fact "Connor (c-node) is a Zcash core
+ * dev" shares ZERO non-stopword tokens with a "convent / season 3 / grove"
+ * query, and because OTHER facts in the pool DID keyword-match ("convent"),
+ * the old total-miss-gated widen never ran — the related fact was
+ * structurally unreachable. These tests replay that shape.
+ */
+describe("factsProvider semantic union (Grove/Zcash replay)", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	// Durable like the live incident's convent facts: they fill the durable
+	// slots via lexical match, so the durable direct-recall fallback (which
+	// only fires on an EMPTY durable ranking) never rescues the Zcash fact.
+	const conventFact = memory(
+		"fact-convent",
+		"The Grove originated at the Convent in Greenpoint during season 1",
+		{
+			kind: "durable",
+			category: "project",
+			confidence: 0.9,
+			keywords: ["grove", "convent", "greenpoint", "season"],
+		},
+	);
+	const zcashFact = memory(
+		"fact-zcash",
+		"Learned Connor (c-node) is a Zcash core dev at the 2026-08-19 bar night",
+		{
+			kind: "durable",
+			category: "relationship",
+			confidence: 0.85,
+			keywords: ["connor", "c-node", "zcash", "core", "dev"],
+		},
+	);
+	const groveQuery = memory(
+		"msg-grove",
+		"wait we're in season 3... grov3.net... look at this from season 1",
+		{ source: "discord" },
+	);
+
+	it("BEFORE-shape: lexical-only retrieval drops the Zcash fact when other facts keyword-match", async () => {
+		// No semanticFacts -> embedding model throws -> pure lexical path,
+		// which is exactly the pre-fix behavior for this pool.
+		const runtime = makeRuntime({ facts: [conventFact, zcashFact] });
+
+		const result = await factsProvider.get(runtime, groveQuery, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(result.text).toContain("Grove originated at the Convent");
+		expect(result.text).not.toContain("Zcash");
+	});
+
+	it("AFTER: the semantic lane unions the lexically-disjoint Zcash fact into the output", async () => {
+		const semanticZcash: Memory = { ...zcashFact, similarity: 0.62 };
+		const runtime = makeRuntime({
+			facts: [conventFact, zcashFact],
+			semanticFacts: [semanticZcash],
+		});
+
+		const result = await factsProvider.get(runtime, groveQuery, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		// Lexical winners keep their place AND the semantic hit surfaces.
+		expect(result.text).toContain("Grove originated at the Convent");
+		expect(result.text).toContain("Zcash");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({ tableName: "facts", count: 8 }),
+		);
+	});
+
+	it("drops semantic hits below the similarity floor", async () => {
+		const weakHit: Memory = { ...zcashFact, similarity: 0.2 };
+		const runtime = makeRuntime({
+			facts: [conventFact],
+			semanticFacts: [weakHit],
+		});
+
+		const result = await factsProvider.get(runtime, groveQuery, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(result.text).not.toContain("Zcash");
+	});
+
+	it("never embeds when the canonical embedding capability is disabled", async () => {
+		const runtime = makeRuntime({
+			canonicalEmbeddingsDisabled: true,
+			facts: [conventFact, zcashFact],
+			semanticFacts: [{ ...zcashFact, similarity: 0.9 }],
+		});
+
+		const result = await factsProvider.get(runtime, groveQuery, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.searchMemories).not.toHaveBeenCalled();
+		expect(result.text).toContain("Grove originated at the Convent");
+	});
+
+	it("folds in-turn attachment text into the retrieval query so page content contributes tokens", async () => {
+		// The attachment carries the literal token "ZCash" (the grov3.net page
+		// text) — with evidence folded into the query, plain BM25 now matches
+		// the stored fact even with the embedding model unavailable.
+		const groveWithAttachment: Memory = {
+			...groveQuery,
+			content: {
+				...groveQuery.content,
+				attachments: [
+					{
+						id: "att-grove",
+						url: "https://grov3.net",
+						title: "the grove",
+						text: "Pillar IV Private Communication: FlashNet node, TorDash, ZCash infra",
+					},
+				],
+			},
+		} as Memory;
+		const runtime = makeRuntime({ facts: [conventFact, zcashFact] });
+
+		const result = await factsProvider.get(runtime, groveWithAttachment, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(result.text).toContain("Zcash core dev");
+	});
+
+	it("folds prior in-turn action-result text into the retrieval query", async () => {
+		const runtime = makeRuntime({ facts: [conventFact, zcashFact] });
+		const stateWithActionResult = {
+			values: {},
+			data: {
+				actionResults: [
+					{
+						success: true,
+						text: "Read grov3.net: Pillar IV Private Communication — FlashNet node, TorDash, ZCash infra",
+						data: { actionName: "ATTACHMENT" },
+					},
+				],
+			},
+			text: "",
+		};
+
+		const result = await factsProvider.get(
+			runtime,
+			groveQuery,
+			stateWithActionResult as never,
+		);
+
+		expect(result.text).toContain("Zcash core dev");
 	});
 });

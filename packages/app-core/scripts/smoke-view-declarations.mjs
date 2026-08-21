@@ -38,6 +38,15 @@ export const smokeViewDeclarations = [
   // intentionally absent — its `/documents` path collides with the built-in
   // Knowledge tab (`App.tsx` findView matches `/${tab}`).
   ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
+  [
+    "computer-use-sessions",
+    "Computer Sessions",
+    "plugin-computeruse",
+    "/computer-use-sessions",
+    "ComputerUseSessionsView",
+    "gui",
+    { capabilities: ["agent-surface"] },
+  ],
   ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
   ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
   ["goals", "Goals", "plugin-goals", "/goals", "GoalsView"],

@@ -83,7 +83,7 @@ beforeAll(async () => {
     id uuid PRIMARY KEY, name text NOT NULL, description text, key_hash text NOT NULL UNIQUE,
     key_prefix text NOT NULL, key_ciphertext text, key_nonce text, key_auth_tag text,
     key_kms_key_id text, key_kms_key_version integer, organization_id uuid NOT NULL,
-    user_id uuid NOT NULL, rate_limit integer NOT NULL DEFAULT 1000,
+    user_id uuid NOT NULL, source_app_id uuid, rate_limit integer NOT NULL DEFAULT 1000,
     is_active boolean NOT NULL DEFAULT true, usage_count integer NOT NULL DEFAULT 0,
     expires_at timestamp, last_used_at timestamp, created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now(), deleted_at timestamp
@@ -178,6 +178,14 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 describe("CLI session single-use plaintext retrieval with real persistence", () => {
+  test("the poll route rejects a non-UUID session id before any lookup", async () => {
+    const response = await pollApp.request("/api/auth/cli-session/not-a-uuid");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Invalid session ID format",
+    });
+  });
+
   test("the session lifecycle still uses the real repository guards", async () => {
     const sessionId = "lifecycle";
     const created = await cliAuthSessionsService.createSession(sessionId);
@@ -214,7 +222,7 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
   });
 
   test("two concurrent poll routes decrypt the candidate but exactly one returns plaintext", async () => {
-    const sessionId = "concurrent-poll";
+    const sessionId = "10101010-1010-4010-8010-101010101010";
     await seedAuthenticatedSession(sessionId);
 
     concurrentDecryptGate = new Promise<void>((resolve) => {
@@ -246,7 +254,7 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
   });
 
   test("a decrypt failure does not consume the session and a retry can win", async () => {
-    const sessionId = "decrypt-retry";
+    const sessionId = "20202020-2020-4020-8020-202020202020";
     await seedAuthenticatedSession(sessionId);
     decryptMode = "failure";
 
@@ -268,7 +276,7 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
   });
 
   test("a stale candidate cannot consume a session whose owner changes during decrypt", async () => {
-    const sessionId = "stale-candidate";
+    const sessionId = "30303030-3030-4030-8030-303030303030";
     await seedAuthenticatedSession(sessionId);
 
     let signalDecryptStarted: (() => void) | undefined;
@@ -303,7 +311,7 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
   });
 
   test("a session/API-key owner mismatch is rejected before decrypt", async () => {
-    const sessionId = "mismatched-owner";
+    const sessionId = "40404040-4040-4040-8040-404040404040";
     await seedAuthenticatedSession(sessionId, {
       sessionUserId: OTHER_USER_ID,
     });
@@ -342,7 +350,7 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
   });
 
   test("a real API-key regeneration update invalidates a decrypted candidate before claim", async () => {
-    const sessionId = "regenerated-during-decrypt";
+    const sessionId = "50505050-5050-4050-8050-505050505050";
     await seedAuthenticatedSession(sessionId);
 
     let signalDecryptStarted: (() => void) | undefined;

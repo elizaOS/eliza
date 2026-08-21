@@ -9,6 +9,10 @@
  * to replace it wholesale.
  */
 import { v4 } from "uuid";
+import {
+	parseEgressDisclosureSubject,
+	resolveEgressAudienceAdmission,
+} from "../access-control/audience-egress";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
@@ -207,6 +211,7 @@ import {
 	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { withSemanticStageFanOut } from "../runtime/trajectory-semantic-stage-sink";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import {
 	sanitizeUserVisibleModelOutput,
@@ -221,6 +226,7 @@ import {
 } from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
+	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -335,11 +341,11 @@ import {
 import { modelProviderErrorDetail } from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
+	createFirstSentenceStreamTracker,
 	extractFirstSentence,
-	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -435,10 +441,14 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 
 function buildDirectChannelResponseFieldSelection(
 	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+	options?: { includeShouldRespond?: boolean },
 ): ResponseHandlerFieldSelectionOptions {
 	const includeFieldNames = new Set<string>();
 	for (const field of fields) {
-		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+		if (
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(options?.includeShouldRespond === true && field.name === "shouldRespond")
+		) {
 			includeFieldNames.add(field.name);
 		}
 	}
@@ -654,6 +664,29 @@ function parseInlinePlannerParams(
 	}
 }
 
+function splitInlinePlannerParams(
+	value: string,
+): { name: string; body: string } | null {
+	const lower = value.toLowerCase();
+	let open = lower.indexOf("<params");
+	while (open >= 0) {
+		const boundary = lower[open + "<params".length];
+		if (!boundary || !/[a-z0-9_]/i.test(boundary)) break;
+		open = lower.indexOf("<params", open + "<params".length);
+	}
+	if (open < 0) return null;
+	const bodyStart = value.indexOf(">", open + "<params".length);
+	if (bodyStart < 0) return null;
+	const close = lower.indexOf("</params>", bodyStart + 1);
+	if (close < 0 || value.slice(close + "</params>".length).trim() !== "") {
+		return null;
+	}
+	return {
+		name: value.slice(0, open).trimEnd(),
+		body: value.slice(bodyStart + 1, close),
+	};
+}
+
 function extractInlinePlannerActionParams(value: string): {
 	name: string;
 	params?: Record<string, unknown>;
@@ -671,13 +704,11 @@ function extractInlinePlannerActionParams(value: string): {
 		}
 	}
 
-	const inlineParamsMatch = value.match(
-		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
-	);
-	if (inlineParamsMatch) {
+	const inlineParams = splitInlinePlannerParams(value);
+	if (inlineParams) {
 		return {
-			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
-			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+			name: unwrapPlannerIdentifier(inlineParams.name),
+			params: parseInlinePlannerParams(inlineParams.body) ?? undefined,
 		};
 	}
 
@@ -846,7 +877,6 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
-	"RUNTIME_MODEL_CONTEXT",
 	// FACTS is dynamic and would otherwise never run during response
 	// composition. Stage 1 keeps it rendered when present (see
 	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
@@ -1516,6 +1546,7 @@ type ResolvedMessageOptions = {
 	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
@@ -1883,9 +1914,9 @@ export function subAgentCompletionRelayBody(
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
 	const maxLength = 1500;
-	return body.length > maxLength
-		? `${body.slice(0, maxLength - 1).trimEnd()}…`
-		: body;
+	const wellFormed = toWellFormedUnicode(body);
+	if (wellFormed.length <= maxLength) return wellFormed;
+	return `${truncateWellFormed(wellFormed, maxLength - 1).trimEnd()}…`;
 }
 
 /**
@@ -2000,10 +2031,203 @@ export function answerlessToolTurnReport(args: {
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
-/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
-const MEDIA_CONTENT_URL_RE =
-	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+/** Where the zero-delivery recovery sourced its terminal reply from. */
+export type ZeroDeliveryRecoverySource =
+	| "plannedText"
+	| "actionUserFacingText"
+	| "stageOneAck"
+	| "fallbackText";
 
+/**
+ * Decides whether — and with what text — a RESPOND turn that ran tools but
+ * delivered nothing terminal recovers instead of ending silent (#20083,
+ * corrected by #20086). Source precedence: the planner's surviving terminal
+ * text, then the last explicit action-owned `userFacingText`, then the
+ * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
+ * fallback whose wording is failure-aware — it claims completion only when at
+ * least one tool actually succeeded. After an early progress ack the turn
+ * recovers only when grounded text exists or any tool failed: a successful
+ * async handoff reports through a later completion relay, so manufacturing a
+ * "finished" line behind its ack would be a lie, while a failed handoff will
+ * never relay anything and the ack's promise must be corrected.
+ * `plannedText` must arrive pre-blanked when it merely repeats the early ack.
+ */
+export function resolveZeroDeliveryRecovery(args: {
+	plannedText: string;
+	actionResults: ReadonlyArray<
+		Pick<ActionResult, "success" | "userFacingText">
+	>;
+	stageOneAck: string;
+	earlyReplySent: boolean;
+}): {
+	recover: boolean;
+	text: string;
+	source: ZeroDeliveryRecoverySource;
+	actionSuccessCount: number;
+	actionFailureCount: number;
+} {
+	const actionSuccessCount = args.actionResults.filter(
+		(result) => result.success === true,
+	).length;
+	const actionFailureCount = args.actionResults.filter(
+		(result) => result.success === false,
+	).length;
+	const lastActionUserFacingText =
+		args.actionResults
+			.map((result) =>
+				typeof result.userFacingText === "string"
+					? result.userFacingText.trim()
+					: "",
+			)
+			.filter((ownedText) => ownedText.length > 0)
+			.at(-1) ?? "";
+	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const fallbackRecoveryText =
+		actionSuccessCount > 0 && actionFailureCount > 0
+			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
+			: actionSuccessCount > 0
+				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
+				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+	const text =
+		args.plannedText ||
+		lastActionUserFacingText ||
+		ackRecoveryText ||
+		fallbackRecoveryText;
+	const source: ZeroDeliveryRecoverySource = args.plannedText
+		? "plannedText"
+		: lastActionUserFacingText
+			? "actionUserFacingText"
+			: ackRecoveryText
+				? "stageOneAck"
+				: "fallbackText";
+	const recover =
+		!args.earlyReplySent ||
+		Boolean(args.plannedText) ||
+		lastActionUserFacingText.length > 0 ||
+		actionFailureCount > 0;
+	return { recover, text, source, actionSuccessCount, actionFailureCount };
+}
+
+function mediaContentUrlRegions(
+	text: string,
+): Array<{ start: number; end: number }> {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lowerText = text.toLowerCase();
+	let cursor = 0;
+	while (cursor < text.length) {
+		const http = lowerText.indexOf("http", cursor);
+		if (http < 0) break;
+		let end = http;
+		while (
+			end < text.length &&
+			!/\s/u.test(text[end]) &&
+			text[end] !== "<" &&
+			text[end] !== ">"
+		)
+			end += 1;
+		const lower = lowerText.slice(http, end);
+		const scheme = lower.startsWith("https://")
+			? 8
+			: lower.startsWith("http://")
+				? 7
+				: 0;
+		if (scheme) {
+			// The endpoint may sit mid-token (trailing punctuation, query strings)
+			// and after any of several `/v1/` segments; the region ends right after
+			// `/content` so surrounding punctuation survives for later cleanup.
+			let matchEnd = -1;
+			let marker = lower.indexOf("/v1/", scheme);
+			while (marker >= 0) {
+				const kindEnd = lower.indexOf("/", marker + 4);
+				if (kindEnd >= 0) {
+					const kind = lower.slice(marker + 4, kindEnd);
+					const idEnd = lower.indexOf("/", kindEnd + 1);
+					if (
+						["videos", "images", "audio"].includes(kind) &&
+						idEnd > kindEnd + 1 &&
+						lower.startsWith("content", idEnd + 1)
+					) {
+						matchEnd = idEnd + 1 + "content".length;
+					}
+				}
+				marker = lower.indexOf("/v1/", marker + 4);
+			}
+			if (matchEnd > 0) {
+				regions.push({ start: http, end: http + matchEnd });
+			}
+		}
+		cursor = Math.max(end, http + 1);
+	}
+	return regions;
+}
+
+function removeRegions(
+	text: string,
+	regions: Array<{ start: number; end: number }>,
+): string {
+	if (regions.length === 0) return text;
+	const chunks: string[] = [];
+	let cursor = 0;
+	for (const region of regions) {
+		let start = region.start;
+		let end = region.end;
+		while (start > cursor && /\s/u.test(text[start - 1])) start -= 1;
+		if (text[start - 1] === "<") start -= 1;
+		while (end < text.length && /\s/u.test(text[end])) end += 1;
+		if (text[end] === ">") end += 1;
+		chunks.push(text.slice(cursor, start));
+		cursor = end;
+	}
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
+}
+
+function removeDeliveredUrl(text: string, url: string): string {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lower = text.toLowerCase();
+	const needle = url.toLowerCase();
+	let cursor = 0;
+	while (needle && cursor < text.length) {
+		const start = lower.indexOf(needle, cursor);
+		if (start < 0) break;
+		regions.push({ start, end: start + url.length });
+		cursor = start + url.length;
+	}
+	return removeRegions(text, regions);
+}
+
+const MEDIA_DELIVERY_PREAMBLES = [
+	...["here", "here's", "here is", "here you go"].flatMap((base) => [
+		`${base} it is`,
+		base,
+	]),
+	"done.",
+	...["video", "video'", "videos", "video's"].flatMap((subject) =>
+		["up", "live", "ready"].map((state) => `done ${subject} ${state}`),
+	),
+	"done",
+	"your video is ready",
+	"your video",
+].sort((left, right) => right.length - left.length);
+
+function stripMediaDeliveryPreamble(text: string): string {
+	const lower = text.toLowerCase();
+	for (const prefix of MEDIA_DELIVERY_PREAMBLES) {
+		if (!lower.startsWith(prefix)) continue;
+		let cursor = prefix.length;
+		if (
+			cursor < text.length &&
+			!/\s/u.test(text[cursor]) &&
+			text[cursor] !== ":"
+		)
+			continue;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		if (text[cursor] === ":") cursor += 1;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		return text.slice(cursor);
+	}
+	return text;
+}
 function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
 	const urls = new Set<string>();
 	for (const result of actionResults) {
@@ -2041,23 +2265,17 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
-		cleaned,
-	);
+	const embeddedRegions = mediaContentUrlRegions(cleaned);
+	const hasEmbeddedMediaUrl = embeddedRegions.length > 0;
 	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
 		return cleaned;
 	}
 
 	for (const url of deliveredUrls) {
-		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+		cleaned = removeDeliveredUrl(cleaned, url);
 	}
-	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = removeRegions(cleaned, mediaContentUrlRegions(cleaned));
 	cleaned = cleaned
-		.replace(
-			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
-			"",
-		)
 		.replace(/:\s*$/g, "")
 		.replace(/<\s*>/g, "")
 		.replace(/\(\s*\)/g, "")
@@ -2065,6 +2283,7 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		// newlines are reply formatting and must survive.
 		.replace(/[^\S\n]{2,}/g, " ")
 		.trim();
+	cleaned = stripMediaDeliveryPreamble(cleaned).trim();
 
 	if (
 		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
@@ -2222,11 +2441,16 @@ function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
-function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+export function cleanPriorDialogueSpeakerName(
+	value: unknown,
+): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	const wellFormed = toWellFormedUnicode(normalized);
+	return wellFormed.length > 80
+		? `${truncateWellFormed(wellFormed, 77)}...`
+		: wellFormed;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
@@ -2771,11 +2995,12 @@ async function collectV5PlannerCandidateActions(args: {
 		disclosureRejectedReasons: string[];
 		/** Normalized names of EXPLICIT stage-1 candidates rejected by a
 		 * NON-disclosure gate: role/context/private-action (#20679), plus
-		 * connector-account-policy denials and `validate() === false` (#20869).
-		 * A privacy denial only proves a disclosure boundary; when the same turn
-		 * also has a non-disclosure rejection the request is compound, so the
-		 * privacy short-circuit must stand down and let the planner/recovery
-		 * path answer the non-disclosure limitation honestly. */
+		 * connector-account-policy denials, unavailable explicit capabilities,
+		 * `validate() === false`, and failed policy/validation checks (#20869). A
+		 * privacy denial only proves a disclosure boundary; when the same turn also
+		 * has a non-disclosure rejection the request is compound, so the privacy
+		 * short-circuit must stand down and let the planner/recovery path answer the
+		 * non-disclosure limitation honestly. */
 		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
@@ -2911,6 +3136,15 @@ async function collectV5PlannerCandidateActions(args: {
 			selectedActions.push(action);
 			return true;
 		} catch (error) {
+			if (explicitCandidateName) {
+				// Provider-policy and validate exceptions are fail-closed capability
+				// rejections, not disclosure decisions. Preserve that distinction so
+				// a sibling disclosure denial cannot mislabel the compound turn as
+				// purely private.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					action.name,
+				);
+			}
 			// error-policy:J1 planner exposure fails closed for the affected action
 			// while reporting the validation failure to the agent.
 			args.runtime.reportError(
@@ -2960,6 +3194,15 @@ async function collectV5PlannerCandidateActions(args: {
 			}
 		}
 		if (resolved.length === 0) {
+			const normalizedCandidate = normalizeActionIdentifier(candidateName);
+			if (normalizedCandidate) {
+				// A missing capability is another non-disclosure limitation. Recording
+				// it keeps a simultaneous disclosure rejection from short-circuiting
+				// the planner with an unrelated privacy-only response.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					normalizedCandidate,
+				);
+			}
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
@@ -4538,6 +4781,22 @@ direct/private rules:
 Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
 `;
 
+// Live voice keeps the compact direct-message prompt and its single model call,
+// but must retain the runtime's engagement decision. This pays no additional
+// inference round trip while allowing natural acknowledgements and ambient
+// speech to end in deliberate silence.
+const VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE =
+	DIRECT_MESSAGE_HANDLER_TEMPLATE.replace(
+		"task: Plan this direct message.",
+		"task: Decide whether to respond, then plan this live voice turn.",
+	).replace("- Never invent omitted shouldRespond.\n", "");
+const VOICE_ENGAGEMENT_RULES = [
+	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
+	"- shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise, or ambient speech clearly not addressed to the agent.",
+	"- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
+	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
+].join("\n");
+
 /**
  * Answer-free refusal stubs, matched against the WHOLE normalized reply after
  * an optional leading apology ("I'm sorry, but …") is stripped. A refusal that
@@ -4829,21 +5088,27 @@ function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
 ): string {
-	// Three tiers: DM/private (compact, no shouldRespond), unaddressed
+	// Four tiers: DM/private (compact, no shouldRespond), live voice DM
+	// (compact + shouldRespond), unaddressed
 	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
 	// so they must not pay the full ~16KB rule block), and the full template
 	// for addressed/respond-likely turns.
 	const compactTier =
-		options?.directMessage === true || options?.groupTriage === true;
-	const baselineTemplate = options?.directMessage
-		? DIRECT_MESSAGE_HANDLER_TEMPLATE
-		: options?.groupTriage
-			? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
-			: messageHandlerTemplate;
+		options?.directMessage === true ||
+		options?.voiceDirectMessage === true ||
+		options?.groupTriage === true;
+	const baselineTemplate = options?.voiceDirectMessage
+		? VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE
+		: options?.directMessage
+			? DIRECT_MESSAGE_HANDLER_TEMPLATE
+			: options?.groupTriage
+				? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
+				: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
@@ -4859,12 +5124,19 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
-	const renderedWithSharedRules = compactTier
-		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
+	const renderedWithVoiceRules = options?.voiceDirectMessage
+		? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
 				"\n",
 			)
+		: rendered;
+	const renderedWithSharedRules = compactTier
+		? [
+				renderedWithVoiceRules,
+				"",
+				`- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n")
 		: [
-				rendered,
+				renderedWithVoiceRules,
 				"",
 				"## Shared Response Quality Rules",
 				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -4887,6 +5159,7 @@ function renderMessageHandlerModelInput(
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
@@ -5029,21 +5302,218 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function canonicalJsonValue(value: unknown): string {
+/**
+ * Budget for the Stage-1 duplicated-stream canonicalizer. The values walked
+ * here are `JSON.parse` products of planner output — `error-policy:J3 planner
+ * output is untrusted model input` — so the walk is bounded the way
+ * `database/connector-json.ts` bounds connector JSON: a depth cap, a node
+ * budget charged BEFORE any per-child allocation, an output-size budget, and a
+ * path-local cycle guard that still accepts an honest DAG.
+ *
+ * Overflow is a typed failure, never a truncated canonical form. A lossy
+ * normalizer (`services/trajectory-json.ts` replaces an over-depth branch with
+ * `"[MaxDepth]"`) cannot back this comparison: two DIFFERENT over-budget
+ * fragments would canonicalize to the same string and the equality check below
+ * would accept a stream the model never actually repeated.
+ */
+const MAX_TOOL_ARGUMENT_CANONICAL_DEPTH = 32;
+const MAX_TOOL_ARGUMENT_CANONICAL_NODES = 20_000;
+const MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS = 4 * 1024 * 1024;
+const TOOL_ARGUMENT_CANONICAL_UNBOUNDED = "TOOL_ARGUMENT_CANONICAL_UNBOUNDED";
+
+type CanonicalJsonOverflowReason =
+	| "accessor"
+	| "chars"
+	| "cycle"
+	| "depth"
+	| "nodes"
+	| "reflection";
+
+type CanonicalJsonState = {
+	nodes: number;
+	chars: number;
+	readonly visiting: WeakSet<object>;
+};
+
+function createCanonicalJsonState(): CanonicalJsonState {
+	return { nodes: 0, chars: 0, visiting: new WeakSet<object>() };
+}
+
+function failCanonicalJsonUnbounded(
+	reason: CanonicalJsonOverflowReason,
+	context: Record<string, unknown> = {},
+	cause?: unknown,
+): never {
+	throw new ElizaError(`planner tool arguments are unbounded (${reason})`, {
+		code: TOOL_ARGUMENT_CANONICAL_UNBOUNDED,
+		severity: "ephemeral",
+		context: {
+			reason,
+			maxDepth: MAX_TOOL_ARGUMENT_CANONICAL_DEPTH,
+			maxNodes: MAX_TOOL_ARGUMENT_CANONICAL_NODES,
+			maxOutputChars: MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS,
+			...context,
+		},
+		...(cause !== undefined ? { cause } : {}),
+	});
+}
+
+function isCanonicalJsonUnboundedError(error: unknown): boolean {
+	return (
+		error instanceof ElizaError &&
+		error.code === TOOL_ARGUMENT_CANONICAL_UNBOUNDED
+	);
+}
+
+function chargeCanonicalNodes(state: CanonicalJsonState, count: number): void {
+	state.nodes += count;
+	if (state.nodes > MAX_TOOL_ARGUMENT_CANONICAL_NODES) {
+		failCanonicalJsonUnbounded("nodes", { nodes: state.nodes });
+	}
+}
+
+function chargeCanonicalChars(state: CanonicalJsonState, count: number): void {
+	state.chars += count;
+	if (state.chars > MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS) {
+		failCanonicalJsonUnbounded("chars", { chars: state.chars });
+	}
+}
+
+function canonicalOwnDescriptor(
+	value: object,
+	key: PropertyKey,
+): PropertyDescriptor | undefined {
+	try {
+		return Object.getOwnPropertyDescriptor(value, key);
+	} catch (error) {
+		// error-policy:J2 a hostile or revoked Proxy can make
+		// getOwnPropertyDescriptor throw; rethrow as the typed unbounded
+		// failure with the original preserved as `cause`, so the caller sees
+		// one failure shape rather than a raw reflection error.
+		failCanonicalJsonUnbounded("reflection", { key: String(key) }, error);
+	}
+}
+
+/**
+ * Own enumerable string-keyed data properties, read through descriptors only —
+ * a getter is never invoked and a Proxy `get` trap never runs on untrusted
+ * input. A `JSON.parse` product carries only data properties, so this selects
+ * exactly the same keys `Object.entries` did for every value the live path
+ * accepts today.
+ */
+function canonicalOwnEntries(
+	value: object,
+	state: CanonicalJsonState,
+): Array<[string, unknown]> {
+	let keys: readonly PropertyKey[];
+	try {
+		keys = Reflect.ownKeys(value);
+	} catch (error) {
+		// error-policy:J2 same shape as the descriptor read above — a revoked
+		// Proxy makes Reflect.ownKeys throw, and it is rethrown as the typed
+		// unbounded failure with the original as `cause`.
+		failCanonicalJsonUnbounded("reflection", {}, error);
+	}
+	// Width is charged before the entry array is allocated.
+	chargeCanonicalNodes(state, keys.length);
+	const entries: Array<[string, unknown]> = [];
+	for (const key of keys) {
+		if (typeof key !== "string") continue;
+		const descriptor = canonicalOwnDescriptor(value, key);
+		if (!descriptor?.enumerable) continue;
+		if (!("value" in descriptor)) {
+			failCanonicalJsonUnbounded("accessor", { key });
+		}
+		entries.push([key, descriptor.value]);
+	}
+	return entries;
+}
+
+function canonicalArrayLength(
+	value: object,
+	state: CanonicalJsonState,
+): number {
+	const descriptor = canonicalOwnDescriptor(value, "length");
+	if (
+		!descriptor ||
+		!("value" in descriptor) ||
+		typeof descriptor.value !== "number" ||
+		!Number.isSafeInteger(descriptor.value) ||
+		descriptor.value < 0
+	) {
+		failCanonicalJsonUnbounded("reflection", { field: "length" });
+	}
+	// Width is charged before the element array is allocated.
+	chargeCanonicalNodes(state, descriptor.value);
+	return descriptor.value;
+}
+
+function canonicalJsonValue(
+	value: unknown,
+	state: CanonicalJsonState,
+	depth: number,
+): string {
+	chargeCanonicalNodes(state, 1);
 	if (Array.isArray(value)) {
-		return `[${value.map(canonicalJsonValue).join(",")}]`;
+		if (depth >= MAX_TOOL_ARGUMENT_CANONICAL_DEPTH) {
+			failCanonicalJsonUnbounded("depth", { depth });
+		}
+		// Path-local: a repeated sibling reference (an honest DAG) still
+		// canonicalizes; only a reference back into the current path is a cycle.
+		if (state.visiting.has(value)) {
+			failCanonicalJsonUnbounded("cycle", { depth });
+		}
+		const length = canonicalArrayLength(value, state);
+		chargeCanonicalChars(state, 2 + Math.max(0, length - 1));
+		state.visiting.add(value);
+		try {
+			const parts: string[] = [];
+			for (let index = 0; index < length; index += 1) {
+				const descriptor = canonicalOwnDescriptor(value, String(index));
+				if (!descriptor) {
+					// A hole: `Array.prototype.map` skipped it and `join` rendered it
+					// as the empty string. Preserved byte-for-byte.
+					parts.push("");
+					continue;
+				}
+				if (!("value" in descriptor)) {
+					failCanonicalJsonUnbounded("accessor", { index });
+				}
+				parts.push(canonicalJsonValue(descriptor.value, state, depth + 1));
+			}
+			return `[${parts.join(",")}]`;
+		} finally {
+			state.visiting.delete(value);
+		}
 	}
 	if (value && typeof value === "object") {
-		const entries = Object.entries(value as Record<string, unknown>).sort(
-			([left], [right]) => left.localeCompare(right),
-		);
-		return `{${entries
-			.map(
-				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
-			)
-			.join(",")}}`;
+		if (depth >= MAX_TOOL_ARGUMENT_CANONICAL_DEPTH) {
+			failCanonicalJsonUnbounded("depth", { depth });
+		}
+		if (state.visiting.has(value)) {
+			failCanonicalJsonUnbounded("cycle", { depth });
+		}
+		const entries = canonicalOwnEntries(value, state);
+		chargeCanonicalChars(state, 2 + Math.max(0, entries.length - 1));
+		entries.sort(([left], [right]) => left.localeCompare(right));
+		state.visiting.add(value);
+		try {
+			const parts: string[] = [];
+			for (const [key, entry] of entries) {
+				const encodedKey = JSON.stringify(key);
+				chargeCanonicalChars(state, encodedKey.length + 1);
+				parts.push(
+					`${encodedKey}:${canonicalJsonValue(entry, state, depth + 1)}`,
+				);
+			}
+			return `{${parts.join(",")}}`;
+		} finally {
+			state.visiting.delete(value);
+		}
 	}
-	return JSON.stringify(value) ?? "undefined";
+	const encoded = JSON.stringify(value) ?? "undefined";
+	chargeCanonicalChars(state, encoded.length);
+	return encoded;
 }
 
 function parseToolArgumentsString(
@@ -5090,8 +5560,27 @@ function parseToolArgumentsString(
 	}
 
 	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
-	const canonical = canonicalJsonValue(first);
-	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+	try {
+		// A fresh budget per fragment: one fragment must never exhaust the budget
+		// of the next, or the comparison would depend on stream position.
+		const canonical = canonicalJsonValue(first, createCanonicalJsonState(), 0);
+		if (
+			rest.some(
+				(entry) =>
+					canonicalJsonValue(entry, createCanonicalJsonState(), 0) !==
+					canonical,
+			)
+		) {
+			return null;
+		}
+	} catch (error) {
+		if (!isCanonicalJsonUnboundedError(error)) throw error;
+		// error-policy:J3 an over-budget fragment is untrusted model input. The
+		// duplicated-stream recovery declines it through the documented `null`
+		// failure signal — Stage 1 then classifies the tool call as malformed and
+		// runs its recovery chain — instead of exhausting the stack inside
+		// `runV5MessageRuntimeStage1`, whose only catch rethrows to the message
+		// boundary and ends the turn.
 		return null;
 	}
 	return first;
@@ -5572,6 +6061,7 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,
@@ -6867,6 +7357,77 @@ export function __buildV5ExecutorContextForTests(
 	return buildV5ExecutorContext(args);
 }
 
+/**
+ * Providers whose output is a retrieval over the turn's query text, so their
+ * turn-cached result goes stale the moment an action introduces new textual
+ * evidence mid-turn (an ATTACHMENT page read, a WEB_FETCH body). Names, not
+ * references: the agent-side relevant-conversations provider registers by
+ * name and core never imports it.
+ */
+const EVIDENCE_SENSITIVE_PROVIDER_NAMES = [
+	"FACTS",
+	"relevant-conversations",
+] as const;
+
+/**
+ * Minimum characters of new action-result text that count as "new textual
+ * evidence". Filters out terse control results (REPLY echoes, IGNORE, status
+ * one-liners) so ordinary tool turns do not pay the re-retrieval cost.
+ */
+const EVIDENCE_INVALIDATION_MIN_CHARS = 200;
+
+function actionResultEvidenceTextLength(result: ActionResult): number {
+	let length = 0;
+	if (typeof result.text === "string") length += result.text.length;
+	if (typeof result.userFacingText === "string") {
+		length += result.userFacingText.length;
+	}
+	const content = (result.data as Record<string, unknown> | undefined)?.content;
+	if (typeof content === "string") length += content.length;
+	return length;
+}
+
+/**
+ * Within-turn freshness for retrieval providers (the c-node/Zcash gap): when
+ * an action settles carrying substantive new text, evict the FACTS and
+ * relevant-conversations entries from the turn's cached provider state so the
+ * NEXT composeState — planner recompose with maximum reuse, the REPLY
+ * action's compose, a continuation compose — re-runs retrieval with the new
+ * evidence tokens in scope instead of reusing the pre-action output
+ * (`provider-cache:FACTS cacheHit:true` was exactly how "ZCash" on a
+ * just-read page never reached fact recall in the same turn). Eviction only;
+ * nothing recomputes until a caller actually composes again, and the re-runs
+ * are ~tens of ms against multi-second model calls.
+ */
+function invalidateEvidenceSensitiveProviderCache(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	if (!message.id) return;
+	if (
+		actionResultEvidenceTextLength(result) < EVIDENCE_INVALIDATION_MIN_CHARS
+	) {
+		return;
+	}
+	const cached = runtime.stateCache?.get?.(message.id);
+	const providers = cached?.data?.providers as
+		| Record<string, unknown>
+		| undefined;
+	if (!providers || typeof providers !== "object") return;
+	for (const name of EVIDENCE_SENSITIVE_PROVIDER_NAMES) {
+		if (name in providers) delete providers[name];
+	}
+}
+
+export function __invalidateEvidenceSensitiveProviderCacheForTests(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	invalidateEvidenceSensitiveProviderCache(runtime, message, result);
+}
+
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
@@ -6958,6 +7519,11 @@ async function executeV5PlannedToolCall(
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
+	invalidateEvidenceSensitiveProviderCache(
+		args.runtime,
+		args.executorCtx.message,
+		rawActionResult,
+	);
 	const actionResult = projectActionResultForClipboard(
 		action,
 		rawActionResult,
@@ -7012,9 +7578,9 @@ interface SubPlannerSubStep {
 const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 
 function truncateSubStepText(text: string): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+	const wellFormed = toWellFormedUnicode(text.trim());
+	if (wellFormed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return wellFormed;
+	return `${truncateWellFormed(wellFormed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(
@@ -7714,19 +8280,25 @@ export async function runV5MessageRuntimeStage1(args: {
 	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
+	// Every stage emitted below also mirrors into the turn's database
+	// trajectory step (#17030) so the app viewer carries the same
+	// Stage-1/planner/tool/evaluation semantics as the file trajectory.
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
-		? createJsonFileTrajectoryRecorder({
-				logger: args.runtime.logger as {
-					warn?: (context: unknown, message?: string) => void;
-				},
-				reportError: args.runtime.reportError.bind(args.runtime),
-				// Final-persistence tool-diagnostic projection: the recorder always
-				// runs the shared tool-shape pattern pass; this adds the runtime's
-				// character-configured secret masking on top. Optional-bound because
-				// lightweight/test runtimes may not implement redactSecrets — the
-				// pattern pass must keep running for them.
-				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
-			})
+		? withSemanticStageFanOut(
+				createJsonFileTrajectoryRecorder({
+					logger: args.runtime.logger as {
+						warn?: (context: unknown, message?: string) => void;
+					},
+					reportError: args.runtime.reportError.bind(args.runtime),
+					// Final-persistence tool-diagnostic projection: the recorder always
+					// runs the shared tool-shape pattern pass; this adds the runtime's
+					// character-configured secret masking on top. Optional-bound because
+					// lightweight/test runtimes may not implement redactSecrets — the
+					// pattern pass must keep running for them.
+					redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
+				}),
+				args.runtime,
+			)
 		: undefined;
 	const trajectoryId = recorder
 		? recorder.startTrajectory({
@@ -7769,6 +8341,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		const voiceDirectMessageChannel =
+			args.message.content?.channelType === ChannelType.VOICE_DM;
 		// Ambient turn = a positively-identified unaddressed text-group turn
 		// (structural classifier only — channel type + addressing + source
 		// metadata, never message text; anything uncertain fails open to
@@ -7804,7 +8378,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// point) but render the compressed prompt slices; the schema is
 		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
 		const responseHandlerFieldSelection = directMessageChannel
-			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields, {
+					includeShouldRespond: voiceDirectMessageChannel,
+				})
 			: groupTriageTurn
 				? { compact: true }
 				: undefined;
@@ -7826,7 +8402,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			context,
 			availableContexts,
 			{
-				directMessage: directMessageChannel,
+				directMessage: directMessageChannel && !voiceDirectMessageChannel,
+				voiceDirectMessage: voiceDirectMessageChannel,
 				groupTriage: groupTriageTurn,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
@@ -9886,24 +10463,37 @@ export async function runV5MessageRuntimeStage1(args: {
 		// produced a correct answer and the user got silence. Recover with the
 		// best grounded text available and name the failure in the log so the
 		// upstream emptying path is diagnosable instead of invisible.
-		// Two states are NOT recoverable silence: a synchronously delivered
+		// Three states are NOT recoverable silence: a synchronously delivered
 		// media deliverable is a delivery even though it never enters the
-		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// visible-TEXT set; deliberate silence (suppressPlannerReply
 		// terminals, ambient IGNORE after tool work) is a contract this
-		// invariant must honor, not a failure for it to "fix" into filler.
-		// An early ack ("on it.") is a PROMISE of work. When the planner then
-		// dies toolless with nothing else delivered, leaving only the ack turns
-		// the promise into a lie by omission — the recovery below must still
-		// fire and own up (live 2026-08-17: "on it." then silence on a repo
-		// ask). Tool-ful turns keep the stricter early-reply exclusion: their
-		// ack was followed by real result delivery paths.
-		const earlyAckBrokenPromise =
-			earlyReplySent && actionResults.length === 0 && !ambientTurn;
+		// invariant must honor, not a failure for it to "fix" into filler;
+		// and a planned reply suppressed because the early ack ALREADY said it
+		// verbatim means the terminal content did reach the user. An early
+		// PROGRESS ack alone, however, is not a terminal answer — the turn
+		// still owes the user its outcome, so `earlyReplySent` by itself does
+		// not disarm the recovery; it only removes the ack (and any text that
+		// repeats it) from the pool of recovery sources so nothing delivers
+		// twice (#20086). One asymmetry is deliberate: the early ack only
+		// ships ahead of an async handoff, whose completion arrives through a
+		// later relay turn — after an ack, recover only when grounded terminal
+		// text exists or any tool failed (a failed handoff will never relay
+		// a completion, so the ack's promise must be corrected). A successful
+		// ack-then-background turn with nothing grounded to say stays silent.
+		const zeroDeliveryRecovery = resolveZeroDeliveryRecovery({
+			plannedText: plannedTextRepeatsEarlyReply
+				? ""
+				: effectiveDeliveredReplyText,
+			actionResults,
+			stageOneAck,
+			earlyReplySent,
+		});
 		if (
 			!shouldSendPlannedText &&
-			(!earlyReplySent || earlyAckBrokenPromise) &&
 			!suppressesPlannerReply &&
-			(deliveredVisibleTexts.size === 0 || earlyAckBrokenPromise) &&
+			!(earlyReplySent && plannedTextRepeatsEarlyReply) &&
+			zeroDeliveryRecovery.recover &&
+			deliveredVisibleTexts.size === 0 &&
 			deliveredMediaUrls.length === 0 &&
 			// Toolless planner deaths on an ADDRESSED turn are the same
 			// recoverable silence: the planner exhausted its retries with no
@@ -9914,39 +10504,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			// with zero deliveries). Ambient turns keep their silence contract.
 			(actionResults.length > 0 || !ambientTurn)
 		) {
-			// On a toolless recovery the Stage-1 ack is a false promise of work
-			// that never happened ("On it." then nothing) — skip straight to
-			// the honest line instead.
-			const recoverableAck = actionResults.length > 0 ? stageOneAck : "";
-			const recoveredText =
-				effectiveDeliveredReplyText ||
-				recoverableAck ||
-				actionResults
-					.map((result) =>
-						typeof result.userFacingText === "string"
-							? result.userFacingText.trim()
-							: "",
-					)
-					.filter((ownedText) => ownedText.length > 0)
-					.at(-1) ||
-				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					emptyFinal: !effectiveReplyText,
+					earlyReplySent,
 					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
 					suppressedByActionReply: plannedTextRepeatsActionReply,
-					recoveredFrom: effectiveDeliveredReplyText
-						? "plannedText"
-						: stageOneAck
-							? "stageOneAck"
-							: "actionUserFacingText",
+					actionSuccessCount: zeroDeliveryRecovery.actionSuccessCount,
+					actionFailureCount: zeroDeliveryRecovery.actionFailureCount,
+					recoveredFrom: zeroDeliveryRecovery.source,
 				},
 				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 			);
-			effectiveReplyText = recoveredText;
-			strippedPlannedReplyText = recoveredText;
-			effectiveDeliveredReplyText = recoveredText;
+			effectiveReplyText = zeroDeliveryRecovery.text;
+			strippedPlannedReplyText = zeroDeliveryRecovery.text;
+			effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
 			shouldSendPlannedText = true;
 		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
@@ -10455,6 +11028,7 @@ export async function persistInferenceTimingSummary(
 				duration: summary.totalMs ?? undefined,
 				metadata: {
 					label: summary.label,
+					traceId: summary.traceId,
 					modelProvider: summary.modelProvider,
 					timeToFirstTokenMs: summary.timeToFirstTokenMs,
 					timeToFirstVisibleMs: summary.timeToFirstVisibleMs,
@@ -11436,15 +12010,103 @@ function enforceEffectGroundedVisibleContent(
 }
 
 /**
+ * Withhold a response whose declared disclosure subject the attested delivery
+ * audience does not admit in FULL. Built from constants so nothing from the
+ * withheld payload survives; `privacyReason` carries `audience_admission` plus
+ * the min level the room earned, so the model-visible note and downstream
+ * tooling can tell an audience-admission withholding apart from the
+ * owner-exclusive revalidation denial.
+ */
+function audienceAdmissionWithheld(
+	runtime: IAgentRuntime,
+	message: Memory,
+	level: "redacted" | "none",
+	blockingCount: number,
+): Content {
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			messageId: message.id,
+			roomId: message.roomId,
+			admissionLevel: level,
+			blockingCount,
+		},
+		"Withheld scoped response the delivery audience does not admit in full",
+	);
+	return {
+		text: PRIVACY_DENIED_TEXT,
+		actions: ["PRIVACY_DENIED"],
+		data: {
+			privacyDenied: true,
+			privacyReason: `audience_admission:${level}`,
+		},
+	};
+}
+
+/**
+ * Enforce min-over-members audience admission at egress for a response that
+ * declares the disclosure subject it requires of its recipients
+ * (`content.data.disclosureSubject`). The attested delivery audience is joined
+ * with the subject through the pure policy core
+ * ({@link resolveEgressAudienceAdmission}); anything short of a FULL admission
+ * withholds the response. Fail-closed: a declared subject with NO attested
+ * audience earns nothing and is withheld, so a scoped reply cannot ship into an
+ * unverified room. A response with no declared subject is not narrowed here and
+ * falls through to the caller's other egress checks unchanged.
+ */
+function enforceAudienceAdmissionAtEgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	response: Content,
+): Content {
+	const data = isRecord(response.data) ? response.data : undefined;
+	if (!data || !("disclosureSubject" in data)) return response;
+	const subject = parseEgressDisclosureSubject(data.disclosureSubject);
+	// A `disclosureSubject` key present but unparseable never means "unscoped":
+	// `parseEgressDisclosureSubject` fails closed to owner-private, so `subject`
+	// is defined whenever the key exists. Guard anyway for undefined markers.
+	if (!subject) return response;
+	const audience = getTrustedDeliveryAudience(message);
+	if (!audience) {
+		// A scoped response with no attested audience earns nothing — withhold
+		// rather than ship into an unverified room. (Not an error-policy case:
+		// there is no catch here, and tagging an ordinary guard pollutes the
+		// grep that exists to audit retained catches.)
+		return audienceAdmissionWithheld(runtime, message, "none", 0);
+	}
+	const admission = resolveEgressAudienceAdmission(subject, audience);
+	if (admission.level === "full") return response;
+	return audienceAdmissionWithheld(
+		runtime,
+		message,
+		admission.level,
+		admission.blockingEntityIds.length,
+	);
+}
+
+/**
  * Revalidate a turn that consumed owner-private data immediately before any
  * visible or durable egress. The replacement is constructed from constants so
  * no text, attachment, or structured payload from the private result survives.
+ *
+ * Two independent, both-fail-closed seams run here: first the per-recipient
+ * audience-admission check for a response that declares its own disclosure
+ * subject ({@link enforceAudienceAdmissionAtEgress}), then the owner-exclusive
+ * revalidation for turns that consumed owner-private context. Either may
+ * withhold; a withholding from the first short-circuits the second because its
+ * replacement carries no owner-private data to revalidate.
  */
 export async function enforceTrustedDeliveryAudienceAtEgress(
 	runtime: IAgentRuntime,
 	message: Memory,
 	response: Content,
 ): Promise<Content> {
+	const admissionChecked = enforceAudienceAdmissionAtEgress(
+		runtime,
+		message,
+		response,
+	);
+	if (admissionChecked !== response) return admissionChecked;
 	if (!ownerExclusiveDisclosureWasUsed(message)) return response;
 	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
 	if (disclosure.allowed) return response;
@@ -11481,7 +12143,14 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 	responseContent: Content | null;
 	responseMessages: Memory[];
 }> {
-	if (!ownerExclusiveDisclosureWasUsed(message)) {
+	// Two egress seams can withhold here: the owner-exclusive revalidation (only
+	// relevant when the turn consumed owner-private data) and the per-recipient
+	// audience-admission check (relevant whenever the response declares its own
+	// disclosure subject). Skip the pass only when NEITHER can fire.
+	const declaresDisclosureSubject =
+		isRecord(responseContent?.data) &&
+		"disclosureSubject" in responseContent.data;
+	if (!ownerExclusiveDisclosureWasUsed(message) && !declaresDisclosureSubject) {
 		return { responseContent, responseMessages };
 	}
 	const finalContent = await enforceTrustedDeliveryAudienceAtEgress(
@@ -12443,9 +13112,39 @@ export class DefaultMessageService implements IMessageService {
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
 				let firstSentenceSent = false;
+				let firstSentenceChecked = false;
 				let firstSentenceText = "";
+				const firstSentenceTracker = createFirstSentenceStreamTracker();
 				let streamTextFallback = "";
 				let runTerminalOwner: MessageRunTerminalOwner | undefined;
+				const acceptFirstSentence = (first: string): void => {
+					firstSentenceChecked = true;
+					if (first.length <= 5) return;
+					firstSentenceSent = true;
+					firstSentenceText = first;
+					// Audio does not stall the text stream, but its model capture
+					// remains owned by the run-terminal barrier.
+					const deliverVoice = () =>
+						deliverFirstSentenceVoice(
+							runtime,
+							first,
+							callback,
+							options?.abortSignal,
+						);
+					if (!runTerminalOwner) {
+						throw new ElizaError(
+							"Voice streaming requires a live run terminal owner",
+							{
+								code: "RUN_TERMINAL_OWNER_REQUIRED",
+								context: {
+									messageId: message.id,
+									roomId: message.roomId,
+								},
+							},
+						);
+					}
+					runTerminalOwner.track("first-sentence-voice", deliverVoice);
+				};
 				// Envelope-echo latch for this turn's stream: once the accumulated
 				// text reads as envelope material, every downstream chunk consumer
 				// (model_stream_chunk hook re-emission, first-sentence TTS, the
@@ -12459,7 +13158,7 @@ export class DefaultMessageService implements IMessageService {
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
-						? async (chunk, messageId, accumulated) => {
+						? async (chunk, messageId, accumulated, streamRevision) => {
 								// Sensitive turns deliver once through the final callback,
 								// where the audience is re-read. Streaming bytes cannot be
 								// recalled if room membership changes mid-generation.
@@ -12502,46 +13201,27 @@ export class DefaultMessageService implements IMessageService {
 								// the local-inference voice loop is a separate layer, see its
 								// JSDoc). Only run detection when `accumulated` is present:
 								// raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and
+								// structured output that would garble sentence detection and
 								// TTS.
 								if (
-									!firstSentenceSent &&
+									!firstSentenceChecked &&
 									accumulated !== undefined &&
-									hasFirstSentence(streamText)
+									firstSentenceTracker.push(
+										chunk,
+										accumulated,
+										streamRevision,
+									) !== undefined
 								) {
 									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
-										firstSentenceText = first;
-										// Audio does not stall the text stream, but its model capture
-										// remains owned by the run-terminal barrier.
-										const deliverVoice = () =>
-											deliverFirstSentenceVoice(
-												runtime,
-												first,
-												callback,
-												opts.abortSignal,
-											);
-										if (!runTerminalOwner) {
-											throw new ElizaError(
-												"Voice streaming requires a live run terminal owner",
-												{
-													code: "RUN_TERMINAL_OWNER_REQUIRED",
-													context: {
-														messageId: message.id,
-														roomId: message.roomId,
-													},
-												},
-											);
-										}
-										runTerminalOwner.track(
-											"first-sentence-voice",
-											deliverVoice,
-										);
-									}
+									acceptFirstSentence(first);
 								}
 
-								await userOnStreamChunk(chunk, messageId, accumulated);
+								await userOnStreamChunk(
+									chunk,
+									messageId,
+									accumulated,
+									streamRevision,
+								);
 							}
 						: undefined;
 
@@ -12571,6 +13251,11 @@ export class DefaultMessageService implements IMessageService {
 					...(options?.onTrajectoryTerminalOwner
 						? {
 								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
+							}
+						: {}),
+					...(options?.onInferenceTimingSummary
+						? {
+								onInferenceTimingSummary: options.onInferenceTimingSummary,
 							}
 						: {}),
 				};
@@ -12776,6 +13461,15 @@ export class DefaultMessageService implements IMessageService {
 					);
 
 					const result = await processingPromise;
+					if (
+						!firstSentenceChecked &&
+						firstSentenceTracker.finish() !== undefined &&
+						result.responseContent?.text
+					) {
+						acceptFirstSentence(
+							extractFirstSentence(result.responseContent.text).first,
+						);
+					}
 
 					// Voice: Handle the rest of the message
 					if (firstSentenceSent && result.responseContent?.text) {
@@ -12857,6 +13551,21 @@ export class DefaultMessageService implements IMessageService {
 						? emitInferenceTiming(inferenceTimer)
 						: null;
 					if (inferenceSummary) {
+						try {
+							opts.onInferenceTimingSummary?.(inferenceSummary);
+						} catch (error) {
+							// error-policy:J7 host timing export must not replace the
+							// user-visible result whose summary it observes.
+							runtime.logger.warn(
+								{ error, turnId: inferenceSummary.turnId },
+								"Inference timing summary callback failed",
+							);
+							runtime.reportError(
+								"MessageService.inferenceTimingSummary",
+								error,
+								{ turnId: inferenceSummary.turnId },
+							);
+						}
 						detachPostDeliverySideEffect(
 							runtime,
 							"persist_inference_timing",
@@ -13184,10 +13893,20 @@ export class DefaultMessageService implements IMessageService {
 				() => this.processAttachments(runtime, attachments),
 			);
 			if (message.id) {
+				// API chat can pass a prompt-only clone whose text includes language
+				// or document guidance while the canonical user memory already exists.
+				// Attachment enrichment must update only the durable attachment view,
+				// not overwrite the stored user's words with those internal prompt
+				// instructions. Preserve the canonical persisted text when available.
+				const canonicalMessage = await runtime.getMemoryById(message.id);
+				const canonicalText = canonicalMessage?.content?.text;
 				await runtime.updateMemory({
 					id: message.id,
 					content: {
 						...message.content,
+						...(typeof canonicalText === "string"
+							? { text: canonicalText }
+							: {}),
 						attachments: sanitizeAttachmentsForStorage(
 							message.content.attachments,
 						),

@@ -19,12 +19,14 @@ const ORG_ID = "00000000-0000-4000-8000-00000000d001";
 // legitimately-unconfigured org (the designed-empty case, not a failure).
 let storedAccessToken: string | null = "org-access-token";
 let storedPhoneNumberId: string | null = "1234567890";
+let storedVerifyToken: string | null = null;
 
 mock.module("../secrets", () => ({
   secretsService: {
     get: async (_org: string, name: string) => {
       if (name.includes("ACCESS_TOKEN")) return storedAccessToken;
       if (name.includes("PHONE_NUMBER_ID")) return storedPhoneNumberId;
+      if (name.includes("VERIFY_TOKEN")) return storedVerifyToken;
       return null;
     },
   },
@@ -157,5 +159,50 @@ describe("sendMessage error policy (#13415)", () => {
     expect(result.success).toBe(true);
     expect(result.messageId).toBe("wamid.TEST123");
     expect(result.error).toBeUndefined();
+  });
+});
+
+describe("verifyWebhookSubscription — constant-time verify-token check", () => {
+  const VERIFY_TOKEN = "org-verify-token-0123456789";
+
+  beforeEach(() => {
+    storedVerifyToken = VERIFY_TOKEN;
+  });
+
+  afterEach(() => {
+    storedVerifyToken = null;
+  });
+
+  test("returns the challenge for the exact stored token", async () => {
+    const result = await whatsappAutomationService.verifyWebhookSubscription(
+      ORG_ID,
+      "subscribe",
+      VERIFY_TOKEN,
+      "challenge-1",
+    );
+    expect(result).toBe("challenge-1");
+  });
+
+  test("rejects a wrong token and a prefix near-miss", async () => {
+    for (const attempted of ["wrong-token", VERIFY_TOKEN.slice(0, -1)]) {
+      const result = await whatsappAutomationService.verifyWebhookSubscription(
+        ORG_ID,
+        "subscribe",
+        attempted,
+        "challenge-1",
+      );
+      expect(result).toBeNull();
+    }
+  });
+
+  test("fails closed when the org has no stored verify token", async () => {
+    storedVerifyToken = null;
+    const result = await whatsappAutomationService.verifyWebhookSubscription(
+      ORG_ID,
+      "subscribe",
+      VERIFY_TOKEN,
+      "challenge-1",
+    );
+    expect(result).toBeNull();
   });
 });

@@ -9,6 +9,11 @@
  * paths and re-exported from `index.ts`.
  */
 import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import {
   parseSlackArchivesUrl,
   type SlackChannel,
   type SlackUser,
@@ -24,8 +29,6 @@ function escapeSlackMrkdwnSegment(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-
-const SLACK_ANGLE_TOKEN_RE = /<[^>\n]+>/g;
 
 /**
  * Checks if an angle-bracket token is an allowed Slack format
@@ -55,25 +58,28 @@ function escapeSlackMrkdwnContent(text: string): string {
     return text;
   }
 
-  SLACK_ANGLE_TOKEN_RE.lastIndex = 0;
   const out: string[] = [];
-  let lastIndex = 0;
-
-  for (
-    let match = SLACK_ANGLE_TOKEN_RE.exec(text);
-    match;
-    match = SLACK_ANGLE_TOKEN_RE.exec(text)
-  ) {
-    const matchIndex = match.index;
-    out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex, matchIndex)));
-    const token = match[0] ?? "";
+  let cursor = 0;
+  while (cursor < text.length) {
+    const tokenStart = text.indexOf("<", cursor);
+    if (tokenStart < 0) break;
+    out.push(escapeSlackMrkdwnSegment(text.slice(cursor, tokenStart)));
+    const lineEnd = text.indexOf("\n", tokenStart + 1);
+    const tokenEnd = text.indexOf(">", tokenStart + 1);
+    if (tokenEnd < 0 || (lineEnd >= 0 && lineEnd < tokenEnd)) {
+      const plainEnd = lineEnd < 0 ? text.length : lineEnd + 1;
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, plainEnd)));
+      cursor = plainEnd;
+      continue;
+    }
+    const token = text.slice(tokenStart, tokenEnd + 1);
     out.push(
       isAllowedSlackAngleToken(token) ? token : escapeSlackMrkdwnSegment(token),
     );
-    lastIndex = matchIndex + token.length;
+    cursor = tokenEnd + 1;
   }
 
-  out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex)));
+  out.push(escapeSlackMrkdwnSegment(text.slice(cursor)));
   return out.join("");
 }
 
@@ -132,7 +138,35 @@ function convertStrikethrough(text: string): string {
  */
 function convertCodeBlocks(text: string): string {
   // Slack code blocks don't support language hints in the same way
-  return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "```\n$2```");
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const opener = text.indexOf("```", cursor);
+    if (opener < 0) break;
+    let bodyStart = opener + 3;
+    while (bodyStart < text.length) {
+      const code = text.charCodeAt(bodyStart);
+      const isWord =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        code === 95 ||
+        (code >= 97 && code <= 122);
+      if (!isWord) break;
+      bodyStart += 1;
+    }
+    if (text[bodyStart] === "\n") bodyStart += 1;
+    const closer = text.indexOf("```", bodyStart);
+    if (closer < 0) break;
+    out.push(
+      text.slice(cursor, opener),
+      "```\n",
+      text.slice(bodyStart, closer),
+      "```",
+    );
+    cursor = closer + 3;
+  }
+  out.push(text.slice(cursor));
+  return out.join("");
 }
 
 /**
@@ -195,14 +229,55 @@ export interface ChunkSlackTextOpts {
 const DEFAULT_MAX_CHARS = 4000;
 
 /**
+ * A hard per-chunk cap can never be honored for arbitrary text unless it's a
+ * positive integer that can hold at least one UTF-16 code unit; anything
+ * else (NaN, 0, negative, fractional) has no sensible "effective bound" and
+ * must fail closed instead of silently coercing into one.
+ */
+function requireValidChunkLimit(maxChars: number, fnName: string): void {
+  if (!Number.isInteger(maxChars) || maxChars < 1) {
+    throw new ElizaError(
+      `${fnName}: maxChars must be a positive integer, got ${maxChars}`,
+      { code: "SLACK_CHUNK_LIMIT_INVALID", context: { fnName, maxChars } },
+    );
+  }
+}
+
+/**
+ * `effectiveLimit` (the actual per-chunk budget after fence/break-point
+ * accounting) is too small to hold even one well-formed unit of the
+ * remaining text — e.g. an astral character needs 2 UTF-16 code units, so a
+ * 1-unit budget can't fit it without splitting a surrogate pair. Widening
+ * the chunk past the caller's requested `maxChars` would silently break the
+ * "never emits more than maxChars" contract, so this fails closed instead.
+ */
+function chunkLimitTooSmall(
+  fnName: string,
+  effectiveLimit: number,
+  maxChars: number,
+): never {
+  throw new ElizaError(
+    `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) cannot hold the next well-formed character without splitting a surrogate pair`,
+    {
+      code: "SLACK_CHUNK_LIMIT_TOO_SMALL",
+      context: { fnName, effectiveLimit, maxChars },
+    },
+  );
+}
+
+/**
  * Splits plain Slack message text at newline/space boundaries without ever
  * emitting more than `maxChars`. Unlike `chunkSlackText`, this does not add
  * code-fence balancing characters.
+ *
+ * @throws {ElizaError} if `maxChars` isn't a positive integer, or is too
+ * small to fit the next well-formed character (see {@link chunkLimitTooSmall}).
  */
 export function splitSlackText(
   text: string,
   maxChars: number = DEFAULT_MAX_CHARS,
 ): string[] {
+  requireValidChunkLimit(maxChars, "splitSlackText");
   if (text.length <= maxChars) {
     return [text];
   }
@@ -228,20 +303,31 @@ export function splitSlackText(
     }
 
     splitIndex = Math.min(splitIndex, maxChars);
-    messages.push(remaining.slice(0, splitIndex));
-    remaining = remaining.slice(splitIndex);
+    // truncateWellFormed backs the cut off by one unit instead of splitting a
+    // surrogate pair; remaining must resume from the actual chunk length, not
+    // the requested splitIndex, or one unit of text would be dropped.
+    const chunk = truncateWellFormed(remaining, splitIndex);
+    if (chunk.length === 0) {
+      chunkLimitTooSmall("splitSlackText", splitIndex, maxChars);
+    }
+    messages.push(chunk);
+    remaining = remaining.slice(chunk.length);
   }
 
   return messages;
 }
 
 /**
- * Chunks Slack text while preserving code blocks
+ * Chunks Slack text while preserving code blocks.
+ *
+ * @throws {ElizaError} if `maxChars` isn't a positive integer, or is too
+ * small to fit the next well-formed character (see {@link chunkLimitTooSmall}).
  */
 export function chunkSlackText(
   text: string,
   maxChars: number = DEFAULT_MAX_CHARS,
 ): string[] {
+  requireValidChunkLimit(maxChars, "chunkSlackText");
   if (!text) {
     return [];
   }
@@ -282,7 +368,14 @@ export function chunkSlackText(
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
 
-    let chunk = remaining.slice(0, breakPoint);
+    // truncateWellFormed backs the cut off by one unit instead of splitting a
+    // surrogate pair; consumedLength (not breakPoint) is how far `remaining`
+    // must advance, since the fence suffix appended below isn't part of it.
+    let chunk = truncateWellFormed(remaining, breakPoint);
+    if (chunk.length === 0) {
+      chunkLimitTooSmall("chunkSlackText", breakPoint, maxChars);
+    }
+    const consumedLength = chunk.length;
 
     // Check if this chunk ends inside a code block — count fences in the
     // actual emitted chunk, not the max-size window, so a fence that sits
@@ -297,7 +390,7 @@ export function chunkSlackText(
 
     chunks.push(chunk);
 
-    remaining = remaining.slice(breakPoint);
+    remaining = remaining.slice(consumedLength);
 
     // If we were in a code block, reopen it
     if (inCodeBlock) {
@@ -484,17 +577,23 @@ export function truncateText(
   maxLength: number,
   ellipsis = "…",
 ): string {
-  if (text.length <= maxLength) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+  const boundedEllipsis = truncateWellFormed(
+    toWellFormedUnicode(ellipsis),
+    maxLength,
+  );
+  const budget = Math.max(0, maxLength - boundedEllipsis.length);
+  return `${truncateWellFormed(wellFormed, budget)}${boundedEllipsis}`;
 }
 
 /**
  * Strips Slack mrkdwn formatting from text
  */
 export function stripSlackFormatting(text: string): string {
-  return text
+  const withoutMarkup = text
     .replace(/```[\s\S]*?```/g, "") // Code blocks (must be before inline code)
     .replace(/\*([^*]+)\*/g, "$1") // Bold
     .replace(/_([^_]+)_/g, "$1") // Italic
@@ -505,10 +604,13 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
     .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
-    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1") // Plain links → URL
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1"); // Plain links → URL
+  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">" };
+  return withoutMarkup
+    .replace(
+      /&(amp|lt|gt);/g,
+      (entity, name: string) => entities[name] ?? entity,
+    )
     .trim();
 }
 

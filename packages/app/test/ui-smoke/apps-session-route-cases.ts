@@ -46,9 +46,14 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "my-apps app window",
+    // Retired My Apps slug (#17031): resolves to the consolidated Projects
+    // surface with its Apps segment pre-selected.
+    name: "my-apps compat deep link",
     path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }],
+    readyChecks: [
+      { text: "Projects" },
+      { selector: '[data-testid="projects-apps-segment"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
@@ -64,9 +69,11 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "my apps app window",
-    path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
+    // Retired bare My Apps route (#17031): same consolidated Projects surface,
+    // Apps segment pre-selected with the app-management copy visible.
+    name: "bare /apps compat deep link",
+    path: "/apps",
+    readyChecks: [{ text: "Projects" }, { text: "Install, create, and run" }],
     timeoutMs: 90_000,
   },
   {
@@ -154,6 +161,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "maps app shell page",
+    path: "/maps",
+    selector: '[data-testid="maps-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     // Pinned home tile → Settings.
     name: "settings view",
     path: "/settings",
@@ -178,6 +191,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
   { viewId: "cloud", path: "/cloud" },
+  { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
   { viewId: "documents", path: "/documents" },
@@ -187,6 +201,7 @@ const managerVisibleViewTileCases = [
   { viewId: "health", path: "/health" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
+  { viewId: "maps", path: "/maps" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },

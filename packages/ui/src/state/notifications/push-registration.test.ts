@@ -20,6 +20,7 @@ import {
   initPushRegistration,
   isRemotePushTransportEnabled,
   type PushRegistrationDeps,
+  refreshPushRegistrationAuthority,
   unregisterPushToken,
 } from "./push-registration";
 
@@ -71,6 +72,7 @@ function makeDeps(
     registerToken: vi.fn(async () => ({ ok: true })),
     unregisterToken: vi.fn(async () => ({ ok: true })),
     navigate: vi.fn(),
+    sleep: vi.fn(async () => {}),
   };
 }
 
@@ -258,6 +260,167 @@ describe("initPushRegistration", () => {
 
     await unregisterPushToken(deps);
     expect(deps.unregisterToken).toHaveBeenCalledWith("tok-to-drop");
+  });
+
+  it("retries a failed token POST without requiring another OS event", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    const registerToken = vi.fn(async () => ({ ok: true }));
+    deps.registerToken = registerToken;
+    registerToken
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ ok: true });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "retry-post-token");
+    await flush();
+
+    expect(registerToken).toHaveBeenCalledTimes(3);
+    expect(deps.sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("revokes from the old authority before registering on a new authority", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let authorityKey = "agent-a";
+    const unregisterA = vi.fn(async () => ({ ok: true }));
+    const registerA = vi.fn(async () => ({ ok: true }));
+    const unregisterB = vi.fn(async () => ({ ok: true }));
+    const registerB = vi.fn(async () => ({ ok: true }));
+    deps.captureAuthority = () =>
+      authorityKey === "agent-a"
+        ? {
+            key: authorityKey,
+            registerToken: registerA,
+            unregisterToken: unregisterA,
+          }
+        : {
+            key: authorityKey,
+            registerToken: registerB,
+            unregisterToken: unregisterB,
+          };
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "authority-token");
+    await flush();
+    expect(registerA).toHaveBeenCalledWith("ios", "authority-token");
+
+    authorityKey = "agent-b";
+    await Promise.all([
+      refreshPushRegistrationAuthority(deps),
+      refreshPushRegistrationAuthority(deps),
+    ]);
+    expect(unregisterA).toHaveBeenCalledWith("authority-token");
+    expect(plugin.__registerCalls).toBe(2);
+    emitRegistration(plugin, "authority-token");
+    await flush();
+    expect(registerB).toHaveBeenCalledWith("ios", "authority-token");
+    expect(unregisterB).not.toHaveBeenCalled();
+  });
+
+  it("cleans an old-authority POST that completes after the authority changes", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let authorityKey = "agent-a";
+    let finishRegisterA: (() => void) | undefined;
+    const registerA = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          finishRegisterA = () => resolve({ ok: true });
+        }),
+    );
+    const unregisterA = vi.fn(async () => ({ ok: true }));
+    const registerB = vi.fn(async () => ({ ok: true }));
+    const unregisterB = vi.fn(async () => ({ ok: true }));
+    deps.captureAuthority = () =>
+      authorityKey === "agent-a"
+        ? {
+            key: authorityKey,
+            registerToken: registerA,
+            unregisterToken: unregisterA,
+          }
+        : {
+            key: authorityKey,
+            registerToken: registerB,
+            unregisterToken: unregisterB,
+          };
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "racing-token");
+    await flush();
+    expect(registerA).toHaveBeenCalledOnce();
+
+    authorityKey = "agent-b";
+    await refreshPushRegistrationAuthority(deps);
+    finishRegisterA?.();
+    await flush();
+
+    expect(unregisterA).toHaveBeenCalledWith("racing-token");
+    emitRegistration(plugin, "racing-token");
+    await flush();
+    expect(registerB).toHaveBeenCalledWith("ios", "racing-token");
+  });
+
+  it("revokes a rotated OS token after the replacement is registered", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+
+    expect(deps.registerToken).toHaveBeenNthCalledWith(2, "ios", "new-token");
+    expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
+  });
+
+  it("serializes overlapping token callbacks so an older completion cannot win", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    let finishOld: (() => void) | undefined;
+    deps.registerToken = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ ok: true }>((resolve) => {
+            finishOld = () => resolve({ ok: true });
+          }),
+      )
+      .mockResolvedValue({ ok: true });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    emitRegistration(plugin, "new-token");
+    await flush();
+    expect(deps.registerToken).toHaveBeenCalledTimes(1);
+
+    finishOld?.();
+    await flush();
+    expect(deps.registerToken).toHaveBeenNthCalledWith(2, "ios", "new-token");
+    expect(deps.unregisterToken).toHaveBeenCalledWith("old-token");
+  });
+
+  it("does not mistake a failed old-token cleanup for a failed replacement POST", async () => {
+    const loggedError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "ios");
+    deps.unregisterToken = vi.fn(async () => {
+      throw new Error("cleanup unavailable");
+    });
+
+    await initPushRegistration(deps);
+    emitRegistration(plugin, "old-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+    emitRegistration(plugin, "new-token");
+    await flush();
+
+    expect(deps.registerToken).toHaveBeenCalledTimes(2);
+    expect(deps.unregisterToken).toHaveBeenCalledTimes(6);
+    expect(loggedError).toHaveBeenCalled();
   });
 });
 

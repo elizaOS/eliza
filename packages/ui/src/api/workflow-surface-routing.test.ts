@@ -218,12 +218,21 @@ describe("workflowSurfaceClient", () => {
     const fetchSpy = vi.fn(async () => ({ automations: [] }));
     routed.fetch = fetchSpy as typeof routed.fetch;
 
-    await active.listAutomations();
+    const controller = new AbortController();
+    await active.listAutomations({
+      timeoutMs: 6_000,
+      signal: controller.signal,
+    });
     await active.runWorkflowDefinition("wf-1").catch(() => {
       // run response shape is asserted elsewhere; only routing matters here
     });
 
-    expect(fetchSpy).toHaveBeenNthCalledWith(1, "/api/automations");
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      "/api/automations",
+      { signal: controller.signal },
+      { timeoutMs: 6_000 },
+    );
     expect(fetchSpy).toHaveBeenNthCalledWith(
       2,
       "/api/workflow/workflows/wf-1/run",

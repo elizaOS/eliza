@@ -313,6 +313,24 @@ export interface ScheduledTask {
  */
 export type ScheduledTaskInput = Omit<ScheduledTask, "taskId" | "state">;
 
+/**
+ * Keys `apply("edit")` refuses outright, checked with `Object.hasOwn` before
+ * anything merges onto the task.
+ *
+ * `taskId` and `state` are server-managed — the verbs own the state machine.
+ * `__proto__` is refused for a different reason: `applyEdit` merges the patch
+ * with `Object.assign`, which writes through `[[Set]]`, so a
+ * `JSON.parse`-produced own `"__proto__"` key reaches `Object.prototype`'s
+ * setter and re-parents the task instead of adding a field. Zod's `.strict()`
+ * does not report that key as unrecognized, so this explicit list is what makes
+ * the refusal visible to the caller rather than a silent drop.
+ */
+export const SCHEDULED_TASK_EDIT_READONLY_KEYS = [
+  "taskId",
+  "state",
+  "__proto__",
+] as const;
+
 export type ScheduledTaskRef = string | ScheduledTask;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
 export type GateParams = unknown; // typed via TaskGateRegistry per kind
@@ -332,6 +350,9 @@ export type ScheduledTaskVerb =
   | "edit"
   | "reopen";
 
+/** Lifecycle mutations whose user acknowledgement can bind to a durable log. */
+export type ScheduledTaskReceiptVerb = "snooze" | "complete" | "dismiss";
+
 export interface ScheduledTaskFilter {
   kind?: ScheduledTaskKind;
   status?: ScheduledTaskStatus | ScheduledTaskStatus[];
@@ -348,6 +369,14 @@ export interface ScheduledTaskScheduleResult {
   replayed: boolean;
 }
 
+/** Durable outcome for one receipt-keyed task mutation. */
+export interface ScheduledTaskApplyResult {
+  task: ScheduledTask;
+  commit: ScheduledTaskLogEntry;
+  idempotencyKey: string;
+  replayed: boolean;
+}
+
 export interface ScheduledTaskRunner {
   scheduleWithResult(
     task: Omit<ScheduledTask, "taskId" | "state">,
@@ -361,6 +390,12 @@ export interface ScheduledTaskRunner {
     verb: ScheduledTaskVerb,
     payload?: unknown,
   ): Promise<ScheduledTask>;
+  applyWithResult(
+    taskId: string,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+    options: { idempotencyKey: string },
+  ): Promise<ScheduledTaskApplyResult>;
   pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
 

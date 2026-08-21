@@ -10,6 +10,9 @@
  * an idempotency key for DM sends, so an ambiguous failure after egress starts is
  * retained as an at-most-once tombstone instead of risking a duplicate reply, and
  * only a turn's first reply-callback invocation may attempt egress at all.
+ * One-on-one DMs are gated by `TWITTER_DM_POLICY` (`dm-policy.ts`, default
+ * `pairing` via the core PairingService handshake) before any world state or
+ * memory is created for the sender.
  */
 import {
   ChannelType,
@@ -23,6 +26,8 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
+import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
+import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
@@ -62,13 +67,15 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function parsePollIntervalMs(value: unknown): number {
-  const seconds =
+  const seconds = parseTwitterInterval(
     typeof value === "number"
-      ? value
+      ? String(value)
       : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  return Math.max(15, Number.isFinite(seconds) ? seconds : 60) * 1_000;
+        ? value
+        : undefined,
+    60,
+  );
+  return Math.max(15, seconds) * 1_000;
 }
 
 function compareEventIds(left: string, right: string): number {
@@ -81,6 +88,20 @@ function compareEventIds(left: string, right: string): number {
     // fall back to explicit lexicographic ordering instead of guessing.
     return left.localeCompare(right);
   }
+}
+
+/**
+ * X stopped returning `participant_ids` on MessageCreate events in June 2025.
+ * Current one-to-one conversation IDs are the two participant IDs joined by a
+ * hyphen; group conversation IDs are a single numeric snowflake. Retain the
+ * old participant-array check for compatible API responses, but fail closed
+ * to one-to-one when an identifier has an unknown shape.
+ */
+export function isGroupDmEvent(event: DirectMessageEvent): boolean {
+  if ((event.participant_ids?.length ?? 0) > 2) return true;
+  const conversationId = event.dm_conversation_id?.trim() ?? "";
+  if (/^\d{1,19}-\d{1,19}$/.test(conversationId)) return false;
+  return /^\d{15,19}$/.test(conversationId);
 }
 
 export class TwitterDirectMessageClient {
@@ -338,6 +359,60 @@ export class TwitterDirectMessageClient {
     const senderId = event.sender_id;
     const username = user?.username ?? senderId;
     const displayName = user?.name ?? username;
+    const isGroup = isGroupDmEvent(event);
+
+    // DM access policy gate: a one-on-one X DM from an unpaired sender must
+    // not reach the agent's reply loop. The default `pairing` policy routes
+    // unknown senders through the core PairingService code handshake (fail
+    // closed); `TWITTER_DM_POLICY=open` restores the legacy default-open
+    // behavior. Group conversations are unaffected — the account only sees
+    // ones it was added to. Denied events are not ingested; the poll cursor
+    // still advances past them.
+    if (!isGroup) {
+      const access = await checkTwitterDmAccess(this.runtime, {
+        policy: resolveTwitterDmPolicy(
+          this.state.TWITTER_DM_POLICY ??
+            getSetting(this.runtime, "TWITTER_DM_POLICY"),
+        ),
+        senderId,
+        username: user?.username,
+      });
+      if (!access.allowed) {
+        logger.debug(
+          { src: "plugin:x", accountId: this.client.accountId, senderId },
+          "X DM blocked by TWITTER_DM_POLICY",
+        );
+        if (access.replyMessage) {
+          try {
+            if (this.isDryRun) {
+              logger.info(
+                { src: "plugin:x", senderId },
+                "[DRY RUN] Would send X DM pairing reply",
+              );
+            } else {
+              await session.client.v2.sendDmToParticipant(senderId, {
+                text: access.replyMessage,
+              });
+            }
+          } catch (error) {
+            // error-policy:J1 The poll loop is the transport boundary: a
+            // failed pairing reply is logged with context and the event stays
+            // blocked; the sender can retry on their next message.
+            logger.warn(
+              {
+                src: "plugin:x",
+                accountId: this.client.accountId,
+                senderId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to deliver X DM pairing reply",
+            );
+          }
+        }
+        return;
+      }
+    }
+
     const conversationId = event.dm_conversation_id ?? senderId;
     // DMs and public interactions share the sender's canonical X world. Older
     // connector builds already attached DM rooms to this world, so reusing it
@@ -447,7 +522,6 @@ export class TwitterDirectMessageClient {
         return [];
       }
 
-      const isGroup = (event.participant_ids?.length ?? 0) > 2;
       let sent: unknown;
       // X's DM create endpoints do not accept an idempotency key. Persist a
       // no-replay barrier before the request so a crash, timeout, or receipt

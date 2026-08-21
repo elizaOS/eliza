@@ -39,6 +39,17 @@ let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
 let lastBridgeAgent: unknown;
+let lastStreamOptions: Record<string, unknown> | undefined;
+let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
+  outcome: "accepted",
+};
+const apnsSentTokens: string[] = [];
+const apnsOutcomes = new Map<
+  string,
+  { outcome: string; reason?: string; status?: number } | Error
+>();
+const loggerInfo = mock((_message: string, _context?: unknown) => undefined);
+const loggerWarn = mock(() => undefined);
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -56,6 +67,10 @@ mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async <T>(fn: () => Promise<T>) => await fn(),
 }));
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => process.env,
+  getCloudBinding: () => undefined,
+  hasCloudBindingsContext: () => false,
+  runWithCloudBindings: <T>(_env: unknown, fn: () => T) => fn(),
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
 }));
@@ -123,6 +138,10 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
       options: {
         funding?: unknown;
+        mobilePushDispatch?: (message: {
+          title: string;
+          body?: string;
+        }) => Promise<void>;
         historyStore: {
           load(
             agentId: string,
@@ -144,6 +163,12 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     ) => {
       bridgeFunding = options.funding;
       lastBridgeAgent = agent;
+      if (rpc.id === "push-event") {
+        await options.mobilePushDispatch?.({
+          title: "Reminder",
+          body: "Stand up",
+        });
+      }
       if (rpc.id === "rate-limited") {
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
@@ -180,6 +205,8 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       agent: { id: string },
       rpc: { id?: string | number; params?: { roomId?: string } },
       options: {
+        trustedMessageRole?: "system";
+        trustedHistoryCutoffAt?: number;
         historyStore: {
           merge(
             agentId: string,
@@ -189,6 +216,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         };
       },
     ) => {
+      lastStreamOptions = options as unknown as Record<string, unknown>;
       const channelId = rpc.params?.roomId ?? agent.id;
       let canceled = false;
       const body = new ReadableStream<Uint8Array>({
@@ -223,12 +251,32 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     },
   },
 }));
+mock.module("@/lib/mobile-push/apns-provider", () => ({
+  resolveCloudApnsConfig: (env: { ELIZA_APNS_KEY?: string }) =>
+    env.ELIZA_APNS_KEY ? { configured: true } : null,
+  CloudApnsProvider: class {
+    async send(token: string) {
+      apnsSentTokens.push(token);
+      const outcome = apnsOutcomes.get(token) ?? apnsOutcome;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }
+  },
+}));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: mock(() => undefined) },
+  logger: {
+    debug: () => undefined,
+    error: () => undefined,
+    info: loggerInfo,
+    warn: loggerWarn,
+  },
 }));
 
 const { SharedRuntimeConversation } = await import(
   "./shared-runtime-conversation"
+);
+const { coordinateSharedPushDispatch } = await import(
+  "@/lib/services/shared-runtime/conversation-coordinator"
 );
 type SharedRuntimeConversationInstance = InstanceType<
   typeof SharedRuntimeConversation
@@ -244,6 +292,12 @@ beforeEach(() => {
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
   lastBridgeAgent = undefined;
+  lastStreamOptions = undefined;
+  apnsOutcome = { outcome: "accepted" };
+  apnsSentTokens.length = 0;
+  apnsOutcomes.clear();
+  loggerInfo.mockClear();
+  loggerWarn.mockClear();
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -342,6 +396,416 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
   };
 }
 
+async function pushOperation(
+  object: { fetch(request: Request): Promise<Response> },
+  body: Record<string, unknown>,
+) {
+  return await object.fetch(
+    new Request("https://shared-runtime.internal/mobile-push", {
+      method: "POST",
+      body: JSON.stringify({ agentId: AGENT_FIXTURE.id, ...body }),
+    }),
+  );
+}
+
+test("rejects malformed channel metadata before runtime dispatch", async () => {
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        channel: { type: "NOT_A_CHANNEL", source: "forged source" },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "invalid-channel",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ code: "invalid_channel" });
+});
+
+test("mobile push registration is durable, idempotent, iOS-only, and removable", async () => {
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  for (const platform of ["ios", "ios"] as const) {
+    const response = await pushOperation(object, {
+      operation: "push-register",
+      platform,
+      token: "ios-token",
+    });
+    expect(response.status).toBe(201);
+    await response.arrayBuffer();
+  }
+  const list = await pushOperation(object, { operation: "push-list" });
+  expect(await list.json()).toMatchObject({
+    tokens: [{ token: "ios-token", platform: "ios" }],
+  });
+  const android = await pushOperation(object, {
+    operation: "push-register",
+    platform: "android",
+    token: "android-token",
+  });
+  expect(android.status).toBe(400);
+  await android.arrayBuffer();
+  const removed = await pushOperation(object, {
+    operation: "push-unregister",
+    token: "ios-token",
+  });
+  expect((await removed.json()) as unknown).toEqual({ removed: true });
+  expect(data.has("mobile-push-tokens")).toBe(false);
+});
+
+test("mobile push register and unregister share exact 4096-character boundaries", async () => {
+  const data = new Map<string, unknown>();
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const maximumToken = "x".repeat(4_096);
+  const oversizedToken = "x".repeat(4_097);
+
+  const maximumRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: maximumToken,
+  });
+  expect(maximumRegistration.status).toBe(201);
+  await maximumRegistration.arrayBuffer();
+
+  const oversizedRegistration = await pushOperation(object, {
+    operation: "push-register",
+    platform: "ios",
+    token: oversizedToken,
+  });
+  expect(oversizedRegistration.status).toBe(400);
+  await oversizedRegistration.arrayBuffer();
+
+  const maximumUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: maximumToken,
+  });
+  expect(maximumUnregister.status).toBe(200);
+  expect((await maximumUnregister.json()) as unknown).toEqual({
+    removed: true,
+  });
+
+  const oversizedUnregister = await pushOperation(object, {
+    operation: "push-unregister",
+    token: oversizedToken,
+  });
+  expect(oversizedUnregister.status).toBe(400);
+  await oversizedUnregister.arrayBuffer();
+});
+
+test("notification dispatch sends iOS tokens and removes APNs-dead records", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "dead-token",
+    })
+  ).arrayBuffer();
+  apnsOutcome = { outcome: "unregistered", reason: "BadDeviceToken" };
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder", body: "Time to leave" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
+  expect(apnsSentTokens).toEqual(["dead-token"]);
+  expect(data.has("mobile-push-tokens")).toBe(false);
+});
+
+test("real coordinator namespace dispatch reaches the durable APNs provider path", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "coordinated-token",
+    })
+  ).arrayBuffer();
+  const names: string[] = [];
+  const namespace = {
+    getByName(name: string) {
+      names.push(name);
+      return {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          object.fetch(new Request(input, init)),
+      };
+    },
+  };
+
+  await coordinateSharedPushDispatch(
+    AGENT_FIXTURE.id,
+    {
+      title: "Reminder",
+      collapseKey: "scheduled-occurrence",
+      data: { notificationId: "scheduled-occurrence" },
+    },
+    { namespace: namespace as never },
+  );
+  await Promise.all(background.splice(0));
+
+  expect(names).toEqual([`${AGENT_FIXTURE.id}:${AGENT_FIXTURE.id}`]);
+  expect(apnsSentTokens).toEqual(["coordinated-token"]);
+});
+
+test("notification dispatch settles every device when one APNs request fails", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["live-token", "dead-token", "network-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set("dead-token", {
+    outcome: "unregistered",
+    reason: "ExpiredToken",
+  });
+  apnsOutcomes.set("network-token", new Error("APNs timeout"));
+
+  const dispatched = await pushOperation(object, {
+    operation: "push-dispatch",
+    message: { title: "Reminder" },
+  });
+  expect(dispatched.status).toBe(202);
+  await dispatched.arrayBuffer();
+  await Promise.all(background.splice(0));
+
+  expect(new Set(apnsSentTokens)).toEqual(
+    new Set(["live-token", "dead-token", "network-token"]),
+  );
+  expect(data.get("mobile-push-tokens")).toEqual([
+    expect.objectContaining({ token: "live-token" }),
+    expect.objectContaining({ token: "network-token" }),
+  ]);
+});
+
+test("accepted occurrence replay is suppressed by the bounded durable ledger", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token: "live-token",
+    })
+  ).arrayBuffer();
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-1",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  await dispatch();
+
+  expect(apnsSentTokens).toEqual(["live-token"]);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(1);
+  expect(Object.keys(ledger)[0]?.length).toBe(64);
+  expect(Object.values(ledger)[0]?.status).toBe("accepted");
+});
+
+test("concurrent occurrence ledgers merge without storing raw maximum-length tokens", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const token = "sensitive-token-".padEnd(4_096, "x");
+  await (
+    await pushOperation(object, {
+      operation: "push-register",
+      platform: "ios",
+      token,
+    })
+  ).arrayBuffer();
+  const enqueue = async (collapseKey: string) =>
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: { title: "Reminder", collapseKey },
+      })
+    ).arrayBuffer();
+
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+  await Promise.all([enqueue("occurrence-a"), enqueue("occurrence-b")]);
+  await Promise.all(background.splice(0));
+
+  expect(apnsSentTokens).toHaveLength(2);
+  const ledgerJson = JSON.stringify(data.get("mobile-push-delivery-ledger"));
+  expect(ledgerJson).not.toContain("sensitive-token-");
+  expect(new TextEncoder().encode(ledgerJson).length).toBeLessThan(1_024);
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { acceptedTokens: string[] }
+  >;
+  expect(Object.keys(ledger)).toHaveLength(2);
+  for (const entry of Object.values(ledger)) {
+    expect(entry.acceptedTokens).toHaveLength(1);
+    expect(entry.acceptedTokens[0]?.length).toBe(64);
+  }
+});
+
+test("retry sends only unsettled devices and never logs an APNs token URL", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  for (const token of ["accepted-token", "private-device-token"]) {
+    await (
+      await pushOperation(object, {
+        operation: "push-register",
+        platform: "ios",
+        token,
+      })
+    ).arrayBuffer();
+  }
+  apnsOutcomes.set(
+    "private-device-token",
+    new Error(
+      "fetch failed https://api.push.apple.com/3/device/private-device-token",
+    ),
+  );
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "reminder-occurrence-2",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+
+  await dispatch();
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "private-device-token",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(
+    "api.push.apple.com",
+  );
+  expect(JSON.stringify(loggerWarn.mock.calls)).toContain("1 transport");
+
+  apnsOutcomes.delete("private-device-token");
+  await dispatch();
+  expect(apnsSentTokens).toEqual([
+    "accepted-token",
+    "private-device-token",
+    "private-device-token",
+  ]);
+});
+
+test("partial-failure ledger prunes hashes through repeated token rotation", async () => {
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    { ELIZA_APNS_KEY: "configured" } as never,
+  );
+  const mutateToken = async (
+    operation: "push-register" | "push-unregister",
+    token: string,
+  ) => {
+    await (
+      await pushOperation(object, {
+        operation,
+        ...(operation === "push-register" ? { platform: "ios" } : {}),
+        token,
+      })
+    ).arrayBuffer();
+  };
+  const dispatch = async () => {
+    await (
+      await pushOperation(object, {
+        operation: "push-dispatch",
+        message: {
+          title: "Reminder",
+          collapseKey: "rotation-occurrence",
+        },
+      })
+    ).arrayBuffer();
+    await Promise.all(background.splice(0));
+  };
+  await mutateToken("push-register", "always-failing-token");
+  apnsOutcomes.set("always-failing-token", new Error("offline"));
+
+  let previousRotatedToken: string | undefined;
+  for (let index = 0; index < 40; index++) {
+    if (previousRotatedToken) {
+      await mutateToken("push-unregister", previousRotatedToken);
+    }
+    const rotatedToken = `rotated-token-${index}`;
+    await mutateToken("push-register", rotatedToken);
+    await dispatch();
+    previousRotatedToken = rotatedToken;
+  }
+
+  const ledger = data.get("mobile-push-delivery-ledger") as Record<
+    string,
+    { status: string; acceptedTokens: string[] }
+  >;
+  const entry = Object.values(ledger)[0];
+  expect(entry?.status).toBe("retryable");
+  expect(entry?.acceptedTokens).toHaveLength(1);
+  expect(entry?.acceptedTokens[0]?.length).toBe(64);
+  expect(entry?.acceptedTokens.length).toBeLessThanOrEqual(32);
+});
+
 test("prewarm joins cold hydration without writing a conversation turn", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
@@ -366,7 +830,15 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
 
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toEqual({ success: true });
+  await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
+  expect(
+    loggerInfo.mock.calls.filter(
+      ([message]) =>
+        message ===
+        "[SharedRuntimeConversation] conversation prewarm completed",
+    ),
+  ).toHaveLength(1);
   expect(repositoryWrites).toBe(0);
   expect(data.get("conversation")).toMatchObject({
     agentId: AGENT_FIXTURE.id,
@@ -387,7 +859,15 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   );
   expect(warmResponse.status).toBe(200);
   await warmResponse.arrayBuffer();
+  await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
+  expect(
+    loggerInfo.mock.calls.filter(
+      ([message]) =>
+        message ===
+        "[SharedRuntimeConversation] conversation prewarm completed",
+    ),
+  ).toHaveLength(1);
 
   const result = await makeInvoke(object)("first-real-turn");
   expect(result).toMatchObject({ result: { historyLength: 2 } });
@@ -1256,6 +1736,49 @@ test("personal history archives beyond the model window and cutover reads every 
   const body = (await response.json()) as { history: unknown[] };
   expect(body.history).toHaveLength(46);
   await Promise.all(background.splice(0));
+});
+
+test("forwards the server-authenticated history cutoff across the Durable Object", async () => {
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "stream",
+        agent: AGENT_FIXTURE,
+        trustedMessageRole: "system",
+        trustedHistoryCutoffAt: 1_725_000_000_000,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "trusted-cutoff",
+          method: "message.send",
+          params: { text: "generate a greeting", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  await response.body?.cancel();
+
+  expect(lastStreamOptions).toMatchObject({
+    trustedMessageRole: "system",
+    trustedHistoryCutoffAt: 1_725_000_000_000,
+  });
 });
 
 test("stream body cancellation persists before the room queue releases", async () => {

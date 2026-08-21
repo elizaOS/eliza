@@ -1,29 +1,50 @@
 name: Device E2E
 
 # Exact-head Android emulator and iOS simulator device-bundle proof (#19640,
-# #14336). The retired android-device-e2e.yml / mobile-build-smoke.yml producers
-# were deleted by the CI consolidation (926dc8b58a1); this workflow restores a
-# minimal route without the retired sprawl. Each job hands the whole lane to
-# the single bundle-owning runner (android-e2e.mjs / ios-e2e.mjs --output) so
-# build, install, boot, and drive failures all land inside one bundle root
-# (inline/, logs/, summary.json, junit.xml), and the artifact is uploaded on
-# success AND failure. No repository secrets are read anywhere, so fork PRs
-# stay credential-free.
+# #14336, #13580). The retired android-device-e2e.yml / mobile-build-smoke.yml
+# producers were deleted by the CI consolidation (926dc8b58a1); this workflow
+# owns the current hosted-device route without reviving that sprawl. Each job
+# hands the whole lane to the single bundle-owning runner
+# (android-e2e.mjs / ios-e2e.mjs --output) so
+# build, install, and drive failures after the runner starts land inside one
+# finalized bundle root (inline/, logs/, summary.json, junit.xml). Each job
+# initializes its artifact root immediately after checkout, so a later
+# toolchain or emulator/simulator infrastructure failure still leaves a
+# revision-bound bootstrap record alongside the Actions log. No repository
+# secrets are read anywhere, so fork PRs stay credential-free.
 #
 # Reachability: repository policy forbids direct pull-request triggers
 # (audit:workflow-triggers), so canonical ci.yml calls this workflow behind the
 # `ci:device` label gate — the emulator/simulator legs are heavy and a PR runs
-# them only when explicitly opted in. Labels are read from the run's event
+# them only when explicitly opted in. A weekly schedule protects the hosted
+# Android subset between PR opt-ins. The iOS job is deliberately excluded from
+# schedules, and a least-privilege notifier opens a stable issue on failure and
+# closes it after recovery so status stays visible outside run history.
+# Labels are read from the run's event
 # payload, so apply `ci:device` before the head push (or re-open) that should
 # carry the proof. workflow_dispatch remains the on-demand route for arbitrary
 # refs.
 
 on:
+  schedule:
+    - cron: "17 9 * * 1"
   workflow_call:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Hosted device/evidence platform to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+          - linux
+          - windows
 
 concurrency:
-  group: device-e2e-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
+  group: device-e2e-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && format('{0}-{1}', github.event_name, github.run_id) || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,6 +58,7 @@ env:
 jobs:
   android-device-bundle:
     name: Android emulator bundle
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -54,6 +76,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
+
+      - name: Initialize Android artifact root
+        run: |
+          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/android/logs"
+          printf 'revision=%s\nrun=%s/%s\nevent=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_EVENT_NAME" \
+            > "$ELIZA_DEVICE_BUNDLE_ROOT/android/logs/workflow-bootstrap.txt"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -77,9 +106,10 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      # android-e2e.mjs owns the whole lane inside the emulator session — APK
-      # build (--build), install, WebView route coverage — so every preflight
-      # failure is a recorded bundle step instead of a bundle-less job failure.
+      # android-e2e.mjs owns the whole lane inside the emulator session. The
+      # explicit host probe set is limited to onboarding, route rendering, and
+      # the native-plugin bridge: local-agent, destructive lifecycle, launcher
+      # soak, and voice specs have separate hardware prerequisites.
       - name: Android device-bundle run
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -88,19 +118,23 @@ jobs:
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
 
       - name: Upload Android device bundle
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-device-e2e-bundle
+          name: android-device-e2e-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           path: device-e2e-artifacts/android/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   ios-simulator-bundle:
     name: iOS simulator bundle
+    # The unattended cadence restores Android coverage only. Keep the existing
+    # iOS producer available to labeled PR callers and explicit dispatches
+    # without adding an unrelated weekly macOS runner allocation.
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -117,7 +151,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          submodules: false
+          # The direct iOS build links the MTP/native inference bridge, whose
+          # build contract requires the pinned upstreams/llama.cpp checkout.
+          submodules: recursive
+
+      - name: Initialize iOS artifact root
+        run: |
+          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/ios/logs"
+          printf 'revision=%s\nrun=%s/%s\nevent=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_EVENT_NAME" \
+            > "$ELIZA_DEVICE_BUNDLE_ROOT/ios/logs/workflow-bootstrap.txt"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -147,7 +190,234 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-simulator-e2e-bundle
+          name: ios-simulator-e2e-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           path: device-e2e-artifacts/ios/**
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 14
+
+  reconcile-scheduled-android-status:
+    name: Reconcile scheduled Android status
+    needs: android-device-bundle
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      ANDROID_JOB_RESULT: ${{ needs.android-device-bundle.result }}
+    steps:
+      - name: Reconcile the scheduled Android status issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const title = "Scheduled Android device E2E is failing (#13580)";
+            const repositoryUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`;
+            const runUrl = `${repositoryUrl}/actions/runs/${context.runId}/attempts/${context.runAttempt}`;
+            const revisionUrl = `${repositoryUrl}/commit/${context.sha}`;
+            const result = process.env.ANDROID_JOB_RESULT || "unknown";
+            const artifactName = `android-device-e2e-bundle-${context.runId}-${context.runAttempt}`;
+            const issues = await github.paginate(
+              github.rest.search.issuesAndPullRequests,
+              {
+                q: `repo:${context.repo.owner}/${context.repo.repo} is:issue in:title "${title}"`,
+                per_page: 100,
+              },
+            );
+            const matchingIssues = issues.filter(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            const existing =
+              matchingIssues.find((issue) => issue.state === "open") ??
+              matchingIssues[0];
+
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+                per_page: 100,
+              },
+            );
+            const artifact = artifacts.find(
+              (candidate) =>
+                candidate.name === artifactName && !candidate.expired,
+            );
+            const artifactLine = artifact
+              ? `[${artifactName}](${repositoryUrl}/actions/runs/${context.runId}/artifacts/${artifact.id})`
+              : `Not produced for run attempt ${context.runId}/${context.runAttempt}; inspect the [run artifact list](${repositoryUrl}/actions/runs/${context.runId}#artifacts).`;
+
+            if (result === "success") {
+              if (!existing || existing.state === "closed") {
+                core.info("Scheduled Android run succeeded; no open failure issue to close.");
+                return;
+              }
+              const body = [
+                "The weekly hosted Android device-bundle cadence recovered.",
+                "",
+                `- Result: \`${result}\``,
+                `- Run attempt: [${context.runId}/${context.runAttempt}](${runUrl})`,
+                `- Artifact: ${artifactLine}`,
+                `- Revision: [\`${context.sha}\`](${revisionUrl})`,
+                "",
+                "This stable issue is reconciled only by scheduled runs of `.github/workflows/device-e2e.yml`. Manual dispatches and reusable-workflow calls never write issues.",
+              ].join("\n");
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+                state: "closed",
+                state_reason: "completed",
+              });
+              core.info(`Closed recovered scheduled Android issue #${existing.number}`);
+              return;
+            }
+
+            const body = [
+              "The weekly hosted Android device-bundle cadence is not successful.",
+              "",
+              `- Result: \`${result}\``,
+              `- Run attempt: [${context.runId}/${context.runAttempt}](${runUrl})`,
+              `- Artifact: ${artifactLine}`,
+              `- Revision: [\`${context.sha}\`](${revisionUrl})`,
+              "",
+              "This stable issue is opened, updated, and reopened by `.github/workflows/device-e2e.yml`. Manual dispatches and reusable-workflow calls never write issues.",
+            ].join("\n");
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+                state: "open",
+              });
+              core.info(`Updated scheduled Android failure issue #${existing.number}`);
+            } else {
+              const { data: created } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+              core.info(`Opened scheduled Android failure issue #${created.number}`);
+            }
+
+  linux-computeruse-evidence:
+    name: Linux computer-use evidence
+    if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'linux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DISPLAY: ":99"
+      XDG_SESSION_TYPE: x11
+      ELIZA_COMPUTERUSE_DRIVER: legacy
+      COMPUTER_USE_ENABLED: "1"
+      COMPUTER_USE_BROWSER_HEADLESS: "false"
+      ELIZA_LINUX_EVIDENCE_ROOT: ${{ github.workspace }}/device-e2e-artifacts/linux-computeruse
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install X11 evidence dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openbox scrot wmctrl x11-utils x11-xserver-utils xclip xdotool xterm xvfb
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build computer-use workspace dependencies
+        run: bun run --cwd packages/core build
+
+      - name: Start disposable X11 desktop
+        run: |
+          Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$RUNNER_TEMP/xvfb.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/xvfb.pid"
+          for _attempt in $(seq 1 50); do
+            if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+              openbox >"$RUNNER_TEMP/openbox.log" 2>&1 &
+              echo $! >"$RUNNER_TEMP/openbox.pid"
+              sleep 1
+              wmctrl -m
+              exit 0
+            fi
+            sleep 0.1
+          done
+          echo "::error::Xvfb did not become ready"
+          exit 1
+
+      - name: Capture and strictly validate Linux evidence
+        run: |
+          bun run --cwd plugins/plugin-computeruse capture:linux-desktop-evidence -- --out "$ELIZA_LINUX_EVIDENCE_ROOT"
+          bun run --cwd plugins/plugin-computeruse validate:platform-evidence -- "$ELIZA_LINUX_EVIDENCE_ROOT/linux-desktop-validation.json" --require-complete
+
+      - name: Upload Linux computer-use evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: linux-computeruse-evidence
+          path: |
+            device-e2e-artifacts/linux-computeruse/**
+            ${{ runner.temp }}/xvfb.log
+            ${{ runner.temp }}/openbox.log
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-computeruse-evidence:
+    name: Windows computer-use evidence
+    if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'windows')
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      COMPUTER_USE_ENABLED: "1"
+      ELIZA_COMPUTERUSE_DRIVER: legacy
+      ELIZA_COMPUTERUSE_PS_TIMEOUT_MS: "30000"
+      ELIZA_WINDOWS_EVIDENCE_ROOT: ${{ github.workspace }}\device-e2e-artifacts\windows-computeruse
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build computer-use workspace dependencies
+        run: bun run --cwd packages/core build
+
+      - name: Capture and strictly validate Windows evidence
+        shell: pwsh
+        run: |
+          bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence -- --out "$env:ELIZA_WINDOWS_EVIDENCE_ROOT"
+          bun run --cwd plugins/plugin-computeruse validate:platform-evidence -- "$env:ELIZA_WINDOWS_EVIDENCE_ROOT\windows-desktop-validation.json" --require-complete
+
+      - name: Upload Windows computer-use evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-computeruse-evidence
+          path: device-e2e-artifacts/windows-computeruse/**
+          if-no-files-found: error
           retention-days: 14

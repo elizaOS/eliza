@@ -1646,6 +1646,314 @@
       "when": 1789416000000,
       "tag": "0235_agent_backup_rpo_scheduler",
       "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1789502400000,
+      "tag": "0236_agent_sandbox_activation_quarantine",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1789588800000,
+      "tag": "0237_agent_restore_authority_prerequisites",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1789675200000,
+      "tag": "0238_agent_backup_restore_lease_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1789761600000,
+      "tag": "0239_agent_backup_restore_lease_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1789848000000,
+      "tag": "0240_agent_vault_key_generations",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1789934400000,
+      "tag": "0241_agent_vault_key_current_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1790020800000,
+      "tag": "0242_agent_vault_key_backup_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1790107200000,
+      "tag": "0243_agent_backup_catalog_authority_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1790193600000,
+      "tag": "0244_agent_backup_restore_lease_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1790280000000,
+      "tag": "0245_agent_vault_key_topology_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1790366400000,
+      "tag": "0246_agent_node_incarnation_histories",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1790452800000,
+      "tag": "0247_agent_activation_publications",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1790539200000,
+      "tag": "0248_agent_vault_key_seed_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1790625600000,
+      "tag": "0249_agent_backup_restore_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1790712000000,
+      "tag": "0250_agent_restore_receipt_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1790798400000,
+      "tag": "0251_agent_backup_restore_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1790884800000,
+      "tag": "0252_agent_backup_restore_operation_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1790971200000,
+      "tag": "0253_job_retryable_requeues",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1791403200000,
+      "tag": "0254_payment_request_provider_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1791489600000,
+      "tag": "0255_crypto_settlement_outboxes",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1791576000000,
+      "tag": "0256_org_storage_native_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1791662400000,
+      "tag": "0257_org_storage_native_put_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1791748800000,
+      "tag": "0258_org_storage_generation_gc_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1791835200000,
+      "tag": "0259_agent_node_incarnation_rearm",
+      "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1791921600000,
+      "tag": "0260_domain_purchase_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1792008000000,
+      "tag": "0261_stripe_checkout_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1792094400000,
+      "tag": "0262_payment_request_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1792180800000,
+      "tag": "0263_payment_request_receipt_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1792267200000,
+      "tag": "0264_organization_billing_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1792353600000,
+      "tag": "0265_compute_billing_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1792440000000,
+      "tag": "0266_org_storage_read_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1792526400000,
+      "tag": "0267_stripe_customer_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1792612800000,
+      "tag": "0268_app_reservation_settlement_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1792699200000,
+      "tag": "0274_agent_billing_run_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792900000000,
+      "tag": "0275_remote_sessions_first_class_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1792986400000,
+      "tag": "0276_account_deletion_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1793072800000,
+      "tag": "0277_mobile_app_auth_pkce_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1793072800001,
+      "tag": "0278_mobile_auth_source_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1793072800002,
+      "tag": "0279_mobile_app_auth_device_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1793072800003,
+      "tag": "0280_mobile_app_auth_credential_tombstone_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1793072800004,
+      "tag": "0281_twilio_call_opening_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793072900000,
+      "tag": "0282_drop_unused_usage_quotas_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793072900001,
+      "tag": "0282_01_restore_usage_quotas_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1793736000001,
+      "tag": "0295_phone_message_payload_jsonb",
+      "breakpoints": true
     }
   ]
 }

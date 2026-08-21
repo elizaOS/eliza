@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScheduledTaskRunnerService } from "./scheduled-task/runner-service.js";
 
 const mocks = vi.hoisted(() => ({
@@ -58,6 +58,7 @@ function buildRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
     agentId: "agent-1",
     initPromise: Promise.resolve(),
     hasService: () => true,
+    getServiceRegistrationStatus: () => "registered",
     getServiceLoadPromise: vi.fn(async () => ({})),
     getTaskWorker: () => undefined,
     registerTaskWorker: vi.fn(),
@@ -81,28 +82,87 @@ describe("scheduling plugin boot", () => {
     mocks.seedPacks.mockResolvedValue({ seeded: [], skipped: [] });
   });
 
-  it("waits one microtask for the plugin's own service declaration to register", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits across a delayed deferred declaration before loading the service", async () => {
+    vi.useFakeTimers();
     let registered = false;
     const service = {} as ScheduledTaskRunnerService;
-    const getServiceLoadPromise = vi.fn(async () => {
-      if (!registered) throw new Error("service loaded before registration");
-      return service;
-    });
+    const getServiceLoadPromise = vi.fn(async () => service);
     const runtime = {
       initPromise: Promise.resolve(),
       hasService: () => registered,
+      getServiceRegistrationStatus: () =>
+        registered ? "registered" : "unknown",
       getServiceLoadPromise,
     } as unknown as IAgentRuntime;
 
-    const load = waitForScheduledTaskRunnerService(runtime);
-    await Promise.resolve();
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      registrationTimeoutMs: 1_000,
+      registrationPollMs: 100,
+    });
+    await vi.advanceTimersByTimeAsync(200);
     expect(getServiceLoadPromise).not.toHaveBeenCalled();
 
     registered = true;
+    await vi.advanceTimersByTimeAsync(100);
     await expect(load).resolves.toBe(service);
     expect(getServiceLoadPromise).toHaveBeenCalledWith(
       MockedRunnerService.serviceType,
     );
+  });
+
+  it("fails at the bounded deadline when the declaration never registers", async () => {
+    vi.useFakeTimers();
+    const getServiceLoadPromise = vi.fn();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise,
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      registrationTimeoutMs: 1_000,
+      registrationPollMs: 100,
+    });
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_REGISTRATION_TIMEOUT",
+      context: expect.objectContaining({ timeoutMs: 1_000 }),
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await outcome;
+    expect(getServiceLoadPromise).not.toHaveBeenCalled();
+  });
+
+  it("fails immediately when the runtime reports failed registration", async () => {
+    vi.useFakeTimers();
+    let status: "unknown" | "failed" = "unknown";
+    const getServiceLoadPromise = vi.fn();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      hasService: () => false,
+      getServiceRegistrationStatus: () => status,
+      getServiceLoadPromise,
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      registrationTimeoutMs: 1_000,
+      registrationPollMs: 100,
+    });
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED",
+      context: expect.objectContaining({ status: "failed" }),
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    status = "failed";
+    await vi.advanceTimersByTimeAsync(100);
+
+    await outcome;
+    expect(getServiceLoadPromise).not.toHaveBeenCalled();
   });
 
   it("does not seed at init; seeding waits for the runner boot hook", async () => {

@@ -28,6 +28,68 @@ interface EmbeddingServerConfig {
 	threads?: number;
 }
 
+/** Short liveness budget so startup can keep retrying within its outer deadline. */
+export const EMBEDDING_SERVER_HEALTH_TIMEOUT_MS = 2_000;
+
+/** Longer request budget for a local GGUF embedding forward pass. */
+export const EMBEDDING_SERVER_EMBED_TIMEOUT_MS = 30_000;
+
+export async function probeEmbeddingServerHealthWithFetch(
+	healthUrl: string,
+	fetchImpl: typeof fetch,
+	timeoutMs: number = EMBEDDING_SERVER_HEALTH_TIMEOUT_MS,
+): Promise<boolean> {
+	try {
+		const response = await fetchImpl(healthUrl, {
+			method: "GET",
+			signal: AbortSignal.timeout(timeoutMs),
+		});
+		return response.ok;
+	} catch {
+		return false;
+	}
+}
+
+export async function embedWithFetch(
+	baseUrl: string,
+	texts: string[],
+	dim: number,
+	fetchImpl: typeof fetch,
+	timeoutMs: number = EMBEDDING_SERVER_EMBED_TIMEOUT_MS,
+	callerSignal?: AbortSignal,
+): Promise<number[][]> {
+	const deadline = AbortSignal.timeout(timeoutMs);
+	const response = await fetchImpl(`${baseUrl}/v1/embeddings`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ input: texts }),
+		signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+	});
+	if (!response.ok) {
+		const body = await response.text().catch(() => "");
+		throw new Error(
+			`[embedding-server] /v1/embeddings returned ${response.status}: ${body.slice(0, 200)}`,
+		);
+	}
+	const payload = (await response.json()) as {
+		data?: Array<{ embedding?: number[] }>;
+	};
+	const rows = payload.data ?? [];
+	if (rows.length !== texts.length) {
+		throw new Error(
+			`[embedding-server] expected ${texts.length} embedding rows, got ${rows.length}`,
+		);
+	}
+	return rows.map((row, index) => {
+		if (!Array.isArray(row.embedding)) {
+			throw new Error(
+				`[embedding-server] response row ${index} missing embedding vector`,
+			);
+		}
+		return truncateMatryoshka(row.embedding, dim);
+	});
+}
+
 export class EmbeddingServer {
 	private readonly config: EmbeddingServerConfig;
 	private child: ChildProcess | null = null;
@@ -48,40 +110,27 @@ export class EmbeddingServer {
 		return this.child !== null && this.child.exitCode === null;
 	}
 
-	async embed(texts: string[], dim = 1024): Promise<number[][]> {
+	async embed(
+		texts: string[],
+		dim = 1024,
+		signal?: AbortSignal,
+	): Promise<number[][]> {
 		if (texts.length === 0) return [];
 		if (!isValidEmbeddingDim(dim)) {
 			throw new Error(`[embedding] dim ${dim} is not a valid Matryoshka width`);
 		}
 		await this.ensureStarted();
-		const response = await fetch(`${this.baseUrl}/v1/embeddings`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ input: texts }),
-		});
-		if (!response.ok) {
-			const body = await response.text().catch(() => "");
-			throw new Error(
-				`[embedding-server] /v1/embeddings returned ${response.status}: ${body.slice(0, 200)}`,
-			);
+		if (!this.baseUrl) {
+			throw new Error("[embedding-server] sidecar started without a base URL");
 		}
-		const payload = (await response.json()) as {
-			data?: Array<{ embedding?: number[] }>;
-		};
-		const rows = payload.data ?? [];
-		if (rows.length !== texts.length) {
-			throw new Error(
-				`[embedding-server] expected ${texts.length} embedding rows, got ${rows.length}`,
-			);
-		}
-		return rows.map((row, index) => {
-			if (!Array.isArray(row.embedding)) {
-				throw new Error(
-					`[embedding-server] response row ${index} missing embedding vector`,
-				);
-			}
-			return truncateMatryoshka(row.embedding, dim);
-		});
+		return embedWithFetch(
+			this.baseUrl,
+			texts,
+			dim,
+			globalThis.fetch,
+			EMBEDDING_SERVER_EMBED_TIMEOUT_MS,
+			signal,
+		);
 	}
 
 	private async ensureStarted(): Promise<void> {
@@ -140,11 +189,13 @@ export class EmbeddingServer {
 					"[embedding-server] llama-server exited before /health became ready",
 				);
 			}
-			try {
-				const response = await fetch(`${this.baseUrl}/health`);
-				if (response.ok) return;
-			} catch {
-				// Server socket is not open yet.
+			if (
+				await probeEmbeddingServerHealthWithFetch(
+					`${this.baseUrl}/health`,
+					globalThis.fetch,
+				)
+			) {
+				return;
 			}
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}

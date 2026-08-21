@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  createDesktopPolicy,
   INITIAL_STARTUP_STATE,
   isShellPaintable,
   startupReducer,
@@ -11,6 +12,26 @@ import {
 import { deriveAgentReady } from "./types";
 
 describe("startup coordinator", () => {
+  it("uses a cloud-managed policy for cloud-only desktop builds", () => {
+    expect(createDesktopPolicy({ cloudOnly: true })).toEqual(
+      expect.objectContaining({
+        supportsLocalRuntime: false,
+        probeForExistingInstall: false,
+        defaultTarget: "cloud-managed",
+      }),
+    );
+  });
+
+  it("keeps the embedded-local policy for full desktop builds", () => {
+    expect(createDesktopPolicy()).toEqual(
+      expect.objectContaining({
+        supportsLocalRuntime: true,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      }),
+    );
+  });
+
   it("starts by restoring session state", () => {
     expect(INITIAL_STARTUP_STATE).toEqual({ phase: "restoring-session" });
   });
@@ -105,6 +126,19 @@ describe("startup coordinator", () => {
     ).toEqual({
       phase: "starting-runtime",
       attempts: 1,
+      target: "cloud-managed",
+    });
+  });
+
+  it("returns a terminal managed agent to the reachable Cloud selection flow", () => {
+    expect(
+      startupReducer(
+        { phase: "starting-runtime", attempts: 0, target: "cloud-managed" },
+        { type: "CLOUD_AGENT_SELECTION_REQUIRED" },
+      ),
+    ).toEqual({
+      phase: "first-run-required",
+      serverReachable: false,
       target: "cloud-managed",
     });
   });

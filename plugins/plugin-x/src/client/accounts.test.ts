@@ -138,6 +138,45 @@ describe("X account config", () => {
     });
   });
 
+  it("still binds implicit-default env credentials when no accountId is requested", async () => {
+    const runtime = createRuntime({
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "owner-api-key",
+      TWITTER_API_SECRET_KEY: "owner-api-secret",
+      TWITTER_ACCESS_TOKEN: "owner-access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "owner-access-secret",
+    });
+
+    const state = await resolveTwitterAccountConfig(runtime);
+
+    expect(state).toMatchObject({
+      accountId: "default",
+      TWITTER_ACCOUNT_ID: "default",
+      TWITTER_API_KEY: "owner-api-key",
+      TWITTER_ACCESS_TOKEN: "owner-access-token",
+    });
+  });
+
+  it("does not bind implicit-default env credentials to an unrecognized accountId", async () => {
+    const runtime = createRuntime({
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "owner-api-key",
+      TWITTER_API_SECRET_KEY: "owner-api-secret",
+      TWITTER_ACCESS_TOKEN: "owner-access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "owner-access-secret",
+    });
+
+    const state = await resolveTwitterAccountConfig(runtime, {
+      accountId: "ghost-account",
+    });
+
+    expect(state.accountId).toBe("ghost-account");
+    expect(state.TWITTER_API_KEY).toBe("");
+    expect(state.TWITTER_API_SECRET_KEY).toBe("");
+    expect(state.TWITTER_ACCESS_TOKEN).toBe("");
+    expect(state.TWITTER_ACCESS_TOKEN_SECRET).toBe("");
+  });
+
   it("accepts managed broker auth mode", () => {
     const runtime = createRuntime({ TWITTER_AUTH_MODE: "broker" });
     expect(getTwitterAuthMode(runtime)).toBe("broker");

@@ -48,6 +48,7 @@ import {
 } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
+import { waitForScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
@@ -115,6 +116,7 @@ import {
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
+import { handleBriefMessageMutation } from "./lifeops/briefing/message-engagement-handler.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
@@ -806,6 +808,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
+    [EventType.MESSAGE_MUTATED]: [handleBriefMessageMutation],
     // Deterministic completion for fired scheduled tasks awaiting an owner
     // reply — no LLM verb required. Two passes with distinct coverage:
     // `handleScheduledTaskInboundMessage` walks the pending-prompts store for
@@ -1144,6 +1147,7 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "deferred message reconciliation",
         ensure: async () => {
+          await waitForScheduledTaskRunnerService(runtime);
           await reconcileInterruptedMessageDraftDispatches(runtime);
         },
       });
@@ -1177,6 +1181,7 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "default-pack boot seed",
         ensure: async () => {
+          await waitForScheduledTaskRunnerService(runtime);
           const runner = getProductionScheduledTaskRunner(runtime, {
             agentId: runtime.agentId,
           });
@@ -1267,10 +1272,7 @@ export {
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 export { workThreadAction } from "./actions/work-thread.js";
-export type {
-  OverdueDigest,
-  OverdueFollowup,
-} from "./followup/index.js";
+export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
 export {
   computeOverdueFollowups,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,

@@ -32,6 +32,7 @@ import type {
 	State,
 	UUID,
 } from "../../types";
+import { getActiveRoutingContextsForTurn } from "../../utils/context-routing.ts";
 import {
 	describeUserReference,
 	userReferenceLogView as queryLogView,
@@ -175,6 +176,51 @@ const DOCUMENT_SUB_ACTION_KEYS = Object.keys(
 	DOCUMENT_SUBACTIONS,
 ) as DocumentSubAction[];
 
+/**
+ * Subactions that only read the document store. On `knowledge`-routed turns
+ * (retrieval-only by taxonomy) the DOCUMENT action is admitted so the model
+ * can dereference the document IDs the DOCUMENTS provider advertises, but the
+ * handler restricts execution to this read-only surface — mutations require
+ * `documents` routing. See the operation gate in the handler.
+ */
+const READ_ONLY_DOCUMENT_SUBACTIONS: ReadonlySet<DocumentSubAction> = new Set([
+	"list",
+	"search",
+	"read",
+]);
+
+/**
+ * Rejects mutating subactions on turns stage-1 routed to `knowledge` without
+ * also routing to `documents`. The context gate admits DOCUMENT on knowledge
+ * turns for reads only; blanket-widening `contexts` alone would expose
+ * write/edit/delete/import on a retrieval-only routing surface. Unrouted
+ * invocations (no routing metadata on state or message) are unaffected — the
+ * gate narrows knowledge-routed turns, it does not invent a restriction for
+ * direct callers.
+ */
+function knowledgeReadOnlyRejection(
+	subaction: DocumentSubAction,
+	message: Memory,
+	state: State | undefined,
+): string | null {
+	if (READ_ONLY_DOCUMENT_SUBACTIONS.has(subaction)) {
+		return null;
+	}
+	const activeContexts = getActiveRoutingContextsForTurn(state, message).map(
+		(context) => `${context}`.toLowerCase(),
+	);
+	if (
+		!activeContexts.includes("knowledge") ||
+		activeContexts.includes("documents")
+	) {
+		return null;
+	}
+	return (
+		`The documents ${subaction.replace("_", " ")} operation is not available on a knowledge-routed turn; ` +
+		"knowledge is retrieval-only (list, search, read). Ask again as an explicit document request to modify stored documents."
+	);
+}
+
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
 	"owner-private",
@@ -183,9 +229,47 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const DOCUMENT_PATH_PATTERN =
-	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
 const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+
+function isDocumentPathCharacter(char: string, windows: boolean): boolean {
+	const code = char.charCodeAt(0);
+	return (
+		(code >= 48 && code <= 57) ||
+		(code >= 65 && code <= 90) ||
+		(code >= 97 && code <= 122) ||
+		char === "_" ||
+		char === "." ||
+		char === "-" ||
+		char === " " ||
+		(windows && /\s/u.test(char))
+	);
+}
+
+function extractDocumentPath(text: string): string | null {
+	for (let start = 0; start < text.length; start += 1) {
+		const windows =
+			/[A-Za-z]/.test(text[start]) &&
+			text[start + 1] === ":" &&
+			(text[start + 2] === "/" || text[start + 2] === "\\");
+		if (text[start] !== "/" && !windows) continue;
+		let cursor = start + (windows ? 3 : 1);
+		let lastValidEnd = -1;
+		while (cursor < text.length) {
+			const segmentStart = cursor;
+			while (
+				cursor < text.length &&
+				isDocumentPathCharacter(text[cursor], windows)
+			)
+				cursor += 1;
+			if (cursor === segmentStart) break;
+			lastValidEnd = cursor;
+			if (text[cursor] !== "/" && (!windows || text[cursor] !== "\\")) break;
+			cursor += 1;
+		}
+		if (lastValidEnd >= 0) return text.slice(start, lastValidEnd);
+	}
+	return null;
+}
 
 const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "documents",
@@ -461,9 +545,7 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (
-		unwrapUserMessageText(message).match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
-	);
+	return extractDocumentPath(unwrapUserMessageText(message));
 }
 
 function getUrl(
@@ -1011,6 +1093,16 @@ async function handleImportFile(
 		params,
 	);
 	if (filePath) {
+		const canReadHostFile =
+			isAgentSelf(runtime, message) ||
+			(await hasRoleAccess(runtime, message, "OWNER"));
+		if (!canReadHostFile) {
+			const text =
+				"Only the owner or agent runtime can import a local host file. Upload the document content or use a URL instead.";
+			return result(false, text, "import_file", {
+				values: { error: "forbidden", filePath: queryLogView(filePath) },
+			});
+		}
 		if (!fs.existsSync(filePath)) {
 			const text = `No file exists at ${describeUserReference(filePath, "that path")}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
@@ -1169,8 +1261,15 @@ async function handleImportUrl(
 
 export const documentAction: Action = {
 	name: "DOCUMENT",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
+	// Exact-membership context gates do not expand parent/child relationships
+	// (#19701), and the DOCUMENTS provider composes for both `documents` and
+	// `knowledge` — advertising document IDs "for follow-up reads". The action
+	// must be admitted in both contexts or knowledge-routed turns hand the
+	// model IDs it cannot dereference. `knowledge` stays retrieval-only via the
+	// handler's operation gate (see knowledgeReadOnlyRejection): mutating
+	// subactions require `documents` routing.
+	contexts: ["documents", "knowledge"],
+	contextGate: { anyOf: ["documents", "knowledge"] },
 	roleGate: { minRole: "USER" },
 	description:
 		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
@@ -1394,6 +1493,17 @@ export const documentAction: Action = {
 		}
 
 		const { subaction, params } = resolved;
+
+		const readOnlyRejection = knowledgeReadOnlyRejection(
+			subaction,
+			message,
+			state,
+		);
+		if (readOnlyRejection) {
+			return result(false, readOnlyRejection, subaction, {
+				values: { error: "knowledge_context_read_only" },
+			});
+		}
 
 		try {
 			switch (subaction) {

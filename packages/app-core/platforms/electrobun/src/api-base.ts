@@ -118,6 +118,8 @@ export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
 export interface PersistedDeployment {
   runtime: NonNullable<PersistedDeploymentRuntime>;
   remoteApiBase: string | null;
+  /** Bearer credential bound to the persisted remote target, if configured. */
+  remoteAccessToken?: string | null;
 }
 
 /**

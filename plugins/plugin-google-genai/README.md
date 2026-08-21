@@ -5,7 +5,7 @@ Google Generative AI (Gemini) model provider for [elizaOS](https://github.com/el
 ## Capabilities
 
 - **Text generation** across all model tiers: nano, small, medium, large, mega, response handler, action planner.
-- **Text embeddings** with `text-embedding-004` (768 dimensions).
+- **Text embeddings** with `gemini-embedding-001`, provider-counted and Unicode-safely truncated to the model input limit, pinned to 768 dimensions (`outputDimensionality: 768`), and L2-normalized so writes match the runtime's probe-sized vector column.
 - **Image description** — fetch an image by URL, encode it inline, and return a `{ title, description }` object.
 - **Structured output** — pass a JSON Schema as `responseSchema` to any text handler to get `application/json` back from the model.
 - **Tool use** — pass function declarations via `tools` / `toolChoice` to enable function-calling on supported models.
@@ -44,7 +44,7 @@ Or register it explicitly in your agent character file:
 | `GOOGLE_MEGA_MODEL` | No | falls back to large | Mega text model |
 | `GOOGLE_RESPONSE_HANDLER_MODEL` | No | falls back to nano | Response handler model |
 | `GOOGLE_ACTION_PLANNER_MODEL` | No | falls back to medium | Action planner model |
-| `GOOGLE_EMBEDDING_MODEL` | No | `text-embedding-004` | Embedding model |
+| `GOOGLE_EMBEDDING_MODEL` | No | `gemini-embedding-001` | Embedding model. Output is pinned to 768 dimensions and L2-normalized regardless of the model's native default. |
 | `GOOGLE_IMAGE_MODEL` | No | `gemini-2.5-pro-preview-03-25` | Image description model |
 
 Generic fallbacks (`SMALL_MODEL`, `LARGE_MODEL`, `IMAGE_MODEL`, etc.) are also respected when the `GOOGLE_*` prefix variants are not set.
@@ -65,7 +65,7 @@ const text = await runtime.useModel(ModelType.TEXT_LARGE, {
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
   text: "Hello, world!",
 });
-// embedding is number[] with 768 dimensions
+// embedding is a unit-length number[] with 768 dimensions
 
 // Image description
 const result = await runtime.useModel(
@@ -99,7 +99,7 @@ const person = await runtime.useModel(ModelType.TEXT_SMALL, {
 | `TEXT_MEGA` | falls back to large | |
 | `RESPONSE_HANDLER` | falls back to nano | |
 | `ACTION_PLANNER` | falls back to medium | |
-| `TEXT_EMBEDDING` | `text-embedding-004` | 768-dim vectors |
+| `TEXT_EMBEDDING` | `gemini-embedding-001` | 768-dim unit vectors (`outputDimensionality: 768`) |
 | `IMAGE_DESCRIPTION` | `gemini-2.5-pro-preview-03-25` | Multimodal; fetches image by URL |
 
 ## Development

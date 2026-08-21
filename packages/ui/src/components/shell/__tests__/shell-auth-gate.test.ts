@@ -66,7 +66,7 @@ describe("deriveShellAuthGate", () => {
     },
   );
 
-  it("keeps loading and server_unavailable on checking when a Cloud session exists", () => {
+  it("keeps loading on checking when a Cloud session exists", () => {
     expect(
       deriveShellAuthGate({
         cloudOnly: true,
@@ -74,13 +74,16 @@ describe("deriveShellAuthGate", () => {
         hasUsableCloudSession: true,
       }),
     ).toEqual({ gated: true, phase: "checking" });
+  });
+
+  it("surfaces server_unavailable distinctly when a Cloud session exists", () => {
     expect(
       deriveShellAuthGate({
         cloudOnly: true,
         authPhase: "server_unavailable",
         hasUsableCloudSession: true,
       }),
-    ).toEqual({ gated: true, phase: "checking" });
+    ).toEqual({ gated: true, phase: "unavailable" });
   });
 });
 
@@ -99,6 +102,19 @@ describe("deriveShellPhase", () => {
     expect(
       deriveShellPhase({ ...idleInputs, ready: true, authGate: "checking" }),
     ).toBe("booting");
+  });
+
+  it("keeps unavailable on booting until chat is opened", () => {
+    expect(deriveShellPhase({ ...idleInputs, authGate: "unavailable" })).toBe(
+      "booting",
+    );
+    expect(
+      deriveShellPhase({
+        ...idleInputs,
+        authGate: "unavailable",
+        isOpen: true,
+      }),
+    ).toBe("summoned");
   });
 
   it("surfaces needs-auth even before the agent proxy is up", () => {

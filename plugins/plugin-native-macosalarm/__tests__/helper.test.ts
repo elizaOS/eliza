@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
@@ -89,13 +90,80 @@ describe("runHelper", () => {
   });
 
   it("rejects spawn errors without hanging", async () => {
-    const { spawn } = createFakeSpawn({ error: new Error("spawn denied") });
+    const { spawn: fakeSpawn } = createFakeSpawn({
+      error: new Error("spawn denied"),
+    });
 
     await expect(
       runHelper(
         { action: "list" },
-        { spawnImpl: spawn, binPathOverride: "/tmp/helper" },
+        { spawnImpl: fakeSpawn, binPathOverride: "/tmp/helper" },
       ),
     ).rejects.toThrow("spawn denied");
+  });
+
+  it("kills the spawned helper child when the timeout fires", async () => {
+    // Regression for #22021: the timeout path used to reject without killing
+    // the child, orphaning the real helper process and its stdio pipes. Use a
+    // real long-lived child so the assertion observes actual process teardown
+    // rather than a mock's bookkeeping.
+    let child: ReturnType<typeof spawn> | undefined;
+    const spawnImpl: HelperSpawn = () => {
+      child = spawn("sleep", ["30"]);
+      return child as never;
+    };
+
+    await expect(
+      runHelper(
+        { action: "list" },
+        { spawnImpl, binPathOverride: "/tmp/helper", timeoutMs: 200 },
+      ),
+    ).rejects.toThrow(/timed out after 200ms/);
+
+    // Let the SIGTERM be delivered and the process reaped.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(child).toBeDefined();
+    expect(child?.killed).toBe(true);
+    expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
+  });
+
+  it("does not kill the child on the successful (non-timeout) path", async () => {
+    // The fix must only tear down the child on timeout; a fast-closing helper
+    // still resolves normally and is never signalled.
+    const proc = new EventEmitter() as ReturnType<HelperSpawn>;
+    const killed: string[] = [];
+    proc.stdout = new PassThrough() as never;
+    proc.stderr = new PassThrough() as never;
+    proc.kill = ((signal?: NodeJS.Signals | number) => {
+      killed.push(String(signal));
+      return true;
+    }) as never;
+    proc.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+      final(callback) {
+        queueMicrotask(() => {
+          proc.stdout.end('{"success":true}\n');
+          proc.stderr.end();
+          proc.emit("close", 0);
+        });
+        callback();
+      },
+    }) as never;
+
+    await expect(
+      runHelper(
+        { action: "list" },
+        {
+          spawnImpl: () => proc,
+          binPathOverride: "/tmp/helper",
+          timeoutMs: 5_000,
+        },
+      ),
+    ).resolves.toEqual({ success: true });
+
+    expect(killed).toEqual([]);
   });
 });

@@ -11,25 +11,57 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 let orgCharacters: Array<{ id: string }> = [];
 let createFailuresRemaining = 0;
 let createCalls: Array<Record<string, unknown>> = [];
+let createOptions: unknown[] = [];
+let mirroredCharacterIds = new Set<string>();
+let healthProbeCalls: string[] = [];
+let loggerWarnCalls: unknown[][] = [];
 
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    existsForOrganization: async () => orgCharacters.length > 0,
-    create: async (data: Record<string, unknown>) => {
+    hasHealthyCloudCharacterMirror: async (organizationId: string) => {
+      healthProbeCalls.push(organizationId);
+      const existing = orgCharacters[0];
+      return Boolean(existing && mirroredCharacterIds.has(existing.id));
+    },
+    create: async (data: Record<string, unknown>, options: unknown) => {
       createCalls.push(data);
+      createOptions.push(options);
       if (createFailuresRemaining > 0) {
         createFailuresRemaining--;
         throw new Error("db write failed");
       }
+      const existing = orgCharacters[0];
+      if (existing) {
+        mirroredCharacterIds.add(existing.id);
+        return existing;
+      }
       const created = { id: `char-${createCalls.length}` };
       orgCharacters.push(created);
+      mirroredCharacterIds.add(created.id);
       return created;
+    },
+  },
+}));
+
+mock.module("./utils/logger", () => ({
+  logger: {
+    debug: () => undefined,
+    error: () => undefined,
+    info: () => undefined,
+    warn: (...args: unknown[]) => {
+      loggerWarnCalls.push(args);
     },
   },
 }));
 
 // steward-sync's other service imports; inert stubs so the module loads.
 mock.module("./services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: { addCredits: async () => ({ success: true }) },
 }));
 mock.module("./services/organizations", () => ({
@@ -75,6 +107,10 @@ beforeEach(() => {
   orgCharacters = [];
   createFailuresRemaining = 0;
   createCalls = [];
+  createOptions = [];
+  mirroredCharacterIds = new Set<string>();
+  healthProbeCalls = [];
+  loggerWarnCalls = [];
 });
 
 describe("ensureDefaultCharacter self-heal", () => {
@@ -96,12 +132,34 @@ describe("ensureDefaultCharacter self-heal", () => {
     expect(createCalls[1].name).toBe("Eliza");
     expect(createCalls[1].user_id).toBe("user-1");
     expect(createCalls[1].organization_id).toBe("org-1");
+    expect(mirroredCharacterIds).toEqual(new Set(["char-2"]));
+    expect(createOptions).toEqual([
+      { policy: { mode: "bootstrap" } },
+      { policy: { mode: "bootstrap" } },
+    ]);
+    expect(healthProbeCalls).toEqual(["org-1", "org-1"]);
   });
 
-  test("no-op when the organization already has a character", async () => {
+  test("an existing legacy character still reaches bootstrap and repairs its mirror", async () => {
     orgCharacters = [{ id: "char-existing" }];
     await ensureDefaultCharacter("user-1", "org-1");
-    expect(createCalls.length).toBe(0);
+    expect(createCalls).toHaveLength(1);
+    expect(createOptions).toEqual([{ policy: { mode: "bootstrap" } }]);
+    expect(orgCharacters).toEqual([{ id: "char-existing" }]);
+    expect(mirroredCharacterIds).toEqual(new Set(["char-existing"]));
+    expect(healthProbeCalls).toEqual(["org-1"]);
+  });
+
+  test("a healthy character+mirror uses only the read probe, with no writer path or warning", async () => {
+    orgCharacters = [{ id: "char-healthy" }];
+    mirroredCharacterIds.add("char-healthy");
+
+    await ensureDefaultCharacter("user-1", "org-1");
+
+    expect(healthProbeCalls).toEqual(["org-1"]);
+    expect(createCalls).toHaveLength(0);
+    expect(createOptions).toHaveLength(0);
+    expect(loggerWarnCalls).toHaveLength(0);
   });
 
   test("never rejects, so void-firing from session resolution is safe", async () => {

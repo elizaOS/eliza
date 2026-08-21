@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import {
+import appViteConfig, {
   appDevWsBasePlugin,
   resolveAppShellLocalCspSources,
 } from "./vite.config";
@@ -44,6 +44,27 @@ describe("appDevWsBasePlugin", () => {
 });
 
 describe("app shell local connection policy", () => {
+  test("preserves the browser authority through the local API proxy", () => {
+    if (typeof appViteConfig !== "function") {
+      throw new Error("app Vite config is not callable");
+    }
+    const config = appViteConfig({
+      command: "serve",
+      mode: "test",
+      isSsrBuild: false,
+      isPreview: false,
+    });
+    if (config instanceof Promise) {
+      throw new Error("app Vite config unexpectedly became async");
+    }
+    const apiProxy = config.server?.proxy?.["/api"];
+    if (typeof apiProxy !== "object" || apiProxy === null) {
+      throw new Error("local /api proxy is missing");
+    }
+
+    expect(apiProxy.changeOrigin).toBe(false);
+  });
+
   test("permits paired Android transports whose private-LAN host is selected at runtime", () => {
     expect(resolveAppShellLocalCspSources("android", false)).toEqual({
       localHttpSources: " http://localhost:* http://127.0.0.1:*",

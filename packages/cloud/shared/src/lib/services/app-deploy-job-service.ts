@@ -14,8 +14,9 @@
  * module imports no `pg`/SSH and stays safe to load anywhere.
  */
 
+import { isValidUUID } from "../utils/validation";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
-import { appDeploymentsService } from "./app-deployments";
+import { AppDeployEnqueueAmbiguousError, appDeploymentsService } from "./app-deployments";
 import type { ContainerJobsWriter } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -39,33 +40,62 @@ export function getAppDeployRunner(): AppDeployRunner {
 /** Extract deploy data from an APP_DEPLOY job payload (throws if malformed). */
 export function readAppDeployJobData(job: { data: unknown }): {
   appId: string;
+  deploymentGeneration: string;
   options?: AppDeployRunOptions;
 } {
   const data = (job.data ?? {}) as Record<string, unknown>;
   if (typeof data.appId !== "string" || data.appId.length === 0) {
     throw new Error("APP_DEPLOY job missing data.appId");
   }
+  if (typeof data.deploymentGeneration !== "string" || !isValidUUID(data.deploymentGeneration)) {
+    throw new Error("APP_DEPLOY job missing valid data.deploymentGeneration");
+  }
   const options = parseDeployOptions(data.options);
-  return options ? { appId: data.appId, options } : { appId: data.appId };
+  return options
+    ? { appId: data.appId, deploymentGeneration: data.deploymentGeneration, options }
+    : { appId: data.appId, deploymentGeneration: data.deploymentGeneration };
 }
 
 /** Daemon: run the full deploy for a claimed APP_DEPLOY job via the injected runner. */
 export async function dispatchAppDeployJob(job: { data: unknown }): Promise<void> {
-  const { appId, options } = readAppDeployJobData(job);
-  await getAppDeployRunner().run(appId, options);
+  const { appId, deploymentGeneration, options } = readAppDeployJobData(job);
+  await getAppDeployRunner().run(appId, deploymentGeneration, options);
 }
 
 // ── enqueue (Worker / request side) ─────────────────────────────────────────
 /** Enqueue an APP_DEPLOY job (pg-free) over the shared job writer. */
 export function enqueueAppDeploy(
   writer: ContainerJobsWriter,
-  p: { appId: string; organizationId: string; userId?: string; options?: AppDeployRunOptions },
+  p: {
+    appId: string;
+    deploymentGeneration: string;
+    organizationId: string;
+    userId?: string;
+    options?: AppDeployRunOptions;
+  },
 ): Promise<{ id: string }> {
-  return writer.insertJob({
+  const insert = {
+    id: p.deploymentGeneration,
     type: JOB_TYPES.APP_DEPLOY,
     organizationId: p.organizationId,
     userId: p.userId,
-    data: p.options ? { appId: p.appId, options: p.options } : { appId: p.appId },
+    data: p.options
+      ? { appId: p.appId, deploymentGeneration: p.deploymentGeneration, options: p.options }
+      : { appId: p.appId, deploymentGeneration: p.deploymentGeneration },
+  };
+  return writer.insertJob(insert).catch(async (firstError) => {
+    // error-policy:J2 the generation UUID is the durable job id: retrying the
+    // exact insert either creates the missing row or reconstructs a commit whose
+    // response was lost. A second unknown outcome remains explicit and cannot
+    // authorize an app-status rollback.
+    try {
+      return await writer.insertJob(insert);
+    } catch (secondError) {
+      throw new AppDeployEnqueueAmbiguousError(p.deploymentGeneration, {
+        firstError,
+        secondError,
+      });
+    }
   });
 }
 

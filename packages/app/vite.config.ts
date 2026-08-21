@@ -39,7 +39,7 @@ import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
 } from "../shared/src/utils/env.ts";
-import appConfig from "./app.config";
+import appConfig from "./app.config.ts";
 import {
   removeEmittedBuildStamp,
   removePublicBuildStamp,
@@ -2829,6 +2829,10 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(cloudSdkSrcDir, "index.ts"),
           },
           {
+            find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+            replacement: path.join(cloudSdkSrcDir, "redemption-contract.ts"),
+          },
+          {
             find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
             replacement: path.join(
               cloudSdkSrcDir,
@@ -2948,6 +2952,16 @@ export const INVALID_TRACER_PROVIDER = {};
               "platform/empty-node-module.ts",
             ),
           },
+          // Shared browser facades import this duplicate-safe leaf directly.
+          // Bind it to source before the bare-core alias so fast-dist builds do
+          // not fall through to the package's Node/default compatibility shim.
+          {
+            find: /^@elizaos\/core\/client-public$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/client-public.ts",
+            ),
+          },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all
@@ -2977,6 +2991,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // Three.js core + all subpath imports must be pre-bundled together so
       // the optimizer shares a single module identity.
       "three",
+      // The marketing homepage imports the fiber renderer directly. With
+      // noDiscovery enabled, serving it raw exposes scheduler's CommonJS
+      // default import to the browser and breaks the local marketing preview.
+      "@react-three/fiber",
       "three/examples/jsm/controls/OrbitControls.js",
       "three/examples/jsm/libs/meshopt_decoder.module.js",
       "three/examples/jsm/loaders/DRACOLoader.js",
@@ -3322,7 +3340,11 @@ export const INVALID_TRACER_PROVIDER = {};
         : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
-        changeOrigin: true,
+        // Keep Host aligned with the browser's same-origin Origin. Rewriting
+        // Host to the upstream API port while preserving Origin at the Vite
+        // port makes the loopback trust boundary correctly reject the request
+        // as an authority mismatch, stranding a local browser on Pairing/Login.
+        changeOrigin: false,
         xfwd: true,
         configure: (proxy) => {
           proxy.on("error", (_err, _req, res) => {

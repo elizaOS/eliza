@@ -163,7 +163,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result?.success).toBe(false);
 		expectNoEnvelope(result?.text);
 		expect(result?.text).toContain('"zorptastic"');
-		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		expect(callback).not.toHaveBeenCalled();
 		const target = (result?.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
 		expect((target as string).length).toBeLessThanOrEqual(121);

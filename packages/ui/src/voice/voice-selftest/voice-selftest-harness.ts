@@ -83,35 +83,71 @@ export interface VoiceSelfTestOptions {
   werTolerance?: number;
   /** For mode `inject-transcript` (the Android native-STT seam). */
   injectedTranscript?: string;
+  /** Exact browser media-device id required by physical-hardware lanes. */
+  microphoneDeviceId?: string;
+  /** Exact browser output-device id required by physical-hardware lanes. */
+  speakerDeviceId?: string;
+  /** Receives the exact input/TTS payload bytes for out-of-process evidence. */
+  onArtifact?: (
+    kind: "microphone" | "reference" | "tts",
+    bytes: Uint8Array,
+  ) => void;
   client: ElizaClient;
   audioCtx: AudioContext;
   signal?: AbortSignal;
 }
 
 /**
- * Real getUserMedia capture; the runner supplies audio via Chromium fake-device
- * flags. Uses a fixed capture window (deterministic for a known fixture) — the
- * literal button-press path is covered separately by the chat-composer e2e.
+ * Real getUserMedia capture. Hardware lanes deliberately play the known phrase
+ * through the selected output while this recorder is live; fake-device browser
+ * lanes continue to receive the same phrase from Chromium's injected device.
  */
-async function captureMicWav(signal?: AbortSignal): Promise<Uint8Array> {
-  const recorder = await startLocalAsrRecorder();
-  return await new Promise<Uint8Array>((resolve, reject) => {
-    let done = false;
-    const stop = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      recorder.stop().then(resolve, reject);
-    };
-    const timer = setTimeout(stop, 4500);
-    signal?.addEventListener("abort", () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      recorder.cancel();
-      reject(new DOMException("aborted", "AbortError"));
-    });
+async function captureMicWav(opts: VoiceSelfTestOptions): Promise<{
+  wav: Uint8Array;
+  captureStartedAt: string;
+  captureFinishedAt: string;
+  referenceStartedAt: string;
+  referenceFinishedAt: string;
+  inputDeviceId: string;
+  inputDeviceLabel: string;
+}> {
+  const recorder = await startLocalAsrRecorder({
+    deviceId: opts.microphoneDeviceId,
   });
+  const captureStartedAt = new Date().toISOString();
+  try {
+    await sleep(300);
+    const fixture = new Uint8Array(
+      await (
+        await fetch(opts.fixtureUrl, { signal: opts.signal })
+      ).arrayBuffer(),
+    );
+    opts.onArtifact?.("reference", fixture);
+    const buffer = await opts.audioCtx.decodeAudioData(fixture.slice().buffer);
+    const reference = await playThroughDestination(
+      opts.audioCtx,
+      buffer,
+      opts.signal,
+      opts.speakerDeviceId,
+    );
+    if (!reference.started || !reference.outputObserved) {
+      throw new Error("Known-phrase physical output was not observed");
+    }
+    await sleep(300);
+    const wav = await recorder.stop();
+    return {
+      wav,
+      captureStartedAt,
+      captureFinishedAt: new Date().toISOString(),
+      referenceStartedAt: reference.startedAt,
+      referenceFinishedAt: reference.finishedAt,
+      inputDeviceId: recorder.inputDevice.deviceId,
+      inputDeviceLabel: recorder.inputDevice.label,
+    };
+  } catch (error) {
+    recorder.cancel();
+    throw error;
+  }
 }
 
 /**
@@ -151,7 +187,17 @@ async function playThroughDestination(
   ctx: AudioContext,
   buffer: AudioBuffer,
   signal?: AbortSignal,
-): Promise<{ started: boolean; outputObserved: boolean }> {
+  speakerDeviceId?: string,
+): Promise<{
+  started: boolean;
+  outputObserved: boolean;
+  startedAt: string;
+  finishedAt: string;
+  outputDeviceId: string;
+}> {
+  let startedAt = "";
+  let source: AudioBufferSourceNode | null = null;
+  let analyser: AnalyserNode | null = null;
   try {
     if (ctx.state === "suspended") {
       // error-policy:J4 a stuck-suspended context surfaces as started:false /
@@ -169,19 +215,52 @@ async function playThroughDestination(
         );
       }
     }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    source.connect(analyser);
-    analyser.connect(ctx.destination);
-    source.start();
+    const selectable = ctx as AudioContext & {
+      setSinkId?: (sinkId: string) => Promise<void>;
+      sinkId?: string;
+    };
+    if (speakerDeviceId) {
+      if (typeof selectable.setSinkId !== "function") {
+        throw new Error("AudioContext output-device selection is unavailable");
+      }
+      await selectable.setSinkId(speakerDeviceId);
+      if (selectable.sinkId !== speakerDeviceId) {
+        throw new Error(
+          `Speaker device binding mismatch: requested ${speakerDeviceId}, ` +
+            `selected ${selectable.sinkId || "<missing>"}`,
+        );
+      }
+    }
+    const activeSource = ctx.createBufferSource();
+    source = activeSource;
+    activeSource.buffer = buffer;
+    const activeAnalyser = ctx.createAnalyser();
+    analyser = activeAnalyser;
+    activeAnalyser.fftSize = 2048;
+    activeSource.connect(activeAnalyser);
+    activeAnalyser.connect(ctx.destination);
+    const ended = new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => reject(new Error("audio output did not finish")),
+        Math.min(30_000, Math.ceil(buffer.duration * 1_000) + 2_000),
+      );
+      activeSource.addEventListener(
+        "ended",
+        () => {
+          window.clearTimeout(timeout);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    startedAt = new Date().toISOString();
+    activeSource.start();
 
     let outputObserved = false;
-    const probe = new Float32Array(analyser.fftSize);
+    const probe = new Float32Array(activeAnalyser.fftSize);
     const deadline = now() + 500;
     while (now() < deadline && !outputObserved && !signal?.aborted) {
-      analyser.getFloatTimeDomainData(probe);
+      activeAnalyser.getFloatTimeDomainData(probe);
       for (let i = 0; i < probe.length; i += 1) {
         if (Math.abs(probe[i] ?? 0) > 1e-4) {
           outputObserved = true;
@@ -190,19 +269,33 @@ async function playThroughDestination(
       }
       if (!outputObserved) await sleep(20);
     }
-
-    try {
-      source.stop();
-    } catch {
-      // error-policy:J6 teardown — already stopped
-    }
-    source.disconnect();
-    analyser.disconnect();
-    return { started: true, outputObserved };
+    await ended;
+    activeSource.disconnect();
+    activeAnalyser.disconnect();
+    return {
+      started: true,
+      outputObserved,
+      startedAt: startedAt || new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      outputDeviceId: selectable.sinkId ?? "default",
+    };
   } catch {
+    try {
+      source?.stop();
+    } catch {
+      // error-policy:J6 teardown — source already ended
+    }
+    source?.disconnect();
+    analyser?.disconnect();
     // error-policy:J1 playback-stage boundary — the failure is the explicit
     // started:false result the report renders
-    return { started: false, outputObserved: false };
+    return {
+      started: false,
+      outputObserved: false,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      outputDeviceId: "",
+    };
   }
 }
 
@@ -241,14 +334,16 @@ export async function runVoiceSelfTest(
           },
         });
       } else {
+        const capture =
+          mode === "mic-capture" ? await captureMicWav(opts) : null;
         const wav =
-          mode === "mic-capture"
-            ? await captureMicWav(opts.signal)
-            : new Uint8Array(
-                await (
-                  await fetch(opts.fixtureUrl, { signal: opts.signal })
-                ).arrayBuffer(),
-              );
+          capture?.wav ??
+          new Uint8Array(
+            await (
+              await fetch(opts.fixtureUrl, { signal: opts.signal })
+            ).arrayBuffer(),
+          );
+        opts.onArtifact?.("microphone", wav);
         const result = await transcribeLocalInferenceWav(wav, {
           signal: opts.signal,
         });
@@ -264,6 +359,16 @@ export async function runVoiceSelfTest(
             expectedPhrase: opts.expectedPhrase,
             wer: Number(wer.toFixed(3)),
             werTolerance,
+            ...(capture
+              ? {
+                  captureStartedAt: capture.captureStartedAt,
+                  captureFinishedAt: capture.captureFinishedAt,
+                  referenceStartedAt: capture.referenceStartedAt,
+                  referenceFinishedAt: capture.referenceFinishedAt,
+                  inputDeviceId: capture.inputDeviceId,
+                  inputDeviceLabel: capture.inputDeviceLabel,
+                }
+              : {}),
           },
         });
       }
@@ -330,6 +435,8 @@ export async function runVoiceSelfTest(
           completed: send.completed,
           agentName: send.agentName,
           backend: sendBackend,
+          ...(send.messageId ? { messageId: send.messageId } : {}),
+          ...(send.userMessageId ? { userMessageId: send.userMessageId } : {}),
           ...(failureKind ? { failureKind } : {}),
           ...(fallbackReplyKind ? { fallbackReplyKind } : {}),
         },
@@ -375,6 +482,7 @@ export async function runVoiceSelfTest(
       }
       const bytes = await res.arrayBuffer();
       if (bytes.byteLength === 0) throw new Error("TTS returned empty audio");
+      opts.onArtifact?.("tts", new Uint8Array(bytes));
       const audioBuffer = await opts.audioCtx.decodeAudioData(bytes.slice(0));
       const { peak, rms } = measureBufferLevel(audioBuffer);
       // Require real signal, not just a positive duration: synthesized speech
@@ -387,6 +495,7 @@ export async function runVoiceSelfTest(
         opts.audioCtx,
         audioBuffer,
         opts.signal,
+        opts.speakerDeviceId,
       );
       const ok = audioBuffer.duration > 0 && nonSilent && playback.started;
       stages.push({
@@ -401,6 +510,9 @@ export async function runVoiceSelfTest(
           rms: Number(rms.toFixed(5)),
           played: playback.started,
           outputObserved: playback.outputObserved,
+          playbackStartedAt: playback.startedAt,
+          playbackFinishedAt: playback.finishedAt,
+          outputDeviceId: playback.outputDeviceId,
         },
         error: ok
           ? undefined

@@ -1,7 +1,8 @@
 /**
  * Assorted runtime helpers shared across the connector — message-service
  * lookup (`getMessageService`), Discord text normalisation
- * (`normalizeDiscordMessageText`), and outbound attachment building
+ * (`normalizeDiscordMessageText`, bounded in `discord-structured-text.ts`),
+ * and outbound attachment building
  * (`buildOutboundDiscordAttachment`, which fetches remote media through the
  * SSRF guard).
  */
@@ -19,7 +20,11 @@ import {
 	type ReplyToMode,
 	type SsrfPolicy,
 	trimTokens,
+	truncateWellFormed,
 } from "@elizaos/core";
+
+export { normalizeDiscordMessageText } from "./discord-structured-text";
+
 import {
 	ActionRowBuilder,
 	AttachmentBuilder,
@@ -158,70 +163,6 @@ export function parseJsonArrayFromText(text: string): JsonValue[] | null {
 		return null;
 	}
 	return null;
-}
-
-function collectStructuredText(value: unknown, seen: Set<object>): string[] {
-	if (typeof value === "string") {
-		return value.trim() ? [value] : [];
-	}
-	if (
-		typeof value === "number" ||
-		typeof value === "boolean" ||
-		typeof value === "bigint"
-	) {
-		return [String(value)];
-	}
-	if (!value || typeof value !== "object") {
-		return [];
-	}
-	if (seen.has(value)) {
-		return [];
-	}
-	seen.add(value);
-
-	if (Array.isArray(value)) {
-		return value.flatMap((entry) => collectStructuredText(entry, seen));
-	}
-
-	const record = value as Record<string, unknown>;
-	for (const key of ["text", "responseText", "message", "body"] as const) {
-		const normalized = collectStructuredText(record[key], seen);
-		if (normalized.length > 0) {
-			return normalized;
-		}
-	}
-
-	for (const key of [
-		"content",
-		"parts",
-		"blocks",
-		"items",
-		"segments",
-	] as const) {
-		const normalized = collectStructuredText(record[key], seen);
-		if (normalized.length > 0) {
-			return normalized;
-		}
-	}
-
-	for (const key of ["title", "summary"] as const) {
-		const normalized = collectStructuredText(record[key], seen);
-		if (normalized.length > 0) {
-			return normalized;
-		}
-	}
-
-	return [];
-}
-
-export function normalizeDiscordMessageText(value: unknown): string {
-	const fragments = collectStructuredText(value, new Set())
-		.map((fragment) => fragment.trim())
-		.filter((fragment) => fragment.length > 0);
-	if (fragments.length === 0) {
-		return "";
-	}
-	return fragments.join("\n\n");
 }
 
 export function cleanUrl(url: string): string {
@@ -924,8 +865,19 @@ export function splitMessage(
 				splitIdx = lastSpace;
 			}
 
-			chunks.push(line.slice(0, splitIdx));
-			line = line.slice(splitIdx).trimStart();
+			// A raw slice() can land between the two UTF-16 code units of a
+			// surrogate pair (most emoji), leaving a lone surrogate at the
+			// chunk boundary that corrupts the character in the delivered
+			// message. truncateWellFormed backs the cut off by one unit
+			// instead.
+			const head = truncateWellFormed(line, splitIdx);
+			if (head.length === 0) {
+				throw new RangeError(
+					"Discord message chunk limit made no UTF-16 progress",
+				);
+			}
+			chunks.push(head);
+			line = line.slice(head.length).trimStart();
 		}
 		chunks.push(line);
 		return chunks;

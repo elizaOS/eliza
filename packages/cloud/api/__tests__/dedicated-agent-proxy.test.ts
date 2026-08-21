@@ -1,6 +1,7 @@
 /**
- * Verifies dedicated-agent proxy ownership, token isolation, runtime recovery,
- * and headers-phase timeout behavior with deterministic Worker fixtures.
+ * Verifies dedicated-agent proxy ingress gating, ownership, token isolation,
+ * runtime recovery, and headers-phase timeout behavior with deterministic
+ * Worker fixtures.
  */
 
 import {
@@ -16,6 +17,7 @@ import { runInNewContext } from "node:vm";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import * as authActual from "@/lib/auth";
+import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
 import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
 import * as pairingTokenActual from "@/lib/services/pairing-token";
@@ -168,6 +170,23 @@ const ENV = {
   },
 } as never;
 
+interface TestRateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+function deployedEnv(
+  globalLimiter?: TestRateLimiter,
+  mobileLimiter?: TestRateLimiter,
+) {
+  return {
+    AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+    ENVIRONMENT: "production",
+    NODE_ENV: "production",
+    GLOBAL_RATE_LIMITER: globalLimiter,
+    MOBILE_API_KEY_INGRESS_LIMITER: mobileLimiter,
+  } as never;
+}
+
 function makeRequest(
   cloudToken?: string,
   origin?: string,
@@ -180,6 +199,26 @@ function makeRequest(
   return new Request(`https://${AGENT}.elizacloud.ai${pathname}`, { headers });
 }
 const urlOf = (r: Request) => new URL(r.url);
+
+function mobileRequest(options: {
+  secret: string;
+  channel: "x-api-key" | "bearer" | "query";
+  ip: string;
+  origin?: string;
+}): Request {
+  const url = new URL(`https://${AGENT}.elizacloud.ai/api/status`);
+  const headers = new Headers({ "cf-connecting-ip": options.ip });
+  if (options.origin) headers.set("origin", options.origin);
+  if (options.channel === "x-api-key") {
+    headers.set("x-api-key", options.secret);
+  } else if (options.channel === "bearer") {
+    headers.set("authorization", `Bearer ${options.secret}`);
+  } else {
+    url.pathname = "/ws";
+    url.searchParams.set("token", options.secret);
+  }
+  return new Request(url, { headers });
+}
 
 // A running row carries a mesh IP once it has joined headscale; without it the
 // proxy short-circuits (running-but-unroutable, #15347), so the happy-path
@@ -439,6 +478,279 @@ describe("dedicated-agent-proxy — edge-owned managed pairing", () => {
   });
 });
 
+describe("dedicated-agent-proxy — ingress limits before DB auth", () => {
+  const ORIGIN = "https://app-staging.elizacloud.ai";
+  const MOBILE_A = `eliza_mobile_${"a".repeat(64)}`;
+  const MOBILE_B = `eliza_mobile_${"b".repeat(64)}`;
+
+  test("the global IP backstop bounds unique-key spray before mobile or DB work", async () => {
+    const globalKeys: string[] = [];
+    let mobileLimitCalls = 0;
+    const env = deployedEnv(
+      {
+        async limit({ key }) {
+          globalKeys.push(key);
+          return { success: false };
+        },
+      },
+      {
+        async limit() {
+          mobileLimitCalls++;
+          return { success: true };
+        },
+      },
+    );
+
+    for (const secret of [MOBILE_A, MOBILE_B]) {
+      const request = mobileRequest({
+        secret,
+        channel: "bearer",
+        ip: "203.0.113.50",
+        origin: ORIGIN,
+      });
+      const response = await handleDedicatedAgentProxy(
+        request,
+        env,
+        urlOf(request),
+        AGENT,
+      );
+      expect(response.status).toBe(429);
+      expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    }
+
+    expect(globalKeys).toEqual([
+      "global:ip:203.0.113.50",
+      "global:ip:203.0.113.50",
+    ]);
+    expect(mobileLimitCalls).toBe(0);
+    expect(authRequests.length).toBe(0);
+  });
+
+  test("the same credential shares a bucket across IP changes", async () => {
+    const mobileKeys: string[] = [];
+    const env = deployedEnv(
+      {
+        async limit() {
+          return { success: true };
+        },
+      },
+      {
+        async limit({ key }) {
+          mobileKeys.push(key);
+          return { success: false };
+        },
+      },
+    );
+
+    for (const ip of ["203.0.113.51", "198.51.100.51"]) {
+      const request = mobileRequest({
+        secret: MOBILE_A,
+        channel: "bearer",
+        ip,
+      });
+      const response = await handleDedicatedAgentProxy(
+        request,
+        env,
+        urlOf(request),
+        AGENT,
+      );
+      expect(response.status).toBe(429);
+    }
+
+    expect(mobileKeys).toEqual([
+      mobileApiKeyIngressRateLimitKey(MOBILE_A),
+      mobileApiKeyIngressRateLimitKey(MOBILE_A),
+    ]);
+    expect(mobileKeys[0]).not.toContain(MOBILE_A);
+    expect(authRequests.length).toBe(0);
+  });
+
+  test("different credentials on one NAT have independent buckets", async () => {
+    const mobileKeys: string[] = [];
+    const blockedKey = mobileApiKeyIngressRateLimitKey(MOBILE_A);
+    const env = deployedEnv(
+      {
+        async limit() {
+          return { success: true };
+        },
+      },
+      {
+        async limit({ key }) {
+          mobileKeys.push(key);
+          return { success: key !== blockedKey };
+        },
+      },
+    );
+
+    const requestA = mobileRequest({
+      secret: MOBILE_A,
+      channel: "bearer",
+      ip: "203.0.113.52",
+    });
+    const requestB = mobileRequest({
+      secret: MOBILE_B,
+      channel: "bearer",
+      ip: "203.0.113.52",
+    });
+    const responseA = await handleDedicatedAgentProxy(
+      requestA,
+      env,
+      urlOf(requestA),
+      AGENT,
+    );
+    const responseB = await handleDedicatedAgentProxy(
+      requestB,
+      env,
+      urlOf(requestB),
+      AGENT,
+    );
+
+    expect(responseA.status).toBe(429);
+    expect(responseB.status).not.toBe(429);
+    expect(mobileKeys).toEqual([
+      mobileApiKeyIngressRateLimitKey(MOBILE_A),
+      mobileApiKeyIngressRateLimitKey(MOBILE_B),
+    ]);
+    expect(authRequests.length).toBe(1);
+  });
+
+  test("X-API-Key and Bearer credentials use the same mobile gate", async () => {
+    const mobileKeys: string[] = [];
+    const env = deployedEnv(
+      {
+        async limit() {
+          return { success: true };
+        },
+      },
+      {
+        async limit({ key }) {
+          mobileKeys.push(key);
+          return { success: false };
+        },
+      },
+    );
+
+    for (const channel of ["x-api-key", "bearer"] as const) {
+      const request = mobileRequest({
+        secret: MOBILE_A,
+        channel,
+        ip: "203.0.113.53",
+      });
+      const response = await handleDedicatedAgentProxy(
+        request,
+        env,
+        urlOf(request),
+        AGENT,
+      );
+      expect(response.status).toBe(429);
+    }
+
+    expect(mobileKeys).toEqual([
+      mobileApiKeyIngressRateLimitKey(MOBILE_A),
+      mobileApiKeyIngressRateLimitKey(MOBILE_A),
+    ]);
+    expect(authRequests.length).toBe(0);
+  });
+
+  test("rejects a mobile WebSocket query credential even when a header tries to obscure it", async () => {
+    const mobileKeys: string[] = [];
+    const env = deployedEnv(
+      {
+        async limit() {
+          return { success: true };
+        },
+      },
+      {
+        async limit({ key }) {
+          mobileKeys.push(key);
+          return { success: true };
+        },
+      },
+    );
+    const queryRequest = mobileRequest({
+      secret: MOBILE_A,
+      channel: "query",
+      ip: "203.0.113.53",
+    });
+    const headers = new Headers(queryRequest.headers);
+    headers.set("authorization", "Bearer ordinary-cloud-token");
+    const request = new Request(queryRequest, { headers });
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      env,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "mobile_credential_transport_forbidden",
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mobileKeys).toEqual([]);
+    expect(authRequests.length).toBe(0);
+  });
+
+  test("a missing global binding fails closed in production with CORS", async () => {
+    const request = mobileRequest({
+      secret: MOBILE_A,
+      channel: "bearer",
+      ip: "203.0.113.54",
+      origin: ORIGIN,
+    });
+    const response = await handleDedicatedAgentProxy(
+      request,
+      deployedEnv(),
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "rate_limit_unavailable",
+    });
+    expect(authRequests.length).toBe(0);
+  });
+
+  test("a failing mobile binding fails closed in production with CORS", async () => {
+    const request = mobileRequest({
+      secret: MOBILE_A,
+      channel: "bearer",
+      ip: "203.0.113.55",
+      origin: ORIGIN,
+    });
+    const response = await handleDedicatedAgentProxy(
+      request,
+      deployedEnv(
+        {
+          async limit() {
+            return { success: true };
+          },
+        },
+        {
+          async limit() {
+            throw new Error("binding outage");
+          },
+        },
+      ),
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "rate_limit_unavailable",
+    });
+    expect(authRequests.length).toBe(0);
+  });
+});
+
 describe("dedicated-agent-proxy — unified auth", () => {
   test("validated OWNER of a RUNNING agent → injects the agent token, strips the cloud token, targets the CP", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
@@ -645,6 +957,23 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe(
       "https://app-staging.elizacloud.ai",
     );
+  });
+
+  test("owner of a terminal-error agent receives a machine-readable 503 without a resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "error" };
+    const r = makeRequest("cloud-token", "https://app-staging.elizacloud.ai");
+
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: "agent_error_state",
+      data: { status: "error" },
+    });
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
   });
 
   test("owner of a NON-RUNNING agent WITH sufficient credits → 202 and enqueues the resume (#11583)", async () => {

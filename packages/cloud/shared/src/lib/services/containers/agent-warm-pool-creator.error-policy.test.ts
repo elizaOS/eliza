@@ -48,7 +48,10 @@ const sandbox = {
 mock.module("../../../db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: repo,
 }));
-mock.module("../../../db/schemas/agent-sandboxes", () => ({ WARM_POOL_ORG_ID }));
+mock.module("../../../db/schemas/agent-sandboxes", () => ({
+  agentSandboxes: realSchemaNs.agentSandboxes,
+  WARM_POOL_ORG_ID,
+}));
 mock.module("../eliza-sandbox", () => ({ elizaSandboxService: sandbox }));
 mock.module("../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
@@ -177,10 +180,19 @@ describe("createPoolContainer fail-closed", () => {
     });
 
     const creator = getHetznerPoolContainerCreator();
-    await expect(creator.createPoolContainer("img:latest")).resolves.toEqual({
+    const targetDigest = `sha256:${"a".repeat(64)}`;
+    await expect(creator.createPoolContainer("img:latest", targetDigest)).resolves.toEqual({
       id: "row-2",
       nodeId: "node-9",
     });
+    expect(repo.createPoolEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docker_image: "img:latest",
+        image_digest: targetDigest,
+        status: "pending",
+      }),
+    );
+    expect(sandbox.provision).toHaveBeenCalledWith("row-2", WARM_POOL_ORG_ID);
   });
 
   test("a success response without the atomic readiness stamp fails closed", async () => {

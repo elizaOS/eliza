@@ -3,7 +3,12 @@
  * renderer RPC (bypassing CORS/bind-host limits) when running under Electrobun,
  * falling back to fetch otherwise.
  */
-import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+  isLoopbackBindHost,
+  isWildcardBindHost,
+} from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
@@ -20,6 +25,7 @@ interface DesktopHttpRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  bodyBase64?: string | null;
 }
 
 function isExternalPlainHttpUrl(url: string): boolean {
@@ -33,6 +39,25 @@ function isExternalPlainHttpUrl(url: string): boolean {
   } catch {
     // error-policy:J3 unparseable URL is not routed through the privileged
     // desktop HTTP bridge (fail-closed).
+    return false;
+  }
+}
+
+/**
+ * Trusted Eliza Cloud HTTPS origins whose CORS policy does not allowlist
+ * loopback renderer origins. The desktop main process proxies these through
+ * desktopHttpRequest to bypass the WKWebView CORS block.
+ */
+function isTrustedElizaCloudHttpsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      isElizaCloudControlPlaneHostname(hostname) ||
+      isElizaDedicatedAgentHostname(hostname)
+    );
+  } catch {
     return false;
   }
 }
@@ -63,6 +88,21 @@ const desktopHttpTransport: AgentRequestTransport = {
       timeoutMs: context?.timeoutMs,
     })) as DesktopHttpRequestResult;
 
+    // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
+    // corruption through the Electrobun RPC string bridge.
+    if (result.bodyBase64) {
+      const binary = atob(result.bodyBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Response(bytes, {
+        status: result.status,
+        statusText: result.statusText ?? "",
+        headers: result.headers,
+      });
+    }
+
     return new Response(result.body ?? "", {
       status: result.status,
       statusText: result.statusText ?? "",
@@ -75,7 +115,9 @@ export function desktopHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
   return isElectrobunRuntime() &&
-    (isExternalPlainHttpUrl(url) || isDesktopExternalHttpApiBaseUrl(url))
+    (isExternalPlainHttpUrl(url) ||
+      isDesktopExternalHttpApiBaseUrl(url) ||
+      isTrustedElizaCloudHttpsUrl(url))
     ? desktopHttpTransport
     : null;
 }

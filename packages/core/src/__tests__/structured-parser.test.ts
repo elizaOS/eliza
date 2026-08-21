@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { parseKeyValueXml } from "../utils";
 
+const XML_CLOSE_VISIT_LIMIT = 64;
+
 describe("parseKeyValueXml", () => {
 	it("parses XML response blocks", () => {
 		const parsed = parseKeyValueXml(`
@@ -31,5 +33,32 @@ describe("parseKeyValueXml", () => {
 			text: "see <textarea>x</textarea> ok",
 			thought: "t",
 		});
+	});
+
+	it("parses the direct-child visit limit and rejects one more", () => {
+		const fields = Array.from(
+			{ length: XML_CLOSE_VISIT_LIMIT },
+			(_, i) => `<f${i}>v${i}</f${i}>`,
+		).join("");
+		const parsed = parseKeyValueXml(`<response>${fields}</response>`);
+		expect(parsed).not.toBeNull();
+		expect(Object.keys(parsed ?? {})).toHaveLength(XML_CLOSE_VISIT_LIMIT);
+
+		const overflow = `${fields}<extra>x</extra>`;
+		expect(parseKeyValueXml(`<response>${overflow}</response>`)).toBeNull();
+	});
+
+	it("rejects prefix-extension input beyond the structured body budget", () => {
+		const body = `<a>${"<aa></aa>".repeat(30_000)}x</a>`;
+		expect(parseKeyValueXml(`<response>${body}</response>`)).toBeNull();
+	});
+
+	it("rejects oversized surrounding model output before searching for XML", () => {
+		const oversizedPrefix = "x".repeat(1024 * 1024);
+		expect(
+			parseKeyValueXml(
+				`${oversizedPrefix}<response><text>ok</text></response>`,
+			),
+		).toBeNull();
 	});
 });

@@ -1,5 +1,8 @@
-// Coordinates cloud service referrals behavior behind route handlers.
+/** Coordinates referral lookup and exact revenue-split calculation behind service callers. */
 import * as crypto from "crypto";
+import Decimal from "decimal.js";
+import { eq } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import {
   type ReferralCode,
   type ReferralSignup,
@@ -9,6 +12,7 @@ import {
   socialShareRewardsRepository,
 } from "../../db/repositories/referrals";
 import { usersRepository } from "../../db/repositories/users";
+import { referralCodes, referralSignups } from "../../db/schemas/referrals";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 
@@ -79,9 +83,9 @@ interface AppContext {
  * split in calculateRevenueSplits, not by a separate commission.
  */
 const REWARDS = {
-  SIGNUP_BONUS: 1.0, // Referrer gets $1 (100 credits) when someone signs up with their code
-  REFERRED_BONUS: 0.5, // New user gets $0.50 (50 credits) for using a referral code
-  QUALIFIED_BONUS: 0.5, // Referrer gets $0.50 (50 credits) when referred user links social account
+  SIGNUP_BONUS: 1.0, // Referrer gets $1 (one cloud credit) on signup.
+  REFERRED_BONUS: 0.5, // New user gets $0.50 (0.5 cloud credit).
+  QUALIFIED_BONUS: 0.5, // Referrer gets $0.50 after social-account qualification.
   SHARE_X: 0.25,
   SHARE_FARCASTER: 0.25,
   SHARE_TELEGRAM: 0.25,
@@ -325,6 +329,7 @@ export class ReferralsService {
   async calculateRevenueSplits(
     userId: string,
     purchaseAmount: number,
+    transaction?: DbTransaction,
   ): Promise<{
     elizaCloudAmount: number;
     splits: Array<{
@@ -333,23 +338,63 @@ export class ReferralsService {
       amount: number;
     }>;
   }> {
-    const signup = await referralSignupsRepository.findByReferredUserId(userId);
+    const exact = await this.calculateRevenueSplitsExact(
+      userId,
+      new Decimal(purchaseAmount).toFixed(),
+      transaction,
+    );
+    return {
+      elizaCloudAmount: Number(exact.elizaCloudAmount),
+      splits: exact.splits.map((split) => ({ ...split, amount: Number(split.amount) })),
+    };
+  }
+
+  /** Exact-decimal split used by settlement code before any provider amount reaches SQL. */
+  async calculateRevenueSplitsExact(
+    userId: string,
+    purchaseAmount: string,
+    transaction?: DbTransaction,
+  ): Promise<{
+    elizaCloudAmount: string;
+    splits: Array<{
+      userId: string;
+      role: "app_owner" | "creator" | "editor";
+      amount: string;
+    }>;
+  }> {
+    const providerAmount = new Decimal(purchaseAmount);
+    if (!providerAmount.isFinite() || !providerAmount.gt(0)) {
+      throw new Error("Referral revenue split purchase amount must be positive");
+    }
+    // Settlement ledgers are six-decimal. Provider dust below that boundary is
+    // retained on the payment audit row, never manufactured into a float or a
+    // payout that the ledger cannot represent.
+    const amount = providerAmount.toDecimalPlaces(6);
+    const signup = transaction
+      ? (
+          await transaction
+            .select()
+            .from(referralSignups)
+            .where(eq(referralSignups.referred_user_id, userId))
+            .limit(1)
+        )[0]
+      : await referralSignupsRepository.findByReferredUserId(userId);
 
     // Default: 100% to ElizaCloud if no referrer
     if (!signup) {
-      return { elizaCloudAmount: purchaseAmount, splits: [] };
+      return { elizaCloudAmount: amount.toFixed(6), splits: [] };
     }
 
-    const { ELIZA_CLOUD, APP_OWNER, CREATOR, CREATOR_TIER, EDITOR_TIER } = REFERRAL_REVENUE_SPLITS;
-
-    let elizaCloudAmount = purchaseAmount * ELIZA_CLOUD;
-    const appOwnerAmount = purchaseAmount * APP_OWNER;
-    const baseCreatorAmount = purchaseAmount * CREATOR;
+    const { APP_OWNER, CREATOR, CREATOR_TIER, EDITOR_TIER } = REFERRAL_REVENUE_SPLITS;
+    const ledgerShare = (ratio: number) =>
+      amount.mul(ratio).toDecimalPlaces(6, Decimal.ROUND_DOWN).toFixed(6);
+    const appOwnerAmount = ledgerShare(APP_OWNER);
+    const baseCreatorAmount = ledgerShare(CREATOR);
 
     const splits: Array<{
       userId: string;
       role: "app_owner" | "creator" | "editor";
-      amount: number;
+      amount: string;
     }> = [];
 
     if (signup.app_owner_id) {
@@ -358,25 +403,39 @@ export class ReferralsService {
         role: "app_owner",
         amount: appOwnerAmount,
       });
-    } else {
-      elizaCloudAmount += appOwnerAmount;
     }
 
     const creatorId = signup.creator_id || signup.referrer_user_id;
 
-    const referralCode = await referralCodesRepository.findById(signup.referral_code_id);
+    const referralCode = transaction
+      ? (
+          await transaction
+            .select()
+            .from(referralCodes)
+            .where(eq(referralCodes.id, signup.referral_code_id))
+            .limit(1)
+        )[0]
+      : await referralCodesRepository.findById(signup.referral_code_id);
     if (referralCode && referralCode.parent_referral_id) {
-      const parentCode = await referralCodesRepository.findById(referralCode.parent_referral_id);
+      const parentCode = transaction
+        ? (
+            await transaction
+              .select()
+              .from(referralCodes)
+              .where(eq(referralCodes.id, referralCode.parent_referral_id))
+              .limit(1)
+          )[0]
+        : await referralCodesRepository.findById(referralCode.parent_referral_id);
       if (parentCode) {
         splits.push({
           userId: creatorId,
           role: "creator",
-          amount: purchaseAmount * CREATOR_TIER,
+          amount: ledgerShare(CREATOR_TIER),
         });
         splits.push({
           userId: parentCode.user_id,
           role: "editor",
-          amount: purchaseAmount * EDITOR_TIER,
+          amount: ledgerShare(EDITOR_TIER),
         });
       } else {
         splits.push({
@@ -393,15 +452,13 @@ export class ReferralsService {
       });
     }
 
-    const splitsSum = splits.reduce((s, x) => s + x.amount, 0);
-    const totalAllocated = elizaCloudAmount + splitsSum;
-    if (Math.abs(totalAllocated - purchaseAmount) > 1e-6) {
-      throw new Error(
-        `Referral revenue split total must equal purchaseAmount: ${totalAllocated} !== ${purchaseAmount}`,
-      );
+    const splitsSum = splits.reduce((sum, split) => sum.add(split.amount), new Decimal(0));
+    const elizaCloudAmount = amount.minus(splitsSum);
+    if (elizaCloudAmount.isNegative()) {
+      throw new Error("Referral revenue splits exceed the quantized settlement amount");
     }
 
-    return { elizaCloudAmount, splits };
+    return { elizaCloudAmount: elizaCloudAmount.toFixed(6), splits };
   }
 
   async getReferralStats(userId: string): Promise<{

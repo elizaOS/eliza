@@ -124,6 +124,30 @@ describe("recordSharedTurnTrace gating", () => {
       { insertTrace, env: { SHARED_TURN_TRACES_ENABLED: "true", SHARED_TURN_TRACES_SAMPLE: "1" } },
       summaryFixture({
         stages: [{ name: "model" }, { name: "action", tool: "WEB_SEARCH", durationMs: 240 }],
+        terminalTiming: {
+          traceId: "trace-1",
+          outcome: "success",
+          historyMessageCount: 2,
+          phases: {
+            edgeContextDurationMs: 10,
+            runtimeInitializeDurationMs: 20,
+            connectionDurationMs: 5,
+            historyProjectionDurationMs: 3,
+          },
+          offsets: {
+            providerDispatchOffsetMs: 30,
+            providerFirstTextOffsetMs: 80,
+            completedOffsetMs: 120,
+          },
+          inference: {
+            composeStateDurationMs: 4,
+            shouldRespondAndContextDurationMs: 6,
+            responseHandlerFieldsDurationMs: 2,
+            providerTotalDurationMs: 40,
+            slowestProviderDurationMs: 30,
+          },
+          routing: { decision: "respond", contextIds: ["simple"] },
+        },
       }),
     );
     expect(recorded).toBe(true);
@@ -141,6 +165,10 @@ describe("recordSharedTurnTrace gating", () => {
     expect(row.stages).toEqual({
       finishReason: "reply",
       stages: [{ name: "model" }, { name: "action", tool: "WEB_SEARCH", durationMs: 240 }],
+      terminalTiming: expect.objectContaining({
+        traceId: "trace-1",
+        outcome: "success",
+      }),
     });
   });
 
@@ -250,7 +278,7 @@ describe("buildTurnSummary compaction", () => {
         capabilityWall: {
           capability: "reminders",
           label: "Reminders",
-          reply: "Reminders need Dedicated — but I can draft the reminder text for you.",
+          constraint: "This transport has no trusted reminder delivery.",
         },
       }),
       ...identity,
@@ -258,6 +286,25 @@ describe("buildTurnSummary compaction", () => {
     expect(summary.finishReason).toBe("capability-wall");
     expect(summary.stages).toEqual([{ name: "capability-wall", tool: "reminders" }]);
     expect(JSON.stringify(summary)).not.toContain("Dedicated");
+  });
+
+  test("records model-backed capability responses as model plus wall", () => {
+    const summary = buildTurnSummary({
+      result: turnResult({
+        model: "gpt-oss-120b",
+        capabilityWall: {
+          capability: "reminders",
+          label: "Reminders",
+          constraint: "This transport has no trusted reminder delivery.",
+        },
+      }),
+      ...identity,
+    });
+    expect(summary.finishReason).toBe("capability-wall");
+    expect(summary.stages).toEqual([
+      { name: "model" },
+      { name: "capability-wall", tool: "reminders" },
+    ]);
   });
 
   test("classifies the designed no-model unavailable state as degraded", () => {

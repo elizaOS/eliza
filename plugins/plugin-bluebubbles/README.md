@@ -86,9 +86,13 @@ In the BlueBubbles server app → Webhooks, add an entry:
 | Policy | Behavior |
 |---|---|
 | `open` | Accept messages from any sender |
-| `pairing` (default for DMs) | Accept messages only from handles in `BLUEBUBBLES_ALLOW_FROM`; if the list is empty, accept all |
+| `pairing` (default for DMs) | Accept handles in `BLUEBUBBLES_ALLOW_FROM` immediately; unknown senders are held through the core PairingService handshake — they receive a one-time pairing code and are admitted once the owner approves it (`pairing approve imessage <code>` or the pairing UI) |
 | `allowlist` (default for groups) | Accept only from handles in the allow list |
 | `disabled` | Reject all messages of this type |
+
+Attachment URLs stored on inbound memories are bare capability URLs. The
+BlueBubbles server password is appended only at fetch time inside
+`BlueBubblesClient.getAttachmentUrl`, never persisted in the message store.
 
 ## API routes
 

@@ -19,7 +19,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const oauthState = vi.hoisted(() => ({
   pkceError: null as Error | null,
   storeVerifier: true,
+  storedVerifierArgs: [] as Array<{ verifier: string; state?: string }>,
+  authorizeUrlOptions: [] as Array<Record<string, unknown>>,
 }));
+
+vi.mock("@elizaos/shared/steward-session-client", async () => {
+  const actual = await vi.importActual<
+    typeof import("@elizaos/shared/steward-session-client")
+  >("@elizaos/shared/steward-session-client");
+  return {
+    ...actual,
+    generateStewardOAuthState: () => "state-1",
+    buildStewardOAuthAuthorizeUrl: (
+      provider: string,
+      _redirectUri: string,
+      options: Record<string, unknown>,
+    ) => {
+      oauthState.authorizeUrlOptions.push(options);
+      return `https://api.example.test/steward/auth/oauth/${provider}/authorize`;
+    },
+  };
+});
 
 vi.mock("@stwd/sdk", () => ({
   StewardAuth: class {
@@ -67,7 +87,7 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: () => Promise.resolve({}),
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
@@ -90,9 +110,10 @@ vi.mock("../../lib/steward-oauth-url", async () => {
       if (oauthState.pkceError) throw oauthState.pkceError;
       return { verifier: "verifier", challenge: "challenge" };
     },
-    storeStewardPkceVerifier: () => oauthState.storeVerifier,
-    buildStewardOAuthAuthorizeUrl: (provider: string) =>
-      `https://api.example.test/steward/auth/oauth/${provider}/authorize`,
+    storeStewardPkceVerifier: (verifier: string, state?: string) => {
+      oauthState.storedVerifierArgs.push({ verifier, state });
+      return oauthState.storeVerifier;
+    },
   };
 });
 
@@ -131,6 +152,8 @@ describe("StewardLoginSection OAuth launch", () => {
     stubHostedLoginLocation();
     oauthState.pkceError = null;
     oauthState.storeVerifier = true;
+    oauthState.storedVerifierArgs = [];
+    oauthState.authorizeUrlOptions = [];
   });
 
   afterEach(() => {
@@ -159,6 +182,24 @@ describe("StewardLoginSection OAuth launch", () => {
       expect(openSpy).not.toHaveBeenCalled();
     },
   );
+
+  it("sends the PKCE challenge and a stashed OAuth state at authorize time", async () => {
+    renderSection();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+    await waitFor(() =>
+      expect(window.location.href).toContain("/steward/auth/oauth/"),
+    );
+    expect(oauthState.storedVerifierArgs).toEqual([
+      { verifier: "verifier", state: "state-1" },
+    ]);
+    expect(oauthState.authorizeUrlOptions).toHaveLength(1);
+    expect(oauthState.authorizeUrlOptions[0]).toMatchObject({
+      codeChallenge: "challenge",
+      state: "state-1",
+    });
+  });
 
   it("releases the OAuth provider lock after a back-forward cache restoration", async () => {
     renderSection();

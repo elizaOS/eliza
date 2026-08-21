@@ -10,9 +10,9 @@ import type {
   SpawnOptions,
 } from "node:child_process";
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { truncateWellFormed } from "@elizaos/core";
 import {
   resolveExecutable,
   resolveTerminalShell,
@@ -159,39 +159,6 @@ export function coerceEnv(
 }
 
 /**
- * Resolve working directory with fallback
- */
-export function resolveWorkdir(workdir: string, warnings: string[]): string {
-  const current = safeCwd();
-  const fallback = current ?? homedir();
-  try {
-    const stats = statSync(workdir);
-    if (stats.isDirectory()) {
-      return workdir;
-    }
-  } catch {
-    // error-policy:J4 designed degrade; an unavailable workdir falls back to the
-    // process cwd/home and the substitution is surfaced to the caller via the
-    // `warnings` array below (never silently swapped).
-  }
-  warnings.push(
-    `Warning: workdir "${workdir}" is unavailable; using "${fallback}".`,
-  );
-  return fallback;
-}
-
-function safeCwd(): string | null {
-  try {
-    const cwd = process.cwd();
-    return existsSync(cwd) ? cwd : null;
-  } catch {
-    // error-policy:J3 cwd probe; process.cwd() throws when the working
-    // directory was deleted out from under the process — null is the miss.
-    return null;
-  }
-}
-
-/**
  * Clamp a number to a range with a default value
  */
 export function clampNumber(
@@ -223,8 +190,18 @@ export function readEnvInt(key: string): number | undefined {
  */
 export function chunkString(input: string, limit = CHUNK_LIMIT): string[] {
   const chunks: string[] = [];
-  for (let i = 0; i < input.length; i += limit) {
-    chunks.push(input.slice(i, i + limit));
+  let remaining = input;
+  while (remaining.length > 0) {
+    // A raw slice() can land between the two UTF-16 code units of a surrogate
+    // pair (most emoji), leaving a lone surrogate at the chunk boundary that
+    // corrupts the text once the shell output ring is polled. truncateWellFormed
+    // backs the cut off by one unit instead.
+    const head = truncateWellFormed(remaining, limit);
+    if (head.length === 0) {
+      throw new RangeError("chunkString limit made no UTF-16 progress");
+    }
+    chunks.push(head);
+    remaining = remaining.slice(head.length);
   }
   return chunks;
 }
@@ -309,10 +286,61 @@ export function deriveSessionName(command: string): string | undefined {
   return `${stripQuotes(verb)} ${cleaned}`;
 }
 
-function tokenizeCommand(command: string): string[] {
-  const matches =
-    command.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
-  return matches.map((token) => stripQuotes(token)).filter(Boolean);
+// The derived session name only ever surfaces the leading verb and one
+// truncated target token, so tokenization never needs to look past a short
+// prefix. Bounding the input also bounds the unmatched-quote fallback below:
+// without it, many unmatched quote delimiters (each escaping the next quote)
+// would make every fallback rescan the remaining suffix, going quadratic.
+const TOKENIZE_LIMIT = 2048;
+
+function tokenizeCommand(rawCommand: string): string[] {
+  const command = rawCommand.slice(0, TOKENIZE_LIMIT);
+  const tokens: string[] = [];
+  let token = "";
+  let cursor = 0;
+  const flush = () => {
+    if (!token) return;
+    const stripped = stripQuotes(token);
+    if (stripped) tokens.push(stripped);
+    token = "";
+  };
+
+  while (cursor < command.length) {
+    const char = command[cursor];
+    if (/\s/.test(char)) {
+      flush();
+      cursor += 1;
+      continue;
+    }
+    if (char !== '"' && char !== "'") {
+      token += char;
+      cursor += 1;
+      continue;
+    }
+
+    const quote = char;
+    let quoteEnd = cursor + 1;
+    while (quoteEnd < command.length) {
+      if (command[quoteEnd] === "\\" && quoteEnd + 1 < command.length) {
+        quoteEnd += 2;
+        continue;
+      }
+      if (command[quoteEnd] === quote) break;
+      quoteEnd += 1;
+    }
+    if (quoteEnd === command.length) {
+      // The former matcher skipped an unmatched delimiter and resumed at the
+      // following text. Preserve that behavior without repeatedly exploring
+      // alternate quoted/unquoted parses.
+      flush();
+      cursor += 1;
+      continue;
+    }
+    token += command.slice(cursor, quoteEnd + 1);
+    cursor = quoteEnd + 1;
+  }
+  flush();
+  return tokens;
 }
 
 function stripQuotes(value: string): string {

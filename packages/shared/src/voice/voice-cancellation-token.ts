@@ -107,11 +107,14 @@ export function createVoiceCancellationToken(
   const controller = new AbortController();
   const listeners = new Set<VoiceCancellationListener>();
   const state: InternalState = { aborted: false, reason: null };
+  let unlinkSignal: (() => void) | null = null;
 
   const trip = (reason: VoiceCancellationReason): void => {
     if (state.aborted) return;
     state.aborted = true;
     state.reason = reason;
+    unlinkSignal?.();
+    unlinkSignal = null;
     // Call listeners BEFORE aborting the controller so a listener that
     // itself awaits the signal sees the same reason this token recorded
     // (otherwise listeners that observe `signal.aborted` could race).
@@ -132,6 +135,8 @@ export function createVoiceCancellationToken(
     } else {
       const onLinkAbort = () => trip("external");
       opts.linkSignal.addEventListener("abort", onLinkAbort, { once: true });
+      unlinkSignal = () =>
+        opts.linkSignal?.removeEventListener("abort", onLinkAbort);
     }
   }
 

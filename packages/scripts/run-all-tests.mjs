@@ -987,7 +987,7 @@ function buildPlanSummary(tasks) {
 function printableTask(task) {
   return {
     packageName: task.packageName,
-    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
     label: task.label,
     parallelSafe: isParallelSafeTask({
@@ -1097,7 +1097,7 @@ function recordTaskResult(task, record) {
   const full = {
     label: task.label,
     packageName: task.packageName,
-    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
     ...record,
   };
@@ -1449,6 +1449,9 @@ let laneMatchedTaskCount = 0;
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
   const relativeDir = path.relative(repoRoot, cwd) || ".";
+  // Public task labels and machine-readable output use stable repository paths,
+  // while relativeDir stays platform-native for membership checks and sharding.
+  const relativeDirLabel = normalizeRepoPath(relativeDir);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const scripts = packageJson.scripts ?? {};
   const scriptNames = collectScriptsToRun(scripts);
@@ -1457,13 +1460,13 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
-    const label = `${packageJson.name || relativeDir} (${relativeDir})`;
+    const label = `${packageJson.name || relativeDirLabel} (${relativeDirLabel})`;
     // Designed exclusions are recorded in both plan and run modes so the
     // result ledger can distinguish "deliberately not run" from "passed".
     skippedPlanEntries.push({
       label,
-      packageName: packageJson.name || relativeDir,
-      relativeDir,
+      packageName: packageJson.name || relativeDirLabel,
+      relativeDir: relativeDirLabel,
       reason: "cloud package skipped by --no-cloud",
     });
     if (!planEnabled) {
@@ -1474,9 +1477,9 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
 
-  const packageName = packageJson.name || relativeDir;
+  const packageName = packageJson.name || relativeDirLabel;
   for (const scriptName of scriptNames) {
-    const label = `${packageName} (${relativeDir})#${scriptName}`;
+    const label = `${packageName} (${relativeDirLabel})#${scriptName}`;
     if (!started) {
       if (label.includes(startAt)) {
         started = true;
@@ -1496,7 +1499,7 @@ for (const packageJsonPath of packageJsonPaths) {
       skippedPlanEntries.push({
         label,
         packageName,
-        relativeDir,
+        relativeDir: relativeDirLabel,
         scriptName,
         reason: "operator-run visual harness excluded from the pr lane",
       });
@@ -1517,7 +1520,7 @@ for (const packageJsonPath of packageJsonPaths) {
         skippedPlanEntries.push({
           label,
           packageName,
-          relativeDir,
+          relativeDir: relativeDirLabel,
           scriptName,
           reason: "no local test files for vitest script",
         });

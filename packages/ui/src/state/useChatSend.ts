@@ -114,14 +114,23 @@ async function handoffCompletedAction(
       "agent",
     );
   }
-  if (findViewActionHandoff(actionResults)) {
+  const viewHandoff = findViewActionHandoff(actionResults);
+  if (viewHandoff) {
     // The completed stream result is scoped to this exact caller and contains
     // the validated target returned by the successful VIEWS action. Dispatch it
     // directly instead of consulting process-global `/api/views/current`, which
     // can belong to another device and is unavailable to REST-only native
     // renderers. The shell resolves the canonical path from the view id.
     try {
-      dispatchViewActionHandoffDirect(actionResults);
+      // A renderer-observed handoff id is stronger than the server's legacy
+      // synchronous socket-count marker: always offer the terminal path and let
+      // the mounted shell deduplicate whichever transport it handled first.
+      if (
+        viewHandoff.completedActionHandoffId ||
+        !viewHandoff.completedActionDelivered
+      ) {
+        dispatchViewActionHandoffDirect(actionResults);
+      }
     } catch (err) {
       // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
       // distinct navigation failure instead of fabricating an opened view.
@@ -409,6 +418,12 @@ export interface UseChatSendDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /**
+   * Waits for any startup conversation restore to settle before a user turn
+   * claims conversation ownership. Callers without startup hydration may omit
+   * this dependency.
+   */
+  settleConversationHydrationForSend?: () => Promise<void>;
 
   // Cloud state
   elizaCloudEnabled: boolean;
@@ -487,6 +502,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     chatSendNonceRef,
     loadConversations,
     loadConversationMessages,
+    settleConversationHydrationForSend,
     elizaCloudEnabled,
     elizaCloudConnected,
     pollCloudCredits,
@@ -1694,15 +1710,24 @@ export function useChatSend(deps: UseChatSendDeps) {
           // warm-up can complete with nothing persisted, and the reload then
           // evicts the user's bubble (#11670). Restore it with a retryable
           // failed turn; no-op when the server persisted it.
-          restoreEvictedUserTurn(convId, {
-            userMsgId,
-            assistantMsgId,
-            text,
-            timestamp: now,
-            ...(optimisticAttachments
-              ? { attachments: optimisticAttachments }
-              : {}),
-          });
+          // A terminal userMessageId is the server's persistence receipt. In
+          // callback-only turns (notably attachment actions) the assistant row
+          // may be committed outside the streamed bubble, so the history load
+          // is necessary but can race that row's WS echo. Re-attaching the
+          // optimistic user turn despite the receipt creates a duplicate user
+          // bubble plus a false Retry failure. Only restore when the server did
+          // not confirm persistence at all (the warm-up/drop case).
+          if (!data.userMessageId) {
+            restoreEvictedUserTurn(convId, {
+              userMsgId,
+              assistantMsgId,
+              text,
+              timestamp: now,
+              ...(optimisticAttachments
+                ? { attachments: optimisticAttachments }
+                : {}),
+            });
+          }
         }
 
         const userMessageCount = conversationMessagesRef.current.filter(
@@ -2168,6 +2193,12 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      // Direct Cloud paints the shell while its history restore continues in
+      // the background. Let that restore choose the active conversation before
+      // this turn snapshots the target or paints optimistically; otherwise the
+      // late restore can replace the just-sent turn with stale history.
+      await settleConversationHydrationForSend?.();
+
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
       // so one Reply affordance covers all surfaces and a second send never
@@ -2249,6 +2280,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       flushQueuedChatSends,
+      settleConversationHydrationForSend,
       setChatReplyTarget,
       setChatSending,
       setCompanionMessageCutoffTs,

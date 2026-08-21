@@ -4,6 +4,7 @@
  * merge semantics, and the designed static fallback on a corrupt/absent cache.
  * Deterministic — filesystem reads are injected, no live provider is touched.
  */
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildModelCatalog, CODING_MODEL_DEFAULTS } from "./model-catalog";
 
@@ -138,15 +139,16 @@ describe("codex models_cache.json parse + merge", () => {
   });
 
   it("resolves the cache path from CODEX_HOME", () => {
+    const codexHome = path.resolve(path.sep, "opt", "codex");
     let seen = "";
     buildModelCatalog({
       readFile: (p) => {
         seen = p;
         return cache;
       },
-      env: { CODEX_HOME: "/opt/codex" } as NodeJS.ProcessEnv,
+      env: { CODEX_HOME: codexHome } as NodeJS.ProcessEnv,
     });
-    expect(seen).toBe("/opt/codex/models_cache.json");
+    expect(seen).toBe(path.join(codexHome, "models_cache.json"));
   });
 });
 

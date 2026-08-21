@@ -168,6 +168,8 @@ export interface AddDocumentOptions {
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
+	/** Always inject this document whole through the DOCUMENTS provider. */
+	pinned?: boolean;
 	/** Store these verbatim fragments instead of token-splitting `content`. */
 	fragments?: PreChunkedFragmentInput[];
 }
@@ -229,6 +231,13 @@ export interface DocumentMemoryMetadata
 	addedAt?: number;
 	ingestionAttemptId?: UUID;
 	ingestionState?: "pending" | "ready" | "failed";
+	/**
+	 * Token of the update attempt that committed this document revision.
+	 * Fragment readers require fragments to carry the same token whenever the
+	 * parent declares one, fencing off same-revision generations staged by
+	 * concurrent update attempts that lost the compare-and-swap.
+	 */
+	revisionAttemptId?: UUID;
 	title?: string;
 	filename?: string;
 	originalFilename?: string;
@@ -239,6 +248,8 @@ export interface DocumentMemoryMetadata
 	textBacked?: boolean;
 	timestamp?: number;
 	editedAt?: number;
+	/** Always inject the complete document through the DOCUMENTS provider. */
+	pinned?: boolean;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaUrl?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
@@ -257,6 +268,8 @@ export interface DocumentFragmentMemoryMetadata
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	addedAt?: number;
+	/** Update attempt that staged this fragment; must match the parent's committed token to be readable. */
+	revisionAttemptId?: UUID;
 	position: number;
 	source?: string;
 	documentTitle?: string;

@@ -1,21 +1,15 @@
 #!/usr/bin/env node
-// Android end-to-end orchestrator. Single entrypoint that brings the device into
-// a known-good state and runs the real-backend e2e suites, surfacing every
-// failure loudly (non-zero exit). Steps:
-//   1. Ensure an emulator/device is attached (boots an AVD with adequate RAM if
-//      none is running) and, for emulators, SELinux is permissive so the
-//      embedded on-device agent can run.
-//   2. Ensure the WebView-debuggable debug APK is installed.
-//   3. Local route: bring up the on-device agent + smallest model and assert a
-//      real chat round-trip (mobile-local-chat-smoke). Loud fail if the local
-//      runtime or model does not come up.
-//   4. Playwright route coverage: drive the real WebView across every route.
-//   5. (optional) Cloud route: real Hetzner provisioning probe.
-//
-// Flags: --serial <s>  --skip-local-chat  --skip-route-coverage  --cloud
-//        --launcher-loop (≥200-action seeded launcher gesture loop; opt-in)
-//        --force-build/--build (build the APK first)  --skip-build
-//        --no-emulator-boot  --no-wait
+/**
+ * Orchestrates Android device E2E from device preparation through a finalized
+ * evidence bundle. The explicit host-emulator and ARM64-local probe sets keep
+ * remote x86 coverage separate from embedded-agent and voice prerequisites;
+ * every selected probe is a hard gate.
+ *
+ * Flags: --serial <s>, --skip-local-chat, --skip-route-coverage, --cloud,
+ * --launcher-loop, --start-host-agent, --host-emulator-probes,
+ * --arm64-local-probes, --host-agent-port <port>, --force-build/--build, --skip-build,
+ * --no-emulator-boot, and --no-wait.
+ */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -55,6 +49,7 @@ import {
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
 import { acquireDeviceLease, isDeviceLeased } from "./lib/device-lease.mjs";
+import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const elizaRoot = path.resolve(appDir, "..", "..");
@@ -65,6 +60,21 @@ const val = (flag, fb) => {
   return i >= 0 ? process.argv[i + 1] : fb;
 };
 const log = (m) => console.log(`[android-e2e] ${m}`);
+
+// These lists are intentionally explicit. The hosted x86_64 emulator must not
+// accidentally inherit a new local-runtime, destructive lifecycle, or voice
+// spec merely because it was added under test/android. ARM64 local proof owns
+// the embedded agent and its WebView contract, while voice remains a separate
+// hardware-qualified lane with its own model prerequisites.
+const HOST_EMULATOR_PROBES = [
+  "test/android/onboarding-to-home.android.spec.ts",
+  "test/android/route-coverage.android.spec.ts",
+  "test/android/native-plugin-view-smoke.android.spec.ts",
+];
+const ARM64_LOCAL_PROBES = [
+  "test/android/local-runtime.android.spec.ts",
+  "test/android/route-coverage.android.spec.ts",
+];
 
 // Smallest local tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
@@ -406,8 +416,52 @@ async function main() {
   let finalResult = "failed";
   let finalError = null;
   let routeRecording = null;
+  let hostAgent = null;
+
+  const hostEmulatorProbes = has("--host-emulator-probes");
+  const arm64LocalProbes = has("--arm64-local-probes");
+  const backend = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 
   try {
+    {
+      const step = startBundleStep(bundle, "validate Android lane selection");
+      try {
+        if (hostEmulatorProbes && arm64LocalProbes) {
+          throw new Error(
+            "--host-emulator-probes and --arm64-local-probes are mutually exclusive.",
+          );
+        }
+        if (hostEmulatorProbes && backend !== "host") {
+          throw new Error(
+            "--host-emulator-probes requires ELIZA_ANDROID_BACKEND=host.",
+          );
+        }
+        if (arm64LocalProbes && backend !== "local") {
+          throw new Error(
+            "--arm64-local-probes requires ELIZA_ANDROID_BACKEND=local.",
+          );
+        }
+        if (hostEmulatorProbes && !has("--skip-local-chat")) {
+          throw new Error(
+            "--host-emulator-probes requires --skip-local-chat; x86 must not run the embedded local agent.",
+          );
+        }
+        if (arm64LocalProbes && has("--skip-local-chat")) {
+          throw new Error(
+            "--arm64-local-probes must run the local chat smoke; remove --skip-local-chat.",
+          );
+        }
+        if (has("--start-host-agent") && backend !== "host") {
+          throw new Error(
+            "--start-host-agent requires ELIZA_ANDROID_BACKEND=host.",
+          );
+        }
+        finishBundleStep(bundle, step, "passed");
+      } catch (error) {
+        failAndroidStep(bundle, step, error);
+        throw error;
+      }
+    }
     {
       const step = startBundleStep(bundle, "resolve Android SDK");
       try {
@@ -473,6 +527,26 @@ async function main() {
 
     ensureFreshApkInstalled(bundle, adb, serial);
 
+    if (has("--start-host-agent")) {
+      const step = startBundleStep(bundle, "start deterministic host agent");
+      try {
+        hostAgent = await startDeviceE2eHostAgent({
+          repoRoot: elizaRoot,
+          artifactDir: bundle.logsDir,
+          requestedPort: val(
+            "--host-agent-port",
+            process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
+          ),
+          log,
+        });
+        process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
+        finishBundleStep(bundle, step, "passed");
+      } catch (error) {
+        failAndroidStep(bundle, step, error);
+        throw error;
+      }
+    }
+
     if (!has("--skip-local-chat")) {
       const modelPath = ensureSmokeModelCached();
       log("local route: on-device agent + smallest model + real chat…");
@@ -496,11 +570,9 @@ async function main() {
     }
 
     if (!has("--skip-route-coverage")) {
-      // The Playwright config runs route-coverage AND the on-device voice
-      // round-trip; the latter needs the ASR/TTS GGUFs staged (the chat smoke only
-      // stages the text model, and an `adb install -r` cycle can drop the
-      // separately-pushed voice models).
-      {
+      // Only the legacy full-directory lane includes on-device voice. Explicit
+      // host/local probe sets keep that hardware-and-model contract separate.
+      if (!hostEmulatorProbes && !arm64LocalProbes) {
         const step = startBundleStep(bundle, "stage Android voice models");
         try {
           stageVoiceModels(adb, serial);
@@ -520,6 +592,11 @@ async function main() {
         log,
       });
       try {
+        const selectedProbes = hostEmulatorProbes
+          ? HOST_EMULATOR_PROBES
+          : arm64LocalProbes
+            ? ARM64_LOCAL_PROBES
+            : [];
         run(
           bundle,
           "Android route coverage",
@@ -528,6 +605,7 @@ async function main() {
             "scripts/run-ui-playwright.mjs",
             "--config",
             "playwright.android.config.ts",
+            ...selectedProbes,
           ],
           {
             ANDROID_SERIAL: serial,
@@ -606,11 +684,24 @@ async function main() {
     log("ALL ANDROID E2E PASSED ✅");
   } catch (error) {
     finalError = error;
-    throw error;
   } finally {
     if (routeRecording) {
       const videoPath = await routeRecording.stop();
       if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+    }
+    if (hostAgent) {
+      const step = startBundleStep(bundle, "stop deterministic host agent");
+      try {
+        await hostAgent.stop();
+        finishBundleStep(bundle, step, "passed");
+      } catch (error) {
+        // error-policy:J1 runner boundary records teardown failure before exiting
+        finishBundleStep(bundle, step, "failed", error);
+        finalResult = "failed";
+        if (!finalError) {
+          finalError = error;
+        }
+      }
     }
     if (adb && serial) {
       try {
@@ -658,6 +749,7 @@ async function main() {
     }
     log(`bundle: ${bundleRoot}`);
   }
+  if (finalError) throw finalError;
 }
 
 main().catch((error) => {

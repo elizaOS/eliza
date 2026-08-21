@@ -1,9 +1,11 @@
-// Handles cloud API elevenlabs voices id route traffic with route-local auth expectations.
+/** Handles cloud API elevenlabs voices id route traffic with route-local auth expectations. */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { voiceCloningService } from "@/lib/services/voice-cloning";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -196,7 +198,12 @@ async function __hono_PATCH(
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
     const voiceId = params.id;
-    const rawBody = await request.json();
+    const decodedRawBody = await decodeRequestJson(request);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const rawBody = decodedRawBody.value;
     const parsed = updateVoiceBodySchema.safeParse(rawBody);
     if (!parsed.success) {
       return Response.json(

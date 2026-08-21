@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
   "main": "./dist/index.js",
@@ -53,7 +53,7 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

@@ -1,4 +1,6 @@
-// Coordinates cloud service app charge settlement behavior behind route handlers.
+/** Atomically commits app-charge status and its durable callback delivery intent. */
+import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
 import { eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
@@ -32,8 +34,25 @@ function paidMetadata(params: MarkAppChargePaidParams, paidAt: Date): Record<str
 export class AppChargeSettlementService {
   async markPaid(params: MarkAppChargePaidParams): Promise<void> {
     const paidAt = new Date();
-    const amount =
-      typeof params.amountUsd === "number" ? params.amountUsd.toFixed(2) : params.amountUsd;
+    const amountDecimal = new Decimal(params.amountUsd);
+    if (!amountDecimal.isFinite() || !amountDecimal.gt(0)) {
+      throw new ElizaError("App charge settlement amount must be a positive decimal", {
+        code: "INVALID_APP_CHARGE_SETTLEMENT_AMOUNT",
+        context: { chargeRequestId: params.chargeRequestId },
+      });
+    }
+    const amount = amountDecimal.toFixed();
+    const callback = {
+      appId: params.appId,
+      chargeRequestId: params.chargeRequestId,
+      status: "paid" as const,
+      provider: params.provider,
+      providerPaymentId: params.providerPaymentId,
+      amountUsd: amount,
+      payerUserId: params.payerUserId,
+      payerOrganizationId: params.payerOrganizationId,
+      metadata: params.metadata,
+    };
     let didMarkPaid = false;
 
     await dbWrite.transaction(async (tx) => {
@@ -45,16 +64,38 @@ export class AppChargeSettlementService {
         .limit(1);
 
       if (!chargeRequest) {
-        throw new Error("Charge request not found");
+        throw new ElizaError("Charge request not found", {
+          code: "APP_CHARGE_REQUEST_NOT_FOUND",
+          context: { chargeRequestId: params.chargeRequestId },
+        });
       }
 
       const metadata = chargeRequest.metadata ?? {};
       if (metadata.kind !== "app_charge_request" || metadata.app_id !== params.appId) {
-        throw new Error("Charge request metadata mismatch");
+        throw new ElizaError("Charge request metadata mismatch", {
+          code: "APP_CHARGE_REQUEST_MISMATCH",
+          context: { appId: params.appId, chargeRequestId: params.chargeRequestId },
+        });
       }
 
       if (chargeRequest.status === "confirmed") {
+        if (
+          metadata.paid_provider !== params.provider ||
+          metadata.paid_provider_payment_id !== params.providerPaymentId
+        ) {
+          throw new ElizaError("Charge request is already settled by another payment", {
+            code: "APP_CHARGE_ALREADY_SETTLED",
+            context: { appId: params.appId, chargeRequestId: params.chargeRequestId },
+          });
+        }
+        await appChargeCallbacksService.enqueue(callback, tx);
         return;
+      }
+      if (chargeRequest.status !== "pending") {
+        throw new ElizaError("Charge request cannot be settled from its current status", {
+          code: "INVALID_APP_CHARGE_STATUS",
+          context: { chargeRequestId: params.chargeRequestId, status: chargeRequest.status },
+        });
       }
 
       await tx
@@ -72,22 +113,9 @@ export class AppChargeSettlementService {
         })
         .where(eq(cryptoPayments.id, params.chargeRequestId));
 
+      await appChargeCallbacksService.enqueue(callback, tx);
       didMarkPaid = true;
     });
-
-    if (didMarkPaid) {
-      await appChargeCallbacksService.dispatch({
-        appId: params.appId,
-        chargeRequestId: params.chargeRequestId,
-        status: "paid",
-        provider: params.provider,
-        providerPaymentId: params.providerPaymentId,
-        amountUsd: amount,
-        payerUserId: params.payerUserId,
-        payerOrganizationId: params.payerOrganizationId,
-        metadata: params.metadata,
-      });
-    }
 
     logger.info(
       didMarkPaid

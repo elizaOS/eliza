@@ -186,6 +186,38 @@ describe("AuthorizeContent", () => {
     );
   });
 
+  it("refuses a scriptable redirect_uri scheme and never navigates", async () => {
+    searchParamsRef.current = new URLSearchParams(
+      "app_id=app-1&redirect_uri=javascript%3Aalert(1)&state=state-1",
+    );
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Invalid redirect_uri format.")).toBeTruthy(),
+    );
+    expect(locationAssignMock).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Authorize Demo App" }),
+    ).toBeNull();
+  });
+
+  it("hands off to native-app custom scheme redirect URIs", async () => {
+    const user = userEvent.setup();
+    searchParamsRef.current = new URLSearchParams(
+      "app_id=app-1&redirect_uri=myapp%3A%2F%2Foauth%2Fcallback&state=state-1",
+    );
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() => expect(screen.getByText("Demo App")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(locationAssignMock).toHaveBeenCalledWith(
+      "myapp://oauth/callback?error=access_denied&error_description=User+denied+authorization&state=state-1",
+    );
+  });
+
   it("keeps the signed-out state to sign-in controls plus one cancel affordance", async () => {
     authRef.current = {
       ...authRef.current,

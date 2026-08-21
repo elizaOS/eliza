@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 // spawnSync; the captured adapter routes output through files instead.
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
-const { runContract, classifyTypeRange } = await import(
+const { runContract, classifyTypeRange, isConcretePin } = await import(
   new URL("../ci-bun-version-contract.mjs", import.meta.url).href
 );
 
@@ -182,6 +182,13 @@ function inventoryOf(
 }
 
 describe("ci-bun-version-contract", () => {
+  test("parses concrete versions without backtracking on long invalid suffixes", () => {
+    expect(isConcretePin("1.3.14")).toBe(true);
+    expect(isConcretePin("1.3.14-canary.1+darwin-arm64")).toBe(true);
+    expect(isConcretePin(`0.0.0+${"--".repeat(100_000)}!`)).toBe(false);
+    expect(isConcretePin(`0.0.0-${"a.".repeat(100_000)}`)).toBe(false);
+  });
+
   test("passes a clean tree with every gate pinned to canonical", () => {
     const root = buildRepo({});
     try {

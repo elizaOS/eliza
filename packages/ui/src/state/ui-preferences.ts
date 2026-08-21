@@ -32,14 +32,14 @@ export type { BackgroundCatalogKind, BackgroundCatalogMeta };
 /**
  * How the unified app background is rendered. `shader` paints the animated
  * warm-glow field in a user-chosen color; `image` paints a cover image the
- * user uploaded or generated; `glsl` runs an arbitrary programmable GLSL
- * fragment shader (#10694) with typed, clamped uniforms.
+ * user uploaded or generated; `glsl` runs a repository-owned GLSL preset
+ * (#10694) with typed, clamped uniforms.
  */
 export type BackgroundMode = "shader" | "image" | "glsl";
 
-/** A programmable GLSL background: a fragment shader + its tunable uniforms. */
+/** A repository-owned GLSL preset resolved to source plus tunable uniforms. */
 export interface ShaderConfig {
-  /** Preset id when the source came from the library (for the picker/label). */
+  /** Canonical library preset id used to re-resolve persisted source. */
   presetId?: string;
   /** GLSL ES 1.00 fragment source. */
   source: string;
@@ -145,7 +145,7 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
 
 /**
  * How a catalog entry paints. `color` = a shader color field (a preset), `glsl`
- * = a named programmable-shader preset, `image` = a served/vetted cover-image
+ * = a named repository-owned shader preset, `image` = a served/vetted cover-image
  * URL (curated gradient data URL, or a persisted `/api/media/<hash>` upload).
  *
  * Note: a catalog entry never carries GLSL *source* — only a `presetId` the

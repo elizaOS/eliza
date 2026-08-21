@@ -157,6 +157,17 @@ describe("DELETE /api/conversations/:id/messages/:messageId", () => {
     );
   });
 
+  it("decodes encoded conversation and message ids before deletion", async () => {
+    const seeded = [mem(1), mem(2)];
+    const { state, store } = makeState(seeded, [conv("c-a", roomA)]);
+    const encodedMessageId = memId(2).replace(/^0/, "%30");
+
+    const result = await deleteMessage("%63-a", encodedMessageId, state);
+
+    expect(result).toMatchObject({ status: 200, body: { deletedCount: 1 } });
+    expect(store.map((memory) => memory.id)).toEqual([memId(1)]);
+  });
+
   it("keeps the runtime delete fallback inside the acquired room owner", async () => {
     const store = [mem(1), mem(2)];
     const roomHandlerQueue = new RoomHandlerQueue();

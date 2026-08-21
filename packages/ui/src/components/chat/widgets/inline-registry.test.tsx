@@ -45,6 +45,7 @@ describe("inline-widget registry", () => {
       "choice",
       "followups",
       "form",
+      "mapscard",
       "workflow",
     ]);
   });

@@ -49,6 +49,7 @@ src/
   account-auth-service.ts     TelegramAccountAuthSession — GramJS MTProto auth state machine
   accounts.ts                 Multi-account config resolution (resolveTelegramAccount, listEnabledTelegramAccounts)
   connector-account-provider.ts  ConnectorAccountManager bridge (CRUD, no OAuth)
+  dm-policy.ts                TELEGRAM_DM_POLICY resolution + the private-chat gate shared by the full service and the standalone poller (fail-closed pairing default)
   interactions.ts             renderTelegramInteractions — inline keyboard / interaction rendering
   command-registration.ts     buildTelegramCommandDescriptors, registerTelegramCommandHandlers, applyTelegramSetMyCommands
   local-client.ts             TELEGRAM_LOCAL_MOCK_SESSION_PREFIX — mock session helpers
@@ -65,6 +66,7 @@ src/
   messageConnector.test.ts    Unit tests for connector registration and send routing (vitest, mocked runtime)
   command-registration.test.ts  Unit tests for command registration helpers
   connector-account-provider.test.ts  Unit tests for ConnectorAccountProvider
+  dm-policy.test.ts           Unit tests for the DM policy gate (fail-closed default, pairing delegation, middleware wiring)
   interactions-roundtrip.test.ts  Round-trip tests for interaction rendering
   interactions.test.ts        Unit tests for interaction rendering
 ```
@@ -90,7 +92,8 @@ bun run --cwd plugins/plugin-telegram clean          # rm dist .turbo
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes (default account) | Bot token from @BotFather; format `<id>:<alphanum>`. Read via `runtime.getSetting()` then `process.env`. |
 | `TELEGRAM_API_ROOT` | No | Override Telegram Bot API base URL (default `https://api.telegram.org`). Allows local Bot API server. |
-| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to. If absent, all chats are allowed. Read via `runtime.getSetting()`. |
+| `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to; authoritative for every chat type when set. Read via `runtime.getSetting()`. |
+| `TELEGRAM_DM_POLICY` | No | `open` / `pairing` / `allowlist` / `disabled` — gates private chats when no allowlist is configured. Default `pairing` routes unknown senders through the core `checkPairingAllowed` handshake (fail closed); group chats are unaffected. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by `TelegramTestSuite` for live smoke tests. |
 | `ELIZA_TELEGRAM_STANDALONE_BOT` | No | `1`/`true`/`yes` switches on the standalone long-poll mode (`TelegramStandaloneService`) — only honored when LifeOps passive connectors are disabled; otherwise the passive connector owns the long-poll. |
 
@@ -134,6 +137,8 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **GramJS (user-account)**: `account-auth-service.ts` uses the `telegram` npm package (GramJS/MTProto) for user-account login, distinct from the bot-API `telegraf` package used for bot accounts.
 - **ConnectorAccountManager**: registered in `init()`. Telegram bot accounts use long-lived bot tokens rather than OAuth, so start/complete OAuth flows are unsupported by design. Single-account env configs are surfaced as a synthetic `"default"` account.
 - **Sensitive request adapter**: `registerTelegramDmSensitiveRequestAdapter` (called in `init()`) wires Telegram DM delivery for secret / OAuth link-out requests, mirroring the Discord DM adapter.
+- **DM access fails closed by default.** With no `TELEGRAM_ALLOWED_CHATS` allowlist, private chats are gated by `TELEGRAM_DM_POLICY` (default `pairing` through the core PairingService; the code reply is issued at most once per sender per request TTL, and pending requests are rejected — never evicted — at the queue cap). `TELEGRAM_DM_POLICY=open` restores the legacy default-open behavior; non-private chats are unaffected because a bot only sees groups it was invited to. The standalone poller applies the same gate via `src/dm-policy.ts`.
+- **Inbound attachment URLs are token-free capability references.** `MessageManager` persists `telegram-file:<file_id>` on `content.attachments`, never the telegraf `getFileLink` URL (which embeds the operator's bot token). Bytes are resolved transiently at enrichment time (`enrichFileRefAttachments`, reply path only) and at outbound send time (`sendMedia` re-sends by bare file id); model handlers receive inline data URLs, never the token URL. Memories written before this change may still hold token URLs — rotate the bot token to remediate.
 - See repo root `CLAUDE.md` for architecture rules, logging standards, and git workflow.
 
 ## Verification

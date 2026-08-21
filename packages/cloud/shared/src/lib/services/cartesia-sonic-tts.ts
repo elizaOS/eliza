@@ -1,10 +1,9 @@
 /**
  * Server-side Cartesia Sonic streaming TTS adapter.
  *
- * The module owns only Cartesia's WebSocket protocol mapping: validation,
- * request framing, PCM chunk decoding, cancellation, and provider metadata.
- * Callers remain responsible for phrase chunking, playback, billing, and HTTP
- * route translation.
+ * The module owns Cartesia's WebSocket protocol mapping and multiplexes
+ * utterance contexts over one call-scoped transport. Callers remain responsible
+ * for phrase chunking, playback, billing, and HTTP route translation.
  */
 
 export const CARTESIA_SONIC_PROVIDER_ID = "cartesia-sonic";
@@ -49,6 +48,7 @@ export interface CartesiaSonicAdapterConfig {
 export interface CartesiaSonicMetricEvent {
   readonly name:
     | "cartesia_tts_ws_open"
+    | "cartesia_tts_ws_reused"
     | "cartesia_tts_first_audio"
     | "cartesia_tts_audio_frame"
     | "cartesia_tts_complete"
@@ -156,6 +156,18 @@ export interface CartesiaWebSocketLike {
     type: "close",
     listener: (event: { readonly code?: number; readonly reason?: string }) => void,
   ): void;
+  removeEventListener: {
+    (type: "open", listener: () => void): void;
+    (type: "message", listener: (event: { readonly data: unknown }) => void): void;
+    (
+      type: "error",
+      listener: (event: { readonly message?: string; readonly error?: unknown }) => void,
+    ): void;
+    (
+      type: "close",
+      listener: (event: { readonly code?: number; readonly reason?: string }) => void,
+    ): void;
+  };
 }
 
 interface CartesiaGenerationRequest {
@@ -241,6 +253,7 @@ export class CartesiaSonicTtsAdapter {
   private readonly websocketUrl: string;
   private readonly language: string;
   private readonly metrics?: CartesiaSonicMetricsHook;
+  private socket: CartesiaWebSocketLike | undefined;
 
   constructor(config: CartesiaSonicAdapterConfig) {
     const normalized = validateCartesiaSonicConfig(config);
@@ -268,11 +281,11 @@ export class CartesiaSonicTtsAdapter {
     options: CartesiaSonicStreamOptions,
     callbacks: CartesiaSonicStreamCallbacks,
   ): CartesiaSonicTtsStream {
+    const { socket, reused } = this.sharedSocket();
     return new CartesiaSonicTtsStream({
-      apiKey: this.apiKey,
       voiceId: this.voiceId,
-      websocketFactory: this.websocketFactory,
-      websocketUrl: this.websocketUrl,
+      socket,
+      reusedConnection: reused,
       language: options.language ?? this.language,
       metadata: this.metadata,
       contextId: options.contextId ?? crypto.randomUUID(),
@@ -281,6 +294,33 @@ export class CartesiaSonicTtsAdapter {
       callbacks,
       metrics: this.metrics,
     });
+  }
+
+  /** Close the call-scoped transport after every context has been cancelled. */
+  close(reason = "Cartesia adapter closed"): void {
+    const socket = this.socket;
+    this.socket = undefined;
+    if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+      socket.close(1000, reason);
+    }
+  }
+
+  private sharedSocket(): { socket: CartesiaWebSocketLike; reused: boolean } {
+    const current = this.socket;
+    if (current && current.readyState !== 2 && current.readyState !== 3) {
+      return { socket: current, reused: true };
+    }
+    const socket = this.websocketFactory(buildCartesiaWebSocketUrl(this.websocketUrl), {
+      headers: {
+        "Cartesia-Version": CARTESIA_API_VERSION,
+        "X-API-Key": this.apiKey,
+      },
+    });
+    this.socket = socket;
+    socket.addEventListener("close", () => {
+      if (this.socket === socket) this.socket = undefined;
+    });
+    return { socket, reused: false };
   }
 }
 
@@ -357,10 +397,9 @@ function validateCartesiaSonicConfig(config: CartesiaSonicAdapterConfig): Normal
 }
 
 interface StreamConstructorInput {
-  readonly apiKey: string;
   readonly voiceId: string;
-  readonly websocketFactory: CartesiaWebSocketFactory;
-  readonly websocketUrl: string;
+  readonly socket: CartesiaWebSocketLike;
+  readonly reusedConnection: boolean;
   readonly language: string;
   readonly metadata: CartesiaSonicProviderMetadata;
   readonly contextId: string;
@@ -390,6 +429,83 @@ export class CartesiaSonicTtsStream {
   private resolveOpened!: () => void;
   private rejectOpened!: (error: unknown) => void;
   private resolveClosed!: () => void;
+  private closedSettled = false;
+  private readonly onSocketOpen = (): void => {
+    if (this.openedSettled || this.cancelled || this.providerErrorEmitted) {
+      this.discardQueuedOutbound();
+      return;
+    }
+    this.markSocketOpened();
+  };
+  private readonly onSocketMessage = (event: { readonly data: unknown }): void => {
+    this.handleMessage(event.data);
+  };
+  private readonly onSocketError = (event: {
+    readonly message?: string;
+    readonly error?: unknown;
+  }): void => {
+    if (this.cancelled || this.completed) return;
+    this.discardQueuedOutbound();
+    const errorEvent = {
+      contextId: this.contextId,
+      traceId: this.traceId,
+      title: "Cartesia WebSocket error",
+      message:
+        event.message ?? (event.error instanceof Error ? event.error.message : "WebSocket error"),
+      code: "websocket_error",
+    };
+    this.emitProviderError(errorEvent);
+    this.rejectOpenedOnce(new CartesiaSonicTtsError(errorEvent.message, errorEvent.code));
+  };
+  private readonly onSocketClose = (event: {
+    readonly code?: number;
+    readonly reason?: string;
+  }): void => {
+    if (this.completed || this.cancelled) {
+      this.resolveClosedOnce();
+      return;
+    }
+    if (!this.socketOpened && !this.openedSettled) {
+      this.discardQueuedOutbound();
+      if (this.cancelled) {
+        this.rejectOpenedOnce(
+          new CartesiaSonicTtsError(
+            "Cartesia WebSocket closed during cancellation",
+            "STREAM_CANCELLED",
+            { contextId: this.contextId },
+          ),
+        );
+      } else {
+        const code = "websocket_closed_before_open";
+        const message = event.reason
+          ? `Cartesia WebSocket closed before opening: ${event.reason}`
+          : "Cartesia WebSocket closed before opening";
+        this.emitProviderError({
+          contextId: this.contextId,
+          traceId: this.traceId,
+          title: "Cartesia WebSocket closed before opening",
+          message,
+          code,
+          statusCode: event.code,
+        });
+        this.rejectOpenedOnce(new CartesiaSonicTtsError(message, code));
+      }
+    } else if (!this.providerErrorEmitted) {
+      const code = "websocket_closed";
+      const message = event.reason
+        ? `Cartesia WebSocket closed: ${event.reason}`
+        : "Cartesia WebSocket closed unexpectedly";
+      this.emitProviderError({
+        contextId: this.contextId,
+        traceId: this.traceId,
+        title: "Cartesia WebSocket closed",
+        message,
+        code,
+        statusCode: event.code,
+      });
+    }
+    this.resolveClosedOnce();
+  };
 
   constructor(input: StreamConstructorInput) {
     this.input = input;
@@ -402,13 +518,9 @@ export class CartesiaSonicTtsStream {
     this.closed = new Promise<void>((resolve) => {
       this.resolveClosed = resolve;
     });
-    this.socket = input.websocketFactory(buildCartesiaWebSocketUrl(input.websocketUrl), {
-      headers: {
-        "Cartesia-Version": CARTESIA_API_VERSION,
-        "X-API-Key": input.apiKey,
-      },
-    });
+    this.socket = input.socket;
     this.attachSocketListeners();
+    if (this.socket.readyState === 1) this.markSocketOpened();
   }
 
   sendPhrase(phrase: CartesiaSonicPhraseInput): void {
@@ -479,69 +591,40 @@ export class CartesiaSonicTtsStream {
         });
       }
     }
-    this.socket.close(1000, reason);
+    this.rejectOpenedOnce(
+      new CartesiaSonicTtsError(
+        "Cartesia WebSocket closed during cancellation",
+        "STREAM_CANCELLED",
+        { contextId: this.contextId },
+      ),
+    );
+    this.resolveClosedOnce();
   }
 
   private attachSocketListeners(): void {
-    this.socket.addEventListener("open", () => {
-      if (this.openedSettled || this.cancelled || this.providerErrorEmitted) {
-        this.discardQueuedOutbound();
-        return;
-      }
-      this.socketOpened = true;
-      this.openedSettled = true;
-      this.resolveOpened();
-      this.flushQueuedOutbound();
-      this.emitMetric("cartesia_tts_ws_open", {
-        contextId: this.contextId,
-      });
-    });
-    this.socket.addEventListener("message", (event) => {
-      this.handleMessage(event.data);
-    });
-    this.socket.addEventListener("error", (event) => {
-      if (this.cancelled) return;
-      this.discardQueuedOutbound();
-      const errorEvent = {
-        contextId: this.contextId,
-        traceId: this.traceId,
-        title: "Cartesia WebSocket error",
-        message:
-          event.message ?? (event.error instanceof Error ? event.error.message : "WebSocket error"),
-        code: "websocket_error",
-      };
-      this.emitProviderError(errorEvent);
-      this.rejectOpenedOnce(new CartesiaSonicTtsError(errorEvent.message, errorEvent.code));
-    });
-    this.socket.addEventListener("close", (event) => {
-      if (!this.socketOpened && !this.openedSettled) {
-        this.discardQueuedOutbound();
-        if (this.cancelled) {
-          this.rejectOpenedOnce(
-            new CartesiaSonicTtsError(
-              "Cartesia WebSocket closed during cancellation",
-              "STREAM_CANCELLED",
-              { contextId: this.contextId },
-            ),
-          );
-        } else {
-          const code = "websocket_closed_before_open";
-          const message = event.reason
-            ? `Cartesia WebSocket closed before opening: ${event.reason}`
-            : "Cartesia WebSocket closed before opening";
-          this.emitProviderError({
-            contextId: this.contextId,
-            traceId: this.traceId,
-            title: "Cartesia WebSocket closed before opening",
-            message,
-            code,
-            statusCode: event.code,
-          });
-          this.rejectOpenedOnce(new CartesiaSonicTtsError(message, code));
-        }
-      }
-      this.resolveClosed();
-    });
+    this.socket.addEventListener("open", this.onSocketOpen);
+    this.socket.addEventListener("message", this.onSocketMessage);
+    this.socket.addEventListener("error", this.onSocketError);
+    this.socket.addEventListener("close", this.onSocketClose);
+  }
+
+  private detachSocketListeners(): void {
+    this.socket.removeEventListener("open", this.onSocketOpen);
+    this.socket.removeEventListener("message", this.onSocketMessage);
+    this.socket.removeEventListener("error", this.onSocketError);
+    this.socket.removeEventListener("close", this.onSocketClose);
+  }
+
+  private markSocketOpened(): void {
+    if (this.openedSettled) return;
+    this.socketOpened = true;
+    this.openedSettled = true;
+    this.resolveOpened();
+    this.flushQueuedOutbound();
+    this.emitMetric(
+      this.input.reusedConnection ? "cartesia_tts_ws_reused" : "cartesia_tts_ws_open",
+      { contextId: this.contextId },
+    );
   }
 
   private sendOrQueue(data: string): void {
@@ -569,9 +652,9 @@ export class CartesiaSonicTtsStream {
   }
 
   private handleMessage(data: unknown): void {
-    if (this.cancelled) return;
+    if (this.cancelled || this.completed) return;
 
-    let message: CartesiaIncomingMessage;
+    let message: CartesiaIncomingMessage | undefined;
     try {
       message = parseCartesiaIncomingMessage(data, this.contextId);
     } catch (error) {
@@ -587,6 +670,7 @@ export class CartesiaSonicTtsStream {
       this.socket.close(1011, "Invalid Cartesia provider message");
       return;
     }
+    if (!message) return;
 
     if (message.type === "chunk") {
       this.handleChunk(message);
@@ -647,7 +731,7 @@ export class CartesiaSonicTtsStream {
       frameCount: this.frameSequence,
       statusCode: message.status_code,
     });
-    this.socket.close(1000, "Cartesia context complete");
+    this.resolveClosedOnce();
   }
 
   private handleProviderError(message: Extract<CartesiaIncomingMessage, { type: "error" }>): void {
@@ -662,7 +746,7 @@ export class CartesiaSonicTtsStream {
       docUrl: message.doc_url,
     };
     this.emitProviderError(event);
-    this.socket.close(1011, "Cartesia provider error");
+    this.resolveClosedOnce();
   }
 
   private emitProviderError(event: CartesiaSonicProviderErrorEvent): void {
@@ -681,6 +765,13 @@ export class CartesiaSonicTtsStream {
     if (this.openedSettled) return;
     this.openedSettled = true;
     this.rejectOpened(error);
+  }
+
+  private resolveClosedOnce(): void {
+    if (this.closedSettled) return;
+    this.closedSettled = true;
+    this.detachSocketListeners();
+    this.resolveClosed();
   }
 
   private emitMetric(
@@ -708,7 +799,10 @@ function buildCartesiaWebSocketUrl(baseUrl: string): string {
   return url.toString();
 }
 
-function parseCartesiaIncomingMessage(data: unknown, contextId: string): CartesiaIncomingMessage {
+function parseCartesiaIncomingMessage(
+  data: unknown,
+  contextId: string,
+): CartesiaIncomingMessage | undefined {
   if (typeof data !== "string") {
     throw new CartesiaSonicTtsError(
       "Cartesia WebSocket message must be JSON text",
@@ -724,6 +818,12 @@ function parseCartesiaIncomingMessage(data: unknown, contextId: string): Cartesi
         "PROVIDER_MESSAGE_INVALID",
         { contextId },
       );
+    }
+    // A shared call transport can deliver the tail of a cancelled context
+    // after the next context has started. Ignore it before validating payload
+    // details so an irrelevant stale frame cannot poison the active utterance.
+    if (typeof parsed.context_id === "string" && parsed.context_id !== contextId) {
+      return undefined;
     }
     return validateCartesiaIncomingMessage(parsed, contextId);
   } catch (error) {

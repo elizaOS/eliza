@@ -83,6 +83,8 @@ export interface CreativeDraftArtifact {
   readonly sourceMemoIds: readonly string[];
   readonly styleSourceIds: readonly string[];
   readonly acceptedEdits: readonly string[];
+  /** Literal owner-approved prose that subsequent narrative passes must retain. */
+  readonly acceptedPassages?: readonly string[];
   readonly vetoedPhrases: readonly string[];
   readonly sections: readonly CreativeDraftSection[];
   /** Latest composed prose, retained with the standing artifact across turns. */
@@ -283,20 +285,135 @@ export function applyCreativeDraftRevision(
       }, sectionIndex=${revision.sectionIndex ?? "<none>"})`,
     );
   }
+  const sections =
+    replacementText && targetIndex !== null
+      ? draft.sections.map((section, index) =>
+          index === targetIndex
+            ? { ...section, text: replacementText }
+            : section,
+        )
+      : draft.sections;
+  const acceptedPassages = replacementText
+    ? (draft.acceptedPassages ?? []).filter((passage) =>
+        sections.some(
+          (section) =>
+            normalizedInvariantText(section.text) ===
+            normalizedInvariantText(passage),
+        ),
+      )
+    : [...(draft.acceptedPassages ?? [])];
+  if (
+    replacementText &&
+    revision.acceptedEdit &&
+    !acceptedPassages.some(
+      (passage) =>
+        normalizedInvariantText(passage) ===
+        normalizedInvariantText(replacementText),
+    )
+  ) {
+    acceptedPassages.push(replacementText);
+  }
+  for (const vetoedPhrase of vetoedPhrases) {
+    if (
+      sections.some((section) =>
+        containsInvariantPhrase(section.text, vetoedPhrase),
+      )
+    ) {
+      throw new Error(
+        `[creative-draft] a draft section still contains vetoed phrase: ${vetoedPhrase}`,
+      );
+    }
+  }
   return {
     ...draft,
     acceptedEdits,
+    acceptedPassages,
     vetoedPhrases,
-    sections:
-      replacementText && targetIndex !== null
-        ? draft.sections.map((section, index) =>
-            index === targetIndex
-              ? { ...section, text: replacementText }
-              : section,
-          )
-        : draft.sections,
+    sections,
+    // A revision changes the structured source of truth. Never retain prose
+    // composed from the prior artifact when the replacement model is absent.
+    narrative: undefined,
     updatedAt: revision.revisedAt,
   };
+}
+
+function normalizedInvariantText(value: string): string {
+  return normalizeWhitespace(value.normalize("NFKC")).toLocaleLowerCase(
+    "en-US",
+  );
+}
+
+function isInvariantWordCharacter(value: string | undefined): boolean {
+  return value !== undefined && /[\p{L}\p{M}\p{N}]/u.test(value);
+}
+
+function codePointBefore(value: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const trailing = value.charCodeAt(index - 1);
+  if (trailing >= 0xdc00 && trailing <= 0xdfff && index > 1) {
+    const leading = value.charCodeAt(index - 2);
+    if (leading >= 0xd800 && leading <= 0xdbff) {
+      return value.slice(index - 2, index);
+    }
+  }
+  return value[index - 1];
+}
+
+function codePointAt(value: string, index: number): string | undefined {
+  const point = value.codePointAt(index);
+  return point === undefined ? undefined : String.fromCodePoint(point);
+}
+
+/** Match a normalized phrase without treating a short token as a word fragment. */
+function containsInvariantPhrase(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalizedInvariantText(haystack);
+  const normalizedNeedle = normalizedInvariantText(needle);
+  if (!normalizedNeedle) return false;
+
+  const needleCodePoints = Array.from(normalizedNeedle);
+  const firstNeedle = needleCodePoints[0];
+  const lastNeedle = needleCodePoints.at(-1);
+  let fromIndex = 0;
+  while (fromIndex <= normalizedHaystack.length - normalizedNeedle.length) {
+    const index = normalizedHaystack.indexOf(normalizedNeedle, fromIndex);
+    if (index < 0) return false;
+    const before = codePointBefore(normalizedHaystack, index);
+    const after = codePointAt(
+      normalizedHaystack,
+      index + normalizedNeedle.length,
+    );
+    const startsAtBoundary =
+      !isInvariantWordCharacter(firstNeedle) ||
+      !isInvariantWordCharacter(before);
+    const endsAtBoundary =
+      !isInvariantWordCharacter(lastNeedle) || !isInvariantWordCharacter(after);
+    if (startsAtBoundary && endsAtBoundary) return true;
+    fromIndex = index + 1;
+  }
+  return false;
+}
+
+/**
+ * Verify that generated prose honors the durable, owner-controlled revision
+ * constraints. Accepted labels are audit notes; only literal replacement
+ * passages are enforceable prose invariants.
+ */
+export function creativeDraftNarrativeViolations(
+  narrative: string,
+  draft: CreativeDraftArtifact,
+): readonly string[] {
+  const violations: string[] = [];
+  for (const phrase of draft.vetoedPhrases) {
+    if (containsInvariantPhrase(narrative, phrase)) {
+      violations.push(`vetoed phrase reintroduced: ${phrase}`);
+    }
+  }
+  for (const passage of draft.acceptedPassages ?? []) {
+    if (!containsInvariantPhrase(narrative, passage)) {
+      violations.push(`accepted passage omitted: ${passage}`);
+    }
+  }
+  return violations;
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   extractHostedPage,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const extractRequestSchema = z.object({
@@ -35,7 +36,13 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const bodyResult = extractRequestSchema.safeParse(await c.req.json());
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
+    const bodyResult = extractRequestSchema.safeParse(body);
 
     if (!bodyResult.success) {
       return c.json(

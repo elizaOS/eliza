@@ -1,13 +1,25 @@
 // Coordinates cloud DB ensure agent sandbox schema behavior shared by repositories and services.
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
+import { isCloudflareWorkerRuntime } from "../lib/cache/redis-factory";
 import { getCloudAwareEnv } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";
-import { dbWrite } from "./helpers";
+import { dbWrite as defaultDbWrite } from "./helpers";
 import { WARM_POOL_ORG_ID } from "./schemas/agent-sandboxes";
 
 const ensurePromises = new Map<string, Promise<void>>();
 
-async function runEnsureAgentSandboxSchema(): Promise<void> {
+export interface AgentSandboxSchemaExecutor {
+  execute(statement: SQL): Promise<unknown>;
+}
+
+/**
+ * Runs the idempotent repair batch through the supplied database session.
+ * Deploy-time migration uses its locked session; runtime callers use the
+ * shared write connection only outside workerd.
+ */
+export async function convergeAgentSandboxSchema(
+  dbWrite: AgentSandboxSchemaExecutor = defaultDbWrite,
+): Promise<void> {
   await dbWrite.execute(sql`
     ALTER TABLE "agent_sandboxes"
       ADD COLUMN IF NOT EXISTS "pool_status" text,
@@ -251,6 +263,7 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "recovery_agent_id" uuid,
       ADD COLUMN IF NOT EXISTS "recovery_deletion_attempt_id" uuid,
       ADD COLUMN IF NOT EXISTS "recovery_expires_at" timestamptz,
+      ADD COLUMN IF NOT EXISTS "catalog_state" text,
       ALTER COLUMN "sandbox_record_id" DROP NOT NULL
   `);
 
@@ -550,18 +563,27 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
  * 0115 or later.
  *
  * Local dev / tests always run `db:migrate` on boot, so the guard is dead
- * weight there — worse, it issues ~15 sequential ALTER/CREATE statements
- * per request, each opening a fresh TCP connection (Worker pool config sets
- * `maxUses: 1`), which the PGlite socket bridge intermittently drops with
- * "Connection terminated unexpectedly". Short-circuit when:
+ * weight there. Its large sequential ALTER/CREATE batch is also unsuitable
+ * for a request or waitUntil execution budget. Short-circuit when:
  *   - ENVIRONMENT === "local" (the dev script sets this), or
  *   - SKIP_AGENT_SANDBOX_ENSURE === "1" (escape hatch for tests/CI).
  */
-function shouldSkipEnsure(): boolean {
+export function shouldSkipEnsure(): boolean {
   const env = getCloudAwareEnv();
-  if (env.SKIP_AGENT_SANDBOX_ENSURE === "1") return true;
   if (env.ENVIRONMENT === "local") return true;
-  return false;
+  // workerd: this guard issues a large sequential DDL/DO batch inside whatever
+  // request (or waitUntil budget) happened to touch an agent-sandboxes
+  // repository first. It cannot reliably finish there: observed live on staging
+  // (2026-08-19) as EVERY cold shared-agent scope hydration failing with the
+  // guard's own "Failed query: ALTER TABLE agent_sandboxes ..." — which kept
+  // the scope cache permanently cold and turned the retryable first-turn
+  // warming 503 into a recurring per-conversation stall. Schema convergence
+  // belongs to environments that can run it to completion (Node daemons,
+  // deploy-time db:migrate); a Worker that needs it can opt in explicitly.
+  if (isCloudflareWorkerRuntime()) {
+    return env.AGENT_SANDBOX_ENSURE_IN_WORKER !== "1";
+  }
+  return env.SKIP_AGENT_SANDBOX_ENSURE === "1";
 }
 
 export async function ensureAgentSandboxSchema(): Promise<void> {
@@ -569,7 +591,7 @@ export async function ensureAgentSandboxSchema(): Promise<void> {
   const key = applyDatabaseUrlFallback(getCloudAwareEnv()) ?? "__missing_database_url__";
   let promise = ensurePromises.get(key);
   if (!promise) {
-    promise = runEnsureAgentSandboxSchema().catch((error) => {
+    promise = convergeAgentSandboxSchema().catch((error) => {
       ensurePromises.delete(key);
       throw error;
     });

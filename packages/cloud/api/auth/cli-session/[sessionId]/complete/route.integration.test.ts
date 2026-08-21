@@ -25,6 +25,21 @@ const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
 const ORG_ID = "33333333-3333-4333-8333-333333333333";
 const API_KEY_ID = "44444444-4444-4444-8444-444444444444";
 
+// The route rejects non-UUID session ids before any state transition, so the
+// suites below drive it with server-shaped ids.
+const SESSION_IDS = {
+  sameUser: "55555555-5555-4555-8555-555555555555",
+  concurrent: "66666666-6666-4666-8666-666666666666",
+  crossUserRace: "77777777-7777-4777-8777-777777777777",
+  differentUser: "88888888-8888-4888-8888-888888888888",
+  ownerless: "99999999-9999-4999-8999-999999999999",
+  insertFailure: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  missingKeyReference: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  missingKeyRow: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  mismatchedKeyOwner: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  missing: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+} as const;
+
 interface CompleteResponseBody {
   alreadyAuthenticated: boolean;
   keyPrefix: string;
@@ -65,7 +80,7 @@ beforeAll(async () => {
     id uuid PRIMARY KEY, name text NOT NULL, description text, key_hash text NOT NULL UNIQUE,
     key_prefix text NOT NULL, key_ciphertext text, key_nonce text, key_auth_tag text,
     key_kms_key_id text, key_kms_key_version integer, organization_id uuid NOT NULL,
-    user_id uuid NOT NULL, rate_limit integer NOT NULL DEFAULT 1000,
+    user_id uuid NOT NULL, source_app_id uuid, rate_limit integer NOT NULL DEFAULT 1000,
     is_active boolean NOT NULL DEFAULT true, usage_count integer NOT NULL DEFAULT 0,
     expires_at timestamp, last_used_at timestamp, created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now(), deleted_at timestamp
@@ -111,14 +126,26 @@ async function seedPendingSession(sessionId: string): Promise<void> {
     VALUES ('${sessionId}', 'pending', now() + interval '10 minutes')`);
 }
 
+const TEST_ENV = { NODE_ENV: "test" } as never;
+
 async function complete(
   sessionId: string,
   userId = currentUserId,
 ): Promise<Response> {
-  return app.request(`/api/auth/cli-session/${sessionId}/complete`, {
-    method: "POST",
-    headers: { "x-test-user-id": userId },
-  });
+  return app.request(
+    `/api/auth/cli-session/${sessionId}/complete`,
+    {
+      method: "POST",
+      // The cookie path requires the exact-host origin policy plus a
+      // non-simple marker; a JSON content type satisfies the marker.
+      headers: {
+        "x-test-user-id": userId,
+        origin: "http://localhost:8787",
+        "content-type": "application/json",
+      },
+    },
+    TEST_ENV,
+  );
 }
 
 async function afterConcurrentPendingReads<T>(
@@ -161,9 +188,69 @@ async function afterConcurrentPendingReads<T>(
 }
 
 describe("CLI session completion with real persistence", () => {
-  test("same-user retry succeeds without creating another API key", async () => {
-    await seedSession("same-user", USER_ID);
+  test("rejects a non-UUID session id before any state transition", async () => {
     const response = await complete("same-user");
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain(
+      "Invalid session ID format",
+    );
+  });
+
+  test("rejects a cookie-style request with no Origin or Referer", async () => {
+    const response = await app.request(
+      `/api/auth/cli-session/${SESSION_IDS.sameUser}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "x-test-user-id": USER_ID,
+          "content-type": "application/json",
+        },
+      },
+      TEST_ENV,
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      code: "forbidden_origin",
+    });
+  });
+
+  test("rejects a cookie-style request without a non-simple marker", async () => {
+    const response = await app.request(
+      `/api/auth/cli-session/${SESSION_IDS.sameUser}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "x-test-user-id": USER_ID,
+          origin: "http://localhost:8787",
+        },
+      },
+      TEST_ENV,
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      code: "csrf_marker_required",
+    });
+  });
+
+  test("programmatic credentials bypass the browser origin gate", async () => {
+    await seedSession(SESSION_IDS.sameUser, USER_ID);
+    const response = await app.request(
+      `/api/auth/cli-session/${SESSION_IDS.sameUser}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "x-test-user-id": USER_ID,
+          authorization: "Bearer eliza_headless",
+        },
+      },
+      TEST_ENV,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  test("same-user retry succeeds without creating another API key", async () => {
+    await seedSession(SESSION_IDS.sameUser, USER_ID);
+    const response = await complete(SESSION_IDS.sameUser);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       success: true,
@@ -177,7 +264,7 @@ describe("CLI session completion with real persistence", () => {
   });
 
   test("concurrent completions atomically mint exactly one API key", async () => {
-    await seedPendingSession("concurrent");
+    await seedPendingSession(SESSION_IDS.concurrent);
 
     // Wrap the real primary read with a barrier so both requests have observed
     // the same pending row before either can attempt the conditional claim.
@@ -187,7 +274,10 @@ describe("CLI session completion with real persistence", () => {
       result: [first, second],
       reads,
     } = await afterConcurrentPendingReads(() =>
-      Promise.all([complete("concurrent"), complete("concurrent")]),
+      Promise.all([
+        complete(SESSION_IDS.concurrent),
+        complete(SESSION_IDS.concurrent),
+      ]),
     );
     expect(reads).toBe(2);
     expect(first.status).toBe(200);
@@ -214,7 +304,7 @@ describe("CLI session completion with real persistence", () => {
     expect(keys.rows.every((row) => row.is_active === true)).toBe(true);
 
     const session = await dbWrite.execute(
-      "SELECT status, user_id, api_key_id FROM cli_auth_sessions WHERE session_id = 'concurrent'",
+      `SELECT status, user_id, api_key_id FROM cli_auth_sessions WHERE session_id = '${SESSION_IDS.concurrent}'`,
     );
     expect(session.rows[0]).toMatchObject({
       status: "authenticated",
@@ -225,13 +315,30 @@ describe("CLI session completion with real persistence", () => {
     ).toBe(true);
   });
 
+  test("minted CLI keys carry a finite expiry", async () => {
+    await seedPendingSession(SESSION_IDS.concurrent);
+    const response = await complete(SESSION_IDS.concurrent);
+    expect(response.status).toBe(200);
+
+    const keys = await dbWrite.execute(
+      `SELECT expires_at FROM api_keys WHERE id <> '${API_KEY_ID}'`,
+    );
+    expect(keys.rows).toHaveLength(1);
+    const expiresAt = new Date(keys.rows[0]?.expires_at as string);
+    expect(Number.isFinite(expiresAt.getTime())).toBe(true);
+    const ttlMs = expiresAt.getTime() - Date.now();
+    // 90-day TTL, asserted with a wide band for test-runtime drift.
+    expect(ttlMs).toBeGreaterThan(80 * 24 * 60 * 60 * 1000);
+    expect(ttlMs).toBeLessThanOrEqual(90 * 24 * 60 * 60 * 1000);
+  });
+
   test("concurrent different-user completions persist only the winner's key", async () => {
-    await seedPendingSession("cross-user-race");
+    await seedPendingSession(SESSION_IDS.crossUserRace);
 
     const { result: responses, reads } = await afterConcurrentPendingReads(() =>
       Promise.all([
-        complete("cross-user-race", USER_ID),
-        complete("cross-user-race", OTHER_USER_ID),
+        complete(SESSION_IDS.crossUserRace, USER_ID),
+        complete(SESSION_IDS.crossUserRace, OTHER_USER_ID),
       ]),
     );
 
@@ -252,7 +359,7 @@ describe("CLI session completion with real persistence", () => {
     );
     expect(keys.rows).toEqual([expect.objectContaining({ user_id: winnerId })]);
     const session = await dbWrite.execute(
-      "SELECT user_id, api_key_id FROM cli_auth_sessions WHERE session_id = 'cross-user-race'",
+      `SELECT user_id, api_key_id FROM cli_auth_sessions WHERE session_id = '${SESSION_IDS.crossUserRace}'`,
     );
     expect(session.rows[0]).toMatchObject({
       user_id: winnerId,
@@ -261,8 +368,8 @@ describe("CLI session completion with real persistence", () => {
   });
 
   test.each([
-    ["different-user", OTHER_USER_ID],
-    ["ownerless", null],
+    [SESSION_IDS.differentUser, OTHER_USER_ID],
+    [SESSION_IDS.ownerless, null],
   ])(
     "rejects %s sessions without exposing key metadata",
     async (sessionId, owner) => {
@@ -276,7 +383,7 @@ describe("CLI session completion with real persistence", () => {
   );
 
   test("rolls back the session claim when API-key insertion fails", async () => {
-    await seedPendingSession("insert-failure");
+    await seedPendingSession(SESSION_IDS.insertFailure);
     const generate = spyOn(apiKeysService, "generateApiKey").mockReturnValue({
       key: "eliza_duplicate_plaintext",
       hash: "hash",
@@ -284,14 +391,14 @@ describe("CLI session completion with real persistence", () => {
     });
 
     try {
-      const response = await complete("insert-failure");
+      const response = await complete(SESSION_IDS.insertFailure);
       expect(response.status).toBe(500);
     } finally {
       generate.mockRestore();
     }
 
     const session = await dbWrite.execute(
-      "SELECT status, user_id, api_key_id, authenticated_at FROM cli_auth_sessions WHERE session_id = 'insert-failure'",
+      `SELECT status, user_id, api_key_id, authenticated_at FROM cli_auth_sessions WHERE session_id = '${SESSION_IDS.insertFailure}'`,
     );
     expect(session.rows[0]).toMatchObject({
       status: "pending",
@@ -307,12 +414,15 @@ describe("CLI session completion with real persistence", () => {
 
   test.each([
     [
-      "missing-key-reference",
-      "UPDATE cli_auth_sessions SET api_key_id = NULL WHERE session_id = 'missing-key-reference'",
+      SESSION_IDS.missingKeyReference,
+      `UPDATE cli_auth_sessions SET api_key_id = NULL WHERE session_id = '${SESSION_IDS.missingKeyReference}'`,
     ],
-    ["missing-key-row", `DELETE FROM api_keys WHERE id = '${API_KEY_ID}'`],
     [
-      "mismatched-key-owner",
+      SESSION_IDS.missingKeyRow,
+      `DELETE FROM api_keys WHERE id = '${API_KEY_ID}'`,
+    ],
+    [
+      SESSION_IDS.mismatchedKeyOwner,
       `UPDATE api_keys SET user_id = '${OTHER_USER_ID}' WHERE id = '${API_KEY_ID}'`,
     ],
   ])(
@@ -330,7 +440,7 @@ describe("CLI session completion with real persistence", () => {
   );
 
   test("rejects a missing session", async () => {
-    const response = await complete("missing");
+    const response = await complete(SESSION_IDS.missing);
     expect(response.status).toBe(400);
     expect(JSON.stringify(await response.json())).toContain(
       "Invalid or expired session",

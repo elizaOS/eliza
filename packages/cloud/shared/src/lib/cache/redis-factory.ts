@@ -3,7 +3,7 @@
  * codebase (rate limiters, credit events, agent gateway relay, A2A task
  * store, generic cache).
  *
- * Resolution order:
+ * Resolution order in `auto` mode:
  *   1. `MOCK_REDIS=1` → in-memory `MockSocketRedis` (test/CI only; never
  *      silently shadows real creds).
  *   2. `REDIS_URL` (or per-bindings env)  → `SocketRedis` (RESP2 over
@@ -11,6 +11,11 @@
  *   3. `KV_REST_API_URL` + `KV_REST_API_TOKEN` → `@upstash/redis` REST
  *      client (legacy fallback; kept so existing Upstash deploys still work).
  *   4. null — caller decides what to do.
+ *
+ * `DIRECT_REDIS_BACKEND=redis` and `DIRECT_REDIS_BACKEND=redis-rest` select one
+ * transport explicitly and fail closed when its credentials are incomplete.
+ * The dedicated selector keeps direct consumers (auth nonces, rate limits,
+ * relay state) independent from CacheClient's KV/cache policy.
  */
 
 import { Redis as UpstashRedis } from "@upstash/redis";
@@ -60,6 +65,7 @@ export function supportsRedisEval(
 }
 
 export interface RedisFactoryEnv {
+  DIRECT_REDIS_BACKEND?: string;
   REDIS_URL?: string;
   KV_REST_API_URL?: string;
   KV_REST_API_TOKEN?: string;
@@ -70,6 +76,30 @@ export interface RedisFactoryEnv {
 
 export type RedisFactoryEnvSource = RedisFactoryEnv | NodeJS.ProcessEnv;
 
+type DirectRedisBackend = "auto" | "redis" | "redis-rest" | "invalid";
+
+function resolveDirectRedisBackend(value: string | undefined): DirectRedisBackend {
+  if (value === undefined || value.trim() === "") {
+    return "auto";
+  }
+  if (value === "auto" || value === "redis" || value === "redis-rest") return value;
+  return "invalid";
+}
+
+function normalizedConfigValue(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function restRedisConfig(env: RedisFactoryEnvSource): { url: string; token: string } | null {
+  const url =
+    normalizedConfigValue(env.KV_REST_API_URL) ?? normalizedConfigValue(env.UPSTASH_REDIS_REST_URL);
+  const token =
+    normalizedConfigValue(env.KV_REST_API_TOKEN) ??
+    normalizedConfigValue(env.UPSTASH_REDIS_REST_TOKEN);
+  return url && token ? { url, token } : null;
+}
+
 export function buildRedisClient(env?: RedisFactoryEnvSource): CompatibleRedis | null {
   const e = env ?? process.env;
 
@@ -77,13 +107,24 @@ export function buildRedisClient(env?: RedisFactoryEnvSource): CompatibleRedis |
     return new MockSocketRedis();
   }
 
-  const url = e.REDIS_URL;
-  if (url) return new SocketRedis({ url });
+  const backend = resolveDirectRedisBackend(e.DIRECT_REDIS_BACKEND);
+  const tcpUrl = normalizedConfigValue(e.REDIS_URL);
+  const rest = restRedisConfig(e);
 
-  const restUrl = e.KV_REST_API_URL || e.UPSTASH_REDIS_REST_URL;
-  const restToken = e.KV_REST_API_TOKEN || e.UPSTASH_REDIS_REST_TOKEN;
-  if (restUrl && restToken) {
-    return new UpstashRedis({ url: restUrl, token: restToken });
+  if (backend === "redis") {
+    return tcpUrl ? new SocketRedis({ url: tcpUrl }) : null;
+  }
+
+  if (backend === "redis-rest") {
+    return rest ? new UpstashRedis(rest) : null;
+  }
+
+  if (backend === "invalid") return null;
+
+  if (tcpUrl) return new SocketRedis({ url: tcpUrl });
+
+  if (rest) {
+    return new UpstashRedis(rest);
   }
 
   return null;
@@ -98,10 +139,11 @@ export function buildRedisClient(env?: RedisFactoryEnvSource): CompatibleRedis |
 export function hasRedisConfig(env?: RedisFactoryEnvSource): boolean {
   const e = env ?? process.env;
   if (e.MOCK_REDIS === "1") return true;
-  if (e.REDIS_URL) return true;
-  const restUrl = e.KV_REST_API_URL || e.UPSTASH_REDIS_REST_URL;
-  const restToken = e.KV_REST_API_TOKEN || e.UPSTASH_REDIS_REST_TOKEN;
-  return !!(restUrl && restToken);
+  const backend = resolveDirectRedisBackend(e.DIRECT_REDIS_BACKEND);
+  if (backend === "redis") return normalizedConfigValue(e.REDIS_URL) !== null;
+  if (backend === "redis-rest") return restRedisConfig(e) !== null;
+  if (backend === "invalid") return false;
+  return normalizedConfigValue(e.REDIS_URL) !== null || restRedisConfig(e) !== null;
 }
 
 /**

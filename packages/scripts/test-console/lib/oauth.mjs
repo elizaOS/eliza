@@ -21,6 +21,9 @@ import crypto from "node:crypto";
 
 export const DEFAULT_CLOUD_BASE_URL = "https://api.eliza.app";
 
+const CLOUD_LOGIN_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPES = [
@@ -34,15 +37,28 @@ const pendingFlows = new Map();
 export async function startCloudLogin({
   baseUrl = DEFAULT_CLOUD_BASE_URL,
 } = {}) {
+  const requestSessionId = crypto.randomUUID();
   const response = await fetch(`${baseUrl}/api/auth/cli-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client: "eliza-test-console" }),
+    body: JSON.stringify({ sessionId: requestSessionId }),
   });
   if (!response.ok) {
     throw new Error(`cloud cli-session failed: HTTP ${response.status}`);
   }
-  const { sessionId, browserUrl } = await response.json();
+  const { sessionId } = await response.json();
+  if (
+    typeof sessionId !== "string" ||
+    !CLOUD_LOGIN_SESSION_ID_RE.test(sessionId)
+  ) {
+    throw new Error("cloud cli-session returned an invalid session ID");
+  }
+  const apiUrl = new URL(baseUrl);
+  const browserOrigin =
+    apiUrl.hostname === "api.eliza.app"
+      ? `${apiUrl.protocol}//eliza.app`
+      : apiUrl.origin;
+  const browserUrl = `${browserOrigin}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
   return { sessionId, browserUrl };
 }
 

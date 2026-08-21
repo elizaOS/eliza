@@ -44,6 +44,11 @@ const TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const TWITTER_USERS_ME_URL =
   "https://api.twitter.com/2/users/me?user.fields=id,name,username";
 
+/** X token-exchange POST — same 15s Fal #21205 family as Slack OAuth. */
+const X_OAUTH_TOKEN_TIMEOUT_MS = 15_000;
+/** X users/me GET — independent hop, own 15s deadline. */
+const X_OAUTH_USERS_ME_TIMEOUT_MS = 15_000;
+
 const DEFAULT_SCOPES = [
   "tweet.read",
   "tweet.write",
@@ -123,6 +128,51 @@ function formEncode(params: Record<string, string>): string {
     .join("&");
 }
 
+async function readTwitterJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    // error-policy:J3 Invalid provider JSON is an explicit invalid response;
+    // transport and deadline failures must keep their original error identity.
+    if (error instanceof SyntaxError) return {};
+    throw error;
+  }
+}
+
+function readOptionalString(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return typeof record[key] === "string" ? record[key] : undefined;
+}
+
+function parseTwitterTokenResponse(value: unknown): TwitterTokenResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  return {
+    access_token: readOptionalString(record, "access_token"),
+    refresh_token: readOptionalString(record, "refresh_token"),
+    expires_in:
+      typeof record.expires_in === "number" ? record.expires_in : undefined,
+    scope: readOptionalString(record, "scope"),
+    token_type: readOptionalString(record, "token_type"),
+  };
+}
+
+function parseTwitterUserMeResponse(value: unknown): TwitterUserMeResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const data = (value as Record<string, unknown>).data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+  const record = data as Record<string, unknown>;
+  return {
+    data: {
+      id: readOptionalString(record, "id"),
+      username: readOptionalString(record, "username"),
+      name: readOptionalString(record, "name"),
+    },
+  };
+}
+
 async function exchangeCodeForToken(args: {
   clientId: string;
   redirectUri: string;
@@ -140,8 +190,9 @@ async function exchangeCodeForToken(args: {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(X_OAUTH_TOKEN_TIMEOUT_MS),
   });
-  const json = (await res.json().catch(() => ({}))) as TwitterTokenResponse;
+  const json = parseTwitterTokenResponse(await readTwitterJson(res));
   if (!res.ok || !json.access_token) {
     throw new Error(
       `Twitter token exchange failed (${res.status}): ${JSON.stringify(json)}`,
@@ -155,8 +206,9 @@ async function fetchAuthenticatedUser(
 ): Promise<{ id: string; username?: string; name?: string }> {
   const res = await fetch(TWITTER_USERS_ME_URL, {
     headers: { authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(X_OAUTH_USERS_ME_TIMEOUT_MS),
   });
-  const json = (await res.json().catch(() => ({}))) as TwitterUserMeResponse;
+  const json = parseTwitterUserMeResponse(await readTwitterJson(res));
   if (!res.ok || !json.data?.id) {
     throw new Error(
       `Twitter users/me failed (${res.status}): ${JSON.stringify(json)}`,

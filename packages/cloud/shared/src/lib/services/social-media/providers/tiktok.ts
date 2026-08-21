@@ -12,11 +12,31 @@ import type {
   SocialCredentials,
   SocialMediaProvider,
 } from "../../../types/social-media";
+import { SOCIAL_MEDIA_VIDEO_MAX_BYTES } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
+
+const TIKTOK_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every TikTok REST hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function tiktokFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TIKTOK_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface TikTokUser {
   open_id: string;
@@ -56,7 +76,7 @@ async function tiktokApiRequest<T>(
     error?: { code: string; message: string };
   }>(
     () =>
-      fetch(url, {
+      tiktokFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -221,7 +241,21 @@ export const tiktokProvider: SocialMediaProvider = {
 
       // File upload method (requires chunked upload)
       if (video.data || video.base64) {
-        const videoData = video.data || Buffer.from(video.base64!, "base64");
+        // Bounded against the video ceiling rather than the image budget: the
+        // decode is a single allocation inside the Worker isolate, so it needs
+        // a bound even though 10 MiB would reject ordinary video posts.
+        const videoData = video.data
+          ? (assertSocialMediaBytesWithinBudget(
+              video.data.byteLength,
+              { platform: "tiktok" },
+              SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+            ),
+            video.data)
+          : decodeSocialMediaBase64(
+              video.base64!,
+              { platform: "tiktok" },
+              SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+            );
         const videoBody = new Uint8Array(videoData);
 
         // Initialize chunked upload
@@ -247,7 +281,7 @@ export const tiktokProvider: SocialMediaProvider = {
         }
 
         // Upload the video
-        const uploadResponse = await fetch(initResponse.upload_url, {
+        const uploadResponse = await tiktokFetch(initResponse.upload_url, {
           method: "PUT",
           headers: {
             "Content-Type": "video/mp4",

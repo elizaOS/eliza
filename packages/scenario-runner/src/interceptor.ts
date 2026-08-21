@@ -27,7 +27,19 @@ import type {
 import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 
+// Both keys use `Symbol.for` (global registry), not module-local `Symbol()`,
+// deliberately: a runtime resolved through two module instances (dual ESM/CJS
+// resolution, or a duplicated package in the graph) must still map to one
+// marker and one interceptor. A module-local symbol would split-brain the cache
+// under a duplicated dependency, so do not "tidy" these to `Symbol()`.
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");
+// The live interceptor is cached on the runtime under this symbol so that a
+// re-attach returns the SAME wrapper whose capture arrays the wrapped handlers
+// actually push into. Without this, re-attaching (handlers already marked)
+// skips re-wrapping and hands back a distinct, permanently-empty interceptor
+// whose detach() cannot restore anything. `detach()` clears this so the next
+// attach rebuilds a fresh, functional wrapper.
+const INTERCEPTOR_INSTANCE = Symbol.for("scenario-runner.interceptor-instance");
 
 interface WrappedHandler {
   (...args: unknown[]): Promise<unknown>;
@@ -385,6 +397,14 @@ export function captureConnectorDispatchesFromAction(
 }
 
 export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
+  // Idempotency: if a live interceptor is already attached to this runtime,
+  // return that exact instance. Its closures are the ones the wrapped handlers
+  // push into, so returning a new object here would observe nothing.
+  const existing = Reflect.get(runtime, INTERCEPTOR_INSTANCE);
+  if (existing) {
+    return existing as ActionInterceptor;
+  }
+
   const actions: CapturedAction[] = [];
   const approvalRequests: CapturedApprovalRequest[] = [];
   const connectorDispatches: CapturedConnectorDispatch[] = [];
@@ -565,7 +585,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     }
   }
 
-  return {
+  const interceptor: ActionInterceptor = {
     actions,
     approvalRequests,
     connectorDispatches,
@@ -583,6 +603,15 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     detach(): void {
       for (const restore of restoreFns) restore();
       restoreFns.length = 0;
+      // Clearing the cache lets a subsequent attach rebuild a fresh wrapper.
+      // The restore fns above already reinstated the original (unmarked)
+      // handlers and createMemory/createTask, so no per-handler markers linger.
+      if (Reflect.get(runtime, INTERCEPTOR_INSTANCE) === interceptor) {
+        Reflect.deleteProperty(runtime, INTERCEPTOR_INSTANCE);
+      }
     },
   };
+
+  Reflect.set(runtime, INTERCEPTOR_INSTANCE, interceptor);
+  return interceptor;
 }

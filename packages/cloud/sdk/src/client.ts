@@ -9,8 +9,18 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
+import type {
+  CreateRedemptionRequest,
+  CreateRedemptionResponse,
+  ListRedemptionsResponse,
+  RedemptionNetwork,
+  RedemptionQuoteRequest,
+  RedemptionQuoteResponse,
+  RedemptionStatusResponse,
+} from "./redemption-contract.js";
 import {
   type ActivateAppFrontendResponse,
   type AdCampaignAttributionResponse,
@@ -72,8 +82,6 @@ import {
   type CreateInfluencerProfileResponse,
   type CreatePressReleaseInput,
   type CreatePressReleaseResponse,
-  type CreateRedemptionRequest,
-  type CreateRedemptionResponse,
   type CreateX402PaymentRequest,
   type CreateX402PaymentRequestResponse,
   type CreditBalanceResponse,
@@ -113,15 +121,12 @@ import {
   type ListInfluencersResponse,
   type ListPressCoverageResponse,
   type ListPressReleasesResponse,
-  type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
   type OpenApiSpec,
   type PairingTokenResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
-  type RedemptionQuoteResponse,
-  type RedemptionStatusResponse,
   type RegenerateAppApiKeyResponse,
   type RegisterGatewayRelaySessionResponse,
   type ResponsesCreateRequest,
@@ -133,6 +138,7 @@ import {
   type SnapshotType,
   type SubmitPressReleaseInput,
   type SubmitPressReleaseResponse,
+  type SubscriptionPlansResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -153,7 +159,9 @@ import {
 } from "./types.js";
 
 function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
 }
 
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
@@ -255,20 +263,38 @@ function withPathParams(
   params?: Record<string, string | number>,
 ): string {
   if (!params) return path;
-  return path.replace(/\{([^}]+)\}/g, (_match, key: string) => {
+  let cursor = 0;
+  let searchFrom = 0;
+  const output: string[] = [];
+  while (searchFrom < path.length) {
+    const open = path.indexOf("{", searchFrom);
+    if (open === -1) break;
+    const close = path.indexOf("}", open + 1);
+    if (close === -1) break;
+    if (close === open + 1) {
+      searchFrom = open + 1;
+      continue;
+    }
+    const key = path.slice(open + 1, close);
     const value = params[key];
     if (value === undefined) {
       throw new Error(`Missing path parameter: ${key}`);
     }
-    return encodePathParam(value);
-  });
+    output.push(path.slice(cursor, open), encodePathParam(value));
+    cursor = close + 1;
+    searchFrom = cursor;
+  }
+  if (output.length === 0) return path;
+  output.push(path.slice(cursor));
+  return output.join("");
 }
 
-function getCryptoRandomUuid(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
+function createCliLoginRequestId(): string {
+  const sessionId = globalThis.crypto?.randomUUID?.();
+  if (!isCliLoginSessionId(sessionId)) {
+    throw new Error("A secure UUID generator is required to start Cloud login");
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return sessionId;
 }
 
 export class ElizaCloudClient {
@@ -352,28 +378,37 @@ export class ElizaCloudClient {
   startCliLogin(
     options: CliLoginStartOptions = {},
   ): Promise<CliLoginStartResponse> {
-    const sessionId = options.sessionId ?? getCryptoRandomUuid();
+    // Current servers mint the authoritative id and ignore this proposal. Keep
+    // sending a fresh cryptographic UUID until older deployed servers no longer
+    // require one, but never fall back to it if the response is malformed.
+    const requestSessionId = createCliLoginRequestId();
     const query = options.returnTo
       ? `?returnTo=${encodeURIComponent(options.returnTo)}`
       : "";
-    const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
-    const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
-      sessionId,
-    )}${query}`;
 
-    return this.request<{ status?: string; expiresAt?: string }>(
-      "POST",
-      "/api/auth/cli-session",
-      {
-        json: { sessionId },
-        skipAuth: true,
-      },
-    ).then((response) => ({
-      sessionId,
-      browserUrl,
-      status: response.status,
-      expiresAt: response.expiresAt,
-    }));
+    return this.request<{
+      sessionId: string;
+      status?: string;
+      expiresAt?: string;
+    }>("POST", "/api/auth/cli-session", {
+      json: { sessionId: requestSessionId },
+      skipAuth: true,
+    }).then((response) => {
+      if (!isCliLoginSessionId(response.sessionId)) {
+        throw new Error("Eliza Cloud returned an invalid login session ID");
+      }
+      const sessionId = response.sessionId;
+      const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
+      const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
+        sessionId,
+      )}${query}`;
+      return {
+        sessionId,
+        browserUrl,
+        status: response.status,
+        expiresAt: response.expiresAt,
+      };
+    });
   }
 
   pollCliLogin(sessionId: string): Promise<CliLoginPollResponse> {
@@ -437,6 +472,12 @@ export class ElizaCloudClient {
 
   listModels(): Promise<ModelListResponse> {
     return this.v1.get<ModelListResponse>("/models", { skipAuth: true });
+  }
+
+  getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
+    return this.v1.get<SubscriptionPlansResponse>("/subscriptions/plans", {
+      skipAuth: true,
+    });
   }
 
   createResponse(
@@ -755,14 +796,29 @@ export class ElizaCloudClient {
   }
 
   getRedemptionQuote(
-    network: string,
+    request: RedemptionQuoteRequest,
+  ): Promise<RedemptionQuoteResponse>;
+  /** @deprecated Pass a canonical `RedemptionQuoteRequest` object instead. */
+  getRedemptionQuote(
+    network: RedemptionNetwork,
+    pointsAmount?: number,
+  ): Promise<RedemptionQuoteResponse>;
+  getRedemptionQuote(
+    requestOrNetwork: RedemptionQuoteRequest | RedemptionNetwork,
     pointsAmount?: number,
   ): Promise<RedemptionQuoteResponse> {
+    const request: RedemptionQuoteRequest =
+      typeof requestOrNetwork === "string"
+        ? { network: requestOrNetwork, pointsAmount }
+        : requestOrNetwork;
     return this.request<RedemptionQuoteResponse>(
       "GET",
       "/api/v1/redemptions/quote",
       {
-        query: { network, pointsAmount },
+        query: {
+          network: request.network,
+          pointsAmount: request.pointsAmount,
+        },
       },
     );
   }

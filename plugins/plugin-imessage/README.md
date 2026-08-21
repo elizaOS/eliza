@@ -8,15 +8,15 @@ iMessage plugin for elizaOS agents. Enables chat integration with Apple's iMessa
 
 - **Send Messages**: Send text messages via iMessage
 - **Direct & Group Chats**: Support for direct messages and group conversations
-- **Attachments**: Send media attachments (via CLI tool)
+- **Attachments**: Rehost inbound Messages files into the canonical media store and send bounded local or SSRF-guarded remote media through Messages.app
 - **Message Polling**: Receive incoming messages via polling
 - **Policy Controls**: Configure DM and group policies
 
 ## Requirements
 
 - **macOS**: This plugin only works on macOS
-- **Messages App Access**: Full Disk Access permission may be required
-- **Optional CLI Tool**: For enhanced functionality, use an iMessage CLI tool
+- **Messages App Access**: Full Disk Access is required for reads; Automation permission is required for sends
+- **No Relay Required**: BlueBubbles, local servers, auxiliary CLIs, and external services are not used
 
 ## Installation
 
@@ -34,7 +34,6 @@ bun add @elizaos/plugin-imessage
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `IMESSAGE_CLI_PATH` | Path to iMessage CLI tool | No |
 | `IMESSAGE_DB_PATH` | Path to iMessage database | No |
 | `IMESSAGE_POLL_INTERVAL_MS` | Polling interval in ms | No |
 | `IMESSAGE_HEARTBEAT_INTERVAL_MS` | Heartbeat health-check interval in ms (default `60000`) | No |
@@ -66,14 +65,6 @@ bun add @elizaos/plugin-imessage
    - Your terminal app (or the Eliza process)
 3. Allow Messages app to be controlled via AppleScript (Automation permission)
 
-### CLI Tool (Optional)
-
-For enhanced functionality, you can use an iMessage CLI tool (e.g. `imsg`). Set the path once installed:
-
-```bash
-IMESSAGE_CLI_PATH=/usr/local/bin/imsg
-```
-
 ## Usage
 
 ### Actions
@@ -92,10 +83,10 @@ context is exposed through the iMessage message connector hooks.
 
 ## How It Works
 
-The plugin uses two methods to interact with iMessage:
-
-1. **AppleScript** (default): Uses macOS's built-in scripting support to send messages through the Messages app
-2. **CLI Tool** (optional): Uses a command-line tool for more features
+The plugin uses two local macOS surfaces: read-only SQLite access to
+`~/Library/Messages/chat.db` for inbound history and Apple's built-in
+AppleScript interface to Messages.app for outbound delivery. It does not run a
+relay server or delegate to a third-party executable.
 
 ### AppleScript Method
 
@@ -122,7 +113,7 @@ iMessage supports multiple target types:
 | Policy | Description |
 |--------|-------------|
 | `open` | Accept DMs from anyone |
-| `pairing` | Accept DMs and remember senders |
+| `pairing` (default) | Accept senders in `IMESSAGE_ALLOW_FROM` immediately; hold unknown senders through the core PairingService handshake — they are admitted once the owner approves their pairing code (`pairing approve imessage <code>` or the pairing UI). The pairing-code reply is only texted to the sender when `IMESSAGE_AUTO_REPLY=true` |
 | `allowlist` | Only accept from IMESSAGE_ALLOW_FROM list |
 | `disabled` | Don't accept any DMs |
 
@@ -137,7 +128,7 @@ iMessage supports multiple target types:
 ## Limitations
 
 - **macOS Only**: iMessage doesn't have an official API and only works on macOS
-- **No Official API**: Sending still relies on AppleScript or CLI tools
+- **No Official API**: Sending uses Messages.app's supported AppleScript dictionary
 - **Permissions**: Message history requires Full Disk Access, sending through
   Messages requires Automation, and contact resolution/editing requires
   Contacts access

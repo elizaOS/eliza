@@ -38,6 +38,13 @@ export interface HabitSummary {
   readonly missedOccurrenceStreak: number;
   readonly pauseUntil: string | null;
   readonly isPaused: boolean;
+  readonly progress: {
+    readonly completedCount: number;
+    readonly targetCount: number;
+    readonly remainingCount: number;
+    readonly unit: string;
+    readonly perOccurrenceWork: string | null;
+  } | null;
 }
 
 export type CheckinBriefingSectionKey =

@@ -4,7 +4,7 @@
  * injected through the agent host bridge; no vi.mock and no network.
  */
 import type http from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AccountPoolConsumerKeyAdmin,
   type AccountPoolConsumerKeySummary,
@@ -269,20 +269,51 @@ describe("consumer-key routes CRUD", () => {
   });
 
   it("rejects malformed percent-encoded consumer key id with 400", async () => {
-    installAdmin();
+    const getAdmin = vi.fn(() => {
+      throw new Error("invalid paths must not resolve the admin service");
+    });
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getAccountPoolConsumerKeyAdmin: getAdmin,
+    });
     for (const badId of ["%", "%2", "%ZZ", "%E0%A4"]) {
-      const badReq = makeRequest({
-        method: "PATCH",
-        pathname: `/api/accounts/consumer-keys/${badId}`,
-        authorized: true,
-        body: { enabled: true },
-      });
-      await handleConsumerKeyRoutes(badReq.ctx);
-      expect(badReq.reply.status).toBe(400);
-      expect(badReq.reply.body).toEqual({
-        error: "Invalid consumer-key id encoding",
-      });
+      for (const [method, suffix, body] of [
+        ["PATCH", "", { enabled: true }],
+        ["POST", "/rotate", undefined],
+      ] as const) {
+        const badReq = makeRequest({
+          method,
+          pathname: `/api/accounts/consumer-keys/${badId}${suffix}`,
+          authorized: true,
+          body,
+        });
+        await handleConsumerKeyRoutes(badReq.ctx);
+        expect(badReq.reply.status).toBe(400);
+        expect(badReq.reply.body).toEqual({
+          error: "Invalid consumer-key id encoding",
+        });
+      }
     }
+    expect(getAdmin).not.toHaveBeenCalled();
+  });
+
+  it("authenticates before reporting malformed consumer-key paths", async () => {
+    const getAdmin = vi.fn();
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getAccountPoolConsumerKeyAdmin: getAdmin,
+    });
+    const request = makeRequest({
+      method: "PATCH",
+      pathname: "/api/accounts/consumer-keys/%",
+      authorized: false,
+      body: { enabled: true },
+    });
+
+    await handleConsumerKeyRoutes(request.ctx);
+
+    expect(request.reply.status).toBe(403);
+    expect(getAdmin).not.toHaveBeenCalled();
   });
 
   it("decodes valid percent-encoded consumer key id", async () => {
@@ -290,7 +321,8 @@ describe("consumer-key routes CRUD", () => {
     const created = admin.create({ label: "encoded" });
     expect(created).not.toBeNull();
     if (!created) throw new Error("expected created consumer key");
-    const id = created.consumer.id; // e.g. "ck_1"
+    const id = "ck/legacy\\id";
+    created.consumer.id = id;
     const encodedId = encodeURIComponent(id);
 
     const patchReq = makeRequest({

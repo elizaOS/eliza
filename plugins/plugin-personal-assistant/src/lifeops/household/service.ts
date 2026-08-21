@@ -2,7 +2,8 @@
  * Household coordination policy over the runtime graph, approval queue, and
  * commitment ledger. The service turns mutable scheduling discussions into
  * version-pinned proposals and activates an agreement only after every named
- * adult approves those exact proposal bytes.
+ * adult approves those exact proposal bytes. Audit-record entity scans are
+ * bounded in `household-entity-scan.ts`.
  */
 import crypto from "node:crypto";
 import {
@@ -15,7 +16,7 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
-  ScheduledTaskRunnerService,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import {
   type Entity,
@@ -41,9 +42,11 @@ import {
   ensureHouseholdGrantExpiryWarning,
   type HouseholdGrantExpiryWarningReceipt,
 } from "./grant-expiry-warning.js";
+import { householdExportAuditVisibleToAudience } from "./household-entity-scan.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   DEFAULT_HOUSEHOLD_ID,
+  expandGrantScopes,
   HOUSEHOLD_ACCESS_SCOPES,
   HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
   type HouseholdAccessGrant,
@@ -242,20 +245,6 @@ function nonNegativeInteger(value: number, field: string, minimum = 0): number {
     );
   }
   return value;
-}
-
-function recordContainsAnyEntity(
-  value: unknown,
-  entityIds: ReadonlySet<string>,
-): boolean {
-  if (typeof value === "string") return entityIds.has(value);
-  if (Array.isArray(value)) {
-    return value.some((entry) => recordContainsAnyEntity(entry, entityIds));
-  }
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value).some((entry) =>
-    recordContainsAnyEntity(entry, entityIds),
-  );
 }
 
 function latestProposalVersions(
@@ -1647,7 +1636,7 @@ export class HouseholdCoordinationService {
     );
     const matching = grants.filter(
       (grant) =>
-        grant.scopes.includes(input.scope) &&
+        expandGrantScopes(grant.scopes).includes(input.scope) &&
         (subjectEntityId === undefined ||
           grant.subjectEntityIds.includes(subjectEntityId)),
     );
@@ -1694,6 +1683,61 @@ export class HouseholdCoordinationService {
         subjectEntityId,
       },
     );
+  }
+
+  /**
+   * Approval authority is revocable after a proposal is issued. A responder
+   * keeps standing either intrinsically — an active owner, co-parent, or
+   * current-partner binding that still covers every affected child — or by
+   * delegation through an active `schedule.approve` grant covering those
+   * children. Caregiver and professional bindings identify household context
+   * but deliberately do not confer approval standing without a revocable
+   * grant. Without this
+   * check, removing an adult from the household (or narrowing their
+   * relationship to a child) would leave their queued approval requests
+   * actionable.
+   */
+  private async requireApprovalStanding(
+    proposal: HouseholdScheduleProposal,
+    partyEntityId: string,
+  ): Promise<void> {
+    if (partyEntityId === SELF_ENTITY_ID) return;
+    const bindings = await this.listRoleBindings(proposal.householdId);
+    const binding = bindings.find(
+      (candidate) => candidate.entityId === partyEntityId,
+    );
+    const childEntityIds = proposal.terms.childEntityIds;
+    if (
+      binding &&
+      (binding.role === "owner" ||
+        binding.role === "co_parent" ||
+        binding.role === "current_partner")
+    ) {
+      const uncovered =
+        binding.role === "owner"
+          ? []
+          : childEntityIds.filter(
+              (childEntityId) =>
+                !binding.subjectEntityIds.includes(childEntityId),
+            );
+      if (uncovered.length === 0) return;
+    }
+    if (childEntityIds.length === 0) {
+      await this.requireScope({
+        principalEntityId: partyEntityId,
+        householdId: proposal.householdId,
+        scope: "schedule.approve",
+      });
+      return;
+    }
+    for (const subjectEntityId of childEntityIds) {
+      await this.requireScope({
+        principalEntityId: partyEntityId,
+        householdId: proposal.householdId,
+        scope: "schedule.approve",
+        subjectEntityId,
+      });
+    }
   }
 
   private async bindCurrentCustodyAuthorityRevision(
@@ -1812,18 +1856,22 @@ export class HouseholdCoordinationService {
         : affectedPartyEntityIds.filter(
             (entityId) => entityId !== createdByEntityId,
           );
+    // Proposing is a distinct, weaker authority than mutating: schedule
+    // changes only ever land through the approval workflow, so a proposer
+    // needs `schedule.propose` (implied by `calendar.mutate` for existing
+    // grants) rather than direct mutation authority.
     if (createdByEntityId !== SELF_ENTITY_ID && mutationSubjects.length === 0) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
         householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
       });
     }
     for (const subjectEntityId of mutationSubjects) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
         householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
         subjectEntityId,
       });
     }
@@ -2309,7 +2357,7 @@ export class HouseholdCoordinationService {
       await this.requireScope({
         principalEntityId: revisedByEntityId,
         householdId: previous.householdId,
-        scope: "calendar.mutate",
+        scope: "schedule.propose",
         subjectEntityId: previous.terms.childEntityIds[0],
       });
     }
@@ -2496,6 +2544,7 @@ export class HouseholdCoordinationService {
         },
       );
     }
+    await this.requireApprovalStanding(proposal, partyEntityId);
     const resolution = {
       resolvedBy: partyEntityId,
       resolutionReason: reason,
@@ -2762,7 +2811,7 @@ export class HouseholdCoordinationService {
     );
     return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => {
       const scopedGrants = relevant.filter((grant) =>
-        grant.scopes.includes(scope),
+        expandGrantScopes(grant.scopes).includes(scope),
       );
       if (scopedGrants.length === 0) return false;
       if (scope === "household.visibility" || scope === "calendar.freebusy") {
@@ -2806,7 +2855,9 @@ export class HouseholdCoordinationService {
     const effectiveScopes = isOwner
       ? [...HOUSEHOLD_ACCESS_SCOPES]
       : HOUSEHOLD_ACCESS_SCOPES.filter((scope) =>
-          ownActiveGrants.some((grant) => grant.scopes.includes(scope)),
+          ownActiveGrants.some((grant) =>
+            expandGrantScopes(grant.scopes).includes(scope),
+          ),
         );
     const allRoles = await this.listRoleBindings(householdId);
     let proposals = await this.deps.repository.listProposals(householdId);
@@ -2955,8 +3006,16 @@ export class HouseholdCoordinationService {
       });
     }
 
+    // The audit and decision trail is export-only material: calendar scopes
+    // let a principal see schedules, but reading who decided what and when
+    // requires the distinct, revocable `household.export` authority.
+    const includeAuditTrail =
+      isOwner || effectiveScopes.includes("household.export");
     const audience = new Set([principalEntityId, ...visibleSubjectEntityIds]);
-    const audit = (await this.deps.repository.listAudit())
+    const auditEvents = includeAuditTrail
+      ? await this.deps.repository.listAudit()
+      : [];
+    const audit = auditEvents
       .filter((event) => {
         const eventHouseholdId =
           typeof event.inputs.householdId === "string"
@@ -2966,12 +3025,11 @@ export class HouseholdCoordinationService {
               : DEFAULT_HOUSEHOLD_ID;
         return eventHouseholdId === householdId;
       })
-      .filter(
-        (event) =>
-          isOwner ||
-          recordContainsAnyEntity(event.inputs, audience) ||
-          recordContainsAnyEntity(event.decision, audience) ||
-          event.ownerId === principalEntityId,
+      .filter((event) =>
+        householdExportAuditVisibleToAudience(event, audience, {
+          isOwner,
+          principalEntityId,
+        }),
       )
       .map((event): HouseholdAuditRecord => {
         if (isOwner) return event;
@@ -3048,27 +3106,13 @@ export class HouseholdCoordinationRuntimeService extends Service {
   ): Promise<HouseholdCoordinationRuntimeService> {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
-      // The scheduling plugin registers DEFERRED (its runner appears seconds
-      // after this service starts); both the bare load-promise and the
-      // exported one-microtask waiter reject before it exists, which failed
-      // this service at every boot on the live box. Poll registration for a
-      // bounded window, then take the load promise.
-      (async () => {
-        // 120s: heavy boots (cold caches, many workspace plugins) register
-        // the deferred scheduling plugin after the old 30s window and this
-        // service — plus family-communications above it — failed for the
-        // whole process lifetime (live 2026-08-19, 2 of ~15 boots).
-        const deadline = Date.now() + 120_000;
-        while (
-          !runtime.hasService(ScheduledTaskRunnerService.serviceType) &&
-          Date.now() < deadline
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
-        return runtime.getServiceLoadPromise(
-          ScheduledTaskRunnerService.serviceType,
-        );
-      })(),
+      // 120s window: heavy boots on the live box (cold caches, many
+      // workspace plugins) register the deferred runner after the default 30s
+      // and this service failed for the whole process lifetime (live
+      // 2026-08-19, 2 of ~15 boots).
+      waitForScheduledTaskRunnerService(runtime, {
+        registrationTimeoutMs: 120_000,
+      }),
     ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();

@@ -72,6 +72,20 @@ export interface RegistrationStartResult {
   status: "pending" | "active" | "failed" | "expired";
 }
 
+interface CfExtensionRegistrationSchema {
+  properties?: {
+    years?: {
+      minimum?: unknown;
+      maximum?: unknown;
+    };
+  };
+}
+
+interface CfExtensionResource {
+  metadata?: { name?: string; tld?: string };
+  registration_schema?: CfExtensionRegistrationSchema;
+}
+
 export interface RegistrationStatus {
   domain: string;
   status: "pending" | "active" | "failed" | "expired";
@@ -167,6 +181,37 @@ export class CorruptRegistrarPriceError extends ElizaError {
   }
 }
 
+/** The extension contract cannot safely determine the billable registration term. */
+export class CorruptRegistrarRegistrationSchemaError extends ElizaError {
+  override readonly name = "CorruptRegistrarRegistrationSchemaError";
+
+  constructor(domain: string, rawValue: unknown, reason: string) {
+    super(`Cloudflare returned an unusable registration-years schema for "${domain}": ${reason}.`, {
+      code: "CORRUPT_REGISTRAR_REGISTRATION_SCHEMA",
+      context: { domain, rawValue, reason },
+      severity: "fatal",
+    });
+  }
+}
+
+/** Parse the registry minimum term from Cloudflare's authoritative extension JSON Schema. */
+export function parseMinimumRegistrationYears(domain: string, schema: unknown): number {
+  const minimum = (schema as CfExtensionRegistrationSchema | null)?.properties?.years?.minimum;
+  if (
+    typeof minimum !== "number" ||
+    !Number.isSafeInteger(minimum) ||
+    minimum < 1 ||
+    minimum > 10
+  ) {
+    throw new CorruptRegistrarRegistrationSchemaError(
+      domain,
+      schema,
+      "properties.years.minimum must be an integer from 1 through 10",
+    );
+  }
+  return minimum;
+}
+
 /**
  * Parse a Cloudflare wholesale price string into integer USD cents, fail-closed.
  *
@@ -244,6 +289,39 @@ export async function checkAvailability(domain: string): Promise<AvailabilityRes
 }
 
 /**
+ * Resolve the registry's minimum billable term before quoting or debiting.
+ *
+ * The buy route sends this exact value back on registration; omitting `years`
+ * would let Cloudflare silently choose a multi-year minimum while we debit only
+ * one year. A malformed schema fails before any financial side effect.
+ */
+export async function getMinimumRegistrationYears(domain: string): Promise<number> {
+  const cfg = config();
+  ensureConfigured(cfg);
+  if (cfg.devStub) return domain.endsWith(".ai") ? 2 : 1;
+
+  const labels = domain.toLowerCase().split(".");
+  if (labels.length < 2) {
+    throw new CorruptRegistrarRegistrationSchemaError(domain, domain, "domain has no extension");
+  }
+  // The availability endpoint accepts registrable domain names, so removing
+  // the left-most registrant label preserves multi-label extensions (`co.uk`).
+  const extension = labels.slice(1).join(".");
+  const result = await cloudflareApiRequest<CfExtensionResource>(
+    `/accounts/${cfg.accountId}/registrar/extensions/${encodeURIComponent(extension)}`,
+    cfg.apiToken,
+  );
+  if (result.metadata?.name?.toLowerCase() !== extension) {
+    throw new CorruptRegistrarRegistrationSchemaError(
+      domain,
+      result,
+      `extension response did not bind to ${extension}`,
+    );
+  }
+  return parseMinimumRegistrationYears(domain, result.registration_schema);
+}
+
+/**
  * Batch availability check (CF accepts up to 20 domains per request). One CF
  * round-trip beats N parallel calls when comparing alternates ("check
  * mybrand.com, mybrand.io, mybrand.dev").
@@ -301,9 +379,16 @@ export async function searchDomains(query: string, limit = 10): Promise<Availabi
  * Start the registration of a domain. CF charges the account's default payment
  * method; defaults to no auto-renew + WHOIS redaction (per CF defaults).
  */
-export async function registerDomain(domain: string): Promise<RegistrationStartResult> {
+export async function registerDomain(
+  domain: string,
+  years: number,
+): Promise<RegistrationStartResult> {
   const cfg = config();
   ensureConfigured(cfg);
+
+  if (!Number.isSafeInteger(years) || years < 1 || years > 10) {
+    throw new Error("registerDomain requires an integer years value from 1 through 10");
+  }
 
   if (cfg.devStub) {
     return stubRegister(domain);
@@ -314,7 +399,7 @@ export async function registerDomain(domain: string): Promise<RegistrationStartR
     cfg.apiToken,
     {
       method: "POST",
-      body: JSON.stringify({ domain_name: domain }),
+      body: JSON.stringify({ domain_name: domain, years }),
     },
   );
 
@@ -564,6 +649,7 @@ function stubSetAutoRenew(domain: string, autoRenew: boolean): RegisteredDomain 
 
 export const cloudflareRegistrarService = {
   checkAvailability,
+  getMinimumRegistrationYears,
   checkAvailabilities,
   searchDomains,
   registerDomain,

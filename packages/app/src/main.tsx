@@ -89,14 +89,13 @@ import {
   type AppBootConfig,
   getBootConfig,
   setBootConfig,
-  shouldUseCloudOnlyBranding,
 } from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  createNavigateViewEvent,
   dispatchAppEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -187,12 +186,14 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
 import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
+import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
@@ -201,6 +202,7 @@ import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
   extractIosLivenessChallengeToken,
   type IosCloudOnboardingSmokeRequest,
+  isIosCloudOnboardingComplete,
   isIosLivenessReplyRow as isIosLivenessReplyRowFromContract,
   parseIosCloudOnboardingSmokeRequest as parseIosCloudOnboardingSmokeRequestFromContract,
 } from "./ios-cloud-onboarding-smoke";
@@ -373,7 +375,7 @@ function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
   return Array.isArray(value);
 }
 
-function getInjectedAppApiBase(): string | undefined {
+function getLegacyInjectedAppApiBase(): string | undefined {
   const brandedApiBase: unknown = Reflect.get(
     window,
     BRANDED_WINDOW_KEYS.apiBase,
@@ -407,15 +409,16 @@ function getInjectedDesktopRuntimeMode(): string | undefined {
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
-  // The hosted web bundle stays cloud-only in production. Desktop shells and
-  // other hosts inject an explicit API base before React boots, and that host
-  // backend should control first-run capabilities instead — UNLESS the desktop
-  // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
-  // which forces cloud-only regardless of the injected loopback proxy base.
-  cloudOnly: shouldUseCloudOnlyBranding({
+  // The hosted web bundle stays cloud-only in production. Desktop shells seed
+  // the typed boot config before renderer modules evaluate (with the branded
+  // window key retained as a legacy fallback), and that host backend should
+  // control first-run capabilities instead — UNLESS the desktop shell explicitly
+  // opted into cloud-only mode, which remains authoritative over a loopback base.
+  cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    injectedApiBase:
-      typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
+    bootApiBase: getBootConfig().apiBase,
+    legacyInjectedApiBase:
+      typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
@@ -1408,12 +1411,13 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
     );
 
     await writeIosCloudOnboardingSmokeResult({
-      ok:
-        Boolean(home) &&
-        Boolean(composer) &&
-        onboardingHidden &&
-        cloudActiveServer &&
-        firstRunPostCount === 1,
+      ok: isIosCloudOnboardingComplete({
+        homeVisible: Boolean(home),
+        composerVisible: Boolean(composer),
+        onboardingHidden,
+        cloudActiveServer,
+        firstRunPostCount,
+      }),
       phase: "complete",
       mode: request.mode,
       finishedAt: new Date().toISOString(),
@@ -2182,7 +2186,14 @@ async function handleAuthCallbackDeepLink(
   );
 }
 
-function handleDeepLink(url: string): void {
+/**
+ * Returns `void` for every branch except the top-level-surface navigation
+ * intent, which returns the `dispatchNavigateViewRequest` promise so a caller
+ * that needs to know the intent actually LANDED (not merely enqueued) — today
+ * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
+ * can await it instead of acking on dispatch alone.
+ */
+function handleDeepLink(url: string): undefined | Promise<boolean> {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2241,8 +2252,7 @@ function handleDeepLink(url: string): void {
   // from the hash directly.)
   const navigationIntent = resolveDeepLinkNavigationIntent(path);
   if (navigationIntent) {
-    dispatchDeepLinkNavigation(navigationIntent);
-    return;
+    return dispatchDeepLinkNavigation(navigationIntent);
   }
 
   const assistantLaunchHashRoute = buildAssistantLaunchHashRoute(
@@ -2375,8 +2385,10 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  * the rest of the app uses; a raw `window.location.hash` write does not open a
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
-function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+function dispatchDeepLinkNavigation(
+  intent: DeepLinkNavigationIntent,
+): Promise<boolean> {
+  return dispatchNavigateViewRequest(intent);
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -2474,13 +2486,17 @@ async function initializeDesktopShell(): Promise<void> {
       } satisfies PushToTalkHoldDetail);
     },
   });
-  const fnHoldStart = await invokeDesktopBridgeRequest<{
-    status: "started" | "permission-missing" | "failed" | "unavailable";
-    fnSystemUsageType: number;
-  }>({
-    rpcMethod: "desktopStartFnHoldMonitor",
-    ipcChannel: "desktop:startFnHoldMonitor",
-  });
+  const fnHoldStart = shouldStartFnHoldMonitor({
+    cloudOnly: APP_BRANDING.cloudOnly === true,
+  })
+    ? await invokeDesktopBridgeRequest<{
+        status: "started" | "permission-missing" | "failed" | "unavailable";
+        fnSystemUsageType: number;
+      }>({
+        rpcMethod: "desktopStartFnHoldMonitor",
+        ipcChannel: "desktop:startFnHoldMonitor",
+      })
+    : null;
   if (fnHoldStart?.status === "started") {
     if (fnHoldStart.fnSystemUsageType !== 0) {
       console.warn(
@@ -2578,7 +2594,7 @@ async function initializeDesktopShell(): Promise<void> {
       if (typeof url !== "string" || url.trim().length === 0) {
         return;
       }
-      handleDeepLink(url);
+      void handleDeepLink(url);
     },
   });
 }

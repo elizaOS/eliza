@@ -217,7 +217,8 @@ describe("verify: incidental narration URLs (Bug B)", () => {
       // "create a landing page and give me the url" — a PROVIDE-url request with
       // NO deploy/host/live keyword. The agent claims a dead URL; it must still
       // be verified + flagged (codex review: preserve explicit-url-request
-      // verification).
+      // verification). The test server's port is passed as the
+      // supervisor-sanctioned loopback port (W1-048) so the probe runs.
       const referenceText = "create a landing page and give me the url";
       const deadUrl = `http://127.0.0.1:${port}/landing/`;
       const narration = `Here you go: ${deadUrl}`;
@@ -228,6 +229,7 @@ describe("verify: incidental narration URLs (Bug B)", () => {
         undefined,
         undefined,
         undefined,
+        new Set([port]),
       );
       expect(result.dead.some((d) => d.url === deadUrl)).toBe(true);
       expect(result.text).toContain("verification:");
@@ -248,6 +250,7 @@ describe("verify: incidental narration URLs (Bug B)", () => {
         undefined,
         undefined,
         undefined,
+        new Set([port]),
       );
       expect(result.dead.some((d) => d.url === deadUrl)).toBe(true);
       expect(result.text).toContain("verification:");
@@ -268,6 +271,7 @@ describe("verify: incidental narration URLs (Bug B)", () => {
         undefined,
         undefined,
         undefined,
+        new Set([port]),
       );
 
       expect(result.dead.length).toBeGreaterThan(0);

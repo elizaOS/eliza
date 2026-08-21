@@ -6,6 +6,7 @@ self-hosted-runner:
     - prod-ops
     - prod-ops-1
     - prod-ops-2
+    - android-device
 
 paths:
   .github/workflows/*.yml:

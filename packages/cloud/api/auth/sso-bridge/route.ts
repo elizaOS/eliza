@@ -49,6 +49,7 @@ import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { Hono } from "hono";
 import {
   mintStewardTokenFromClaims,
+  STEWARD_ACCESS_TOKEN_TTL_SECONDS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
@@ -264,8 +265,15 @@ app.post("/exchange", async (c) => {
     // endpoint consults the logout marker (fail closed) ONLY for stamped
     // tokens, so ordinary logins never acquire the marker store as a hard
     // availability dependency.
-    const remainingSeconds =
-      record.tokenExpiresAt - Math.floor(Date.now() / 1000);
+    // The verifier caps the signed issued lifetime at the access-token TTL,
+    // while an original token minted on a slightly-ahead issuer clock is
+    // accepted with remaining = TTL + skew. Clamp the re-mint to the TTL so
+    // the bridge never hands out a token its own platform rejects; the clamp
+    // can only shorten the session, never extend it past the original exp.
+    const remainingSeconds = Math.min(
+      STEWARD_ACCESS_TOKEN_TTL_SECONDS,
+      record.tokenExpiresAt - Math.floor(Date.now() / 1000),
+    );
     if (remainingSeconds <= 0) {
       return c.json(errorBody("Session no longer valid", "invalid_token"), 401);
     }

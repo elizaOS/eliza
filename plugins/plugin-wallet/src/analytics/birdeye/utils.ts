@@ -365,10 +365,7 @@ export const formatJsonScalar = (value: unknown): string => {
     return String(value);
   }
   const normalized = String(value).replace(/\s+/g, " ").trim();
-  if (/^[A-Za-z0-9._/@:+-]+$/.test(normalized)) {
-    return normalized;
-  }
-  return `"${normalized.replace(/"/g, '\\"')}"`;
+  return JSON.stringify(normalized);
 };
 
 export const formatJsonTable = (
@@ -403,6 +400,7 @@ export async function makeApiRequest<T>(
   try {
     const response = await fetch(url, {
       method,
+      signal: AbortSignal.timeout(10_000),
       headers: {
         "X-API-KEY": apiKey,
         "x-chain": chain,

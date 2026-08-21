@@ -15,6 +15,8 @@
  * reason, and token usage into a single object that is returned as a
  * string-with-attached-fields (`GoogleTextModelResult`) whenever the caller
  * passed messages/tools/toolChoice/responseSchema, else as plain text.
+ * Tool-call `args` are converted by the bounded walker in
+ * `google-genai-json-value.ts`.
  */
 import type {
   GenerateTextParams,
@@ -46,6 +48,7 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
+import { toToolArguments } from "./google-genai-json-value";
 
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
@@ -351,44 +354,6 @@ function getModelNameForType(
     default:
       return getLargeModel(runtime);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function toJsonValue(value: unknown): JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => toJsonValue(entry));
-  }
-  if (isRecord(value)) {
-    const record: Record<string, JsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      if (entry !== undefined) {
-        record[key] = toJsonValue(entry);
-      }
-    }
-    return record;
-  }
-  return String(value);
-}
-
-function toToolArguments(value: unknown): Record<string, JsonValue> {
-  if (!isRecord(value)) {
-    return {};
-  }
-  const jsonValue = toJsonValue(value);
-  return isRecord(jsonValue) ? (jsonValue as Record<string, JsonValue>) : {};
 }
 
 function readGoogleText(response: GoogleGenerateContentResponse): string {

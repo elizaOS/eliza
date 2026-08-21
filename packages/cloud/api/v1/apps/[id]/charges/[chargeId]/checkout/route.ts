@@ -9,8 +9,8 @@ import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appChargeRequestsService } from "@/lib/services/app-charge-requests";
 import { logger } from "@/lib/utils/logger";
@@ -29,7 +29,7 @@ const CheckoutSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STRICT));
+app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {

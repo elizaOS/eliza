@@ -37,6 +37,7 @@ let dbWriteUpdateCalls = 0;
 let dbWriteUpdateRows: Array<Record<string, unknown>> | null = null;
 let containerInfrastructureCalls = 0;
 let agentInfrastructureCalls = 0;
+let lastAgentSuspendParams: Record<string, unknown> | null = null;
 
 // Identify which fixture a `.from(table)` call wants without importing the real
 // drizzle table objects: the schema modules export named tables, and the real
@@ -88,6 +89,7 @@ mock.module("../../db/client", () => ({
     select: () => makeBuilder(),
   },
   dbWrite: {
+    select: () => makeBuilder(),
     update() {
       dbWriteUpdateCalls += 1;
       const builder = {
@@ -119,8 +121,9 @@ mock.module("./containers/hetzner-client", () => ({
 
 mock.module("./provisioning-jobs", () => ({
   provisioningJobService: {
-    enqueueAgentSuspendOnce: async () => {
+    enqueueAgentSuspendOnce: async (params: Record<string, unknown>) => {
       agentInfrastructureCalls += 1;
+      lastAgentSuspendParams = params;
     },
     enqueueAgentDeleteOnce: async () => {
       agentInfrastructureCalls += 1;
@@ -162,6 +165,7 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   id: "agent-100000",
   agent_name: "Bot",
   organization_id: ORG,
+  user_id: "agent-user",
   status: "running",
   billing_status: "active",
   total_billed: "3.00",
@@ -194,6 +198,7 @@ beforeEach(() => {
   dbWriteUpdateRows = null;
   containerInfrastructureCalls = 0;
   agentInfrastructureCalls = 0;
+  lastAgentSuspendParams = null;
 });
 
 // ── Parser boundary (exhaustive) ─────────────────────────────────────────────
@@ -357,6 +362,23 @@ describe("listLedger fail-closed", () => {
 
 // ── cancelResource pre-mutation gate ────────────────────────────────────────
 describe("cancelResource fail-closed before side effects", () => {
+  test("funded explicit agent cancellation enqueues unconditional user stop authority", async () => {
+    agentRows = [baseAgent()];
+    const result = await activeBillingService.cancelResource({
+      organizationId: ORG,
+      resourceId: "agent-100000",
+      resourceType: "agent_sandbox",
+    });
+
+    expect(result.stoppedBilling).toBe(true);
+    expect(lastAgentSuspendParams).toMatchObject({
+      agentId: "agent-100000",
+      organizationId: ORG,
+      userId: "agent-user",
+      authorization: "user_request",
+    });
+  });
+
   test("corrupt container.total_billed throws before infra stop or billing suspension", async () => {
     containerRows = [baseContainer({ total_billed: "NaN" })];
 

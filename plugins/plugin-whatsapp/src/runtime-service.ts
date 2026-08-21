@@ -49,10 +49,11 @@ import {
   tryClaim,
 } from "./inbound-claim";
 import {
-  buildWhatsAppUserJid,
   chunkWhatsAppText,
   isWhatsAppGroupJid,
   isWhatsAppUserTarget,
+  normalizeBaileysSendTarget,
+  normalizeCloudApiSendTarget,
   normalizeWhatsAppTarget,
   resolveWhatsAppSystemLocation,
 } from "./normalize";
@@ -66,6 +67,7 @@ import type {
   WhatsAppMessageResponse,
   WhatsAppWebhookEvent,
 } from "./types";
+import { timingSafeEqualSecretString } from "./webhook-auth";
 
 type RuntimeServiceConfig =
   | {
@@ -361,14 +363,6 @@ function registerMessageConnectorIfAvailable(
   if (registration.sendHandler) {
     runtime.registerSendHandler(registration.source, registration.sendHandler);
   }
-}
-
-function normalizeBaileysSendTarget(target: string): string {
-  if (isWhatsAppGroupJid(target) || isWhatsAppUserTarget(target)) {
-    return target;
-  }
-  const normalized = normalizeWhatsAppTarget(target);
-  return normalized ? buildWhatsAppUserJid(normalized) : target;
 }
 
 function normalizeWhatsAppConnectorTarget(value: string): string {
@@ -1019,7 +1013,9 @@ export class WhatsAppConnectorService extends Service {
     if (
       mode === "subscribe" &&
       challenge &&
-      expectedTokens.some((expectedToken) => expectedToken && token === expectedToken)
+      expectedTokens.some(
+        (expectedToken) => expectedToken && timingSafeEqualSecretString(token, expectedToken)
+      )
     ) {
       return challenge;
     }
@@ -1546,7 +1542,7 @@ export class WhatsAppConnectorService extends Service {
       to:
         config.transport === "baileys"
           ? normalizeBaileysSendTarget(chatId)
-          : (normalizeWhatsAppTarget(chatId) ?? chatId),
+          : normalizeCloudApiSendTarget(chatId),
       content: text,
       replyToMessageId,
     });
@@ -1750,7 +1746,7 @@ export class WhatsAppConnectorService extends Service {
       to:
         config.transport === "baileys"
           ? normalizeBaileysSendTarget(chatId)
-          : (normalizeWhatsAppTarget(chatId) ?? chatId),
+          : normalizeCloudApiSendTarget(chatId),
       content: {
         messageId: params.messageId,
         emoji: params.remove ? "" : params.emoji || "👍",

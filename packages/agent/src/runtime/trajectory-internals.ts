@@ -21,10 +21,14 @@ import {
   type JsonValue,
   ModelType,
   observationExtractionTemplate,
+  parseTrajectorySemanticStages,
   redactBasicEmails,
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
+  tailWellFormed,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -436,13 +440,30 @@ export function normalizeTrajectoryMetadata(
 
 const DEFAULT_TRUNCATE_LIMIT = 500;
 
+/**
+ * Head+tail preview of an over-long field. BOTH cuts land at an arbitrary
+ * UTF-16 index, so both must back off a surrogate pair: `truncateWellFormed`
+ * guards the head and `tailWellFormed` guards the tail. A raw `.slice()` here
+ * split an astral character in half and persisted a lone surrogate into the
+ * trajectory row (#23688 fixed the two clamps in this module that had callers
+ * at the time; these helpers were left raw).
+ *
+ * `removed` is derived from the retained halves rather than from `limit * 2`
+ * so the reported count stays truthful when a boundary backs off by one code
+ * unit. ASCII and BMP input is unaffected: neither guard moves a boundary that
+ * does not split a pair, so the output is byte-identical to the previous
+ * implementation.
+ */
 export function truncateField(
   value: string,
   limit = DEFAULT_TRUNCATE_LIMIT,
 ): string {
-  if (value.length <= limit * 2) return value;
-  const removed = value.length - limit * 2;
-  return `${value.slice(0, limit)}\n[...truncated ${removed} chars...]\n${value.slice(-limit)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= limit * 2) return wellFormed;
+  const head = truncateWellFormed(wellFormed, limit);
+  const tail = tailWellFormed(wellFormed, limit);
+  const removed = wellFormed.length - head.length - tail.length;
+  return `${head}\n[...truncated ${removed} chars...]\n${tail}`;
 }
 
 export function truncateRecord(
@@ -463,6 +484,16 @@ export function truncateRecord(
  * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated
  * prefix together with the sha256 hex digest of the full source so callers
  * can store the digest alongside.
+ *
+ * The prefix is cut with `truncateWellFormed`, not a raw `.slice()`: this
+ * value is the ONLY step field that bypasses `sanitizeTrajectoryJsonObject`
+ * (`normalizeStepForPersistence` destructures `script` out of the sanitized
+ * scalars), so a split surrogate pair is written straight into the
+ * `steps_json` blob as a `\uD8xx` escape instead of being repaired downstream.
+ *
+ * Pre-existing lone surrogates in `script` are deliberately preserved rather
+ * than replaced: `scriptHash` is the digest of the raw full source, and the
+ * stored value must stay a genuine prefix of the bytes that were hashed.
  */
 export function capScriptForPersistence(script: string): {
   script: string;
@@ -473,7 +504,7 @@ export function capScriptForPersistence(script: string): {
   }
   const scriptHash = createHash("sha256").update(script, "utf8").digest("hex");
   return {
-    script: script.slice(0, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
+    script: truncateWellFormed(script, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
     scriptHash,
   };
 }
@@ -487,8 +518,10 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const safeResponse =
-    response.length > 100_000 ? response.slice(0, 100_000) : response;
+  const safeResponse = truncateWellFormed(
+    toWellFormedUnicode(response),
+    100_000,
+  );
   const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(safeResponse);
@@ -623,7 +656,7 @@ export async function flushObservationBuffer(
   const exchangeText = exchanges
     .map(
       (e, i) =>
-        `Exchange ${i + 1}:\nUser: ${e.userPrompt.slice(0, 500)}\nAssistant: ${e.response.slice(0, 500)}`,
+        `Exchange ${i + 1}:\nUser: ${truncateWellFormed(toWellFormedUnicode(e.userPrompt), 500)}\nAssistant: ${truncateWellFormed(toWellFormedUnicode(e.response), 500)}`,
     )
     .join("\n\n");
 
@@ -656,7 +689,12 @@ export async function flushObservationBuffer(
 
     const observations = parsed
       .filter((s: unknown) => typeof s === "string" && s.length > 0)
-      .map((s: string) => s.slice(0, 150)) as string[];
+      // Model-authored observation text is persisted into trajectory
+      // metadata; the 150-char clamp must not split an astral pair (same
+      // guard as the exchange clamp above).
+      .map((s: string) =>
+        truncateWellFormed(toWellFormedUnicode(s), 150),
+      ) as string[];
 
     if (observations.length === 0) return [];
 
@@ -3454,6 +3492,7 @@ export function parsePersistedStepObject(
   const skillInvocations = parsePersistedSkillInvocations(
     record.skillInvocations,
   );
+  const semanticStages = parseTrajectorySemanticStages(record.semanticStages);
   const action = parsePersistedActionAttempt(record.action);
   return {
     stepId,
@@ -3474,6 +3513,7 @@ export function parsePersistedStepObject(
     ...(scriptHash !== undefined ? { scriptHash } : {}),
     ...(evaluatorName !== undefined ? { evaluatorName } : {}),
     ...(skillInvocations !== undefined ? { skillInvocations } : {}),
+    ...(semanticStages !== undefined ? { semanticStages } : {}),
   };
 }
 
@@ -3558,6 +3598,7 @@ function normalizeStepForPersistence(
     childSteps,
     usedSkills,
     skillInvocations,
+    semanticStages,
     script,
     ...scalarFields
   } = step;
@@ -3624,6 +3665,9 @@ function normalizeStepForPersistence(
           skillInvocations:
             parsePersistedSkillInvocations(skillInvocations) ?? [],
         }
+      : {}),
+    ...(semanticStages !== undefined
+      ? { semanticStages: parseTrajectorySemanticStages(semanticStages) }
       : {}),
     ...(script !== undefined ? { script } : {}),
   };

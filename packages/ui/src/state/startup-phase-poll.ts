@@ -46,6 +46,7 @@ import {
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
+import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -119,23 +120,17 @@ class ApiHangTimeoutError extends Error {
  * `cloud` runtime mode pinned every launch (icon tap, devicectl, XCUITest) to
  * a dead dedicated agent, 503ing /api/auth/status until the 90s budget fired.
  */
-const DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT = "Agent is in an error state";
-
 /**
  * True when the failure is the dedicated-agent proxy's terminal
  * sandbox-error 503 for the currently pinned dedicated cloud agent base.
  */
 export function isTerminalDedicatedCloudAgentErrorState(args: {
   status: number | undefined;
+  code?: string;
   message: string | null | undefined;
   clientBaseUrl: string;
 }): boolean {
-  return (
-    args.status === 503 &&
-    typeof args.message === "string" &&
-    args.message.includes(DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT) &&
-    isDedicatedCloudAgentBase(args.clientBaseUrl)
-  );
+  return classifyTerminalDedicatedCloudAgentErrorState(args);
 }
 
 /**
@@ -592,16 +587,24 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_UNAVAILABLE_FIRST_RUN" });
   };
 
+  const cloudOnlyDesktopRenderer =
+    typeof window !== "undefined" &&
+    (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
+      .__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
+  const freshCloudOnlyTarget =
+    policy.defaultTarget === "cloud-managed" || cloudOnlyDesktopRenderer;
+
   if (
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
-    isViteDevUiShell() &&
-    isSameOriginProxyBase() &&
     !ctx?.persistedActiveServer &&
-    !ctx?.hadPriorFirstRun
+    !ctx?.hadPriorFirstRun &&
+    (freshCloudOnlyTarget || (isViteDevUiShell() && isSameOriginProxyBase()))
   ) {
     routeToOfflineFirstRun(
-      "dev web shell has no saved backend target; skipping same-origin API proxy probe",
+      freshCloudOnlyTarget
+        ? "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding"
+        : "dev web shell has no saved backend target; skipping same-origin API proxy probe",
     );
     return;
   }
@@ -616,6 +619,29 @@ export async function runPollingBackend(
     backendTimeoutMs: policy.backendTimeoutMs,
     nativeFailureBudgetMs,
   });
+
+  const restoredManagedCloud =
+    ctx?.restoredActiveServer?.kind === "cloud" ||
+    ctx?.persistedActiveServer?.kind === "cloud";
+  if (
+    cloudOnlyDesktopRenderer &&
+    restoredManagedCloud &&
+    !supportsFullAppShellRoutes(client.getBaseUrl()) &&
+    (deps.firstRunCompletionCommittedRef.current ||
+      ctx?.shouldPreserveCompletedFirstRun === true)
+  ) {
+    // A returning managed Cloud target is a limited chat adapter, not an app
+    // shell. Its /api/auth/status and /api/first-run routes are unsupported and
+    // can each consume a full network timeout before the existing in-loop
+    // limited-base branch reaches the same conclusion. Advance immediately;
+    // starting-runtime owns the real per-agent proxy readiness probe next, so
+    // this skips only irrelevant shell probes, never runtime verification.
+    deps.setFirstRunCloudProvisionedContainer(false);
+    deps.setFirstRunComplete(true);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+    return;
+  }
 
   // Stall detector (issue #11030 root-cause instrumentation): a startup probe
   // that neither resolves nor rejects is invisible to every failure path —
@@ -1039,6 +1065,7 @@ export async function runPollingBackend(
       if (
         isTerminalDedicatedCloudAgentErrorState({
           status: ae?.status,
+          code: ae?.code,
           message: terminalMessage,
           clientBaseUrl: client.getBaseUrl(),
         })
@@ -1227,6 +1254,7 @@ export async function runPollingBackend(
       }
       if (
         !fellBackToLocal &&
+        policy.allowLocalOriginRecovery !== false &&
         shouldFallBackToLocalOrigin({ error: err, ...recoveryEnv() })
       ) {
         recoverToLocalOrigin("saved server unreachable");

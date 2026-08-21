@@ -27,8 +27,15 @@ function parseAcceptLanguage(value: string | string[] | undefined): string[] {
       const qParam = params
         .map((param) => param.trim())
         .find((param) => param.toLowerCase().startsWith("q="));
-      const q = qParam ? Number(qParam.slice(2)) : 1;
-      if (!Number.isFinite(q) || q <= 0) return null;
+      const rawQ = qParam?.slice(2);
+      if (
+        rawQ !== undefined &&
+        !/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(rawQ)
+      ) {
+        return null;
+      }
+      const q = rawQ === undefined ? 1 : Number(rawQ);
+      if (q === 0) return null;
       return { index, q, tag };
     })
     .filter((candidate): candidate is LanguageCandidate => candidate != null)

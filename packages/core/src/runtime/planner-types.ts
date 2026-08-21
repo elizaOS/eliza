@@ -32,6 +32,10 @@ export interface PlannerToolCall {
 
 export type EvaluatorRoute = EvaluationResult["decision"];
 
+export type EvaluatorModelResult =
+	| string
+	| (Partial<GenerateTextResult> & { object?: unknown });
+
 export interface EvaluatorRuntime {
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
@@ -64,9 +68,7 @@ export interface EvaluatorRuntime {
 			) => Promise<void> | void;
 		},
 		provider?: string,
-	): Promise<
-		string | { text?: string; object?: unknown; providerMetadata?: unknown }
-	>;
+	): Promise<EvaluatorModelResult>;
 	logger?: {
 		warn?: (context: unknown, message?: string) => void;
 		debug?: (context: unknown, message?: string) => void;
@@ -183,6 +185,8 @@ export interface PlannerToolResult {
 	 */
 	summary?: string;
 	data?: Record<string, unknown>;
+	/** Model-bound projection of `data`; complete data remains on the result. */
+	promptData?: Record<string, unknown>;
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
@@ -194,6 +198,11 @@ export interface PlannerToolResult {
 	 * evaluation, while omission delegates completion to the planner/evaluator.
 	 */
 	turnComplete?: boolean;
+	/**
+	 * Requests one safe model-authored terminal reply after a successful sole
+	 * action whose planner call explicitly declared final scope.
+	 */
+	modelReplyRequired?: boolean;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget

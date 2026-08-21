@@ -34,6 +34,17 @@ vi.mock("@elizaos/core", async () => {
   );
   const { ElizaError } = await import("../../../packages/core/src/errors");
 
+  // The pairing integration is a pure service lookup plus reply formatting
+  // over a duck-typed PairingService; the DM-policy suites exercise its real
+  // fail-closed behavior (missing service, queue cap, reply claims), so it is
+  // delegated rather than re-stubbed.
+  const { checkPairingAllowed } = await import(
+    "../../../packages/core/src/services/pairing-integration"
+  );
+  const { toWellFormedUnicode, truncateWellFormed } = await import(
+    "../../../packages/core/src/utils/well-formed"
+  );
+
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -129,6 +140,7 @@ vi.mock("@elizaos/core", async () => {
     CommandRegistryService,
     ElizaError,
     EventType,
+    checkPairingAllowed,
     getConfiguredOwnerEntityIds: () => [],
     getDefaultTriageService,
     ModelType,
@@ -142,5 +154,7 @@ vi.mock("@elizaos/core", async () => {
     lifeOpsPassiveConnectorsEnabled,
     logger,
     stringToUuid,
+    toWellFormedUnicode,
+    truncateWellFormed,
   };
 });

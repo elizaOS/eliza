@@ -25,6 +25,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,7 +55,6 @@ import {
   LazyLogsView,
   LazyMemoryViewerView,
   LazyMessagesPageView,
-  LazyMyAppsView,
   LazyPendantTranscriptView,
   LazyPhonePageView,
   LazyPluginsPageView,
@@ -70,8 +70,10 @@ import {
 } from "./app-route-loaders";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
+  type DesktopBottomBarSurfaceState,
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,
+  setDesktopBottomBarSurfaceState,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
@@ -81,6 +83,7 @@ import {
   reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
+import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -92,7 +95,6 @@ import {
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { ServingProviderChip } from "./components/composites/chat/ServingProviderChip";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -103,7 +105,6 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-import { useChatOverlayWindowBounds } from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -131,11 +132,12 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
+  CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
   listenForConnectRequests,
-  NAVIGATE_VIEW_EVENT,
+  listenForNavigateViewRequests,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
@@ -184,12 +186,14 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
+import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
   shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
+import { useFirstRunChatRelease } from "./state/use-first-run-chat-release";
 import {
   isBootstrapGateRequired,
   isLoopbackGatewayHost,
@@ -314,24 +318,22 @@ function useShellMode(): AppShellMode {
  * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
  * chrome — over a transparent background.
  */
-function ChatOverlayShell() {
+function ChatOverlayShell({
+  releaseFirstRunToFull,
+  onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
+  firstRunMountEpoch,
+}: {
+  releaseFirstRunToFull: boolean;
+  onFirstRunReleaseHandled: () => void;
+  onFirstRunChatMounted: (epoch: number) => void;
+  firstRunMountEpoch: number | null;
+}) {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
-  const setActionNotice = useAppSelector((state) => state.setActionNotice);
-  const handleWindowBoundsFailure = useCallback((): void => {
-    if (overlayOpen) {
-      controller?.close();
-    }
-    setActionNotice(
-      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
-      "error",
-      6_000,
-    );
-  }, [controller, overlayOpen, setActionNotice]);
-  useChatOverlayWindowBounds(overlayOpen, handleWindowBoundsFailure);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -357,7 +359,13 @@ function ChatOverlayShell() {
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <ShellFoundationMount />
+        <ShellFoundationMount
+          useWebChatPanel
+          releaseFirstRunToFull={releaseFirstRunToFull}
+          onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+          onFirstRunChatMounted={onFirstRunChatMounted}
+          firstRunMountEpoch={firstRunMountEpoch}
+        />
       </div>
     </>
   );
@@ -838,11 +846,15 @@ function resolveActiveViewSurface({
   navigationPath,
   availableViews,
   viewLayout,
+  enabledKinds,
+  managedCloudRuntime,
 }: {
   tab: string;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   viewLayout: ActiveViewLayout | null;
+  enabledKinds: EnabledViewKinds;
+  managedCloudRuntime: boolean;
 }): ActiveViewSurface {
   // A split/tile layout or an unregistered builtin route has no manifest bearer;
   // it resolves to the safe default (no grants) — the default-deny baseline.
@@ -853,11 +865,18 @@ function resolveActiveViewSurface({
     };
   }
 
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (appShellPageForRoute) {
+  const visibleAppShellPage = findVisibleAppShellPageForRoute(
+    navigationPath,
+    enabledKinds,
+    managedCloudRuntime,
+  );
+  // Restricted native renderers cannot execute remote bundles, so the signed
+  // host page is also the active capability owner there. Web and desktop keep
+  // their intentional remote-bundle precedence below.
+  if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
     return {
-      manifest: resolveSurfaceManifest(appShellPageForRoute),
-      viewId: appShellPageForRoute.id,
+      manifest: resolveSurfaceManifest(visibleAppShellPage),
+      viewId: visibleAppShellPage.id,
     };
   }
 
@@ -878,8 +897,20 @@ function resolveActiveViewSurface({
     };
   }
 
+  if (visibleAppShellPage) {
+    return {
+      manifest: resolveSurfaceManifest(visibleAppShellPage),
+      viewId: visibleAppShellPage.id,
+    };
+  }
+
   const appShellPageForTab = listAppShellPages().find(
-    (entry) => entry.id === tab,
+    (entry) =>
+      entry.id === tab &&
+      appShellPageIsAvailable(entry, {
+        managedCloud: managedCloudRuntime,
+      }) &&
+      isViewVisible(entry, enabledKinds),
   );
   if (appShellPageForTab) {
     return {
@@ -921,11 +952,15 @@ function useActiveViewSurface({
   navigationPath,
   availableViews,
   viewLayout,
+  enabledKinds,
+  managedCloudRuntime,
 }: {
   tab: string;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   viewLayout: ActiveViewLayout | null;
+  enabledKinds: EnabledViewKinds;
+  managedCloudRuntime: boolean;
 }): ActiveViewSurface {
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
@@ -935,8 +970,18 @@ function useActiveViewSurface({
       navigationPath,
       availableViews,
       viewLayout,
+      enabledKinds,
+      managedCloudRuntime,
     });
-  }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
+  }, [
+    availableViews,
+    enabledKinds,
+    managedCloudRuntime,
+    navigationPath,
+    registryVersion,
+    tab,
+    viewLayout,
+  ]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -1042,6 +1087,21 @@ function findAppShellPageForRoute(
   return listAppShellPages().find((entry) =>
     appShellPageMatchesPath(entry, navigationPath),
   );
+}
+
+function findVisibleAppShellPageForRoute(
+  navigationPath: string,
+  enabledKinds: EnabledViewKinds,
+  managedCloudRuntime: boolean,
+): AppShellPageRegistration | undefined {
+  const registration = findAppShellPageForRoute(navigationPath);
+  return registration &&
+    appShellPageIsAvailable(registration, {
+      managedCloud: managedCloudRuntime,
+    }) &&
+    isViewVisible(registration, enabledKinds)
+    ? registration
+    : undefined;
 }
 
 function viewLayoutLabel(layout: ActiveViewLayout): string {
@@ -1279,7 +1339,6 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<LazyMemoryViewerView />),
-    "my-apps": wrap(<LazyMyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -1429,15 +1488,11 @@ function renderViewRouterContent({
       walletNav,
     });
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  const visibleAppShellPage =
-    appShellPageForRoute &&
-    appShellPageIsAvailable(appShellPageForRoute, {
-      managedCloud: managedCloudRuntime,
-    }) &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-      ? appShellPageForRoute
-      : undefined;
+  const visibleAppShellPage = findVisibleAppShellPageForRoute(
+    navigationPath,
+    enabledKinds,
+    managedCloudRuntime,
+  );
   const renderAppShellPage = (registration: AppShellPageRegistration) => (
     <TabContentView
       nav={walletNav}
@@ -1798,11 +1853,73 @@ function SecretsManagerModalMount(): ReactNode {
   );
 }
 
-function ShellFoundationMount() {
+function ShellFoundationMount({
+  useWebChatPanel = false,
+  releaseFirstRunToFull = false,
+  onFirstRunReleaseHandled = () => {},
+  onFirstRunChatMounted,
+  firstRunMountEpoch = null,
+}: {
+  /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
+  useWebChatPanel?: boolean;
+  releaseFirstRunToFull?: boolean;
+  onFirstRunReleaseHandled?: () => void;
+  onFirstRunChatMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
+} = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
-  const shellNeedsAuth = controller?.phase === "needs-auth";
+  const shellPhase = controller?.phase;
+  const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
+    firstRunComplete: state.firstRunComplete,
+    startupPhase: state.startupCoordinator.phase,
+  }));
+  const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
+  // Completion updates the store before the half-height overlay can release
+  // its first-run pin. Keep that mounted instance through the edge so its
+  // shared transcript stays visible until the user deliberately folds to the
+  // pill; a completed relaunch starts with both values false.
+  const firstRunWasPinnedOpenRef = useRef(firstRunPinnedOpen);
+  const firstRunJustCompleted =
+    firstRunWasPinnedOpenRef.current && !firstRunPinnedOpen;
+  const [keepChatOpenAfterFirstRun, setKeepChatOpenAfterFirstRun] =
+    useState(false);
+  useEffect(() => {
+    if (firstRunJustCompleted) setKeepChatOpenAfterFirstRun(true);
+    firstRunWasPinnedOpenRef.current = firstRunPinnedOpen;
+  }, [firstRunJustCompleted, firstRunPinnedOpen]);
+  const shouldMountWebChatPanel =
+    useWebChatPanel &&
+    (shellIsOpen ||
+      firstRunPinnedOpen ||
+      firstRunJustCompleted ||
+      keepChatOpenAfterFirstRun);
+  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
+  const [shellHostDetent, setShellHostDetent] = useState<
+    "pill" | "input" | "half" | "full"
+  >(shellIsOpen ? "input" : "pill");
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (shellIsOpen) controller?.close();
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, setActionNotice, shellIsOpen]);
+  const syncNativeSurfaceState = useCallback(
+    (state: DesktopBottomBarSurfaceState): void => {
+      void setDesktopBottomBarSurfaceState(state).catch(
+        handleWindowBoundsFailure,
+      );
+    },
+    [handleWindowBoundsFailure],
+  );
+  const focusComposerOnOpenRef = useRef(false);
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1811,13 +1928,13 @@ function ShellFoundationMount() {
   // are mutually exclusive App surfaces, so the controller's single sink slot
   // is never contended.
   useEffect(() => {
-    if (!controller) return undefined;
+    if (!controller || useWebChatPanel) return undefined;
     controller.setDictationSink((text) => {
       const current = chatInputRef?.current ?? "";
       setChatInput(current ? `${current} ${text}` : text);
     });
     return () => controller.setDictationSink(null);
-  }, [controller, setChatInput, chatInputRef]);
+  }, [controller, setChatInput, chatInputRef, useWebChatPanel]);
 
   // Global push-to-talk hotkey (#20483): the OS shortcut is trigger-only (no
   // key-up event reaches the renderer), so the hotkey drives the SAME ptt
@@ -1832,7 +1949,8 @@ function ShellFoundationMount() {
       const shell = controllerRef.current;
       if (!shell) return;
       if (shell.authGate.gated) {
-        shell.requestSignIn();
+        if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+        else shell.startRecording("ptt");
         return;
       }
       if (shell.recording) {
@@ -1865,7 +1983,8 @@ function ShellFoundationMount() {
       if (detail.held) {
         if (fnHoldActiveRef.current || shell.recording) return;
         if (shell.authGate.gated) {
-          shell.requestSignIn();
+          if (shell.authGate.phase === "needs-auth") shell.requestSignIn();
+          else shell.startRecording("ptt");
           return;
         }
         fnHoldActiveRef.current = true;
@@ -1888,35 +2007,119 @@ function ShellFoundationMount() {
 
   useEffect(() => {
     if (!hasController) return undefined;
+    // While the shared mobile sheet is open, its five-state callback owns the
+    // exact native frame (including full work-area maximization). The legacy
+    // expanded/hover RPC remains the compatibility path for the resting pill.
+    if (shouldMountWebChatPanel) return undefined;
     let cancelled = false;
+    setShellPreviewHostReady(false);
 
     void (async () => {
       if (cancelled) return;
       await invokeDesktopBridgeRequestWithTimeout<undefined>({
         rpcMethod: "desktopSetBottomBarExpanded",
         ipcChannel: "desktop:setBottomBarExpanded",
-        params: { expanded: shellIsOpen, chip: shellNeedsAuth },
+        params: {
+          expanded: shellIsOpen && shellHostDetent !== "input",
+          hovered:
+            useWebChatPanel &&
+            (shellPhase === "listening" ||
+              (shellIsOpen && shellHostDetent === "input")),
+        },
         timeoutMs: 1_000,
       });
+      if (
+        !cancelled &&
+        useWebChatPanel &&
+        shellPhase === "listening" &&
+        !shellIsOpen
+      ) {
+        // Paint hover and Fn-listening lanes only after the native host is
+        // 600px wide. Before this acknowledgement, wide DOM is clipped through
+        // the resting 96px WKWebView and appears as a narrow center slice.
+        setShellPreviewHostReady(true);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [hasController, shellIsOpen, shellNeedsAuth]);
+  }, [
+    hasController,
+    shouldMountWebChatPanel,
+    shellHostDetent,
+    shellIsOpen,
+    shellPhase,
+    useWebChatPanel,
+  ]);
+  useEffect(() => {
+    if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
+      return;
+    }
+    focusComposerOnOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-composer-textarea"]',
+        )
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [shellIsOpen, useWebChatPanel]);
+  const openSharedDesktopComposer = useCallback(() => {
+    focusComposerOnOpenRef.current = useWebChatPanel;
+    if (useWebChatPanel) setShellHostDetent("input");
+    controller?.open();
+  }, [controller, useWebChatPanel]);
+  useEffect(() => {
+    if (!useWebChatPanel || typeof window === "undefined") return undefined;
+    window.addEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
+    return () =>
+      window.removeEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
+  }, [openSharedDesktopComposer, useWebChatPanel]);
+  const closeWebChatWhenPilled = useCallback(
+    (pilled: boolean) => {
+      if (!pilled) return;
+      setKeepChatOpenAfterFirstRun(false);
+      controller?.close();
+    },
+    [controller],
+  );
   if (!controller) return null;
+
+  if (shouldMountWebChatPanel) {
+    return (
+      <ChatOverlayMount
+        initialMode="input"
+        fillHostAtHalf
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+        onFirstRunChatMounted={onFirstRunChatMounted}
+        firstRunMountEpoch={firstRunMountEpoch}
+        onPilledChange={closeWebChatWhenPilled}
+        onDetentChange={setShellHostDetent}
+        onStateChange={syncNativeSurfaceState}
+      />
+    );
+  }
 
   return (
     <>
       <HomePill
         phase={controller.phase}
+        open={controller.isOpen}
+        analyser={controller.analyser}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={controller.open}
+        onOpen={openSharedDesktopComposer}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
-            controller.requestSignIn();
+            if (controller.authGate.phase === "needs-auth") {
+              controller.requestSignIn();
+            } else {
+              controller.startRecording("ptt");
+            }
             return;
           }
           // Audible mic-open ping BEFORE capture spins up: the cue is the
@@ -1930,32 +2133,33 @@ function ShellFoundationMount() {
           controller.stopRecording();
         }}
         onHoldCancel={controller.cancelRecording}
+        showComposerPreview={!useWebChatPanel}
+        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
-      <AssistantOverlay
-        phase={controller.phase}
-        onClose={controller.close}
-        open={controller.isOpen}
-      >
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
-            <ServingProviderChip className="pointer-events-none text-muted-strong" />
+      {!useWebChatPanel ? (
+        <AssistantOverlay
+          phase={controller.phase}
+          onClose={controller.close}
+          open={controller.isOpen}
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="min-h-0 flex-1">
+              <ChatSurface
+                messages={controller.messages}
+                onSend={controller.send}
+                canSend={controller.canSend}
+                greeting={greetingForTimeOfDay()}
+                recording={controller.recording}
+                onToggleRecording={controller.toggleRecording}
+                onDictateStart={() => controller.startRecording("dictate")}
+                onDictateEnd={controller.stopRecording}
+                onVision={controller.captureVision}
+                visionActive={controller.visionCapturing}
+              />
+            </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <ChatSurface
-              messages={controller.messages}
-              onSend={controller.send}
-              canSend={controller.canSend}
-              greeting={greetingForTimeOfDay()}
-              recording={controller.recording}
-              onToggleRecording={controller.toggleRecording}
-              onDictateStart={() => controller.startRecording("dictate")}
-              onDictateEnd={controller.stopRecording}
-              onVision={controller.captureVision}
-              visionActive={controller.visionCapturing}
-            />
-          </div>
-        </div>
-      </AssistantOverlay>
+        </AssistantOverlay>
+      ) : null}
     </>
   );
 }
@@ -1968,19 +2172,38 @@ function ShellFoundationMount() {
  * provider is present.
  */
 function ChatOverlayMount({
-  releaseFirstRunToHalf,
+  initialMode,
+  fillHostAtHalf = false,
+  releaseFirstRunToFull,
   onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
+  firstRunMountEpoch = null,
+  onPilledChange,
+  onDetentChange,
+  onStateChange,
 }: {
-  releaseFirstRunToHalf: boolean;
+  initialMode?: "input" | "half";
+  fillHostAtHalf?: boolean;
+  releaseFirstRunToFull: boolean;
   onFirstRunReleaseHandled: () => void;
+  onFirstRunChatMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
+  onPilledChange?: (pilled: boolean) => void;
+  onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
+  onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus, firstRunComplete } =
+  const { characterData, agentStatus, firstRunComplete, startupPhase } =
     useAppSelectorShallow((s) => ({
       characterData: s.characterData,
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
+      startupPhase: s.startupCoordinator.phase,
     }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -1990,6 +2213,11 @@ function ChatOverlayMount({
     isElevated: isOwner,
     isAuthorized: atLeast("USER"),
   });
+  useLayoutEffect(() => {
+    if (controller && firstRunOpen && firstRunMountEpoch !== null) {
+      onFirstRunChatMounted?.(firstRunMountEpoch);
+    }
+  }, [controller, firstRunMountEpoch, firstRunOpen, onFirstRunChatMounted]);
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -2001,9 +2229,14 @@ function ChatOverlayMount({
       controller={controller}
       agentName={agentName}
       slash={slash}
-      firstRunOpen={firstRunComplete === false}
-      releaseFirstRunToHalf={releaseFirstRunToHalf}
+      initialMode={initialMode}
+      fillHostAtHalf={fillHostAtHalf}
+      firstRunOpen={firstRunOpen}
+      releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+      onPilledChange={onPilledChange}
+      onDetentChange={onDetentChange}
+      onStateChange={onStateChange}
     />
   );
 }
@@ -2019,7 +2252,14 @@ function HomeScreenMount({
   initialSection?: "home" | "apps";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
-  const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
+  const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
+    firstRunComplete: state.firstRunComplete,
+    startupPhase: state.startupCoordinator.phase,
+  }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -2146,18 +2386,11 @@ function AppContent() {
   );
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
-  // the next ChatOverlay acknowledge it after applying the HALF detent.
-  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
-  const firstRunReleasePendingRef = useRef(false);
-  if (firstRunComplete === false) {
-    firstRunWasIncompleteRef.current = true;
-  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
-    firstRunWasIncompleteRef.current = false;
-    firstRunReleasePendingRef.current = true;
-  }
-  const handleFirstRunReleaseHandled = useCallback(() => {
-    firstRunReleasePendingRef.current = false;
-  }, []);
+  // the next ChatOverlay acknowledge it after applying the FULL detent.
+  const firstRunChatRelease = useFirstRunChatRelease(
+    firstRunComplete,
+    startupCoordinator.phase,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2246,7 +2479,7 @@ function AppContent() {
   });
   // The first-run chat must survive its completion edge. Completion starts an
   // auth probe, but replacing the already-painted shell with StartupScreen
-  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
+  // remounts ChatOverlay and loses its first-run -> FULL transition state. Remember
   // only a shell painted while first-run owned the login surface, and forget
   // it as soon as that probe resolves so a later credential refetch still
   // returns to the startup/auth boundary instead of exposing the shell.
@@ -2255,15 +2488,18 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunComplete,
   );
-  // Record during render as well as in the settle effect below: stored-session
-  // adoption can complete onboarding in the same commit that first paints the
-  // shell, and the completion-edge probe must already see the shell as mounted
-  // on that render — the effect alone would run one commit too late.
-  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
-    onboardingShellMountedRef.current = true;
-  }
-  useEffect(() => {
-    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+  // Only a committed shell may authorize this exception. A render-time ref
+  // write survives an interrupted render and could otherwise let a later auth
+  // probe expose shell providers even though onboarding never painted. Layout
+  // effects run before a user can complete the mounted onboarding UI, so the
+  // prior committed first-run frame is recorded before its completion edge.
+  useLayoutEffect(() => {
+    if (
+      isShellPaintableNow &&
+      !bootstrapGateHolds &&
+      firstRunOwnsAuthSurface &&
+      firstRunChatRelease.mountedOnboarding
+    ) {
       onboardingShellMountedRef.current = true;
     } else if (authState.phase !== "loading") {
       onboardingShellMountedRef.current = false;
@@ -2272,6 +2508,7 @@ function AppContent() {
     authState.phase,
     bootstrapGateHolds,
     firstRunOwnsAuthSurface,
+    firstRunChatRelease.mountedOnboarding,
     isShellPaintableNow,
   ]);
   const preserveMountedOnboardingShell =
@@ -2451,6 +2688,8 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
+  const enabledKinds = useEnabledViewKinds();
+  const managedCloudRuntime = isManagedCloudRuntime(startupCoordinator.target);
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2473,6 +2712,8 @@ function AppContent() {
     navigationPath,
     availableViews: availableViewsForDesktopTabs,
     viewLayout,
+    enabledKinds,
+    managedCloudRuntime,
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2580,7 +2821,12 @@ function AppContent() {
     // deep-links a section. Route it through the same settings state the
     // slash-command path uses (initialSection + #hash) instead of the generic
     // path nav, which would drop the requested section.
-    const handleNavigateView = (event: Event) => {
+    // Returns whether the request was actually applied — this is the
+    // canonical, single-owner handler `listenForNavigateViewRequests` claims
+    // the intent for, so an accurate `true`/`false` here (not just "was
+    // invoked") is what lets a cold-boot Android deep link only get
+    // acknowledged once its navigation genuinely landed (see events/index.ts).
+    const handleNavigateView = (event: Event): boolean => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       if (
         detail?.subview &&
@@ -2593,13 +2839,16 @@ function AppContent() {
         setSettingsNavigatePayload(detail.payload);
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
-        return;
+        markCompletedActionNavigationHandled(event, detail);
+        return true;
       }
-      baseHandler(event);
+      const handled = baseHandler(event);
+      if (handled) {
+        markCompletedActionNavigationHandled(event, detail);
+      }
+      return handled;
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
-    return () =>
-      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
+    return listenForNavigateViewRequests(handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,
@@ -2821,10 +3070,22 @@ function AppContent() {
     return (
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
-          <ChatOverlayShell />
-          <FirstRunConductorMount />
+          <ChatOverlayShell
+            releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+            onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+          />
+          <FirstRunConductorMount
+            onFirstRunTranscriptMounted={
+              firstRunChatRelease.recordMountedTranscript
+            }
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+            firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+          />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
+          <ShellOverlays actionNotice={actionNotice} />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -3138,14 +3399,22 @@ function AppContent() {
           behind stays live.
         */}
         <ChatOverlayMount
-          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
-          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+          releaseFirstRunToFull={firstRunChatRelease.releasePending}
+          onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+          onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
-        <FirstRunConductorMount />
+        <FirstRunConductorMount
+          onFirstRunTranscriptMounted={
+            firstRunChatRelease.recordMountedTranscript
+          }
+          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+          firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+        />
         {/* In-chat model-status card (headless) — while the local text model is
             downloading/loading/missing/errored it seeds ONE live status turn
             with cancel / switch-to-cloud / retry controls. Renders null. */}

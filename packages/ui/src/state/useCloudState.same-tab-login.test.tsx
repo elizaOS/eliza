@@ -17,7 +17,11 @@ import {
   markCloudLoginPending,
   readCloudLoginPending,
 } from "../first-run/first-run-cloud-resume";
-import { CLOUD_LOGIN_POPUP_NAME } from "./cloud-login-launch";
+import {
+  __resetPreparedDesktopCloudLoginSessionForTests,
+  CLOUD_LOGIN_POPUP_NAME,
+  prepareDesktopCloudLoginSession,
+} from "./cloud-login-launch";
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { useCloudState } from "./useCloudState";
 
@@ -28,6 +32,14 @@ const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
 );
 const globalWithPlatform = globalThis as typeof globalThis & {
   Capacitor?: { isNativePlatform?: () => boolean };
+};
+const windowWithElectrobun = window as Window & {
+  __electrobunWindowId?: number;
+  __ELIZA_ELECTROBUN_RPC__?: {
+    request: Record<string, (params?: unknown) => Promise<unknown>>;
+    onMessage: (name: string, listener: (payload: unknown) => void) => void;
+    offMessage: (name: string, listener: (payload: unknown) => void) => void;
+  };
 };
 
 function makeParams() {
@@ -78,6 +90,9 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   afterEach(() => {
     localStorage.clear();
     delete globalWithPlatform.Capacitor;
+    delete windowWithElectrobun.__electrobunWindowId;
+    delete windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__;
+    __resetPreparedDesktopCloudLoginSessionForTests();
     vi.restoreAllMocks();
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
@@ -137,6 +152,75 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(assignSpy).not.toHaveBeenCalled();
     expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+  });
+
+  it("uses Electrobun's external-browser RPC instead of a renderer popup", async () => {
+    const browserUrl = "https://eliza.app/auth/cli-login?session=desktop";
+    const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
+    windowWithElectrobun.__electrobunWindowId = 1;
+    windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
+      request: { desktopOpenExternal },
+      onMessage: vi.fn(),
+      offMessage: vi.fn(),
+    };
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.eliza.app",
+      browserUrl,
+      sessionId: "desktop",
+    });
+    const openSpy = vi.spyOn(window, "open");
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+
+    await act(async () => {
+      void result.current.handleCloudLogin(null);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
+    });
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("opens from a prepared desktop session without another click-time network round-trip", async () => {
+    const browserUrl =
+      "https://eliza.app/auth/cli-login?session=desktop-prepared";
+    const desktopOpenExternal = vi.fn().mockResolvedValue(undefined);
+    windowWithElectrobun.__electrobunWindowId = 1;
+    windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
+      request: { desktopOpenExternal },
+      onMessage: vi.fn(),
+      offMessage: vi.fn(),
+    };
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.eliza.app",
+      browserUrl,
+      sessionId: "desktop-prepared",
+    });
+
+    const prepared = prepareDesktopCloudLoginSession("https://eliza.app", () =>
+      client.cloudLoginDirect("https://eliza.app"),
+    );
+    await prepared;
+    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      void result.current.handleCloudLogin(null, { requireClientAuth: true });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(desktopOpenExternal).toHaveBeenCalledWith({ url: browserUrl });
+    });
+    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+    unmount();
   });
 
   it("does not navigate the auth popup until CLI-session creation completes", async () => {

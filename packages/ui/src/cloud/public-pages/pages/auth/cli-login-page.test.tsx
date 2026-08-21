@@ -4,11 +4,14 @@
 /**
  * `CliLoginPage` device-login flow: an unauthenticated visitor is redirected
  * straight to /login (no CLI interstitial) with a per-session guard so it never
- * loops; an authenticated visitor POSTs /complete, notifies the opener, and
- * returns app-launched sessions to their sanitized return target while keeping
- * the success screen as the terminal/manual fallback; a missing session id or a
- * completion failure renders the error panel with no POST. The router,
- * session-auth hook, api-client, Steward provider, and i18n are doubled.
+ * loops; an authenticated visitor is held on a confirmation interstitial that
+ * names the requesting client — a bare clicked link must never mint a key, only
+ * the explicit Authorize gesture POSTs /complete (then notifies the opener and
+ * returns app-launched sessions to their sanitized return target, keeping the
+ * success screen as the terminal/manual fallback), while Cancel abandons the
+ * flow with no POST; a missing session id or a completion failure renders the
+ * error panel with no POST. The router, session-auth hook, api-client, Steward
+ * provider, and i18n are doubled.
  */
 
 import { readFileSync } from "node:fs";
@@ -90,6 +93,14 @@ function resetSessionAuth() {
   };
 }
 
+function authenticate(): void {
+  sessionAuthRef.current = {
+    ready: true,
+    authenticated: true,
+    user: { id: "u1", email: "a@b.co" },
+  };
+}
+
 function stubLocationReplace(): ReturnType<typeof vi.fn> {
   const replace = vi.fn();
   Object.defineProperty(window, "location", {
@@ -161,12 +172,89 @@ describe("CliLoginPage", () => {
     expect(link.getAttribute("href")).toBe(SIGN_IN_HREF);
   });
 
-  it("completes authenticated terminal/manual sessions with the success fallback", async () => {
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+  it("holds an authenticated visitor on the confirmation interstitial — a bare clicked link never mints a key", async () => {
+    authenticate();
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+
+    render(<CliLoginPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+    ).toBeTruthy();
+    // The interstitial names the requesting client (generic form when the
+    // flow carries no returnTo) and no completion POST has fired on load.
+    expect(screen.getByText(/command-line application/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Authorize" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    await Promise.resolve();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("names the requesting client's host on the interstitial when returnTo is present", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "http://localhost:2138/chat?firstRun=1",
+    });
+    authenticate();
+
+    render(<CliLoginPage />);
+
+    expect(screen.getByText(/"localhost:2138"/)).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires fresh confirmation after a session link changes away and back", async () => {
+    const user = userEvent.setup();
+    authenticate();
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+
+    const { rerender } = render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+
+    searchParamsRef.current = new URLSearchParams("session=sess-2");
+    rerender(<CliLoginPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+      ).toBeTruthy(),
+    );
+
+    searchParamsRef.current = new URLSearchParams("session=sess-1");
+    rerender(<CliLoginPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
+      ).toBeTruthy(),
+    );
+    await Promise.resolve();
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("Cancel abandons the flow with no POST and a distinct cancelled state", async () => {
+    const user = userEvent.setup();
+    authenticate();
+
+    render(<CliLoginPage />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByText("Sign-In Cancelled")).toBeTruthy();
+    expect(screen.getByText(/No API key was created/)).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("completes authenticated terminal/manual sessions with the success fallback after Authorize", async () => {
+    const user = userEvent.setup();
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
@@ -179,6 +267,7 @@ describe("CliLoginPage", () => {
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
@@ -187,6 +276,7 @@ describe("CliLoginPage", () => {
       "/api/auth/cli-session/sess-1/complete",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(postMessage).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Close window" })).toBeTruthy();
     expect(
@@ -199,15 +289,12 @@ describe("CliLoginPage", () => {
   });
 
   it("with a live opener, notifies and closes without navigating returnTo (no second app shell)", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
@@ -220,6 +307,7 @@ describe("CliLoginPage", () => {
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
@@ -237,15 +325,12 @@ describe("CliLoginPage", () => {
   it("named cloud-auth popup without opener stays terminal (no returnTo second shell)", async () => {
     // COOP / opener closed mid-flight: window.name still identifies the handoff
     // surface, but hasLiveOpener would be false. Must not location.replace.
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
@@ -260,6 +345,7 @@ describe("CliLoginPage", () => {
 
     try {
       render(<CliLoginPage />);
+      await user.click(screen.getByRole("button", { name: "Authorize" }));
 
       await waitFor(() =>
         expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
@@ -273,15 +359,12 @@ describe("CliLoginPage", () => {
   });
 
   it("without an opener, redirects authenticated app-launched sessions to sanitized returnTo", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "http://localhost:2138/chat?firstRun=1",
     });
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
@@ -290,6 +373,7 @@ describe("CliLoginPage", () => {
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
@@ -302,15 +386,12 @@ describe("CliLoginPage", () => {
   });
 
   it("allows the production apex app as a returnTo target", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "https://elizacloud.ai/chat?elizaCloudLogin=complete",
     });
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
@@ -318,6 +399,7 @@ describe("CliLoginPage", () => {
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
@@ -330,21 +412,22 @@ describe("CliLoginPage", () => {
   });
 
   it("ignores untrusted returnTo origins and keeps the success fallback", async () => {
+    const user = userEvent.setup();
     searchParamsRef.current = new URLSearchParams({
       session: "sess-1",
       returnTo: "https://evil.example.test/chat",
     });
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    authenticate();
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
     const replace = stubLocationReplace();
 
     render(<CliLoginPage />);
+    // An untrusted returnTo is sanitized away, so the interstitial falls back
+    // to the generic client description.
+    expect(screen.getByText(/command-line application/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
@@ -378,14 +461,12 @@ describe("CliLoginPage", () => {
   });
 
   it("surfaces a completion failure as the error panel", async () => {
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    const user = userEvent.setup();
+    authenticate();
     apiFetchMock.mockRejectedValue(new Error("boom"));
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() =>
       expect(screen.getByText("Authentication Error")).toBeTruthy(),
@@ -395,21 +476,19 @@ describe("CliLoginPage", () => {
   });
 
   it("clears the stale Steward session on a 401 during completion", async () => {
-    sessionAuthRef.current = {
-      ready: true,
-      authenticated: true,
-      user: { id: "u1", email: "a@b.co" },
-    };
+    const user = userEvent.setup();
+    authenticate();
     apiFetchMock.mockRejectedValue(new ApiError(401, "unauthorized", "nope"));
 
     render(<CliLoginPage />);
+    await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() => expect(clearStaleStewardSession).toHaveBeenCalled());
   });
 });
 
 describe("CliLoginPage short-viewport scroll", () => {
-  // Every CliLoginPanel state (loading, success "Authentication Complete!",
+  // Every CliLoginPanel state (confirm, success "Authentication Complete!",
   // error) is a full-viewport centered card. On short screens (Light Phone III,
   // 1080×1240) a flex `justify-center` pins the card center above scrollTop 0,
   // hiding the action buttons below an unreachable fold. The panel must be

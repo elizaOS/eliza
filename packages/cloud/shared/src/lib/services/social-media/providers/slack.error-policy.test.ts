@@ -20,6 +20,7 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { MediaAttachment, PostContent, SocialCredentials } from "../../../types/social-media";
+import * as realMediaDownload from "../media-download";
 import * as realRateLimit from "../rate-limit";
 
 // bun's `mock.restore()` (afterEach below) restores spies but does NOT undo
@@ -31,6 +32,16 @@ import * as realRateLimit from "../rate-limit";
 // which share the same rate-limit module. Snapshot the real exports now and
 // reinstall them in afterAll so this file's stub is strictly local.
 const realRateLimitExports = { ...realRateLimit };
+const realMediaDownloadExports = { ...realMediaDownload };
+
+const downloadSocialMediaBytes = mock(
+  async (
+    _url: string,
+    _options?: { httpErrorMessage?: (status: number) => string },
+  ): Promise<Buffer> => Buffer.from("PNGBYTES"),
+);
+
+mock.module("../media-download", () => ({ downloadSocialMediaBytes }));
 
 mock.module("../rate-limit", () => ({
   withRetry: async (fn: () => Promise<Response>, parser: (r: Response) => Promise<unknown>) => {
@@ -46,16 +57,13 @@ mock.module("../rate-limit", () => ({
   isRateLimitResponse: (r: Response) => r.status === 429,
 }));
 
-const { slackProvider } = await import("./slack");
+const { slackProvider, slackFetch } = await import("./slack");
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
-
-const raw = (body: string, status = 200): Response =>
-  new Response(body, { status, headers: { "content-type": "text/plain" } });
 
 const BOT_CREDS = { botToken: "xoxb-token", channelId: "C123" } as SocialCredentials;
 
@@ -64,6 +72,8 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   fetchQueue = [];
+  downloadSocialMediaBytes.mockClear();
+  downloadSocialMediaBytes.mockImplementation(async () => Buffer.from("PNGBYTES"));
   globalThis.fetch = mock(async (input: unknown) => {
     const next = fetchQueue.shift();
     if (!next) throw new Error("unexpected fetch call — queue empty");
@@ -78,6 +88,7 @@ afterEach(() => {
 
 afterAll(() => {
   mock.module("../rate-limit", () => realRateLimitExports);
+  mock.module("../media-download", () => realMediaDownloadExports);
 });
 
 async function rejects(p: Promise<unknown>): Promise<Error> {
@@ -97,21 +108,20 @@ describe("slackProvider.uploadMedia — fail closed on a failed source download"
   } as MediaAttachment;
 
   test("PROPAGATES a non-OK media download instead of uploading the error body", async () => {
-    // Only the download is attempted; the files.upload fetch must never run.
-    fetchQueue = [() => raw("not found", 404)];
+    downloadSocialMediaBytes.mockImplementation(async (_url, options) => {
+      throw new Error(options?.httpErrorMessage?.(404) ?? "download failed");
+    });
 
     const err = await rejects(slackProvider.uploadMedia!(BOT_CREDS, urlMedia));
     expect(err.message).toContain("Failed to download media");
     expect(err.message).toContain("404");
     // The upload call was never reached — the download failure short-circuited.
     expect(fetchQueue.length).toBe(0);
+    expect(downloadSocialMediaBytes).toHaveBeenCalledTimes(1);
   });
 
   test("uploads successfully when the download AND files.upload both succeed (drives the real path)", async () => {
-    fetchQueue = [
-      () => raw("PNGBYTES", 200),
-      () => json({ ok: true, file: { id: "F1", permalink: "https://files/x" } }),
-    ];
+    fetchQueue = [() => json({ ok: true, file: { id: "F1", permalink: "https://files/x" } })];
 
     const result = await slackProvider.uploadMedia!(BOT_CREDS, urlMedia);
     expect(result.mediaId).toBe("F1");
@@ -119,7 +129,7 @@ describe("slackProvider.uploadMedia — fail closed on a failed source download"
   });
 
   test("PROPAGATES a files.upload rejection (ok:false) instead of returning a fake mediaId", async () => {
-    fetchQueue = [() => raw("PNGBYTES", 200), () => json({ ok: false, error: "invalid_auth" })];
+    fetchQueue = [() => json({ ok: false, error: "invalid_auth" })];
 
     const err = await rejects(slackProvider.uploadMedia!(BOT_CREDS, urlMedia));
     expect(err.message).toContain("invalid_auth");
@@ -166,5 +176,102 @@ describe("slackProvider.createPost — designed failure vs success stay distingu
     expect(result.error).toContain("Channel ID required");
     // No outbound call happened — the queue was never touched.
     expect(fetchQueue.length).toBe(0);
+  });
+});
+
+describe("slackFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Slack API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      slackFetch("https://slack.com/api/chat.postMessage", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("composes a caller-provided abort signal with the deadline", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await slackFetch("https://slack.com/api/chat.postMessage", {
+      signal: controller.signal,
+    });
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  test("still aborts at the deadline when the caller signal never fires", async () => {
+    // Regression: the wrapper used to read `init?.signal ?? AbortSignal.timeout(ms)`,
+    // so any caller signal REPLACED the deadline. A request-scoped controller
+    // that outlives this hop and is never aborted then left the hop unbounded —
+    // it stayed hung well past 10x the declared deadline against a real
+    // non-responding socket.
+    // Mirrors real fetch: the only way out is the signal firing, and the
+    // rejection carries the signal's own reason, so the assertion below can
+    // tell the wrapper's deadline (TimeoutError) from any other abort.
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as typeof fetch;
+
+    const caller = new AbortController();
+    // Raced against a watchdog rather than awaited directly: an unbounded hop
+    // never settles, so a regression has to surface as a failed assertion here
+    // and not as a hung test file.
+    const outcome = await Promise.race([
+      slackFetch("https://slack.com/api/chat.postMessage", { signal: caller.signal }, 100).then(
+        () => "resolved",
+        (error: Error) => `aborted:${error.name}`,
+      ),
+      new Promise<string>((resolve) => setTimeout(() => resolve("STILL-HUNG"), 1_000)),
+    ]);
+    expect(outcome).toBe("aborted:TimeoutError");
+    expect(caller.signal.aborted).toBe(false);
+  });
+
+  test("still lets the caller abort early, ahead of the deadline", async () => {
+    // No over-rejection: composing must not cost the caller its own cancellation.
+    // Mirrors real fetch: the only way out is the signal firing, and the
+    // rejection carries the signal's own reason, so the assertion below can
+    // tell the wrapper's deadline (TimeoutError) from any other abort.
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as typeof fetch;
+
+    const caller = new AbortController();
+    const pending = slackFetch(
+      "https://slack.com/api/chat.postMessage",
+      { signal: caller.signal },
+      60_000,
+    );
+    caller.abort();
+    await expect(pending).rejects.toThrow(/aborted/i);
   });
 });

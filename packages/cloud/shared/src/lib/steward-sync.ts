@@ -385,6 +385,7 @@ async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: stri
     }
     throw error;
   }
+  await invalidateBoundPersonalDeliveryProjection("phone", phoneNumber);
 }
 
 /**
@@ -633,6 +634,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           `[StewardSync] Phone-account tenant provisioning failed for org ${promotion.organization.id}; sign-in proceeds: ${describeSyncError(error)}`,
         );
       }
+      await invalidateBoundPersonalDeliveryProjection("phone", verifiedPhone);
       return promotedUser;
     }
     if (promotion.status !== "not_found") {
@@ -1146,8 +1148,8 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
 }
 
 /**
- * Ensures an account has a default Eliza character, seeding one from the
- * default template when the organization has none.
+ * Ensures an account has a default Eliza character and matching runtime
+ * mirror, seeding from the default template when the organization has none.
  *
  * Idempotent and never rejects. Called from two places: the one-time
  * new-user signup branch above, and every session-cache miss
@@ -1155,7 +1157,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
  * path: a create that fails at signup is swallowed here (signup must not
  * fail over provisioning), so without the session-time re-run the account
  * would stay character-less forever — the default character is
- * deterministically reconstructable, so re-seeding is always safe.
+ * deterministically reconstructable, so re-seeding is always safe. A healthy
+ * character+mirror pair exits through a read-intent probe; absent or
+ * inconsistent state reaches CharactersService's locked bootstrap authority,
+ * whose ensure-if-absent also repairs legacy character rows.
  */
 export async function ensureDefaultCharacter(
   userId: string,
@@ -1167,18 +1172,21 @@ export async function ensureDefaultCharacter(
   }
 
   try {
-    if (await charactersService.existsForOrganization(organizationId)) {
+    if (await charactersService.hasHealthyCloudCharacterMirror(organizationId)) {
       return;
     }
 
     const defaultData = getDefaultElizaCharacterData();
-    await charactersService.create({
-      ...defaultData,
-      user_id: userId,
-      organization_id: organizationId,
-    });
+    await charactersService.create(
+      {
+        ...defaultData,
+        user_id: userId,
+        organization_id: organizationId,
+      },
+      { policy: { mode: "bootstrap" } },
+    );
 
-    logger.info(`[StewardSync] Created default Eliza character for user ${userId}`);
+    logger.info(`[StewardSync] Ensured default Eliza character for user ${userId}`);
   } catch (error) {
     // error-policy:J1 provisioning boundary: a default-character failure
     // must not fail signup or session resolution; it is logged here and

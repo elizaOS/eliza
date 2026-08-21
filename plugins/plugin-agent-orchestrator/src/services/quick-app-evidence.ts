@@ -279,10 +279,9 @@ export function detectCheckSurfaces(
 }
 
 const MAX_CONTENT_FILES = 3;
-// 6k chars covers each file of a typical small static app whole; the 2k cap
-// truncated style.css mid-file and the judge parked a live page for
-// "CSS content missing due to truncated evidence" (2026-08-19).
-const MAX_CONTENT_CHARS = 6_000;
+// Typical quick-app files run 6-8KB; a 2KB cap cut them exactly where the
+// judged content lived (velvet-moth live park). 8KB covers the class whole.
+const MAX_CONTENT_CHARS = 8_000;
 /** Text-asset extensions worth showing the judge verbatim. */
 const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
 

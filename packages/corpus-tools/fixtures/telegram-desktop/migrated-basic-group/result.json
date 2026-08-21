@@ -1,0 +1,35 @@
+{
+  "personal_information": {
+    "user_id": 100,
+    "first_name": "Synthetic",
+    "last_name": "Owner"
+  },
+  "chats": {
+    "list": [
+      {
+        "name": "Migrated Synthetic Group",
+        "type": "private_supergroup",
+        "id": 300,
+        "messages": [
+          {
+            "id": -1000000001,
+            "type": "message",
+            "date_unixtime": "1725148800",
+            "from": "Group Member",
+            "from_id": "user201",
+            "text": "migrated group message"
+          },
+          {
+            "id": -1000000002,
+            "type": "message",
+            "date_unixtime": "1725235200",
+            "from": "Synthetic Owner",
+            "from_id": "user100",
+            "reply_to_message_id": -1000000001,
+            "text": "reply to migrated group message"
+          }
+        ]
+      }
+    ]
+  }
+}

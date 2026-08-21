@@ -8,6 +8,7 @@ import {
   NEW_VIEW_WINDOW_ACTION_PREFIX,
   parseViewWindowAction,
 } from "./application-menu";
+import { overrideBrandConfig, resetBrandConfigForTests } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 
 describe("buildViewsMenu", () => {
@@ -119,6 +120,22 @@ describe("buildApplicationMenu", () => {
         (entry) => `${NEW_VIEW_WINDOW_ACTION_PREFIX}${entry.id}`,
       ),
     );
+  });
+
+  it("hides developer viewer apps from Cloud-only consumer builds", () => {
+    resetBrandConfigForTests();
+    overrideBrandConfig({ cloudOnly: true });
+    try {
+      const menu = buildApplicationMenu({
+        isMac: true,
+        browserEnabled: true,
+        detachedWindows: noWindows,
+      });
+      expect(menu.some((item) => item.label === "Apps")).toBe(false);
+      expect(menu.some((item) => item.label === "Views")).toBe(true);
+    } finally {
+      resetBrandConfigForTests();
+    }
   });
 
   it("keeps the Views submenu regardless of agentReady (unlike the Window new-* entries)", () => {

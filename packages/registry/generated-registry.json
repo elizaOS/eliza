@@ -970,6 +970,53 @@
       "registryKind": "plugin",
       "directory": "elizaos-plugin"
     },
+    "@wzrd_sol/plugin-trustgate": {
+      "git": {
+        "repo": "twzrd-sol/twzrd-trust",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@wzrd_sol/plugin-trustgate",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.4"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Buyer-side x402 reputation gate for elizaOS: free TWZRD ReadinessCard preflight before spend, opt-in canSpendSafely enforcement, and an optional facilitator onBeforeSettle hook. No keys or auto-spend.",
+      "homepage": "https://github.com/twzrd-sol/twzrd-trust/tree/main/plugin-trustgate",
+      "topics": [
+        "x402",
+        "trust",
+        "payments",
+        "solana",
+        "spend-guard",
+        "preflight",
+        "reputation"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugin-trustgate"
+    },
     "@xynqai/plugin-eliza": {
       "git": {
         "repo": "visionsXBT/xynq",
@@ -1291,6 +1338,51 @@
         "review",
         "onchain",
         "x402"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-livetennis": {
+      "git": {
+        "repo": "livetennisapi/elizaos-plugin-livetennis",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-livetennis",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Live tennis scores, upcoming fixtures, and player search for elizaOS agents via the Live Tennis API — ATP, WTA, Challenger, ITF and juniors. FREE-tier endpoints only, with honest per-action tier errors.",
+      "homepage": "https://livetennisapi.com",
+      "topics": [
+        "tennis",
+        "sports",
+        "live-scores",
+        "fixtures",
+        "rankings"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

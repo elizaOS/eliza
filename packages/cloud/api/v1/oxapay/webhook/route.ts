@@ -7,9 +7,8 @@
  * /api/crypto/webhook does (optional OXAPAY_WEBHOOK_IPS allowlist + the
  * HMAC-SHA512 `hmac` header, verified against OXAPAY_MERCHANT_API_KEY
  * inside the adapter's `parseWebhook`), dedupes by track id + disposition,
- * then marks the payment request settled/failed and publishes
- * `PaymentSettled` / `PaymentFailed` on the payment callback bus — the
- * exact shape of /api/v1/stripe/webhook.
+ * then atomically persists the provider event, request transition, and credit
+ * grant before dispatching a non-authoritative callback.
  *
  * Distinct from the legacy `/api/crypto/webhook` route, which settles the
  * old `crypto_payments` table. New invoices created by the OxaPay payment
@@ -18,12 +17,18 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { OxaPayApiError } from "@/lib/services/oxapay";
 import { createOxaPayPaymentAdapter } from "@/lib/services/payment-adapters/oxapay";
 import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
+import {
+  type DurablePaymentProviderEvent,
+  dispatchPaymentCallbacks,
+  processPaymentProviderEvent,
+  sha256Hex,
+} from "@/lib/services/payment-request-settlement";
 import { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
 import { logger, redact } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -47,134 +52,150 @@ function getWebhookAllowedIps(env: AppContext["env"]): string[] {
     .filter(Boolean);
 }
 
-const app = new Hono<AppEnv>();
+interface OxaPayWebhookDependencies {
+  adapter: typeof oxaPayAdapter;
+  processProviderEvent: (
+    event: DurablePaymentProviderEvent & { provider: "oxapay" },
+  ) => ReturnType<typeof processPaymentProviderEvent>;
+  dispatchCallbacks: typeof dispatchPaymentCallbacks;
+  digest: typeof sha256Hex;
+}
 
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
-  const ip = getClientIp(c);
-  const allowedIps = getWebhookAllowedIps(c.env);
-  if (allowedIps.length > 0 && !allowedIps.includes(ip)) {
-    logger.warn("[OxaPayWebhook API] Request from non-allowlisted IP", {
-      ip: redact.ip(ip),
-    });
-    return c.json({ success: false, error: "Unauthorized" }, 403);
-  }
+export function createOxaPayWebhookApp(
+  dependencies: OxaPayWebhookDependencies = {
+    adapter: oxaPayAdapter,
+    processProviderEvent: processPaymentProviderEvent,
+    dispatchCallbacks: dispatchPaymentCallbacks,
+    digest: sha256Hex,
+  },
+): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
 
-  const rawBody = await c.req.text();
-  const signature = c.req.header("hmac") ?? null;
-  if (!signature) {
-    return c.json({ success: false, error: "Missing hmac header" }, 400);
-  }
-
-  if (!oxaPayAdapter.parseWebhook) {
-    return c.json(
-      { success: false, error: "OxaPay adapter does not support webhooks" },
-      500,
-    );
-  }
-
-  let parsed: Awaited<
-    ReturnType<NonNullable<typeof oxaPayAdapter.parseWebhook>>
-  >;
-  try {
-    parsed = await oxaPayAdapter.parseWebhook({ rawBody, signature });
-  } catch (error) {
-    if (error instanceof IgnoredWebhookEvent) {
-      logger.info("[OxaPayWebhook API] Ignored event", {
-        reason: error.message,
+  app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
+    const ip = getClientIp(c);
+    const allowedIps = getWebhookAllowedIps(c.env);
+    if (allowedIps.length > 0 && !allowedIps.includes(ip)) {
+      logger.warn("[OxaPayWebhook API] Request from non-allowlisted IP", {
+        ip: redact.ip(ip),
       });
-      // OxaPay requires exactly "ok" with HTTP 200 to stop redelivery.
-      return c.body("ok", 200, { "Content-Type": "text/plain" });
+      return c.json({ success: false, error: "Unauthorized" }, 403);
     }
-    logger.warn("[OxaPayWebhook API] Signature verification or parse failed", {
-      ip: redact.ip(ip),
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return c.json(
-      { success: false, error: "Webhook verification failed" },
-      400,
-    );
-  }
 
-  const providerEventId = `${parsed.txRef ?? parsed.paymentRequestId}:${parsed.status}`;
-  const service = getPaymentRequestsService(c.env);
-  const failureReason =
-    parsed.status === "settled"
-      ? null
-      : typeof parsed.proof.status === "string"
-        ? `OxaPay invoice ${parsed.proof.status}`
-        : "OxaPay payment failed";
+    const rawBody = await c.req.text();
+    const signature = c.req.header("hmac") ?? null;
+    if (!signature) {
+      return c.json({ success: false, error: "Missing hmac header" }, 400);
+    }
 
-  // Persist FIRST, record the dedupe key only after success: recording before
-  // persistence would poison the key when markSettled fails transiently, and
-  // OxaPay's retry would then be skipped — the user pays and is never
-  // credited. Replays are safe either way because markSettled/markFailed are
-  // idempotent (a same-txRef replay returns the existing settled row without
-  // emitting a second event).
-  try {
-    if (parsed.status === "settled") {
-      await service.markSettled(
-        parsed.paymentRequestId,
-        parsed.txRef ?? "oxapay:settled",
-        parsed.proof,
-      );
-    } else {
-      await service.markFailed(
-        parsed.paymentRequestId,
-        failureReason ?? "OxaPay payment failed",
+    if (!dependencies.adapter.parseWebhook) {
+      return c.json(
+        { success: false, error: "OxaPay adapter does not support webhooks" },
+        500,
       );
     }
-  } catch (error) {
-    // Unknown payment request, terminal-state conflict, or storage failure.
-    // Return 500 so OxaPay retries; benign replays (same txRef, already
-    // settled) do not throw, so retry storms self-resolve while genuine
-    // anomalies stay loud in the logs.
-    logger.error("[OxaPayWebhook API] Settlement persistence failed", {
-      paymentRequestId: parsed.paymentRequestId,
-      status: parsed.status,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return c.body("error", 500, { "Content-Type": "text/plain" });
-  }
 
-  // In-process replay dedupe for bus publishes (same shape as the Stripe
-  // webhook — the durable settle guarantee above does not depend on it).
-  const recorded = paymentCallbackBus.recordProviderEvent(
-    "oxapay",
-    providerEventId,
-  );
-  if (!recorded) {
-    logger.debug("[OxaPayWebhook API] Duplicate event — skipping publish", {
-      providerEventId,
-    });
+    let parsed: Awaited<
+      ReturnType<NonNullable<typeof oxaPayAdapter.parseWebhook>>
+    >;
+    try {
+      parsed = await dependencies.adapter.parseWebhook({ rawBody, signature });
+    } catch (error) {
+      // error-policy:J1 translate provider authentication and parsing failures.
+      if (error instanceof IgnoredWebhookEvent) {
+        logger.info("[OxaPayWebhook API] Ignored event", {
+          reason: error.message,
+        });
+        // OxaPay requires exactly "ok" with HTTP 200 to stop redelivery.
+        return c.body("ok", 200, { "Content-Type": "text/plain" });
+      }
+      if (error instanceof OxaPayApiError) {
+        logger.error("[OxaPayWebhook API] Payment inquiry failed", {
+          error: error.message,
+        });
+        return c.body("error", 500, { "Content-Type": "text/plain" });
+      }
+      logger.warn(
+        "[OxaPayWebhook API] Signature verification or parse failed",
+        {
+          ip: redact.ip(ip),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return c.json(
+        { success: false, error: "Webhook verification failed" },
+        400,
+      );
+    }
+    if (!parsed.txRef) {
+      return c.body("error", 400, { "Content-Type": "text/plain" });
+    }
+    const failureReason =
+      parsed.status === "settled"
+        ? null
+        : typeof parsed.proof.oxapay_status === "string"
+          ? `OxaPay invoice ${parsed.proof.oxapay_status}`
+          : "OxaPay payment failed";
+
+    let processed: Awaited<ReturnType<typeof processPaymentProviderEvent>>;
+    try {
+      const semanticDelivery = JSON.stringify({
+        providerEventId: parsed.providerEventId,
+        paymentRequestId: parsed.paymentRequestId,
+        disposition: parsed.status,
+        providerTxRef: parsed.txRef,
+        amountCents: parsed.amountCents ?? null,
+        currency: parsed.currency?.toUpperCase() ?? null,
+      });
+      processed = await dependencies.processProviderEvent({
+        provider: "oxapay",
+        providerEventId: parsed.providerEventId,
+        paymentRequestId: parsed.paymentRequestId,
+        disposition: parsed.status,
+        providerTxRef: parsed.txRef,
+        payloadDigest: await dependencies.digest(semanticDelivery),
+        amountCents: parsed.amountCents,
+        currency: parsed.currency,
+        proof: parsed.proof,
+        error: failureReason ?? undefined,
+      });
+    } catch (error) {
+      // error-policy:J1 ask OxaPay to retry durable fulfillment failures.
+      // Unknown payment request, terminal-state conflict, or storage failure.
+      // Return 500 so OxaPay retries; benign replays (same txRef, already
+      // settled) do not throw, so retry storms self-resolve while genuine
+      // anomalies stay loud in the logs.
+      logger.error("[OxaPayWebhook API] Settlement persistence failed", {
+        paymentRequestId: parsed.paymentRequestId,
+        status: parsed.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.body("error", 500, { "Content-Type": "text/plain" });
+    }
+
+    if (
+      processed.callbackState === "pending" ||
+      processed.callbackState === "failed"
+    ) {
+      await paymentCallbackBus.publish(processed.callback);
+      await dependencies.dispatchCallbacks({
+        provider: "oxapay",
+        providerEventId: processed.callback.providerEventId,
+        limit: 1,
+      });
+    }
+
     return c.body("ok", 200, { "Content-Type": "text/plain" });
-  }
+  });
 
-  if (parsed.status === "settled") {
-    await paymentCallbackBus.publish({
-      name: "PaymentSettled",
-      paymentRequestId: parsed.paymentRequestId,
-      provider: "oxapay",
-      txRef: parsed.txRef,
-      providerEventId,
-      settledAt: new Date(),
-    });
-  } else {
-    await paymentCallbackBus.publish({
-      name: "PaymentFailed",
-      paymentRequestId: parsed.paymentRequestId,
-      provider: "oxapay",
-      txRef: parsed.txRef,
-      providerEventId,
-      error: failureReason ?? "OxaPay payment failed",
-      failedAt: new Date(),
-    });
-  }
+  app.get("/", (c) =>
+    c.json({
+      status: "ok",
+      message: "OxaPay payment_requests webhook endpoint",
+    }),
+  );
 
-  return c.body("ok", 200, { "Content-Type": "text/plain" });
-});
+  return app;
+}
 
-app.get("/", (c) =>
-  c.json({ status: "ok", message: "OxaPay payment_requests webhook endpoint" }),
-);
-
+const app = createOxaPayWebhookApp();
 export default app;

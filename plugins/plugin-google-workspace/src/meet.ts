@@ -5,6 +5,7 @@
  * assembles those artifacts into a structured `GoogleMeetReport`.
  * `GOOGLE_MEET_API_SURFACE` records the capability each method requires.
  */
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { meet_v2 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {
@@ -47,6 +48,45 @@ export const GOOGLE_MEET_API_SURFACE = [
   { method: "endMeeting", capabilities: ["meet.create"] },
   { method: "generateReport", capabilities: ["meet.read"] },
 ] as const;
+
+const MAX_GOOGLE_MEET_PAGES = 1_000;
+
+interface MeetPaginationState {
+  pageCount: number;
+  seenPageTokens: Set<string>;
+}
+
+function createMeetPaginationState(): MeetPaginationState {
+  return { pageCount: 0, seenPageTokens: new Set<string>() };
+}
+
+function nextMeetPageToken(
+  token: string | null | undefined,
+  state: MeetPaginationState,
+  resource: string
+): string | undefined {
+  state.pageCount += 1;
+  if (!token?.trim()) return undefined;
+  if (state.seenPageTokens.has(token)) {
+    throw new ElizaError(`Google Meet repeated a ${resource} page token.`, {
+      code: "GOOGLE_MEET_REPEATED_PAGE_TOKEN",
+      context: { resource },
+      severity: "fatal",
+    });
+  }
+  if (state.pageCount >= MAX_GOOGLE_MEET_PAGES) {
+    throw new ElizaError(
+      `Google Meet ${resource} pagination exceeded ${MAX_GOOGLE_MEET_PAGES} pages.`,
+      {
+        code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED",
+        context: { maxPages: MAX_GOOGLE_MEET_PAGES, resource },
+        severity: "fatal",
+      }
+    );
+  }
+  state.seenPageTokens.add(token);
+  return token;
+}
 
 export class GoogleMeetClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
@@ -110,6 +150,7 @@ export class GoogleMeetClient {
       "meet.listMeetingParticipants"
     );
     const participants: GoogleMeetParticipant[] = [];
+    const pagination = createMeetPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -119,7 +160,7 @@ export class GoogleMeetClient {
         pageToken,
       });
       participants.push(...(response.data.participants ?? []).map(mapParticipant));
-      pageToken = response.data.nextPageToken ?? undefined;
+      pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "participants");
     } while (pageToken && (!params.limit || participants.length < params.limit));
 
     return params.limit ? participants.slice(0, params.limit) : participants;
@@ -134,6 +175,7 @@ export class GoogleMeetClient {
       "meet.listMeetingParticipantSessions"
     );
     const sessions: GoogleMeetParticipantSession[] = [];
+    const pagination = createMeetPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -147,7 +189,11 @@ export class GoogleMeetClient {
           mapParticipantSession(session, params.participantName)
         )
       );
-      pageToken = response.data.nextPageToken ?? undefined;
+      pageToken = nextMeetPageToken(
+        response.data.nextPageToken,
+        pagination,
+        "participant sessions"
+      );
     } while (pageToken && (!params.limit || sessions.length < params.limit));
 
     return params.limit ? sessions.slice(0, params.limit) : sessions;
@@ -162,6 +208,7 @@ export class GoogleMeetClient {
       "meet.listMeetingTranscripts"
     );
     const transcripts: GoogleMeetTranscriptArtifact[] = [];
+    const pagination = createMeetPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -171,7 +218,7 @@ export class GoogleMeetClient {
         pageToken,
       });
       transcripts.push(...(response.data.transcripts ?? []).map(mapTranscriptArtifact));
-      pageToken = response.data.nextPageToken ?? undefined;
+      pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "transcripts");
     } while (pageToken);
 
     return transcripts;
@@ -180,6 +227,7 @@ export class GoogleMeetClient {
   async getMeetingTranscript(params: GoogleMeetTranscriptInput): Promise<GoogleMeetTranscript[]> {
     const meet = await this.clientFactory.meet(params, ["meet.read"], "meet.getMeetingTranscript");
     const transcriptEntries: GoogleMeetTranscript[] = [];
+    const pagination = createMeetPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -189,7 +237,7 @@ export class GoogleMeetClient {
         pageToken,
       });
       transcriptEntries.push(...(response.data.transcriptEntries ?? []).map(mapTranscriptEntry));
-      pageToken = response.data.nextPageToken ?? undefined;
+      pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "transcript entries");
     } while (pageToken);
 
     return transcriptEntries;
@@ -200,6 +248,7 @@ export class GoogleMeetClient {
   ): Promise<GoogleMeetRecording[]> {
     const meet = await this.clientFactory.meet(params, ["meet.read"], "meet.listMeetingRecordings");
     const recordings: GoogleMeetRecording[] = [];
+    const pagination = createMeetPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -209,7 +258,7 @@ export class GoogleMeetClient {
         pageToken,
       });
       recordings.push(...(response.data.recordings ?? []).map(mapRecording));
-      pageToken = response.data.nextPageToken ?? undefined;
+      pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "recordings");
     } while (pageToken);
 
     return recordings;
@@ -513,12 +562,12 @@ function durationMinutes(conference: GoogleMeetConferenceRecord): number {
   return Math.max(0, Math.round((end - start) / 60000));
 }
 
-function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
+export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   summary: string;
   keyPoints: string[];
   actionItems: GoogleMeetReport["actionItems"];
 } {
-  const lines = entries.map((entry) => entry.text.trim()).filter(Boolean);
+  const lines = entries.map((entry) => toWellFormedUnicode(entry.text.trim())).filter(Boolean);
   if (lines.length === 0) {
     return {
       summary: "No transcript entries were available for this conference record.",
@@ -532,7 +581,11 @@ function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const summary = sentences.slice(0, 3).join(" ") || plainText.slice(0, 500);
+  const wellFormedPlainText = toWellFormedUnicode(plainText);
+  const rawSummary =
+    sentences.slice(0, 3).join(" ") || truncateWellFormed(wellFormedPlainText, 500);
+  const summary =
+    rawSummary.length > 500 ? truncateWellFormed(toWellFormedUnicode(rawSummary), 500) : rawSummary;
   const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
   const actionItems = lines
     .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))

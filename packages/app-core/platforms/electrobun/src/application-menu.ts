@@ -304,7 +304,8 @@ export function buildApplicationMenu({
   detachedWindows: ManagedWindowSnapshot[];
   agentReady?: boolean;
 }): ApplicationMenuItem[] {
-  const appName = getBrandConfig().appName;
+  const brand = getBrandConfig();
+  const appName = brand.appName;
   const visibleDetachedWindows = browserEnabled
     ? detachedWindows
     : detachedWindows.filter((window) => window.surface !== "browser");
@@ -386,7 +387,10 @@ export function buildApplicationMenu({
       ],
     },
     buildDesktopMenu(isMac),
-    buildAppsMenu(),
+    // These entries are runtime/plugin inspectors for developers, not consumer
+    // applications. A Cloud-only store owner should never be dropped into a
+    // database, memory, trajectory, or log viewer from the native menu.
+    ...(brand.cloudOnly ? [] : [buildAppsMenu()]),
     buildViewsMenu(),
     {
       label: "Window",

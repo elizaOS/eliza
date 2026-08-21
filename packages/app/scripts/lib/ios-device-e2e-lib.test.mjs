@@ -36,26 +36,25 @@ describe("planIosDeviceE2eSteps", () => {
 });
 
 describe("buildDeviceDeployCommand", () => {
-  it("passes --skip-appexes by default plus the device", () => {
+  it("deploys the full app + appexes by default", () => {
     const { cmd, args } = buildDeviceDeployCommand({ scriptsDir, deviceId });
     expect(cmd).toBe("node");
     expect(args).toEqual([
       path.join(scriptsDir, "ios-device-deploy.mjs"),
       "--device",
       deviceId,
-      "--skip-appexes",
     ]);
   });
-  it("omits --skip-appexes when opted out and threads optional flags", () => {
+  it("supports explicit degraded appex skipping and threads optional flags", () => {
     const { args } = buildDeviceDeployCommand({
       scriptsDir,
       deviceId,
-      skipAppexes: false,
+      skipAppexes: true,
       skipBuild: true,
       noLaunch: true,
       bundleId: "ai.elizaos.app",
     });
-    expect(args).not.toContain("--skip-appexes");
+    expect(args).toContain("--skip-appexes");
     expect(args).toContain("--skip-build");
     expect(args).toContain("--no-launch");
     expect(args).toContain("--bundle-id");
@@ -69,11 +68,12 @@ describe("buildDeviceDeployCommand", () => {
 });
 
 describe("buildDeviceSmokeCommand", () => {
-  it("forces --skip-build and targets the smoke output dir", () => {
+  it("rebuilds the runner and targets the signed deployed app", () => {
     const { args } = buildDeviceSmokeCommand({
       scriptsDir,
       deviceId,
       outputDir: "/bundle/smoke",
+      appPath: "/stage/App.app",
     });
     expect(args).toEqual([
       path.join(scriptsDir, "ios-device-capture.mjs"),
@@ -81,7 +81,8 @@ describe("buildDeviceSmokeCommand", () => {
       "device",
       "--device",
       deviceId,
-      "--skip-build",
+      "--app-path",
+      "/stage/App.app",
       "--output",
       "/bundle/smoke",
     ]);
@@ -91,6 +92,7 @@ describe("buildDeviceSmokeCommand", () => {
       scriptsDir,
       deviceId,
       outputDir: "/bundle/smoke",
+      appPath: "/stage/App.app",
       requireChat: true,
     });
     expect(args).toContain("--require-chat");

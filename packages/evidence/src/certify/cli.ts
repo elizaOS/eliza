@@ -13,7 +13,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { verifyBundle } from "../bundle.ts";
+import {
+  assertSafeAuxiliaryOutput,
+  assertSafeCertificationOutput,
+  verifyBundle,
+  writeOwnedFileAtomic,
+} from "../bundle.ts";
 import { canonicalJsonBytes } from "../canonical.ts";
 import { EvidenceError } from "../errors.ts";
 import { parseMeta, TIERS, type Tier } from "../schema.ts";
@@ -182,8 +187,10 @@ function runRollup(argv: string[], io: CliIo): number {
   const json = JSON.stringify(result, null, 2);
   const outPath = parsed.flags.get("--out");
   if (outPath !== undefined) {
-    fs.writeFileSync(outPath, `${json}\n`);
-    io.err(`draft verdicts written: ${outPath}`);
+    const resolvedOut = path.resolve(outPath);
+    assertSafeAuxiliaryOutput(bundleDir, resolvedOut);
+    writeOwnedFileAtomic(resolvedOut, `${json}\n`);
+    io.err(`draft verdicts written: ${resolvedOut}`);
   } else {
     io.out(json);
   }
@@ -280,7 +287,8 @@ async function runSign(argv: string[], io: CliIo): Promise<number> {
   const certification = signCertification(payload, key);
   const outPath =
     parsed.flags.get("--out") ?? path.join(bundleDir, "certification.json");
-  fs.writeFileSync(outPath, canonicalJsonBytes(certification));
+  assertSafeCertificationOutput(bundleDir, outPath);
+  writeOwnedFileAtomic(outPath, canonicalJsonBytes(certification));
 
   const counts = { pass: 0, fail: 0, waived: 0 };
   for (const verdict of verdicts) counts[verdict.verdict] += 1;

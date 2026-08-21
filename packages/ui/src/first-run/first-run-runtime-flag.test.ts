@@ -62,6 +62,7 @@ describe("isRuntimeChooserEnabled", () => {
 
 describe("resolveRuntimeChooserEnabled", () => {
   const productionDefaults = {
+    isCloudOnlyBuild: false,
     isCloudLockedAndroid: false,
     override: null,
     isViteDev: false,
@@ -110,7 +111,20 @@ describe("resolveRuntimeChooserEnabled", () => {
   it("keeps a cloud-locked Android build disabled under every opt-in", () => {
     expect(
       resolveRuntimeChooserEnabled({
+        isCloudOnlyBuild: false,
         isCloudLockedAndroid: true,
+        override: true,
+        isViteDev: true,
+        isBuildEnabled: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps every cloud-only build disabled under every opt-in", () => {
+    expect(
+      resolveRuntimeChooserEnabled({
+        isCloudOnlyBuild: true,
+        isCloudLockedAndroid: false,
         override: true,
         isViteDev: true,
         isBuildEnabled: true,

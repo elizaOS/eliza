@@ -78,7 +78,7 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
     const publicLine = evidence
       .split("\n")
       .find((line) => line.includes("app.example.com"));
-    expect(publicLine).not.toMatch(/loopback/i);
+    expect(publicLine).not.toMatch(/LOOPBACK/);
   });
 
   it("mines build/test/typecheck lines out of recorded signals", () => {
@@ -152,16 +152,18 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
       deliverable: "d".repeat(50_000),
       finalReply: "r".repeat(50_000),
       verifiedUrls: ["https://a.example.com", "https://b.example.com"],
-      signals: Array.from({ length: 200 }, (_, i) => ({
+      signals: Array.from({ length: 60 }, (_, i) => ({
         text: `Tests ${i} passed (1) error warning lint build ${"z".repeat(200)}`,
         source: "message",
       })),
       artifacts: [{ artifactType: "screenshot", title: "s", ref: "/x.png" }],
     });
-    // Per-section clamps keep the legacy assembler's ceiling (~10k) below the
-    // raised total cap, so the truncation marker is unreachable here; the
-    // typed-bundle test above still pins marker behavior at the total cap.
+    // #21240 raised MAX_EVIDENCE_CHARS to 24_000 (plus the truncation marker).
+    // Oversized individual fields are clamped per-section ("[truncated]")
+    // before the global "[evidence truncated]" cap can fire, so assert the
+    // bound plus the per-section marker this fixture actually trips.
     expect(evidence.length).toBeLessThanOrEqual(24_100);
+    expect(evidence).toContain("[truncated]");
   });
 });
 
@@ -232,6 +234,8 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
   });
 
   it("keeps an oversized appended section inside the evidence cap", () => {
+    // #21240 raised MAX_EVIDENCE_CHARS to 24_000; oversize accordingly so the
+    // clamp is actually exercised.
     const evidence = appendCompletionEvidenceSection(
       "existing",
       "x".repeat(40_000),

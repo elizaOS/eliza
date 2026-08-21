@@ -46,7 +46,7 @@ export function planIosDeviceE2eSteps({ skipLogs = false } = {}) {
   const steps = [
     {
       id: "deploy",
-      label: "deploy signed App.app to the device (--skip-appexes)",
+      label: "deploy signed App.app + appexes to the device",
     },
     {
       id: "smoke",
@@ -64,11 +64,8 @@ export function planIosDeviceE2eSteps({ skipLogs = false } = {}) {
 }
 
 /**
- * Absolute node argv for the deploy step. `--skip-appexes` is the default
- * unattended posture (PR #13174, research doc Q6): per-appex profiles need an
- * ASC API key, so widget/keyboard/device-activity surfaces are stripped and the
- * deploy logs that loudly. `--device` is always passed through so the whole lane
- * pins one phone.
+ * Absolute node argv for the deploy step. Full app + appexes is the default;
+ * `skipAppexes` is an explicit degraded-mode escape hatch.
  *
  * @param {{ scriptsDir: string, deviceId: string, skipAppexes?: boolean,
  *           skipBuild?: boolean, noLaunch?: boolean, bundleId?: string | null }} opts
@@ -77,7 +74,7 @@ export function planIosDeviceE2eSteps({ skipLogs = false } = {}) {
 export function buildDeviceDeployCommand({
   scriptsDir,
   deviceId,
-  skipAppexes = true,
+  skipAppexes = false,
   skipBuild = false,
   noLaunch = false,
   bundleId = null,
@@ -97,20 +94,19 @@ export function buildDeviceDeployCommand({
 }
 
 /**
- * Absolute node argv for the on-device BootCapture assertion. `--skip-build`
- * is forced: deploy already built + installed the current tree, so the capture
- * must reuse that install, never rebuild a second bundle. `--output` targets the
- * run bundle's `smoke/` subdir so the assertion's attachments land inside the
- * triage bundle.
+ * Absolute node argv for the on-device BootCapture assertion. The current
+ * XCUITest runner is rebuilt and graft-signed by default; `appPath` points its
+ * xctestrun at the exact signed app installed by the preceding deploy.
  *
  * @param {{ scriptsDir: string, deviceId: string, outputDir: string,
- *           requireChat?: boolean, bundleId?: string | null }} opts
+ *           appPath: string, requireChat?: boolean, bundleId?: string | null }} opts
  * @returns {{ cmd: string, args: string[] }}
  */
 export function buildDeviceSmokeCommand({
   scriptsDir,
   deviceId,
   outputDir,
+  appPath,
   requireChat = false,
   bundleId = null,
 }) {
@@ -118,13 +114,15 @@ export function buildDeviceSmokeCommand({
     throw new Error("buildDeviceSmokeCommand: deviceId is required");
   if (!outputDir)
     throw new Error("buildDeviceSmokeCommand: outputDir is required");
+  if (!appPath) throw new Error("buildDeviceSmokeCommand: appPath is required");
   const args = [
     path.join(scriptsDir, "ios-device-capture.mjs"),
     "--platform",
     "device",
     "--device",
     deviceId,
-    "--skip-build",
+    "--app-path",
+    appPath,
     "--output",
     outputDir,
   ];

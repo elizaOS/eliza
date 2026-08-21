@@ -70,6 +70,10 @@ import { and, eq } from "drizzle-orm";
 import type { App } from "../../../db/repositories/apps";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
 import {
+  appReservationSettlementQuarantines,
+  appReservationSettlements,
+} from "../../../db/schemas/app-reservation-settlements";
+import {
   appDeploymentStatusEnum,
   appReviewStatusEnum,
   apps,
@@ -200,6 +204,8 @@ beforeAll(async () => {
       appEarnings,
       appEarningsTransactions,
       creditTransactions,
+      appReservationSettlements,
+      appReservationSettlementQuarantines,
       redeemableEarnings,
       redeemableEarningsLedger,
       redeemedEarningsTracking,

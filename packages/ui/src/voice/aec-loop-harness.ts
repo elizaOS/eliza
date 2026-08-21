@@ -29,7 +29,8 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
-import { resolveApiUrl } from "../utils/asset-url";
+import { logger } from "@elizaos/core";
+import { client } from "../api";
 
 declare global {
   interface Window {
@@ -41,6 +42,8 @@ const SAMPLE_RATE = 16_000;
 const FRAME_SAMPLES = 320; // 20 ms @ 16 kHz — the device wire frame size
 const SHIP_INTERVAL_MS = 200;
 const RESULT_FILENAME = "eliza-aec-loop-result.json";
+const AEC_LOOP_REQUEST_TIMEOUT_MS = 15_000;
+const AEC_LOOP_TTS_TIMEOUT_MS = 180_000;
 
 export interface AecLoopRunOptions {
   /** Text synthesized by the on-device TTS and played from the speaker. */
@@ -109,6 +112,7 @@ export interface AecLoopResult {
 
 export interface AecLoopControl {
   run(options?: AecLoopRunOptions): Promise<AecLoopResult>;
+  cancel(): void;
   state(): "idle" | "running" | "done" | "error";
   lastResult(): AecLoopResult | null;
   lastError(): string | null;
@@ -232,36 +236,115 @@ class WireFramer {
   }
 }
 
-async function postJson(path: string, body: unknown): Promise<unknown> {
-  const res = await fetch(resolveApiUrl(path), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  // error-policy:J3 body parse is best-effort context for the thrown error;
-  // non-2xx always throws below with the status either way
-  // error-policy:J3 parse-sanitize — an empty/non-JSON body becomes null; the
-  // HTTP status is the real signal (thrown below), the body is only diagnostic.
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`${path} -> ${res.status} ${JSON.stringify(json)}`);
-  }
-  return json;
+async function postJson(
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<unknown> {
+  return client.fetch(
+    path,
+    { method: "POST", body: JSON.stringify(body), signal },
+    { timeoutMs: AEC_LOOP_REQUEST_TIMEOUT_MS },
+  );
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const res = await fetch(resolveApiUrl(path), {
-    headers: { accept: "application/json" },
+async function getJson(path: string, signal: AbortSignal): Promise<unknown> {
+  return client.fetch(
+    path,
+    { headers: { accept: "application/json" }, signal },
+    { timeoutMs: AEC_LOOP_REQUEST_TIMEOUT_MS },
+  );
+}
+
+export async function readAudioBody(
+  response: Response,
+  label: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<ArrayBuffer> {
+  if (!response.ok) throw new Error(`${label} -> ${response.status}`);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const combined = AbortSignal.any([signal, timeoutSignal]);
+  const reader = response.body?.getReader();
+  if (!reader) return response.arrayBuffer();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let rejectOnAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = () => reject(combined.reason);
+    if (combined.aborted) rejectOnAbort();
+    else combined.addEventListener("abort", rejectOnAbort, { once: true });
   });
-  // error-policy:J3 body parse is best-effort context for the thrown error;
-  // non-2xx always throws below with the status either way
-  // error-policy:J3 parse-sanitize — an empty/non-JSON body becomes null; the
-  // HTTP status is the real signal (thrown below), the body is only diagnostic.
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`${path} -> ${res.status} ${JSON.stringify(json)}`);
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) {
+        const bytes = new Uint8Array(byteLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return bytes.buffer;
+      }
+      if (value) {
+        chunks.push(value);
+        byteLength += value.byteLength;
+      }
+    }
+  } catch (error) {
+    try {
+      await reader.cancel(
+        combined.aborted ? combined.reason : "elizaos-aec-body-read-failed",
+      );
+    } catch (cancelError) {
+      // error-policy:J6 cancellation may race a closed response body; preserve
+      // the primary timeout, caller abort, or transport read failure.
+      logger.debug(
+        { label, error: cancelError },
+        "[AecLoop] failed to cancel interrupted audio response body",
+      );
+    }
+    throw error;
+  } finally {
+    if (rejectOnAbort) combined.removeEventListener("abort", rejectOnAbort);
+    reader.releaseLock();
   }
-  return json;
+}
+
+async function fetchExternalAudio(
+  url: string,
+  label: string,
+  signal: AbortSignal,
+): Promise<ArrayBuffer> {
+  const requestSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(AEC_LOOP_REQUEST_TIMEOUT_MS),
+  ]);
+  const response = await fetch(url, { signal: requestSignal });
+  return readAudioBody(
+    response,
+    label,
+    requestSignal,
+    AEC_LOOP_REQUEST_TIMEOUT_MS,
+  );
+}
+
+async function fetchLocalTts(
+  text: string,
+  signal: AbortSignal,
+): Promise<ArrayBuffer> {
+  const response = await client.rawRequest(
+    "/api/tts/local-inference",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal,
+    },
+    { timeoutMs: AEC_LOOP_TTS_TIMEOUT_MS },
+  );
+  return readAudioBody(response, "tts", signal, AEC_LOOP_TTS_TIMEOUT_MS);
 }
 
 /** Best-effort native Documents sink (Capacitor Filesystem when present). */
@@ -304,6 +387,7 @@ let runLog: string[] = [];
 
 async function runAecLoop(
   options: AecLoopRunOptions = {},
+  signal: AbortSignal,
 ): Promise<AecLoopResult> {
   if (state === "running") throw new Error("aec-loop already running");
   state = "running";
@@ -332,18 +416,18 @@ async function runAecLoop(
     const bootDeadline = Date.now() + 300_000;
     for (;;) {
       try {
-        statusBefore = await getJson("/api/voice/audio-frames/status");
+        statusBefore = await getJson("/api/voice/audio-frames/status", signal);
         break;
       } catch (err) {
         // error-policy:J4 boot poll — retry until the deadline, then rethrow
-        if (Date.now() > bootDeadline) throw err;
+        if (signal.aborted || Date.now() > bootDeadline) throw err;
         log("agent not ready; retrying");
         await new Promise((r) => setTimeout(r, 3000));
       }
     }
 
     log("arm aec-capture");
-    await postJson("/api/voice/aec-capture", { arm: true, maxSeconds });
+    await postJson("/api/voice/aec-capture", { arm: true, maxSeconds }, signal);
 
     log("getUserMedia (OS AEC disabled)");
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -382,18 +466,10 @@ async function runAecLoop(
     let ttsBytes: ArrayBuffer;
     if (options.audioUrl) {
       log(`fetch far-end audio from ${options.audioUrl}`);
-      const audioRes = await fetch(options.audioUrl);
-      if (!audioRes.ok) throw new Error(`audioUrl -> ${audioRes.status}`);
-      ttsBytes = await audioRes.arrayBuffer();
+      ttsBytes = await fetchExternalAudio(options.audioUrl, "audioUrl", signal);
     } else {
       log("fetch TTS");
-      const ttsRes = await fetch(resolveApiUrl("/api/tts/local-inference"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: ttsText }),
-      });
-      if (!ttsRes.ok) throw new Error(`tts -> ${ttsRes.status}`);
-      ttsBytes = await ttsRes.arrayBuffer();
+      ttsBytes = await fetchLocalTts(ttsText, signal);
     }
     const ttsBuffer = await ctx.decodeAudioData(ttsBytes.slice(0));
     log(
@@ -425,9 +501,12 @@ async function runAecLoop(
     let nearEndDurationMs: number | null = null;
     if (options.nearEndAudioUrl) {
       log(`fetch near-end audio from ${options.nearEndAudioUrl.slice(0, 64)}`);
-      const nearRes = await fetch(options.nearEndAudioUrl);
-      if (!nearRes.ok) throw new Error(`nearEndAudioUrl -> ${nearRes.status}`);
-      const nearBuffer = await ctx.decodeAudioData(await nearRes.arrayBuffer());
+      const nearBytes = await fetchExternalAudio(
+        options.nearEndAudioUrl,
+        "nearEndAudioUrl",
+        signal,
+      );
+      const nearBuffer = await ctx.decodeAudioData(nearBytes);
       nearEndDurationMs = Math.round(nearBuffer.duration * 1000);
       nearSource = ctx.createBufferSource();
       nearSource.buffer = nearBuffer;
@@ -443,11 +522,19 @@ async function runAecLoop(
       const micFrames = micFramer.take();
       try {
         if (playFrames.length) {
-          await postJson("/api/voice/playback-frames", { frames: playFrames });
+          await postJson(
+            "/api/voice/playback-frames",
+            { frames: playFrames },
+            signal,
+          );
           playPosts += 1;
         }
         if (micFrames.length) {
-          await postJson("/api/voice/audio-frames", { frames: micFrames });
+          await postJson(
+            "/api/voice/audio-frames",
+            { frames: micFrames },
+            signal,
+          );
           micPosts += 1;
         }
       } catch (err) {
@@ -484,10 +571,14 @@ async function runAecLoop(
     clearInterval(shipTimer);
     await ship();
     log("final flush");
-    await postJson("/api/voice/audio-frames", { frames: [], flush: true });
-    const statusAfter = await getJson("/api/voice/audio-frames/status");
-    await postJson("/api/voice/aec-capture", { disarm: true });
-    const aecCapture = await getJson("/api/voice/aec-capture");
+    await postJson(
+      "/api/voice/audio-frames",
+      { frames: [], flush: true },
+      signal,
+    );
+    const statusAfter = await getJson("/api/voice/audio-frames/status", signal);
+    await postJson("/api/voice/aec-capture", { disarm: true }, signal);
+    const aecCapture = await getJson("/api/voice/aec-capture", signal);
 
     track?.stop();
     micTap.disconnect();
@@ -597,6 +688,7 @@ export function parseAecLoopHash(hash: string): AecLoopRunOptions | null {
 }
 
 let installed = false;
+let activeRunController: AbortController | null = null;
 
 /**
  * Attach `window.__aecLoop` and the `#aec-loop?...` hash trigger. Idempotent.
@@ -605,7 +697,21 @@ let installed = false;
  */
 export function installAecLoopHarness(): AecLoopControl {
   const control: AecLoopControl = {
-    run: runAecLoop,
+    async run(options) {
+      if (activeRunController) throw new Error("aec-loop already running");
+      const controller = new AbortController();
+      activeRunController = controller;
+      try {
+        return await runAecLoop(options, controller.signal);
+      } finally {
+        if (activeRunController === controller) activeRunController = null;
+      }
+    },
+    cancel() {
+      activeRunController?.abort(
+        new DOMException("AEC loop cancelled", "AbortError"),
+      );
+    },
     state: () => state,
     lastResult: () => lastResult,
     lastError: () => lastError,
@@ -621,7 +727,7 @@ export function installAecLoopHarness(): AecLoopControl {
   const maybeRun = () => {
     const options = parseAecLoopHash(window.location.hash);
     if (!options || state === "running") return;
-    void runAecLoop(options).catch(() => {
+    void control.run(options).catch(() => {
       // error-policy:J5 rejection observed via state()/lastError() and the
       // Documents sink written inside runAecLoop
     });

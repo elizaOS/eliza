@@ -1,0 +1,236 @@
+/**
+ * Exercises the signing-policy evaluator through its public evaluate and record
+ * APIs with a deterministic clock; no signer backend or private state is mocked.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createDefaultPolicy,
+  type SigningPolicy,
+  SigningPolicyEvaluator,
+  type SigningRequest,
+} from "./signing-policy.ts";
+
+function createRequest(
+  overrides: Partial<SigningRequest> = {},
+): SigningRequest {
+  return {
+    requestId: "request-1",
+    chainId: 1,
+    to: "0x0000000000000000000000000000000000000001",
+    value: "0",
+    data: "0x",
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
+
+function createPolicy(overrides: Partial<SigningPolicy> = {}): SigningPolicy {
+  return { ...createDefaultPolicy(), ...overrides };
+}
+
+describe("SigningPolicyEvaluator", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a negative value before the request can be dispatched", () => {
+    const evaluator = new SigningPolicyEvaluator();
+
+    const decision = evaluator.evaluate(createRequest({ value: "-1" }));
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      requiresHumanConfirmation: false,
+      matchedRule: "value_non_negative",
+    });
+  });
+
+  it("continues to reject unparseable and over-cap values", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ maxTransactionValueWei: "5" }),
+    );
+
+    expect(
+      evaluator.evaluate(createRequest({ value: "invalid" })).matchedRule,
+    ).toBe("value_parse_error");
+    expect(evaluator.evaluate(createRequest({ value: "6" })).matchedRule).toBe(
+      "value_cap",
+    );
+  });
+
+  it("allows canonical empty calldata when a selector allowlist is configured", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ allowedMethodSelectors: ["0x12345678"] }),
+    );
+
+    expect(evaluator.evaluate(createRequest({ data: "0x" })).allowed).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    "0x1",
+    "0x1234",
+    "0x1234567",
+    "0x1234567g",
+    "12345678",
+    "0x123456789",
+    "0x12345678zz",
+  ])("rejects incomplete, odd-length, or non-hex calldata %s", (data) => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ allowedMethodSelectors: ["0x12345678"] }),
+    );
+
+    expect(evaluator.evaluate(createRequest({ data }))).toMatchObject({
+      allowed: false,
+      matchedRule: "method_selector_format",
+    });
+  });
+
+  it("compares complete selectors case-insensitively", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ allowedMethodSelectors: ["0xAbCdEf12"] }),
+    );
+
+    expect(
+      evaluator.evaluate(createRequest({ data: "0XaBcDeF1200" })).allowed,
+    ).toBe(true);
+    expect(
+      evaluator.evaluate(createRequest({ data: "0xdeadbeef00" })),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "method_selector_allowlist",
+    });
+  });
+
+  it("is immune to mutation of caller-held and returned policy arrays", () => {
+    const input = createPolicy({ allowedMethodSelectors: ["0x12345678"] });
+    const evaluator = new SigningPolicyEvaluator(input);
+
+    input.deniedContracts.push("0x0000000000000000000000000000000000000001");
+    // getPolicy() now returns a frozen snapshot: a mutation attempt throws
+    // immediately instead of silently succeeding on a copy that has no
+    // effect on future decisions (#23228).
+    expect(() => {
+      evaluator.getPolicy().allowedMethodSelectors.length = 0;
+    }).toThrow();
+
+    expect(
+      evaluator.evaluate(createRequest({ data: "0x12345678" })),
+    ).toMatchObject({ allowed: true, matchedRule: "allowed" });
+
+    const update = createPolicy({ allowedMethodSelectors: ["0x12345678"] });
+    evaluator.updatePolicy(update);
+    update.allowedMethodSelectors[0] = "0xdeadbeef";
+
+    expect(
+      evaluator.evaluate(
+        createRequest({ requestId: "request-2", data: "0x12345678" }),
+      ),
+    ).toMatchObject({ allowed: true, matchedRule: "allowed" });
+  });
+
+  it("enforces the hourly limit using only recorded public requests", () => {
+    const now = Date.parse("2026-08-20T00:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({
+        maxTransactionsPerHour: 2,
+        maxTransactionsPerDay: 10,
+      }),
+    );
+    evaluator.recordRequest("recorded-1");
+    evaluator.recordRequest("recorded-2");
+
+    expect(
+      evaluator.evaluate(createRequest({ requestId: "candidate" })),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "rate_limit_hourly",
+    });
+  });
+
+  it("enforces the daily limit after hourly entries age out", () => {
+    let now = Date.parse("2026-08-20T00:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({
+        maxTransactionsPerHour: 10,
+        maxTransactionsPerDay: 2,
+      }),
+    );
+    evaluator.recordRequest("recorded-1");
+    now += 2 * 60 * 60 * 1000;
+    evaluator.recordRequest("recorded-2");
+    now += 2 * 60 * 60 * 1000;
+
+    expect(
+      evaluator.evaluate(createRequest({ requestId: "candidate" })),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "rate_limit_daily",
+    });
+  });
+
+  it("prunes recorded entries after one day through evaluate", () => {
+    let now = Date.parse("2026-08-20T00:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({
+        maxTransactionsPerHour: 1,
+        maxTransactionsPerDay: 1,
+      }),
+    );
+    evaluator.recordRequest("expired");
+    now += 24 * 60 * 60 * 1000 + 1;
+
+    expect(
+      evaluator.evaluate(createRequest({ requestId: "candidate" })),
+    ).toMatchObject({ allowed: true, matchedRule: "allowed" });
+  });
+
+  it("closes the evaluate/recordRequest TOCTOU race: exactly one of two concurrent reservations succeeds at a limit of 1", async () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ maxTransactionsPerHour: 1, maxTransactionsPerDay: 1 }),
+    );
+
+    // Two "submissions" that each do their own check-and-reserve with no
+    // knowledge of the other. With the old evaluate()+recordRequest() split,
+    // both checks could run (and both pass) before either recordRequest()
+    // executed. tryReserve() performs the check and the record in one
+    // synchronous call, so the second call always observes the first's
+    // reservation, however the two calls get interleaved by the scheduler.
+    const results = await Promise.all([
+      Promise.resolve().then(() =>
+        evaluator.tryReserve(createRequest({ requestId: "concurrent-a" })),
+      ),
+      Promise.resolve().then(() =>
+        evaluator.tryReserve(createRequest({ requestId: "concurrent-b" })),
+      ),
+    ]);
+
+    expect(results.filter((r) => r.allowed)).toHaveLength(1);
+    expect(results.map((r) => r.matchedRule).sort()).toEqual(
+      ["allowed", "rate_limit_hourly"].sort(),
+    );
+  });
+
+  it("release() undoes a reservation so a later request can take the freed slot", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ maxTransactionsPerHour: 1, maxTransactionsPerDay: 1 }),
+    );
+
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-1" })).allowed,
+    ).toBe(true);
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-2" })),
+    ).toMatchObject({ matchedRule: "rate_limit_hourly" });
+
+    evaluator.release("req-1");
+
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-2" })).allowed,
+    ).toBe(true);
+  });
+});

@@ -45,6 +45,13 @@ jobs:
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+      DATABASE_RESILIENCE_GATE_MODE: ${{ vars.DATABASE_RESILIENCE_GATE_MODE || 'off' }}
+      DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS: ${{ vars.DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS || '36' }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+      RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT: ${{ vars.RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT }}
+      RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT: ${{ vars.RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT }}
     outputs:
       # "true" only for the neutral supersession skip; downstream deploy jobs
       # and the caller's certification job gate on it.
@@ -114,10 +121,202 @@ jobs:
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
 
+      - name: Validate Railway PostgreSQL resilience gate configuration
+        id: database_resilience
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          case "$DATABASE_RESILIENCE_GATE_MODE" in
+            off)
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "Railway PostgreSQL resilience gate is disabled; no Railway query performed."
+              exit 0
+              ;;
+            report|enforce)
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::DATABASE_RESILIENCE_GATE_MODE must be off, report, or enforce"
+              exit 1
+              ;;
+          esac
+
+          required=(
+            RAILWAY_PROJECT_ID
+            RAILWAY_ENVIRONMENT_ID
+            RAILWAY_POSTGRES_SERVICE_ID
+          )
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            required+=(
+              RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT
+              RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT
+            )
+          fi
+          missing=()
+          for name in "${required[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "$HAS_RAILWAY_TOKEN" != "true" ]; then
+            missing+=("RAILWAY_TOKEN")
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected PostgreSQL resilience setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_POSTGRES_SERVICE_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              echo "::error::$name must be a lowercase Railway UUID"
+              exit 1
+            fi
+          done
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            for name in RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT; do
+              value="${!name}"
+              if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::$name must be a lowercase SHA-256 receipt"
+                exit 1
+              fi
+            done
+          fi
+          if [[ ! "$DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS must be a positive integer"
+            exit 1
+          fi
+          echo "Protected PostgreSQL resilience setting names and formats are valid; values were not printed."
+
+      - name: Install pinned Railway CLI for resilience proof
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli"
+          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
+          mkdir -p "$cli_root"
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Capture read-only Railway PostgreSQL evidence
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/postgres-resilience"
+          mkdir -m 0700 "$evidence_dir"
+          capture() {
+            local label="$1"
+            local output="$2"
+            shift 2
+            if ! "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
+              echo "::error::Railway $label query failed; raw output was not printed"
+              exit 1
+            fi
+          }
+          common=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+          )
+          postgres=(
+            "${common[@]}"
+            --service "$RAILWAY_POSTGRES_SERVICE_ID"
+            --json
+          )
+          capture status "$evidence_dir/status.json" \
+            railway status "${common[@]}" --json
+          capture services "$evidence_dir/services.json" \
+            railway service list "${common[@]}" --json
+          capture volumes "$evidence_dir/volumes.json" \
+            railway api \
+              'query VolumeEvidence($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id environmentId serviceId volumeId mountPath state deletedAt isPendingDeletion sizeMB } } } } }' \
+              --raw-var "id=$RAILWAY_ENVIRONMENT_ID" \
+              --compact
+          capture pitr "$evidence_dir/pitr.json" \
+            railway postgres pitr status "${postgres[@]}"
+          capture schedules "$evidence_dir/schedules.json" \
+            railway postgres pitr schedule list "${postgres[@]}"
+          capture backups "$evidence_dir/backups.json" \
+            railway postgres pitr backup list "${postgres[@]}"
+          echo "Read-only Railway PostgreSQL evidence captured without printing resource inventory."
+
+      - name: Verify backup, PITR, and physical-isolation evidence
+        if: ${{ steps.database_resilience.outputs.enabled == 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/postgres-resilience"
+          args=(
+            --mode "$DATABASE_RESILIENCE_GATE_MODE"
+            --environment "$TARGET_ENVIRONMENT"
+            --project-id "$RAILWAY_PROJECT_ID"
+            --environment-id "$RAILWAY_ENVIRONMENT_ID"
+            --service-id "$RAILWAY_POSTGRES_SERVICE_ID"
+            --max-backup-age-hours "$DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS"
+            --status-json "$evidence_dir/status.json"
+            --services-json "$evidence_dir/services.json"
+            --volumes-json "$evidence_dir/volumes.json"
+            --pitr-json "$evidence_dir/pitr.json"
+            --schedules-json "$evidence_dir/schedules.json"
+            --backups-json "$evidence_dir/backups.json"
+          )
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            args+=(
+              --production-service-receipt "$RAILWAY_PRODUCTION_POSTGRES_SERVICE_RECEIPT"
+              --production-volume-receipt "$RAILWAY_PRODUCTION_POSTGRES_VOLUME_RECEIPT"
+            )
+          fi
+          receipt="$evidence_dir/receipt.json"
+          set +e
+          bun packages/cloud/scripts/admin/preflight-railway-postgres-resilience.ts \
+            "${args[@]}" > "$receipt"
+          gate_status="$?"
+          set -e
+          verdict="$(jq -er '.verdict' "$receipt")"
+          jq -r '.checks | to_entries[] | "- \(.key): \(.value)"' "$receipt" \
+            >> "$GITHUB_STEP_SUMMARY"
+          jq -r \
+            '.receipts | to_entries[] | select(.value != null) | "- \(.key)Receipt: \(.value)"' \
+            "$receipt" >> "$GITHUB_STEP_SUMMARY"
+          echo "- verdict: $verdict" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DATABASE_RESILIENCE_GATE_MODE" = "report" ] && [ "$verdict" != "pass" ]; then
+            echo "::warning::Railway PostgreSQL resilience report found unmet checks; report mode does not block migrations"
+          fi
+          if [ "$gate_status" -ne 0 ]; then
+            echo "::error::Railway PostgreSQL resilience enforcement failed before migrations"
+            exit "$gate_status"
+          fi
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+          # Explicit activation boundary for #21594. `off` performs no query;
+          # `report` emits only SHA-256 receipts and never blocks (malformed
+          # prepared receipts stay unreviewed); `enforce` fails closed against
+          # both protected nonsecret authority digests.
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
         run: |
@@ -127,14 +326,15 @@ jobs:
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
           # Recheck inside the mutation step after all preparation. The branch
-          # can advance between workflow steps; only the preflight is eligible
-          # for a neutral supersession. Once this step is running, any mismatch
-          # must fail immediately before the database mutation.
+          # can advance between workflow steps. Once this step is running, any
+          # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
+          # The migrator evaluates identity after acquiring its advisory lock,
+          # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------
@@ -222,10 +422,15 @@ jobs:
           init_checkout_dir() {
             mkdir -p "$CHECKOUT_DIR"
             git init -q "$CHECKOUT_DIR"
-            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            # Keep the job token out of the persisted .git/config on this
+            # shared runner: the remote URL stays credential-free and the
+            # fetch below authenticates with an in-memory http.extraheader.
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           }
           init_checkout_dir
+          checkout_basic_auth="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$checkout_basic_auth"
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -238,7 +443,7 @@ jobs:
           # path entirely at negligible cost for a single-stream shallow fetch.
           fetched=
           for attempt in 1 2 3; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: basic ${checkout_basic_auth}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -437,6 +642,33 @@ jobs:
             require_exact RELAY_ORIGIN "$RELAY_ORIGIN" "https://relay-staging.eliza.app"
           fi
 
+      - name: Validate protected staging Blooio configuration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
+        run: |
+          set -euo pipefail
+          required_names=(
+            ELIZA_APP_BLOOIO_API_KEY
+            ELIZA_APP_BLOOIO_PHONE_NUMBER
+            ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+          )
+          missing=()
+          for name in "${required_names[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected staging Blooio secret name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Verified ${#required_names[@]} protected staging Blooio secret names; values were not printed."
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -459,11 +691,36 @@ jobs:
           fi
           echo "Staging session exchange is off before config validation or deploy ($result)."
 
+      # Installed in THIS job (not inherited from migrate-db, a separate
+      # runner instance) so verify_webhook_gateway_binding_candidates below
+      # can fetch the live gateway secret's value from Railway and prove it
+      # still matches the Worker's queued value — closing the "same name,
+      # different value" gap a names-only wrangler inventory cannot see.
+      # Pinned to the exact version migrate-db already proved compatible.
+      - name: Install pinned Railway CLI for webhook gateway value match
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-deploy-api"
+          archive="$RUNNER_TEMP/railway-v5.38.0-deploy-api.tar.gz"
+          mkdir -p "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
       - name: Prepare Worker secrets for atomic deploy
         id: worker-secrets
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
@@ -576,6 +833,21 @@ jobs:
           # activation is a separate protected, live-proven rollout.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          # Personal Shared Blooio is a staging acceptance surface. These
+          # protected values are mandatory in staging and are committed with
+          # the exact Worker source through the atomic secrets file below.
+          # Production keeps its existing bindings and never queues this source.
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
+          # Personal Shared APNs stays dormant unless the complete protected
+          # environment config is present. Topic/environment are explicit so a
+          # signed development build cannot silently receive production pushes.
+          ELIZA_APNS_KEY: ${{ secrets.ELIZA_APNS_KEY }}
+          ELIZA_APNS_KEY_ID: ${{ secrets.ELIZA_APNS_KEY_ID }}
+          ELIZA_APNS_TEAM_ID: ${{ secrets.ELIZA_APNS_TEAM_ID }}
+          ELIZA_APNS_TOPIC: ${{ vars.ELIZA_APNS_TOPIC }}
+          ELIZA_APNS_PRODUCTION: ${{ vars.ELIZA_APNS_PRODUCTION }}
           # Bearer key for the self-hosted TEI embeddings sidecar (#20627); the
           # Worker's local-embeddings routing sends it when LOCAL_EMBEDDINGS_BASE_URL
           # is configured. The sidecar rejects unauthenticated calls (401).
@@ -688,6 +960,16 @@ jobs:
             exit 1
           fi
 
+          if has_nonblank_value "$ELIZA_APNS_TOPIC" && [ "$ELIZA_APNS_TOPIC" != "ai.elizaos.app" ]; then
+            echo "::error::ELIZA_APNS_TOPIC must match the signed iOS bundle id"
+            exit 1
+          fi
+          if has_nonblank_value "$ELIZA_APNS_PRODUCTION" && \
+             [ "$ELIZA_APNS_PRODUCTION" != "0" ] && [ "$ELIZA_APNS_PRODUCTION" != "1" ]; then
+            echo "::error::ELIZA_APNS_PRODUCTION must be exactly 0 or 1"
+            exit 1
+          fi
+
           declare -a worker_secret_names=()
           declare -A queued_worker_secret_names=()
 
@@ -772,6 +1054,35 @@ jobs:
             ' "${worker_secret_names[@]}"
           }
 
+          verify_apns_binding_candidates() {
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const available = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              for (const name of process.argv.slice(1)) available.add(name);
+              const apns = [
+                "ELIZA_APNS_KEY",
+                "ELIZA_APNS_KEY_ID",
+                "ELIZA_APNS_TEAM_ID",
+                "ELIZA_APNS_TOPIC",
+                "ELIZA_APNS_PRODUCTION",
+              ];
+              const present = apns.filter((name) => available.has(name));
+              if (present.length !== 0 && present.length !== apns.length) {
+                console.error(`::error::Personal Shared APNs bindings must be zero-or-complete; partial existing or configured bindings: ${present.join(" ")}`);
+                process.exit(1);
+              }
+              console.log(`Verified ${present.length} existing or configured APNs binding names; values were not read.`);
+            ' "${worker_secret_names[@]}"
+          }
+
           verify_staging_embeddings_secret_candidate() {
             if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then
               return 0
@@ -794,6 +1105,49 @@ jobs:
               }
               console.log("Verified staging local embeddings bearer binding name; its value was not read.");
             ' "${worker_secret_names[@]}"
+          }
+
+          verify_webhook_gateway_binding_candidates() {
+            if ! has_nonblank_value "$ELIZA_APP_WEBHOOK_GATEWAY_URL"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+
+            # Names-only wiring (above/below) proves a binding NAME exists or
+            # is queued; it cannot prove the VALUE still matches the live
+            # gateway's. Fetch that live value from Railway — the same
+            # trusted source deploy-gateway-webhook.yml already reads for its
+            # analogous Blooio value-match — and hand it to the node script
+            # purely through this one subshell's environment. It is never
+            # exported into the step's persistent shell state, assigned to a
+            # variable outside this function, or passed to any command that
+            # could echo it (no `set -x`, no `jq` on the raw value, no
+            # temp file). A failed or empty fetch resolves to an empty
+            # string, and the node script fails closed on that: a missing
+            # gateway-side proof is a mismatch, never a silent pass.
+            local railway_gateway_secret_inventory=""
+            local railway_gateway_secret_value=""
+            if railway_gateway_secret_inventory="$(railway variable list \
+                --project "$RAILWAY_PROJECT_ID" \
+                --environment "$RAILWAY_ENVIRONMENT_ID" \
+                --service "$RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK" \
+                --json 2>/dev/null)"; then
+              railway_gateway_secret_value="$(printf '%s' "$railway_gateway_secret_inventory" | jq -r \
+                'if (.ELIZA_APP_WEBHOOK_GATEWAY_SECRET | type) == "string" then .ELIZA_APP_WEBHOOK_GATEWAY_SECRET else "" end')"
+            else
+              echo "::warning::Could not fetch the live gateway's ELIZA_APP_WEBHOOK_GATEWAY_SECRET from Railway; the value-match half of the webhook gateway check will fail closed"
+            fi
+            railway_gateway_secret_inventory=""
+
+            printf '%s' "$secret_inventory" | env \
+              "WEBHOOK_GATEWAY_RAILWAY_SECRET_VALUE=$railway_gateway_secret_value" \
+              node \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.mjs" \
+              "${worker_secret_names[@]}"
+            local status=$?
+            railway_gateway_secret_value=""
+            return $status
           }
 
           # Like queue_secret, but for values that act as ROUTING TOGGLES
@@ -865,6 +1219,20 @@ jobs:
             queue_secret "$name" || exit 1
           done
 
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+            do
+              if ! has_nonblank_value "${!name:-}"; then
+                echo "::error::Required protected staging Blooio secret is absent or blank: $name"
+                exit 1
+              fi
+              queue_secret "$name" || exit 1
+            done
+          fi
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -895,6 +1263,11 @@ jobs:
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET \
             ELIZA_APP_TELEGRAM_BOT_TOKEN \
             ELIZA_APP_TELEGRAM_WEBHOOK_SECRET \
+            ELIZA_APNS_KEY \
+            ELIZA_APNS_KEY_ID \
+            ELIZA_APNS_TEAM_ID \
+            ELIZA_APNS_TOPIC \
+            ELIZA_APNS_PRODUCTION \
             LOCAL_EMBEDDINGS_API_KEY
           do
             queue_secret "$name"
@@ -920,11 +1293,23 @@ jobs:
           # active Worker: every required voice name must either already exist
           # or be queued for the atomic version below.
           verify_production_voice_secret_candidates || exit 1
+          # APNs is dormant only when all five names are absent. Merge the live
+          # names-only inventory with this deploy's candidates before mutation
+          # so a stale partial environment cannot receive APNs-enabled source.
+          verify_apns_binding_candidates || exit 1
           # The staging base URL routes live traffic to an authenticated TEI
           # sidecar, so its bearer binding must exist or be committed in the
           # same Worker version. A missing value may never deploy as a healthy
           # but permanently unauthorized embeddings path.
           verify_staging_embeddings_secret_candidate || exit 1
+          # The messaging webhook gateway URL is a routing toggle: unset stays
+          # on the honest WEBHOOK_GATEWAY_NOT_CONFIGURED 503 (#18235), but a
+          # configured URL must point at THIS environment's canonical gateway
+          # and carry the paired forwarder secret, or every provider webhook
+          # would fail as a misleading 401/upstream error instead. This runs
+          # before the atomic Worker secrets version is written; the
+          # unset-toggle deletions in the queue loop above have already run.
+          verify_webhook_gateway_binding_candidates || exit 1
 
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
@@ -1064,6 +1449,11 @@ jobs:
             ];
             if (process.env.DEPLOY_ENVIRONMENT === "staging") {
               required.push("LOCAL_EMBEDDINGS_API_KEY");
+              required.push(
+                "ELIZA_APP_BLOOIO_API_KEY",
+                "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+                "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+              );
             }
             if (
               process.env.DEPLOY_ENVIRONMENT === "production" &&
@@ -1075,6 +1465,18 @@ jobs:
                 "VOICE_REALTIME_ELIZA_AUTHORIZATION",
                 "VOICE_REALTIME_ELIZA_ENDPOINT",
               );
+            }
+            const apns = [
+              "ELIZA_APNS_KEY",
+              "ELIZA_APNS_KEY_ID",
+              "ELIZA_APNS_TEAM_ID",
+              "ELIZA_APNS_TOPIC",
+              "ELIZA_APNS_PRODUCTION",
+            ];
+            const presentApns = apns.filter((name) => present.has(name));
+            if (presentApns.length !== 0 && presentApns.length !== apns.length) {
+              console.error(`::error::Personal Shared APNs bindings are partial: ${presentApns.join(" ")}`);
+              process.exit(1);
             }
             const missing = required.filter((name) => !present.has(name));
             if (missing.length > 0) {
@@ -1560,10 +1962,15 @@ jobs:
           init_checkout_dir() {
             mkdir -p "$CHECKOUT_DIR"
             git init -q "$CHECKOUT_DIR"
-            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            # Keep the job token out of the persisted .git/config on this
+            # shared runner: the remote URL stays credential-free and the
+            # fetch below authenticates with an in-memory http.extraheader.
+            git -C "$CHECKOUT_DIR" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
+              || git -C "$CHECKOUT_DIR" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           }
           init_checkout_dir
+          checkout_basic_auth="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$checkout_basic_auth"
           # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
@@ -1578,7 +1985,7 @@ jobs:
             # Blobless fetch pushes that cost into checkout as lazy hydration and
             # has repeatedly timed out on the deploy fleet, so use a normal
             # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 -c http.extraheader="AUTHORIZATION: basic ${checkout_basic_auth}" fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-imessage",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -55,11 +55,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@types/node": "^22.19.17",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "eliza": {
     "platforms": [
@@ -75,12 +75,6 @@
   },
   "agentConfig": {
     "pluginParameters": {
-      "IMESSAGE_CLI_PATH": {
-        "type": "string",
-        "description": "Path to CLI binary",
-        "required": false,
-        "sensitive": false
-      },
       "IMESSAGE_DB_PATH": {
         "type": "string",
         "description": "Path to database file",
@@ -125,11 +119,6 @@
       }
     },
     "configUiHints": {
-      "IMESSAGE_CLI_PATH": {
-        "label": "CLI path",
-        "order": 1,
-        "group": "connection"
-      },
       "IMESSAGE_DB_PATH": {
         "label": "Database path",
         "order": 2,

@@ -86,6 +86,30 @@ describe("resolveTelegramAppCredentials", () => {
     expect(creds).toEqual(BUNDLED);
   });
 
+  it("ignores a non-numeric configured appId and falls through to settings", () => {
+    const creds = resolveTelegramAppCredentials(
+      makeRuntime({
+        TELEGRAM_APP_ID: "888",
+        TELEGRAM_APP_HASH: "envHashenvHashenvHashenvHashenv5",
+      }),
+      { appId: "abc", appHash: "cfgHashcfgHashcfgHashcfgHashcfg3" },
+    );
+    expect(creds).toEqual({
+      apiId: 888,
+      apiHash: "envHashenvHashenvHashenvHashenv5",
+    });
+  });
+
+  it("ignores non-positive and fractional configured appIds and falls back to the bundled default", () => {
+    for (const appId of ["-1", 0, 12.5]) {
+      const creds = resolveTelegramAppCredentials(makeRuntime(), {
+        appId,
+        appHash: "cfgHashcfgHashcfgHashcfgHashcfg4",
+      });
+      expect(creds).toEqual(BUNDLED);
+    }
+  });
+
   it("prefers configured creds over deployment settings when both are present", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({

@@ -19,6 +19,7 @@ import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
+  isSafeAppAuthorizeRedirectUri,
   storeCurrentAppAuthorizeReturnTo,
 } from "./authorize-return";
 
@@ -231,12 +232,7 @@ function AuthorizeFlow({
     let cancelled = false;
 
     async function validateApp() {
-      try {
-        const uri = new URL(redirectUri);
-        if (uri.protocol !== "http:" && uri.protocol !== "https:") {
-          throw new Error("Invalid protocol");
-        }
-      } catch {
+      if (!isSafeAppAuthorizeRedirectUri(redirectUri)) {
         setError("Invalid redirect_uri format.");
         setStatus("error");
         return;
@@ -326,6 +322,12 @@ function AuthorizeFlow({
         );
       }
 
+      // The mount-time gate already ran, but the navigation sink re-checks
+      // the hand-off scheme so no future refactor can route around it.
+      if (!isSafeAppAuthorizeRedirectUri(redirectUri)) {
+        throw new Error("Invalid redirect_uri format.");
+      }
+
       window.location.assign(
         buildAppAuthorizeCompletionRedirect({
           code,
@@ -344,7 +346,9 @@ function AuthorizeFlow({
   }, [appId, redirectUri, state, appInfo?.name, getToken, signOut]);
 
   const handleCancel = useCallback(() => {
-    if (!redirectUri) {
+    // Fail closed on an untrusted hand-off target: stay on our own origin
+    // rather than navigating to a scriptable or slash-less scheme.
+    if (!redirectUri || !isSafeAppAuthorizeRedirectUri(redirectUri)) {
       router.push("/");
       return;
     }

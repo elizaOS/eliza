@@ -368,6 +368,24 @@ describe("transcriber helpers", () => {
 		const down = resampleLinear(pcm, 48000, 16000);
 		expect(down.length).toBe(Math.round((pcm.length * 16000) / 48000));
 	});
+
+	it("rejects hostile sample rates before sizing an output buffer", () => {
+		expect(() =>
+			resampleLinear(new Float32Array(8_000), 1, 16_000),
+		).toThrowError(
+			expect.objectContaining({ code: "AUDIO_RESAMPLE_RATE_INVALID" }),
+		);
+	});
+
+	it("applies the duration budget even when no rate conversion is needed", () => {
+		expect(() =>
+			resampleLinear(new Float32Array(16_000 * 121), 16_000, 16_000),
+		).toThrowError(
+			expect.objectContaining({
+				code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+			}),
+		);
+	});
 });
 
 /* ---- fake ElizaInferenceFfi -------------------------------------- */

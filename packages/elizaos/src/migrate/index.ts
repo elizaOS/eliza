@@ -152,6 +152,7 @@ export function emitSovereignArtifacts(plan: MigratePlan): {
 }
 
 // Re-export the building blocks for direct use + testing.
+export { MIN_PASSWORD_LENGTH } from "./archive-format.js";
 export { assemblePayload } from "./archive-writer.js";
 export { mapToCharacter } from "./character-mapper.js";
 export { tierMemories } from "./memory-tiering.js";

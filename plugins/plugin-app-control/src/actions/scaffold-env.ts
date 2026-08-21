@@ -263,3 +263,23 @@ export async function preflightCodingDispatch(
 
 	return { ok: guidance.length === 0, guidance };
 }
+
+/**
+ * Where NEW app scaffolds land. An operator-configured root (absolute
+ * ELIZA_REPO_ROOT / ELIZA_WORKSPACE_DIR) keeps the checkout-relative
+ * `eliza/apps` layout. When the repo root was only the process-cwd FALLBACK,
+ * scaffolding into it would plant the app inside the RUNNING agent's own
+ * checkout — charging that repo's entire git state (dirty files, unpushed
+ * carries) to the build task's completion residuals and risking the live tree
+ * (observed: app-lantern-row scaffolded into the live checkout and parked on
+ * "33 commits not pushed"). Fallback landings go to the state dir instead.
+ */
+export function resolveAppsLandingRoot(): string {
+	const explicit =
+		process.env.ELIZA_REPO_ROOT?.trim() ||
+		process.env.ELIZA_WORKSPACE_DIR?.trim();
+	if (explicit && path.isAbsolute(explicit)) {
+		return path.join(explicit, "eliza", "apps");
+	}
+	return path.join(resolveStateDir(), "apps");
+}

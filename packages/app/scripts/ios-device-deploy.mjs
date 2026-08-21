@@ -11,9 +11,10 @@
  *      .mobileprovision files inside prior signed builds in DerivedData;
  *      keep only profiles whose application-identifier covers the bundle id,
  *      whose ProvisionedDevices includes this device's UDID, and which are
- *      unexpired.
- *   3. Graft the app profile + one per appex, derive signing entitlements
- *      from each profile, then codesign inner→outer: frameworks → EVERY
+ *      unexpired development profiles (`get-task-allow=true`).
+ *   3. Graft the app profile + one per appex, validate each profile against
+ *      the maintained target entitlements, sign only those target claims plus
+ *      required identity/debug keys, then codesign inner→outer: frameworks → EVERY
  *      nested dylib (deep-verify does NOT catch unsigned appex dylibs) →
  *      appexes → app.
  *   4. codesign --verify --deep --strict, devicectl install, optional launch.
@@ -44,15 +45,18 @@ import {
 import {
   assertDeviceUnlocked,
   buildCodesignPlan,
+  buildCodesignVerificationPlan,
   buildPlistXml,
   DEFAULT_APP_BUNDLE_ID,
-  deriveSigningEntitlements,
+  deriveTargetSigningEntitlements,
+  entitlementSourceForTarget,
   findDeviceRecord,
   normalizeProvisioningProfile,
   parseCliArgs,
   parseCodesigningIdentities,
   parsePlist,
   resolveDeviceId,
+  resolveMaintainedIosSigningTargets,
   selectProvisioningProfile,
   selectSigningIdentity,
 } from "./ios-device-lib.mjs";
@@ -71,6 +75,15 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
+const iosEntitlementsRoot = path.join(
+  repoRoot,
+  "packages",
+  "app-core",
+  "platforms",
+  "ios",
+  "App",
+  "App",
+);
 
 const log = (message) => console.log(`[ios-device-deploy] ${message}`);
 const fail = (message) => {
@@ -87,6 +100,34 @@ function runInherit(command, args, options = {}) {
   if (result.status !== 0) {
     fail(`${command} ${args.join(" ")} exited with ${result.status}`);
   }
+}
+
+export function readMaintainedTargetEntitlements(
+  targetName,
+  {
+    root = iosEntitlementsRoot,
+    exists = fs.existsSync,
+    read = (source) => fs.readFileSync(source, "utf8"),
+  } = {},
+) {
+  const source = path.join(root, entitlementSourceForTarget(targetName));
+  if (!exists(source)) {
+    throw new Error(
+      `Maintained entitlement source for iOS target ${targetName} is missing: ${source}`,
+    );
+  }
+  return parsePlist(read(source));
+}
+
+function readBundleIdentifier(bundlePath) {
+  return runCapture("plutil", [
+    "-extract",
+    "CFBundleIdentifier",
+    "raw",
+    "-o",
+    "-",
+    path.join(bundlePath, "Info.plist"),
+  ]).trim();
 }
 
 function sleep(ms) {
@@ -239,11 +280,24 @@ function signApp({
   deviceUdid,
   identityOverride,
   workDir,
+  requireAllAppexes,
 }) {
   const profiles = discoverProfiles();
   log(`scanned ${profiles.length} provisioning profile(s)`);
+  const actualBundleId = readBundleIdentifier(stagedApp);
+  if (actualBundleId !== bundleId) {
+    throw new Error(
+      `Staged App.app bundle id ${actualBundleId} does not match requested bundle id ${bundleId}.`,
+    );
+  }
 
-  const target = { bundleId, deviceUdid };
+  const appRequiredEntitlements = readMaintainedTargetEntitlements("App");
+  const target = {
+    bundleId,
+    deviceUdid,
+    requireGetTaskAllow: true,
+    requiredEntitlements: appRequiredEntitlements,
+  };
   const { selected: appProfile, rejected } = selectProvisioningProfile(
     profiles,
     target,
@@ -285,45 +339,74 @@ function signApp({
   // Per-appex profiles + entitlements.
   const appexes = [];
   const plugInsDir = path.join(stagedApp, "PlugIns");
-  if (fs.existsSync(plugInsDir)) {
-    for (const appexName of fs
-      .readdirSync(plugInsDir)
-      .filter((n) => n.endsWith(".appex"))) {
-      const appexPath = path.join(plugInsDir, appexName);
-      const appexBundleId = `${bundleId}.${path.basename(appexName, ".appex")}`;
-      const { selected: appexProfile, rejected: appexRejected } =
-        selectProvisioningProfile(profiles, {
-          bundleId: appexBundleId,
-          deviceUdid,
-        });
-      if (!appexProfile) {
-        fail(
-          `extension ${appexName}: ${noProfileRemediation(appexBundleId, deviceUdid, appexRejected)}`,
-        );
-      }
-      log(
-        `appex profile for ${appexName}: ${appexProfile.name} (${appexProfile.sourcePath})`,
+  const builtAppexes = fs.existsSync(plugInsDir)
+    ? fs
+        .readdirSync(plugInsDir)
+        .filter((name) => name.endsWith(".appex"))
+        .map((name) => {
+          const appexPath = path.join(plugInsDir, name);
+          return {
+            targetName: path.basename(name, ".appex"),
+            bundleId: readBundleIdentifier(appexPath),
+            path: appexPath,
+          };
+        })
+    : [];
+  const signingTargets = resolveMaintainedIosSigningTargets({
+    appBundleId: bundleId,
+    appexes: builtAppexes,
+    requireAllAppexes,
+  });
+  for (const signingTarget of signingTargets.slice(1)) {
+    const {
+      targetName,
+      bundleId: appexBundleId,
+      path: appexPath,
+    } = signingTarget;
+    const requiredEntitlements = readMaintainedTargetEntitlements(targetName);
+    const { selected: appexProfile, rejected: appexRejected } =
+      selectProvisioningProfile(profiles, {
+        bundleId: appexBundleId,
+        deviceUdid,
+        requireGetTaskAllow: true,
+        requiredEntitlements,
+      });
+    if (!appexProfile) {
+      fail(
+        `extension ${targetName}.appex: ${noProfileRemediation(appexBundleId, deviceUdid, appexRejected)}`,
       );
-      fs.copyFileSync(
-        appexProfile.sourcePath,
-        path.join(appexPath, "embedded.mobileprovision"),
-      );
-      const entitlementsPath = path.join(
-        workDir,
-        `ent-${path.basename(appexName, ".appex")}.plist`,
-      );
-      fs.writeFileSync(
-        entitlementsPath,
-        buildPlistXml(deriveSigningEntitlements(appexProfile, appexBundleId)),
-      );
-      appexes.push({ path: appexPath, entitlementsPath });
     }
+    log(
+      `appex profile for ${targetName}.appex: ${appexProfile.name} (${appexProfile.sourcePath})`,
+    );
+    fs.copyFileSync(
+      appexProfile.sourcePath,
+      path.join(appexPath, "embedded.mobileprovision"),
+    );
+    const entitlementsPath = path.join(workDir, `ent-${targetName}.plist`);
+    fs.writeFileSync(
+      entitlementsPath,
+      buildPlistXml(
+        deriveTargetSigningEntitlements(
+          appexProfile,
+          appexBundleId,
+          requiredEntitlements,
+        ),
+      ),
+    );
+    appexes.push({ path: appexPath, entitlementsPath });
   }
 
   const appEntitlementsPath = path.join(workDir, "ent-app.plist");
   fs.writeFileSync(
     appEntitlementsPath,
-    buildPlistXml(deriveSigningEntitlements(appProfile, bundleId)),
+    buildPlistXml(
+      deriveTargetSigningEntitlements(
+        appProfile,
+        bundleId,
+        appRequiredEntitlements,
+      ),
+    ),
   );
 
   const frameworksDir = path.join(stagedApp, "Frameworks");
@@ -356,8 +439,15 @@ function signApp({
     runInherit("codesign", args);
   }
 
-  runInherit("codesign", ["--verify", "--deep", "--strict", stagedApp]);
-  log("codesign --verify --deep --strict: OK");
+  for (const verification of buildCodesignVerificationPlan(plan, stagedApp)) {
+    runInherit("codesign", [
+      "--verify",
+      ...(verification.deep ? ["--deep"] : []),
+      "--strict",
+      verification.path,
+    ]);
+  }
+  log("explicit nested + deep codesign verification: OK");
 }
 
 // ── Main ────────────────────────────────────────────────────────────────
@@ -520,6 +610,7 @@ async function main() {
     deviceUdid: device.udid,
     identityOverride: args.identity ?? null,
     workDir: stagingRoot,
+    requireAllAppexes: !args["skip-appexes"],
   });
 
   // 5. Install.

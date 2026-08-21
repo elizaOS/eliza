@@ -23,6 +23,18 @@ function okFetch(
 }
 
 describe("ElizaCloudHttpClient auth headers", () => {
+  it("normalizes 100k trailing base-url slashes", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = new ElizaCloudHttpClient({
+      baseUrl: `https://cloud.test/root${"/".repeat(100_000)}`,
+      fetchImpl: okFetch(calls),
+    });
+
+    await client.requestRaw("GET", "/api/test");
+
+    expect(calls[0]?.url).toBe("https://cloud.test/root/api/test");
+  });
+
   it("serializes hostile query values without dropping falsey values or inventing path segments", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = new ElizaCloudHttpClient({

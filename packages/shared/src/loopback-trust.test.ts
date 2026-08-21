@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "./config/boot-config.js";
 import {
   isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
   isTrustedLocalRequest,
   type LoopbackTrustOptions,
   proxyClientHeaderBlocksLocalTrust,
@@ -83,6 +84,92 @@ describe("isLoopbackRemoteAddress", () => {
       expect(isLoopbackRemoteAddress(addr)).toBe(false);
     },
   );
+});
+
+describe("isRemoteAddressInCidrList", () => {
+  it("matches IPv4 peers inside a listed subnet", () => {
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/16")).toBe(true);
+    expect(isRemoteAddressInCidrList("172.17.255.254", "172.17.0.0/16")).toBe(
+      true,
+    );
+    expect(isRemoteAddressInCidrList("192.168.65.2", "192.168.65.0/24")).toBe(
+      true,
+    );
+  });
+
+  it("rejects IPv4 peers outside every listed subnet", () => {
+    expect(isRemoteAddressInCidrList("172.18.0.1", "172.17.0.0/16")).toBe(
+      false,
+    );
+    expect(isRemoteAddressInCidrList("10.0.0.8", "172.17.0.0/16")).toBe(false);
+    expect(isRemoteAddressInCidrList("192.168.1.1", "172.17.0.0/16")).toBe(
+      false,
+    );
+    expect(isRemoteAddressInCidrList("203.0.113.9", "172.17.0.0/16")).toBe(
+      false,
+    );
+  });
+
+  it("matches a bare IP entry only for that exact host", () => {
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.1")).toBe(true);
+    expect(isRemoteAddressInCidrList("172.17.0.2", "172.17.0.1")).toBe(false);
+  });
+
+  it("matches IPv4-mapped IPv6 peer spellings against IPv4 entries", () => {
+    expect(
+      isRemoteAddressInCidrList("::ffff:172.17.0.1", "172.17.0.0/16"),
+    ).toBe(true);
+    expect(
+      isRemoteAddressInCidrList("::ffff:0:172.17.0.1", "172.17.0.0/16"),
+    ).toBe(true);
+    expect(isRemoteAddressInCidrList("::ffff:10.0.0.8", "172.17.0.0/16")).toBe(
+      false,
+    );
+  });
+
+  it("matches IPv6 peers against IPv6 entries", () => {
+    expect(isRemoteAddressInCidrList("fd00::1", "fd00::/8")).toBe(true);
+    expect(isRemoteAddressInCidrList("fd00:0:0:1::1", "fd00::/64")).toBe(false);
+    expect(isRemoteAddressInCidrList("::1", "fd00::/8")).toBe(false);
+  });
+
+  it("honours comma-separated lists with surrounding whitespace", () => {
+    expect(
+      isRemoteAddressInCidrList("10.1.2.3", " 172.17.0.0/16 , 10.0.0.0/8 "),
+    ).toBe(true);
+  });
+
+  it("fails closed on empty, missing, or malformed input", () => {
+    expect(isRemoteAddressInCidrList("172.17.0.1", "")).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", null)).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", undefined)).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", "  ")).toBe(false);
+    expect(isRemoteAddressInCidrList("", "172.17.0.0/16")).toBe(false);
+    expect(isRemoteAddressInCidrList(null, "172.17.0.0/16")).toBe(false);
+    expect(isRemoteAddressInCidrList("not-an-ip", "172.17.0.0/16")).toBe(false);
+    // Malformed entries are skipped — they never widen the gate, and a list
+    // of only malformed entries admits nothing.
+    expect(isRemoteAddressInCidrList("172.17.0.1", "nonsense")).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/33")).toBe(
+      false,
+    );
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/-1")).toBe(
+      false,
+    );
+    // A trailing slash must not parse as prefix 0 — that would silently
+    // widen the malformed entry into a /0 admit-all for the whole family.
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/")).toBe(false);
+    expect(isRemoteAddressInCidrList("203.0.113.9", "172.17.0.0/")).toBe(false);
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/0x10")).toBe(
+      false,
+    );
+    expect(isRemoteAddressInCidrList("172.17.0.1", "172.17.0.0/+16")).toBe(
+      false,
+    );
+    expect(
+      isRemoteAddressInCidrList("172.17.0.1", "nonsense,172.17.0.0/16"),
+    ).toBe(true);
+  });
 });
 
 describe("proxyClientHeaderBlocksLocalTrust", () => {
@@ -193,6 +280,97 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
             options,
           ),
         ).toBe(false);
+      });
+
+      it("rejects same-site fetches from a different local origin", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:5173",
+                "sec-fetch-site": "same-site",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("requires a browser Origin to match Host hostname and port", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://127.0.0.1:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:5173",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "[::1]:2138",
+                origin: "http://[::1]:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
+      it("binds a browser Referer to Host but preserves native app origins", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                referer: "http://localhost:5173/approval",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "capacitor://app",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
       });
 
       it("rejects a non-loopback Origin", () => {

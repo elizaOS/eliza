@@ -32,7 +32,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
     "/api/cron/reclaim-stale-domains",
   ],
-  "0 * * * *": ["/api/cron/agent-billing"],
+  "0 * * * *": ["/api/cron/agent-billing", "/api/cron/process-account-deletions"],
   "*/5 * * * *": [
     // Keep the cache-only shared first-turn gates warm for recently active
     // agents (admission snapshot / pricing / character projection) so idle
@@ -43,6 +43,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/social-automation",
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
+    "/api/cron/reconcile-domain-purchases",
     "/api/cron/cleanup-stuck-provisioning",
     // #14808 CLOUD lane: drain pending pii_scrub jobs (content-hash-idempotent,
     // budget-bounded; the scrub is background work, so 5-min cadence is plenty).
@@ -66,6 +67,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
+    // Native authorization codes expire after five minutes. A bounded drain
+    // keeps inactive exchange credentials short-lived without an unbounded run.
+    "/api/cron/cleanup-mobile-app-auth",
     "/api/v1/cron/refresh-model-catalog",
     "/api/cron/domain-health",
   ],
@@ -89,7 +93,17 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/reconcile-video-generations",
   ],
   "0 */6 * * *": [
-    "/api/cron/cleanup-anonymous-sessions",
+    // #22508: DELIBERATELY NOT SCHEDULED. The route 404s today because it is
+    // GET-only, which has masked a defect: its second query filters on
+    // user_identities.is_anonymous without joining user_identities, so
+    // Postgres raises 42P01 — but only after an unbounded per-row DELETE
+    // FROM users and a DELETE FROM anonymous_sessions have already
+    // committed, with no enclosing transaction. Registering the POST verb
+    // would turn a dormant broken job into a live destructive one. Fix the
+    // query and bound the deletes before putting it back on a schedule.
+    // #22508: the route existed and was mounted but was never in any schedule,
+    // so expired CLI auth sessions accumulated forever.
+    "/api/cron/cleanup-cli-sessions",
     "/api/v1/cron/agent-backups",
     // #9939: reap shared bridge rows leaked by a failed/timed-out handoff.
     "/api/v1/cron/reap-orphan-shared-bridges",
@@ -102,6 +116,59 @@ export const CRON_FANOUT: Record<string, string[]> = {
 interface ScheduledEvent {
   cron: string;
   scheduledTime: number;
+}
+
+export interface ScheduledCronInvocationMetadata {
+  invocationId: string;
+  path: string;
+  schedule: string;
+  scheduledTime: number;
+}
+
+const scheduledInvocationMetadata = new WeakMap<Request, ScheduledCronInvocationMetadata>();
+
+export const CRON_INVOCATION_ID_HEADER = "x-cron-invocation-id";
+export const CRON_SCHEDULE_HEADER = "x-cron-schedule";
+export const CRON_SCHEDULED_TIME_HEADER = "x-cron-scheduled-time";
+
+/**
+ * Stable identity for one route invocation within one Cloudflare scheduled
+ * event. The path is part of the identity because a single schedule fans out
+ * to multiple independently retried handlers.
+ */
+export function scheduledCronInvocationId(event: ScheduledEvent, path: string): string {
+  return [
+    "cloudflare-cron",
+    String(event.scheduledTime),
+    encodeURIComponent(event.cron),
+    encodeURIComponent(path),
+  ].join(":");
+}
+
+/**
+ * Returns scheduler provenance only for the exact in-process Request object
+ * created by `makeCronHandler`. Matching HTTP headers alone cannot forge this
+ * marker because callers cannot write to the module-private WeakMap.
+ */
+export function getScheduledCronInvocationMetadata(
+  request: Request,
+): ScheduledCronInvocationMetadata | null {
+  return scheduledInvocationMetadata.get(request) ?? null;
+}
+
+/**
+ * Clone a request while preserving scheduler provenance only when the source
+ * Request already owns the in-process capability. An HTTP caller with matching
+ * headers cannot mint the WeakMap brand through this helper.
+ */
+export function cloneRequestWithScheduledCronMetadata(
+  source: Request,
+  init?: RequestInit,
+): Request {
+  const clone = new Request(source, init);
+  const metadata = scheduledInvocationMetadata.get(source);
+  if (metadata) scheduledInvocationMetadata.set(clone, metadata);
+  return clone;
 }
 
 /**
@@ -129,10 +196,26 @@ export function makeCronHandler(
 
     const work = paths.map(async (path) => {
       try {
+        const invocationId = scheduledCronInvocationId(event, path);
         const req = new Request(`${baseUrl}${path}`, {
           method: "POST",
-          headers: { "x-cron-secret": secret, "user-agent": "cf-cron/1.0" },
+          headers: {
+            "x-cron-secret": secret,
+            [CRON_INVOCATION_ID_HEADER]: invocationId,
+            [CRON_SCHEDULE_HEADER]: event.cron,
+            [CRON_SCHEDULED_TIME_HEADER]: String(event.scheduledTime),
+            "user-agent": "cf-cron/1.0",
+          },
         });
+        scheduledInvocationMetadata.set(
+          req,
+          Object.freeze({
+            invocationId,
+            path,
+            schedule: event.cron,
+            scheduledTime: event.scheduledTime,
+          }),
+        );
         const res = await appFetch(req, env, ctx);
         if (!res.ok) {
           logger.warn(`[Cron] ${path} -> ${res.status}`);

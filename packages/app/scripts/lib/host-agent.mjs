@@ -1,22 +1,56 @@
 /**
- * Local device-e2e host-agent process helper. Chooses an exclusive API port,
- * spawns the real local agent (or a caller-supplied command), waits for health,
- * and returns a stop handle used by iOS/Android device lanes.
+ * Local device-e2e host-agent process helper. The child binds port 0 and
+ * atomically advertises the live socket, avoiding probe-then-release races;
+ * explicit caller ports remain strict. The helper waits for health and returns
+ * the stop handle used by iOS/Android device lanes.
  */
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
+import { waitForAdvertisedPort } from "../../../scripts/e2e-ports.mjs";
 
-export const DEFAULT_HOST_AGENT_PORT = 31338;
 export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
 export const DEFAULT_READY_ATTEMPTS = 90;
 export const DEFAULT_READY_DELAY_MS = 2000;
+export const DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS = 100;
 /** Node clamps setTimeout delays above this value to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const activeSignalStops = new Set();
+const sharedSignalHandlers = new Map();
+
+function signalExitCode(signal) {
+  return 128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15);
+}
+
+/** Coordinate all live children before honoring a parent termination signal. */
+function registerSignalStop(stop) {
+  activeSignalStops.add(stop);
+  if (sharedSignalHandlers.size === 0) {
+    for (const signal of SIGNALS) {
+      const handler = () => {
+        const stops = [...activeSignalStops];
+        void Promise.allSettled(
+          stops.map((activeStop) => activeStop()),
+        ).finally(() => process.exit(signalExitCode(signal)));
+      };
+      sharedSignalHandlers.set(signal, handler);
+      process.once(signal, handler);
+    }
+  }
+
+  return () => {
+    activeSignalStops.delete(stop);
+    if (activeSignalStops.size > 0) return;
+    for (const [signal, handler] of sharedSignalHandlers) {
+      process.off(signal, handler);
+    }
+    sharedSignalHandlers.clear();
+  };
+}
 
 export function parsePort(value, label = "port") {
   const raw = String(value ?? "").trim();
@@ -117,50 +151,29 @@ export function resolveReadyOptions(options = {}) {
   };
 }
 
+/**
+ * Give port advertisement the same validated wall-clock budget as readiness.
+ * A zero-delay readiness loop still receives one millisecond per attempt so
+ * process startup is not converted into an immediate timeout.
+ */
+export function resolveAdvertisementWaitOptions({
+  readyAttempts,
+  readyDelayMs,
+}) {
+  const timeoutMs = readyAttempts * Math.max(readyDelayMs, 1);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error(
+      "Invalid host-agent readiness budget: readyAttempts * readyDelayMs must be a positive safe integer duration.",
+    );
+  }
+  return {
+    timeoutMs,
+    pollIntervalMs: Math.min(DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS, timeoutMs),
+  };
+}
+
 export function hostAgentApiBase(port, host = DEFAULT_HOST_AGENT_HOST) {
   return `http://${host}:${port}`;
-}
-
-export async function isPortAvailable(port, host = DEFAULT_HOST_AGENT_HOST) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.once("listening", () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, host);
-  });
-}
-
-export async function chooseHostAgentPort({
-  preferredPort = DEFAULT_HOST_AGENT_PORT,
-  requestedPort = null,
-  host = DEFAULT_HOST_AGENT_HOST,
-} = {}) {
-  if (requestedPort !== null && requestedPort !== undefined) {
-    const port = parsePort(requestedPort, "host-agent port");
-    if (!(await isPortAvailable(port, host))) {
-      throw new Error(`Requested host-agent port ${port} is already in use.`);
-    }
-    return port;
-  }
-
-  const preferred = parsePort(preferredPort, "host-agent preferred port");
-  if (await isPortAvailable(preferred, host)) return preferred;
-
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.once("listening", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : null;
-      server.close(() => {
-        if (typeof port === "number") resolve(port);
-        else reject(new Error("Unable to allocate a free host-agent port."));
-      });
-    });
-    server.listen(0, host);
-  });
 }
 
 function sleep(ms) {
@@ -243,8 +256,6 @@ export async function startDeviceE2eHostAgent({
   repoRoot,
   artifactDir,
   requestedPort = null,
-  preferredPort = process.env.ELIZA_IOS_HOST_AGENT_PORT ??
-    DEFAULT_HOST_AGENT_PORT,
   host = DEFAULT_HOST_AGENT_HOST,
   readyAttempts,
   readyDelayMs,
@@ -270,21 +281,27 @@ export async function startDeviceE2eHostAgent({
     readyDelayMs,
     env: process.env,
   });
+  const advertisementWait = resolveAdvertisementWaitOptions(resolvedReady);
 
-  const port = await chooseHostAgentPort({
-    preferredPort,
-    requestedPort,
-    host,
-  });
-  const apiBase = hostAgentApiBase(port, host);
+  const explicitPort =
+    requestedPort === null || requestedPort === undefined
+      ? null
+      : parsePort(requestedPort, "host-agent port");
   fs.mkdirSync(artifactDir, { recursive: true });
   const logPath = path.join(artifactDir, "host-agent.log");
+  const portFile = path.join(
+    artifactDir,
+    `.host-agent-port-${process.pid}-${randomUUID()}`,
+  );
+  fs.rmSync(portFile, { force: true });
   const logFd = fs.openSync(logPath, "w");
   const child = spawn(command, args, {
     cwd: repoRoot,
     env: {
       ...env,
-      ELIZA_API_PORT: String(port),
+      ELIZA_API_PORT: String(explicitPort ?? 0),
+      ELIZA_API_STRICT_PORT: "1",
+      ELIZA_E2E_PORT_FILE: portFile,
       ELIZA_PAIRING_DISABLED: "1",
     },
     stdio: ["ignore", logFd, logFd],
@@ -310,6 +327,7 @@ export async function startDeviceE2eHostAgent({
         } catch {
           // error-policy:J6 log fd may already be closed by the platform
         }
+        fs.rmSync(portFile, { force: true });
         resolve();
       };
 
@@ -338,20 +356,21 @@ export async function startDeviceE2eHostAgent({
     return stopPromise;
   };
 
-  const signalHandlers = new Map();
-  for (const signal of SIGNALS) {
-    const handler = () => {
-      void stop().finally(() =>
-        process.exit(
-          128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15),
-        ),
-      );
-    };
-    signalHandlers.set(signal, handler);
-    process.once(signal, handler);
-  }
+  const unregisterSignalStop = registerSignalStop(stop);
 
   try {
+    const port = await Promise.race([
+      waitForAdvertisedPort(portFile, { child, ...advertisementWait }),
+      new Promise((_, reject) => {
+        child.once("error", reject);
+      }),
+    ]);
+    if (explicitPort !== null && port !== explicitPort) {
+      throw new Error(
+        `Host agent advertised port ${port}, expected explicit port ${explicitPort}.`,
+      );
+    }
+    const apiBase = hostAgentApiBase(port, host);
     log?.(`starting host agent at ${apiBase} (log: ${logPath})`);
     await waitForHealth({
       apiBase,
@@ -362,23 +381,21 @@ export async function startDeviceE2eHostAgent({
       delayMs: resolvedReady.readyDelayMs,
       log,
     });
+    return {
+      apiBase,
+      port,
+      logPath,
+      pid: child.pid,
+      async stop() {
+        unregisterSignalStop();
+        await stop();
+        log?.(`stopped host agent at ${apiBase}`);
+      },
+    };
   } catch (error) {
     // error-policy:J2 stop child then rethrow readiness/spawn failure
+    unregisterSignalStop();
     await stop();
     throw error;
   }
-
-  return {
-    apiBase,
-    port,
-    logPath,
-    pid: child.pid,
-    async stop() {
-      for (const [signal, handler] of signalHandlers) {
-        process.off(signal, handler);
-      }
-      await stop();
-      log?.(`stopped host agent at ${apiBase}`);
-    },
-  };
 }

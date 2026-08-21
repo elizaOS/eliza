@@ -122,6 +122,13 @@ State and platform:
 
 Cloud + models:
 - `ELIZAOS_CLOUD_ENABLED`, `ELIZAOS_CLOUD_API_KEY`, `ELIZAOS_CLOUD_BASE_URL`, `ELIZA_CLOUD_PROVISIONED`.
+- `ELIZA_CLOUD_PAIR_DIRECT_RELAY=1` enables the loopback-only `/pair` relay
+  (`api/cloud-pair-route.ts`). Non-loopback peers additionally require
+  `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS` (comma-separated CIDRs, default
+  empty): local-Docker deployments publish the port on the host loopback, so
+  the in-container peer is the bridge gateway — allow exactly that range, e.g.
+  `172.17.0.0/16`. Each entry widens pairing-token redemption to that LAN/VPC
+  segment; keep the list minimal.
 - Model overrides: `ELIZAOS_CLOUD_{NANO,SMALL,MEDIUM,LARGE,MEGA}_MODEL`, `ELIZAOS_CLOUD_{PLANNER,ACTION_PLANNER,SHOULD_RESPOND,RESPONSE_HANDLER}_MODEL`.
 - Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`.
 

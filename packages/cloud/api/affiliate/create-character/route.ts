@@ -25,6 +25,7 @@ import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
 import type { ElizaCharacter } from "@/lib/types";
 import { getCorsHeaders } from "@/lib/utils/cors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -212,14 +213,13 @@ app.post("/", async (c) => {
   try {
     const apiKey = await authenticateAffiliate(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 untrusted request body; malformed JSON becomes a typed
       // 400 ValidationError, never a silently-accepted empty/default body.
       throw ValidationError("Invalid JSON body");
     }
+    const body = decodedBody.value;
 
     const parsed = CreateCharacterSchema.safeParse(body);
     if (!parsed.success) {
@@ -311,50 +311,58 @@ app.post("/", async (c) => {
       avatarUrl: resolvedAvatarUrl ?? undefined,
     };
 
-    const createdCharacter = await charactersService.create({
-      organization_id: appOwnerOrg.id,
-      user_id: anonymousUser.id,
-      name: elizaCharacter.name,
-      bio: elizaCharacter.bio,
-      message_examples: (elizaCharacter.messageExamples ?? []) as Record<
-        string,
-        unknown
-      >[][],
-      post_examples: [],
-      topics: elizaCharacter.topics ?? [],
-      adjectives: elizaCharacter.adjectives ?? [],
-      knowledge: [],
-      plugins: [],
-      settings: (elizaCharacter.settings ?? {}) as Record<
-        string,
-        string | number | boolean | Record<string, unknown>
-      >,
-      secrets: (elizaCharacter.secrets ?? {}) as Record<
-        string,
-        string | number | boolean
-      >,
-      style: elizaCharacter.style ?? {},
-      character_data: {
-        ...elizaCharacter,
-        lore: character.lore ?? [],
-        affiliate: {
-          affiliateId,
-          // The org sponsoring this guest's usage (the application owner).
-          sponsorOrganizationId: appOwnerOrg.id,
-          source: metadata?.source,
-          vibe: metadata?.vibe,
-          backstory: metadata?.backstory,
-          instagram: metadata?.instagram,
-          twitter: metadata?.twitter,
-          socialContent: metadata?.socialContent,
-          imageUrls: httpImageUrls,
-          createdAt: new Date().toISOString(),
+    const createdCharacter = await charactersService.create(
+      {
+        organization_id: appOwnerOrg.id,
+        user_id: anonymousUser.id,
+        name: elizaCharacter.name,
+        bio: elizaCharacter.bio,
+        message_examples: (elizaCharacter.messageExamples ?? []) as Record<
+          string,
+          unknown
+        >[][],
+        post_examples: [],
+        topics: elizaCharacter.topics ?? [],
+        adjectives: elizaCharacter.adjectives ?? [],
+        knowledge: [],
+        plugins: [],
+        settings: (elizaCharacter.settings ?? {}) as Record<
+          string,
+          string | number | boolean | Record<string, unknown>
+        >,
+        secrets: (elizaCharacter.secrets ?? {}) as Record<
+          string,
+          string | number | boolean
+        >,
+        style: elizaCharacter.style ?? {},
+        character_data: {
+          ...elizaCharacter,
+          lore: character.lore ?? [],
+          affiliate: {
+            affiliateId,
+            // The org sponsoring this guest's usage (the application owner).
+            sponsorOrganizationId: appOwnerOrg.id,
+            source: metadata?.source,
+            vibe: metadata?.vibe,
+            backstory: metadata?.backstory,
+            instagram: metadata?.instagram,
+            twitter: metadata?.twitter,
+            socialContent: metadata?.socialContent,
+            imageUrls: httpImageUrls,
+            createdAt: new Date().toISOString(),
+          },
+        } as Record<string, unknown>,
+        is_template: false,
+        is_public: false,
+        avatar_url: resolvedAvatarUrl,
+      },
+      {
+        policy: {
+          mode: "trusted",
+          caller: "affiliate-create-character",
         },
-      } as Record<string, unknown>,
-      is_template: false,
-      is_public: false,
-      avatar_url: resolvedAvatarUrl,
-    });
+      },
+    );
 
     if (typeof c.executionCtx?.waitUntil === "function") {
       c.executionCtx.waitUntil(

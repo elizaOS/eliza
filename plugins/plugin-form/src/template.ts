@@ -1,8 +1,11 @@
 /**
  * @module template
- * @description Simple template resolution for form-controlled prompts
+ * @description Simple template resolution for form-controlled prompts.
+ * Nested `fields` graphs are bounded before the walk so a hostile session
+ * or LLM-authored form cannot stack-overflow the agent.
  */
 
+import { assertFormControlGraph } from "./form-control-graph";
 import type { FormControl, FormSession } from "./types";
 
 export type TemplateValues = Record<string, string>;
@@ -12,15 +15,6 @@ const TEMPLATE_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 export function buildTemplateValues(session: FormSession): TemplateValues {
   const values: TemplateValues = {};
 
-  for (const [key, state] of Object.entries(session.fields)) {
-    const value = state.value;
-    if (typeof value === "string") {
-      values[key] = value;
-    } else if (typeof value === "number" || typeof value === "boolean") {
-      values[key] = String(value);
-    }
-  }
-
   const context = session.context;
   if (context && typeof context === "object" && !Array.isArray(context)) {
     for (const [key, value] of Object.entries(context)) {
@@ -29,6 +23,15 @@ export function buildTemplateValues(session: FormSession): TemplateValues {
       } else if (typeof value === "number" || typeof value === "boolean") {
         values[key] = String(value);
       }
+    }
+  }
+
+  for (const [key, state] of Object.entries(session.fields)) {
+    const value = state.value;
+    if (typeof value === "string") {
+      values[key] = value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      values[key] = String(value);
     }
   }
 
@@ -53,6 +56,14 @@ export function resolveControlTemplates(
   control: FormControl,
   values: TemplateValues,
 ): FormControl {
+  assertFormControlGraph(control);
+  return resolveControlTemplatesUnchecked(control, values);
+}
+
+function resolveControlTemplatesUnchecked(
+  control: FormControl,
+  values: TemplateValues,
+): FormControl {
   const resolvedOptions = control.options?.map((option) => ({
     ...option,
     label: renderTemplate(option.label, values) ?? option.label,
@@ -60,7 +71,7 @@ export function resolveControlTemplates(
   }));
 
   const resolvedFields = control.fields?.map((field) =>
-    resolveControlTemplates(field, values),
+    resolveControlTemplatesUnchecked(field, values),
   );
 
   return {

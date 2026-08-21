@@ -25,10 +25,6 @@ const billingUser = vi.hoisted(() => ({
 const billingUserOptions = vi.hoisted(() => ({
   current: null as { requireFreshOrganization?: boolean } | null,
 }));
-const accountLimitsOrganization = vi.hoisted(() => ({
-  current: null as string | null,
-}));
-
 vi.mock("@elizaos/ui/cloud-ui", () => ({
   DashboardErrorState: ({ message }: { message: string }) => (
     <div role="alert">{message}</div>
@@ -52,13 +48,6 @@ vi.mock("./components/billing-tab", () => ({
   BillingTab: () => <div>billing tab</div>,
 }));
 
-vi.mock("./components/account-limits-card", () => ({
-  AccountLimitsCard: ({ organizationId }: { organizationId: string }) => {
-    accountLimitsOrganization.current = organizationId;
-    return <div>account limits card</div>;
-  },
-}));
-
 vi.mock("./wallet/ConditionalWalletProviders", () => ({
   ConditionalWalletProviders: ({ children }: { children: ReactNode }) => (
     <>{children}</>
@@ -70,7 +59,6 @@ import { BillingSectionBody } from "./BillingSection";
 describe("BillingSectionBody", () => {
   afterEach(() => {
     cleanup();
-    accountLimitsOrganization.current = null;
     billingUserOptions.current = null;
     billingUser.value = {
       user: null,
@@ -92,7 +80,7 @@ describe("BillingSectionBody", () => {
     expect(text).not.toMatch(/organization/i);
   });
 
-  it("renders the billing tab followed by account limits once the account resolves", () => {
+  it("renders consumer billing without internal infrastructure limits once the account resolves", () => {
     billingUser.value = {
       user: { organization_id: "org-1" },
       isLoading: false,
@@ -106,11 +94,7 @@ describe("BillingSectionBody", () => {
     const { container } = render(<BillingSectionBody />);
     const text = container.textContent ?? "";
     expect(text).toContain("billing tab");
-    expect(text).toContain("account limits card");
-    expect(text.indexOf("billing tab")).toBeLessThan(
-      text.indexOf("account limits card"),
-    );
-    expect(accountLimitsOrganization.current).toBe("org-1");
+    expect(text).not.toContain("account limits card");
     expect(billingUserOptions.current).toEqual({
       requireFreshOrganization: true,
     });
@@ -133,7 +117,6 @@ describe("BillingSectionBody", () => {
     expect(text).toContain("Loading billing");
     expect(text).not.toContain("billing tab");
     expect(text).not.toContain("account limits card");
-    expect(accountLimitsOrganization.current).toBeNull();
   });
 
   it("does not paint a cached organization while its membership refresh is paused", () => {
@@ -153,7 +136,6 @@ describe("BillingSectionBody", () => {
     expect(text).toContain("Loading billing");
     expect(text).not.toContain("billing tab");
     expect(text).not.toContain("account limits card");
-    expect(accountLimitsOrganization.current).toBeNull();
   });
 
   it("does not paint a cached organization before this mount confirms membership", () => {
@@ -173,6 +155,5 @@ describe("BillingSectionBody", () => {
     expect(text).toContain("Loading billing");
     expect(text).not.toContain("billing tab");
     expect(text).not.toContain("account limits card");
-    expect(accountLimitsOrganization.current).toBeNull();
   });
 });

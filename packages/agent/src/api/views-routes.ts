@@ -35,6 +35,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
@@ -64,6 +65,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
@@ -279,17 +281,29 @@ const pendingInteractRequests = new PendingRequestMap();
  * result rather than silently succeeding when it is unset.
  */
 let moduleBroadcastWs: ((payload: object) => void) | null = null;
+let moduleBroadcastWsToClientId:
+  | ((clientId: string, payload: object) => number)
+  | null = null;
 
 /** Wire the process WS broadcaster into the views module. Called once at boot. */
 export function setViewsBroadcastWs(
   broadcast: ((payload: object) => void) | null,
+  broadcastToClientId?: ((clientId: string, payload: object) => number) | null,
 ): void {
   moduleBroadcastWs = broadcast;
+  moduleBroadcastWsToClientId = broadcastToClientId ?? null;
 }
 
 /** The wired process WS broadcaster, or null when none is installed. */
 export function getViewsBroadcastWs(): ((payload: object) => void) | null {
   return moduleBroadcastWs;
+}
+
+/** The wired caller-targeted broadcaster, or null when none is installed. */
+export function getViewsBroadcastWsToClientId():
+  | ((clientId: string, payload: object) => number)
+  | null {
+  return moduleBroadcastWsToClientId;
 }
 
 export interface CurrentViewState {
@@ -936,13 +950,15 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
+    const realBundleDir = await resolveRealPath(bundleDir);
     const assetPath = path.resolve(bundleDir, decodedSubResource);
-    const relative = path.relative(bundleDir, assetPath);
+    const realAssetPath = await resolveRealPath(assetPath);
+    // Confinement via canonical paths — lexical relative is bypassable through a
+    // directory symlink inside the bundle dir.
     if (
-      relative === ".." ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative) ||
-      relative === ""
+      !realAssetPath ||
+      !realBundleDir ||
+      !isPathWithinRoot(realAssetPath, realBundleDir)
     ) {
       error(res, "Malformed view asset path", 400);
       return true;
@@ -950,7 +966,7 @@ export async function handleViewsRoutes(
 
     let stat: import("node:fs").Stats;
     try {
-      stat = await fs.stat(assetPath);
+      stat = await fs.stat(realAssetPath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         error(res, `View asset "${decodedSubResource}" not found`, 404);
@@ -983,10 +999,11 @@ export async function handleViewsRoutes(
 
     let data: Buffer;
     try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(assetPath);
+      data =
+        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(realAssetPath);
     } catch (err) {
       logger.error(
-        { src: "ViewsRoutes", viewId: id, assetPath, err },
+        { src: "ViewsRoutes", viewId: id, assetPath: realAssetPath, err },
         `[ViewsRoutes] Failed to read asset "${decodedSubResource}" for view "${id}"`,
       );
       error(res, `Failed to read asset for view "${id}"`, 500);
@@ -1001,7 +1018,7 @@ export async function handleViewsRoutes(
       end?: (chunk?: unknown) => void;
     };
     raw.writeHead?.(200, {
-      "Content-Type": contentTypeForViewAsset(assetPath),
+      "Content-Type": contentTypeForViewAsset(realAssetPath),
       "Content-Length": stat.size,
       "Cache-Control": "no-cache",
       ETag: etag,
@@ -1049,8 +1066,9 @@ export async function handleViewsRoutes(
   // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
   // the caller owns a narrower delivery channel. Realtime voice returns the
   // validated VIEWS result through its originating WebSocket session; normal app
-  // chat returns it in the completed stream action result. A global echo from
-  // either path would navigate unrelated browsers and devices.
+  // chat keeps the completed stream action result as its fallback and may also
+  // best-effort target the live originating renderer. A global echo from either
+  // path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -1067,6 +1085,7 @@ export async function handleViewsRoutes(
   //   payload: unknown     — opaque deep-link state consumed by the target view
   //   delivery: "originating-client" — realtime caller navigates its own client
   //   delivery: "completed-action" — app chat navigates from its stream result
+  //   completedActionHandoffId: string — renderer-observed transport dedupe key
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -1207,9 +1226,22 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo when the client already navigated or when the caller owns a
-    // narrower delivery channel such as realtime voice or the app chat stream.
-    if (reportedSource !== "user" && !callerOwnedDelivery) {
+    // Realtime voice returns navigation through its own control channel. App
+    // chat normally has the completed action as a reliable fallback, but when
+    // its originating renderer still has a live WebSocket, deliver there now:
+    // the navigate frame is emitted before the action callback can claim
+    // "Opened …". Supporting renderers deduplicate this frame against the
+    // caller-scoped terminal handoff by id after one path is actually handled.
+    const shouldTargetCompletedAction =
+      body?.delivery === "completed-action" && Boolean(originatingClientId);
+    const completedActionHandoffId = shouldTargetCompletedAction
+      ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
+      : undefined;
+    let completedActionDelivered = false;
+    if (
+      reportedSource !== "user" &&
+      (!callerOwnedDelivery || shouldTargetCompletedAction)
+    ) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1221,14 +1253,34 @@ export async function handleViewsRoutes(
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
         ...deepLinkPayload,
+        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
       if (originatingClientId) {
-        const delivered = ctx.broadcastWsToClientId?.(
-          originatingClientId,
-          frame,
-        );
-        if (delivered === undefined || delivered <= 0) {
+        let delivered: number | undefined;
+        if (shouldTargetCompletedAction) {
+          try {
+            delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+          } catch (err) {
+            // error-policy:J4 the terminal completed-action result remains the
+            // visible, caller-scoped navigation fallback when this optional
+            // early WebSocket optimization fails unexpectedly.
+            logger.warn(
+              { src: "ViewsRoutes", err, viewId: id },
+              "[ViewsRoutes] Early completed-action navigation delivery failed",
+            );
+          }
+        } else {
+          delivered = ctx.broadcastWsToClientId?.(originatingClientId, frame);
+        }
+        completedActionDelivered =
+          shouldTargetCompletedAction &&
+          typeof delivered === "number" &&
+          delivered > 0;
+        if (
+          !shouldTargetCompletedAction &&
+          (delivered === undefined || delivered <= 0)
+        ) {
           error(
             res,
             `No connected view client "${originatingClientId}" is available for "${id}".`,
@@ -1251,6 +1303,8 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
+      ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
     });
     return true;
   }
@@ -1485,10 +1539,8 @@ export async function handleViewsRoutes(
         ? body.timeoutMs
         : 5_000;
 
-    const requestId = randomUUID();
-
     logger.info(
-      { src: "ViewsRoutes", viewId: id, capability, requestId },
+      { src: "ViewsRoutes", viewId: id, capability },
       `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
     );
 
@@ -1497,97 +1549,29 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    if (typeof entry.serverInteract === "function") {
-      try {
-        const result = await entry.serverInteract(capability, params, {
-          runtime: ctx.runtime ?? undefined,
-        });
-        ctx.broadcastWs?.({
-          type: "view:event",
-          viewEventType: `view:${id}:updated`,
-          payload: { viewId: id, capability },
-        });
-        json(res, {
-          requestId,
-          success: resultSuccess(result),
-          result,
-        });
-      } catch (err) {
-        logger.warn(
-          { src: "ViewsRoutes", viewId: id, capability, requestId, err },
-          `[ViewsRoutes] Server interaction failed for view "${id}"`,
-        );
-        json(res, {
-          requestId,
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-          result: {
-            success: false,
-            text: `Cannot invoke capability "${capability}" on view "${id}": ${
-              err instanceof Error ? err.message : String(err)
-            }.`,
-          },
-        });
-      }
-      return true;
-    }
-
-    // Register the pending slot before broadcasting — avoids a race where the
-    // frontend responds before we start waiting.
     const targetClientId = resolveTargetViewClientId(id, req, body);
-    const frame = {
-      type: "view:interact",
-      viewId: id,
-      viewType: entry.viewType,
+    const dispatch = await dispatchViewInteract(
+      entry,
+      id,
       capability,
       params,
-      requestId,
-    };
-
-    if (!targetClientId) {
-      json(res, {
-        requestId,
-        success: false,
-        error:
-          "Missing client id for frontend view interaction. Provide X-ElizaOS-Client-Id or clientId.",
-      });
-      return true;
-    }
-
-    if (typeof ctx.broadcastWsToClientId !== "function") {
-      json(res, {
-        requestId,
-        success: false,
-        error: "Targeted view interaction delivery is unavailable.",
-      });
-      return true;
-    }
-
-    // Register the pending slot before sending — avoids a race where the
-    // frontend responds before we start waiting.
-    const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
-    const delivered = ctx.broadcastWsToClientId(targetClientId, frame);
-    if (delivered <= 0) {
-      pendingInteractRequests.resolve(requestId, {
-        requestId,
-        success: false,
-        error: `No connected view client "${targetClientId}" is available for "${id}".`,
-      });
-    }
-
-    try {
-      const result = await resultPromise;
-      json(res, result);
-    } catch (err) {
-      logger.warn(
-        { src: "ViewsRoutes", viewId: id, requestId, err },
-        `[ViewsRoutes] Interact timed out for view "${id}"`,
-      );
+      {
+        broadcastWs: ctx.broadcastWs,
+        broadcastWsToClientId: ctx.broadcastWsToClientId,
+        clientId: targetClientId,
+        runtime: ctx.runtime ?? undefined,
+        userRoles: callerRoles(ctx),
+      },
+      timeoutMs,
+    );
+    if (!dispatch.success && dispatch.failureKind === "timeout") {
       error(
         res,
         `View "${id}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
         504,
       );
+    } else {
+      json(res, dispatch);
     }
     return true;
   }
@@ -1608,6 +1592,7 @@ export interface ViewInteractDispatchResult {
   success: boolean;
   result?: unknown;
   error?: string;
+  failureKind?: "timeout";
 }
 
 interface ViewInteractTransport {
@@ -1619,9 +1604,12 @@ interface ViewInteractTransport {
 }
 
 /**
- * Dispatch a capability to a view, reusing the established interact semantics:
- * a `serverInteract` handler when the view declares one, else a frontend
- * `view:interact` WebSocket round-trip resolved via the pending-request map.
+ * Dispatch a capability to a view, reusing the established interact semantics.
+ * Standard and agent-surface capabilities prefer a mounted caller-targeted
+ * frontend because those controls live in the rendered DOM. Nonstandard
+ * declared capabilities prefer `serverInteract`. A mixed view falls back to
+ * `serverInteract` when no targeted client is mounted, preserving headless
+ * callers without sending mutating controls to every connected shell.
  * Shared by POST /:id/activate (CLICK_ELEMENT) and the view-scoped action
  * handler (view-scoped-actions.ts) so neither re-implements the dispatch.
  */
@@ -1629,7 +1617,7 @@ export async function dispatchViewInteract(
   entry: ViewRegistryEntry,
   viewId: string,
   capability: string,
-  params: Record<string, unknown>,
+  params: Record<string, unknown> | undefined,
   transport: ViewInteractTransport,
   timeoutMs = 5_000,
 ): Promise<ViewInteractDispatchResult> {
@@ -1649,6 +1637,66 @@ export async function dispatchViewInteract(
       success: false,
       error: capabilityDeniedMessage(viewId, capability),
     };
+  }
+
+  const hasServerInteract = typeof entry.serverInteract === "function";
+  const preferFrontend =
+    !hasServerInteract || isSurfaceBrokeredCapability(capability);
+  if (
+    preferFrontend &&
+    transport.clientId &&
+    typeof transport.broadcastWsToClientId === "function"
+  ) {
+    const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
+    const frame = {
+      type: "view:interact",
+      viewId,
+      viewType: entry.viewType,
+      capability,
+      params,
+      requestId,
+    };
+    let delivered = 0;
+    try {
+      delivered = transport.broadcastWsToClientId(transport.clientId, frame);
+    } catch (err) {
+      // error-policy:J4 a mixed view retains its headless serverInteract path
+      // when the optional mounted-shell delivery boundary is unavailable.
+      logger.warn(
+        { src: "ViewsRoutes", viewId, capability, requestId, err },
+        `[ViewsRoutes] Targeted interaction delivery failed for view "${viewId}"`,
+      );
+    }
+    if (delivered > 0) {
+      try {
+        const result = (await resultPromise) as ViewInteractResult;
+        return {
+          requestId,
+          success: result.success,
+          result: result.result,
+          ...(result.error ? { error: result.error } : {}),
+        };
+      } catch (err) {
+        logger.warn(
+          { src: "ViewsRoutes", viewId, capability, requestId, err },
+          `[ViewsRoutes] Interact timed out for view "${viewId}"`,
+        );
+        return {
+          requestId,
+          success: false,
+          error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+          failureKind: "timeout",
+        };
+      }
+    }
+
+    pendingInteractRequests.resolve(requestId, {
+      requestId,
+      success: false,
+      error: `No connected view client "${transport.clientId}" is available for "${viewId}".`,
+    });
+    const unavailableResult = await resultPromise;
+    if (!hasServerInteract) return unavailableResult;
   }
 
   if (typeof entry.serverInteract === "function") {
@@ -1671,6 +1719,12 @@ export async function dispatchViewInteract(
         requestId,
         success: false,
         error: err instanceof Error ? err.message : String(err),
+        result: {
+          success: false,
+          text: `Cannot invoke capability "${capability}" on view "${viewId}": ${
+            err instanceof Error ? err.message : String(err)
+          }.`,
+        },
       };
     }
   }
@@ -1724,6 +1778,7 @@ export async function dispatchViewInteract(
       requestId,
       success: false,
       error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+      failureKind: "timeout",
     };
   }
 }
@@ -1737,9 +1792,10 @@ function resolveViewInteractClientId(
   req: Pick<http.IncomingMessage, "headers">,
   body: Record<string, unknown> | null | undefined,
 ): string | null {
+  const headers = req.headers ?? {};
   return (
-    normalizeWsClientId(firstHeaderValue(req.headers["x-elizaos-client-id"])) ??
-    normalizeWsClientId(firstHeaderValue(req.headers["x-eliza-client-id"])) ??
+    normalizeWsClientId(firstHeaderValue(headers["x-elizaos-client-id"])) ??
+    normalizeWsClientId(firstHeaderValue(headers["x-eliza-client-id"])) ??
     normalizeWsClientId(body?.clientId)
   );
 }

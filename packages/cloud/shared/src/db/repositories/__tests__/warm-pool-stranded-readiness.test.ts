@@ -6,8 +6,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
-import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { agentSandboxes, WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../schemas/agent-sandboxes";
+import { apiKeys } from "../../schemas/api-keys";
+import { dockerNodes } from "../../schemas/docker-nodes";
+import { generations } from "../../schemas/generations";
+import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
+import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 
@@ -22,6 +27,7 @@ process.env.WARM_POOL_ENABLED = "1";
 const PGLITE_TIMEOUT = 60_000;
 const IMAGE = "ghcr.io/elizaos/eliza:atomic-ready";
 const OTHER_IMAGE = "ghcr.io/elizaos/eliza:stale";
+const TARGET_DIGEST = `sha256:${"a".repeat(64)}`;
 const USER_ORG_ID = "10000000-0000-4000-8000-000000000001";
 const USER_ID = "10000000-0000-4000-8000-000000000002";
 
@@ -41,10 +47,33 @@ beforeAll(async () => {
   const repositoryModule = await import("../agent-sandboxes");
   repository = new repositoryModule.AgentSandboxesRepository();
 
-  const schema = { organizations, users, userCharacters, agentSandboxes };
+  const schema = {
+    organizations,
+    users,
+    userCharacters,
+    agentSandboxes,
+    dockerNodes,
+    apiKeys,
+    usageRecords,
+    generations,
+    jobs,
+  };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
   await repository.countAllPoolEntries({ image: IMAGE });
+
+  // Replenish reads the tenant-starvation guard inputs (queued tenant jobs +
+  // placeable-node slack). Seed one open node with ample free capacity so the
+  // guard observes real rows instead of an empty cluster clipping every fill.
+  await dbWrite.insert(dockerNodes).values({
+    node_id: "node-1",
+    hostname: "127.0.0.1",
+    capacity: 16,
+    allocated_count: 0,
+    enabled: true,
+    placement_state: "open",
+    status: "healthy",
+  });
 
   await dbWrite.insert(organizations).values({
     id: USER_ORG_ID,
@@ -84,7 +113,6 @@ async function seedPoolEntry(
   return repository.createPoolEntry({
     agent_name: `pool-${crypto.randomUUID().slice(0, 8)}`,
     status: "running",
-    execution_tier: "dedicated-always",
     database_status: "ready",
     sandbox_id: `sandbox-${crypto.randomUUID()}`,
     node_id: "node-1",
@@ -92,13 +120,15 @@ async function seedPoolEntry(
     bridge_url: "http://100.64.0.10:3000",
     health_url: healthUrl(),
     docker_image: IMAGE,
-    image_digest: `sha256:${"a".repeat(64)}`,
+    image_digest: TARGET_DIGEST,
     pool_ready_at: new Date("2026-07-30T00:00:00.000Z"),
     ...overrides,
   });
 }
 
-async function seedUserAgent(): Promise<string> {
+async function seedUserAgent(
+  executionTier: "shared" | "dedicated-always" = "dedicated-always",
+): Promise<string> {
   const [row] = await dbWrite
     .insert(agentSandboxes)
     .values({
@@ -106,7 +136,7 @@ async function seedUserAgent(): Promise<string> {
       user_id: USER_ID,
       agent_name: `claim-${crypto.randomUUID().slice(0, 8)}`,
       status: "pending",
-      execution_tier: "dedicated-always",
+      execution_tier: executionTier,
       database_status: "none",
     })
     .returning({ id: agentSandboxes.id });
@@ -119,6 +149,10 @@ describe("one claimable-capacity predicate", () => {
     "counts, image inventory, and the claim transaction agree on the exact row",
     async () => {
       const valid = await seedPoolEntry();
+      expect(valid.execution_tier).toBe("dedicated-always");
+      expect(valid.billing_status).toBe("exempt");
+      expect(valid.last_billed_at).toBeNull();
+      expect(valid.hourly_rate).toBe("0.0000");
       await seedPoolEntry({ pool_ready_at: null });
       await seedPoolEntry({ bridge_url: null });
       await seedPoolEntry({ node_id: null });
@@ -160,6 +194,82 @@ describe("one claimable-capacity predicate", () => {
   );
 
   test(
+    "a legacy Shared-tier pool source remains claimable by a Dedicated target",
+    async () => {
+      const [legacyPool] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: WARM_POOL_ORG_ID,
+          user_id: WARM_POOL_USER_ID,
+          agent_name: "legacy-shared-pool",
+          status: "running",
+          execution_tier: "shared",
+          billing_status: "exempt",
+          pool_status: "unclaimed",
+          pool_ready_at: new Date("2026-07-30T00:00:00.000Z"),
+          database_status: "ready",
+          database_uri: "postgres://legacy-pool",
+          sandbox_id: "legacy-pool-sandbox",
+          node_id: "legacy-pool-node",
+          container_name: "legacy-pool-container",
+          bridge_url: "http://100.64.0.20:3000",
+          health_url: healthUrl(),
+          docker_image: IMAGE,
+          image_digest: TARGET_DIGEST,
+        })
+        .returning();
+      if (!legacyPool) throw new Error("failed to seed legacy Shared pool row");
+      const userAgentId = await seedUserAgent();
+
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "legacy-source-claim",
+      });
+
+      expect(claimed?.warm_pool_row_id).toBe(legacyPool.id);
+      expect(claimed?.execution_tier).toBe("dedicated-always");
+      expect(claimed?.pool_status).toBeNull();
+      expect(claimed?.billing_status).toBe("active");
+      expect(claimed?.container_name).toBe(legacyPool.container_name);
+      expect(await repository.findById(legacyPool.id)).toBeUndefined();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a Shared target cannot consume or inherit a ready pool container",
+    async () => {
+      const pool = await seedPoolEntry();
+      const sharedTargetId = await seedUserAgent("shared");
+
+      const claimed = await repository.claimWarmContainer({
+        userAgentId: sharedTargetId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "must-stay-shared",
+      });
+
+      expect(claimed).toBeNull();
+      expect(await repository.findById(pool.id)).toMatchObject({
+        id: pool.id,
+        pool_status: "unclaimed",
+        container_name: pool.container_name,
+      });
+      expect(await repository.findById(sharedTargetId)).toMatchObject({
+        id: sharedTargetId,
+        execution_tier: "shared",
+        status: "pending",
+        node_id: null,
+        container_name: null,
+        claimed_at: null,
+      });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "two concurrent users cannot claim the same ready row",
     async () => {
       const pool = await seedPoolEntry();
@@ -187,6 +297,113 @@ describe("one claimable-capacity predicate", () => {
       expect(winners).toHaveLength(1);
       expect(winners[0]?.warm_pool_row_id).toBe(pool.id);
       expect(await repository.findById(pool.id)).toBeUndefined();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a null persisted digest is neither counted nor claimable",
+    async () => {
+      await seedPoolEntry({ image_digest: null });
+      expect(await repository.countUnclaimedPool({ image: IMAGE })).toBe(0);
+      expect(await repository.listClaimablePool({ image: IMAGE })).toEqual([]);
+
+      const userAgentId = await seedUserAgent();
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "must-fall-cold",
+      });
+      expect(claimed).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "digest inventory counts the target generation while provisioning",
+    async () => {
+      await seedPoolEntry({
+        status: "provisioning",
+        pool_ready_at: null,
+        docker_image: IMAGE,
+        image_digest: TARGET_DIGEST,
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        bridge_url: null,
+        health_url: null,
+      });
+      await seedPoolEntry({
+        status: "provisioning",
+        pool_ready_at: null,
+        docker_image: IMAGE,
+        image_digest: `sha256:${"b".repeat(64)}`,
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        bridge_url: null,
+        health_url: null,
+      });
+
+      expect(await repository.countAllPoolEntries({ digest: TARGET_DIGEST })).toEqual({
+        ready: 0,
+        provisioning: 1,
+      });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "rollout reservation fences the exact stale generation before a later claim",
+    async () => {
+      const stale = await seedPoolEntry({
+        image_digest: `sha256:${"b".repeat(64)}`,
+      });
+      const targetDigest = `sha256:${"a".repeat(64)}`;
+
+      const reserved = await repository.reserveStalePoolEntryForRollout(stale, targetDigest);
+      expect(reserved?.status).toBe("deletion_failed");
+
+      const userAgentId = await seedUserAgent();
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "cannot-claim-known-stale",
+      });
+      expect(claimed).toBeNull();
+      expect(await repository.countUnclaimedPool({ image: IMAGE })).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent claim versus stale-generation reservation has exactly one owner",
+    async () => {
+      const stale = await seedPoolEntry({
+        image_digest: `sha256:${"b".repeat(64)}`,
+      });
+      const userAgentId = await seedUserAgent();
+
+      const [reserved, claimed] = await Promise.all([
+        repository.reserveStalePoolEntryForRollout(stale, `sha256:${"a".repeat(64)}`),
+        repository.claimWarmContainer({
+          userAgentId,
+          organizationId: USER_ORG_ID,
+          image: IMAGE,
+          agentName: "claim-race",
+        }),
+      ]);
+
+      expect(Number(Boolean(reserved)) + Number(Boolean(claimed))).toBe(1);
+      if (reserved) {
+        expect(claimed).toBeNull();
+        expect((await repository.findById(stale.id))?.status).toBe("deletion_failed");
+      } else {
+        expect(claimed?.warm_pool_row_id).toBe(stale.id);
+        expect(await repository.findById(stale.id)).toBeUndefined();
+      }
     },
     PGLITE_TIMEOUT,
   );
@@ -228,6 +445,92 @@ describe("atomic readiness transition", () => {
       const stored = await repository.findById(provisioning.id);
       expect(stored?.status).toBe("provisioning");
       expect(stored?.pool_ready_at).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a digest-bound in-flight generation becomes claimable under its configured tag",
+    async () => {
+      const provisioning = await seedPoolEntry({
+        status: "provisioning",
+        pool_ready_at: null,
+        docker_image: IMAGE,
+        image_digest: TARGET_DIGEST,
+      });
+      const ready = await repository.commitPoolEntryReady(provisioning);
+      expect(ready?.docker_image).toBe(IMAGE);
+      expect(ready?.image_digest).toBe(TARGET_DIGEST);
+
+      const userAgentId = await seedUserAgent();
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "digest-bound-claim",
+      });
+      expect(claimed?.warm_pool_row_id).toBe(provisioning.id);
+      expect(claimed?.image_digest).toBe(TARGET_DIGEST);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "repeated digest-scoped replenish cycles count in-flight rows against the ceiling",
+    async () => {
+      for (let index = 0; index < 2; index++) {
+        await seedPoolEntry({
+          status: "provisioning",
+          pool_ready_at: null,
+          docker_image: IMAGE,
+          image_digest: TARGET_DIGEST,
+          sandbox_id: null,
+          node_id: null,
+          container_name: null,
+          bridge_url: null,
+          health_url: null,
+        });
+      }
+
+      const { WarmPoolManager } = await import("../../../lib/services/containers/agent-warm-pool");
+      const { DEFAULT_WARM_POOL_POLICY } = await import(
+        "../../../lib/services/containers/agent-warm-pool-forecast"
+      );
+      let created = 0;
+      const manager = new WarmPoolManager(
+        {
+          createPoolContainer: async (configuredImage, targetDigest) => {
+            created++;
+            const row = await seedPoolEntry({
+              status: "provisioning",
+              pool_ready_at: null,
+              docker_image: configuredImage,
+              image_digest: targetDigest,
+              sandbox_id: null,
+              node_id: null,
+              container_name: null,
+              bridge_url: null,
+              health_url: null,
+            });
+            return { id: row.id, nodeId: null };
+          },
+          destroyPoolContainer: async () => {},
+          healthProbe: async () => true,
+        },
+        {
+          ...DEFAULT_WARM_POOL_POLICY,
+          minPoolSize: 3,
+          maxPoolSize: 3,
+          replenishBurstLimit: 3,
+        },
+      );
+
+      const first = await manager.replenish(IMAGE, TARGET_DIGEST);
+      const second = await manager.replenish(IMAGE, TARGET_DIGEST);
+      expect(first.created).toHaveLength(1);
+      expect(second.created).toHaveLength(0);
+      expect(second.state.provisioningCount).toBe(3);
+      expect(created).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

@@ -5,6 +5,7 @@
  * Also handles the webhook verification GET handshake.
  */
 
+import { timingSafeEqualSecret } from "../../auth/cron";
 import { logger } from "../../utils/logger";
 import { verifyWhatsAppSignature } from "../../utils/whatsapp-api";
 import { elizaAppConfig } from "./config";
@@ -61,7 +62,9 @@ class WhatsAppAuthService {
       return null;
     }
 
-    if (verifyToken !== expectedToken) {
+    // Constant-time comparison (never `!==` on a secret): the handshake runs
+    // on the internet-facing Meta webhook subscription endpoint.
+    if (!verifyToken || !timingSafeEqualSecret(verifyToken, expectedToken)) {
       logger.warn("[WhatsAppAuth] Verify token mismatch");
       return null;
     }

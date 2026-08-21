@@ -5,6 +5,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatResult } from "@/lib/services/eliza-app/onboarding-chat";
+import * as provisioningObservation from "../../shared/src/lib/services/eliza-app/provisioning-observation";
 import type { OnboardingSessionCoordinator } from "../src/onboarding-session-coordinator";
 
 const noProvisioning = {
@@ -35,11 +36,14 @@ mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
 }));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => {
+  ...provisioningObservation,
+  // Onboarding no longer provisions compute; the read-only status poll is the
+  // remaining fallible provisioning step inside an authenticated turn, so it
+  // is where a pre-commit outage is injected.
+  getElizaAppProvisioningStatus: mock(async () => {
     if (provisioningFailure) throw provisioningFailure;
     return noProvisioning;
   }),
-  getElizaAppProvisioningStatus: mock(async () => noProvisioning),
 }));
 
 const { OnboardingSessionCoordinator: OnboardingSessionCoordinatorValue } =
@@ -1232,8 +1236,9 @@ describe("OnboardingSessionCoordinator", () => {
           }),
         );
 
-      // The browser continuation binds the account in memory, then
-      // provisioning throws BEFORE the durable transaction commits. The turn
+      // The browser continuation binds the account in memory, then the
+      // provisioning status read throws BEFORE the durable transaction
+      // commits. The turn
       // fails and the greeting must not exist anywhere: the user would be
       // DMed "you're all set" for a sign-in that did not persist.
       provisioningFailure = new Error("transient provisioning outage");

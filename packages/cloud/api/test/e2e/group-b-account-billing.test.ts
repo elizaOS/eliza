@@ -39,6 +39,7 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -48,6 +49,7 @@ import {
   getApiKey,
   getBaseUrl,
   isServerReachable,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -97,9 +99,15 @@ const TEST_WALLET_ACCOUNT = privateKeyToAccount(
 
 async function signedWalletHeaders(
   path: string,
+  body?: unknown,
 ): Promise<Record<string, string>> {
   const timestamp = Date.now();
-  const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: ${path}`;
+  const rawBody = body === undefined ? "" : JSON.stringify(body);
+  const canonicalQuery = ""; // the e2e wallet calls carry no query string
+  const payloadHash = createHash("sha256")
+    .update(`${canonicalQuery}\n${rawBody}`)
+    .digest("hex");
+  const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: ${path}\nPayload-SHA256: ${payloadHash}`;
   const signature = await TEST_WALLET_ACCOUNT.signMessage({ message });
 
   return {
@@ -132,7 +140,7 @@ afterAll(async () => {
   if (!serverReachable || !sessionCookie) return;
   for (const id of createdApiKeyIds) {
     await api.delete(`/api/v1/api-keys/${id}`, {
-      headers: { Cookie: sessionCookie },
+      headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }),
     });
   }
 });
@@ -192,7 +200,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
         description: "Group B regen test — revoked in afterAll.",
         rate_limit: 60,
       },
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
@@ -205,7 +213,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
     const regenRes = await api.post(
       `/api/v1/api-keys/${created.apiKey?.id}/regenerate`,
       undefined,
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(regenRes.status).toBe(200);
     const regen = (await regenRes.json()) as {
@@ -224,7 +232,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
     const res = await api.post(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
       undefined,
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     // Well-formed UUID that misses the lookup → 404.
     expect(res.status).toBe(404);
@@ -254,7 +262,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
           description: "Group B patch test — revoked in afterAll.",
           rate_limit: 60,
         },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(createRes.status).toBe(201);
       const created = (await createRes.json()) as { apiKey?: { id?: string } };
@@ -264,7 +272,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
       const patchRes = await api.patch(
         `/api/v1/api-keys/${created.apiKey?.id}`,
         { name: "group-b-patched", is_active: false, rate_limit: 30 },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(patchRes.status).toBe(200);
       const patched = (await patchRes.json()) as {
@@ -287,7 +295,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
     const res = await api.patch(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
       { is_active: false },
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(res.status).toBe(404);
   });
@@ -491,17 +499,17 @@ describeE2E("POST /api/v1/user/wallets/rpc", () => {
   });
 
   test("happy path: signed wallet auth reaches ownership or RPC checks", async () => {
-    const res = await api.post(
-      "/api/v1/user/wallets/rpc",
-      {
-        clientAddress: "0x0000000000000000000000000000000000000000",
-        payload: { method: "personal_sign", params: ["hello"] },
-        signature: "0xdead",
-        timestamp: Date.now(),
-        nonce: `n-${Date.now()}`,
-      },
-      { headers: await signedWalletHeaders("/api/v1/user/wallets/rpc") },
-    );
+    const rpcBody = {
+      clientAddress: "0x0000000000000000000000000000000000000000",
+      payload: { method: "personal_sign", params: ["hello"] },
+      signature: "0xdead",
+      timestamp: Date.now(),
+      nonce: `n-${Date.now()}`,
+    };
+    const res = await api.post("/api/v1/user/wallets/rpc", rpcBody, {
+      // The signed payload hash must commit to the exact bytes sent.
+      headers: await signedWalletHeaders("/api/v1/user/wallets/rpc", rpcBody),
+    });
     // The signature verifies, but TEST_WALLET is not a provisioned wallet for
     // any org → ownership check rejects with 401.
     expect(res.status).toBe(401);
@@ -590,20 +598,28 @@ describeE2E("GET /api/v1/pricing/summary", () => {
 
 // -------- /api/quotas/usage ------------------------------------------------
 
-describeE2E("GET /api/quotas/usage", () => {
+describeE2E("GET /api/quotas/usage tombstone", () => {
   test("auth gate: 401 without credentials", async () => {
     const res = await api.get("/api/quotas/usage");
     expect(res.status).toBe(401);
   });
 
-  test("happy path: returns quota usage data for the authed org", async () => {
+  test("happy path: authenticated clients receive the stable retirement receipt", async () => {
     const res = await api.get("/api/quotas/usage", {
       headers: bearerHeaders(),
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { success?: boolean; data?: unknown };
-    expect(body.success).toBe(true);
-    expect(body.data).toBeDefined();
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      code?: string;
+    };
+    expect(body).toEqual({
+      success: false,
+      error: "Weekly usage quotas have been retired",
+      code: "usage_quotas_retired",
+    });
   });
 
   test("validation: POST is not mounted", async () => {
@@ -696,7 +712,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: { Cookie: sessionCookie } },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-keyless-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(503);
   });
@@ -712,7 +733,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: { Cookie: sessionCookie } },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-live-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId?: string; url?: string };
@@ -727,7 +753,7 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
       const res = await api.post(
         "/api/stripe/create-checkout-session",
         {},
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -753,7 +779,7 @@ describeE2E("POST /api/signup-code/redeem", () => {
       const res = await api.post(
         "/api/signup-code/redeem",
         { code: `group-b-${Date.now()}` },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { success?: boolean; error?: string };
@@ -766,7 +792,7 @@ describeE2E("POST /api/signup-code/redeem", () => {
     const res = await api.post(
       "/api/signup-code/redeem",
       {},
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };

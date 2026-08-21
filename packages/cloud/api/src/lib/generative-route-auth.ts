@@ -150,12 +150,20 @@ export async function admitFlatGenerativeOperation(params: {
  * Cache misses fail closed with a retryable response while authoritative
  * hydration runs under the Worker lifetime. Wallet proof remains on the
  * compatibility path because replay-protected signatures cannot be cached.
+ * Voice routes may opt into one bounded await of the already-coalesced
+ * hydration so a 60s idle cache miss does not 503 the first utterance.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
   options: {
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
+    /**
+     * When set, a cache-only warming resolution awaits the coalesced
+     * hydration for at most this many milliseconds and then re-resolves.
+     * Chat and every other generative route leave this unset.
+     */
+    awaitWarmingMs?: number;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const executionCtx = getGenerativeExecutionContext(c);
@@ -183,11 +191,33 @@ export async function requireGenerativeRouteCaller(
   const { resolveInferenceAuthContext } = await import(
     "@/lib/services/inference-auth-context"
   );
-  const resolution = await resolveInferenceAuthContext(c.req.raw, {
-    traceId: c.get("traceId") ?? c.get("requestId"),
-    cacheOnly: Boolean(executionCtx),
-    executionCtx,
-  });
+  const resolveCallerAuth = () =>
+    resolveInferenceAuthContext(c.req.raw, {
+      traceId: c.get("traceId") ?? c.get("requestId"),
+      cacheOnly: Boolean(executionCtx),
+      executionCtx,
+    });
+  let resolution = await resolveCallerAuth();
+
+  if (
+    resolution.kind === "warming" &&
+    typeof options.awaitWarmingMs === "number" &&
+    options.awaitWarmingMs > 0 &&
+    resolution.hydration
+  ) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        resolution.hydration,
+        new Promise<void>((resolve) => {
+          timeoutId = setTimeout(resolve, options.awaitWarmingMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+    resolution = await resolveCallerAuth();
+  }
 
   if (resolution.kind === "authorized") {
     const user = {

@@ -121,4 +121,11 @@ export interface LifeOpsBriefing {
   readonly editorial: LifeOpsBriefingEditorialContract;
   /** Free-form narrative composed by the LLM compose pass. */
   readonly narrative?: string;
+  /** Exact trajectory context active for the optimization-tagged model call. */
+  readonly optimizationTrace?: {
+    readonly task: "morning_brief" | "meeting_prep";
+    readonly trajectoryId: string;
+    readonly trajectoryStepId?: string;
+    readonly traceId?: string;
+  };
 }

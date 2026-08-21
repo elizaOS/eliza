@@ -1,7 +1,7 @@
 /**
  * Shared tweet-sending and media helpers for the connector: `sendTweet` (publishes
  * text, splitting into threads and honoring the max length, returning the accepted
- * `SentTweet`), `fetchMediaData` (SSRF-guarded media download for attachments), and
+ * `SentTweet`), `fetchMediaData` (SSRF-guarded, size-capped attachment download), and
  * `parseActionResponseFromText` (extracts the model's like/retweet/quote/reply
  * choice). Re-exports the shared API error handler.
  */
@@ -11,8 +11,9 @@ import type { Media } from "@elizaos/core";
 import {
   type Content,
   createUniqueUuid,
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   ElizaError,
-  fetchWithSsrfGuard,
+  fetchRemoteMedia,
   logger,
   type Memory,
   truncateToCompleteSentence,
@@ -58,11 +59,58 @@ export const isValidTweet = (tweet: Tweet): boolean => {
   );
 };
 
+async function readLocalAttachment(resolvedPath: string): Promise<Buffer> {
+  const handle = await fs.promises.open(resolvedPath, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw new Error(
+        `File not found: ${resolvedPath}. Make sure the path is correct.`,
+      );
+    }
+    if (
+      !Number.isSafeInteger(stat.size) ||
+      stat.size < 0 ||
+      stat.size > DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES
+    ) {
+      throw new ElizaError(
+        `X attachment exceeds ${DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES} bytes`,
+        {
+          code: "X_ATTACHMENT_TOO_LARGE",
+          context: {
+            path: resolvedPath,
+            bytes: stat.size,
+            maxBytes: DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+          },
+        },
+      );
+    }
+
+    const mediaBuffer = Buffer.allocUnsafe(stat.size);
+    let total = 0;
+    while (total < mediaBuffer.length) {
+      const { bytesRead } = await handle.read(
+        mediaBuffer,
+        total,
+        mediaBuffer.length - total,
+        total,
+      );
+      if (bytesRead === 0) break;
+      total += bytesRead;
+    }
+    return total === mediaBuffer.length
+      ? mediaBuffer
+      : mediaBuffer.subarray(0, total);
+  } finally {
+    await handle.close();
+  }
+}
+
 /**
  * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
- *
- * @param attachments Array of Media objects containing URLs or file paths to fetch media from
- * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ * Remote URLs go through {@link fetchRemoteMedia} (SSRF guard +
+ * {@link DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES}) so a lying or missing
+ * Content-Length cannot force an unbounded `arrayBuffer()`.
  */
 export async function fetchMediaData(
   attachments: Media[],
@@ -70,34 +118,22 @@ export async function fetchMediaData(
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        // Handle HTTP URLs — route through the SSRF guard so a crafted
-        // attachment URL can't reach internal/metadata endpoints.
-        const { response, release } = await fetchWithSsrfGuard({
+        const { buffer, contentType } = await fetchRemoteMedia({
           url: attachment.url,
+          maxBytes: DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
           timeoutMs: 30_000,
         });
-        try {
-          if (!response.ok) {
-            throw new Error(`Failed to fetch file: ${attachment.url}`);
-          }
-          const mediaBuffer = Buffer.from(await response.arrayBuffer());
-          const mediaType = attachment.contentType || "image/png";
-          return { data: mediaBuffer, mediaType };
-        } finally {
-          await release();
-        }
+        return {
+          data: buffer,
+          mediaType: attachment.contentType || contentType || "image/png",
+        };
       }
-      if (fs.existsSync(attachment.url)) {
-        // Handle local file paths
-        const mediaBuffer = await fs.promises.readFile(
-          path.resolve(attachment.url),
-        );
-        const mediaType = attachment.contentType || "image/png";
-        return { data: mediaBuffer, mediaType };
-      }
-      throw new Error(
-        `File not found: ${attachment.url}. Make sure the path is correct.`,
-      );
+      const resolvedPath = path.resolve(attachment.url);
+      const mediaBuffer = await readLocalAttachment(resolvedPath);
+      return {
+        data: mediaBuffer,
+        mediaType: attachment.contentType || "image/png",
+      };
     }),
   );
 }
@@ -219,8 +255,14 @@ export async function sendTweet(
     }
 
     try {
-      client.recordLatestCheckedTweetId(profile.id, BigInt(tweetResult.id));
-      await client.cacheLatestCheckedTweetId(profile);
+      // Do NOT advance the mention cursor (`lastCheckedTweetId`) on an outgoing
+      // publish. That cursor is the primary gate `processMentionTweets` uses to
+      // decide which incoming @mentions are new; because a freshly-published
+      // tweet always has the newest snowflake id, moving it here would silently
+      // skip every unprocessed mention that arrived before this post. The
+      // interactions loop owns and persists the cursor, and the self-tweet
+      // filter (`tweet.userId !== profileId`) already prevents self-replies, so
+      // the only local bookkeeping a send needs is caching the tweet itself.
       await client.cacheTweet({
         ...tweetResult,
         userId: profile.id,

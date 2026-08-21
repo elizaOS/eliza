@@ -9,6 +9,9 @@ export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_TIMEOUT_MS = 2 * 60_000;
 const MAX_MCP_MARKETPLACE_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_RESULTS = 50;
+// This is a request-count backstop for pathological tiny/empty pages. The
+// byte and deadline budgets normally bind first for a legitimate catalog.
+export const MAX_MCP_MARKETPLACE_PAGES = 200;
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -104,6 +107,8 @@ interface ResolvedRequestOptions {
   signal: AbortSignal;
   abortKind?: "caller" | "timeout";
   remainingResponseBytes: number;
+  /** Detaches the abort listeners resolveRequestOptions() registered. */
+  dispose: () => void;
 }
 
 function invalidResponse(message: string, cause?: unknown): never {
@@ -325,6 +330,7 @@ function resolveRequestOptions(options: McpMarketplaceRequestOptions): ResolvedR
   const resolved: ResolvedRequestOptions = {
     signal: controller.signal,
     remainingResponseBytes: maxResponseBytes,
+    dispose: () => {},
   };
   const abort = (kind: "caller" | "timeout", reason: unknown) => {
     if (!controller.signal.aborted) {
@@ -333,20 +339,22 @@ function resolveRequestOptions(options: McpMarketplaceRequestOptions): ResolvedR
     }
   };
 
+  const onCallerAbort = () => abort("caller", options.signal?.reason);
+  const onTimeoutAbort = () => abort("timeout", timeoutSignal.reason);
   if (options.signal?.aborted) {
     abort("caller", options.signal.reason);
   } else {
-    options.signal?.addEventListener("abort", () => abort("caller", options.signal?.reason), {
-      once: true,
-    });
+    options.signal?.addEventListener("abort", onCallerAbort, { once: true });
   }
   if (timeoutSignal.aborted) {
     abort("timeout", timeoutSignal.reason);
   } else {
-    timeoutSignal.addEventListener("abort", () => abort("timeout", timeoutSignal.reason), {
-      once: true,
-    });
+    timeoutSignal.addEventListener("abort", onTimeoutAbort, { once: true });
   }
+  resolved.dispose = () => {
+    options.signal?.removeEventListener("abort", onCallerAbort);
+    timeoutSignal.removeEventListener("abort", onTimeoutAbort);
+  };
   return resolved;
 }
 
@@ -486,67 +494,76 @@ export async function searchMcpMarketplace(
 ): Promise<{ results: McpMarketplaceSearchItem[] }> {
   const requestedLimit = resolveSearchLimit(limit);
   const resolved = resolveRequestOptions(options);
-  const results: McpMarketplaceSearchItem[] = [];
-  const seenNames = new Set<string>();
-  const normalizedQuery = query?.toLowerCase();
-  // Query searches may need to scan several pages before the local predicate
-  // matches, so use the largest public result bound to minimize round trips.
-  const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
-  let cursor: string | undefined;
-  const seenCursors = new Set<string>();
+  try {
+    const results: McpMarketplaceSearchItem[] = [];
+    const seenNames = new Set<string>();
+    const normalizedQuery = query?.toLowerCase();
+    // Query searches may need to scan several pages before the local predicate
+    // matches, so use the largest public result bound to minimize round trips.
+    const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
+    let cursor: string | undefined;
+    const seenCursors = new Set<string>();
+    let pageCount = 0;
 
-  do {
-    const page = await fetchRegistryJson(
-      createSearchUrl(pageLimit, cursor),
-      parseListResponse,
-      resolved
-    );
-    cursor = page.nextCursor;
-    if (cursor && seenCursors.has(cursor)) {
-      invalidResponse("MCP registry response repeated a pagination cursor");
-    }
-    if (cursor) seenCursors.add(cursor);
-    for (const { server, official } of page.entries) {
-      if (!official?.isLatest || seenNames.has(server.name)) continue;
-      seenNames.add(server.name);
-      if (
-        normalizedQuery &&
-        !server.name.toLowerCase().includes(normalizedQuery) &&
-        !server.title?.toLowerCase().includes(normalizedQuery) &&
-        !server.description.toLowerCase().includes(normalizedQuery)
-      ) {
-        continue;
+    do {
+      pageCount += 1;
+      if (pageCount > MAX_MCP_MARKETPLACE_PAGES) {
+        invalidResponse(`MCP registry pagination exceeded ${MAX_MCP_MARKETPLACE_PAGES} page limit`);
       }
+      const page = await fetchRegistryJson(
+        createSearchUrl(pageLimit, cursor),
+        parseListResponse,
+        resolved
+      );
+      cursor = page.nextCursor;
+      if (cursor && seenCursors.has(cursor)) {
+        invalidResponse("MCP registry response repeated a pagination cursor");
+      }
+      if (cursor) seenCursors.add(cursor);
+      for (const { server, official } of page.entries) {
+        if (!official?.isLatest || seenNames.has(server.name)) continue;
+        seenNames.add(server.name);
+        if (
+          normalizedQuery &&
+          !server.name.toLowerCase().includes(normalizedQuery) &&
+          !server.title?.toLowerCase().includes(normalizedQuery) &&
+          !server.description.toLowerCase().includes(normalizedQuery)
+        ) {
+          continue;
+        }
 
-      const remote = server.remotes?.[0];
-      const pkg = server.packages?.[0];
-      const packageRemote =
-        pkg?.transport && pkg.transport.type !== "stdio" ? pkg.transport.url : undefined;
-      const connectionType = remote || packageRemote ? "remote" : "stdio";
+        const remote = server.remotes?.[0];
+        const pkg = server.packages?.[0];
+        const packageRemote =
+          pkg?.transport && pkg.transport.type !== "stdio" ? pkg.transport.url : undefined;
+        const connectionType = remote || packageRemote ? "remote" : "stdio";
 
-      results.push({
-        id: `${server.name}@${server.version}`,
-        name: server.name,
-        title: server.title || server.name.split("/").pop() || server.name,
-        description: server.description || "No description",
-        version: server.version,
-        connectionType,
-        connectionUrl: remote?.url ?? packageRemote,
-        npmPackage:
-          connectionType === "stdio" && pkg?.registryType === "npm" ? pkg.identifier : undefined,
-        dockerImage:
-          connectionType === "stdio" && pkg?.registryType === "oci" ? pkg.identifier : undefined,
-        repositoryUrl: server.repository?.url,
-        websiteUrl: server.websiteUrl,
-        iconUrl: server.icons?.[0]?.src,
-        publishedAt: official.publishedAt,
-        isLatest: true,
-      });
-      if (results.length >= requestedLimit) break;
-    }
-  } while (cursor && results.length < requestedLimit);
+        results.push({
+          id: `${server.name}@${server.version}`,
+          name: server.name,
+          title: server.title || server.name.split("/").pop() || server.name,
+          description: server.description || "No description",
+          version: server.version,
+          connectionType,
+          connectionUrl: remote?.url ?? packageRemote,
+          npmPackage:
+            connectionType === "stdio" && pkg?.registryType === "npm" ? pkg.identifier : undefined,
+          dockerImage:
+            connectionType === "stdio" && pkg?.registryType === "oci" ? pkg.identifier : undefined,
+          repositoryUrl: server.repository?.url,
+          websiteUrl: server.websiteUrl,
+          iconUrl: server.icons?.[0]?.src,
+          publishedAt: official.publishedAt,
+          isLatest: true,
+        });
+        if (results.length >= requestedLimit) break;
+      }
+    } while (cursor && results.length < requestedLimit);
 
-  return { results };
+    return { results };
+  } finally {
+    resolved.dispose();
+  }
 }
 
 export async function getMcpServerDetails(
@@ -570,5 +587,7 @@ export async function getMcpServerDetails(
       return null;
     }
     throw error;
+  } finally {
+    resolved.dispose();
   }
 }

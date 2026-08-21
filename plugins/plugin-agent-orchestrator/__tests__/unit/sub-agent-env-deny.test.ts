@@ -16,6 +16,7 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "eliza_vault_passphrase",
       "TERMINAL_RUN_TOKEN",
       "ELIZA_TERMINAL_RUN_TOKEN",
+      "ELIZA_ACP_WARM_CLAIM_TOKEN",
     ]) {
       expect(isDeniedSubAgentEnvKey(key)).toBe(true);
     }

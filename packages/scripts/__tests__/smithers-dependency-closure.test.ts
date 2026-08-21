@@ -71,7 +71,7 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   ).toBe(true);
 });
 
-test("unsupported Smithers PGlite configuration remains fail-closed", () => {
+test("Smithers PGlite closure remains peer-compatible and enabled", () => {
   const manifest = object(
     JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")),
     "package.json",
@@ -110,18 +110,32 @@ test("unsupported Smithers PGlite configuration remains fail-closed", () => {
   expect(optionalDependencies["@electric-sql/pglite"]).toBe("^0.5.4");
   expect(optionalDependencies["@electric-sql/pglite-socket"]).toBe("^0.2.6");
 
+  const pglite = packageTuple(packages, "@smthrs/engine/@electric-sql/pglite");
   const socket = packageTuple(
     packages,
     "@smthrs/engine/@electric-sql/pglite-socket",
   );
+  const pgliteVersion = versionOf(pglite[0]);
+  const socketVersion = versionOf(socket[0]);
   const socketPeers = object(socket[2]?.peerDependencies, "socket peers");
-  expect(socketPeers["@electric-sql/pglite"]).toBe("0.5.3");
   expect(
     Bun.semver.satisfies(
-      "0.5.3",
+      pgliteVersion,
       String(optionalDependencies["@electric-sql/pglite"]),
     ),
-  ).toBe(false);
+  ).toBe(true);
+  expect(
+    Bun.semver.satisfies(
+      socketVersion,
+      String(optionalDependencies["@electric-sql/pglite-socket"]),
+    ),
+  ).toBe(true);
+  expect(
+    Bun.semver.satisfies(
+      pgliteVersion,
+      String(socketPeers["@electric-sql/pglite"]),
+    ),
+  ).toBe(true);
 
   const runner = readFileSync(
     path.join(
@@ -130,6 +144,6 @@ test("unsupported Smithers PGlite configuration remains fail-closed", () => {
     ),
     "utf8",
   );
-  expect(runner).toContain("SMITHERS_PGLITE_INCOMPATIBLE");
-  expect(runner).not.toContain("Smithers.pglite");
+  expect(runner).not.toContain("SMITHERS_PGLITE_INCOMPATIBLE");
+  expect(runner).toContain("Smithers.pglite");
 });

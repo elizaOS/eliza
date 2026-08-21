@@ -6,7 +6,13 @@
  * failure.
  */
 
-import { ElizaError, type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { staticAcceptanceCriteria } from "./acceptance-criteria.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { assertSafeGitRef } from "./repo-input.js";
@@ -113,10 +119,14 @@ export function collisionProviderFromWorkspaceService(
 }
 
 function normalizePath(raw: string): string | undefined {
-  const trimmed = raw
-    .trim()
-    .replace(/^['"`([{<]+/, "")
-    .replace(/['"`)\]}>.,;:]+$/, "");
+  const value = raw.trim();
+  const leading = "'\"`([{<";
+  const trailing = "'\"`)]}>.,;:";
+  let start = 0;
+  let end = value.length;
+  while (start < end && leading.includes(value[start] ?? "")) start += 1;
+  while (end > start && trailing.includes(value[end - 1] ?? "")) end -= 1;
+  const trimmed = value.slice(start, end);
   if (!trimmed || trimmed === "." || trimmed === "/") return undefined;
   if (trimmed.includes("..")) return undefined;
   if (/^(?:https?:|file:)/i.test(trimmed)) return undefined;
@@ -410,7 +420,7 @@ function buildLane(
       : staticAcceptanceCriteria(laneTask);
   return {
     id: `lane-${index + 1}`,
-    title: (input.title ?? laneTask).slice(0, 80),
+    title: truncateWellFormed(toWellFormedUnicode(input.title ?? laneTask), 80),
     branchName,
     dependencies: [...dependencies],
     scopePaths: scopes,
@@ -519,7 +529,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
         ...lane,
         title:
           typeof refined.title === "string" && refined.title.trim()
-            ? refined.title.trim().slice(0, 80)
+            ? truncateWellFormed(toWellFormedUnicode(refined.title.trim()), 80)
             : lane.title,
         initialPrompt:
           typeof refined.initialPrompt === "string" &&

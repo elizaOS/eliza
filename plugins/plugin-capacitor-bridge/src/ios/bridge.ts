@@ -14,7 +14,9 @@ import process from "node:process";
 import { Readable } from "node:stream";
 import {
 	ChannelType,
+	compareMemoryIds,
 	createMessageMemory,
+	ElizaError,
 	type GenerateTextParams,
 	type IAgentRuntime,
 	type Memory,
@@ -23,10 +25,12 @@ import {
 	type StreamChunkCallback,
 	stringToUuid,
 	type UUID,
+	validateUuid,
 } from "@elizaos/core";
 import {
 	buildBrandEnvAliases,
 	getBootConfig,
+	parseCanonicalInteger,
 	readAliasedEnv,
 	setBootConfig,
 } from "@elizaos/shared";
@@ -41,6 +45,11 @@ import {
 	transcriptPreview,
 	transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
+import {
+	closeDownloadWriter,
+	teardownFailedDownload,
+	writeDownloadChunk,
+} from "../shared/download-writer.ts";
 import {
 	createWriteStream,
 	existsSync,
@@ -57,6 +66,7 @@ import {
 	resolveStoredModelPath,
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
+import { createModelDownloadDeadline } from "../shared/model-download-deadline.ts";
 import {
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
@@ -998,7 +1008,30 @@ export async function fetchBackendStream(
 		return { streamId, done: true };
 	}
 
-	const conversationId = decodeURIComponent(match[1] ?? "");
+	const conversationId = decodePathComponent(match[1] ?? "");
+	if (conversationId === null) {
+		// Mirror the buffered route's 400 as stream frames rather than throwing
+		// out of the emitter, which would abandon the stream with no response.
+		await emit({
+			streamId,
+			kind: "response",
+			status: 400,
+			statusText: statusTextForCode(400),
+			headers: { "content-type": "application/json; charset=utf-8" },
+		});
+		await emit({
+			streamId,
+			kind: "chunk",
+			dataBase64: Buffer.from(
+				JSON.stringify({
+					error: "invalid conversation id: malformed URL encoding",
+				}),
+				"utf8",
+			).toString("base64"),
+		});
+		await emit({ streamId, kind: "complete", error: null });
+		return { streamId, done: true };
+	}
 	const body = parseRequestBody(payload);
 	await streamConversationMessageResponse(
 		backend,
@@ -1138,6 +1171,7 @@ function parsePositiveInteger(value: string | null, fallback: number): number {
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
+const MEMORY_BROWSE_MAX_SCAN_ROWS = 25_000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_TABLE_NAMES = [
@@ -1168,10 +1202,14 @@ function memoryCreatedAt(memory: { createdAt?: number }): number {
 
 /** Newest-first comparator shared by the browse/feed list routes. */
 function byNewestFirst(
-	a: { createdAt?: number },
-	b: { createdAt?: number },
+	a: { createdAt?: number; id?: string; _table?: string },
+	b: { createdAt?: number; id?: string; _table?: string },
 ): number {
-	return memoryCreatedAt(b) - memoryCreatedAt(a);
+	const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
+	if (timestampOrder !== 0) return timestampOrder;
+	const idOrder = compareMemoryIds(b.id ?? "", a.id ?? "");
+	if (idOrder !== 0) return idOrder;
+	return (a._table ?? "").localeCompare(b._table ?? "");
 }
 
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
@@ -1223,43 +1261,155 @@ async function fetchMemoriesFromTables(
 		entityIds?: UUID[];
 		roomId?: UUID;
 		tables?: readonly string[];
-		limit?: number;
+		target: number;
 		before?: number;
+		beforeId?: UUID;
+		searchQuery?: string;
 	},
 ): Promise<TaggedMemory[]> {
 	const tables = params.tables ?? MEMORY_TABLE_NAMES;
-	const perTableLimit = Math.max(
-		Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
-		200,
+	const entityIds = params.entityIds?.length
+		? new Set<string>(params.entityIds)
+		: undefined;
+	const searchQuery = params.searchQuery?.trim() ?? "";
+	const searchTerms = searchQuery.split(/\s+/).filter(Boolean);
+	const textContains = searchTerms.length === 1 ? searchTerms[0] : undefined;
+	const maxScannedRowsPerTable = Math.max(
+		1,
+		Math.floor(MEMORY_BROWSE_MAX_SCAN_ROWS / Math.max(tables.length, 1)),
 	);
 	const perTableMemories = await Promise.all(
 		tables.map(async (tableName) => {
-			const memories = await runtime.getMemories({
-				agentId: runtime.agentId as UUID,
-				roomId: params.roomId,
-				tableName,
-				limit: perTableLimit,
-				includeEmbedding: false,
-			});
-			return memories.map((m) => Object.assign(m, { _table: tableName }));
+			const eligible: TaggedMemory[] = [];
+			let cursor: { createdAt: number; id: UUID } | undefined =
+				params.before !== undefined && params.beforeId !== undefined
+					? { createdAt: params.before, id: params.beforeId }
+					: undefined;
+			let batchSize = 200;
+			let scannedRows = 0;
+			for (;;) {
+				const queryLimit = Math.min(
+					batchSize,
+					maxScannedRowsPerTable - scannedRows,
+				);
+				if (queryLimit <= 0) {
+					throw new ElizaError(
+						"Memory browse exceeded its bounded scan budget before proving the page",
+						{
+							code: "MEMORY_BROWSE_SCAN_LIMIT",
+							context: {
+								tableName,
+								scannedRows,
+								maxScannedRows: maxScannedRowsPerTable,
+								target: params.target,
+							},
+						},
+					);
+				}
+				const memories = await runtime.getMemories({
+					agentId: runtime.agentId as UUID,
+					roomId: params.roomId,
+					tableName,
+					limit: queryLimit,
+					cursor,
+					end: params.beforeId === undefined ? params.before : undefined,
+					textContains,
+					includeEmbedding: false,
+				});
+				scannedRows += memories.length;
+
+				let nextCursor = cursor;
+				for (const memory of memories) {
+					if (!memory.id) {
+						throw new ElizaError(
+							"A paged memory row did not contain the required id",
+							{
+								code: "MEMORY_BROWSE_CURSOR_MISSING_ID",
+								context: { tableName },
+							},
+						);
+					}
+					const candidate = {
+						createdAt: memoryCreatedAt(memory),
+						id: memory.id,
+					};
+					if (
+						nextCursor &&
+						(candidate.createdAt > nextCursor.createdAt ||
+							(candidate.createdAt === nextCursor.createdAt &&
+								compareMemoryIds(candidate.id, nextCursor.id) >= 0))
+					) {
+						throw new ElizaError(
+							"Memory adapter did not advance the requested keyset cursor",
+							{
+								code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS",
+								context: {
+									tableName,
+									cursorCreatedAt: nextCursor.createdAt,
+									cursorId: nextCursor.id,
+									returnedCreatedAt: candidate.createdAt,
+									returnedId: candidate.id,
+								},
+							},
+						);
+					}
+					nextCursor = candidate;
+				}
+				for (const memory of memories) {
+					const tagged = { ...memory, _table: tableName };
+					if (!hasBrowsableContent(tagged)) continue;
+					if (
+						entityIds &&
+						(!tagged.entityId || !entityIds.has(tagged.entityId))
+					) {
+						continue;
+					}
+					if (params.before !== undefined) {
+						const createdAt = memoryCreatedAt(tagged);
+						if (createdAt > params.before) continue;
+						if (createdAt === params.before) {
+							if (
+								params.beforeId === undefined ||
+								compareMemoryIds(tagged.id ?? "", params.beforeId) >= 0
+							) {
+								continue;
+							}
+						}
+					}
+					if (
+						searchQuery &&
+						!matchesMemoryKeyword(
+							(tagged.content as { text?: string } | undefined)?.text ?? "",
+							searchQuery,
+						)
+					) {
+						continue;
+					}
+					eligible.push(tagged);
+				}
+				if (memories.length < queryLimit || eligible.length >= params.target) {
+					return eligible;
+				}
+				if (scannedRows >= maxScannedRowsPerTable) {
+					throw new ElizaError(
+						"Memory browse exceeded its bounded scan budget before proving the page",
+						{
+							code: "MEMORY_BROWSE_SCAN_LIMIT",
+							context: {
+								tableName,
+								scannedRows,
+								maxScannedRows: maxScannedRowsPerTable,
+								target: params.target,
+							},
+						},
+					);
+				}
+				cursor = nextCursor;
+				batchSize = Math.min(batchSize * 2, 5_000);
+			}
 		}),
 	);
-	const allMemories: TaggedMemory[] = perTableMemories.flat();
-
-	let filtered = allMemories;
-	const entitySet = params.entityIds;
-	if (entitySet && entitySet.length > 0) {
-		const ids = new Set<string>(entitySet);
-		filtered = allMemories.filter((m) => m.entityId && ids.has(m.entityId));
-	}
-
-	filtered = filtered.filter(hasBrowsableContent);
-
-	const beforeTs = params.before;
-	if (beforeTs) {
-		return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
-	}
-	return filtered;
+	return perTableMemories.flat();
 }
 
 async function handleMemoriesFeedRoute(
@@ -1271,14 +1421,27 @@ async function handleMemoriesFeedRoute(
 		MEMORY_FEED_DEFAULT_LIMIT,
 	);
 	const limit = Math.min(Math.max(requestedLimit, 1), MEMORY_FEED_MAX_LIMIT);
-	const beforeParam = queryParam(query, "before");
-	const before = beforeParam ? Number(beforeParam) : undefined;
+	const before = parseCanonicalInteger(queryParam(query, "before"));
+	if (before === "invalid") {
+		return jsonResponse(400, {
+			error: "before must be a Unix timestamp in milliseconds",
+		});
+	}
+	const beforeIdParam = queryParam(query, "beforeId");
+	const beforeId =
+		beforeIdParam === null ? undefined : validateUuid(beforeIdParam);
+	if (beforeIdParam !== null && (before === undefined || beforeId === null)) {
+		return jsonResponse(400, {
+			error: "beforeId must be a UUID paired with before",
+		});
+	}
 	const tables = resolveMemoryTableFilter(queryParam(query, "type"));
 
 	const allMemories = await fetchMemoriesFromTables(runtime, {
 		tables,
-		limit: limit * 2,
+		target: limit + 1,
 		before,
+		beforeId: beforeId ?? undefined,
 	});
 
 	allMemories.sort(byNewestFirst);
@@ -1321,25 +1484,22 @@ async function handleMemoriesBrowseRoute(
 		tables,
 		entityIds,
 		roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
-		limit: limit + offset + 100,
+		target: limit + offset + 1,
+		searchQuery,
 	});
 
 	allMemories.sort(byNewestFirst);
 
-	let filtered = allMemories;
-	if (searchQuery) {
-		filtered = allMemories.filter((m) => {
-			const text = (m.content as { text?: string } | undefined)?.text ?? "";
-			return matchesMemoryKeyword(text, searchQuery);
-		});
-	}
-
-	const total = filtered.length;
-	const page = filtered.slice(offset, offset + limit).map(memoryToBrowseItem);
+	const total = allMemories.length;
+	const page = allMemories
+		.slice(offset, offset + limit)
+		.map(memoryToBrowseItem);
 
 	return jsonResponse(200, {
 		memories: page,
 		total,
+		totalIsExact: false,
+		hasMore: allMemories.length > offset + limit,
 		limit,
 		offset,
 	});
@@ -1348,21 +1508,34 @@ async function handleMemoriesBrowseRoute(
 async function handleMemoriesStatsRoute(
 	runtime: IAgentRuntime,
 ): Promise<BufferedHttpResponse> {
-	const counts: Record<string, number> = {};
-	let total = 0;
-
-	for (const tableName of MEMORY_TABLE_NAMES) {
-		const memories = await runtime.getMemories({
-			agentId: runtime.agentId as UUID,
-			tableName,
-			limit: 10000,
-			includeEmbedding: false,
+	// `countMemories` is a required IAgentRuntime contract and maps to SQL COUNT
+	// in production. Do not hide an adapter failure behind a bulk row read: that
+	// would both mask the outage and reintroduce the resource problem this route
+	// is meant to remove.
+	const entries = await Promise.all(
+		MEMORY_TABLE_NAMES.map(async (tableName) => {
+			const count = await runtime.countMemories({
+				tableName,
+				agentId: runtime.agentId as UUID,
+			});
+			if (!Number.isSafeInteger(count) || count < 0) {
+				throw new ElizaError("Memory adapter returned an invalid count", {
+					code: "MEMORY_STATS_INVALID_COUNT",
+					context: { tableName, count },
+				});
+			}
+			return [tableName, count] as const;
+		}),
+	);
+	const byType = Object.fromEntries(entries) as Record<string, number>;
+	const total = entries.reduce((sum, [, count]) => sum + count, 0);
+	if (!Number.isSafeInteger(total)) {
+		throw new ElizaError("Memory total exceeds the safe integer range", {
+			code: "MEMORY_STATS_INVALID_COUNT",
+			context: { total },
 		});
-		counts[tableName] = memories.length;
-		total += memories.length;
 	}
-
-	return jsonResponse(200, { total, byType: counts });
+	return jsonResponse(200, { total, byType });
 }
 
 // ── Transcript routes (mirror plugin-local-inference TranscriptStore) ─────────
@@ -1394,15 +1567,57 @@ interface UpdateTranscriptRequestBody {
 }
 
 /** Parse the stored {@link Transcript} back out of a memory row's content blob. */
-function rowToTranscript(row: Memory): Transcript | null {
+function rowToTranscript(row: Memory, expectedId?: UUID): Transcript | null {
 	const raw = (row.content as { transcript?: unknown }).transcript;
 	if (typeof raw !== "string") return null;
 	try {
 		const parsed: unknown = JSON.parse(raw);
-		return parsed && typeof parsed === "object" ? (parsed as Transcript) : null;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return null;
+		const transcript = parsed as Partial<Transcript>;
+		if (
+			typeof transcript.id !== "string" ||
+			(expectedId !== undefined && transcript.id !== expectedId) ||
+			typeof transcript.title !== "string" ||
+			typeof transcript.createdAt !== "number" ||
+			!Number.isFinite(transcript.createdAt) ||
+			typeof transcript.durationMs !== "number" ||
+			!Number.isFinite(transcript.durationMs) ||
+			!Array.isArray(transcript.segments) ||
+			typeof transcript.source !== "string" ||
+			typeof transcript.scope !== "string" ||
+			typeof transcript.status !== "string" ||
+			typeof transcript.speakerCount !== "number" ||
+			!Number.isFinite(transcript.speakerCount)
+		) {
+			return null;
+		}
+		return transcript as Transcript;
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Authorize a transcript row returned by the global memory-id lookup. The SQL
+ * adapter does not scope `getMemoryById` by agent or expose the memory table,
+ * so the persisted transcript markers and embedded id are part of this route's
+ * object-capability boundary.
+ */
+function transcriptFromOwnedMemory(
+	runtime: IAgentRuntime,
+	row: Memory | null,
+	id: UUID,
+): Transcript | null {
+	if (!row || row.agentId !== runtime.agentId) return null;
+	if (
+		row.metadata?.type !== "custom" ||
+		row.metadata.source !== TRANSCRIPT_METADATA_TYPE ||
+		row.metadata.transcriptId !== id
+	) {
+		return null;
+	}
+	return rowToTranscript(row, id);
 }
 
 function transcriptMemoryMetadata(transcript: Transcript): MemoryMetadata {
@@ -1448,6 +1663,7 @@ async function listTranscripts(
 ): Promise<TranscriptSummary[]> {
 	const rows = await runtime.getMemories({
 		tableName: TRANSCRIPTS_TABLE,
+		agentId: runtime.agentId as UUID,
 		roomId,
 		count: limit,
 		orderBy: "createdAt",
@@ -1466,7 +1682,7 @@ async function getTranscript(
 	id: UUID,
 ): Promise<Transcript | null> {
 	const row = await runtime.getMemoryById(id);
-	return row ? rowToTranscript(row) : null;
+	return transcriptFromOwnedMemory(runtime, row, id);
 }
 
 async function persistTranscript(
@@ -1489,6 +1705,23 @@ async function persistTranscript(
 	};
 	await runtime.createMemory(memory, TRANSCRIPTS_TABLE);
 	return transcript;
+}
+
+/**
+ * Decode one path component, or null when the percent-encoding is malformed.
+ *
+ * `decodeURIComponent` throws a `URIError` on input like `%`, `%2`, or `%ZZ`.
+ * Nothing wraps the bridge's route dispatch, so an unguarded decode turns a
+ * malformed request path into an exception escaping the whole request instead
+ * of the 400 every other invalid path input produces.
+ */
+function decodePathComponent(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		// error-policy:J3 Malformed encoding is invalid path input, not a fault.
+		return null;
+	}
 }
 
 async function handleTranscriptsRoute(
@@ -1529,7 +1762,20 @@ async function handleTranscriptsRoute(
 
 	const idMatch = pathname.match(/^\/api\/transcripts\/([^/]+)$/);
 	if (!idMatch) return null;
-	const id = decodeURIComponent(idMatch[1] ?? "") as UUID;
+	const decodedId = decodePathComponent(idMatch[1] ?? "");
+	if (decodedId === null) {
+		return jsonResponse(400, {
+			error: "invalid transcript id: malformed URL encoding",
+		});
+	}
+	// UUID text is case-insensitive, while persisted transcript ids are emitted
+	// by crypto.randomUUID() in lowercase and compared as capability strings.
+	// Canonicalize before both storage lookup and marker comparisons so an
+	// uppercase spelling cannot turn an existing authorized object into a 404.
+	const id = validateUuid(decodedId.toLowerCase());
+	if (id === null) {
+		return jsonResponse(400, { error: "invalid transcript id: expected UUID" });
+	}
 
 	if (method === "GET") {
 		const transcript = await getTranscript(runtime, id);
@@ -1538,6 +1784,19 @@ async function handleTranscriptsRoute(
 	}
 
 	if (method === "DELETE") {
+		// `/api/transcripts/:id` addresses transcripts only. GET and PUT already
+		// refuse an id whose memory is not one; deleting without the same check
+		// turned this route into a delete primitive for every memory the agent
+		// owns, since any message, fact, or document id would be accepted here
+		// and removed with a 200.
+		const existing = await getTranscript(runtime, id);
+		if (!existing) return jsonResponse(404, { error: "not found" });
+		// Re-authorize immediately before the generic id-only delete. The public
+		// runtime storage contract has no atomic predicate-delete operation, so
+		// this detects replacements after route admission while minimizing the
+		// residual interval before the destructive call.
+		const current = await getTranscript(runtime, id);
+		if (!current) return jsonResponse(404, { error: "not found" });
 		await runtime.deleteMemory(id);
 		return jsonResponse(200, { ok: true });
 	}
@@ -1553,10 +1812,16 @@ async function handleTranscriptsRoute(
 		const existing = await getTranscript(runtime, id);
 		if (!existing) return jsonResponse(404, { error: "not found" });
 
-		const segments = patch.segments ?? existing.segments;
+		// Re-authorize immediately before the generic id-only update. The public
+		// runtime storage contract has no atomic predicate-update operation, so
+		// this detects replacements after route admission while minimizing the
+		// residual interval before the destructive write.
+		const current = await getTranscript(runtime, id);
+		if (!current) return jsonResponse(404, { error: "not found" });
+		const segments = patch.segments ?? current.segments;
 		const next: Transcript = {
-			...existing,
-			title: patch.title?.trim() || existing.title,
+			...current,
+			title: patch.title?.trim() || current.title,
 			segments,
 			durationMs: transcriptDurationMs(segments),
 			speakerCount: transcriptSpeakerCount(segments),
@@ -1665,7 +1930,13 @@ function handleBrowserWorkspaceRoute(
 	);
 	if (!match) return null;
 
-	const tabId = decodeURIComponent(match[1] ?? "").trim();
+	const decodedTabId = decodePathComponent(match[1] ?? "");
+	if (decodedTabId === null) {
+		return jsonResponse(400, {
+			error: "invalid browser tab id: malformed URL encoding",
+		});
+	}
+	const tabId = decodedTabId.trim();
 	const action = match[2] ?? null;
 	const index = iosBrowserWorkspaceTabs.findIndex((tab) => tab.id === tabId);
 	if (index < 0) {
@@ -3008,34 +3279,6 @@ function updateNativeDownloadJob(
 	return next;
 }
 
-function writeDownloadChunk(
-	writer: ReturnType<typeof createWriteStream>,
-	chunk: Uint8Array,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		writer.write(Buffer.from(chunk), (error: Error | null | undefined) => {
-			if (error) reject(error);
-			else resolve();
-		});
-	});
-}
-
-function closeDownloadWriter(
-	writer: ReturnType<typeof createWriteStream>,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const onError = (error: Error): void => {
-			writer.off("error", onError);
-			reject(error);
-		};
-		writer.once("error", onError);
-		writer.end(() => {
-			writer.off("error", onError);
-			resolve();
-		});
-	});
-}
-
 async function runNativeModelDownload(
 	model: NativeCatalogModelEntry,
 ): Promise<void> {
@@ -3051,28 +3294,43 @@ async function runNativeModelDownload(
 		localInferenceDownloadsPath(),
 		`${model.id}.part`,
 	);
-	const response = await fetch(modelDownloadUrl(model), { redirect: "follow" });
-	if (!response.ok) {
-		throw new Error(
-			`Failed to download ${model.id}: HTTP ${response.status} ${response.statusText}`,
-		);
-	}
-	if (!response.body) {
-		throw new Error(`Failed to download ${model.id}: response body is empty`);
-	}
-	const contentLength =
-		positiveInteger(response.headers.get("content-length")) ?? totalEstimate;
-	updateNativeDownloadJob(model.id, { total: contentLength });
-	const writer = createWriteStream(partialPath);
+	const deadline = createModelDownloadDeadline({
+		label: `iOS model download ${model.id}`,
+	});
+	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+	let writer: ReturnType<typeof createWriteStream> | undefined;
 	let received = 0;
 	try {
-		const reader = response.body.getReader();
+		const response = await fetch(modelDownloadUrl(model), {
+			redirect: "follow",
+			signal: deadline.signal,
+		});
+		deadline.noteProgress();
+		if (!response.ok) {
+			try {
+				await response.body?.cancel();
+			} catch {
+				// error-policy:J6 best-effort teardown of a rejected response body.
+			}
+			throw new Error(
+				`Failed to download ${model.id}: HTTP ${response.status} ${response.statusText}`,
+			);
+		}
+		if (!response.body) {
+			throw new Error(`Failed to download ${model.id}: response body is empty`);
+		}
+		const contentLength =
+			positiveInteger(response.headers.get("content-length")) ?? totalEstimate;
+		updateNativeDownloadJob(model.id, { total: contentLength });
+		writer = createWriteStream(partialPath);
+		reader = response.body.getReader();
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			if (!value) continue;
+			deadline.noteProgress();
 			received += value.byteLength;
-			await writeDownloadChunk(writer, value);
+			await writeDownloadChunk(writer, value, deadline.signal);
 			const elapsedSeconds = Math.max(1, (Date.now() - startedMs) / 1000);
 			const bytesPerSec = Math.round(received / elapsedSeconds);
 			const remaining = Math.max(0, contentLength - received);
@@ -3083,7 +3341,7 @@ async function runNativeModelDownload(
 					bytesPerSec > 0 ? Math.round((remaining / bytesPerSec) * 1000) : null,
 			});
 		}
-		await closeDownloadWriter(writer);
+		await closeDownloadWriter(writer, deadline.signal);
 		const targetPath = nativeModelTargetPath(model);
 		renameSync(partialPath, targetPath);
 		const stats = statSync(targetPath);
@@ -3105,13 +3363,24 @@ async function runNativeModelDownload(
 			etaMs: 0,
 		});
 	} catch (error) {
+		const failure = deadline.failure(error);
 		updateNativeDownloadJob(model.id, {
 			state: "failed",
-			error: error instanceof Error ? error.message : String(error),
+			error: failure instanceof Error ? failure.message : String(failure),
 		});
-		writer.destroy();
-		rmSync(partialPath, { force: true });
-		throw error;
+		try {
+			await teardownFailedDownload({
+				reader,
+				writer,
+				removePartial: () => rmSync(partialPath, { force: true }),
+			});
+		} catch {
+			// error-policy:J6 best-effort teardown after preserving the download failure.
+		}
+		throw failure;
+	} finally {
+		reader?.releaseLock();
+		deadline.dispose();
 	}
 }
 
@@ -3716,7 +3985,12 @@ async function handleNativeIosLocalInferenceRoute(
 		/^\/api\/local-inference\/installed\/([^/]+)\/verify$/,
 	);
 	if (method === "POST" && verifyMatch?.[1]) {
-		const id = decodeURIComponent(verifyMatch[1]);
+		const id = decodePathComponent(verifyMatch[1] ?? "");
+		if (id === null) {
+			return jsonResponse(400, {
+				error: "invalid model id: malformed URL encoding",
+			});
+		}
 		const model = readInstalledModels().find((entry) => entry.id === id);
 		if (!model)
 			return jsonResponse(404, { error: `Model not installed: ${id}` });
@@ -4334,7 +4608,12 @@ export async function handleDirectCoreRoute(
 		return jsonResponse(200, { messages: [] });
 	}
 	if (method === "POST" && messageStreamMatch) {
-		const conversationId = decodeURIComponent(messageStreamMatch[1] ?? "");
+		const conversationId = decodePathComponent(messageStreamMatch[1] ?? "");
+		if (conversationId === null) {
+			return jsonResponse(400, {
+				error: "invalid conversation id: malformed URL encoding",
+			});
+		}
 		const conversation = backend.conversations.get(conversationId);
 		if (!conversation) {
 			return jsonResponse(404, { error: "Conversation not found" });
@@ -4346,7 +4625,12 @@ export async function handleDirectCoreRoute(
 		return bufferedConversationStreamResponse(result);
 	}
 	if (method === "POST" && messageMatch) {
-		const conversationId = decodeURIComponent(messageMatch[1] ?? "");
+		const conversationId = decodePathComponent(messageMatch[1] ?? "");
+		if (conversationId === null) {
+			return jsonResponse(400, {
+				error: "invalid conversation id: malformed URL encoding",
+			});
+		}
 		const conversation = backend.conversations.get(conversationId);
 		if (!conversation) {
 			return jsonResponse(404, { error: "Conversation not found" });

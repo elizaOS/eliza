@@ -17,7 +17,6 @@
  */
 
 import * as fsp from "node:fs/promises";
-import * as path from "node:path";
 
 export type {
   AcquireBrowserWorkspaceConnectorSessionRequest,
@@ -105,11 +104,13 @@ import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUrl,
   assertBrowserWorkspaceUserScriptAllowed,
+  createBrowserWorkspaceJsdomScriptExecutionError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceCommand,
   resolveBrowserWorkspaceCommandPartition,
+  resolveBrowserWorkspaceFilePath,
   resolveConnectorBrowserWorkspacePartition,
   sleep,
   writeBrowserWorkspaceFile,
@@ -129,7 +130,7 @@ import {
   pushWebBrowserWorkspaceHistory,
 } from "./browser-workspace-forms.js";
 // ── Re-export network ────────────────────────────────────────────────
-import { browserWorkspacePageFetch } from "./browser-workspace-helpers.js";
+import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 // ── Re-export jsdom ──────────────────────────────────────────────────
 import {
   createEmptyWebBrowserWorkspaceDom,
@@ -749,6 +750,36 @@ export async function executeBrowserWorkspaceCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceCommandResult> {
   command = normalizeBrowserWorkspaceCommand(command);
+  const pending = [command];
+  let blockedCommand: "eval" | "upload" | "realistic-upload" | null = null;
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (!candidate) break;
+    if (
+      candidate.subaction === "upload" ||
+      candidate.subaction === "realistic-upload"
+    ) {
+      blockedCommand = candidate.subaction;
+      break;
+    }
+    if (candidate.subaction === "eval") {
+      blockedCommand = "eval";
+      break;
+    }
+    if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
+      pending.push(...candidate.steps);
+    }
+  }
+  if (blockedCommand) {
+    if (blockedCommand === "eval" && !isBrowserWorkspaceBridgeConfigured(env)) {
+      throw createBrowserWorkspaceJsdomScriptExecutionError("eval");
+    }
+    throw new Error(
+      blockedCommand === "eval"
+        ? "Generic browser eval is disabled. Use typed browser commands instead."
+        : "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   switch (command.subaction) {
     case "batch": {
       const steps = Array.isArray(command.steps) ? command.steps : [];
@@ -892,8 +923,7 @@ export async function executeBrowserWorkspaceCommand(
     case "mouse":
     case "network":
     case "set":
-    case "storage":
-    case "upload": {
+    case "storage": {
       if (!isBrowserWorkspaceBridgeConfigured(env)) {
         return (await executeWebBrowserWorkspaceUtilityCommand(
           command,
@@ -918,7 +948,7 @@ export async function executeBrowserWorkspaceCommand(
         const currentData = screenshot.data;
         const baseline = command.baselinePath?.trim()
           ? await fsp.readFile(
-              path.resolve(command.baselinePath.trim()),
+              resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
               "base64",
             )
           : runtime.lastScreenshotData;
@@ -941,8 +971,10 @@ export async function executeBrowserWorkspaceCommand(
             "Eliza browser workspace diff url requires secondaryUrl.",
           );
         }
-        const left = await browserWorkspacePageFetch(leftUrl);
-        const right = await browserWorkspacePageFetch(rightUrl);
+        // Each hop carries its own deadline, matching the web backend of this
+        // same subaction, which routes both pages through the tracked fetch.
+        const left = await browserWorkspaceBoundedPageFetch(leftUrl);
+        const right = await browserWorkspaceBoundedPageFetch(rightUrl);
         return {
           mode: "desktop",
           subaction: command.subaction,
@@ -963,7 +995,7 @@ export async function executeBrowserWorkspaceCommand(
       const baseline = command.baselinePath?.trim()
         ? (JSON.parse(
             await fsp.readFile(
-              path.resolve(command.baselinePath.trim()),
+              resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
               "utf8",
             ),
           ) as import("./browser-workspace-types.js").BrowserWorkspaceSnapshotRecord)
@@ -992,14 +1024,14 @@ export async function executeBrowserWorkspaceCommand(
         const payload = { entries: target.entries };
         const filePath = command.filePath?.trim() || command.outputPath?.trim();
         if (filePath) {
-          await writeBrowserWorkspaceFile(
+          const resolvedPath = await writeBrowserWorkspaceFile(
             filePath,
             JSON.stringify(payload, null, 2),
           );
           return {
             mode: "desktop",
             subaction: command.subaction,
-            value: { path: path.resolve(filePath), ...payload },
+            value: { path: resolvedPath, ...payload },
           };
         }
         return {
@@ -1040,7 +1072,7 @@ export async function executeBrowserWorkspaceCommand(
           );
         }
         const payload = JSON.parse(
-          await fsp.readFile(path.resolve(filePath), "utf8"),
+          await fsp.readFile(resolveBrowserWorkspaceFilePath(filePath), "utf8"),
         ) as Record<string, unknown>;
         await loadDesktopBrowserWorkspaceSessionState(command, payload, env);
         return {
@@ -1055,14 +1087,14 @@ export async function executeBrowserWorkspaceCommand(
       );
       const filePath = command.filePath?.trim() || command.outputPath?.trim();
       if (filePath) {
-        await writeBrowserWorkspaceFile(
+        const resolvedPath = await writeBrowserWorkspaceFile(
           filePath,
           JSON.stringify(payload, null, 2),
         );
         return {
           mode: "desktop",
           subaction: command.subaction,
-          value: { path: path.resolve(filePath), ...payload },
+          value: { path: resolvedPath, ...payload },
         };
       }
       return { mode: "desktop", subaction: command.subaction, value: payload };
@@ -1252,7 +1284,6 @@ export async function executeBrowserWorkspaceCommand(
     case "realistic-fill":
     case "realistic-type":
     case "realistic-press":
-    case "realistic-upload":
     case "cursor-move":
     case "cursor-hide":
       if (
@@ -1277,6 +1308,11 @@ export async function executeBrowserWorkspaceCommand(
         return executeDesktopBrowserWorkspaceDomCommand(command, env);
       }
       return executeWebBrowserWorkspaceDomCommand(command);
+    case "upload":
+    case "realistic-upload":
+      throw new Error(
+        "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+      );
     default: {
       const exhaustive: never = command.subaction;
       throw new Error(`Unsupported browser workspace subaction: ${exhaustive}`);

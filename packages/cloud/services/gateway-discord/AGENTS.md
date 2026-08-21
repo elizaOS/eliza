@@ -9,9 +9,13 @@ loaded as an Eliza plugin.
 ## Layout
 
 - `src/index.ts` — entrypoint. Boots the Hono HTTP server and a single
-  `GatewayManager`; exposes `/health` (liveness), `/ready` (readiness), `/drain`
-  (preStop graceful drain), `/metrics` (Prometheus text), and `/status`. Wires
-  `SIGTERM`/`SIGINT` to graceful shutdown.
+  `GatewayManager`; exposes `/health` (liveness) and `/ready` (readiness)
+  unauthenticated for probes, plus `/drain` (preStop graceful drain),
+  `/metrics` (Prometheus text), and `/status` behind the internal-secret
+  gate. Wires `SIGTERM`/`SIGINT` to graceful shutdown.
+- `src/internal-auth.ts` — `validateInternalSecret`, the constant-time
+  `X-Internal-Secret` gate for the operational endpoints; fails closed when
+  `GATEWAY_INTERNAL_SECRET` is unset.
 - `src/gateway-manager.ts` — the bulk of the service (`GatewayManager`): polls
   Redis for bot assignments, opens `discord.js` `Client` connections, heartbeats
   pod state, handles failover, and runs Eliza App system-bot leader election.
@@ -64,6 +68,9 @@ Connection / routing:
 - `ELIZA_CLOUD_URL` (falls back to `NEXT_PUBLIC_APP_URL`, then `https://api.eliza.app`)
 - `REDIS_URL` (or `KV_REST_API_URL`) and `KV_REST_API_TOKEN` — Redis/Upstash.
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` when forwarding to agent-servers.
+- `GATEWAY_INTERNAL_SECRET` — shared secret callers present as `X-Internal-Secret`
+  on `/internal/deliver`, `/drain`, `/status`, and `/metrics`. Those routes fail
+  closed (401) when it is unset; `/health` and `/ready` stay unauthenticated for probes.
 - `POD_NAME` — required in production (K8s downward API); falls back to `gateway-<hostname>`
   for local dev only, which can orphan connections on reschedule.
 - `PORT` (default 3000), `PROJECT` (log tag, default `cloud`).

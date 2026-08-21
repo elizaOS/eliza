@@ -579,7 +579,6 @@ research/even-realities/
 # Build artifacts from old ios-native-deps location (moved to packages/native/ios-deps/)
 packages/ios-native-deps/
 test/mocks/mockoon/.mockoon-pids/
-lifeops_bench_results/
 reports/ai-qa/
 reports/apps-manual-qa/
 reports/porting/
@@ -1041,6 +1040,12 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 # both are build output and must never be committed (#16970 review).
 /fused-lib/
 /.fused-lib/
+
+# Repo-root local state written by app-core scripts (run-mobile-build.mjs
+# artifacts, bluebubbles/homepage evidence JSON, and
+# .eliza-local/bluebubbles-bridge.env, which can hold a gateway secret).
+# Machine-local by design and easy to sweep into a commit (#22348 review).
+/.eliza-local/
 
 # App-create scaffolds: the workspace app root the APP create flow builds into
 # (<checkout>/eliza/apps/<dir>). Generated per-user app workdirs, never repo code.

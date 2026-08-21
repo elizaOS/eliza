@@ -2,26 +2,28 @@
  * Lists attachment objects under a prefix.
  *
  * Routes:
- *   GET /api/v1/apis/storage/list?prefix=...&recursive=true|false
+ *   GET /api/v1/apis/storage/list with X-Storage-Prefix and
+ *       X-Storage-Recursive headers
  *       → { items: [{ key, size, contentType, modifiedAt }] }
  *
  * Auth: requireUserOrApiKeyWithOrg.
- * Pricing: flat per-request charge against the `storage:list` row.
+ * Pricing: one durable server-priced receipt per idempotent list request.
  *
- * Listing is automatically scoped to `org/${organization_id}/`. The returned
- * `key` field is the user-relative key (the org prefix is stripped).
+ * Native R2 enumeration discovers and adopts legacy tenant-prefixed objects;
+ * the catalog remains authoritative for immutable generations and tombstones.
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
-import { getR2StorageAdapter } from "@/lib/services/storage/r2-storage-adapter";
+import {
+  executeNativeStorageList,
+  NativeStorageReadError,
+} from "@/lib/services/storage/native-storage-read";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const STORAGE_SERVICE_ID = "storage";
 const MAX_LIST_RESULTS = 1000;
 
 const listQuerySchema = z.object({
@@ -40,8 +42,8 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
+    const bucket = c.env.BLOB;
+    if (!bucket?.list) {
       return c.json(
         {
           error:
@@ -51,9 +53,17 @@ app.get("/", async (c) => {
       );
     }
 
+    if (c.req.query("prefix") !== undefined) {
+      return c.json(
+        {
+          error: "List prefixes are not accepted in URLs; use X-Storage-Prefix",
+        },
+        400,
+      );
+    }
     const parsed = listQuerySchema.safeParse({
-      prefix: c.req.query("prefix") ?? "",
-      recursive: c.req.query("recursive") ?? "true",
+      prefix: c.req.header("X-Storage-Prefix") ?? "",
+      recursive: c.req.header("X-Storage-Recursive") ?? "true",
     });
     if (!parsed.success) {
       return c.json(
@@ -63,20 +73,22 @@ app.get("/", async (c) => {
     }
     const { prefix, recursive } = parsed.data;
 
-    const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "list");
-    if (cost > 0) {
-      const deductResult = await creditsService.deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: "API proxy: storage — list",
-        metadata: {
-          type: "proxy_storage",
-          service: "storage",
-          method: "list",
-          prefix,
-        },
-      });
-      if (!deductResult.success) {
+    const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const result = await executeNativeStorageList({
+      bucket,
+      organizationId: organization_id,
+      userId: user.id,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd: await getServiceMethodCost("storage", "list"),
+      prefix: trimmedPrefix,
+      recursive,
+      limit: MAX_LIST_RESULTS,
+    });
+    c.header("X-Storage-Receipt-Id", result.operation.id);
+    return c.json(result.body);
+  } catch (error) {
+    if (error instanceof NativeStorageReadError) {
+      if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(
           {
             error: "Insufficient credits",
@@ -85,37 +97,15 @@ app.get("/", async (c) => {
           402,
         );
       }
+      const status =
+        error.code === "IDEMPOTENCY_REQUIRED" ||
+        error.code === "IDEMPOTENCY_INVALID"
+          ? 400
+          : error.code === "IDEMPOTENCY_MISMATCH"
+            ? 409
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
     }
-
-    const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
-    const scopedPrefix = trimmedPrefix
-      ? `org/${organization_id}/${trimmedPrefix}`
-      : `org/${organization_id}/`;
-    const orgPrefix = `org/${organization_id}/`;
-
-    const fullKeys = await adapter.list(scopedPrefix, { recursive });
-    const truncated = fullKeys.slice(0, MAX_LIST_RESULTS);
-
-    const items = await Promise.all(
-      truncated.map(async (fullKey) => {
-        const stat = await adapter.stat(fullKey);
-        const userKey = fullKey.startsWith(orgPrefix)
-          ? fullKey.slice(orgPrefix.length)
-          : fullKey;
-        return {
-          key: userKey,
-          size: stat.size,
-          contentType: stat.contentType,
-          modifiedAt: stat.modified.toISOString(),
-        };
-      }),
-    );
-
-    return c.json({
-      items,
-      truncated: fullKeys.length > MAX_LIST_RESULTS,
-    });
-  } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/apis/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     return failureResponse(c, error);
   }

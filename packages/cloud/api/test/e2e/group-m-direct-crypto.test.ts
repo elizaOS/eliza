@@ -20,6 +20,7 @@ import {
   exchangeApiKeyForSession,
   getBaseUrl,
   isServerReachable,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -78,7 +79,7 @@ const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 async function getCurrentUserWallet(): Promise<string> {
   if (!sessionCookie) throw new Error("session cookie missing");
   const res = await api.get("/api/v1/user", {
-    headers: { Cookie: sessionCookie },
+    headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }),
   });
   expect(res.status).toBe(200);
   const body = (await res.json()) as { wallet_address?: string };
@@ -166,10 +167,10 @@ describeE2E("/api/crypto/direct-payments", () => {
         "/api/crypto/direct-payments",
         { amount: 1, network: "base", payerAddress },
         {
-          headers: {
+          headers: sameOriginBrowserHeaders({
             Cookie: sessionCookie,
             "Content-Type": "application/json",
-          },
+          }),
         },
       );
       expect(createRes.status).toBe(200);
@@ -225,10 +226,10 @@ describeE2E("/api/crypto/direct-payments", () => {
         `/api/crypto/direct-payments/${created.paymentId}/confirm`,
         { transactionHash: "not-a-tx", payerSignature: "0x00" },
         {
-          headers: {
+          headers: sameOriginBrowserHeaders({
             Cookie: sessionCookie,
             "Content-Type": "application/json",
-          },
+          }),
         },
       );
       expect(confirmRes.status).toBe(400);

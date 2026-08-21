@@ -39,6 +39,13 @@ export interface ConnectorRouteContext {
     config: Record<string, unknown>,
   ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
+  /**
+   * Fail-closed companion to `cloneWithoutBlockedObjectKeys`. The clone throws
+   * the walk-budget error rather than returning a partial object, so callers
+   * must run this first and reject; otherwise the error escapes to the route
+   * kernel and becomes a 500.
+   */
+  hasBlockedObjectKeyDeep: (value: unknown) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
   /** Optional host-supplied callback fired on every disconnect path. */
   onConnectorDisconnect?: (connectorName: string) => Promise<void> | void;
@@ -117,6 +124,7 @@ export async function handleConnectorRoutes(
     saveElizaConfig,
     redactConfigSecrets,
     isBlockedObjectKey,
+    hasBlockedObjectKeyDeep,
     cloneWithoutBlockedObjectKeys,
     onConnectorDisconnect,
   } = ctx;
@@ -143,15 +151,26 @@ export async function handleConnectorRoutes(
       return true;
     }
     const { name: connectorName, config } = parsed.data;
-    if (!state.config.connectors) state.config.connectors = {};
-    const previousConnector = state.config.connectors[connectorName];
-    state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
+    if (hasBlockedObjectKeyDeep(config)) {
+      error(res, "Connector config contains a blocked object key", 400);
+      return true;
+    }
+    // Clone before mutating live config. The guard and clone deliberately use
+    // separate bounded walks, so an in-process proxy can still change between
+    // them; a clone failure must leave the live map untouched.
+    const sanitizedConfig = cloneWithoutBlockedObjectKeys(
       config,
     ) as ConnectorConfig;
+    const previousConnectors = state.config.connectors;
+    const previousConnector = previousConnectors?.[connectorName];
+    if (!state.config.connectors) state.config.connectors = {};
+    state.config.connectors[connectorName] = sanitizedConfig;
     try {
       saveElizaConfig(state.config);
     } catch (err) {
-      if (previousConnector === undefined) {
+      if (previousConnectors === undefined) {
+        delete state.config.connectors;
+      } else if (previousConnector === undefined) {
         delete state.config.connectors[connectorName];
       } else {
         state.config.connectors[connectorName] = previousConnector;

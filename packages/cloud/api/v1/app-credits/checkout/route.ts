@@ -10,11 +10,16 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
 import { appsService } from "@/lib/services/apps";
 import { requireStripe } from "@/lib/stripe";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -27,11 +32,16 @@ const CheckoutSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validation = CheckoutSchema.safeParse(body);
     if (!validation.success) {
       return c.json(

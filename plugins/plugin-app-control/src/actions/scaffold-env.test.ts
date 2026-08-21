@@ -17,6 +17,7 @@ import {
 	findAsyncCodingDelegationActionName,
 	findCodingCliOnPath,
 	preflightCodingDispatch,
+	resolveAppsLandingRoot,
 	resolvePluginScaffoldBaseDir,
 	resolveScaffoldTemplateDir,
 	templateMissingGuidance,
@@ -254,5 +255,56 @@ describe("preflightCodingDispatch", () => {
 			);
 			expect(result.ok).toBe(true);
 		}
+	});
+});
+
+describe("hasVendoredOpencodeShim", () => {
+	it("finds the shim under a candidate root", () => {
+		expect(hasVendoredOpencodeShim([fakeShimRoot()])).toBe(true);
+	});
+
+	it("returns false when no candidate root holds the shim", () => {
+		expect(hasVendoredOpencodeShim([tempDir("no-shim-")])).toBe(false);
+	});
+
+	it("returns false for an empty root list", () => {
+		expect(hasVendoredOpencodeShim([])).toBe(false);
+	});
+});
+
+describe("resolveAppsLandingRoot (lantern-row live incident)", () => {
+	const saved = new Map(
+		["ELIZA_REPO_ROOT", "ELIZA_WORKSPACE_DIR", "ELIZA_STATE_DIR"].map((k) => [
+			k,
+			process.env[k],
+		]),
+	);
+	afterEach(() => {
+		for (const [k, v] of saved) {
+			if (v === undefined) delete process.env[k];
+			else process.env[k] = v;
+		}
+	});
+
+	it("an explicit absolute repo root keeps the checkout-relative layout", () => {
+		process.env.ELIZA_REPO_ROOT = "/srv/eliza-checkout";
+		delete process.env.ELIZA_WORKSPACE_DIR;
+		expect(resolveAppsLandingRoot()).toBe("/srv/eliza-checkout/eliza/apps");
+	});
+
+	it("no explicit root lands in the state dir, never the cwd checkout", () => {
+		delete process.env.ELIZA_REPO_ROOT;
+		delete process.env.ELIZA_WORKSPACE_DIR;
+		process.env.ELIZA_STATE_DIR = "/var/lib/eliza-state";
+		const landing = resolveAppsLandingRoot();
+		expect(landing).toBe("/var/lib/eliza-state/apps");
+		expect(landing.startsWith(process.cwd())).toBe(false);
+	});
+
+	it("a relative env value is ignored like the cwd fallback", () => {
+		process.env.ELIZA_REPO_ROOT = "relative/path";
+		delete process.env.ELIZA_WORKSPACE_DIR;
+		process.env.ELIZA_STATE_DIR = "/var/lib/eliza-state";
+		expect(resolveAppsLandingRoot()).toBe("/var/lib/eliza-state/apps");
 	});
 });

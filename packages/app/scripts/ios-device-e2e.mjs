@@ -7,8 +7,7 @@
  *
  * Chains three already-proven scripts through the argv builders in
  * `lib/ios-device-e2e-lib.mjs`:
- *   1. ios-device-deploy.mjs  --skip-appexes  (build → sign → devicectl install;
- *      appex surfaces excluded — logged loudly by the deploy script). The deploy
+ *   1. ios-device-deploy.mjs (build → sign full app + appexes → install). The deploy
  *      also writes the renderer-freshness assert + the deploy ledger row.
  *   2. ios-device-capture.mjs --platform device  (BootCapture — the ON-DEVICE
  *      assertion: did the freshly deployed app reach home or the error card?
@@ -31,7 +30,7 @@
  *
  * Usage:
  *   node scripts/ios-device-e2e.mjs [--device <id>] [--skip-appexes]
- *     [--no-skip-appexes] [--skip-logs] [--require-chat]
+ *     [--skip-logs] [--require-chat]
  *     [--bundle-id <id>] [--output <dir>]
  */
 import { spawnSync } from "node:child_process";
@@ -195,17 +194,11 @@ function captureDeviceFailure(bundle, step, error) {
 
 async function main() {
   const args = parseCliArgs(process.argv.slice(2), {
-    booleans: [
-      "skip-appexes",
-      "no-skip-appexes",
-      "skip-logs",
-      "require-chat",
-      "help",
-    ],
+    booleans: ["skip-appexes", "skip-logs", "require-chat", "help"],
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-e2e.mjs [--device <id>] [--no-skip-appexes] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
+      "Usage: node scripts/ios-device-e2e.mjs [--device <id>] [--skip-appexes] [--skip-logs] [--require-chat] [--bundle-id <id>] [--output <dir>]",
     );
     return;
   }
@@ -229,9 +222,9 @@ async function main() {
     `device: ${device.name} (identifier ${device.identifier}, udid ${device.udid})`,
   );
 
-  // --skip-appexes is the default unattended posture (PR #13174); --no-skip-appexes
-  // opts back in when per-appex profiles exist.
-  const skipAppexes = !args["no-skip-appexes"];
+  // Full app + appexes is the acceptance path. --skip-appexes is an explicit
+  // degraded-mode escape hatch recorded in bundle metadata.
+  const skipAppexes = Boolean(args["skip-appexes"]);
   const bundleId = args["bundle-id"] || null;
   activeDeviceContext = {
     bundleId,
@@ -280,6 +273,13 @@ async function main() {
           scriptsDir,
           deviceId,
           outputDir: smokeDir,
+          appPath: path.join(
+            appRoot,
+            "ios",
+            "build",
+            "device-deploy-stage",
+            "App.app",
+          ),
           requireChat: Boolean(args["require-chat"]),
           bundleId,
         });

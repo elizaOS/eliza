@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Action, ActionResult } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
+import { resolveToolDescriptor } from "./tool-call-cache/registry.ts";
+import type { ToolOutput } from "./tool-call-cache/types.ts";
 import {
   createToolCallCacheFromConfig,
   wrapActionWithCache,
@@ -30,7 +31,9 @@ afterEach(() => {
 
 function makeFakeAction(
   name: string,
-  impl: (parameters: Record<string, unknown>) => ActionResult,
+  impl: (
+    parameters: Record<string, unknown>,
+  ) => ActionResult | Promise<ActionResult>,
 ): { action: Action; calls: () => number } {
   let count = 0;
   const action: Action = {
@@ -66,6 +69,48 @@ describe("wrapActionWithCache", () => {
 
     expect(calls()).toBe(1);
     expect(r1).toEqual(r2);
+  });
+
+  it("deduplicates concurrent cacheable action misses", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { action, calls } = makeFakeAction("web_search", async () => {
+      await gate;
+      return { success: true, text: "shared" };
+    });
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    const opts = { parameters: { q: "same" } };
+    const first = wrapped.handler({} as never, {} as never, undefined, opts);
+    const second = wrapped.handler({} as never, {} as never, undefined, opts);
+    release();
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { success: true, text: "shared" },
+      { success: true, text: "shared" },
+    ]);
+    expect(calls()).toBe(1);
+  });
+
+  it("ignores a legacy cache entry that is not an ActionResult", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    const descriptor = resolveToolDescriptor("web_search");
+    const opts = { parameters: { q: "legacy" } };
+    cache.set(descriptor, opts.parameters, { stale: "legacy-value" });
+
+    const { action, calls } = makeFakeAction("web_search", () => ({
+      success: true,
+      text: "fresh",
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+
+    await expect(
+      wrapped.handler({} as never, {} as never, undefined, opts),
+    ).resolves.toEqual({ success: true, text: "fresh" });
+    expect(calls()).toBe(1);
   });
 
   it("leaves non-cacheable actions untouched", async () => {
@@ -132,8 +177,72 @@ describe("wrapActionWithCache", () => {
     expect(calls()).toBe(2);
   });
 
+  it("does not cache a proxied field or run its reflection traps", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const { action, calls } = makeFakeAction("web_search", () => ({
+      success: true,
+      data: new Proxy(
+        { payload: "value" },
+        {
+          get() {
+            trapCalls.get += 1;
+            throw new TypeError("hostile get trap");
+          },
+          getOwnPropertyDescriptor() {
+            trapCalls.getOwnPropertyDescriptor += 1;
+            throw new TypeError("hostile descriptor trap");
+          },
+          getPrototypeOf() {
+            trapCalls.getPrototypeOf += 1;
+            throw new TypeError("hostile prototype trap");
+          },
+          ownKeys() {
+            trapCalls.ownKeys += 1;
+            throw new TypeError("hostile ownKeys trap");
+          },
+        },
+      ),
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    const options = { parameters: { q: "hostile-proxy" } };
+
+    await wrapped.handler({} as never, {} as never, undefined, options);
+    await wrapped.handler({} as never, {} as never, undefined, options);
+
+    expect(calls()).toBe(2);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
+  });
+
   it("createToolCallCacheFromConfig returns null when disabled", () => {
     const cache = createToolCallCacheFromConfig({ enabled: false });
     expect(cache).toBeNull();
+  });
+  it("returns a deep-but-legal ActionResult without rejecting", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    let deep: ToolOutput = { v: 1 };
+    for (let i = 0; i < 64; i++) deep = { child: deep };
+    const { action } = makeFakeAction("web_search", () => ({
+      success: true,
+      data: deep,
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    await expect(
+      wrapped.handler({} as never, {} as never, undefined, {
+        parameters: { q: "deep" },
+      }),
+    ).resolves.toEqual({ success: true, data: deep });
   });
 });

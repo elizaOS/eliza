@@ -71,21 +71,6 @@ export function resolveDefaultXAccountId(
   );
 }
 
-function hasExplicitDefaultXAccountId(
-  runtime: IAgentRuntime | null | undefined,
-  state?: TwitterClientState,
-): boolean {
-  return Boolean(
-    state?.TWITTER_DEFAULT_ACCOUNT_ID ??
-      state?.TWITTER_ACCOUNT_ID ??
-      state?.accountId ??
-      getSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
-      getSetting(runtime, "TWITTER_ACCOUNT_ID") ??
-      getSetting(runtime, "X_DEFAULT_ACCOUNT_ID") ??
-      getSetting(runtime, "X_ACCOUNT_ID"),
-  );
-}
-
 export function resolveRequestedXAccountId(
   runtime: IAgentRuntime | null | undefined,
   state?: TwitterClientState,
@@ -372,10 +357,10 @@ export async function resolveTwitterAccountConfig(
     };
   }
 
-  if (
-    accountId === defaultAccountId ||
-    !hasExplicitDefaultXAccountId(runtime, options.state)
-  ) {
+  // Only the resolved default account may inherit env/state credentials.
+  // An unrecognized explicit accountId must not fall through to the owner
+  // just because TWITTER_DEFAULT_ACCOUNT_ID was omitted (implicit "default").
+  if (accountId === defaultAccountId) {
     return buildDefaultState(runtime, options.state, accountId);
   }
 

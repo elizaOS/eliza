@@ -120,6 +120,25 @@ describe("SSRF policy enforcement", () => {
 		expect(isPrivateIpAddress("2001:4860:4860::8888")).toBe(false);
 	});
 
+	it("classifies the special-purpose parity ranges the cloud guard blocks", () => {
+		// 198.18.0.0/15 (benchmarking) is internally routable on carrier/lab
+		// networks; 192.0.0.0/24 holds IETF protocol assignments; 224/4 is
+		// multicast and 240/4 is reserved (including 255.255.255.255).
+		expect(isPrivateIpAddress("198.18.0.1")).toBe(true);
+		expect(isPrivateIpAddress("198.19.255.254")).toBe(true);
+		expect(isPrivateIpAddress("192.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("192.0.0.170")).toBe(true);
+		expect(isPrivateIpAddress("224.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("239.255.255.255")).toBe(true);
+		expect(isPrivateIpAddress("240.0.0.1")).toBe(true);
+		expect(isPrivateIpAddress("255.255.255.255")).toBe(true);
+		// Just outside each added range stays public.
+		expect(isPrivateIpAddress("198.17.255.255")).toBe(false);
+		expect(isPrivateIpAddress("198.20.0.1")).toBe(false);
+		expect(isPrivateIpAddress("192.0.1.1")).toBe(false);
+		expect(isPrivateIpAddress("223.255.255.255")).toBe(false);
+	});
+
 	it("blocks localhost and internal hostnames after normalization", () => {
 		expect(isBlockedHostname("LOCALHOST.")).toBe(true);
 		expect(isBlockedHostname("metadata.google.internal")).toBe(true);
@@ -232,5 +251,127 @@ describe("isPrivateIpAddress: non-canonical IPv4 encodings (SSRF bypass vectors)
 		]) {
 			expect(isPrivateIpAddress(s), s).toBe(false);
 		}
+	});
+});
+
+describe("isPrivateIpAddress: IPv6 transition ranges embedding IPv4 (SSRF bypass vectors)", () => {
+	// On NAT64/DNS64, 6to4, or Teredo network paths a literal URL never hits
+	// DNS, so the guard must decode the embedded IPv4 and screen it — e.g.
+	// http://[64:ff9b::a9fe:a9fe]/ translates to 169.254.169.254 (cloud
+	// metadata) without ever resolving a hostname.
+	it("blocks IPv4-compatible ::/96 spellings of private addresses", () => {
+		for (const addr of [
+			"::a9fe:a9fe", // ::169.254.169.254
+			"::169.254.169.254", // dotted tail form
+			"::7f00:1", // ::127.0.0.1
+			"::a00:1", // ::10.0.0.1
+			"::c0a8:101", // ::192.168.1.1
+			"0:0:0:0:0:0:a9fe:a9fe", // expanded form
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		// Public embeds stay public; :: and ::1 were already blocked.
+		expect(isPrivateIpAddress("::808:808")).toBe(false); // ::8.8.8.8
+		expect(isPrivateIpAddress("::8.8.8.8")).toBe(false);
+	});
+
+	it("blocks NAT64 64:ff9b::/96 spellings of private addresses", () => {
+		for (const addr of [
+			"64:ff9b::a9fe:a9fe", // 169.254.169.254
+			"64:ff9b::169.254.169.254", // dotted tail form
+			"64:ff9b::7f00:1", // 127.0.0.1
+			"64:ff9b::a00:1", // 10.0.0.1
+			"64:ff9b::c0a8:101", // 192.168.1.1
+			"64:ff9b::ac10:1", // 172.16.0.1
+			"64:ff9b::6440:1", // 100.64.0.1 (CGNAT)
+			"0064:ff9b:0000:0000:0000:0000:a9fe:a9fe", // expanded form
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		expect(isPrivateIpAddress("64:ff9b::808:808")).toBe(false); // 8.8.8.8
+		expect(isPrivateIpAddress("64:ff9b::8.8.8.8")).toBe(false);
+	});
+
+	it("blocks 6to4 2002::/16 spellings of private addresses", () => {
+		for (const addr of [
+			"2002:a9fe:a9fe::", // 169.254.169.254
+			"2002:7f00:1::", // 127.0.0.1
+			"2002:a00:1::", // 10.0.0.1
+			"2002:c0a8:101::1", // 192.168.1.1 with subnet host bits
+			"2002:ac1f:1::", // 172.31.0.1
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		expect(isPrivateIpAddress("2002:808:808::")).toBe(false); // 8.8.8.8
+		expect(isPrivateIpAddress("2002:cb00:710a::")).toBe(false); // 203.0.113.10
+	});
+
+	it("blocks Teredo 2001:0000::/32 spellings of private addresses", () => {
+		// Teredo obfuscates the client IPv4 as the low 32 bits XOR 0xffffffff.
+		for (const addr of [
+			"2001:0:4136:e378:8000:63bf:5601:5601", // client 169.254.169.254
+			"2001:0::80ff:fffe", // client 127.0.0.1
+			"2001:0:4136:e378:8000:63bf:f5ff:fffe", // client 10.0.0.1
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+		// Client 192.0.2.45 (TEST-NET-1) is outside every blocked IPv4 range.
+		expect(isPrivateIpAddress("2001:0:4136:e378:8000:63bf:3fff:fdd2")).toBe(
+			false,
+		);
+		// Other 2001:: space (non-Teredo) is unaffected.
+		expect(isPrivateIpAddress("2001:4860:4860::8888")).toBe(false);
+	});
+
+	it("screens bracketed URL-literal forms end to end", () => {
+		expect(isPrivateIpAddress("[64:ff9b::a9fe:a9fe]")).toBe(true);
+		expect(isPrivateIpAddress("[2002:a9fe:a9fe::]")).toBe(true);
+		expect(isPrivateIpAddress("[::a9fe:a9fe]")).toBe(true);
+	});
+
+	it("still allows legitimate public IPv6 in the screened prefixes", () => {
+		expect(isPrivateIpAddress("64:ff9b:1::a9fe:a9fe")).toBe(false); // not /96
+		expect(isPrivateIpAddress("2001:db8::1")).toBe(false); // docs range, non-Teredo
+		expect(isPrivateIpAddress("2003:a9fe:a9fe::")).toBe(false); // not 6to4
+	});
+
+	it("blocks mixed-case and non-canonical spellings of the same embeds", () => {
+		for (const addr of [
+			"64:FF9B::A9FE:A9FE", // upper-case NAT64
+			"2002:A9FE:A9FE::", // upper-case 6to4
+			"2001:0:4136:E378:8000:63BF:5601:5601", // upper-case Teredo
+			"0::ffff:7f00:1", // mapped spelling the normalize prefix regex misses
+			"0:0:0:0:0:ffff:7f00:1", // expanded mapped loopback
+			"0:0:0:0:0:0:7f00:1", // expanded compatible loopback
+			"0:0:0:0:0:0:0:1", // expanded ::1
+			"0:0:0:0:0:0:0:0", // expanded ::
+		]) {
+			expect(isPrivateIpAddress(addr), addr).toBe(true);
+		}
+	});
+
+	it("screens zone-id and mapped loopback literals end to end", () => {
+		expect(isPrivateIpAddress("fe80::1%eth0")).toBe(true);
+		expect(isPrivateIpAddress("[fe80::1%25eth0]")).toBe(true);
+		expect(isPrivateIpAddress("[::ffff:7f00:1]")).toBe(true);
+	});
+
+	it("loose URL spellings are unparseable or canonicalize into the guard", () => {
+		// Node and Bun both REJECT a loose dotted tail inside an IPv6 literal
+		// (leading-zero octal / hex quads), so those spellings can never be
+		// connected to — the strict dotted-tail parse in the guard is no bypass.
+		for (const url of [
+			"http://[64:ff9b::0177.0.0.1]/",
+			"http://[64:ff9b::0xa9.0xfe.0xa9.0xfe]/",
+			"http://[::ffff:2130706433]/",
+		]) {
+			expect(() => new URL(url), url).toThrow();
+		}
+		// Mixed-case spellings DO parse and canonicalize; the canonical form is
+		// what reaches isPrivateIpAddress, and it stays blocked.
+		expect(new URL("http://[::FFFF:7F00:1]/").hostname).toBe("[::ffff:7f00:1]");
+		expect(
+			isPrivateIpAddress(new URL("http://[64:FF9B::A9FE:A9FE]/").hostname),
+		).toBe(true);
 	});
 });

@@ -44,6 +44,56 @@ function makeOptimizedAutonomyService(prompt: string): OptimizedPromptService {
 }
 
 describe("AutonomyService optimized prompt integration", () => {
+	test("warns and preserves defaults for malformed cost-control settings", () => {
+		const warn = vi.fn();
+		const values: Record<string, string> = {
+			AUTONOMY_INTERVAL_MS: "60_000",
+			AUTONOMY_MODEL_SIZE: "smal",
+		};
+		const service = new AutonomyService();
+		(service as unknown as { runtime: IAgentRuntime }).runtime =
+			createMockRuntime({
+				getSetting: (key: string) => values[key] ?? null,
+				logger: { warn } as IAgentRuntime["logger"],
+			});
+
+		const harness = service as unknown as {
+			resolveConfiguredIntervalMs: () => number | null;
+			resolveAutonomyModelSize: () => "small" | "large";
+		};
+		expect(harness.resolveConfiguredIntervalMs()).toBeNull();
+		expect(harness.resolveAutonomyModelSize()).toBe("large");
+		expect(harness.resolveAutonomyModelSize()).toBe("large");
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(warn.mock.calls.map((call) => call[1])).toEqual([
+			"Ignoring invalid AUTONOMY_INTERVAL_MS; using the 30000ms default",
+			"Ignoring invalid AUTONOMY_MODEL_SIZE; using the large model tier",
+		]);
+	});
+
+	test.each(["0x1388", "5e3", "5000.5", "05000"])(
+		"rejects non-canonical autonomy interval %s",
+		(raw) => {
+			const warn = vi.fn();
+			const service = new AutonomyService();
+			(service as unknown as { runtime: IAgentRuntime }).runtime =
+				createMockRuntime({
+					getSetting: (key: string) =>
+						key === "AUTONOMY_INTERVAL_MS" ? raw : null,
+					logger: { warn } as IAgentRuntime["logger"],
+				});
+
+			const interval = (
+				service as unknown as {
+					resolveConfiguredIntervalMs: () => number | null;
+				}
+			).resolveConfiguredIntervalMs();
+
+			expect(interval).toBeNull();
+			expect(warn).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	test("fills the GEPA-optimized autonomy prompt when an autonomy artifact is loaded", () => {
 		const optimizedPromptService = makeOptimizedAutonomyService(
 			"GEPA autonomy prompt\ncontext={{targetRoomContext}}\nlast={{lastThought}}",

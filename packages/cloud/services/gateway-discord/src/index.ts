@@ -13,6 +13,7 @@ import {
   createDiscordPublicKeyResolver,
 } from "./discord-event-webhook";
 import { GatewayManager } from "./gateway-manager";
+import { validateInternalSecret } from "./internal-auth";
 import { deliverInternalDiscordMessage } from "./internal-delivery";
 import { logger } from "./logger";
 
@@ -123,20 +124,32 @@ app.get("/ready", (c) => {
 
 // Drain endpoint - called by preStop hook before shutdown
 // Marks pod as draining to prevent new assignments while allowing existing bots to continue
-// This enables graceful failover without message loss
+// This enables graceful failover without message loss.
+// Gated on the internal secret: an unauthenticated drain lets anything that
+// reaches the pod IP force a fleet-wide Discord reconnect. /health and /ready
+// stay open because kubelet/Railway/Docker probes cannot attach headers.
 app.post("/drain", async (c) => {
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
   await gatewayManager.startDraining();
   return c.json({ draining: true, podName });
 });
 
-// Metrics endpoint for Prometheus
+// Metrics endpoint for Prometheus (internal-secret gated like /drain)
 app.get("/metrics", (c) => {
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
   const metrics = gatewayManager.getMetrics();
   return c.text(metrics, 200, { "Content-Type": "text/plain" });
 });
 
-// Status endpoint with detailed info
+// Status endpoint with detailed info (internal-secret gated like /drain)
 app.get("/status", (c) => {
+  if (!validateInternalSecret(c.req.raw)) {
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  }
   const status = gatewayManager.getStatus();
   return c.json(status);
 });

@@ -13,6 +13,7 @@ import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
+import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
@@ -121,6 +122,7 @@ async function getTopupRecipient(
     referral_code?: string;
     appOwnerId?: string;
   },
+  rawBody?: string,
 ): Promise<TopupRecipient> {
   const hasWalletSig =
     !!request.headers.get("X-Wallet-Address") &&
@@ -128,7 +130,9 @@ async function getTopupRecipient(
     !!request.headers.get("X-Wallet-Signature");
 
   if (hasWalletSig) {
-    const walletUser = await verifyWalletSignature(request);
+    const walletUser = await verifyWalletSignature(request, {
+      bodyText: rawBody,
+    });
     if (!walletUser) throw new Error("Wallet signature verification failed");
     return {
       user: walletUser,
@@ -314,12 +318,7 @@ function paymentRequiredResponse(
   requirements: PaymentRequirements,
   extensions?: PaymentRequiredExtensions,
 ): Response {
-  const paymentRequired = {
-    x402Version: 2,
-    error: "payment_required",
-    accepts: [requirements],
-    ...(extensions && { extensions }),
-  };
+  const paymentRequired = buildX402PaymentRequired(requirements, extensions);
   const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString("base64");
   return Response.json(paymentRequired, {
     status: 402,
@@ -336,7 +335,19 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
   const { amount, getSourceId } = options;
 
   return async function handler(req: Request, env?: TopupEnv): Promise<Response> {
-    const body = (await req.json().catch(() => ({}))) as TopupBody;
+    // Read the raw bytes once: JSON.parse for the DTO, and the exact text for
+    // the wallet-signature payload hash inside getTopupRecipient (the body
+    // stream cannot be read twice).
+    const rawBody = await req.text().catch(() => "");
+    let body: TopupBody = {};
+    try {
+      body = (rawBody ? JSON.parse(rawBody) : {}) as TopupBody;
+    } catch {
+      // error-policy:J3 malformed JSON reads as "no body fields"; the
+      // wallet-signature or walletAddress checks below reject the request on
+      // their own terms instead of fabricating a parsed body.
+      body = {};
+    }
     if (!body?.walletAddress?.trim() && !req.headers.get("X-Wallet-Signature")) {
       return Response.json(
         {
@@ -400,7 +411,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
 
     let recipient;
     try {
-      recipient = await getTopupRecipient(req, body);
+      recipient = await getTopupRecipient(req, body, rawBody);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("walletAddress is required")) {

@@ -56,7 +56,24 @@ bun run test:e2e       # Playwright UI smoke (ui-smoke config)
 bun run ios            # Build + open Xcode
 bun run android        # Build + open Android Studio
 bun run cap:sync       # Capacitor sync (both platforms) + patch iOS plist
+
+# Physical iPhone lane (macOS + Apple development credentials/device required)
+bun run ios:device:provision -- --device <udid> --product <App.app>
+bun run ios:device:e2e -- --device <id> # full app+appexes + freshly graft-signed XCUITest runner
 ```
+
+Provisioning enables capabilities exposed by the public App Store Connect API,
+then decodes every minted profile and verifies the complete target entitlement
+set. Before installation, the decoded profile must also match the requested
+App Store Connect UUID, target bundle identifier, device UDID, expiration, and
+development signing mode (`get-task-allow=true`). Family Controls approval and
+exact App Group registration/assignment must already be completed by an Apple
+Account Holder/Admin; missing grants fail the lane rather than silently
+installing a reduced app. Capability changes can
+invalidate immutable profiles, so the provisioner preserves the prior profile
+and creates a uniquely named replacement; rerun it after an administrator fixes
+a missing managed grant. Later runs reuse the first replacement whose decoded
+grants still cover the target instead of minting another profile.
 
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
 not from inside this package â `packages/app` only produces the renderer.
@@ -66,6 +83,39 @@ not from inside this package â `packages/app` only produces the renderer.
 App identity lives in `app.config.ts` (`envPrefix: "ELIZA"`); copy that file to
 white-label a new app. Runtime/build env vars use the `ELIZA_` prefix. See `AGENTS.md`
 for the full env var table; `.env.example` documents the build-time `VITE_*` flags.
+
+### Desktop voice hardware evidence
+
+The macOS and Windows voice-matrix jobs run only on owner-operated hardware.
+Each runner exposes distinct physical input and system-output-loopback devices
+to ffmpeg and the corresponding exact browser media-device ids to the packaged
+renderer.
+
+macOS uses `ELIZA_VOICE_MACOS_PACKAGED_LAUNCHER_PATH`,
+`ELIZA_VOICE_MACOS_SCREEN_DEVICE`, `ELIZA_VOICE_MACOS_MIC_DEVICE`,
+`ELIZA_VOICE_MACOS_SPEAKER_LOOPBACK_DEVICE`,
+`ELIZA_VOICE_MACOS_BROWSER_MIC_DEVICE_ID`, and
+`ELIZA_VOICE_MACOS_BROWSER_SPEAKER_DEVICE_ID`. Windows uses the matching
+`ELIZA_VOICE_WINDOWS_*` variables, excluding the screen device.
+
+The selected speaker must be physically audible to the selected microphone and
+also routed into the configured loopback. The one-command capture plays the
+bundled known phrase after the microphone is live, checks the browser-selected
+input/output ids, and correlates app payloads to the microphone and loopback
+windows. Missing enumerated devices, equal mic and loopback endpoints, stale
+packaged revisions, unrelated audio, or a backend log that does not grow during
+the session fail the lane.
+
+The capture preflight also rejects microphone identities associated with common
+software loopbacks, monitors, virtual cables, aggregate devices, and multi-output
+devices before recording `physical-microphone` provenance. Desktop media APIs do
+not provide a portable cryptographic hardware attestation. The finalizer reruns
+the classifier against the OS endpoint and browser-selected track label and
+requires all normalized label tokens, including repeated and generic tokens, to
+match exactly. Case, punctuation, and token order may differ, but an added or
+missing token cannot impersonate the captured endpoint. The owner-operated
+runner must still pin an actual microphone; a deliberately renamed virtual
+driver remains outside what this software-only check can establish.
 
 ## Launch surfaces
 

@@ -54,9 +54,12 @@ import {
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
   timeInferenceSpan,
+  toWellFormedUnicode,
   trackPostDeliveryTask,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   ChatFailureKind,
   ChatToolCallEvent,
@@ -304,6 +307,13 @@ export interface ChatMessageIdOutcome {
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   noResponseReason?: "ignored";
+  /**
+   * The turn ended by explicit Stop/disconnect abort. `text` carries the
+   * partial reply that streamed before the abort (possibly empty for a
+   * zero-token Stop) and `messageId` its durable interrupted receipt, so a
+   * retried key adopts the interrupted outcome instead of regenerating.
+   */
+  interrupted?: boolean;
 }
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
@@ -701,10 +711,11 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = text.replace(/\s+/g, " ").trim();
-  if (text.length <= 700) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= 700) {
+    return wellFormed;
   }
-  const truncated = text.slice(0, 700);
+  const truncated = truncateWellFormed(wellFormed, 700);
   const sentenceEnd = Math.max(
     truncated.lastIndexOf("."),
     truncated.lastIndexOf("!"),
@@ -1900,7 +1911,10 @@ function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    return value.length > 1000 ? `${value.slice(0, 997)}...` : value;
+    const wellFormed = toWellFormedUnicode(value);
+    return wellFormed.length > 1000
+      ? `${truncateWellFormed(wellFormed, 997)}...`
+      : wellFormed;
   }
   if (Array.isArray(value)) {
     if (depth >= 2) return undefined;
@@ -2926,6 +2940,41 @@ export async function persistAssistantConversationMemory(
   return memoryId
     ? await persistExactConversationMemory(runtime, memory, roomHandlerLease)
     : await persistConversationMemory(runtime, memory, roomHandlerLease);
+}
+
+/**
+ * Persist the terminal receipt for an aborted (Stop/disconnect) turn before
+ * the route releases it. Unlike `persistAssistantConversationMemory` this
+ * MUST persist even when no token streamed — a zero-token Stop still owns a
+ * durable `interrupted` assistant row, otherwise reload recovery finds a user
+ * turn with no terminal receipt and the transport is free to regenerate
+ * (#17216). The row carries `content.interrupted: true`, which the GET
+ * /messages DTO round-trips so the renderer shows the interrupted state
+ * instead of a healthy-looking reply.
+ */
+export async function persistInterruptedAssistantReceipt(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  partialText: string,
+  channelType: ChannelType,
+  inReplyTo: UUID | undefined,
+  memoryId: UUID,
+  roomHandlerLease?: RoomHandlerLease,
+): Promise<Memory> {
+  const memory = createMessageMemory({
+    id: memoryId,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: partialText,
+      interrupted: true,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+      channelType,
+      ...(inReplyTo ? { inReplyTo } : {}),
+    } satisfies Content,
+  });
+  return persistExactConversationMemory(runtime, memory, roomHandlerLease);
 }
 
 // ---------------------------------------------------------------------------

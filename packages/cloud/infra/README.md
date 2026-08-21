@@ -16,6 +16,8 @@ Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifest
 ## Deployment topology
 
 See `cloud/RAILWAY.md` for the canonical service/runtime/request-path map.
+Before accepting staging test evidence, resolve every touched deployment with
+the [staging authority runbook](./STAGING_AUTHORITY.md).
 Short version:
 
 - Frontend → one Cloudflare Pages project (`eliza-app`) serving `eliza.app`

@@ -327,10 +327,9 @@ export async function sendWhatsAppTypingIndicator(
       }),
       signal: AbortSignal.timeout(WHATSAPP_REQUEST_TIMEOUT_MS),
     });
-  } catch (error) {
+  } catch {
     logger.debug("[WhatsApp] Failed to send typing indicator", {
-      phoneNumberId,
-      error: error instanceof Error ? error.message : String(error),
+      failureClass: "typing_indicator_failed",
     });
   }
 }

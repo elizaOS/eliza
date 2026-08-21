@@ -2,7 +2,9 @@
  * Remote-control sessions (T9a control plane).
  *
  * Tracks pending/active/revoked/denied sessions issued by an agent via the
- * cloud `pair` endpoint. The actual data plane (VNC / tunnel) is separate.
+ * cloud `pair` endpoint. The versioned pairing verifier carries its signed
+ * expiry so a restart or delayed consumer cannot turn an expired grant back
+ * into authority. The actual data plane (VNC / tunnel) is separate.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
@@ -11,7 +13,13 @@ import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
-export const REMOTE_SESSION_STATUSES = ["pending", "active", "denied", "revoked"] as const;
+export const REMOTE_SESSION_STATUSES = [
+  "pending",
+  "active",
+  "denied",
+  "revoked",
+  "expired",
+] as const;
 
 export type RemoteSessionStatus = (typeof REMOTE_SESSION_STATUSES)[number];
 
@@ -33,6 +41,10 @@ export const remoteSessions = pgTable(
     pairing_token_hash: text("pairing_token_hash"),
     ingress_url: text("ingress_url"),
     ingress_reason: text("ingress_reason"),
+    // First-class expiry so active-session reads can filter in the database.
+    // Legacy rows created before this column carry NULL and fall back to the
+    // signed expiry inside pairing_token_hash.
+    expires_at: timestamp("expires_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     ended_at: timestamp("ended_at", { withTimezone: true }),
@@ -41,6 +53,11 @@ export const remoteSessions = pgTable(
     agentIdx: index("remote_sessions_agent_id_idx").on(table.agent_id),
     orgIdx: index("remote_sessions_organization_id_idx").on(table.organization_id),
     statusIdx: index("remote_sessions_status_idx").on(table.status),
+    agentStatusExpiryIdx: index("remote_sessions_agent_status_expires_idx").on(
+      table.agent_id,
+      table.status,
+      table.expires_at,
+    ),
   }),
 );
 

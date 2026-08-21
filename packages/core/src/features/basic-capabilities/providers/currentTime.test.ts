@@ -1,12 +1,10 @@
 /**
- * CURRENT_TIME timezone precedence tests. A deterministic runtime stub and the
- * provider's emitted ISO instant prove device-local formatting without a live
- * model or wall-clock assumptions.
+ * CURRENT_TIME contract tests prove device-first local rendering and honest
+ * agent/host reference fallbacks at deterministic DST and date boundaries.
  */
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory } from "../../../types/index.ts";
-import { currentTimeProvider } from "./currentTime.ts";
+import { currentTimeProvider, resolveMessageTimeZone } from "./currentTime.ts";
 
 function runtime(timeZone?: string): IAgentRuntime {
 	return {
@@ -14,82 +12,119 @@ function runtime(timeZone?: string): IAgentRuntime {
 	} as IAgentRuntime;
 }
 
-function message(uiTimeZone?: string): Memory {
+function message(uiTimeZone?: unknown): Memory {
 	return {
 		content: {
-			text: "schedule lunch tomorrow",
-			...(uiTimeZone ? { metadata: { uiTimeZone } } : {}),
+			text: "what time is it for me?",
+			...(uiTimeZone !== undefined ? { metadata: { uiTimeZone } } : {}),
 		},
 	} as Memory;
 }
 
-function expectedDate(iso: unknown, timeZone: string): string {
-	expect(typeof iso).toBe("string");
-	return new Date(iso as string).toLocaleDateString("en-CA", { timeZone });
-}
-
 describe("currentTimeProvider", () => {
-	afterEach(() => {
-		vi.useRealTimers();
-	});
+	afterEach(() => vi.useRealTimers());
 
-	it("formats relative-date context in the sending device timezone", async () => {
+	it("uses the active device as the sender-local clock across a date boundary", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-08-05T02:41:04.618Z"));
 		const result = await currentTimeProvider.get(
-			runtime("UTC"),
+			runtime("Europe/Paris"),
 			message("America/Los_Angeles"),
 			{} as never,
 		);
 
-		expect(result.data?.timeZone).toBe("America/Los_Angeles");
-		expect(result.data?.date).toBe(
-			expectedDate(result.data?.iso, "America/Los_Angeles"),
-		);
-		expect(result.data?.date).toBe("2026-08-04");
-		expect(result.text).toContain("- Date: 2026-08-04");
-		expect(result.text).toContain("America/Los_Angeles");
+		expect(result.data).toMatchObject({
+			date: "2026-08-04",
+			timeZone: "America/Los_Angeles",
+			userTimeZone: "America/Los_Angeles",
+			timeZoneOrigin: "device",
+		});
+		expect(result.text).toContain("User local time:");
+		expect(result.text).toContain("from the active device");
+		expect(result.text).not.toContain("Europe/Paris");
 	});
 
-	it("uses the runtime host timezone when neither client nor agent config supplies one", async () => {
+	it("lets a traveling device override the configured reference timezone", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-01T09:30:00.000Z"));
+		const result = await currentTimeProvider.get(
+			runtime("America/New_York"),
+			message("America/Los_Angeles"),
+			{} as never,
+		);
+
+		expect(result.data).toMatchObject({
+			time: "01:30:00",
+			timeZone: "America/Los_Angeles",
+			timeZoneOrigin: "device",
+		});
+	});
+
+	it("labels an agent setting as reference time when the sender zone is unknown", async () => {
+		const result = await currentTimeProvider.get(
+			runtime("Europe/Paris"),
+			message(),
+			{} as never,
+		);
+
+		expect(result.data).toMatchObject({
+			timeZone: "Europe/Paris",
+			userTimeZone: null,
+			timeZoneOrigin: "agent-setting",
+		});
+		expect(result.text).toContain("User timezone: unknown");
+		expect(result.text).toContain("Agent reference time:");
+		expect(result.text).toContain("not the user's local time");
+		expect(result.text).not.toContain("User local time:");
+	});
+
+	it("labels the host clock as server time when no trusted sender zone exists", async () => {
 		const result = await currentTimeProvider.get(
 			runtime(),
 			message(),
 			{} as never,
 		);
-		const hostTimeZone =
-			Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+		const host = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-		expect(result.data?.timeZone).toBe(hostTimeZone);
-		expect(result.data?.date).toBe(
-			expectedDate(result.data?.iso, hostTimeZone),
-		);
+		expect(result.data).toMatchObject({
+			timeZone: host,
+			userTimeZone: null,
+			timeZoneOrigin: "host",
+		});
+		expect(result.text).toContain("User timezone: unknown");
+		expect(result.text).toContain("Server time:");
+		expect(result.text).not.toContain("User local time:");
 	});
 
-	it("rejects an invalid client timezone and uses the configured timezone", async () => {
-		const result = await currentTimeProvider.get(
-			runtime("Europe/Paris"),
-			message("Mars/Olympus_Mons"),
-			{} as never,
-		);
+	it.each(["Mars/Olympus_Mons", "\nUTC\rspoof", "", 42])(
+		"rejects invalid device timezone %j",
+		async (invalid) => {
+			const result = await currentTimeProvider.get(
+				runtime("Asia/Tokyo"),
+				message(invalid),
+				{} as never,
+			);
+			expect(result.data).toMatchObject({
+				timeZone: "Asia/Tokyo",
+				userTimeZone: null,
+				timeZoneOrigin: "agent-setting",
+			});
+			if (String(invalid).length > 0) {
+				expect(result.text).not.toContain(String(invalid));
+			}
+		},
+	);
+});
 
-		expect(result.data?.timeZone).toBe("Europe/Paris");
-		expect(result.data?.date).toBe(
-			expectedDate(result.data?.iso, "Europe/Paris"),
+describe("resolveMessageTimeZone", () => {
+	it("preserves device then setting then host precedence", () => {
+		const host = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+		expect(resolveMessageTimeZone(runtime("UTC"), message("Asia/Tokyo"))).toBe(
+			"Asia/Tokyo",
 		);
-		expect(result.text).not.toContain("Mars/Olympus_Mons");
-	});
-
-	it("rejects an invalid configured timezone and uses the runtime host timezone", async () => {
-		const result = await currentTimeProvider.get(
-			runtime("Mars/Olympus_Mons"),
-			message(),
-			{} as never,
+		expect(resolveMessageTimeZone(runtime("Europe/Paris"), message())).toBe(
+			"Europe/Paris",
 		);
-		const hostTimeZone =
-			Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-
-		expect(result.data?.timeZone).toBe(hostTimeZone);
-		expect(result.text).not.toContain("Mars/Olympus_Mons");
+		expect(resolveMessageTimeZone(runtime(), message())).toBe(host);
 	});
 });

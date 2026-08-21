@@ -185,6 +185,12 @@ export interface DesktopHttpRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  /**
+   * Base64-encoded binary response body. Set when the response Content-Type
+   * indicates a binary format (audio, image, etc.) so the renderer can
+   * reconstruct the original bytes without UTF-8 corruption.
+   */
+  bodyBase64?: string | null;
 }
 
 /**
@@ -1454,7 +1460,19 @@ export type ElizaDesktopRPCSchema = {
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
       desktopSetBottomBarExpanded: {
-        params: { expanded: boolean; chip?: boolean };
+        params: { expanded: boolean; chip?: boolean; hovered?: boolean };
+        response: undefined;
+      };
+      desktopSetBottomBarSurfaceState: {
+        params: {
+          state:
+            | "CLOSED"
+            | "INPUT"
+            | "INPUT_MENU"
+            | "OPEN_UNDER_HALF"
+            | "OPEN_HALF_OR_OVER"
+            | "MAXIMIZED";
+        };
         response: undefined;
       };
       desktopMinimizeWindow: { params: undefined; response: undefined };

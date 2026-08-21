@@ -9,10 +9,11 @@
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
+import { resolveNpmCliInvocation } from "./scripts/npm-cli";
 
 const execFileAsync = promisify(execFile);
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
@@ -765,6 +766,24 @@ const edgeRuntimeSourcesPlugin: BunPlugin = {
 						}
 					: undefined,
 		);
+		// mammoth/unpdf are `external` for this target, but a single-file worker
+		// bundle still inlines both graphs (~2.1 MB minified) because the bare
+		// specifiers survive into the artifact and every downstream bundler
+		// resolves them. Aliasing the one module that imports them removes the
+		// specifiers entirely, honoring the `documents: false` edge default
+		// (#21327).
+		build.onResolve(
+			{ filter: /^\.\/parsers(?:\.ts|\.js)?$/ },
+			({ importer }) =>
+				importer.endsWith("/src/features/documents/utils.ts")
+					? {
+							path: join(
+								process.cwd(),
+								"src/features/documents/parsers.edge.ts",
+							),
+						}
+					: undefined,
+		);
 	},
 };
 
@@ -1035,7 +1054,9 @@ export async function buildNodeOnly(
 	options: {
 		argv?: string[];
 		runnerFactory?: typeof createBuildRunner;
-		generateDeclarations?: () => Promise<void>;
+		generateDeclarations?: (
+			options?: GenerateTypeScriptDeclarationOptions,
+		) => Promise<void>;
 	} = {},
 ) {
 	console.log("🚀 Starting Node-only build process for @elizaos/core");
@@ -1049,7 +1070,7 @@ export async function buildNodeOnly(
 	const tasks: Array<Promise<void>> = [buildNode(runnerFactory)];
 	if (!skipTesting) tasks.push(buildTesting(runnerFactory));
 	await Promise.all(tasks);
-	await generateDeclarations();
+	await generateDeclarations({ skipTesting });
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
 	console.log(`\n🎉 Node-only build complete in ${totalDuration}s`);
@@ -1061,7 +1082,9 @@ export async function buildNodeOnly(
 export async function buildAll(
 	options: {
 		runnerFactory?: typeof createBuildRunner;
-		generateDeclarations?: () => Promise<void>;
+		generateDeclarations?: (
+			options?: GenerateTypeScriptDeclarationOptions,
+		) => Promise<void>;
 		edgeBundleIo?: EdgeBundleIo;
 	} = {},
 ) {
@@ -1232,10 +1255,183 @@ export async function fixDtsExtensions(rootDir: string): Promise<void> {
 	);
 }
 
+type PackageExportMap = Record<string, unknown>;
+
+export interface FlatEntrypointPlan {
+	exportPath: string;
+	flatFile: string;
+	targetFile: string;
+	moduleSpecifier: string;
+}
+
+export interface FlatEntrypointOptions {
+	rootDir?: string;
+	excludedExportPaths?: ReadonlySet<string>;
+}
+
+export interface GenerateTypeScriptDeclarationOptions {
+	skipTesting?: boolean;
+}
+
+const RUNTIME_CONDITION_PRIORITY = [
+	"default",
+	"node",
+	"bun",
+	"import",
+	"browser",
+	"workerd",
+] as const;
+
+function selectRuntimeExportTarget(value: unknown): string | null {
+	if (typeof value === "string") {
+		return value.startsWith("./dist/") && value.endsWith(".js") ? value : null;
+	}
+	if (Array.isArray(value)) {
+		for (const candidate of value) {
+			const target = selectRuntimeExportTarget(candidate);
+			if (target) return target;
+		}
+		return null;
+	}
+	if (typeof value !== "object" || value === null) return null;
+
+	const conditions = value as Record<string, unknown>;
+	for (const condition of RUNTIME_CONDITION_PRIORITY) {
+		if (!Object.hasOwn(conditions, condition)) continue;
+		const target = selectRuntimeExportTarget(conditions[condition]);
+		if (target) return target;
+	}
+	for (const [condition, candidate] of Object.entries(conditions)) {
+		if (
+			condition === "types" ||
+			condition === "eliza-source" ||
+			RUNTIME_CONDITION_PRIORITY.includes(
+				condition as (typeof RUNTIME_CONDITION_PRIORITY)[number],
+			)
+		) {
+			continue;
+		}
+		const target = selectRuntimeExportTarget(candidate);
+		if (target) return target;
+	}
+	return null;
+}
+
+function isTopLevelDirectoryEntrypoint(targetFile: string): boolean {
+	return /^dist\/[^/]+\/index(?:\.[^/.]+)?\.js$/.test(targetFile);
+}
+
+function toModuleSpecifier(fromFile: string, targetFile: string): string {
+	const pathFromEntrypoint = relative(dirname(fromFile), targetFile).replaceAll(
+		"\\",
+		"/",
+	);
+	return pathFromEntrypoint.startsWith(".")
+		? pathFromEntrypoint
+		: `./${pathFromEntrypoint}`;
+}
+
+/**
+ * Enumerates the flat runtime artifacts required by fixed package subpaths.
+ * Package conditions may be arbitrarily nested or array-backed; the selected
+ * target follows the package's runtime fallback before audience-specific
+ * branches. Top-level audience directories such as `./node` and `./testing`
+ * deliberately retain their directory-index layout.
+ */
+export function planFlatEntrypoints(
+	exportsMap: PackageExportMap,
+	options: FlatEntrypointOptions = {},
+): FlatEntrypointPlan[] {
+	const excluded = options.excludedExportPaths ?? new Set<string>();
+	const plans: FlatEntrypointPlan[] = [];
+	for (const [exportPath, config] of Object.entries(exportsMap)) {
+		if (
+			!exportPath.startsWith("./") ||
+			exportPath === "./package.json" ||
+			exportPath.includes("*") ||
+			excluded.has(exportPath)
+		) {
+			continue;
+		}
+
+		const target = selectRuntimeExportTarget(config);
+		if (!target) continue;
+		const targetFile = target.slice(2);
+		if (isTopLevelDirectoryEntrypoint(targetFile)) continue;
+
+		const flatFile = `dist/${exportPath.slice(2)}.js`;
+		plans.push({
+			exportPath,
+			flatFile,
+			targetFile,
+			moduleSpecifier: toModuleSpecifier(flatFile, targetFile),
+		});
+	}
+	return plans;
+}
+
+async function isFile(path: string): Promise<boolean> {
+	const fs = await import("node:fs/promises");
+	try {
+		return (await fs.stat(path)).isFile();
+	} catch (error) {
+		// error-policy:J3 an absent generated artifact is an explicit invalid
+		// result; other filesystem failures still abort the build.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
+}
+
+export async function emitFlatEntrypoints(
+	exportsMap: PackageExportMap,
+	options: FlatEntrypointOptions = {},
+): Promise<FlatEntrypointPlan[]> {
+	const fs = await import("node:fs/promises");
+	const rootDir = options.rootDir ?? process.cwd();
+	const plans = planFlatEntrypoints(exportsMap, options);
+	for (const plan of plans) {
+		const target = join(rootDir, plan.targetFile);
+		if (!(await isFile(target))) {
+			throw new Error(
+				`${plan.exportPath}: runtime target ${plan.targetFile} was not emitted`,
+			);
+		}
+		if (plan.flatFile === plan.targetFile) continue;
+		const flat = join(rootDir, plan.flatFile);
+		await fs.mkdir(dirname(flat), { recursive: true });
+		await fs.writeFile(
+			flat,
+			`// Flat ${plan.exportPath} build entrypoint\nexport * from ${JSON.stringify(plan.moduleSpecifier)};\n`,
+			"utf8",
+		);
+	}
+	return plans;
+}
+
+export async function validateFlatEntrypoints(
+	plans: readonly FlatEntrypointPlan[],
+	options: Pick<FlatEntrypointOptions, "rootDir"> = {},
+): Promise<void> {
+	const rootDir = options.rootDir ?? process.cwd();
+	const missing: string[] = [];
+	for (const plan of plans) {
+		if (!(await isFile(join(rootDir, plan.flatFile)))) {
+			missing.push(`${plan.exportPath}: ${plan.flatFile}`);
+		}
+	}
+	if (missing.length > 0) {
+		throw new Error(
+			`Missing flat entrypoints for package subpaths:\n${missing.join("\n")}`,
+		);
+	}
+}
+
 /**
  * Generate TypeScript declarations for all entry points
  */
-export async function generateTypeScriptDeclarations() {
+export async function generateTypeScriptDeclarations(
+	options: GenerateTypeScriptDeclarationOptions = {},
+) {
 	const fs = await import("node:fs/promises");
 	const { $ } = await import("bun");
 
@@ -1312,22 +1508,68 @@ export async function generateTypeScriptDeclarations() {
 
 	// Ensure testing module directory and declarations exist
 	await fs.mkdir("dist/testing", { recursive: true });
+	const pkg = JSON.parse(await fs.readFile("package.json", "utf-8")) as {
+		exports?: Record<string, unknown>;
+	};
+	const flatEntrypoints = await emitFlatEntrypoints(pkg.exports ?? {}, {
+		excludedExportPaths: options.skipTesting
+			? new Set(["./testing"])
+			: undefined,
+	});
+	await validateFlatEntrypoints(flatEntrypoints);
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
+/**
+ * `NODE_OPTIONS` for the packed-tarball consumer processes, with the workspace
+ * `--conditions=eliza-source` resolution stripped.
+ *
+ * Workspace lanes export that condition so source-only packages resolve to
+ * `src/*.ts` (see packages/app/scripts/run-ui-playwright.mjs). It leaks into
+ * every child process, including the builds those lanes prebuild. Inside this
+ * verification that is wrong twice over: the packed tarball ships no `src/`, so
+ * a consumer resolving `@elizaos/core/client-public` through `eliza-source`
+ * dies with ERR_MODULE_NOT_FOUND, and the contract under test is precisely how
+ * a published consumer resolves under DEFAULT conditions.
+ */
+export function packedConsumerNodeOptions(
+	nodeOptions: string | undefined,
+): string | undefined {
+	if (!nodeOptions) return nodeOptions;
+	const stripped = nodeOptions
+		// `--conditions eliza-source`, `--conditions=eliza-source`, and the `-C`
+		// short form, each optionally repeated.
+		.replace(/(?:--conditions|-C)[=\s]+eliza-source(?=\s|$)/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return stripped.length > 0 ? stripped : undefined;
+}
+
 async function verifyPackedEdgeContract(): Promise<void> {
 	const fs = await import("node:fs/promises");
+	const consumerNodeOptions = packedConsumerNodeOptions(
+		process.env.NODE_OPTIONS,
+	);
+	const consumerEnv: NodeJS.ProcessEnv = { ...process.env };
+	if (consumerNodeOptions === undefined) delete consumerEnv.NODE_OPTIONS;
+	else consumerEnv.NODE_OPTIONS = consumerNodeOptions;
 	const contractRoot = await fs.mkdtemp(
 		join(tmpdir(), "eliza-core-edge-package-"),
 	);
 	try {
-		const { stdout } = await execFileAsync(
-			"npm",
-			["pack", "--json", "--pack-destination", contractRoot, process.cwd()],
-			{ cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 },
-		);
+		const npmPack = resolveNpmCliInvocation([
+			"pack",
+			"--json",
+			"--pack-destination",
+			contractRoot,
+			process.cwd(),
+		]);
+		const { stdout } = await execFileAsync(npmPack.command, npmPack.args, {
+			cwd: process.cwd(),
+			maxBuffer: 10 * 1024 * 1024,
+		});
 		const packed = JSON.parse(stdout) as Array<{ filename?: unknown }>;
 		const filename = packed[0]?.filename;
 		if (typeof filename !== "string") {
@@ -1370,7 +1612,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 				"--skipLibCheck",
 				"consumer.mts",
 			],
-			{ cwd: contractRoot },
+			{ cwd: contractRoot, env: consumerEnv },
 		);
 
 		await fs.writeFile(
@@ -1385,9 +1627,103 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		);
 		await execFileAsync(process.execPath, ["consumer.mjs"], {
 			cwd: contractRoot,
+			env: consumerEnv,
 		});
 		console.log(
 			"✅ Packed @elizaos/core/edge declarations and runtime import verified",
+		);
+
+		const expectedFlatFiles = [
+			"dist/client-public.js",
+			"dist/atomic-json.js",
+			"dist/security/kms.js",
+			"dist/security/mcp-server-config.js",
+		];
+		for (const flatFile of expectedFlatFiles) {
+			if (!(await isFile(join(packageRoot, flatFile)))) {
+				throw new Error(`packed @elizaos/core is missing ${flatFile}`);
+			}
+		}
+
+		await fs.writeFile(
+			join(contractRoot, "node-flat-consumer.mjs"),
+			[
+				'import * as packageSubpath from "@elizaos/core/client-public";',
+				'import * as flatArtifact from "./node_modules/@elizaos/core/dist/client-public.js";',
+				'for (const name of ["formatError", "isTruthyEnvValue", "resolveAliasedEnvValue", "sanitizeForSettingsDebug", "sanitizeSpeechText"]) {',
+				'  if (typeof packageSubpath[name] !== "function") throw new Error("package subpath is missing " + name);',
+				'  if (packageSubpath[name] !== flatArtifact[name]) throw new Error("flat artifact diverges for " + name);',
+				"}",
+				'if (!packageSubpath.isTruthyEnvValue("yes")) throw new Error("node subpath did not execute");',
+				"",
+			].join("\n"),
+			"utf8",
+		);
+		await execFileAsync("node", ["node-flat-consumer.mjs"], {
+			cwd: contractRoot,
+			env: consumerEnv,
+		});
+
+		const viteCli = join(
+			process.cwd(),
+			"../../node_modules/@elizaos/vitest-vite/bin/vite.js",
+		);
+		for (const mode of ["package-browser", "flat-alias"] as const) {
+			const consumerRoot = join(contractRoot, mode);
+			await fs.mkdir(consumerRoot, { recursive: true });
+			await fs.writeFile(
+				join(consumerRoot, "node-module-browser.js"),
+				[
+					"export function createRequire() {",
+					'  return () => { throw new Error("browser consumer called createRequire"); };',
+					"}",
+					"",
+				].join("\n"),
+				"utf8",
+			);
+			await fs.writeFile(
+				join(consumerRoot, "entry.js"),
+				[
+					'import { isTruthyEnvValue, sanitizeSpeechText } from "@elizaos/core/client-public";',
+					'if (!isTruthyEnvValue("yes")) throw new Error("browser consumer helper did not execute");',
+					'if (sanitizeSpeechText(" hello ") !== "hello") throw new Error("browser consumer speech helper diverged");',
+					"export const verified = true;",
+					"",
+				].join("\n"),
+				"utf8",
+			);
+			const aliases = [
+				`{ find: "node:module", replacement: ${JSON.stringify(join(consumerRoot, "node-module-browser.js"))} }`,
+			];
+			if (mode === "flat-alias") {
+				aliases.push(
+					`{ find: "@elizaos/core/client-public", replacement: ${JSON.stringify(join(packageRoot, "dist/client-public.js"))} }`,
+				);
+			}
+			await fs.writeFile(
+				join(consumerRoot, "vite.config.mjs"),
+				[
+					"export default {",
+					`  resolve: { alias: [${aliases.join(", ")}] },`,
+					'  build: { outDir: "dist", emptyOutDir: true, lib: { entry: "entry.js", formats: ["es"], fileName: () => "bundle.js" } },',
+					'  logLevel: "error",',
+					"};",
+					"",
+				].join("\n"),
+				"utf8",
+			);
+			await execFileAsync(
+				"node",
+				[viteCli, "build", "--config", "vite.config.mjs"],
+				{ cwd: consumerRoot, env: consumerEnv },
+			);
+			await execFileAsync("node", ["dist/bundle.js"], {
+				cwd: consumerRoot,
+				env: consumerEnv,
+			});
+		}
+		console.log(
+			"✅ Packed Node, browser-condition, and exact-flat Vite consumers verified",
 		);
 	} finally {
 		await execFileAsync("node", [RM_RECURSIVE_SCRIPT, contractRoot], {

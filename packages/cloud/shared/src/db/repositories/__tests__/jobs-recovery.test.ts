@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq, type SQL } from "drizzle-orm";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
+import { apps } from "../../schemas/apps";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { type Job, jobs } from "../../schemas/jobs";
 
@@ -199,6 +200,7 @@ beforeAll(async () => {
 				attempts integer NOT NULL DEFAULT 0,
 				max_attempts integer NOT NULL DEFAULT 3,
 				execution_interruptions integer NOT NULL DEFAULT 0,
+				retryable_requeues integer NOT NULL DEFAULT 0,
 				organization_id uuid NOT NULL,
 				user_id uuid,
 				api_key_id uuid,
@@ -236,8 +238,17 @@ beforeAll(async () => {
         organization_id uuid NOT NULL,
         slug text,
         api_key_id uuid,
+        metadata jsonb,
         deployment_status text NOT NULL,
         updated_at timestamp NOT NULL DEFAULT now()
+      );`,
+    );
+    await dbWrite.execute(
+      `CREATE TABLE IF NOT EXISTS containers (
+        id uuid PRIMARY KEY,
+        project_name text NOT NULL,
+        organization_id uuid NOT NULL,
+        metadata jsonb
       );`,
     );
   } catch (error) {
@@ -255,7 +266,104 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(pgliteReady).toBe(true);
     await dbWrite.delete(jobExecutionLeases);
     await dbWrite.execute("DELETE FROM jobs;");
+    await dbWrite.execute("DELETE FROM containers;");
     await dbWrite.execute("DELETE FROM apps;");
+  });
+
+  test("reconstructs one deterministic APP_DEPLOY job across enqueue replay", async () => {
+    const deploymentGeneration = "00000000-0000-4000-8000-000000180858";
+    const appId = "00000000-0000-4000-8000-000000180859";
+    const insert = {
+      id: deploymentGeneration,
+      type: "app_deploy",
+      organization_id: ORG_ID,
+      user_id: ACTOR_ID,
+      data: { appId, deploymentGeneration },
+    };
+
+    const first = await repo.createOrGetById(insert);
+    const replay = await repo.createOrGetById(insert);
+
+    expect(first.id).toBe(deploymentGeneration);
+    expect(replay.id).toBe(deploymentGeneration);
+    expect(replay.data).toEqual(insert.data);
+    const persisted = await dbWrite.select().from(jobs).where(eq(jobs.id, deploymentGeneration));
+    expect(persisted).toHaveLength(1);
+  });
+
+  test("a stale APP_DEPLOY failure cannot overwrite the current generation", async () => {
+    const appId = "00000000-0000-4000-8000-000000180860";
+    const staleGeneration = "00000000-0000-4000-8000-000000180861";
+    const currentGeneration = "00000000-0000-4000-8000-000000180862";
+    await dbWrite.execute(
+      `INSERT INTO apps (id, organization_id, slug, api_key_id, metadata, deployment_status, updated_at)
+       VALUES ('${appId}', '${ORG_ID}', 'newer-generation', null,
+         '{"deploymentGeneration":"${currentGeneration}"}'::jsonb, 'building', NOW());`,
+    );
+    await seedJob({
+      id: staleGeneration,
+      maxAttempts: 1,
+      type: jobTypes.APP_DEPLOY,
+      data: { appId, deploymentGeneration: staleGeneration },
+      executionInterruptions: 5,
+    });
+
+    const recovery = await new ProvisioningJobServiceCtor().recoverInterruptedJobsOnStartup(
+      new Date("2021-01-01T00:00:00.000Z"),
+      [jobTypes.APP_DEPLOY],
+    );
+
+    expect(recovery).toMatchObject({ permanentlyFailed: 1, failures: [] });
+    const [persistedApp] = await dbWrite
+      .select({ status: apps.deployment_status, metadata: apps.metadata })
+      .from(apps)
+      .where(eq(apps.id, appId));
+    expect(persistedApp).toMatchObject({
+      status: "building",
+      metadata: { deploymentGeneration: currentGeneration },
+    });
+    expect(await repo.findByIdForWrite(cacheInvalidationJobId(staleGeneration))).toBeUndefined();
+  });
+
+  test("a stale CONTAINER_PROVISION failure cannot overwrite the current generation", async () => {
+    const appId = "00000000-0000-4000-8000-000000180863";
+    const containerId = "00000000-0000-4000-8000-000000180864";
+    const staleGeneration = "00000000-0000-4000-8000-000000180865";
+    const currentGeneration = "00000000-0000-4000-8000-000000180866";
+    const provisionJobId = "00000000-0000-4000-8000-000000180867";
+    await dbWrite.execute(
+      `INSERT INTO apps (id, organization_id, slug, api_key_id, metadata, deployment_status, updated_at)
+       VALUES ('${appId}', '${ORG_ID}', 'newer-container-generation', null,
+         '{"deploymentGeneration":"${currentGeneration}"}'::jsonb, 'building', NOW());`,
+    );
+    await dbWrite.execute(
+      `INSERT INTO containers (id, project_name, organization_id, metadata)
+       VALUES ('${containerId}', '${appId}', '${ORG_ID}',
+         '{"appId":"${appId}","deploymentGeneration":"${staleGeneration}"}'::jsonb);`,
+    );
+    await seedJob({
+      id: provisionJobId,
+      maxAttempts: 1,
+      type: jobTypes.CONTAINER_PROVISION,
+      data: { containerId, organizationId: ORG_ID, userId: ACTOR_ID },
+      executionInterruptions: 5,
+    });
+
+    const recovery = await new ProvisioningJobServiceCtor().recoverInterruptedJobsOnStartup(
+      new Date("2021-01-01T00:00:00.000Z"),
+      [jobTypes.CONTAINER_PROVISION],
+    );
+
+    expect(recovery).toMatchObject({ permanentlyFailed: 1, failures: [] });
+    const [persistedApp] = await dbWrite
+      .select({ status: apps.deployment_status, metadata: apps.metadata })
+      .from(apps)
+      .where(eq(apps.id, appId));
+    expect(persistedApp).toMatchObject({
+      status: "building",
+      metadata: { deploymentGeneration: currentGeneration },
+    });
+    expect(await repo.findByIdForWrite(cacheInvalidationJobId(provisionJobId))).toBeUndefined();
   });
 
   test("two live processors cannot reclaim one another before the winning lease expires", async () => {
@@ -1293,16 +1401,17 @@ describe("jobsRepository.recoverStaleJobs", () => {
       const sourceJobId = "00000000-0000-4000-8000-000000180914";
       const appId = "00000000-0000-4000-8000-000000180915";
       const apiKeyId = "00000000-0000-4000-8000-000000180918";
+      const deploymentGeneration = "00000000-0000-4000-8000-000000180919";
       const slug = "durable-cache-retry";
       await dbWrite.execute(
-        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
-         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, metadata, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', '{"deploymentGeneration":"${deploymentGeneration}"}'::jsonb, 'building', NOW());`,
       );
       await seedJob({
         id: sourceJobId,
         maxAttempts: 1,
         type: jobTypes.APP_DEPLOY,
-        data: { appId },
+        data: { appId, deploymentGeneration },
         executionInterruptions: 5,
       });
       const service = new ProvisioningJobServiceCtor();
@@ -1385,16 +1494,17 @@ describe("jobsRepository.recoverStaleJobs", () => {
       const sourceJobId = "00000000-0000-4000-8000-000000180920";
       const appId = "00000000-0000-4000-8000-000000180921";
       const apiKeyId = "00000000-0000-4000-8000-000000180922";
+      const deploymentGeneration = "00000000-0000-4000-8000-000000180923";
       const slug = "durable-cache-all-identities";
       await dbWrite.execute(
-        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
-         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, metadata, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', '{"deploymentGeneration":"${deploymentGeneration}"}'::jsonb, 'building', NOW());`,
       );
       await seedJob({
         id: sourceJobId,
         maxAttempts: 1,
         type: jobTypes.APP_DEPLOY,
-        data: { appId },
+        data: { appId, deploymentGeneration },
         executionInterruptions: 5,
       });
 

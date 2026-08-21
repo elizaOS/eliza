@@ -182,8 +182,15 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
       ]);
       expect(contents[0]?.content).toContain("linear-gradient(#3aa8a0");
       expect(contents[1]?.content).toContain("[truncated]");
-      // MAX_CONTENT_CHARS is 6_000 (raised so whole small apps fit the verifier).
-      expect(contents[1]?.content.length).toBeLessThan(6200);
+      expect(contents[1]?.content.length).toBeLessThan(8200);
+      // A typical 6-8KB quick-app file must survive whole (velvet-moth park).
+      const typical = path.join(appDir, "typical.js");
+      fs.writeFileSync(typical, "y".repeat(7000));
+      const [whole] = readFsVerifiedContents(workdir, [
+        "data/apps/reed-marsh/typical.js",
+      ]);
+      expect(whole?.content).toHaveLength(7000);
+      expect(whole?.content).not.toContain("[truncated]");
     } finally {
       fs.rmSync(workdir, { recursive: true, force: true });
     }

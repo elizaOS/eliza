@@ -34,6 +34,7 @@ export interface ProviderBootstrapState {
 export function useProviderBootstrap(
   selection: ReturnType<typeof useProviderSelection>,
   cloudModel: ReturnType<typeof useCloudModelConfig>,
+  enabled = true,
 ): ProviderBootstrapState {
   const [subscriptionStatus, setSubscriptionStatus] = useState<
     SubscriptionProviderStatus[]
@@ -56,6 +57,7 @@ export function useProviderBootstrap(
   // setter identities in the dep list but we know they're stable.
   // biome-ignore lint/correctness/useExhaustiveDependencies: stable hook setters
   useEffect(() => {
+    if (!enabled) return;
     void loadSubscriptionStatus();
     void (async () => {
       try {
@@ -82,7 +84,7 @@ export function useProviderBootstrap(
         // config load is best-effort; defaults apply
       }
     })();
-  }, [loadSubscriptionStatus]);
+  }, [enabled, loadSubscriptionStatus]);
 
   useEffect(() => {
     const anthStatuses = subscriptionStatus.filter(

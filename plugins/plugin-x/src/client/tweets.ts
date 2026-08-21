@@ -1267,6 +1267,11 @@ export async function fetchRetweetersPage(
   };
 }
 
+// Bounds `getAllRetweeters` against a provider that never stops paginating
+// (repeated or perpetually-novel cursors) — 1,000 pages * 40/page covers even
+// a very viral tweet while keeping worst-case requests/memory finite.
+const MAX_RETWEETER_PAGES = 1000;
+
 /**
  * Retrieves *all* retweeters by chaining requests until no next cursor is found.
  * @param tweetId The ID of the tweet.
@@ -1279,10 +1284,22 @@ export async function getAllRetweeters(
 ): Promise<Retweeter[]> {
   let allRetweeters: Retweeter[] = [];
   let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  let pageCount = 0;
 
   while (true) {
-    // Destructure bottomCursor / topCursor
-    const { retweeters, bottomCursor, topCursor } = await fetchRetweetersPage(
+    pageCount += 1;
+    if (pageCount > MAX_RETWEETER_PAGES) {
+      throw new ElizaError(
+        `Retweeter pagination for tweet ${tweetId} exceeded ${MAX_RETWEETER_PAGES} pages`,
+        {
+          code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED",
+          context: { tweetId, pageCount },
+        },
+      );
+    }
+
+    const { retweeters, bottomCursor } = await fetchRetweetersPage(
       tweetId,
       auth,
       cursor,
@@ -1290,14 +1307,29 @@ export async function getAllRetweeters(
     );
     allRetweeters = allRetweeters.concat(retweeters);
 
-    const newCursor = bottomCursor || topCursor;
-
-    // Stop if there is no new cursor or if it's the same as the old one
-    if (!newCursor || newCursor === cursor) {
+    // Pagination continuation is driven by `bottomCursor` (next_token)
+    // alone. `topCursor` (previous_token) is deliberately ignored here: a
+    // well-behaved terminal page has no next_token but can still echo a
+    // non-empty previous_token, which would otherwise re-trigger pagination
+    // backwards and false-positive the repeat/cycle guard below.
+    if (!bottomCursor) {
       break;
     }
 
-    cursor = newCursor;
+    // A cursor the API already returned means it stopped advancing (an
+    // immediate repeat or a longer cycle) — treat it as a fault rather than
+    // looping forever on it.
+    if (seenCursors.has(bottomCursor)) {
+      throw new ElizaError(
+        `Retweeter pagination for tweet ${tweetId} repeated a page cursor`,
+        {
+          code: "X_RETWEETERS_PAGINATION_CURSOR_REPEATED",
+          context: { tweetId, pageCount },
+        },
+      );
+    }
+    seenCursors.add(bottomCursor);
+    cursor = bottomCursor;
   }
 
   return allRetweeters;

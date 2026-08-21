@@ -1,9 +1,6 @@
 /**
- * GET /api/v1/oauth/connections `platform` is OAuth-connection catalog
- * identity, not leftover tax on ad-account platform, promote-assets
- * platform, or X connectionRole. Stock develop passed unknown tokens
- * into listConnections, so `platform=GOOGLE` resolved no adapter (or a
- * wrong-cased generic adapter) and silently returned an empty catalog.
+ * Exercises OAuth connection platform validation through the HTTP route with
+ * mocked authentication, logging, and service boundaries.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -18,7 +15,9 @@ mock.module("@/lib/api/cloud-worker-errors", () => ({
 mock.module("@/lib/api/errors", () => ({
   ApiError: class ApiError extends Error {},
 }));
-const loggerError = mock(() => undefined);
+const loggerError = mock(
+  (_message: string, _context?: Record<string, unknown>) => undefined,
+);
 mock.module("@/lib/utils/logger", () => ({
   logger: { debug: mock(() => undefined), error: loggerError },
 }));
@@ -27,7 +26,14 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
 }));
-const listConnections = mock(async () => []);
+const listConnections = mock(
+  async (_params: {
+    organizationId: string;
+    userId?: string;
+    platform?: string;
+    connectionRole?: string;
+  }) => [],
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,

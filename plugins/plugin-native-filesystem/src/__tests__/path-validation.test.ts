@@ -2,7 +2,13 @@
  * Unit tests for `normalizeDevicePath`, plus integration tests exercising the Node
  * backend's traversal/symlink-escape guards against a real temp directory on disk (no mocks).
  */
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+} from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -115,6 +121,22 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		).resolves.toBe("ok");
 	});
 
+	it("allows concurrent writers to materialize the same missing parent", async () => {
+		for (let index = 0; index < 25; index += 1) {
+			const parent = `concurrent-${index}/nested`;
+			await Promise.all([
+				bridge.write(`${parent}/left.txt`, "left"),
+				bridge.write(`${parent}/right.txt`, "right"),
+			]);
+			await expect(
+				readFile(path.join(tempRoot, parent, "left.txt"), "utf8"),
+			).resolves.toBe("left");
+			await expect(
+				readFile(path.join(tempRoot, parent, "right.txt"), "utf8"),
+			).resolves.toBe("right");
+		}
+	});
+
 	it("rejects reading a path that contains a NUL byte", async () => {
 		await expect(bridge.read("foo\0bar")).rejects.toThrow(/NUL byte/);
 	});
@@ -155,9 +177,124 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 
 			await expect(
 				bridge.write("linked-outside/new.txt", "nope"),
-			).rejects.toThrow(/escapes workspace root/);
+			).rejects.toThrow(/symlinked parent is not permitted/);
+			expect(existsSync(path.join(outside, "new.txt"))).toBe(false);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
+	});
+
+	it("does not create missing descendants through an outside symlink", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			symlinkSync(outside, path.join(tempRoot, "linked-outside"), "dir");
+			await expect(
+				bridge.write("linked-outside/nested/new.txt", "nope"),
+			).rejects.toThrow(/symlinked parent is not permitted/);
+			expect(existsSync(path.join(outside, "nested"))).toBe(false);
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects symlinked directory ancestors that remain inside the root", async () => {
+		mkdirSync(path.join(tempRoot, "real"));
+		symlinkSync(
+			path.join(tempRoot, "real"),
+			path.join(tempRoot, "alias"),
+			"dir",
+		);
+		await expect(bridge.write("alias/new.txt", "nope")).rejects.toThrow(
+			/symlinked parent is not permitted/,
+		);
+		expect(existsSync(path.join(tempRoot, "real", "new.txt"))).toBe(false);
+	});
+
+	it("rejects writes through a symlinked target file pointing outside the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			const victim = path.join(outside, "victim.txt");
+			await writeFile(victim, "original");
+			// A symlink whose final component escapes the root: the parent dir is
+			// inside the workspace, but writeFile() would follow the link and clobber
+			// the external file if only the parent were validated.
+			symlinkSync(victim, path.join(tempRoot, "link.txt"), "file");
+
+			await expect(
+				bridge.write("link.txt", "PWNED-outside-root"),
+			).rejects.toThrow();
+			// The guard must fire before writeFile touches the target: the external
+			// file is left untouched.
+			await expect(readFile(victim, "utf8")).resolves.toBe("original");
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects writes through a dangling symlink pointing outside and never creates the external target", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			const neverCreated = path.join(outside, "never-created.txt");
+			// A dangling link: lstat() reports it exists, so the guard runs, but
+			// realpath() then throws ENOENT on the missing target. That ENOENT is
+			// the only thing closing this create-through-dangling-link escape, so a
+			// refactor that treats a dangling target as "nonexistent" would reopen it.
+			symlinkSync(neverCreated, path.join(tempRoot, "dangling.txt"), "file");
+
+			await expect(
+				bridge.write("dangling.txt", "PWNED-outside-root"),
+			).rejects.toThrow();
+			// The write must fail closed: the external path stays uncreated.
+			expect(existsSync(neverCreated)).toBe(false);
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects writes through a two-hop symlink chain escaping the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			const victim = path.join(outside, "victim.txt");
+			await writeFile(victim, "original");
+			// hop-b lives outside and points at the victim; hop-a lives inside the
+			// root and points at hop-b. realpath() must resolve the whole chain and
+			// reject on the escaped final target.
+			const hopB = path.join(outside, "hop-b.txt");
+			symlinkSync(victim, hopB, "file");
+			symlinkSync(hopB, path.join(tempRoot, "hop-a.txt"), "file");
+
+			await expect(
+				bridge.write("hop-a.txt", "PWNED-outside-root"),
+			).rejects.toThrow();
+			await expect(readFile(victim, "utf8")).resolves.toBe("original");
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("does not follow an in-root final-component symlink on write", async () => {
+		await bridge.write("notes/target.txt", "v1");
+		symlinkSync(
+			path.join(tempRoot, "notes", "target.txt"),
+			path.join(tempRoot, "link-to-target.txt"),
+			"file",
+		);
+
+		await expect(bridge.write("link-to-target.txt", "v2")).rejects.toThrow();
+		const onDisk = await readFile(
+			path.join(tempRoot, "notes", "target.txt"),
+			"utf8",
+		);
+		expect(onDisk).toBe("v1");
+	});
+
+	it("overwrites an ordinary existing in-root file without tripping the guard", async () => {
+		await bridge.write("notes/keep.txt", "v1");
+		await bridge.write("notes/keep.txt", "v2");
+		const onDisk = await readFile(
+			path.join(tempRoot, "notes", "keep.txt"),
+			"utf8",
+		);
+		expect(onDisk).toBe("v2");
 	});
 });

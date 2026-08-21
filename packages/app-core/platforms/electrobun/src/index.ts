@@ -53,6 +53,7 @@ import {
 } from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
+  hasKnownMacosStatusItemSceneRegression,
   shouldCreateDesktopTray,
   shouldEnableTrayPopover,
   shouldStartTrayFirst,
@@ -125,6 +126,7 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
+import { resolveDesktopRuntimeForBoot } from "./runtime-preflight";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { registerShellSyncEndpoint } from "./shell-sync-relay";
@@ -233,12 +235,19 @@ onAgentReadyChange(() => setupApplicationMenu());
  * base resolves to `external` so the embedded agent is skipped; topology 1
  * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
  */
+let preparedDesktopRuntime: ReturnType<
+  typeof resolveDesktopRuntimeModeWithDeployment
+> | null = null;
+
 function resolveDesktopRuntime(): ReturnType<
   typeof resolveDesktopRuntimeModeWithDeployment
 > {
-  return resolveDesktopRuntimeModeWithDeployment(
-    process.env as Record<string, string | undefined>,
-    getPersistedDeployment(),
+  return (
+    preparedDesktopRuntime ??
+    resolveDesktopRuntimeModeWithDeployment(
+      process.env as Record<string, string | undefined>,
+      getPersistedDeployment(),
+    )
   );
 }
 
@@ -2521,6 +2530,25 @@ async function main(): Promise<void> {
       `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,
     );
   }
+  const desktopEnv = process.env as Record<string, string | undefined>;
+  const persistedDeployment = getPersistedDeployment();
+  const unverifiedDesktopRuntime = resolveDesktopRuntimeModeWithDeployment(
+    desktopEnv,
+    persistedDeployment,
+  );
+  preparedDesktopRuntime = await resolveDesktopRuntimeForBoot({
+    env: desktopEnv,
+    deployment: persistedDeployment,
+  });
+  if (
+    unverifiedDesktopRuntime.mode === "external" &&
+    preparedDesktopRuntime.mode === "local" &&
+    persistedDeployment?.runtime !== "local"
+  ) {
+    logger.warn(
+      "[Main] Persisted external target is not a ready Eliza agent; using the embedded runtime for this launch without changing the saved deployment target.",
+    );
+  }
   // Start the static renderer server in parallel with the rest of pre-window
   // work — first paint needs the renderer URL, so kicking it off now overlaps
   // the server bind/port-scan with crash-prompt checks, WebGPU init, and bridge
@@ -2693,12 +2721,21 @@ async function main(): Promise<void> {
   // tray-first behavior we STILL create the pill window at boot — the pill is
   // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
   // icon hidden until a full window (dashboard/surface/settings/app) opens.
-  const dockless = shouldStartTrayFirst();
-  if (dockless) {
-    logger.info(
-      "[Main] Dockless startup — pill only, Dock icon hidden at rest",
+  const docklessRequested = shouldStartTrayFirst();
+  const hasBrokenStatusItemScene = hasKnownMacosStatusItemSceneRegression(
+    process.platform,
+    os.release(),
+  );
+  const dockless = docklessRequested && !hasBrokenStatusItemScene;
+  if (hasBrokenStatusItemScene && docklessRequested) {
+    logger.warn(
+      `[Main] macOS ${os.release()} has the Control Center status-item scene regression; keeping the Dock icon available`,
     );
-    getDesktopManager().setTrayFirstMode(true);
+    getDesktopManager().setTrayFirstMode(false);
+  } else if (dockless) {
+    logger.info(
+      "[Main] Dockless startup requested — verifying the menu-bar icon before hiding the Dock icon",
+    );
   }
   recordStartupPhase("creating_window", {
     pid: process.pid,
@@ -2830,7 +2867,38 @@ async function main(): Promise<void> {
         tooltip: BRAND.appName,
         ...resolveDesktopTrayIconOptions(),
       });
+
+      if (dockless) {
+        if (desktop.hasVisibleTrayStatusItem()) {
+          desktop.setTrayFirstMode(true);
+          logger.info(
+            "[Main] Menu-bar icon visible — pill-only dockless mode enabled",
+          );
+        } else {
+          // macOS 26.5 can return a live NSStatusItem while Control Center
+          // rejects its NSStatusItemView scene. Keep the Dock icon visible so
+          // the app is never stranded, then restore dockless mode if macOS
+          // later recovers the status item.
+          desktop.setTrayFirstMode(false);
+          logger.warn(
+            "[Main] Menu-bar icon has no visible bounds; keeping Dock icon available while macOS recovers",
+          );
+          const trayRecoveryTimer = setInterval(() => {
+            if (!desktop.hasVisibleTrayStatusItem()) return;
+            clearInterval(trayRecoveryTimer);
+            desktop.setTrayFirstMode(true);
+            logger.info(
+              "[Main] Menu-bar icon recovered — pill-only dockless mode enabled",
+            );
+          }, 5_000);
+          trayRecoveryTimer.unref?.();
+          cleanupFns.push(() => clearInterval(trayRecoveryTimer));
+        }
+      }
     } catch (err) {
+      if (dockless) {
+        desktop.setTrayFirstMode(false);
+      }
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
       );

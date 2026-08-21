@@ -90,6 +90,12 @@ class MockInsufficientCreditsError extends Error {
   }
 }
 mock.module("@/lib/services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   InsufficientCreditsError: MockInsufficientCreditsError,
 }));
 const speechToText = mock(

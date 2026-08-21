@@ -98,13 +98,33 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** List GET — same 15s Fal #21205 family. Independent hop. */
+const TRAJECTORY_LIST_FETCH_TIMEOUT_MS = 15_000;
+/** Detail GET — independent hop, own 15s deadline. */
+const TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS = 15_000;
+/** Purge DELETE — independent hop, own 15s deadline. */
+const TRAJECTORY_PURGE_FETCH_TIMEOUT_MS = 15_000;
+/** Export GET — independent hop, own 15s deadline. */
+const TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS = 15_000;
+
+function composeTrajectoryFetchSignal(
+  caller: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return caller ? AbortSignal.any([caller, deadline]) : deadline;
+}
+
 export async function fetchTrajectoryList(
   options: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<TrajectoryListResult> {
   const limit = options.limit ?? 10;
   const res = await fetch(`/api/trajectories?limit=${limit}`, {
     headers: { Accept: "application/json" },
-    signal: options.signal,
+    signal: composeTrajectoryFetchSignal(
+      options.signal,
+      TRAJECTORY_LIST_FETCH_TIMEOUT_MS,
+    ),
   });
   return readJson<TrajectoryListResult>(res);
 }
@@ -115,7 +135,10 @@ export async function fetchTrajectoryDetail(
 ): Promise<TrajectoryDetail> {
   const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
     headers: { Accept: "application/json" },
-    signal: options.signal,
+    signal: composeTrajectoryFetchSignal(
+      options.signal,
+      TRAJECTORY_DETAIL_FETCH_TIMEOUT_MS,
+    ),
   });
   return readJson<TrajectoryDetail>(res);
 }
@@ -125,14 +148,22 @@ export async function fetchTrajectoryDetail(
  * plugin; if it returns 404 the caller surfaces "not available" rather than
  * silently failing.
  */
-export async function purgeTrajectory(id: string): Promise<void> {
+export async function purgeTrajectory(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
   const res = await fetch(`/api/trajectories/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { Accept: "application/json" },
+    signal: composeTrajectoryFetchSignal(
+      options.signal,
+      TRAJECTORY_PURGE_FETCH_TIMEOUT_MS,
+    ),
   });
   if (!res.ok) {
     throw new Error(`purgeTrajectory failed: ${res.status} ${res.statusText}`);
   }
+  await res.arrayBuffer();
 }
 
 /**
@@ -140,10 +171,19 @@ export async function purgeTrajectory(id: string): Promise<void> {
  * archive as `application/zip` (with a `X-Eliza-Signature` header carrying the
  * detached signature). Caller is responsible for streaming the blob.
  */
-export async function fetchTrajectoryExport(id: string): Promise<Blob> {
+export async function fetchTrajectoryExport(
+  id: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Blob> {
   const res = await fetch(
     `/api/trajectories/${encodeURIComponent(id)}/export`,
-    { headers: { Accept: "application/zip" } },
+    {
+      headers: { Accept: "application/zip" },
+      signal: composeTrajectoryFetchSignal(
+        options.signal,
+        TRAJECTORY_EXPORT_FETCH_TIMEOUT_MS,
+      ),
+    },
   );
   if (!res.ok) {
     throw new Error(

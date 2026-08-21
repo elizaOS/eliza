@@ -11,6 +11,7 @@ const {
   mockState,
   publishHomeAttentionSpy,
   openViewSpy,
+  intervalCallbacks,
 } = vi.hoisted(() => ({
   // Auth gate (#11084) - mutable so tests can flip the session state.
   authMock: { authenticated: true },
@@ -47,6 +48,7 @@ const {
   },
   publishHomeAttentionSpy: vi.fn(),
   openViewSpy: vi.fn(),
+  intervalCallbacks: [] as Array<() => void>,
 }));
 
 // The home card fetches owner todos (/api/lifeops/todos) and the urgent goal
@@ -95,7 +97,9 @@ vi.mock("../../../api", () => ({
 }));
 
 vi.mock("../../../hooks", () => ({
-  useIntervalWhenDocumentVisible: vi.fn(),
+  useIntervalWhenDocumentVisible: (callback: () => void) => {
+    intervalCallbacks.push(callback);
+  },
 }));
 
 vi.mock("../../../hooks/useAuthStatus", () => ({
@@ -133,6 +137,7 @@ beforeEach(() => {
   listWorkbenchTodosMock.mockResolvedValue({ todos: [] });
   publishHomeAttentionSpy.mockClear();
   openViewSpy.mockClear();
+  intervalCallbacks.length = 0;
   authMock.authenticated = true;
   mockState.workbench.todos = [
     {
@@ -281,6 +286,56 @@ describe("TodoSidebarWidget", () => {
     // Overdue carries the accent badge; due-today is neutral.
     expect(screen.getByText("Overdue")).toBeTruthy();
     expect(screen.getByText("Due today")).toBeTruthy();
+  });
+
+  it("home slot: aborts the owner-todos read on unmount", async () => {
+    let todosSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        if (String(url).includes("/api/lifeops/goals")) {
+          return Promise.resolve(Response.json({ goals: [] }));
+        }
+        if (String(url).includes("/api/lifeops/todos")) {
+          todosSignal = init?.signal ?? undefined;
+          return new Promise<Response>((_resolve, reject) => {
+            todosSignal?.addEventListener(
+              "abort",
+              () => reject(todosSignal?.reason),
+              { once: true },
+            );
+          });
+        }
+        return Promise.resolve(new Response("{}", { status: 404 }));
+      }),
+    );
+
+    const { unmount } = render(
+      <TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />,
+    );
+    await waitFor(() => expect(todosSignal).toBeDefined());
+    unmount();
+
+    expect(todosSignal?.aborted).toBe(true);
+  });
+
+  it("home slot: keeps the last good todos when a background refresh fails", async () => {
+    const fetchMock = stubLifeopsFetch([
+      ownerTodo({ id: "od", title: "Pay rent", dueDate: overdueDue() }),
+    ]);
+    render(<TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />);
+    await screen.findByText("Pay rent");
+
+    fetchMock.mockImplementation(async (url: unknown) => {
+      if (String(url).includes("/api/lifeops/todos")) {
+        return new Response("no", { status: 503 });
+      }
+      return Response.json({ goals: [] });
+    });
+    for (const callback of intervalCallbacks) callback();
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(2));
+    expect(screen.getByText("Pay rent")).toBeTruthy();
   });
 
   it("home slot: self-hides when nothing is due/overdue and there is no urgent goal", async () => {

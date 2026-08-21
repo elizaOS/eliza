@@ -3,8 +3,37 @@ import { describe, expect, test } from "bun:test";
 import {
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
+  parseTtsCacheByteAggregate,
   shouldBypassCloudFirstLineCache,
 } from "../tts-first-line-cache";
+
+describe("parseTtsCacheByteAggregate", () => {
+  test("accepts non-negative safe byte totals", () => {
+    expect(parseTtsCacheByteAggregate(0)).toBe(0);
+    expect(parseTtsCacheByteAggregate("4096")).toBe(4096);
+  });
+
+  test("refuses corrupt totals instead of evicting every cache entry from NaN", () => {
+    for (const value of [
+      undefined,
+      "garbage",
+      "0x10",
+      "0b10",
+      "1e3",
+      " 4096 ",
+      "+4096",
+      "04096",
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      1.5,
+    ]) {
+      expect(() => parseTtsCacheByteAggregate(value)).toThrow(
+        "TTS first-line cache returned a corrupt byte aggregate",
+      );
+    }
+  });
+});
 
 describe("hashCloudCacheKey", () => {
   test("changes when any key field changes (regression: F3 voice-swap safety)", () => {

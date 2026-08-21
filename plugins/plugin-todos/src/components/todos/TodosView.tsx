@@ -52,15 +52,36 @@ interface TodosWire {
 // ---------------------------------------------------------------------------
 
 export interface TodosFetchers {
-  fetchTodos: () => Promise<TodosWire>;
+  fetchTodos: (signal?: AbortSignal) => Promise<TodosWire>;
 }
 
-async function getTodos(): Promise<TodosWire> {
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`);
+/** Todos JSON GET is a short UI read — same 15s family as GoalsView / FocusView. */
+export const TODOS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getTodosJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TODOS_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
     throw new Error(`Todos request failed (${response.status})`);
   }
-  return (await response.json()) as TodosWire;
+  return (await response.json()) as T;
+}
+
+async function getTodos(signal?: AbortSignal): Promise<TodosWire> {
+  return getTodosJsonWithFetch<TodosWire>(
+    `${client.getBaseUrl()}/api/lifeops/todos`,
+    globalThis.fetch,
+    TODOS_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 const defaultFetchers: TodosFetchers = {
@@ -174,49 +195,41 @@ export function TodosView(props: TodosViewProps = {}): ReactNode {
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(() => {
-    let cancelled = false;
-    setState({ kind: "loading" });
+  const load = useCallback((background = false) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
+    if (!background) setState({ kind: "loading" });
     fetchersRef.current
-      .fetchTodos()
+      .fetchTodos(controller.signal)
       .then((wire) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setState({ kind: "ready", todos: wire.todos.map(mapTodo) });
       })
+      // error-policy:J4 foreground failures render an error; background failures preserve last-good state.
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
             error instanceof Error ? error.message : "Could not load todos.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  useEffect(() => load(), [load]);
-
-  // Background poll: refresh the board on an interval without flashing the
-  // loading state. Transient poll failures are ignored — the explicit Retry
-  // path is what surfaces errors to the user.
   useEffect(() => {
-    const id = setInterval(() => {
-      fetchersRef.current
-        .fetchTodos()
-        .then((wire) => {
-          setState((prev) =>
-            prev.kind === "error"
-              ? prev
-              : { kind: "ready", todos: wire.todos.map(mapTodo) },
-          );
-        })
-        .catch(() => {});
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, []);
+    load();
+    const id = setInterval(() => load(true), POLL_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+      activeLoadRef.current?.abort();
+    };
+  }, [load]);
 
   // Lane grouping is presentation-only over the active todos the route returns.
   const lanes = useMemo(() => {

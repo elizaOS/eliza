@@ -228,6 +228,10 @@ bun run test:e2e:record:review
 # Full matrix review bundle
 bun run test:matrix:review
 
+# Re-open the newest verified bundle, or name the exact run explicitly
+bun run evidence:review:no-open
+bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
+
 # App + cloud-UI screenshots; required for packages/app UI changes
 bun run --cwd packages/app audit:app
 
@@ -237,6 +241,13 @@ bun run --cwd packages/app capture:android-emu -- --issue <n> --slug <s>
 bun run --cwd packages/app capture:linux-desktop -- --issue <n> --slug <s>
 bun run --cwd packages/app capture:windows-desktop -- --issue <n> --slug <s>
 ```
+
+The matrix command snapshots producer hashes and filesystem identity before
+executing lanes, creates one named bundle from only new or written/replaced
+artifacts, runs the canonical
+integrity verifier, and passes that exact run to the dashboard. Raw producer directories
+are never scanned implicitly; `evidence:review -- --source=<dir>` is reserved
+for deliberate archived or ad-hoc compatibility review.
 
 Post videos as MP4 so GitHub renders them inline, screenshots as JPG where
 possible, and long logs in a `<details>` block. Re-capture evidence after

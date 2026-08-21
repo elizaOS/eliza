@@ -111,7 +111,7 @@ type NoteSelector =
 function parseClearNotesConfirmation(
   params: Record<string, unknown>,
   currentRevision: number,
-): void {
+): number {
   assertOnlyParams(params, ["confirm", "expectedRevision"]);
   if (!Object.hasOwn(params, "confirm")) {
     throw new ElizaError("clear-notes requires confirm: true.", {
@@ -166,6 +166,7 @@ function parseClearNotesConfirmation(
       },
     );
   }
+  return expectedRevision;
 }
 
 function parseLookupTarget(
@@ -382,8 +383,16 @@ async function dispatchCapability(
     );
   }
   if (capability === "clear-notes") {
-    parseClearNotesConfirmation(params, service.snapshot().revision);
-    const { value: cleared, snapshot } = await service.clearNotesWithCommit();
+    // The synchronous check is a fast path against the current snapshot; the
+    // authoritative guard runs atomically inside clearNotesWithCommit's write
+    // barrier so a note committed in the dispatch/commit race window is not
+    // silently wiped (issue #22122).
+    const expectedRevision = parseClearNotesConfirmation(
+      params,
+      service.snapshot().revision,
+    );
+    const { value: cleared, snapshot } =
+      await service.clearNotesWithCommit(expectedRevision);
     return mutationSuccess(
       snapshot,
       capability,

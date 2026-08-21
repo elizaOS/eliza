@@ -47,6 +47,7 @@ plugins/plugin-wechat/
     utils/qrcode.ts           # displayQRUrl — prints QR code login URL to terminal
     index.test.ts             # Unit tests
     callback-server.test.ts   # Webhook URL/payload fail-closed tests
+    callback-utf8.test.ts     # Inbound UTF-8 TCP chunk-boundary integrity
     connector-account-provider.test.ts # Unit tests for ConnectorAccountProvider
 ```
 
@@ -124,10 +125,18 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
 - **Login flow.** On first start (or after session expiry), `WechatChannel`
   polls for QR-code login. `displayQRUrl` prints the URL; the user must scan it
   via the WeChat mobile app within `loginTimeoutMs` (default 5 min).
-- **Webhook port.** The local HTTP server (`src/callback-server.ts`) listens on
-  `ELIZA_WECHAT_WEBHOOK_PORT` → `config.webhookPort` → `18790`. In multi-account
-  mode, accounts sharing a port share one server; each gets its own URL path
-  (`/webhook/wechat/<accountId>`). Port conflicts throw at startup.
+- **Webhook port.** The local HTTP server (`src/callback-server.ts`) binds
+  `127.0.0.1` only and listens on `ELIZA_WECHAT_WEBHOOK_PORT` →
+  `config.webhookPort` → `18790`. The proxy registers a
+  `http://127.0.0.1:<port>` webhook URL, so it must run on the same host; the
+  static API key travels over plaintext HTTP and loopback binding keeps it off
+  the LAN. In multi-account mode, accounts sharing a port share one server;
+  each gets its own URL path (`/webhook/wechat/<accountId>`). Port conflicts
+  throw at startup.
+- **Proxy vouches for sender identity.** The proxy operator holds the API key
+  and its webhook payloads are trusted as delivered, so owner-pairing over
+  WeChat extends full OWNER trust to the proxy operator — see the README
+  security model.
 - **Webhook fail-closed.** Malformed percent-encoding in an account path returns
   404. A present `data` field is authoritative and must be a plain object; it
   never falls through to the flattened format. Only an actually absent

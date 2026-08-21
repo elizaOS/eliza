@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-coding-tools",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
   "type": "module",
   "main": "dist/index.js",
@@ -75,7 +75,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0",
+    "vitest": "^4.1.10",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {
@@ -98,7 +98,7 @@
     "pluginParameters": {
       "CODING_TOOLS_WORKSPACE_ROOTS": {
         "type": "string",
-        "description": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's process.cwd() when unset.",
+        "description": "Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. Does not restrict paths referenced by a SHELL command. Defaults to the runtime's process.cwd() when unset.",
         "required": false,
         "sensitive": false
       },

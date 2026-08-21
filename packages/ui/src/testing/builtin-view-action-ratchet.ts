@@ -108,14 +108,6 @@ export interface BuiltinViewMutationValidationResult {
 
 export const BUILTIN_VIEW_MUTATION_BASELINE = [
   {
-    viewId: "tasks",
-    sourceFiles: ["packages/ui/src/components/pages/TasksPageView.tsx"],
-    semanticActions: ["SCHEDULED_TASKS"],
-    maxMutationSites: 0,
-    notes:
-      "Task list filters and row selection are covered by the scheduled-task semantic action.",
-  },
-  {
     viewId: "plugins-page",
     sourceFiles: [
       "packages/ui/src/components/pages/PluginsPageView.tsx",
@@ -262,7 +254,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/WorkflowCanvas.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
-    maxMutationSites: 68,
+    maxMutationSites: 69,
     notes:
       "Automations feed, workflow canvas, and task/workflow editors write ScheduledTask records through the one scheduler; SCHEDULED_TASKS covers workflow authoring routed through chat, while TRIGGER pairs the trigger steps inside workflow editing.",
   },
@@ -296,17 +288,17 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/BrowserTabSwitcher.tsx",
     ],
     semanticActions: ["BROWSER"],
-    maxMutationSites: 24,
+    maxMutationSites: 25,
     notes:
       "Browser workspace navigation/tab controls pair with the BROWSER action (plugin-browser); wallet-consent prompts and native-surface recovery are owner-in-the-loop by design and stay counted here.",
   },
   {
-    viewId: "my-apps",
+    viewId: "tasks",
     sourceFiles: [
-      "packages/ui/src/components/pages/MyAppsView.tsx",
+      "packages/ui/src/components/pages/TasksPageView.tsx",
       "packages/ui/src/components/settings/AppsManagementSection.tsx",
     ],
-    semanticActions: ["APP", "VIEWS"],
+    semanticActions: ["SCHEDULED_TASKS", "APP", "VIEWS"],
     mutationAuthorities: [
       {
         semanticAction: "APP",
@@ -323,12 +315,16 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         semanticAction: "VIEWS",
         actionOperations: ["show"],
       },
+      {
+        semanticAction: "SCHEDULED_TASKS",
+        actionOperations: ["list"],
+      },
     ],
     mountedSourceFiles: [
       {
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        mountedBy: "packages/ui/src/components/pages/MyAppsView.tsx",
+        mountedBy: "packages/ui/src/components/pages/TasksPageView.tsx",
         importSignature:
           'import { AppsManagementSection } from "../settings/AppsManagementSection";',
         renderSignature: "<AppsManagementSection />",
@@ -337,7 +333,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
     mutationAffordances: [
       {
         id: "cloud-apps.open",
-        sourceFile: "packages/ui/src/components/pages/MyAppsView.tsx",
+        sourceFile: "packages/ui/src/components/pages/TasksPageView.tsx",
         sourceSignature: "onClick={() => navigateBrowserPath(cloudStudioPath)}",
         semanticAction: "VIEWS",
         actionOperations: ["show"],
@@ -346,6 +342,23 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
           sourceSignature:
             '.find((page) => page.id === "cloud-apps")?.path ?? null',
         },
+      },
+      {
+        // The Tasks/Apps segment toggle: surfacing the task list is the
+        // SCHEDULED_TASKS list twin; the Apps segment's inventory pairs with
+        // APP list on the agent-bridge affordance below.
+        id: "segment.switch.pointer",
+        sourceFile: "packages/ui/src/components/pages/TasksPageView.tsx",
+        sourceSignature: "onValueChange={setSegment}",
+        semanticAction: "SCHEDULED_TASKS",
+        actionOperations: ["list"],
+      },
+      {
+        id: "segment.switch.agent",
+        sourceFile: "packages/ui/src/components/pages/TasksPageView.tsx",
+        sourceSignature: "useAgentElement({\n    id: elementId,",
+        semanticAction: "APP",
+        actionOperations: ["list"],
       },
       {
         id: "app-row.agent-bridge",
@@ -544,9 +557,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["stop"],
       },
     ],
-    maxMutationSites: 24,
+    maxMutationSites: 26,
     notes:
-      "The standalone page mounts AppsManagementSection, so its complete app-control surface is inventoried here instead of disappearing behind a child component. APP owns app lifecycle; VIEWS owns the signed-in Cloud Apps shell navigation.",
+      "The consolidated Projects surface (#17031) hosts the task coordinator (SCHEDULED_TASKS covers list filters/row selection) and mounts AppsManagementSection in its Apps segment, so the complete app-control surface is inventoried here instead of disappearing behind a child component. APP owns app lifecycle; VIEWS owns the signed-in Cloud Apps shell navigation and the segment switch.",
   },
   {
     viewId: "relationships",

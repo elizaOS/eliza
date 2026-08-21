@@ -29,6 +29,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, api } from "../../lib/api-client";
+import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type {
   BillingUser,
@@ -51,7 +52,6 @@ const DirectCryptoCreditCard = lazy(() =>
 );
 
 import { Button } from "../../../components/ui/button";
-import { PayAsYouGoCard } from "./pay-as-you-go-card";
 
 interface BillingTabProps {
   user: BillingUser;
@@ -205,6 +205,17 @@ export function BillingTab({ user }: BillingTabProps) {
           setIsProcessingCheckout(false);
           return;
         }
+        if (!isSafeNavigationUrl(data.payLink)) {
+          // The payment link is a wire value assigned to the top window — only
+          // absolute http(s) may navigate; anything else is an error state.
+          toast.error(
+            t("cloud.billingTab.invalidPaymentLink", {
+              defaultValue: "Payment link is not a valid URL",
+            }),
+          );
+          setIsProcessingCheckout(false);
+          return;
+        }
         toast.success(
           t("cloud.billingTab.redirectingPayment", {
             defaultValue: "Redirecting to payment page...",
@@ -236,6 +247,17 @@ export function BillingTab({ user }: BillingTabProps) {
         toast.error(
           t("cloud.billingTab.noCheckoutUrl", {
             defaultValue: "No checkout URL returned",
+          }),
+        );
+        setIsProcessingCheckout(false);
+        return;
+      }
+      if (!isSafeNavigationUrl(data.url)) {
+        // The checkout URL is a wire value assigned to the top window — only
+        // absolute http(s) may navigate; anything else is an error state.
+        toast.error(
+          t("cloud.billingTab.invalidCheckoutUrl", {
+            defaultValue: "Checkout URL is not a valid URL",
           }),
         );
         setIsProcessingCheckout(false);
@@ -491,10 +513,7 @@ export function BillingTab({ user }: BillingTabProps) {
         </div>
       </BrandCard>
 
-      {/* Pay-as-you-go from earnings — toggle for whether app earnings absorb container bills */}
-      <PayAsYouGoCard />
-
-      {/* Card Auto Top-Up — backstop when both earnings + credits run low */}
+      {/* Card auto top-up keeps the consumer billing path explicit and visible. */}
       <AutoTopUpCard />
 
       {/* Invoices Card */}

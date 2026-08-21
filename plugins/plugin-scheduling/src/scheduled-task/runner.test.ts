@@ -54,6 +54,7 @@ import type {
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTask,
+  ScheduledTaskLogEntry,
   SubjectStoreView,
   TaskGateContribution,
 } from "./types.js";
@@ -371,6 +372,81 @@ describe("ScheduledTaskRunner — schedule + idempotency", () => {
   });
 });
 
+describe("In-memory scheduled task store receipt commits", () => {
+  it("merges distinct stale-proposal markers and replays both exact keys", async () => {
+    const store = createInMemoryScheduledTaskStore();
+    const original: ScheduledTask = {
+      ...baseInput(),
+      taskId: "in-memory-distinct-receipts",
+      state: { status: "scheduled", followupCount: 0 },
+    };
+    await store.upsert(original);
+    const proposal = (receiptKey: string, decision: string): ScheduledTask => ({
+      ...structuredClone(original),
+      state: {
+        status: "completed",
+        followupCount: 0,
+        lastDecisionLog: decision,
+      },
+      metadata: { schedulingApplyReceipts: { [receiptKey]: true } },
+    });
+    const commit = (
+      logId: string,
+      receiptKey: string,
+    ): ScheduledTaskLogEntry => ({
+      logId,
+      agentId: "test-agent",
+      taskId: original.taskId,
+      occurredAtIso: "2026-05-09T12:00:00.000Z",
+      transition: "completed",
+      rolledUp: false,
+      detail: { receiptKey, verb: "complete" },
+    });
+    const firstArgs = {
+      task: proposal("receipt-a", "first proposal"),
+      receiptKey: "receipt-a",
+      commit: commit("commit-a", "receipt-a"),
+      nextFireAtIso: null,
+    };
+    const secondArgs = {
+      task: proposal("receipt-b", "second proposal"),
+      receiptKey: "receipt-b",
+      commit: commit("commit-b", "receipt-b"),
+      nextFireAtIso: null,
+    };
+
+    const applied = await Promise.all([
+      store.commitApply(firstArgs),
+      store.commitApply(secondArgs),
+    ]);
+
+    expect(applied.map((result) => result.kind)).toEqual([
+      "applied",
+      "applied",
+    ]);
+    const stored = await store.get(original.taskId);
+    if (!stored) throw new Error("expected committed in-memory task");
+    expect(stored.metadata?.schedulingApplyReceipts).toEqual({
+      "receipt-a": true,
+      "receipt-b": true,
+    });
+    expect(stored.state.lastDecisionLog).toBe("second proposal");
+
+    const replayed = await Promise.all([
+      store.commitApply(firstArgs),
+      store.commitApply(secondArgs),
+    ]);
+    expect(replayed.map((result) => result.kind)).toEqual([
+      "replayed",
+      "replayed",
+    ]);
+    expect(replayed.map((result) => result.commit.logId)).toEqual([
+      "commit-a",
+      "commit-b",
+    ]);
+  });
+});
+
 describe("ScheduledTaskRunner — every verb", () => {
   it("snooze sets future fire time and resets the escalation cursor", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z");
@@ -384,6 +460,111 @@ describe("ScheduledTaskRunner — every verb", () => {
       (updated.metadata?.escalationCursor as { stepIndex: number } | undefined)
         ?.stepIndex,
     ).toBe(-1);
+  });
+
+  it("replays one receipt-keyed snooze without moving its committed fire time", async () => {
+    const h = makeHarness("2026-05-09T12:00:00.000Z");
+    const task = await h.runner.schedule(baseInput());
+    const first = await h.runner.applyWithResult(
+      task.taskId,
+      "snooze",
+      { minutes: 30 },
+      { idempotencyKey: "message-1:snooze" },
+    );
+    h.setNow("2026-05-09T13:00:00.000Z");
+    const replay = await h.runner.applyWithResult(
+      task.taskId,
+      "snooze",
+      { minutes: 30 },
+      { idempotencyKey: "message-1:snooze" },
+    );
+
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(replay.commit.logId).toBe(first.commit.logId);
+    expect(replay.task.state.firedAt).toBe("2026-05-09T12:30:00.000Z");
+    const logs = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: task.taskId,
+      excludeRollups: true,
+    });
+    expect(logs.filter((entry) => entry.transition === "snoozed")).toEqual([
+      expect.objectContaining({ logId: first.commit.logId }),
+    ]);
+  });
+
+  it("retains distinct concurrent receipts and settles each terminal action once", async () => {
+    const h = makeHarness();
+    const child = baseInput({
+      promptInstructions: "distinct terminal child",
+    });
+    const parent = await h.runner.schedule(
+      baseInput({ pipeline: { onComplete: [child as never] } }),
+    );
+    const requests = [
+      { idempotencyKey: "in-memory-distinct-a:complete" },
+      { idempotencyKey: "in-memory-distinct-b:complete" },
+    ] as const;
+
+    const applied = await Promise.all(
+      requests.map((options) =>
+        h.runner.applyWithResult(parent.taskId, "complete", undefined, options),
+      ),
+    );
+
+    expect(applied.map((result) => result.replayed)).toEqual([false, false]);
+    expect(new Set(applied.map((result) => result.commit.logId)).size).toBe(2);
+    const committedParent = (await h.runner.list()).find(
+      (task) => task.taskId === parent.taskId,
+    );
+    const receiptMarkers = committedParent?.metadata?.schedulingApplyReceipts;
+    if (!receiptMarkers) throw new Error("expected in-memory receipt markers");
+    expect(Object.keys(receiptMarkers)).toHaveLength(2);
+
+    const replayed = await Promise.all(
+      requests.map((options) =>
+        h.runner.applyWithResult(
+          parent.taskId,
+          "complete",
+          { reason: "must replay the durable action" },
+          options,
+        ),
+      ),
+    );
+    expect(replayed.map((result) => result.replayed)).toEqual([true, true]);
+    expect(replayed.map((result) => result.commit.logId).sort()).toEqual(
+      applied.map((result) => result.commit.logId).sort(),
+    );
+
+    const all = await h.runner.list();
+    const children = all.filter(
+      (task) =>
+        task.promptInstructions === "distinct terminal child" &&
+        task.state.pipelineParentId === parent.taskId,
+    );
+    expect(children).toHaveLength(2);
+    for (const result of applied) {
+      expect(
+        children.filter((task) =>
+          task.idempotencyKey?.includes(result.commit.logId),
+        ),
+      ).toHaveLength(1);
+    }
+    const logs = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: parent.taskId,
+      excludeRollups: true,
+    });
+    expect(logs.filter((entry) => entry.transition === "completed")).toEqual(
+      expect.arrayContaining(
+        applied.map((result) =>
+          expect.objectContaining({ logId: result.commit.logId }),
+        ),
+      ),
+    );
+    expect(
+      logs.filter((entry) => entry.transition === "completed"),
+    ).toHaveLength(2);
   });
 
   it("skip moves to skipped and fires pipeline.onSkip children", async () => {
@@ -477,6 +658,46 @@ describe("ScheduledTaskRunner — every verb", () => {
         state: { status: "completed", followupCount: 0 },
       } as unknown as Parameters<ScheduledTaskRunnerHandle["apply"]>[2]),
     ).rejects.toThrow(/read-only/);
+  });
+
+  it("edit refuses an own __proto__ key instead of re-parenting the task", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    // `JSON.parse` is the only way to build a real own "__proto__" data
+    // property — an object literal would invoke the setter instead.
+    const payload = JSON.parse(
+      '{"promptInstructions":"edited","__proto__":{"isAdmin":true}}',
+    );
+    expect(Object.hasOwn(payload, "__proto__")).toBe(true);
+    await expect(
+      h.runner.apply(
+        task.taskId,
+        "edit",
+        payload as Parameters<ScheduledTaskRunnerHandle["apply"]>[2],
+      ),
+    ).rejects.toThrow(/__proto__ is read-only/);
+    const persisted = (await h.runner.list()).find(
+      (t) => t.taskId === task.taskId,
+    );
+    expect(Object.getPrototypeOf(persisted)).toBe(Object.prototype);
+    expect((persisted as unknown as { isAdmin?: unknown }).isAdmin).toBe(
+      undefined,
+    );
+    expect(({} as { isAdmin?: unknown }).isAdmin).toBe(undefined);
+    expect(persisted?.promptInstructions).toBe(task.promptInstructions);
+  });
+
+  it("edit still accepts an ordinary patch after the __proto__ guard", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      priority: "high",
+      metadata: { note: "kept" },
+      executionProfile: "bg-light-30s",
+    });
+    expect(edited.priority).toBe("high");
+    expect(edited.metadata?.note).toBe("kept");
+    expect(edited.executionProfile).toBe("bg-light-30s");
   });
 
   it("reopen brings a terminal task back inside the 24h window", async () => {

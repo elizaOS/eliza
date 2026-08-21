@@ -40,7 +40,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isScriptTestPath } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -117,6 +117,7 @@ const ALLOWED_EXACT = new Set([
   "audit:tee-secret-leak:self-test",
   "audit:alias-read-guard:self-test",
   "audit:test-integrity:no-vi-mocks",
+  "audit:mock-module-exports",
   "mvp:closeout-audit",
   "check:pr-evidence",
   "evidence:pr",
@@ -708,4 +709,5 @@ function main() {
 
 export { auditScripts };
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  main();

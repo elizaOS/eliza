@@ -3,7 +3,7 @@
  * deterministic placeholders for repeated values, and fail-loud on a fabricated
  * this-session placeholder. Deterministic and in-process — no model, no DB.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	SecretSwapSession,
 	SecretSwapUnresolvedPlaceholderError,
@@ -67,5 +67,19 @@ describe("SecretSwapSession", () => {
 				failOnUnresolved: true,
 			}),
 		).toBe("curl -H __ELIZA_SECRET_99__");
+	});
+
+	it("fails closed when no cryptographically secure random source exists (W5-032)", () => {
+		// The session nonce must never fall back to Math.random(): a predictable
+		// nonce is recoverable from observed outputs, making placeholders
+		// forgeable and re-enabling the restore-hijack the nonce prevents.
+		vi.stubGlobal("crypto", undefined);
+		try {
+			expect(() => new SecretSwapSession()).toThrow(
+				/cryptographically secure random source/,
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

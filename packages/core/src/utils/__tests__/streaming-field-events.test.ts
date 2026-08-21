@@ -182,6 +182,29 @@ describe("StructuredFieldStreamExtractor emits the clean text-field delta (#9174
 		const accumulated = chunks.map(([, , acc]) => acc);
 		expect(accumulated.at(-1)).toBe("Hey! Good to see you again.");
 	});
+
+	it("marks emissions from a retried extractor with a new revision", () => {
+		const revisions: Array<number | undefined> = [];
+		const extractor = new StructuredFieldStreamExtractor({
+			level: 0,
+			schema: replySchema,
+			streamFields: ["text"],
+			onChunk: (_chunk, _field, _accumulated, revision) =>
+				revisions.push(revision),
+		});
+
+		feed(extractor, "text: first attempt\n");
+		extractor.signalRetry(1);
+		extractor.reset();
+		feed(extractor, "text: second attempt\n");
+		extractor.flush();
+
+		expect(revisions).toHaveLength(2);
+		expect(revisions.every((revision) => typeof revision === "number")).toBe(
+			true,
+		);
+		expect(revisions[1]).not.toBe(revisions[0]);
+	});
 });
 
 describe("ResponseSkeletonStreamExtractor", () => {
@@ -251,6 +274,27 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(accumulated.at(-1)).toBe("Hello there, friend.");
 	});
 
+	it("marks passthrough emissions after retry with a new revision", () => {
+		const revisions: Array<number | undefined> = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (_chunk, _field, _accumulated, revision) =>
+				revisions.push(revision),
+		});
+
+		extractor.push("first attempt");
+		extractor.signalRetry(1);
+		extractor.push("second attempt");
+		extractor.flush();
+
+		expect(revisions).toHaveLength(2);
+		expect(revisions.every((revision) => typeof revision === "number")).toBe(
+			true,
+		);
+		expect(revisions[1]).not.toBe(revisions[0]);
+	});
+
 	it("keeps envelope-shaped output on the structured path (no control-field leak)", () => {
 		// Output that opens with `{` is still parsed as the envelope, so thought /
 		// shouldRespond / facts never reach the user — only replyText does.
@@ -315,6 +359,50 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		extractor.flush();
 
 		expect(chunks.join("")).toBe("Hello there");
+	});
+
+	it("filters a large legal think-free reply through the production extractor", () => {
+		const body = "x".repeat(256 * 1024);
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+		extractor.push(`{"replyText":"${body}"}`);
+		extractor.flush();
+		expect(chunks.join("")).toBe(body);
+	});
+
+	it("preserves mixed-case reasoning tags across every stream split", () => {
+		const tagged = "<ThInK>secret</tHiNk>";
+		for (let split = 1; split < tagged.length; split++) {
+			const chunks: string[] = [];
+			const extractor = new ResponseSkeletonStreamExtractor({
+				skeleton,
+				streamFields: ["replyText"],
+				unordered: true,
+				onChunk: (chunk) => chunks.push(chunk),
+			});
+			extractor.push(`{"replyText":"Hello ${tagged.slice(0, split)}`);
+			extractor.push(`${tagged.slice(split)}there"}`);
+			extractor.flush();
+			expect(chunks.join(""), `split ${split}`).toBe("Hello there");
+		}
+	});
+
+	it("keeps a final tag-like prefix visible when it never becomes a tag", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+		extractor.push('{"replyText":"literal <thi"}');
+		extractor.flush();
+		expect(chunks.join("")).toBe("literal <thi");
 	});
 
 	it("surfaces a 'Cancelled by user' error and emits nothing when already aborted", () => {

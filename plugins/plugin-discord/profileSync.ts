@@ -6,12 +6,18 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
+import type { FetchMediaOptions, IAgentRuntime } from "@elizaos/core";
+import {
+	ElizaError,
+	fetchRemoteMedia,
+	resolveStateDir,
+	resolveUserPath,
+} from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
 const MAX_PROFILE_AVATAR_BYTES = 8 * 1024 * 1024;
+const PROFILE_AVATAR_FETCH_TIMEOUT_MS = 15_000;
 const PROFILE_SYNC_STATE_FILE = "discord-profile-sync.v1.json";
 const DEFAULT_DISCORD_PROFILE_AVATAR = "/avatars/eliza.png";
 
@@ -19,6 +25,12 @@ type PersistedDiscordProfileSyncState = {
 	avatarHash?: string;
 	username?: string;
 };
+
+/** Deterministic transport seam for profile-sync tests. Production callers omit it. */
+export type DiscordProfileSyncOptions = Pick<
+	FetchMediaOptions,
+	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
 
 function resolveProfileSyncStatePath(
 	env: NodeJS.ProcessEnv = process.env,
@@ -218,7 +230,7 @@ async function readAvatarBytesFromLocalCandidates(
 
 async function loadDiscordProfileAvatarBytes(
 	source: string,
-	runtime: IAgentRuntime,
+	fetchOptions: DiscordProfileSyncOptions,
 ): Promise<{ bytes: Buffer; hash: string } | null> {
 	const trimmed = source.trim();
 	if (!trimmed) {
@@ -240,23 +252,15 @@ async function loadDiscordProfileAvatarBytes(
 		}
 
 		if (remoteUrl) {
-			const fetchImpl = runtime.fetch ?? globalThis.fetch;
-			if (typeof fetchImpl !== "function") {
-				return null;
-			}
-			const response = await fetchImpl(trimmed, {
-				headers: { Accept: "image/*" },
+			const fetched = await fetchRemoteMedia({
+				url: trimmed,
+				maxBytes: MAX_PROFILE_AVATAR_BYTES,
+				timeoutMs: PROFILE_AVATAR_FETCH_TIMEOUT_MS,
+				requiredContentTypePrefix: "image/",
+				rejectContentEncoding: true,
+				...fetchOptions,
 			});
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-			const contentType = response.headers.get("content-type");
-			if (!contentType?.toLowerCase().startsWith("image/")) {
-				throw new Error(
-					`Expected image content-type, got ${contentType ?? "unknown"}`,
-				);
-			}
-			bytes = Buffer.from(await response.arrayBuffer());
+			bytes = fetched.buffer;
 		} else {
 			bytes = await readAvatarBytesFromLocalCandidates(trimmed);
 		}
@@ -284,6 +288,7 @@ export async function syncDiscordClientProfile(
 		setUsername?: (username: string) => Promise<unknown>;
 	},
 	settings: DiscordSettings,
+	options: DiscordProfileSyncOptions = {},
 ): Promise<void> {
 	if (settings.syncProfile === false) {
 		return;
@@ -325,7 +330,7 @@ export async function syncDiscordClientProfile(
 	if (desiredAvatarSource) {
 		const avatar = await loadDiscordProfileAvatarBytes(
 			desiredAvatarSource,
-			runtime,
+			options,
 		);
 		if (avatar && persisted.avatarHash !== avatar.hash) {
 			if (typeof clientUser.setAvatar === "function") {

@@ -9,7 +9,7 @@ mock.module("../../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
 }));
 
-const { blueskyProvider } = await import("./bluesky");
+const { blueskyProvider, blueskyFetch } = await import("./bluesky");
 
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -125,5 +125,108 @@ describe("blueskyProvider analytics error policy", () => {
     }) as typeof fetch;
 
     await expect(blueskyProvider.getAccountAnalytics?.(CREDS)).rejects.toThrow();
+  });
+});
+
+describe("blueskyFetch — bounded hops fail closed and keep caller signals", () => {
+  it("aborts a hung Bluesky API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      blueskyFetch("https://bsky.social/xrpc/com.atproto.server.createSession", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("composes a caller-provided abort signal with the deadline", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await blueskyFetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
+      signal: controller.signal,
+    });
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  it("still aborts at the deadline when the caller signal never fires", async () => {
+    // Regression: the wrapper used to read `init?.signal ?? AbortSignal.timeout(ms)`,
+    // so any caller signal REPLACED the deadline. A request-scoped controller
+    // that outlives this hop and is never aborted then left the hop unbounded —
+    // it stayed hung well past 10x the declared deadline against a real
+    // non-responding socket.
+    // Mirrors real fetch: the only way out is the signal firing, and the
+    // rejection carries the signal's own reason, so the assertion below can
+    // tell the wrapper's deadline (TimeoutError) from any other abort.
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as typeof fetch;
+
+    const caller = new AbortController();
+    // Raced against a watchdog rather than awaited directly: an unbounded hop
+    // never settles, so a regression has to surface as a failed assertion here
+    // and not as a hung test file.
+    const outcome = await Promise.race([
+      blueskyFetch(
+        "https://bsky.social/xrpc/com.atproto.server.createSession",
+        { signal: caller.signal },
+        100,
+      ).then(
+        () => "resolved",
+        (error: Error) => `aborted:${error.name}`,
+      ),
+      // `realSetTimeout`: this file's beforeEach collapses `globalThis.setTimeout`
+      // to fire synchronously so retry backoff does not slow the suite.
+      new Promise<string>((resolve) => realSetTimeout(() => resolve("STILL-HUNG"), 1_000)),
+    ]);
+    expect(outcome).toBe("aborted:TimeoutError");
+    expect(caller.signal.aborted).toBe(false);
+  });
+
+  it("still lets the caller abort early, ahead of the deadline", async () => {
+    // No over-rejection: composing must not cost the caller its own cancellation.
+    // Mirrors real fetch: the only way out is the signal firing, and the
+    // rejection carries the signal's own reason, so the assertion below can
+    // tell the wrapper's deadline (TimeoutError) from any other abort.
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as typeof fetch;
+
+    const caller = new AbortController();
+    const pending = blueskyFetch(
+      "https://bsky.social/xrpc/com.atproto.server.createSession",
+      { signal: caller.signal },
+      60_000,
+    );
+    caller.abort();
+    await expect(pending).rejects.toThrow(/aborted/i);
   });
 });

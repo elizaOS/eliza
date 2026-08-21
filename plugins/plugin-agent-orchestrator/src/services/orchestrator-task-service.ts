@@ -41,6 +41,8 @@ import {
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -247,7 +249,11 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
-import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import {
+  captureChangeSet,
+  subtractChangeSetBaseline,
+  type WorkspaceChangeSet,
+} from "./workspace-diff.js";
 import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
@@ -707,7 +713,10 @@ function readAttemptReflections(
 }
 
 function truncate(text: string, max = 2000): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  const wellFormed = toWellFormedUnicode(text);
+  return wellFormed.length > max
+    ? `${truncateWellFormed(wellFormed, max)}…`
+    : wellFormed;
 }
 
 /**
@@ -1556,6 +1565,13 @@ export class OrchestratorTaskService extends Service {
       await this.syncSmithersRunCopies(acp, completed, prepared.sessionId);
       if (!link.keepAliveAfterComplete) {
         try {
+          // Mark the stop administrative BEFORE stopping so the swarm
+          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+          await markSessionAdministrativelyStopped(
+            acp,
+            prepared.sessionId,
+            "smithers_recovery",
+          );
           await acp.stopSession(prepared.sessionId);
         } catch (err) {
           // error-policy:J6 the graph and both durable links are already
@@ -2578,7 +2594,32 @@ export class OrchestratorTaskService extends Service {
       (message) => message.sessionId === sessionId,
     );
 
-    const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    const rawChangeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    // Shared-workdir captures include OTHER apps' pre-existing dirty files;
+    // subtract the spawn-time baselines so the evidence shows the session's
+    // own work (velvet-moth live: an unrelated app's diff read as
+    // contradictory evidence).
+    const baselineSession = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    const baselineMeta = isRecord(baselineSession?.metadata)
+      ? baselineSession.metadata
+      : undefined;
+    const baselinePaths = [
+      ...(Array.isArray(baselineMeta?.codingBaselineDirty)
+        ? baselineMeta.codingBaselineDirty.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : []),
+      ...(Array.isArray(baselineMeta?.codingBaselineUntracked)
+        ? baselineMeta.codingBaselineUntracked.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : []),
+    ];
+    const changeSet = rawChangeSet
+      ? subtractChangeSetBaseline(rawChangeSet, baselinePaths)
+      : rawChangeSet;
     const diffSummary =
       changeSet && changeSet.changedFiles.length > 0
         ? renderChangeSetBody(changeSet)
@@ -5429,6 +5470,13 @@ export class OrchestratorTaskService extends Service {
     } finally {
       unsubscribe?.();
       try {
+        // Mark the stop administrative BEFORE stopping so the swarm
+        // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+        await markSessionAdministrativelyStopped(
+          acp,
+          verifierSessionId,
+          "verifier_teardown",
+        );
         await acp.stopSession(verifierSessionId);
       } catch (stopErr) {
         // error-policy:J6 best-effort teardown of the ephemeral verifier session;
@@ -6609,6 +6657,9 @@ export class OrchestratorTaskService extends Service {
       (msg) => this.log("warn", msg, { taskId, sessionId }),
     );
     try {
+      // Mark the stop administrative BEFORE stopping so the swarm
+      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+      await markSessionAdministrativelyStopped(acp, sessionId, "user_stop");
       await acp.stopSession(sessionId);
     } catch (err) {
       // error-policy:J2 mark the session stop_failed for observability, then
@@ -6907,6 +6958,13 @@ export class OrchestratorTaskService extends Service {
           (msg) => this.log("warn", msg, { taskId: doc.task.id }),
         );
         try {
+          // Mark the stop administrative BEFORE stopping so the swarm
+          // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+          await markSessionAdministrativelyStopped(
+            acp,
+            session.sessionId,
+            "task_lifecycle",
+          );
           await acp.stopSession(session.sessionId);
         } catch (err) {
           const error = err instanceof Error ? err.message : String(err);
@@ -7484,12 +7542,9 @@ export class OrchestratorTaskService extends Service {
     const victim = candidates[0];
     if (!victim) return false;
     try {
-      await markSessionAdministrativelyStopped(
-        acp,
-        victim.id,
-        "keepalive_reclaim",
-        (msg) => this.log("warn", msg, { sessionId: victim.id }),
-      );
+      // Mark the stop administrative BEFORE stopping so the swarm
+      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
+      await markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim");
       await acp.stopSession(victim.id);
       this.log("info", "reclaimed idle keepAlive session for queued task", {
         sessionId: victim.id,

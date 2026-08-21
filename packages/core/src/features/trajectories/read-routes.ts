@@ -13,6 +13,7 @@
 
 import type { ServerResponse } from "node:http";
 import { ElizaError } from "../../errors";
+import type { TrajectorySemanticStageRecord } from "../../services/trajectory-semantic-stage";
 import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
@@ -61,6 +62,7 @@ interface ServiceTrajectoryStep {
 	providerAccesses: ServiceProviderAccess[];
 	/** Absent on action-optional Agent-bridge steps (LLM-only capture). */
 	action?: ServiceActionAttempt;
+	semanticStages?: TrajectorySemanticStageRecord[];
 }
 
 interface ServiceTrajectory {
@@ -104,6 +106,42 @@ function sendJson(
 	res.statusCode = statusCode;
 	res.setHeader("Content-Type", "application/json; charset=utf-8");
 	res.end(JSON.stringify(body));
+}
+
+/**
+ * Decode the untrusted `:id` path segment. Leftover tax after media-store /
+ * views-routes path work: stock develop called `decodeURIComponent` on
+ * `GET /api/trajectories/:id` before the handler try/catch, so `%` / `%2` /
+ * `%ZZ` threw URIError (500) instead of a typed 400. List and stats stay
+ * untouched.
+ */
+function decodeTrajectoryId(
+	raw: string,
+):
+	| { id: string }
+	| { error: "malformed URL encoding" | "invalid path segment" } {
+	try {
+		const id = decodeURIComponent(raw);
+		const hasControlCharacter = Array.from(id).some((character) => {
+			const codePoint = character.codePointAt(0) ?? 0;
+			return codePoint <= 0x1f || codePoint === 0x7f;
+		});
+		if (
+			!id ||
+			id === "." ||
+			id === ".." ||
+			id.includes("/") ||
+			id.includes("\\") ||
+			hasControlCharacter
+		) {
+			return { error: "invalid path segment" };
+		}
+		return { id };
+	} catch {
+		// error-policy:J3 malformed percent escapes are rejected at the route
+		// boundary and never reach the trajectory service.
+		return { error: "malformed URL encoding" };
+	}
 }
 
 // timeout collapses to the viewer's tri-state "error".
@@ -167,9 +205,11 @@ function detailToUi(
 	const llmCalls: Array<Record<string, unknown>> = [];
 	const providerAccesses: Array<Record<string, unknown>> = [];
 	const toolEvents: Array<Record<string, unknown>> = [];
+	const semanticStages: TrajectorySemanticStageRecord[] = [];
 
 	const steps = traj.steps;
 	for (const step of steps) {
+		if (step.semanticStages) semanticStages.push(...step.semanticStages);
 		const calls = step.llmCalls;
 		for (const c of calls) {
 			llmCalls.push({
@@ -244,6 +284,7 @@ function detailToUi(
 		providerAccesses,
 		toolEvents,
 		evaluationEvents: [],
+		semanticStages,
 	};
 }
 
@@ -289,12 +330,22 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 	// Only the read routes the viewer needs belong to this boundary. Unsupported
 	// mutation and export paths fall through for the API host to reject.
 	const isList = pathname === "/api/trajectories";
-	const isStats = pathname === "/api/trajectories/stats";
+	let isStats = pathname === "/api/trajectories/stats";
 	const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);
-	const detailId =
-		idMatch && idMatch[1] !== "stats" && idMatch[1] !== "config"
-			? decodeURIComponent(idMatch[1])
-			: null;
+	let detailId: string | null = null;
+	if (idMatch) {
+		const decoded = decodeTrajectoryId(idMatch[1] ?? "");
+		if ("error" in decoded) {
+			sendJson(res, 400, {
+				error: `invalid trajectory id: ${decoded.error}`,
+			});
+			return true;
+		}
+		// Classify reserved segments after decoding so percent encoding cannot
+		// turn a host-owned route into a trajectory lookup.
+		if (decoded.id === "stats") isStats = true;
+		else if (decoded.id !== "config") detailId = decoded.id;
+	}
 	if (!isList && !isStats && !detailId) {
 		return false;
 	}

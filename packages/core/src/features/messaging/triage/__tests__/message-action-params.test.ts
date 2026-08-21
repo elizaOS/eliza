@@ -51,4 +51,49 @@ describe("message reply action parameter parsing", () => {
 			lookup: {},
 		});
 	});
+
+	it("strips placeholder signatures after a 100k-character newline boundary", () => {
+		const parsed = parseDraftReplyParams({
+			parameters: {
+				messageId: "msg-1",
+				reply: `Actual reply${"\n".repeat(100_000)}Thanks,\n[Your Name]`,
+			},
+		} as never);
+
+		expect(parsed).toEqual({
+			messageId: "msg-1",
+			body: "Actual reply",
+			lookup: {},
+		});
+	});
+
+	it("strips a bare placeholder exposed beneath a closing signature", () => {
+		const parsed = parseDraftReplyParams({
+			parameters: {
+				messageId: "msg-1",
+				reply: "Actual reply\n[Name]\nThanks,\n[Your Name]",
+			},
+		} as never);
+
+		expect(parsed).toEqual({
+			messageId: "msg-1",
+			body: "Actual reply",
+			lookup: {},
+		});
+	});
+
+	it("preserves flexible whitespace in placeholder signature names", () => {
+		const parsed = parseDraftReplyParams({
+			parameters: {
+				messageId: "msg-1",
+				reply: "Actual reply\nRegards,\n[Your\t \n Name]",
+			},
+		} as never);
+
+		expect(parsed).toEqual({
+			messageId: "msg-1",
+			body: "Actual reply",
+			lookup: {},
+		});
+	});
 });

@@ -213,8 +213,8 @@ runcmd:
   # because Cloudflare zone is in "Full" SSL mode (CF terminates with visitor,
   # accepts any cert on the origin — only "Full (Strict)" verifies). The
   # cert is generated once at first-boot (cloud-init runcmd has per-instance
-  # semantics, not per-boot), valid 10 years; VM rebuild or `terraform taint`
-  # regenerates. If anyone flips the zone to Strict the chain breaks
+  # semantics, not per-boot), valid 10 years; the guarded VM replacement
+  # procedure regenerates it. If anyone flips the zone to Strict the chain breaks
   # silently — track this as an operational gotcha.
   - install -d -m 0755 /etc/nginx/ssl
   - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.eliza.app" -addext "subjectAltName=DNS:*.eliza.app,DNS:eliza.app,DNS:*.elizacloud.ai,DNS:elizacloud.ai"

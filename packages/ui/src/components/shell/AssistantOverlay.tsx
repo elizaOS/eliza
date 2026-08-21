@@ -8,6 +8,7 @@ import * as React from "react";
 import { useBranding } from "../../config/branding";
 import { useNativeGlassAnchor } from "../../glass";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
+import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { Button } from "../ui/button";
 import type { ShellPhase } from "./shell-state";
 
@@ -54,7 +55,7 @@ export function AssistantOverlay({
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const glassTier = useNativeGlassAnchor(dialogRef, {
     colorScheme: "dark",
-    tintColor: "#16090DD9",
+    tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
 

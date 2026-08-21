@@ -7,6 +7,9 @@
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
+ *
+ * Reasoning-tag filtering compares fixed-length prefixes and accumulates
+ * visible runs without copying the remaining stream suffix at every index.
  */
 
 import type { StreamChunkCallback } from "../types/components";
@@ -188,6 +191,16 @@ export type FieldState =
 	| "complete" // Field content extracted
 	| "invalid"; // Validation codes didn't match
 
+let streamRevisionSequence = 0;
+
+function allocateStreamRevision(): number {
+	streamRevisionSequence =
+		streamRevisionSequence === Number.MAX_SAFE_INTEGER
+			? 1
+			: streamRevisionSequence + 1;
+	return streamRevisionSequence;
+}
+
 /**
  * Configuration for StructuredFieldStreamExtractor.
  */
@@ -204,7 +217,12 @@ export interface StructuredFieldStreamExtractorConfig
 	 * WHY accumulated: consumers (voice detection, client-side merge) need the
 	 * full field text to avoid re-deriving it from deltas.
 	 */
-	onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+	onChunk: (
+		chunk: string,
+		field?: string,
+		accumulated?: string,
+		streamRevision?: number,
+	) => void;
 	/** Rich event callback for sophisticated consumers */
 	onEvent?: (event: StreamEvent) => void;
 	/** Abort signal for cancellation */
@@ -246,6 +264,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	private validatedFields: Set<string> = new Set();
 	private fieldStates: Map<string, FieldState> = new Map();
 	private state: ExtractorState = "streaming";
+	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
 	/**
 	 * The top-level field whose value bytes are currently arriving — tracked for
@@ -315,6 +334,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 
 	reset(): void {
+		this.streamRevision = allocateStreamRevision();
 		this.lineBuffer = "";
 		this.currentField = null;
 		this.currentTrackedField = null;
@@ -540,7 +560,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 		if (content.length < previouslyEmitted.length) {
 			this.emittedContent.set(field, content);
 			if (content) {
-				this.config.onChunk(content, field, content);
+				this.config.onChunk(content, field, content, this.streamRevision);
 				this.emitEvent({
 					eventType: "chunk",
 					field,
@@ -553,7 +573,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 
 		const newContent = content.substring(previouslyEmitted.length);
 		if (newContent) {
-			this.config.onChunk(newContent, field, content);
+			this.config.onChunk(newContent, field, content, this.streamRevision);
 			this.emitEvent({
 				eventType: "chunk",
 				field,
@@ -599,6 +619,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private formatDecided = false;
 	private passthrough = false;
 	private passthroughEmitted = "";
+	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
 	private readonly maxKeyPatternLength: number;
 
@@ -606,7 +627,12 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		private readonly config: {
 			skeleton: ResponseSkeleton;
 			streamFields: string[];
-			onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+			onChunk: (
+				chunk: string,
+				field?: string,
+				accumulated?: string,
+				streamRevision?: number,
+			) => void;
 			onEvent?: (event: StreamEvent) => void;
 			abortSignal?: AbortSignal;
 			unordered?: boolean;
@@ -674,6 +700,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	reset(): void {
+		this.streamRevision = allocateStreamRevision();
 		this.buffer = "";
 		this.spanIndex = 0;
 		this.activeStringField = null;
@@ -717,7 +744,12 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		const chunk = this.buffer;
 		this.buffer = "";
 		this.passthroughEmitted += chunk;
-		this.config.onChunk(chunk, undefined, this.passthroughEmitted);
+		this.config.onChunk(
+			chunk,
+			undefined,
+			this.passthroughEmitted,
+			this.streamRevision,
+		);
 	}
 
 	signalRetry(retryCount: number): { validatedFields: string[] } {
@@ -1044,7 +1076,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			return;
 		}
 		this.emittedContent.set(field, next);
-		this.config.onChunk(chunk, field, next);
+		this.config.onChunk(chunk, field, next, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",
 			field,
@@ -1066,45 +1098,57 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			});
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
-		let output = "";
+		const parts: string[] = [];
 		let index = 0;
 
 		while (index < source.length) {
 			if (filter.mode === "outside") {
-				const open = matchTagAt(source, index, "<think>");
+				const candidate = source.indexOf("<", index);
+				if (candidate === -1) {
+					parts.push(source.slice(index));
+					break;
+				}
+				if (candidate > index) {
+					parts.push(source.slice(index, candidate));
+				}
+				const open = matchTagAt(source, candidate, "<think>");
 				if (open === "full") {
 					filter.mode = "inside";
-					index += "<think>".length;
+					index = candidate + "<think>".length;
 					continue;
 				}
 				if (open === "partial") {
-					filter.pending = source.slice(index);
+					filter.pending = source.slice(candidate);
 					break;
 				}
-				output += source[index] ?? "";
-				index++;
+				parts.push("<");
+				index = candidate + 1;
 				continue;
 			}
 
-			const close = matchTagAt(source, index, "</think>");
+			const candidate = source.indexOf("<", index);
+			if (candidate === -1) {
+				break;
+			}
+			const close = matchTagAt(source, candidate, "</think>");
 			if (close === "full") {
 				filter.mode = "outside";
-				index += "</think>".length;
+				index = candidate + "</think>".length;
 				continue;
 			}
 			if (close === "partial") {
-				filter.pending = source.slice(index);
+				filter.pending = source.slice(candidate);
 				break;
 			}
-			index++;
+			index = candidate + 1;
 		}
 
 		if (final && filter.mode === "outside" && filter.pending) {
-			output += filter.pending;
+			parts.push(filter.pending);
 			filter.pending = "";
 		}
 		this.reasoningFilters.set(field, filter);
-		return output;
+		return parts.join("");
 	}
 
 	private flushReasoningFilter(field: string): string {
@@ -1131,19 +1175,22 @@ function matchTagAt(
 	index: number,
 	tag: "<think>" | "</think>",
 ): "full" | "partial" | "none" {
-	const remaining = source.slice(index);
-	const lowerRemaining = remaining.toLowerCase();
-	const lowerTag = tag.toLowerCase();
-	if (lowerRemaining.startsWith(lowerTag)) {
+	const remainingLen = source.length - index;
+	if (remainingLen <= 0) {
+		return "none";
+	}
+	const compareLen = remainingLen < tag.length ? remainingLen : tag.length;
+	for (let offset = 0; offset < compareLen; offset++) {
+		const sourceCh = source[index + offset] ?? "";
+		const tagCh = tag[offset] ?? "";
+		if (sourceCh.toLowerCase() !== tagCh.toLowerCase()) {
+			return "none";
+		}
+	}
+	if (remainingLen >= tag.length) {
 		return "full";
 	}
-	if (
-		index + remaining.length === source.length &&
-		lowerTag.startsWith(lowerRemaining)
-	) {
-		return "partial";
-	}
-	return "none";
+	return "partial";
 }
 
 function findJsonStringEnd(value: string): number | null {
@@ -1308,12 +1355,13 @@ export function createStreamingContext(
 			chunk: string,
 			msgId?: string,
 			accumulated?: string,
+			streamRevision?: number,
 		) => {
 			if (extractor.done) return;
 			const textToStream = extractor.push(chunk);
 			if (textToStream) {
 				retryState.appendText(textToStream);
-				await onStreamChunk(textToStream, msgId, accumulated);
+				await onStreamChunk(textToStream, msgId, accumulated, streamRevision);
 			}
 		},
 		messageId,

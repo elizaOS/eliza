@@ -5,6 +5,7 @@
  * Deterministic unit harness — real service instances with stubbed
  * connection internals.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { McpService } from "../src/service";
 import type { McpConnection, McpServerConfig } from "../src/types";
@@ -16,6 +17,16 @@ type ResilienceInternals = {
   initializeConnection: (name: string, config: McpServerConfig) => Promise<void>;
   updateServerConnections: (configs: Record<string, McpServerConfig>) => Promise<void>;
   setupTransportHandlers: (name: string, connection: McpConnection, state: unknown) => void;
+};
+
+type ToolListInternals = {
+  runtime: IAgentRuntime;
+  connections: Map<string, McpConnection>;
+  compatibilityInitialized: boolean;
+  applyToolCompatibility: (schema: Record<string, unknown>) => Record<string, unknown>;
+  fetchToolsList: (
+    serverName: string
+  ) => Promise<Array<{ name: string; inputSchema?: Record<string, unknown> }>>;
 };
 
 const STDIO_A: McpServerConfig = { type: "stdio", command: "bun", args: ["a.mjs"] };
@@ -124,4 +135,85 @@ describe("HTTP transport error tolerance", () => {
     expect(connection.server.status).toBe("disconnected");
     expect(connection.server.error).toContain("ECONNREFUSED");
   });
+});
+
+describe("tool schema failure containment", () => {
+  function makeToolService(
+    tools: unknown[],
+    modelProvider = "google/gemini-pro"
+  ): ToolListInternals {
+    const service = new McpService() as unknown as ToolListInternals;
+    service.runtime = {
+      character: { settings: { MODEL_PROVIDER: modelProvider } },
+    } as unknown as IAgentRuntime;
+    service.connections.set("remote", {
+      server: { name: "remote", status: "connected", config: "{}", error: "" },
+      client: { listTools: vi.fn(async () => ({ tools })) },
+      transport: {},
+    } as unknown as McpConnection);
+    return service;
+  }
+
+  it("omits one cyclic schema while retaining and transforming its healthy sibling", async () => {
+    const cyclic: Record<string, unknown> = { type: "array" };
+    cyclic.items = cyclic;
+    const service = makeToolService([
+      { name: "hostile", inputSchema: cyclic },
+      {
+        name: "healthy",
+        inputSchema: {
+          type: "object",
+          properties: { tags: { type: "array", maxItems: 4, items: { type: "string" } } },
+        },
+      },
+    ]);
+
+    const tools = await service.fetchToolsList("remote");
+    expect(tools.map((tool) => tool.name)).toEqual(["healthy"]);
+    expect(tools[0]?.inputSchema).toMatchObject({
+      properties: {
+        tags: { description: expect.stringContaining("4") },
+      },
+    });
+  });
+
+  it("rethrows an unexpected compatibility failure", async () => {
+    const service = makeToolService([{ name: "tool", inputSchema: { type: "object" } }]);
+    service.compatibilityInitialized = true;
+    service.applyToolCompatibility = () => {
+      throw new TypeError("compatibility regression");
+    };
+
+    await expect(service.fetchToolsList("remote")).rejects.toThrow("compatibility regression");
+  });
+
+  it("omits a schema whose provider rewrite expands past the retained byte cap", async () => {
+    const service = makeToolService([
+      { name: "expanded", inputSchema: { type: "string", pattern: "x".repeat(262_055) } },
+      { name: "healthy", inputSchema: { type: "object" } },
+    ]);
+
+    await expect(service.fetchToolsList("remote")).resolves.toEqual([
+      expect.objectContaining({ name: "healthy" }),
+    ]);
+  });
+
+  it.each(["openai/gpt-5", "openrouter/auto"])(
+    "omits an unbounded schema even when %s needs no compatibility rewrite",
+    async (modelProvider) => {
+      const cyclic: Record<string, unknown> = { type: "array" };
+      cyclic.items = cyclic;
+      const service = makeToolService(
+        [
+          { name: "hostile", inputSchema: cyclic },
+          { name: "healthy", inputSchema: { type: "object" } },
+        ],
+        modelProvider
+      );
+
+      await expect(service.fetchToolsList("remote")).resolves.toEqual([
+        expect.objectContaining({ name: "healthy" }),
+      ]);
+    }
+  );
 });

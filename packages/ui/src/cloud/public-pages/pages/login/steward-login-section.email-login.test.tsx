@@ -107,7 +107,7 @@ vi.mock("../../lib/steward-email-login", () => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
-  consumeStewardTokensFromHash: () => null,
+  stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: vi.fn(),
   recoverStewardEmailSessionViaCookie: sessionSpies.recoverEmail,
   recoverStewardSessionViaCookie: sessionSpies.recover,
@@ -158,6 +158,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-1",
       pollSecret: "poll-secret",
+      emailCodeDelivered: true,
     });
     emailLoginSpies.verify.mockResolvedValue({
       token: "session-token",
@@ -273,6 +274,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-2",
       pollSecret: "poll-secret-2",
+      emailCodeDelivered: true,
     });
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "other@example.com" } });
@@ -436,6 +438,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-2",
       pollSecret: "poll-secret-2",
+      emailCodeDelivered: true,
     });
     emailLoginSpies.poll.mockResolvedValueOnce("expired");
     sessionSpies.sync.mockResolvedValue(undefined);
@@ -448,5 +451,89 @@ describe("StewardLoginSection email magic-link companion code", () => {
 
     expect(await screen.findByText("Email expired")).toBeTruthy();
     expect(sessionSpies.sync).not.toHaveBeenCalled();
+  });
+
+  it("stays link-only when Steward does not declare code delivery, revealing code entry only on request", async () => {
+    // Today's Steward send response: polling credentials, no delivery contract.
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+    });
+    renderSection();
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await screen.findByText("Check your email");
+
+    // The waiting copy must not assert a code the email may not contain.
+    expect(
+      screen.getByText("Check your inbox and open the magic link to sign in."),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+    expect(screen.getByText("Waiting for the link.")).toBeTruthy();
+
+    // The non-asserting disclosure reveals a working code entry.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /My email includes a six-digit code/i,
+      }),
+    );
+    const codeInput = await screen.findByLabelText("Six-digit code");
+    expect(screen.getByText("Waiting for the link or code.")).toBeTruthy();
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /Verify code/i }));
+    await waitFor(() =>
+      expect(emailLoginSpies.verify).toHaveBeenCalledWith(
+        expect.anything(),
+        "person@example.com",
+        "123456",
+      ),
+    );
+  });
+
+  it("never mentions a six-digit code when Steward declares link-only delivery", async () => {
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+      emailCodeDelivered: false,
+    });
+    renderSection();
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await screen.findByText("Check your email");
+
+    expect(
+      screen.getByText("Check your inbox and open the magic link to sign in."),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /My email includes a six-digit code/i,
+      }),
+    ).toBeNull();
+    // Link polling stays alive.
+    expect(screen.getByText("Waiting for the link.")).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(emailLoginSpies.poll).toHaveBeenCalled();
+  });
+
+  it("asserts the companion code only when Steward explicitly delivered one", async () => {
+    renderSection();
+    await startEmailLogin();
+    expect(
+      screen.getByText(
+        "Open the link on this device or enter the six-digit code we sent.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: /My email includes a six-digit code/i,
+      }),
+    ).toBeNull();
   });
 });

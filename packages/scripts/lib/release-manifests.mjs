@@ -110,7 +110,6 @@ export function applyManifestTransaction(updates) {
 
 function loadLernaPatterns(repoRoot) {
   const lernaPath = path.join(repoRoot, "lerna.json");
-  if (!existsSync(lernaPath)) return null;
   const lerna = readJsonFile(lernaPath);
   if (
     !Array.isArray(lerna.packages) ||
@@ -122,11 +121,7 @@ function loadLernaPatterns(repoRoot) {
 }
 
 function releaseManagedPackages(repoRoot) {
-  const patterns = loadLernaPatterns(repoRoot);
-  // Without a lerna manifest the release-managed set is the full workspace.
-  return patterns === null
-    ? listPackages({ repoRoot })
-    : listPackages({ repoRoot, patterns });
+  return listPackages({ repoRoot, patterns: loadLernaPatterns(repoRoot) });
 }
 
 function fullWorkspaceByName(repoRoot) {

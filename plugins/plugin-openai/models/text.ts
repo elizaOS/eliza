@@ -15,9 +15,14 @@ import {
   assertActiveTrajectoryForLlmCall,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  cloneSchemaForBoundedTransport,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
   ModelType,
@@ -165,6 +170,8 @@ interface PreparedStructuredOutput {
 interface NormalizedNativeToolsResult {
   tools?: ToolSet;
   recordArgTransformsByTool: Record<string, RecordArgTransform[]>;
+  /** Original array-tool name to the exact key registered with the AI SDK. */
+  toolNameMap?: ReadonlyMap<string, string>;
 }
 
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
@@ -715,7 +722,9 @@ function normalizeNativeToolsForCall(
     return { tools: tools as ToolSet, recordArgTransformsByTool };
   }
 
-  const toolSet: Record<string, unknown> = {};
+  const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const toolNameMap = new Map<string, string>();
+  const originalNameByRegisteredName = new Map<string, string>();
 
   // Cerebras's grammar compiler treats strictness as request-wide, not
   // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
@@ -750,7 +759,7 @@ function normalizeNativeToolsForCall(
     // A missing schema means the tool takes no arguments. Provider-specific
     // normalization below turns this bare object into the explicit closed
     // shape required by strict grammar compilers.
-    const rawSchema =
+    const declaredSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =
       typeof tool.strict === "boolean"
@@ -759,6 +768,20 @@ function normalizeNativeToolsForCall(
           ? functionTool.strict
           : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
+    // The production strict Cerebras path used to call sanitizeJsonSchema
+    // (raw Array.isArray / object spread / Object.entries / .map / unbounded
+    // recursion) BEFORE any descriptor-safe walker, so an 8k-deep, cyclic,
+    // revoked, or accessor-bearing schema RangeError'd or leaked a trap
+    // there. The pre-pass is a bounded, descriptor-only STRUCTURAL CLONE, not
+    // Cerebras normalization: running the normalizer here would close every
+    // declared open map with `additionalProperties: false` before
+    // sanitizeJsonSchema could read that declaration and build the
+    // `__eliza_record_entries` reverse transform (#11249). Provider semantics
+    // are applied by the normalizeSchemaForCerebras call after sanitization.
+    let rawSchema: unknown = declaredSchema;
+    if (options.cerebrasMode) {
+      rawSchema = cloneSchemaForBoundedTransport(rawSchema);
+    }
     let inputSchema: JSONSchema7;
     if (strict === false) {
       if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
@@ -790,6 +813,19 @@ function normalizeNativeToolsForCall(
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
     const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
+    if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
+      throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
+        code: "OPENAI_TOOL_NAME_COLLISION",
+        context: {
+          registeredName,
+          toolNames: [collidingOriginalName, name],
+        },
+        severity: "ephemeral",
+      });
+    }
+    originalNameByRegisteredName.set(registeredName, name);
+    toolNameMap.set(name, registeredName);
     if (recordArgTransforms.length > 0) {
       recordArgTransformsByTool[registeredName] = recordArgTransforms;
     }
@@ -808,6 +844,7 @@ function normalizeNativeToolsForCall(
   return {
     tools: Object.keys(toolSet).length > 0 ? (toolSet as ToolSet) : undefined,
     recordArgTransformsByTool,
+    toolNameMap,
   };
 }
 
@@ -1122,9 +1159,26 @@ function restoreRecordArgAtPath(
     return value.map((item) => restoreRecordArgAtPath(item, rest, transform));
   }
   if (/^items\[\d+\]$/.test(token)) {
-    return Array.isArray(value)
-      ? value.map((item) => restoreRecordArgAtPath(item, rest, transform))
-      : value;
+    if (!Array.isArray(value)) return value;
+    const index = Number.parseInt(token.slice(6, -1), 10);
+    if (index >= value.length) return value;
+    const restored = [...value];
+    restored[index] = restoreRecordArgAtPath(value[index], rest, transform);
+    return restored;
+  }
+  if (token === "*") {
+    const record = asOptionalRecord(value);
+    if (!record) return value;
+    const restored: Record<string, unknown> = Object.create(null);
+    for (const [key, nested] of Object.entries(record)) {
+      Object.defineProperty(restored, key, {
+        configurable: true,
+        enumerable: true,
+        value: restoreRecordArgAtPath(nested, rest, transform),
+        writable: true,
+      });
+    }
+    return restored;
   }
 
   const record = asOptionalRecord(value);
@@ -1193,7 +1247,18 @@ function restoreRecordArgToolCalls(
   });
 }
 
-function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefined {
+/**
+ * Resolves a forced-tool `toolChoice` to the AI SDK's `{ type: "tool",
+ * toolName }` shape. In Cerebras mode the forced name is passed through the
+ * exact registered key returned by array-tool normalization. Object `ToolSet`
+ * callers already own their keys and therefore pass through verbatim. This
+ * keeps a dotted/colon source name aligned with its Cerebras wire key without
+ * applying provider rewriting to the distinct object-tool contract.
+ */
+function normalizeToolChoice(
+  toolChoice: unknown,
+  options: { toolNameMap?: ReadonlyMap<string, string> } = {}
+): ToolChoice<ToolSet> | undefined {
   if (!toolChoice) {
     return undefined;
   }
@@ -1205,14 +1270,24 @@ function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefin
     return toolChoice;
   }
 
+  const forcedToolName = (name: string): ToolChoice<ToolSet> => ({
+    type: "tool",
+    toolName: options.toolNameMap?.get(name) ?? name,
+  });
+
   const choice = asRecord(toolChoice);
   if (choice.type === "tool") {
+    // A well-formed object-tool choice passes through by reference. Array-tool
+    // callers reconstruct it only when normalization changed its registered key.
     if (typeof choice.toolName === "string" && choice.toolName.length > 0) {
-      return toolChoice as ToolChoice<ToolSet>;
+      const registeredName = options.toolNameMap?.get(choice.toolName);
+      return registeredName !== undefined && registeredName !== choice.toolName
+        ? forcedToolName(choice.toolName)
+        : (toolChoice as ToolChoice<ToolSet>);
     }
     const toolName = firstString(choice.toolName, choice.name);
     if (toolName) {
-      return { type: "tool", toolName };
+      return forcedToolName(toolName);
     }
   }
 
@@ -1220,13 +1295,13 @@ function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefin
     const fn = asRecord(choice.function);
     const toolName = firstString(fn.name);
     if (toolName) {
-      return { type: "tool", toolName };
+      return forcedToolName(toolName);
     }
   }
 
   const namedTool = firstString(choice.name);
   if (namedTool) {
-    return { type: "tool", toolName: namedTool };
+    return forcedToolName(namedTool);
   }
 
   return toolChoice as ToolChoice<ToolSet>;
@@ -1321,7 +1396,11 @@ function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
   return `${STRICT_SAFE_RECORD_ENTRIES_KEY}_${index}`;
 }
 
-function strictSafeRecordValueSchema(additionalProperties: unknown): {
+function strictSafeRecordValueSchema(
+  additionalProperties: unknown,
+  transforms?: RecordArgTransform[],
+  path = "$"
+): {
   schema: JSONSchema7;
   mode: RecordArgValueMode;
 } {
@@ -1337,7 +1416,7 @@ function strictSafeRecordValueSchema(additionalProperties: unknown): {
   }
   return {
     mode: "schema",
-    schema: sanitizeJsonSchema(additionalProperties),
+    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms),
   };
 }
 
@@ -1454,7 +1533,9 @@ function sanitizeJsonSchema(
           : {};
       const entriesKey = chooseRecordEntriesKey(properties);
       const { schema: valueSchema, mode } = strictSafeRecordValueSchema(
-        sanitized.additionalProperties
+        sanitized.additionalProperties,
+        transforms,
+        path
       );
       properties[entriesKey] = strictSafeRecordEntriesSchema(valueSchema);
       sanitized.properties = properties;
@@ -1491,37 +1572,68 @@ function sanitizeJsonSchema(
       : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms);
   }
 
-  for (const unionKey of ["anyOf", "oneOf", "allOf"] as const) {
-    const value = sanitized[unionKey];
+  for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
+    const value = sanitized[arrayKey];
     if (Array.isArray(value)) {
-      sanitized[unionKey] = value.map((item, i) =>
-        sanitizeJsonSchema(item, false, `${path}.${unionKey}[${i}]`, transforms)
+      sanitized[arrayKey] = value.map((item, index) =>
+        sanitizeJsonSchema(
+          item,
+          false,
+          arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
+          transforms
+        )
       );
     }
   }
 
-  // Every other schema-bearing keyword must be walked too, or a stripped
-  // keyword nested inside one survives to the wire. `$defs`/`definitions`
-  // matter most in practice: zod's `toJSONSchema` hoists reused/nullable
-  // sub-schemas into `$defs`, so a `.max()`/`.regex()` on a shared field would
-  // otherwise slip through the strip. `contains`/`propertyNames`/`not`/`if`/
-  // `then`/`else` take a single sub-schema; `patternProperties`/`$defs`/
-  // `definitions` are maps of them.
-  for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
+  // Walk the same standard schema-bearing keyword table as the bounded core
+  // clone. `additionalProperties` is handled above because it also creates the
+  // strict-safe record transform. Conditional schemas keep the current
+  // instance path; tuple/item schemas use the array wildcard/index path that
+  // reverse argument restoration understands.
+  for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
+    if (singleKey === "additionalProperties") continue;
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      sanitized[singleKey] = sanitizeJsonSchema(value, false, `${path}.${singleKey}`, transforms);
+      const childPath =
+        singleKey === "contains" ||
+        singleKey === "unevaluatedItems" ||
+        singleKey === "additionalItems"
+          ? `${path}.items`
+          : singleKey === "unevaluatedProperties"
+            ? `${path}.*`
+            : path;
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms);
     }
   }
-  for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
+  for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
+    if (mapKey === "properties") continue;
     const value = sanitized[mapKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
-        walked[key] = sanitizeJsonSchema(sub, false, `${path}.${mapKey}.${key}`, transforms);
+        const childPath =
+          mapKey === "dependentSchemas"
+            ? path
+            : mapKey === "patternProperties"
+              ? `${path}.*`
+              : `${path}.${mapKey}.${key}`;
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms);
       }
       sanitized[mapKey] = walked;
     }
+  }
+  for (const mixedMapKey of JSON_SCHEMA_MIXED_MAP_KEYWORDS) {
+    const value = sanitized[mixedMapKey];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const walked: Record<string, unknown> = {};
+    for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
+      walked[key] =
+        !sub || typeof sub !== "object" || Array.isArray(sub)
+          ? sub
+          : sanitizeJsonSchema(sub, false, path, transforms);
+    }
+    sanitized[mixedMapKey] = walked;
   }
 
   return sanitized as JSONSchema7;
@@ -2200,7 +2312,9 @@ async function generateTextByModelType(
     cerebrasMode,
   });
   const normalizedTools = normalizedToolResult.tools;
-  const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice);
+  const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
+    toolNameMap: normalizedToolResult.toolNameMap,
+  });
   const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
   const effectiveMessages =
@@ -2763,6 +2877,13 @@ export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
 export const __INTERNAL_normalizeNativeToolsForCall = normalizeNativeToolsForCall;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_restoreRecordArgToolCalls = restoreRecordArgToolCalls;
+/** @internal — exported for schema-keyword parity tests only. */
+export const __INTERNAL_sanitizeSchemaKeywords = {
+  arrays: JSON_SCHEMA_ARRAY_KEYWORDS,
+  maps: JSON_SCHEMA_MAP_KEYWORDS,
+  mixedMaps: JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  singles: JSON_SCHEMA_SINGLE_KEYWORDS,
+};
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */

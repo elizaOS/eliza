@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-commands",
-	"version": "2.0.12-beta.0",
+	"version": "2.0.3-beta.7",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -56,12 +56,12 @@
 		"@elizaos/shared": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.7",
+		"@biomejs/biome": "2.5.8",
 		"@types/bun": "^1.2.22",
 		"@types/node": "^24.5.2",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.0.18"
+		"vitest": "^4.1.10"
 	},
 	"scripts": {
 		"build": "bun run build.ts",

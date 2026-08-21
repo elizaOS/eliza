@@ -34,6 +34,10 @@ import {
   stampDockerNodeEnvironmentMetadata,
 } from "@/db/repositories/docker-nodes";
 import { containersEnv } from "@/lib/config/containers-env";
+import {
+  attestHetznerCloudNode,
+  isTypedHetznerCloudNode,
+} from "@/lib/services/containers/hetzner-node-attestation";
 import { resolveNodeCapacity } from "@/lib/services/docker-node-manager";
 import { logger } from "@/lib/utils/logger";
 
@@ -235,6 +239,10 @@ async function __hono_POST(request: Request) {
             },
             { status: 422 },
           );
+        }
+
+        if (isTypedHetznerCloudNode(existing)) {
+          await attestHetznerCloudNode(existing);
         }
 
         if (!hasPinnedFingerprint) {

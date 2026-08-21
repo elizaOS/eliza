@@ -1,4 +1,7 @@
-// Exercises safe fetch behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises safe-fetch DNS, redirect, cancellation, and socket-pinning behavior
+ * with deterministic cloud-shared fixtures.
+ */
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
 
@@ -173,6 +176,48 @@ describe("safeFetch fail-closed", () => {
     await expect(safeFetch("https://rebind.example/internal")).rejects.toThrow(
       "Endpoint resolves to a private or reserved IP address",
     );
+  });
+
+  test("revalidates a redirect target and refuses a private second hop", async () => {
+    lookupMock
+      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+      .mockResolvedValueOnce([{ address: "127.0.0.1", family: 4 }]);
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        const res = createFakeIncomingMessage({
+          headers: { location: "http://private.example/internal" },
+          statusCode: 302,
+          statusMessage: "Found",
+        });
+        onResponse(res);
+      });
+      return req;
+    });
+
+    await expect(safeFetch("http://public.example/media")).rejects.toThrow(
+      "Endpoint resolves to a private or reserved IP address",
+    );
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not connect when DNS resolves after the request is aborted", async () => {
+    let finishLookup: ((records: Array<{ address: string; family: number }>) => void) | undefined;
+    lookupMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("deadline expired");
+    const pending = safeFetch("https://slow-dns.example/image", {
+      signal: controller.signal,
+    });
+
+    controller.abort(reason);
+    finishLookup?.([{ address: "93.184.216.34", family: 4 }]);
+
+    await expect(pending).rejects.toBe(reason);
+    expect(requestMock).not.toHaveBeenCalled();
   });
 
   test("rejects credential-bearing and non-http targets before any lookup", async () => {

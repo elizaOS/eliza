@@ -105,6 +105,7 @@ export {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  type ScheduledTaskApplyCommitResult,
   type ScheduledTaskClaimExpectation,
   type ScheduledTaskClaimResult,
   type ScheduledTaskDispatcher,
@@ -130,6 +131,7 @@ export {
 } from "./runner-service.js";
 export {
   isScheduledTask,
+  scheduledTaskEditPayloadSchema,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSchema,
@@ -184,6 +186,7 @@ export type {
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTask,
+  ScheduledTaskApplyResult,
   ScheduledTaskCompletionCheck,
   ScheduledTaskContextRequest,
   ScheduledTaskEscalation,
@@ -197,6 +200,7 @@ export type {
   ScheduledTaskOutputDestination,
   ScheduledTaskPipeline,
   ScheduledTaskPriority,
+  ScheduledTaskReceiptVerb,
   ScheduledTaskRef,
   ScheduledTaskResolvedContext,
   ScheduledTaskRunner,
@@ -218,6 +222,7 @@ export type {
 export {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   DEFAULT_TASK_EXECUTION_PROFILE,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   TASK_EXECUTION_PROFILES,
 } from "./types.js";
 export {

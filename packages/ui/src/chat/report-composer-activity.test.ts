@@ -29,7 +29,10 @@ beforeEach(() => {
   fetchMock.mockClear();
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("reportComposerActivity (#14679)", () => {
   it("POSTs composer metadata with auth and no draft text", () => {
@@ -63,6 +66,7 @@ describe("reportComposerActivity (#14679)", () => {
     });
     expect(body).not.toHaveProperty("text");
     expect(body).not.toHaveProperty("draft");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("reports a cleared draft reason", () => {
@@ -108,5 +112,53 @@ describe("reportComposerActivity (#14679)", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("composer-activity request deadline", () => {
+  it("keeps the 15s deadline armed through response consumption", async () => {
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const budgets: number[] = [];
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      budgets.push(milliseconds);
+      return nativeTimeout(10);
+    });
+    let resolveAborted: (() => void) | undefined;
+    const aborted = new Promise<void>((resolve) => {
+      resolveAborted = resolve;
+    });
+    const arrayBuffer = vi.fn(async () => {
+      const [, init] = fetchMock.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ];
+      const signal = init.signal;
+      if (!signal) throw new Error("expected composer abort signal");
+      await new Promise<never>((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            resolveAborted?.();
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      });
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      arrayBuffer,
+    } as unknown as Response);
+
+    reportComposerActivity({
+      activity: "typing_paused",
+      surface: "chat_overlay",
+      draftLength: 17,
+    });
+
+    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledTimes(1));
+    await aborted;
+    expect(budgets).toEqual([15_000]);
   });
 });

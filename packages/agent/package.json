@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -428,7 +428,7 @@
     "fast-check": "^4.8.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
   },
   "elizaos": {
     "scripts": {

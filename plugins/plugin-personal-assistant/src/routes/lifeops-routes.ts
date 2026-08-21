@@ -1030,7 +1030,10 @@ function writeHtml(
           },
         })};
         if (window.opener && typeof window.opener.postMessage === "function") {
-          window.opener.postMessage(payload, "*");
+          // LifeOps google-connector callback is served from the same agent host as the opener (same-origin popup).
+          // Pin to window.location.origin (agent origin) — cross-origin openers will not receive this postMessage
+          // and will rely on BroadcastChannel/localStorage fallback below. This is fail-closed, not a wildcard leak.
+          window.opener.postMessage(payload, window.location.origin);
         }
         if (typeof BroadcastChannel === "function") {
           for (const channelName of [
@@ -2477,6 +2480,7 @@ export async function handleLifeOpsRoutes(
         title: occurrence.title,
         status: occurrenceStateToTodoStatus(occurrence.state),
         dueDate: occurrence.dueAt,
+        progress: occurrence.progress,
       }));
       json(res, { todos });
     });
@@ -2521,8 +2525,10 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "sourceId required", 400);
       return true;
     }
+    const decodedSourceId = ctx.decodePathComponent(sourceId, res, "sourceId");
+    if (!decodedSourceId) return true;
     return runFinancesRoute(ctx, async (service) => {
-      await service.deletePaymentSource(decodeURIComponent(sourceId));
+      await service.deletePaymentSource(decodedSourceId);
       json(res, { ok: true });
     });
   }

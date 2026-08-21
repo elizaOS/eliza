@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
@@ -25,6 +26,7 @@ import {
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageHandlerFromFieldResult,
+	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
@@ -636,6 +638,161 @@ describe("runV5MessageRuntimeStage1", () => {
 				/that's private|owner's private info|private information in this conversation/i,
 			);
 		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+missing-action set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and an unavailable action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "MISSING_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that the second capability is unavailable.",
+				toolCalls: [],
+				messageToUser: "That capability is not available here.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That capability is not available here.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+validation-error set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and a failing action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "FAILING_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that the second capability failed validation.",
+				toolCalls: [],
+				messageToUser: "That capability could not be validated.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "FAILING_TASK",
+				contexts: ["general"],
+				validate: async () => {
+					throw new Error("validation dependency failed");
+				},
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000022" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That capability could not be validated.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(reportErrorCalls(runtime).length).toBeGreaterThan(0);
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+account-policy-error set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and a connector action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "CONNECTOR_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that connector policy could not be evaluated.",
+				toolCalls: [],
+				messageToUser: "That connector capability could not be validated.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "CONNECTOR_TASK",
+				contexts: ["general"],
+				connectorAccountPolicy: { provider: "failing-provider" },
+			} as Action,
+		];
+		const accountPolicyError = new Error("connector policy dependency failed");
+		(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+			(serviceType: string) =>
+				serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE
+					? {
+							registerProvider: vi.fn(),
+							evaluatePolicy: vi.fn(async () => {
+								throw accountPolicyError;
+							}),
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000023" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That connector capability could not be validated.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.plannerActionValidation",
+			accountPolicyError,
+			{ action: "CONNECTOR_TASK", parentAction: undefined },
+		]);
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
@@ -1556,6 +1713,58 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(String(systemMessage?.content ?? "")).toContain(
 			"never work threads and never VIEWS",
 		);
+	});
+
+	it("keeps shouldRespond in the compact live-voice Stage-1 call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "IGNORE",
+				contexts: ["simple"],
+				replyText: "",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.VOICE_DM,
+				text: "uh huh",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall).toBeDefined();
+		if (!firstCall) {
+			throw new Error("Expected the voice Stage-1 model call to be captured");
+		}
+		const params = firstCall[1] as {
+			tools?: Array<{ parameters?: { required?: string[] } }>;
+			responseSkeleton?: { spans?: Array<{ key?: string }> };
+			messages?: Array<{ content?: unknown }>;
+		};
+		const required = params.tools?.[0]?.parameters?.required ?? [];
+		expect(required).toContain("shouldRespond");
+		expect(required).toContain("contexts");
+		expect(required).not.toContain("facts");
+		expect(
+			params.responseSkeleton?.spans?.some(
+				(span) => span.key === "shouldRespond",
+			),
+		).toBe(true);
+		const systemContent = String(params.messages?.[0]?.content ?? "");
+		expect(systemContent).toContain(
+			"task: Decide whether to respond, then plan this live voice turn.",
+		);
+		expect(systemContent).toContain(
+			"shouldRespond=IGNORE for content-free acknowledgements",
+		);
+		expect(systemContent.length).toBeLessThan(5_000);
 	});
 
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
@@ -4736,6 +4945,320 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	// Zero-delivery recovery contract (#20086, backstop behind #20083): a
+	// RESPOND turn that ran tools and delivered no terminal/action-owned text
+	// must recover a grounded reply — even after an early progress ack — while
+	// never duplicating a delivery, never claiming success when every tool
+	// failed, and staying silent for a successfully accepted async handoff
+	// whose completion arrives through a later relay turn.
+	describe("zero-delivery recovery", () => {
+		const spawnTurnResponses = () => [
+			stage1Response({
+				thought: "Spawn the coding task.",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "spawn-1",
+						name: "TASKS_SPAWN_AGENT",
+						arguments: {},
+					},
+				],
+			},
+		];
+		const spawnAction = (
+			handlerResult: Record<string, unknown>,
+		): IAgentRuntime["actions"] =>
+			[
+				{
+					name: "TASKS_SPAWN_AGENT",
+					description: "Spawn a coding task.",
+					contexts: ["general"],
+					asyncHandoff: true,
+					validate: vi.fn(async () => true),
+					handler: vi.fn(async () => ({
+						continueChain: false,
+						...handlerResult,
+					})),
+				},
+			] as IAgentRuntime["actions"];
+
+		it("delivers a grounded terminal reply after an early progress ack when the tool failed with user-facing text", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({
+				success: false,
+				text: "",
+				userFacingText: "The sandbox rejected the spawn: quota exceeded.",
+			});
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				// The turn must end with the tool's grounded failure text —
+				// never a repeat of the ack and never silence.
+				expect(result.result.responseContent?.text).toBe(
+					"The sandbox rejected the spawn: quota exceeded.",
+				);
+			}
+		});
+
+		it("ends a failed-tool early-ack turn with failure-aware wording, never a success claim", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({ success: false, text: "" });
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				const text = result.result.responseContent?.text ?? "";
+				expect(text.length).toBeGreaterThan(0);
+				// The turn's only tool failed; the terminal reply must not claim
+				// the work finished and must not re-send the ack.
+				expect(text).not.toContain("finished");
+				expect(text).not.toBe("On it.");
+				expect(text).toContain("failed");
+			}
+		});
+
+		it("delivers the action's userFacingText after an early ack instead of ending silent", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({
+				success: true,
+				text: "",
+				userFacingText: "Spawned coding task session-1; progress will follow.",
+			});
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"Spawned coding task session-1; progress will follow.",
+				);
+			}
+		});
+
+		it("keeps a successfully accepted async handoff silent after the early ack", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({ success: true, text: "" });
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				// The ack promised background work that a completion relay will
+				// report; a manufactured "finished" line here would be a lie.
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.responseMessages).toEqual([]);
+			}
+		});
+
+		it("does not duplicate an action-owned callback delivery", async () => {
+			const deliveredLine = "Spawned the coding task: session-1.";
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = [
+				{
+					name: "TASKS_SPAWN_AGENT",
+					description: "Spawn a coding task.",
+					contexts: ["general"],
+					asyncHandoff: true,
+					validate: vi.fn(async () => true),
+					handler: vi.fn(async (...handlerArgs: unknown[]) => {
+						const callback = handlerArgs[4] as
+							| ((content: { text: string }) => Promise<unknown>)
+							| undefined;
+						await callback?.({ text: deliveredLine });
+						return {
+							success: true,
+							text: deliveredLine,
+							userFacingText: deliveredLine,
+							continueChain: false,
+						};
+					}),
+				},
+			] as IAgentRuntime["actions"];
+			const deliveredVisibleTexts = new Set<string>();
+			const delivered: string[] = [];
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+				deliveredVisibleTexts,
+				callback: async (content) => {
+					if (content.text) {
+						delivered.push(content.text);
+						deliveredVisibleTexts.add(content.text.toLowerCase());
+					}
+					return [];
+				},
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(delivered).toEqual([deliveredLine]);
+			if (result.kind === "planned_reply") {
+				// The callback delivery is the turn's terminal text; recovery must
+				// not re-send it as a second bubble.
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.responseMessages).toEqual([]);
+			}
+		});
+
+		// Pure decision seam: the exact source precedence, ack suppression,
+		// failure-aware wording, and the async-handoff silence gate.
+		describe("resolveZeroDeliveryRecovery", () => {
+			it("prefers surviving planner text over everything else", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "The check passed on retry.",
+					actionResults: [{ success: true, userFacingText: "raw tool line" }],
+					stageOneAck: "On it.",
+					earlyReplySent: false,
+				});
+				expect(decision).toMatchObject({
+					recover: true,
+					text: "The check passed on retry.",
+					source: "plannedText",
+				});
+			});
+
+			it("prefers the LAST explicit action userFacingText ahead of the Stage-1 ack", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [
+						{ success: true, userFacingText: "first tool line" },
+						{ success: false },
+						{ success: true, userFacingText: "second tool line" },
+					],
+					stageOneAck: "On it.",
+					earlyReplySent: false,
+				});
+				expect(decision).toMatchObject({
+					recover: true,
+					text: "second tool line",
+					source: "actionUserFacingText",
+					actionSuccessCount: 2,
+					actionFailureCount: 1,
+				});
+			});
+
+			it("never re-sends the Stage-1 ack once an early ack shipped", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.text).not.toBe("On it.");
+				expect(decision.source).toBe("fallbackText");
+			});
+
+			it("uses failure-aware fallback wording when every tool failed", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }, { success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("failed");
+				expect(decision.text).not.toContain("finished");
+				expect(decision.actionSuccessCount).toBe(0);
+				expect(decision.actionFailureCount).toBe(2);
+			});
+
+			it("reports completion without inviting a blind replay after a tool succeeded", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("completed");
+				expect(decision.text).toContain("Check the current state");
+				expect(decision.text).not.toContain("ask again");
+			});
+
+			it("reports mixed tool outcomes without presenting the turn as fully successful", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }, { success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).toContain("Check the current state");
+				expect(decision.text).not.toContain("finished");
+			});
+
+			it("recovers a mixed-outcome early-ack turn because one failed action may own the handoff", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }, { success: false }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).not.toBe("On it.");
+			});
+
+			it("declines to recover a successful early-ack turn with nothing grounded to say", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(false);
+			});
+		});
 	});
 
 	it("voice turn signal can force IGNORE before early reply/planning", async () => {

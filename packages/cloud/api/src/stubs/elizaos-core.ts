@@ -558,12 +558,22 @@ export function runWithTrajectoryPurpose<T>(
 // fetchWithSsrfGuard — Worker-safe port of @elizaos/core/network/fetch-guard.
 //
 // Pulled into the bundle via plugin-elizacloud transcription (`audioUrl`
-// fetch). workerd has no `node:dns`, so the core guard's DNS pinning is not
-// portable; everything else is reproduced: http(s)-only, blocked-hostname +
-// private/loopback/link-local literal-IP rejection, manual redirect following
-// with re-validation on every hop, credential-header stripping on
-// cross-origin hops, spec-correct 301/302/303 GET rewrites, and timeout
-// wiring. Fail-closed: a URL this port cannot positively clear is rejected.
+// fetch). Everything the core guard does is reproduced: http(s)-only,
+// blocked-hostname + private/loopback/link-local literal-IP rejection, DNS
+// resolution with every answer screened (fail closed on resolution error,
+// empty answers, or any private/reserved answer), manual redirect following
+// with re-validation on every hop, credential-header stripping on cross-origin
+// hops, spec-correct 301/302/303 GET rewrites, and timeout wiring.
+// Fail-closed: a URL this port cannot positively clear is rejected.
+//
+// EDGE-SSRF residual (#12229 M5): workerd cannot pin fetch() to the screened
+// IP, so the platform re-resolves between our screening and connect — a
+// millisecond DNS-rebinding window remains. This is only safe behind the
+// documented operator egress policy: the Cloudflare zone must deny outbound to
+// RFC1918/link-local (or route edge egress through a resolve-and-connect-by-IP
+// proxy). The DNS screening here closes the "public name resolving to a
+// private address" hole for static answers; the egress policy owns the
+// rebinding window.
 // ---------------------------------------------------------------------------
 
 /** Mirrors core's `SsrfBlockedError` for callers that match on `name`. */
@@ -573,6 +583,15 @@ export class SsrfBlockedError extends Error {
     this.name = "SsrfBlockedError";
   }
 }
+
+export type DnsAnswer = { address: string };
+
+/**
+ * DNS resolution hook for SSRF screening. Defaults to `node:dns` lookup
+ * (implemented in workerd under `nodejs_compat` via Cloudflare's resolver);
+ * tests inject a stub so no real DNS is needed.
+ */
+export type SsrfDnsResolver = (hostname: string) => Promise<DnsAnswer[]>;
 
 export type GuardedFetchOptions = {
   url: string;
@@ -584,6 +603,7 @@ export type GuardedFetchOptions = {
   maxRedirects?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
+  dnsResolver?: SsrfDnsResolver;
 };
 
 export type GuardedFetchResult = {
@@ -675,6 +695,58 @@ function assertSsrfAllowedUrl(url: URL): void {
   }
 }
 
+/** IP literals are screened directly by assertSsrfAllowedUrl — no DNS needed. */
+function isIpLiteralHostname(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, "");
+  if (h.includes(":")) return true;
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
+}
+
+async function defaultDnsResolver(hostname: string): Promise<DnsAnswer[]> {
+  // Dynamic import keeps the module loadable where the node:dns alias is
+  // absent; in the Worker bundle `nodejs_compat` provides it.
+  const { lookup } = await import("node:dns/promises");
+  return lookup(hostname, { all: true, verbatim: true });
+}
+
+/**
+ * Screen a hostname's DNS answers: every resolved address must be public.
+ * Fails closed — resolution errors, empty answer sets, and any
+ * private/reserved answer all reject before the fetch is attempted (a public
+ * name may never smuggle a private target past the literal-IP checks).
+ */
+async function assertHostnameResolvesPublicly(
+  url: URL,
+  resolve: SsrfDnsResolver,
+): Promise<void> {
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (isIpLiteralHostname(host)) return;
+
+  let records: DnsAnswer[];
+  try {
+    records = await resolve(host);
+  } catch (err) {
+    // error-policy:J2 DNS failure must fail closed — rethrown as a typed
+    // SsrfBlockedError (cause preserved in the message) so guarded callers see
+    // one rejection shape and the fetch is never attempted.
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new SsrfBlockedError(
+      `Unable to resolve hostname for SSRF screening: ${host} (${detail})`,
+    );
+  }
+
+  if (records.length === 0) {
+    throw new SsrfBlockedError(`Hostname resolved to no addresses: ${host}`);
+  }
+  for (const record of records) {
+    if (isBlockedIpLiteral(record.address)) {
+      throw new SsrfBlockedError(
+        `Blocked hostname resolving to a private/reserved address: ${host}`,
+      );
+    }
+  }
+}
+
 const SSRF_CROSS_ORIGIN_STRIPPED_HEADERS = [
   "authorization",
   "proxy-authorization",
@@ -731,9 +803,15 @@ export async function fetchWithSsrfGuard(
   let method = (options.init?.method ?? "GET").toUpperCase();
   let body = options.init?.body;
   let headers = new Headers(options.init?.headers);
+  const dnsResolver = options.dnsResolver ?? defaultDnsResolver;
 
   for (let hop = 0; hop <= maxRedirects; hop++) {
     assertSsrfAllowedUrl(current);
+    // Re-screen DNS on every hop (redirect targets included). workerd cannot
+    // pin the connection to the screened address, so the platform re-resolves
+    // at connect time — the residual rebinding window is owned by the
+    // documented Cloudflare egress policy (see the section header above).
+    await assertHostnameResolvesPublicly(current, dnsResolver);
     const response = await fetchImpl(current.toString(), {
       ...options.init,
       method,
@@ -843,6 +921,61 @@ export async function readRequestBodyBuffer(
     throw new Error(`Request body exceeds maximum size (${maxBytes} bytes)`);
   }
   return body;
+}
+
+/**
+ * Worker-safe port of core's `readResponseWithLimit`: reads a response body
+ * under a hard byte cap, cancelling the stream as soon as the running total
+ * exceeds maxBytes so a missing or lying Content-Length can never force an
+ * unbounded allocation.
+ */
+export async function readResponseWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<Buffer> {
+  const body = res.body;
+  if (!body) {
+    const fallback = Buffer.from(await res.arrayBuffer());
+    if (fallback.length > maxBytes) {
+      throw new Error(
+        `Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+      );
+    }
+    return fallback;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.length) {
+        total += value.length;
+        if (total > maxBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // error-policy:J6 cancellation is best-effort after the limit failure
+          }
+          throw new Error(
+            `Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 stream lock release is best-effort teardown
+    }
+  }
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  );
 }
 
 export async function readRequestBody(
@@ -1286,6 +1419,18 @@ export {
   redactSensitiveText,
 } from "../../../../core/src/security/redact";
 export type { PiiScrubResult } from "../../../../core/src/types/model";
+// Provider-integration contract pieces used by the connected-capability
+// projection routes. Re-exported from the REAL core module — the contract
+// module is a pure leaf over `errors.ts`/`types/effects.ts` and
+// `@noble/hashes`, so it is Worker-safe, and the projection must run the real
+// normalizer rather than a stub so the served DTOs stay contract-validated.
+export {
+  CONNECTED_ACCOUNT_MODES,
+  type ConnectedAccount,
+  type ConnectedAccountMode,
+  normalizeConnectedAccount,
+  PROVIDER_INTEGRATION_CONTRACT_VERSION,
+} from "../../../../core/src/types/provider-integrations";
 
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",
@@ -1786,3 +1931,234 @@ export default {
   Semaphore,
   BM25,
 };
+
+/**
+ * Worker-safe port of core's `truncateWellFormed` (utils/well-formed.ts):
+ * `text.slice(0, maxLength)` that never splits a surrogate pair — when the
+ * cut would end on a high surrogate, the boundary backs off one code unit.
+ * Pre-existing lone surrogates pass through unchanged, matching core.
+ */
+export function truncateWellFormed(text: string, maxLength: number): string {
+  if (!Number.isFinite(maxLength) || maxLength <= 0) {
+    return "";
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  const lead = text.charCodeAt(maxLength - 1);
+  const trail = text.charCodeAt(maxLength);
+  const end =
+    lead >= 0xd800 && lead <= 0xdbff && trail >= 0xdc00 && trail <= 0xdfff
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+}
+
+// Worker-safe mirrors of core's pure text helpers. The bundle aliases the
+// entire package to this stub, so cloud-shared consumers cannot import the
+// canonical modules through @elizaos/core at runtime.
+const WORKER_RAW_TEXT_TAGS = ["script", "style"] as const;
+
+function isWorkerAsciiWhitespace(character: string): boolean {
+  return (
+    character === "\t" ||
+    character === "\n" ||
+    character === "\f" ||
+    character === "\r" ||
+    character === " "
+  );
+}
+
+function matchesWorkerAsciiCaseInsensitive(
+  value: string,
+  index: number,
+  expected: string,
+): boolean {
+  if (index + expected.length > value.length) return false;
+  for (let offset = 0; offset < expected.length; offset += 1) {
+    const code = value.charCodeAt(index + offset);
+    const normalized = code >= 65 && code <= 90 ? code + 32 : code;
+    if (normalized !== expected.charCodeAt(offset)) return false;
+  }
+  return true;
+}
+
+function isWorkerTagNameDelimiter(character: string | undefined): boolean {
+  return (
+    character === ">" ||
+    character === "/" ||
+    (character !== undefined && isWorkerAsciiWhitespace(character))
+  );
+}
+
+function findWorkerTagEnd(value: string, index: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let cursor = index; cursor < value.length; cursor += 1) {
+    const character = value[cursor];
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return cursor + 1;
+    }
+  }
+  return value.length;
+}
+
+type WorkerRawTextTag = (typeof WORKER_RAW_TEXT_TAGS)[number];
+
+function matchWorkerRawTextTag(
+  value: string,
+  index: number,
+  tagName: WorkerRawTextTag,
+  closing: boolean,
+): number | null {
+  if (value[index] !== "<") return null;
+  const nameIndex = index + (closing ? 2 : 1);
+  if (closing && value[index + 1] !== "/") return null;
+  if (!matchesWorkerAsciiCaseInsensitive(value, nameIndex, tagName)) {
+    return null;
+  }
+  const afterName = nameIndex + tagName.length;
+  if (!isWorkerTagNameDelimiter(value[afterName])) return null;
+  return findWorkerTagEnd(value, afterName);
+}
+
+function hasWorkerDelimitedTagName(
+  value: string,
+  nameIndex: number,
+  tagName: WorkerRawTextTag,
+): boolean {
+  return (
+    matchesWorkerAsciiCaseInsensitive(value, nameIndex, tagName) &&
+    isWorkerTagNameDelimiter(value[nameIndex + tagName.length])
+  );
+}
+
+function findWorkerRawTextClosingEnd(
+  value: string,
+  index: number,
+  tagName: WorkerRawTextTag,
+): number | null {
+  for (let cursor = index; cursor < value.length; cursor += 1) {
+    if (value[cursor] !== "<" || value[cursor + 1] !== "/") continue;
+    const closingEnd = matchWorkerRawTextTag(value, cursor, tagName, true);
+    if (closingEnd !== null) return closingEnd;
+  }
+  return null;
+}
+
+type WorkerScriptTextState = "data" | "escaped" | "double-escaped";
+
+function findWorkerScriptClosingEnd(
+  value: string,
+  index: number,
+): number | null {
+  let state: WorkerScriptTextState = "data";
+  let cursor = index;
+  while (cursor < value.length) {
+    if (value.startsWith("-->", cursor)) {
+      state = "data";
+      cursor += 3;
+      continue;
+    }
+    if (state === "data" && value.startsWith("<!--", cursor)) {
+      state = "escaped";
+      cursor += 4;
+      continue;
+    }
+    if (value[cursor] === "<" && value[cursor + 1] === "/") {
+      const nameIndex = cursor + 2;
+      if (hasWorkerDelimitedTagName(value, nameIndex, "script")) {
+        if (state === "double-escaped") {
+          state = "escaped";
+          cursor = nameIndex + "script".length;
+          continue;
+        }
+        return findWorkerTagEnd(value, nameIndex + "script".length);
+      }
+    }
+    if (
+      state === "escaped" &&
+      value[cursor] === "<" &&
+      hasWorkerDelimitedTagName(value, cursor + 1, "script")
+    ) {
+      state = "double-escaped";
+      cursor += 1 + "script".length;
+      continue;
+    }
+    cursor += 1;
+  }
+  return null;
+}
+
+/** Remove HTML script/style elements using core's bounded tokenizer rules. */
+export function stripHtmlRawTextElements(value: string): string {
+  const output: string[] = [];
+  let copiedThrough = 0;
+  let cursor = 0;
+  while (cursor < value.length) {
+    if (value[cursor] !== "<") {
+      cursor += 1;
+      continue;
+    }
+    let matchedTag: WorkerRawTextTag | null = null;
+    let openingEnd = 0;
+    for (const tagName of WORKER_RAW_TEXT_TAGS) {
+      const end = matchWorkerRawTextTag(value, cursor, tagName, false);
+      if (end !== null) {
+        matchedTag = tagName;
+        openingEnd = end;
+        break;
+      }
+    }
+    if (matchedTag === null) {
+      cursor += 1;
+      continue;
+    }
+    output.push(value.slice(copiedThrough, cursor), " ");
+    cursor = openingEnd;
+    const closingEnd =
+      matchedTag === "script"
+        ? findWorkerScriptClosingEnd(value, cursor)
+        : findWorkerRawTextClosingEnd(value, cursor, matchedTag);
+    if (closingEnd === null) {
+      copiedThrough = value.length;
+      cursor = value.length;
+    } else {
+      copiedThrough = closingEnd;
+      cursor = closingEnd;
+    }
+  }
+  output.push(value.slice(copiedThrough));
+  return output.join("");
+}
+
+/** Replace lone UTF-16 surrogates while preserving valid surrogate pairs. */
+export function toWellFormedUnicode(text: string): string {
+  const native = (
+    String.prototype as { toWellFormed?: (this: string) => string }
+  ).toWellFormed;
+  if (native) return native.call(text);
+  let output = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const trailing = text.charCodeAt(index + 1);
+      if (trailing >= 0xdc00 && trailing <= 0xdfff) {
+        output += text[index] + text[index + 1];
+        index += 1;
+      } else {
+        output += "�";
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      output += "�";
+    } else {
+      output += text[index];
+    }
+  }
+  return output;
+}

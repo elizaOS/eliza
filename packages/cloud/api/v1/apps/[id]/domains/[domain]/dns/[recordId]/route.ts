@@ -9,6 +9,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { loadCloudflareManagedDomain } from "../../../guards";
@@ -64,7 +65,13 @@ app.patch("/", async (c) => {
     if ("error" in ctx)
       return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const parsed = PatchRecordSchema.safeParse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const parsed = PatchRecordSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
         {

@@ -164,6 +164,16 @@ deploy/log/capture work and wait up to `ELIZA_IOS_DEVICE_UNLOCK_WAIT_SECONDS`
 # app explicitly → codesign verify → devicectl install → launch.
 bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-build --no-launch --identity <sha1>
 
+# With ASC credentials set, reconcile supported Bundle ID capabilities from
+# every target entitlement, mint development profiles, decode them, and fail if
+# the profile does not grant the target (including exact App Groups).
+bun run --cwd packages/app ios:device:provision -- --device <udid> --product <unsigned App.app>
+# Family Controls approval and exact App Group registration/assignment remain
+# Account Holder/Admin prerequisites: the public ASC API cannot grant them.
+# Stale/invalid immutable profiles are preserved while a uniquely named
+# replacement is created; rerun after an administrator corrects a managed grant.
+# A decoded, covering replacement is reused on later runs.
+
 # Bounded console capture (relaunches the app with devicectl --console attached,
 # default 120 s) and/or pull the boot-trace JSON from the app data container.
 # ENGINE OBSERVABILITY: use --no-console --pull-boot-trace. Attached console runs
@@ -180,6 +190,11 @@ bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-
 # Pass --only-testing AppUITests/<Class>[/test] for a single narrow shard.
 bun run --cwd packages/app capture:ios-sim:boot                  # simulator (booted sim auto-detected)
 bun run --cwd packages/app ios:device:capture -- --device <id> --app-path <signed App.app>  # physical device
+
+# Full physical-device acceptance: fresh full app+appex deploy, fresh unsigned
+# XCUITest build, graft-sign runner, BootCapture, then boot-trace pull. Extension
+# stripping is available only as the explicit degraded --skip-appexes mode.
+bun run --cwd packages/app ios:device:e2e -- --device <id>
 
 # Strict simulator boot/chat health gate: same harness, but error-card,
 # no-reply, all-skipped, and zero-passed summaries are hard failures.

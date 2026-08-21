@@ -205,8 +205,9 @@ export async function getCurrentUserFromRequest(
       // forever. Awaited, not void-fired: this runs on Cloudflare Workers,
       // where an un-awaited promise may be cancelled once the response
       // returns — the exact failure mode that loses the signup-time create.
-      // Idempotent (one indexed SELECT per session-cache miss; seeds only
-      // when the org has zero characters) and it never rejects.
+      // The healthy path is one read-intent character+mirror probe and opens
+      // no writer transaction. Missing/incoherent state falls back to the
+      // organization-locked bootstrap ensure; the helper never rejects.
       await ensureDefaultCharacter(user.id, user.organization_id);
     } else {
       logger.error("[AUTH] User missing organization_id:", user.id);

@@ -46,16 +46,33 @@ export async function handleConsumerKeyRoutes(
     return true;
   }
 
+  const remainder = pathname.slice(CONSUMER_KEYS_PREFIX.length);
+  const segments = remainder.split("/").filter((s) => s.length > 0);
+
+  let id: string | null = null;
+  if (segments.length > 0) {
+    try {
+      id = decodeURIComponent(segments[0] ?? "");
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
+      error(res, "Invalid consumer-key id encoding", 400);
+      return true;
+    }
+    if (!id) {
+      error(res, "Missing consumer-key id", 400);
+      return true;
+    }
+  }
+
+  // Resolve the host service only after the authenticated path is known-valid,
+  // so rejected paths cannot observe host capability or invoke bridge code.
   const admin = getAgentHostBridge().getAccountPoolConsumerKeyAdmin?.() ?? null;
   if (!admin) {
     error(res, "Consumer-key administration is unavailable on this host", 501);
     return true;
   }
 
-  const remainder = pathname.slice(CONSUMER_KEYS_PREFIX.length);
-  const segments = remainder.split("/").filter((s) => s.length > 0);
-
-  if (segments.length === 0) {
+  if (id === null) {
     if (method === "GET") {
       json(res, { keys: admin.list() });
       return true;
@@ -72,19 +89,6 @@ export async function handleConsumerKeyRoutes(
       return true;
     }
     error(res, "Method not allowed", 405);
-    return true;
-  }
-
-  let id: string;
-  try {
-    id = decodeURIComponent(segments[0] ?? "");
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-    error(res, "Invalid consumer-key id encoding", 400);
-    return true;
-  }
-  if (!id) {
-    error(res, "Missing consumer-key id", 400);
     return true;
   }
 

@@ -1,0 +1,47 @@
+name: Merge Candidate Biome
+
+# Merge queue events point github.sha at GitHub's synthesized candidate commit,
+# which includes the current develop tip and every queued pull request in the
+# candidate group. This gate intentionally runs on that tree instead of a PR
+# head so formatting conflicts introduced by integration cannot land.
+on:
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: merge-candidate-biome-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-tree:
+    name: Candidate tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          submodules: false
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Verify the repository-pinned Biome version
+        run: bun run check:biome-version
+
+      - name: Check candidate lint
+        run: bun run lint:check
+
+      - name: Check candidate formatting
+        run: bun run format:check

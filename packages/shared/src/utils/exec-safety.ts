@@ -5,7 +5,25 @@
  */
 const UNSAFE_CHARS = /[\0\r\n;&|`$<>"']/;
 const BARE_NAME = /^[A-Za-z0-9._+-]+$/;
-const PATH_WITH_ARGS = /\s+(?:-{1,2}\S+|[A-Za-z0-9._+-]+)(?:\s|$)/;
+
+function hasPathArguments(value: string): boolean {
+  let index = 0;
+  while (index < value.length) {
+    if (value[index]?.trim() !== "") {
+      index += 1;
+      continue;
+    }
+
+    while (index < value.length && value[index]?.trim() === "") index += 1;
+    const tokenStart = index;
+    while (index < value.length && value[index]?.trim() !== "") index += 1;
+    if (tokenStart === index) return false;
+
+    const token = value.slice(tokenStart, index);
+    if (token.startsWith("-") || BARE_NAME.test(token)) return true;
+  }
+  return false;
+}
 
 function isLikelyPath(value: string): boolean {
   return (
@@ -17,14 +35,13 @@ function isLikelyPath(value: string): boolean {
   );
 }
 
-export function isSafeExecutableValue(
-  value: string | null | undefined,
-): boolean {
-  const trimmed = value?.trim();
+export function isSafeExecutableValue(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  if (UNSAFE_CHARS.test(value)) return false;
+  const trimmed = value.trim();
   if (!trimmed) return false;
-  if (UNSAFE_CHARS.test(trimmed)) return false;
-  if (PATH_WITH_ARGS.test(trimmed)) return false;
-  if (isLikelyPath(trimmed)) return true;
+  if (hasPathArguments(trimmed)) return false;
   if (trimmed.startsWith("-")) return false;
+  if (isLikelyPath(trimmed)) return true;
   return BARE_NAME.test(trimmed);
 }

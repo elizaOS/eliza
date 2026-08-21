@@ -79,17 +79,41 @@ interface DocumentsSearchWire {
 // ---------------------------------------------------------------------------
 
 export interface DocumentsFetchers {
-  fetchDocuments: () => Promise<DocumentsListWire>;
-  fetchStats: () => Promise<DocumentsStatsWire>;
-  fetchSearch: (query: string) => Promise<DocumentsSearchWire>;
+  fetchDocuments: (signal?: AbortSignal) => Promise<DocumentsListWire>;
+  fetchStats: (signal?: AbortSignal) => Promise<DocumentsStatsWire>;
+  fetchSearch: (
+    query: string,
+    signal?: AbortSignal,
+  ) => Promise<DocumentsSearchWire>;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
+/** Documents JSON GETs are short UI reads — same 15s family as TodosView / GoalsView. */
+export const DOCUMENTS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getDocumentsJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
-    throw new Error(`Documents request failed (${response.status}): ${path}`);
+    throw new Error(`Documents request failed (${response.status}): ${url}`);
   }
   return (await response.json()) as T;
+}
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return getDocumentsJsonWithFetch<T>(
+    `${client.getBaseUrl()}${path}`,
+    globalThis.fetch,
+    DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 const DEFAULT_LIST_LIMIT = 100;
@@ -98,14 +122,17 @@ const DEFAULT_LIST_LIMIT = 100;
 const DOCUMENTS_POLL_MS = 20_000;
 
 const defaultFetchers: DocumentsFetchers = {
-  fetchDocuments: () =>
+  fetchDocuments: (signal) =>
     getJson<DocumentsListWire>(
       `/api/documents?limit=${DEFAULT_LIST_LIMIT}&offset=0`,
+      signal,
     ),
-  fetchStats: () => getJson<DocumentsStatsWire>("/api/documents/stats"),
-  fetchSearch: (query) =>
+  fetchStats: (signal) =>
+    getJson<DocumentsStatsWire>("/api/documents/stats", signal),
+  fetchSearch: (query, signal) =>
     getJson<DocumentsSearchWire>(
       `/api/documents/search?q=${encodeURIComponent(query)}`,
+      signal,
     ),
 };
 
@@ -218,24 +245,28 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
+  const activeSearchRef = useRef<AbortController | null>(null);
 
   // `silent` is the background-poll path: refresh the data in place without
   // flashing the loading state, clearing the user's search, or surfacing a
   // transient poll failure over an already-populated list.
   const load = useCallback((options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
-    let cancelled = false;
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
     if (!silent) {
       setState({ kind: "loading" });
       setSearch({ kind: "idle" });
       setQuery("");
     }
     Promise.all([
-      fetchersRef.current.fetchDocuments(),
-      fetchersRef.current.fetchStats(),
+      fetchersRef.current.fetchDocuments(controller.signal),
+      fetchersRef.current.fetchStats(controller.signal),
     ])
       .then(([list, stats]) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setState({
           kind: "ready",
           data: {
@@ -245,8 +276,9 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
           },
         });
       })
+      // error-policy:J4 foreground failures render an error; background failures preserve last-good state.
       .catch((error: unknown) => {
-        if (cancelled || silent) return;
+        if (controller.signal.aborted || silent) return;
         setState({
           kind: "error",
           message:
@@ -254,48 +286,59 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
               ? error.message
               : "Could not load documents.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) activeLoadRef.current = null;
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Load on mount, then keep the list fresh with a quiet 20s poll (no manual
   // Refresh button). The poll reuses the existing load fn; cleared on unmount.
   useEffect(() => {
-    const cancelInitial = load();
+    load();
     const timer = setInterval(() => load({ silent: true }), DOCUMENTS_POLL_MS);
     return () => {
-      cancelInitial();
       clearInterval(timer);
+      activeLoadRef.current?.abort();
+      activeSearchRef.current?.abort();
     };
   }, [load]);
 
   // Update the controlled query and run/clear the search. An empty query drops
   // back to the full list (no spurious empty-query request to the route).
   const updateSearch = useCallback((rawQuery: string) => {
+    activeSearchRef.current?.abort();
     setQuery(rawQuery);
     const trimmed = rawQuery.trim();
     if (!trimmed) {
       setSearch({ kind: "idle" });
       return;
     }
+    const controller = new AbortController();
+    activeSearchRef.current = controller;
     setSearch({ kind: "searching", query: trimmed });
     fetchersRef.current
-      .fetchSearch(trimmed)
+      .fetchSearch(trimmed, controller.signal)
       .then((response) => {
+        if (controller.signal.aborted) return;
         setSearch({
           kind: "results",
           query: trimmed,
           results: response.results,
         });
       })
+      // error-policy:J4 search failures render in the search results boundary.
       .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
         setSearch({
           kind: "error",
           query: trimmed,
           message: error instanceof Error ? error.message : "Search failed.",
         });
+      })
+      .finally(() => {
+        if (activeSearchRef.current === controller)
+          activeSearchRef.current = null;
       });
   }, []);
 

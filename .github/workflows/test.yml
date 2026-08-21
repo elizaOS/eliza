@@ -567,7 +567,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+        run: bun run --cwd packages/scenario-runner test:unit -- src/executor.test.ts src/runtime-factory.test.ts
 
       - name: Deterministic model provider unit coverage
         run: bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts
@@ -628,8 +628,8 @@ jobs:
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
 
-      - name: Actual app assistant voice browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
+      - name: Actual app assistant composer browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "morphs the home mic into send and submits a typed turn"
 
       - name: Actual app TTS and STT browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
@@ -713,7 +713,7 @@ jobs:
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
 
       - name: App screenshot quality diagnostics coverage
-        run: bun run --cwd packages/app test -- test/screenshot-quality.test.ts
+        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
 
       - name: App-core screenshot quality diagnostics coverage
         run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
@@ -1259,13 +1259,9 @@ jobs:
       - name: Install gitleaks
         run: |
           set -euo pipefail
-          GITLEAKS_VERSION=8.30.1
-          curl --fail --location --silent --show-error --retry 3 \
-            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
-          mkdir -p "$HOME/.local/bin"
-          install -m 0755 "$RUNNER_TEMP/gitleaks" "$HOME/.local/bin/gitleaks"
+          # Version and SHA256 are pinned in the shared installer
+          # (.github/scripts/install-gitleaks.sh); bump them there.
+          ./.github/scripts/install-gitleaks.sh "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Secret scan (gitleaks)

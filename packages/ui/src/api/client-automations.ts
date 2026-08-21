@@ -10,14 +10,24 @@ import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 declare module "./client-base" {
   interface ElizaClient {
-    listAutomations(): Promise<AutomationListResponse>;
+    listAutomations(options?: {
+      timeoutMs?: number;
+      signal?: AbortSignal;
+    }): Promise<AutomationListResponse>;
   }
 }
 
 ElizaClient.prototype.listAutomations = async function (
   this: ElizaClient,
+  options,
 ): Promise<AutomationListResponse> {
-  return workflowSurfaceClient(this).fetch<AutomationListResponse>(
+  const routed = workflowSurfaceClient(this);
+  if (!options) {
+    return routed.fetch<AutomationListResponse>("/api/automations");
+  }
+  return routed.fetch<AutomationListResponse>(
     "/api/automations",
+    { signal: options.signal },
+    { timeoutMs: options.timeoutMs },
   );
 };

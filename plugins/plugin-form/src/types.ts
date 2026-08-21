@@ -1429,6 +1429,11 @@ export const FORM_DEFINITION_DEFAULTS = {
  * - Components are elizaOS's entity data storage
  * - Scoped to entity, can include room in type
  * - Automatic CRUD via runtime
+ *
+ * Full session component type is `form_session:{roomId}:{sessionId}`. The
+ * session id is part of the natural key so multiple sessions in one room
+ * (e.g. a stashed session plus a newly started one) never overwrite each
+ * other in the (entityId, type) component store.
  */
 export const FORM_SESSION_COMPONENT = "form_session";
 

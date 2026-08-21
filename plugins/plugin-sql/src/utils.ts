@@ -65,51 +65,13 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   return expandTildePath(base);
 }
 
-export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
-    // escape JSON.stringify emits for them. Nothing else needs rewriting here —
-    // the value is serialized with JSON.stringify, which already escapes
-    // backslashes and control characters correctly; re-escaping them here
-    // would corrupt already-escaped strings (e.g. "C:\Users") on a
-    // write/read round-trip.
-    return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
-  }
-
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  if (value instanceof Date) {
-    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
-  }
-
-  if (typeof value === "object") {
-    if (seen.has(value as object)) {
-      return null;
-    }
-    seen.add(value as object);
-
-    if (Array.isArray(value)) {
-      return value.map((item) => sanitizeJsonObject(item, seen));
-    }
-
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
-      const sanitizedKey =
-        typeof key === "string" ? key.replace(new RegExp(String.fromCharCode(0), "g"), "") : key;
-      result[sanitizedKey] = sanitizeJsonObject(val, seen);
-    }
-    return result;
-  }
-
-  return value;
-}
+export {
+  MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
+  MAX_SQL_JSON_SANITIZE_BYTES,
+  MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_KEY_BYTES,
+  MAX_SQL_JSON_SANITIZE_NODES,
+  MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+  SQL_JSON_SANITIZE_UNBOUNDED,
+  sanitizeJsonObject,
+} from "./sanitize-json.ts";

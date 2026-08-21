@@ -1,5 +1,6 @@
 /**
- * Return-to plumbing for the app-authorize flow: the path and the persisted return target.
+ * Return-to plumbing for the app-authorize flow: the path, the persisted
+ * return target, and the fail-closed scheme gate for hand-off navigations.
  */
 import { shellLocalStorage } from "../../../surface-realm-channel";
 export const APP_AUTHORIZE_PATH = "/app-auth/authorize";
@@ -47,6 +48,40 @@ export function buildAppAuthorizeCancelRedirect(input: {
   url.searchParams.set("error_description", "User denied authorization");
   if (input.state != null) url.searchParams.set("state", input.state);
   return url.toString();
+}
+
+/**
+ * Protocols that must never become a navigation target from the authorize
+ * hand-off, even though `new URL()` parses them without complaint.
+ */
+const BLOCKED_REDIRECT_PROTOCOLS: ReadonlySet<string> = new Set([
+  "javascript:",
+  "data:",
+  "vbscript:",
+  "file:",
+]);
+
+/**
+ * Fail-closed scheme gate for the authorize hand-off navigation. Allows
+ * http(s) URLs and native-app custom schemes shaped like real navigation
+ * targets (`myapp://callback` or `myapp:/callback`); everything else —
+ * scriptable protocols, slash-less `scheme:payload` forms, unparseable
+ * input — is rejected. Passing here is necessary, not sufficient: the server
+ * separately requires the URI's origin to be registered for the app.
+ */
+export function isSafeAppAuthorizeRedirectUri(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    // error-policy:J3 unparseable hand-off target is rejected (fail closed).
+    return false;
+  }
+  const protocol = url.protocol.toLowerCase();
+  if (protocol === "http:" || protocol === "https:") return true;
+  if (BLOCKED_REDIRECT_PROTOCOLS.has(protocol)) return false;
+  if (!/^[a-z][a-z0-9+.-]*:$/.test(protocol)) return false;
+  return /^[a-z][a-z0-9+.-]*:\/\/?/i.test(value);
 }
 
 export function storeCurrentAppAuthorizeReturnTo(): void {

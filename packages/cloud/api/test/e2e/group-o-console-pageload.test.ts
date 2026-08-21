@@ -81,15 +81,25 @@ async function seedSavedAgentInteraction(input: {
   userId: string;
 }): Promise<{ characterId: string }> {
   const suffix = crypto.randomUUID().slice(0, 8);
-  const anonOrgId = crypto.randomUUID();
   const anonUserId = crypto.randomUUID();
   const characterId = crypto.randomUUID();
 
   await withDb(async (client) => {
-    await client.query(
-      `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
-      [anonOrgId, `E2E Saved Org ${suffix}`, `e2e-saved-org-${suffix}`],
+    // Reuse the persistent E2E fixture organization instead of minting one:
+    // the auto-top-up cutover guard (migration 0217) blocks ANY organizations
+    // DELETE while the control singleton is sealed, so a mint-and-delete org
+    // fails the whole suite in afterAll (same conversion as group-c,
+    // fe0822873b).
+    const fixtureOrganization = await client.query(
+      `SELECT id FROM organizations WHERE slug = $1`,
+      ["playwright-e2e-affiliate-org"],
     );
+    const anonOrgId: string | undefined = fixtureOrganization.rows[0]?.id;
+    if (!anonOrgId) {
+      throw new Error(
+        "Persistent E2E fixture organization playwright-e2e-affiliate-org is missing; run the e2e seed bootstrap",
+      );
+    }
     await client.query(
       `INSERT INTO users (id, email, steward_user_id, is_anonymous, organization_id)
        VALUES ($1, $2, $3, true, $4)`,
@@ -144,7 +154,10 @@ async function seedSavedAgentInteraction(input: {
 
   cleanup.push({ table: "agents", id: characterId });
   cleanup.push({ table: "user_characters", id: characterId });
-  cleanup.push({ table: "organizations", id: anonOrgId });
+  // Last: the seeded fixture-org user (after its user_characters row is gone).
+  // The fixture org keeps a permanent resident, so the last-user vacate guard
+  // never fires (same pattern as group-c).
+  cleanup.push({ table: "users", id: anonUserId });
   return { characterId };
 }
 

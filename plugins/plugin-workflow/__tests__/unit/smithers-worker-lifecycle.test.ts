@@ -143,4 +143,18 @@ describe('Smithers worker lifecycle', () => {
     const result = await run('closed-input-result');
     expect(result.status).toBe('finished');
   });
+
+  test('terminates a worker whose stdout line exceeds the protocol budget', async () => {
+    await expect(
+      run('oversized-stdout-line', {
+        input: { outputBytes: 1_048_576 },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+
+    await expect(
+      run('oversized-stdout-line', {
+        input: { outputBytes: 1_048_577 },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_PROTOCOL_OVERFLOW' });
+  });
 });

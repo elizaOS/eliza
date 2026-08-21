@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -42,6 +42,10 @@ function sha256(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
 }
 
+function absoluteFixturePath(...segments: string[]): string {
+  return resolve(sep, ...segments);
+}
+
 const ENV_KEYS = [CANONICAL_BOOT_ROOT_ENV, CANONICAL_BOOT_MANIFEST_ENV];
 let savedEnv: Record<string, string | undefined>;
 
@@ -64,27 +68,30 @@ describe("resolveCanonicalManifest", () => {
   });
 
   it("resolves the default manifest under ELIZA_CANONICAL_BOOT_ROOT", () => {
+    const root = absoluteFixturePath("srv", "ws");
     const manifest = resolveCanonicalManifest(
-      { [CANONICAL_BOOT_ROOT_ENV]: "/srv/ws" },
+      { [CANONICAL_BOOT_ROOT_ENV]: root },
       fakeFs({}),
     );
     expect(manifest).not.toBeNull();
     expect(manifest?.length).toBe(DEFAULT_CANONICAL_MANIFEST.length);
     const soul = manifest?.find((e) => e.label === "SOUL.md");
-    expect(soul?.path).toBe("/srv/ws/SOUL.md");
+    expect(soul?.path).toBe(join(root, "SOUL.md"));
     expect(soul?.required).toBe(true);
     const handoff = manifest?.find((e) => e.label === "memory/HANDOFF.md");
-    expect(handoff?.path).toBe("/srv/ws/memory/HANDOFF.md");
+    expect(handoff?.path).toBe(join(root, "memory", "HANDOFF.md"));
     expect(handoff?.required).toBe(false);
   });
 
   it("resolves an explicit JSON manifest with its own root + required flags", () => {
-    const manifestPath = "/cfg/manifest.json";
+    const manifestPath = absoluteFixturePath("cfg", "manifest.json");
+    const root = absoluteFixturePath("data", "agent");
+    const absoluteEntryPath = absoluteFixturePath("etc", "agent", "extra.md");
     const manifestJson = JSON.stringify({
-      root: "/data/agent",
+      root,
       files: [
         { label: "SOUL", path: "soul.md", required: true },
-        { label: "ABS", path: "/etc/agent/extra.md" },
+        { label: "ABS", path: absoluteEntryPath },
       ],
     });
     const manifest = resolveCanonicalManifest(
@@ -94,11 +101,11 @@ describe("resolveCanonicalManifest", () => {
     expect(manifest).toHaveLength(2);
     expect(manifest?.[0]).toEqual({
       label: "SOUL",
-      path: "/data/agent/soul.md",
+      path: join(root, "soul.md"),
       required: true,
     });
     // absolute path passes through unchanged
-    expect(manifest?.[1].path).toBe("/etc/agent/extra.md");
+    expect(manifest?.[1].path).toBe(absoluteEntryPath);
     expect(manifest?.[1].required).toBe(false);
   });
 
@@ -208,12 +215,7 @@ describe("applyCanonicalFileBootToConfig", () => {
   });
 
   it("appends composed files onto the existing primary system prompt", () => {
-    const fs = fakeFs({
-      "/ws/SOUL.md": "SYNTHETIC SOUL canary=APPEND-OK",
-      "/ws/IDENTITY.md": "SYNTHETIC IDENTITY",
-      "/ws/AGENTS.md": "SYNTHETIC AGENTS",
-      "/ws/USER.md": "SYNTHETIC USER",
-    });
+    const root = absoluteFixturePath("ws");
     const config: ElizaConfig = {
       agents: {
         list: [{ id: "main", default: true, name: "X", system: "BASE-PROMPT" }],
@@ -221,14 +223,14 @@ describe("applyCanonicalFileBootToConfig", () => {
     } as unknown as ElizaConfig;
 
     // use an explicit manifest of only the 4 required-ish synthetic files
-    const manifestPath = "/cfg/m.json";
+    const manifestPath = absoluteFixturePath("cfg", "m.json");
     const fsWithManifest = fakeFs({
-      "/ws/SOUL.md": "SYNTHETIC SOUL canary=APPEND-OK",
-      "/ws/IDENTITY.md": "SYNTHETIC IDENTITY",
-      "/ws/AGENTS.md": "SYNTHETIC AGENTS",
-      "/ws/USER.md": "SYNTHETIC USER",
+      [join(root, "SOUL.md")]: "SYNTHETIC SOUL canary=APPEND-OK",
+      [join(root, "IDENTITY.md")]: "SYNTHETIC IDENTITY",
+      [join(root, "AGENTS.md")]: "SYNTHETIC AGENTS",
+      [join(root, "USER.md")]: "SYNTHETIC USER",
       [manifestPath]: JSON.stringify({
-        root: "/ws",
+        root,
         files: [
           { label: "SOUL.md", path: "SOUL.md", required: true },
           { label: "USER.md", path: "USER.md", required: true },
@@ -245,15 +247,15 @@ describe("applyCanonicalFileBootToConfig", () => {
     expect(sys.startsWith("BASE-PROMPT")).toBe(true);
     expect(sys).toContain("canary=APPEND-OK");
     expect(sys).toContain("SYNTHETIC USER");
-    void fs; // (kept for parity with sibling tests; unused directly)
   });
 
   it("creates a primary entry when none exists", () => {
-    const manifestPath = "/cfg/m.json";
+    const manifestPath = absoluteFixturePath("cfg", "m.json");
+    const root = absoluteFixturePath("ws");
     const fs = fakeFs({
-      "/ws/SOUL.md": "SYNTHETIC SOUL",
+      [join(root, "SOUL.md")]: "SYNTHETIC SOUL",
       [manifestPath]: JSON.stringify({
-        root: "/ws",
+        root,
         files: [{ label: "SOUL.md", path: "SOUL.md", required: true }],
       }),
     });

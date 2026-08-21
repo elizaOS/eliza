@@ -42,11 +42,13 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     let body: unknown;
+    let rawBody = "";
     try {
-      body = await c.req.json();
+      rawBody = await c.req.text();
+      body = JSON.parse(rawBody);
     } catch {
-      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
-      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // error-policy:J3 untrusted request JSON — a bare JSON.parse.
+      // SyntaxError must be a caller 400, not the
       // failureResponse 500 that treats it as an unexpected server fault.
       // Wallet-signature verify and server-wallet RPC must not run on garbage.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
@@ -57,8 +59,12 @@ app.post("/", async (c) => {
     const validated = rpcPayloadSchema.parse(body);
 
     const url = new URL(c.req.url);
+    // The wallet-signature message commits to a hash of the raw body; the
+    // exact bytes must be forwarded or every payload-bound signature would
+    // verify against an empty body and fail.
     const authenticatedUser = await verifyWalletSignature(
       honoToWalletAuthRequest(c, url),
+      { bodyText: rawBody },
     );
     if (!authenticatedUser) {
       return c.json(

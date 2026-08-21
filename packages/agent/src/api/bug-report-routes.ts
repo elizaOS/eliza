@@ -8,12 +8,44 @@
  * opens itself.
  */
 import os from "node:os";
-import { logger, type RouteRequestContext } from "@elizaos/core";
+import {
+  logger,
+  type RouteRequestContext,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";
 const BUG_REPORT_REPO_FALLBACK_ENV_KEY = "BUG_REPORT_REPO";
+
+export const DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS = 10_000;
+
+function createBugReportFetchSignal(req: RouteRequestContext["req"]): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const requestAbort = new AbortController();
+  const abortForDisconnectedClient = () => {
+    requestAbort.abort(
+      new DOMException("Bug report request was aborted", "AbortError"),
+    );
+  };
+  if (req.aborted) {
+    abortForDisconnectedClient();
+  } else {
+    req.once("aborted", abortForDisconnectedClient);
+  }
+
+  return {
+    signal: AbortSignal.any([
+      requestAbort.signal,
+      AbortSignal.timeout(DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS),
+    ]),
+    cleanup: () => req.off("aborted", abortForDisconnectedClient),
+  };
+}
 
 function sanitizeRepoName(value: string | undefined): string | null {
   const trimmed = value?.trim();
@@ -101,14 +133,21 @@ interface BugReportBody {
 }
 
 export function sanitize(input: string, maxLen = 10_000): string {
-  const clipped = input.length > maxLen ? input.slice(0, maxLen) : input;
+  const wellFormed = toWellFormedUnicode(input);
+  const clipped =
+    wellFormed.length > maxLen
+      ? truncateWellFormed(wellFormed, maxLen)
+      : wellFormed;
   let prev = clipped;
   let next = prev.replace(/<[^<>]{0,1024}>/g, "");
   while (next !== prev) {
     prev = next;
     next = prev.replace(/<[^<>]{0,1024}>/g, "");
   }
-  return next.replace(/[<>]/g, "").slice(0, maxLen);
+  const cleaned = next.replace(/[<>]/g, "");
+  return cleaned.length > maxLen
+    ? truncateWellFormed(cleaned, maxLen)
+    : cleaned;
 }
 
 function redactSecrets(input: string, maxLen = 10_000): string {
@@ -185,7 +224,10 @@ function getRemoteBugReportToken(): string | undefined {
   return process.env.ELIZA_BUG_REPORT_API_TOKEN;
 }
 
-async function submitToRemoteBugIntake(body: BugReportBody) {
+async function submitToRemoteBugIntake(
+  body: BugReportBody,
+  signal: AbortSignal,
+) {
   const remoteBugReportUrl = getRemoteBugReportUrl();
   if (!remoteBugReportUrl) return null;
   const payload = {
@@ -241,6 +283,7 @@ async function submitToRemoteBugIntake(body: BugReportBody) {
         : {}),
     },
     body: JSON.stringify(payload),
+    signal,
   });
 
   if (!response.ok) {
@@ -303,19 +346,24 @@ export async function handleBugReportRoutes(
     const body = parsedBug.data;
 
     if (getRemoteBugReportUrl()) {
+      const remoteFetch = createBugReportFetchSignal(req);
       try {
-        const result = await submitToRemoteBugIntake(body);
+        const result = await submitToRemoteBugIntake(body, remoteFetch.signal);
         if (!result) {
           error(res, "Failed to submit bug report", 502);
           return true;
         }
         json(res, result);
       } catch (err) {
+        // error-policy:J1 boundary translation — remote intake failures become
+        // an explicit upstream failure response at the HTTP route boundary.
         logger.error(
           { error: err },
           "[bug-report] Remote intake submission failed",
         );
         error(res, "Failed to submit bug report", 502);
+      } finally {
+        remoteFetch.cleanup();
       }
       return true;
     }
@@ -326,6 +374,7 @@ export async function handleBugReportRoutes(
       return true;
     }
 
+    const githubFetch = createBugReportFetchSignal(req);
     try {
       const sanitizedTitle = sanitize(body.description, 80).replace(
         /[\r\n]+/g,
@@ -344,6 +393,7 @@ export async function handleBugReportRoutes(
           body: issueBody,
           labels: ["bug", "triage", "user-reported"],
         }),
+        signal: githubFetch.signal,
       });
 
       if (!issueRes.ok) {
@@ -362,8 +412,12 @@ export async function handleBugReportRoutes(
       }
       json(res, { url });
     } catch (err) {
+      // error-policy:J1 boundary translation — GitHub transport and response
+      // failures become an explicit route failure instead of fabricated success.
       logger.error({ error: err }, "[bug-report] GitHub issue creation failed");
-      error(res, "Failed to create GitHub issue", 500);
+      error(res, "Failed to create GitHub issue", 502);
+    } finally {
+      githubFetch.cleanup();
     }
     return true;
   }

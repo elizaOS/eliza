@@ -267,10 +267,46 @@ async function telegramApi<T>(
   return data.result as T;
 }
 
+function assertValidTelegramChunkLength(maxLength: number): void {
+  if (
+    !Number.isFinite(maxLength) ||
+    !Number.isInteger(maxLength) ||
+    maxLength < 2
+  ) {
+    throw new RangeError(
+      "maxLength must be a finite integer of at least 2 UTF-16 code units",
+    );
+  }
+}
+
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/**
+ * `text.slice(0, maxLength)` that never ends on the lead half of a surrogate
+ * pair. Combined with {@link assertValidTelegramChunkLength}, the chunk loop
+ * always consumes at least one code unit.
+ */
+function truncateWellFormedTelegram(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const end =
+    isHighSurrogate(text.charCodeAt(maxLength - 1)) &&
+    isLowSurrogate(text.charCodeAt(maxLength))
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+}
+
 export function splitTelegramMessage(
   text: string,
   maxLength = MAX_MESSAGE_LENGTH,
 ): string[] {
+  assertValidTelegramChunkLength(maxLength);
   const chunks: string[] = [];
   if (!text) return chunks;
   let current = "";
@@ -286,8 +322,12 @@ export function splitTelegramMessage(
     }
     let remaining = line;
     while (remaining.length > maxLength) {
-      chunks.push(remaining.slice(0, maxLength));
-      remaining = remaining.slice(maxLength);
+      const head = truncateWellFormedTelegram(remaining, maxLength);
+      if (head.length === 0) {
+        throw new RangeError("telegram chunk limit made no UTF-16 progress");
+      }
+      chunks.push(head);
+      remaining = remaining.slice(head.length);
     }
     current = remaining;
   }

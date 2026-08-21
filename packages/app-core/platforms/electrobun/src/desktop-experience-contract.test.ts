@@ -30,6 +30,16 @@ describe("desktop experience contract — chat-first launch", () => {
     }
   });
 
+  it("keeps Cloud-only installs in the bottom-bar host across first run and relaunch", () => {
+    // The chat-overlay renderer owns first-run now: it expands the transparent
+    // native host to full while onboarding is active, then returns it through
+    // half/input to the resting pill. Starting the legacy full dashboard host
+    // makes every later Dock/tray reopen repaint the wallpaper window.
+    expect(shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [])).toBe(
+      true,
+    );
+  });
+
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
     expect(shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [])).toBe(
       false,
@@ -42,16 +52,25 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(tagged).toContain("shellMode=chat-overlay");
   });
 
-  it("presents the default window as a transparent, frameless bottom bar (macOS)", () => {
-    const presentation = resolveDesktopShellWindowPresentation(
-      {},
-      [],
-      "darwin",
-    );
+  it("presents the default window as a transparent, frameless bottom bar on every desktop", () => {
+    for (const platform of ["darwin", "win32", "linux"] as const) {
+      const presentation = resolveDesktopShellWindowPresentation(
+        {},
+        [],
+        platform,
+      );
+      expect(presentation.mode).toBe("bottom-bar");
+      expect(presentation.titleBarStyle).toBe("hidden");
+      expect(presentation.transparent).toBe(true);
+      expect(presentation.nativeShadow).toBe(false);
+    }
+  });
+
+  it("presents the Linux chat pill over a transparent native window", () => {
+    const presentation = resolveDesktopShellWindowPresentation({}, [], "linux");
     expect(presentation.mode).toBe("bottom-bar");
     expect(presentation.titleBarStyle).toBe("hidden");
     expect(presentation.transparent).toBe(true);
-    expect(presentation.nativeShadow).toBe(false);
   });
 
   it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {

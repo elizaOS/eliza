@@ -1,36 +1,13 @@
 /**
- * iMessage connector HTTP routes.
- *
- * Exposes the @elizaos/plugin-imessage service state through Eliza's
- * HTTP API so downstream UI layers (the dashboard, a future CLI, third-
- * party integrations) can read and write against the macOS Messages.app
- * world without each client having to go straight to chat.db or native
- * macOS bridges.
- *
- * Routes served (all under `/api/imessage`):
- *
- *   GET    /api/imessage/status         service health + cursor + counts
- *   GET    /api/imessage/messages       recent messages from chat.db
- *   GET    /api/imessage/chats          list of chats (DMs + groups)
- *   GET    /api/imessage/contacts       every contact with full detail
- *   POST   /api/imessage/contacts       create a new contact
- *   PATCH  /api/imessage/contacts/:id   update an existing contact
- *   DELETE /api/imessage/contacts/:id   delete a contact
- *
- * Each handler pulls the IMessageService instance off the runtime via
- * `runtime.getService("imessage")` and calls the public methods added
- * in the plugin's patched branch. If the service isn't registered (the
- * plugin isn't enabled, Eliza booted before it was loaded, etc.) we
- * return 503 with a structured reason so the UI can render an
- * informative empty state.
- *
- * Write endpoints (POST/PATCH/DELETE on contacts) touch the real macOS
- * Contacts store through CNContactStore and require the Contacts privacy
- * grant. Once granted, the permission is persistent across restarts.
+ * Legacy iMessage HTTP routes expose service health, message history, chats,
+ * and Contacts CRUD to hosts that still use raw Node request handlers. Service
+ * access stays structural so the connector remains dynamically loadable.
  */
 
 import type http from "node:http";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import { z } from "zod";
+import { parseIMessageContactId } from "../contact-path.js";
 
 /**
  * Route helper options accepted by the host. This plugin depends on core, not
@@ -137,25 +114,28 @@ export interface IMessageRouteState {
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 const MAX_BODY_BYTES = 256 * 1024; // Contacts payloads are tiny; cap aggressively.
+const DEFAULT_MESSAGES_LIMIT = 50;
+const MAX_MESSAGES_LIMIT = 500;
+const IMessageMessagesLimitSchema = z
+  .string()
+  .trim()
+  .regex(/^[+-]?\d+$/)
+  .transform(Number)
+  .refine(Number.isSafeInteger)
+  .transform((value) => Math.min(Math.max(1, value), MAX_MESSAGES_LIMIT));
+
+function parseMessagesLimit(raw: string | null): number | null {
+  if (raw === null || raw.trim() === "") {
+    return DEFAULT_MESSAGES_LIMIT;
+  }
+  const parsed = IMessageMessagesLimitSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
 
 function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
   if (!state.runtime) return null;
   const raw = state.runtime.getService(IMESSAGE_SERVICE_NAME);
   return (raw as IMessageServiceLike | null | undefined) ?? null;
-}
-
-/**
- * Extract the `:id` segment from a contact path like
- * `/api/imessage/contacts/ABCD-EFGH-...`. Returns null if the path
- * doesn't match. The id is URL-decoded since Apple Contacts ids are
- * GUID-style and safe, but callers could URL-encode for paranoia.
- */
-function parseContactId(pathname: string): string | null {
-  const prefix = "/api/imessage/contacts/";
-  if (!pathname.startsWith(prefix)) return null;
-  const rest = pathname.slice(prefix.length);
-  if (!rest) return null;
-  return decodeURIComponent(rest);
 }
 
 /**
@@ -202,8 +182,11 @@ export async function handleIMessageRoute(
       return true;
     }
     const url = new URL(req.url ?? pathname, "http://localhost");
-    const limitParam = url.searchParams.get("limit");
-    const limit = Math.min(Math.max(1, Number.parseInt(limitParam ?? "50", 10) || 50), 500);
+    const limit = parseMessagesLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      helpers.error(res, "limit must be an integer", 400);
+      return true;
+    }
     try {
       const messages = await service.getRecentMessages(limit);
       helpers.json(res, { messages, count: messages.length });
@@ -305,11 +288,18 @@ export async function handleIMessageRoute(
 
   // ── PATCH /api/imessage/contacts/:id ──────────────────────────────
   if (method === "PATCH" && pathname.startsWith("/api/imessage/contacts/")) {
-    const id = parseContactId(pathname);
-    if (!id) {
-      helpers.error(res, "contact id is required in the path", 400);
+    const parsedId = parseIMessageContactId(pathname);
+    if (!parsedId.ok) {
+      helpers.error(
+        res,
+        parsedId.reason === "malformed"
+          ? "Invalid contact id: malformed URL encoding"
+          : "contact id is required in the path",
+        400
+      );
       return true;
     }
+    const id = parsedId.id;
     const service = resolveService(state);
     if (!service) {
       helpers.error(res, "imessage service not registered", 503);
@@ -355,11 +345,18 @@ export async function handleIMessageRoute(
 
   // ── DELETE /api/imessage/contacts/:id ─────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/imessage/contacts/")) {
-    const id = parseContactId(pathname);
-    if (!id) {
-      helpers.error(res, "contact id is required in the path", 400);
+    const parsedId = parseIMessageContactId(pathname);
+    if (!parsedId.ok) {
+      helpers.error(
+        res,
+        parsedId.reason === "malformed"
+          ? "Invalid contact id: malformed URL encoding"
+          : "contact id is required in the path",
+        400
+      );
       return true;
     }
+    const id = parsedId.id;
     const service = resolveService(state);
     if (!service) {
       helpers.error(res, "imessage service not registered", 503);

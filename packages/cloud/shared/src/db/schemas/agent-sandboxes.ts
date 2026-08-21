@@ -113,7 +113,54 @@ export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_
  * have containers. See services/shared-runtime/agent-tier.ts for derivation.
  */
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+
+/**
+ * Tiers that own a real container. Every tier except "shared" is here today,
+ * but the list is an explicit allowlist rather than a "not shared" test so
+ * that adding a tier is a deliberate decision at each container-scoped query
+ * (heartbeat dialing, fleet liveness) instead of a silent enrollment.
+ */
+export const CONTAINER_BACKED_EXECUTION_TIERS = [
+  "dedicated-lazy",
+  "dedicated-always",
+  "custom",
+] as const satisfies readonly AgentExecutionTier[];
 export type WarmClaimCredentialState = "pending" | "attested" | "ready" | "failed";
+export type AgentActivationPurpose = "provision" | "wake" | "restore" | "fresh_boot";
+export type AgentActivationPhase =
+  | "container_pending"
+  | "restore_pending"
+  | "restart_pending"
+  | "restart_attested"
+  | "active"
+  | "blocked";
+
+export interface AgentActivationReceipt {
+  schemaVersion: 1;
+  generation: string;
+  purpose: AgentActivationPurpose;
+  agentId: string;
+  organizationId: string;
+  lifecycleRevision: string;
+  backupId: string | null;
+  backupHash: string | null;
+  manifestHash: string | null;
+  componentHashes: Record<string, string> | null;
+  freshAuthorization: {
+    kind: "no_backup" | "explicit_consent";
+    lifecycleRevision: string;
+    headBackupId: string | null;
+    headBackupHash: string | null;
+  } | null;
+  containerId: string;
+  imageDigest: string;
+  receiptId: string;
+  receiptHash: string;
+  receiptMac: string;
+  appliedAt: string;
+  restored: true;
+  requiresRestart: boolean;
+}
 
 export const agentSandboxes = pgTable(
   "agent_sandboxes",
@@ -132,30 +179,41 @@ export const agentSandboxes = pgTable(
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
     lifecycle_job_id: uuid("lifecycle_job_id"),
     lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
-    /**
-     * Fully published activation authority consumed by capture and RPO
-     * scheduling. Intermediate quarantine phases are introduced by the
-     * restore slice; this foundation deliberately accepts only all-null or a
-     * complete active generation.
-     */
+    /** Durable, retry-stable generation for a quarantined container activation. */
     activation_generation: uuid("activation_generation"),
+    activation_previous_generation: uuid("activation_previous_generation"),
     /**
      * Exact signed-int64 copy of `lifecycle_revision`. The source column is a
      * PostgreSQL bigint, so bigint mode avoids a lossy JavaScript number while
      * retaining direct SQL equality and the source column's int64 upper bound.
      */
     activation_lifecycle_revision: bigint("activation_lifecycle_revision", { mode: "bigint" }),
-    activation_phase: text("activation_phase").$type<"active">(),
+    activation_purpose: text("activation_purpose").$type<AgentActivationPurpose>(),
+    activation_phase: text("activation_phase").$type<AgentActivationPhase>(),
+    // Composite tenant FKs to agent_sandbox_backups(id, catalog_organization_id,
+    // catalog_agent_id) live in 0237 — agentSandboxBackups is declared below, so
+    // drizzle's foreignKey() cannot express them here without a TDZ cycle.
+    activation_backup_id: uuid("activation_backup_id"),
+    activation_backup_hash: text("activation_backup_hash"),
+    activation_receipt: jsonb("activation_receipt").$type<AgentActivationReceipt>(),
     activation_receipt_hash: text("activation_receipt_hash"),
     activation_container_id: text("activation_container_id"),
     activation_node_id: text("activation_node_id"),
     activation_image_digest: text("activation_image_digest"),
+    activation_token_hash: text("activation_token_hash"),
+    activation_token_ciphertext: text("activation_token_ciphertext"),
     activation_boot_id: uuid("activation_boot_id"),
     activation_authority_published_at: timestamp("activation_authority_published_at", {
       withTimezone: true,
     }),
+    activation_funding_revision: bigint("activation_funding_revision", { mode: "bigint" }),
     activation_dispatched_at: timestamp("activation_dispatched_at", { withTimezone: true }),
     activation_completed_at: timestamp("activation_completed_at", { withTimezone: true }),
+    activation_consent_lifecycle_revision: bigint("activation_consent_lifecycle_revision", {
+      mode: "bigint",
+    }),
+    activation_consent_head_backup_id: uuid("activation_consent_head_backup_id"),
+    activation_consent_head_backup_hash: text("activation_consent_head_backup_hash"),
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
     /** Lifecycle state captured when a reversible deletion generation begins. */
@@ -322,9 +380,11 @@ export const agentSandboxes = pgTable(
     previous_docker_image: text("previous_docker_image"),
     // Billing tracking fields (mirrors containers table pattern)
     billing_status: text("billing_status").$type<AgentBillingStatus>().notNull().default("active"),
-    last_billed_at: timestamp("last_billed_at", { withTimezone: true }),
+    last_billed_at: timestamp("last_billed_at", { withTimezone: true }).defaultNow(),
     hourly_rate: numeric("hourly_rate", { precision: 10, scale: 4 }).default("0.0100"),
-    total_billed: numeric("total_billed", { precision: 10, scale: 2 }).default("0.00").notNull(),
+    total_billed: numeric("total_billed", { precision: 18, scale: 6 })
+      .default("0.000000")
+      .notNull(),
     shutdown_warning_sent_at: timestamp("shutdown_warning_sent_at", {
       withTimezone: true,
     }),
@@ -430,40 +490,89 @@ export const agentSandboxes = pgTable(
           OR ${table.backup_schedule_last_error_code} ~ '^[A-Z][A-Z0-9_]{0,95}$')) IS TRUE`,
     ),
     activation_state_check: check(
-      "agent_sandboxes_activation_state_check",
+      "agent_sandboxes_activation_state_v2_check",
       sql`((
-        ${table.activation_generation} IS NULL
-        AND ${table.activation_lifecycle_revision} IS NULL
-        AND ${table.activation_phase} IS NULL
-        AND ${table.activation_receipt_hash} IS NULL
-        AND ${table.activation_container_id} IS NULL
-        AND ${table.activation_node_id} IS NULL
-        AND ${table.activation_image_digest} IS NULL
-        AND ${table.activation_boot_id} IS NULL
-        AND ${table.activation_authority_published_at} IS NULL
-        AND ${table.activation_dispatched_at} IS NULL
-        AND ${table.activation_completed_at} IS NULL
+        num_nonnulls(${table.activation_generation}, ${table.activation_previous_generation},
+          ${table.activation_lifecycle_revision}, ${table.activation_purpose},
+          ${table.activation_phase}, ${table.activation_backup_id},
+          ${table.activation_backup_hash}, ${table.activation_receipt},
+          ${table.activation_receipt_hash}, ${table.activation_container_id},
+          ${table.activation_node_id}, ${table.activation_image_digest},
+          ${table.activation_token_hash}, ${table.activation_token_ciphertext},
+          ${table.activation_boot_id}, ${table.activation_authority_published_at},
+          ${table.activation_funding_revision}, ${table.activation_dispatched_at},
+          ${table.activation_completed_at}, ${table.activation_consent_lifecycle_revision},
+          ${table.activation_consent_head_backup_id},
+          ${table.activation_consent_head_backup_hash}) = 0
       ) OR (
         ${table.activation_generation} IS NOT NULL
-        AND ${table.activation_lifecycle_revision} IS NOT NULL
         AND ${table.activation_lifecycle_revision} >= 0
-        AND ${table.activation_lifecycle_revision} = ${table.lifecycle_revision}
-        AND ${table.activation_phase} = 'active'
-        AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'
-        AND ${table.activation_container_id} ~ '^[0-9a-f]{64}$'
-        AND ${table.sandbox_id} IS NOT NULL
-        AND ${table.activation_container_id} <> ${table.sandbox_id}
-        AND ${table.activation_node_id} IS NOT NULL
-        AND btrim(${table.activation_node_id}) <> ''
-        AND ${table.activation_node_id} = ${table.node_id}
-        AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'
-        AND ${table.activation_image_digest} = ${table.image_digest}
-        AND ${table.activation_boot_id} IS NOT NULL
-        AND ${table.activation_authority_published_at} IS NOT NULL
-        AND ${table.activation_dispatched_at} IS NOT NULL
-        AND ${table.activation_completed_at} IS NOT NULL
-        AND ${table.activation_authority_published_at} <= ${table.activation_dispatched_at}
-        AND ${table.activation_dispatched_at} <= ${table.activation_completed_at}
+        AND (${table.activation_purpose} IN ('provision', 'wake', 'restore', 'fresh_boot')
+          OR ${table.activation_purpose} IS NULL)
+        AND ${table.activation_phase} IN ('container_pending', 'restore_pending',
+          'restart_pending', 'restart_attested', 'active', 'blocked')
+        AND (${table.activation_purpose} IS NULL OR (
+          ${table.activation_token_hash} ~ '^[0-9a-f]{64}$'
+          AND octet_length(${table.activation_token_ciphertext}) BETWEEN 1 AND 16384))
+        AND ((${table.activation_backup_id} IS NULL AND ${table.activation_backup_hash} IS NULL)
+          OR (${table.activation_backup_id} IS NOT NULL
+            AND ${table.activation_backup_hash} ~ '^[0-9a-f]{64}$'))
+        AND ((${table.activation_purpose} = 'restore'
+            AND ${table.activation_backup_id} IS NOT NULL)
+          OR (${table.activation_purpose} = 'fresh_boot'
+            AND ${table.activation_backup_id} IS NULL)
+          OR ${table.activation_purpose} IN ('provision', 'wake')
+          OR (${table.activation_purpose} IS NULL AND ${table.activation_phase} = 'active'
+            AND num_nonnulls(${table.activation_previous_generation},
+              ${table.activation_backup_id}, ${table.activation_backup_hash},
+              ${table.activation_token_hash}, ${table.activation_token_ciphertext},
+              ${table.activation_funding_revision},
+              ${table.activation_consent_lifecycle_revision},
+              ${table.activation_consent_head_backup_id},
+              ${table.activation_consent_head_backup_hash}) = 0))
+        AND ((${table.activation_consent_head_backup_id} IS NULL
+            AND ${table.activation_consent_head_backup_hash} IS NULL)
+          OR (${table.activation_consent_head_backup_id} IS NOT NULL
+            AND ${table.activation_consent_head_backup_hash} ~ '^[0-9a-f]{64}$'))
+        AND (${table.activation_consent_lifecycle_revision} IS NULL
+          OR ${table.activation_consent_lifecycle_revision} >= 0)
+        AND (${table.activation_purpose} IS NULL OR ${table.activation_purpose} <> 'fresh_boot'
+          OR ${table.activation_consent_lifecycle_revision} IS NOT NULL)
+        AND ((${table.activation_purpose} IS NULL AND ${table.activation_receipt} IS NULL
+            AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$')
+          OR (${table.activation_receipt} IS NULL AND ${table.activation_receipt_hash} IS NULL)
+          OR (${table.activation_receipt} IS NOT NULL
+            AND ${table.activation_receipt_hash} ~ '^[0-9a-f]{64}$'))
+        AND (${table.activation_phase} NOT IN ('restart_pending', 'restart_attested', 'active')
+          OR ${table.activation_receipt} IS NOT NULL OR ${table.activation_purpose} IS NULL)
+        AND (${table.activation_phase} NOT IN
+          ('restore_pending', 'restart_pending', 'restart_attested', 'active')
+          OR (${table.activation_container_id} ~ '^[0-9a-f]{64}$'
+            AND ${table.activation_image_digest} ~ '^sha256:[0-9a-f]{64}$'))
+        AND (${table.activation_phase} NOT IN ('restart_attested', 'active')
+          OR ${table.activation_boot_id} IS NOT NULL)
+        AND (${table.activation_phase} <> 'active' OR ((
+          ${table.activation_funding_revision} >= 0
+          OR (${table.activation_purpose} IS NULL
+            AND ${table.activation_funding_revision} IS NULL))
+          AND ${table.activation_lifecycle_revision} = ${table.lifecycle_revision}
+          AND ${table.activation_node_id} IS NOT NULL
+          AND btrim(${table.activation_node_id}) <> ''
+          AND ${table.activation_node_id} = ${table.node_id}
+          AND ${table.activation_image_digest} = ${table.image_digest}
+          AND ${table.sandbox_id} IS NOT NULL
+          AND ${table.activation_container_id} <> ${table.sandbox_id}
+          AND ${table.activation_authority_published_at} IS NOT NULL
+          AND ${table.activation_dispatched_at} IS NOT NULL
+          AND ${table.activation_completed_at} IS NOT NULL
+          AND ${table.activation_authority_published_at} <= ${table.activation_dispatched_at}
+          AND ${table.activation_dispatched_at} <= ${table.activation_completed_at}
+        ))
+        AND (${table.activation_phase} = 'active' OR (
+          ${table.activation_authority_published_at} IS NULL
+          AND ${table.activation_dispatched_at} IS NULL
+          AND ${table.activation_completed_at} IS NULL
+        ))
       )) IS TRUE`,
     ),
     deletion_intent_pair_check: check(
@@ -958,6 +1067,42 @@ export const agentSandboxBackups = pgTable(
       table.id,
       table.catalog_organization_id,
       table.catalog_agent_id,
+    ),
+    restore_authority_unique: unique("agent_sandbox_backups_restore_authority_unique").on(
+      table.id,
+      table.catalog_organization_id,
+      table.catalog_agent_id,
+      table.backup_operation_id,
+      table.lifecycle_generation,
+      table.lifecycle_revision,
+      table.manifest_digest,
+    ),
+    publication_backup_authority_unique: unique(
+      "agent_sandbox_backups_publication_backup_authority_unique",
+    ).on(table.id, table.catalog_organization_id, table.catalog_agent_id, table.manifest_digest),
+    final_restore_authority_unique: unique(
+      "agent_sandbox_backups_final_restore_authority_unique",
+    ).on(
+      table.id,
+      table.catalog_organization_id,
+      table.catalog_agent_id,
+      table.backup_operation_id,
+      table.lifecycle_generation,
+      table.lifecycle_revision,
+      table.manifest_digest,
+    ),
+    vault_restore_authority_unique: unique(
+      "agent_sandbox_backups_vault_restore_authority_unique",
+    ).on(
+      table.id,
+      table.catalog_organization_id,
+      table.catalog_agent_id,
+      table.backup_operation_id,
+      table.lifecycle_generation,
+      table.lifecycle_revision,
+      table.manifest_digest,
+      table.vault_key_generation_id,
+      table.vault_key_authority_receipt_digest,
     ),
     catalog_authority_fk: foreignKey({
       name: "agent_sandbox_backups_catalog_authority_fkey",

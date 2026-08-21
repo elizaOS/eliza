@@ -280,13 +280,14 @@ describe("CreditsService.reconcile", () => {
     "refund branch: reserved > actual increases balance by the difference",
     async () => {
       if (!pgliteReady) return;
+      const reservationId = await insertReservation(1.0);
 
       const result = await creditsService.reconcile({
         organizationId: ORG_ID,
         reservedAmount: 1.0,
         actualCost: 0.4,
         description: "reconcile refund case",
-        metadata: { user_id: USER_ID },
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
       });
 
       expect(result.adjustmentType).toBe("refund");
@@ -297,7 +298,7 @@ describe("CreditsService.reconcile", () => {
 
       // Exactly one refund row, whose id is the returned settlement id.
       expect(await countByType("refund")).toBe(1);
-      expect(await countTransactions()).toBe(1);
+      expect(await countTransactions()).toBe(2);
       const refundRow = await dbWrite.execute(
         `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
       );
@@ -428,6 +429,7 @@ describe("CreditsService.reconcile", () => {
     "refund branch: actualCost 0 refunds the ENTIRE reservation (request-failure path)",
     async () => {
       if (!pgliteReady) return;
+      const reservationId = await insertReservation(1.0);
 
       // The live request-failure path settles a reservation against actualCost 0
       // (reservation.reconcile(0)): the request was reserved but produced no
@@ -441,7 +443,7 @@ describe("CreditsService.reconcile", () => {
         reservedAmount: 1.0,
         actualCost: 0,
         description: "reconcile full-refund case",
-        metadata: { user_id: USER_ID },
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
       });
 
       expect(result.adjustmentType).toBe("refund");
@@ -453,7 +455,7 @@ describe("CreditsService.reconcile", () => {
       // Exactly one refund row, for the FULL reserved amount, and its id is the
       // returned settlement id.
       expect(await countByType("refund")).toBe(1);
-      expect(await countTransactions()).toBe(1);
+      expect(await countTransactions()).toBe(2);
       const refundRow = await dbWrite.execute(
         `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
       );
@@ -509,19 +511,10 @@ describe("CreditsService.reconcile", () => {
   );
 
   test(
-    "NON-IDEMPOTENT double-settle hazard: settling then a second reconcile(0) refunds AGAIN (the free-generation bug #10278's chargeSettled guard prevents)",
+    "a post-settle reconcile(0) without reservation authority cannot issue a second refund",
     async () => {
       if (!pgliteReady) return;
-
-      // reconcile() is a pure function of (reservedAmount - actualCost); it has NO
-      // settled-guard of its own. The metered media routes (generate-video /
-      // generate-music / generate-image) reserve the full amount up front, then on
-      // success call reconcile(actualCost) to settle. If a *post-settle*, non-critical
-      // step then throws (e.g. generationsService.create), the route's catch arm used
-      // to call reconcile(0) — refunding the FULL reservation a SECOND time and handing
-      // the user a free generation. This test pins that hazard at the money layer so the
-      // route-level `if (reservation && !chargeSettled)` guard can never be silently
-      // removed without a red test.
+      const reservationId = await insertReservation(1.0);
 
       // 1) Settle: reserved 1.0, actual 0.4 -> refund the 0.6 over-reservation.
       const settle = await creditsService.reconcile({
@@ -529,27 +522,25 @@ describe("CreditsService.reconcile", () => {
         reservedAmount: 1.0,
         actualCost: 0.4,
         description: "media settle (charge committed)",
-        metadata: { user_id: USER_ID },
+        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
       });
       expect(settle.adjustmentType).toBe("refund");
       expect(await getBalance()).toBeCloseTo(10.6, 6);
 
-      // 2) The OLD post-settle catch path: reconcile(0) on the same reservation.
-      //    Because reconcile is non-idempotent, this refunds the ENTIRE 1.0 again.
-      const doubleRefund = await creditsService.reconcile({
-        organizationId: ORG_ID,
-        reservedAmount: 1.0,
-        actualCost: 0,
-        description: "media post-settle error -> erroneous second refund",
-        metadata: { user_id: USER_ID },
-      });
-      expect(doubleRefund.adjustmentType).toBe("refund");
+      // 2) The old post-settle catch shape omitted the reservation id. It must
+      // now fail before the full-reservation refund can be written.
+      await expect(
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 1.0,
+          actualCost: 0,
+          description: "media post-settle error -> erroneous second refund",
+          metadata: { user_id: USER_ID },
+        }),
+      ).rejects.toMatchObject({ code: "CREDIT_REFUND_RESERVATION_REQUIRED" });
 
-      // The damage: balance is 10.0 + 0.6 + 1.0 = 11.60 (1.0 of free credit on a
-      // request that only over-reserved by 0.6), and TWO refund rows exist. This is
-      // exactly what skipping reconcile(0) once chargeSettled is true prevents.
-      expect(await getBalance()).toBeCloseTo(11.6, 6);
-      expect(await countByType("refund")).toBe(2);
+      expect(await getBalance()).toBeCloseTo(10.6, 6);
+      expect(await countByType("refund")).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
@@ -626,13 +617,10 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
   );
 
   test(
-    "without a reservation id the fix is opt-in — behavior is unchanged (still double-applies)",
+    "without a reservation id repeated refund attempts fail closed",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("10");
-      // No reservation_transaction_id => no dedupe key => prior non-idempotent
-      // behavior is preserved (this documents that the fix does NOT silently
-      // change any existing caller that lacks a reservation id).
       const args = {
         organizationId: ORG_ID,
         reservedAmount: 1.0,
@@ -641,11 +629,16 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
         metadata: { user_id: USER_ID },
       };
 
-      await creditsService.reconcile(args);
-      await creditsService.reconcile(args);
+      await expect(creditsService.reconcile(args)).rejects.toMatchObject({
+        code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+      });
+      await expect(creditsService.reconcile(args)).rejects.toMatchObject({
+        code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+      });
 
-      expect(await getBalance()).toBeCloseTo(11.2, 6);
-      expect(await countByType("refund")).toBe(2);
+      expect(await getBalance()).toBeCloseTo(10, 6);
+      expect(await countByType("refund")).toBe(0);
+      expect(await countTransactions()).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
@@ -1011,6 +1004,30 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
+    "sweep rejects a negative legacy estimate without settling or paying out",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000, true, {
+        estimated_cost: -1,
+      });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(0);
+      expect(stats.skipped).toBe(1);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "sweep settles fixed-amount reservations to the stored estimate without applying the model buffer",
     async () => {
       if (!pgliteReady) return;
@@ -1168,6 +1185,69 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
  * granted, while respecting the live credit_balance >= 0 check constraint.
  */
 describe("CreditsService.clawbackCredits (#10920)", () => {
+  test(
+    "serializes concurrent and out-of-order cumulative reversal targets under the org lock",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+      await dbWrite.execute(`
+        INSERT INTO credit_transactions (
+          organization_id, amount, type, description, metadata, stripe_payment_intent_id
+        ) VALUES (
+          '${ORG_ID}', 100, 'credit', 'original Stripe grant', '{}', 'pi_cumulative_atomic'
+        )
+      `);
+      const applyTarget = (target: number, key: string) =>
+        creditsService.clawbackCredits({
+          organizationId: ORG_ID,
+          amount: target,
+          cumulativeTargetAmount: target,
+          originalPaymentIntentId: "pi_cumulative_atomic",
+          description: `cumulative ${target}`,
+          stripePaymentIntentId: key,
+          metadata: { payment_intent_id: "pi_cumulative_atomic" },
+        });
+      await Promise.all([
+        applyTarget(30, "stripe:refund:atomic:3000"),
+        applyTarget(50, "stripe:refund:atomic:5000"),
+      ]);
+      await applyTarget(20, "stripe:refund:atomic:2000");
+      await applyTarget(50, "stripe:refund:atomic:5000");
+
+      expect(await getBalance()).toBeCloseTo(50, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_cumulative_atomic"),
+      ).toBeCloseTo(50, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "records cumulative reversal shortfall without over-clawing",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      await dbWrite.execute(`
+        INSERT INTO credit_transactions (
+          organization_id, amount, type, description, metadata, stripe_payment_intent_id
+        ) VALUES ('${ORG_ID}', 100, 'credit', 'original Stripe grant', '{}', 'pi_shortfall_atomic')
+      `);
+      const result = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 80,
+        cumulativeTargetAmount: 80,
+        originalPaymentIntentId: "pi_shortfall_atomic",
+        description: "cumulative shortfall",
+        stripePaymentIntentId: "stripe:refund:shortfall:8000",
+        metadata: { payment_intent_id: "pi_shortfall_atomic" },
+      });
+      expect(result.appliedAmount).toBeCloseTo(20, 6);
+      expect(result.shortfallAmount).toBeCloseTo(60, 6);
+      expect(await getBalance()).toBeCloseTo(0, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "floors the balance at zero and records unrecovered shortfall metadata",
     async () => {

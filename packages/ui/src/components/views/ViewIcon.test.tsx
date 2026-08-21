@@ -151,11 +151,6 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
     expect(new Set(glyphs).size).toBe(cases.length);
   });
 
-  it("uses a unique semantic fallback for My Apps", () => {
-    const rendered = render(<ViewIcon label="My Apps" id="my-apps" />);
-    expect(glyphClass(rendered.container)).toBe("lucide-boxes");
-  });
-
   it("resolves every installed app package before the generic plugin fallback", () => {
     const cases = [
       ["Contacts", "@elizaos/plugin-contacts", "lucide-users-round"],

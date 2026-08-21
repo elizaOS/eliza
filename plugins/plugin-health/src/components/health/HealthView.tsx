@@ -47,35 +47,64 @@ export type { WindowDays } from "./HealthSpatialView.tsx";
 // ---------------------------------------------------------------------------
 
 export interface SleepFetchers {
-  fetchHistory: (windowDays: number) => Promise<LifeOpsSleepHistoryResponse>;
+  fetchHistory: (
+    windowDays: number,
+    signal?: AbortSignal,
+  ) => Promise<LifeOpsSleepHistoryResponse>;
   fetchRegularity: (
     windowDays: number,
+    signal?: AbortSignal,
   ) => Promise<LifeOpsSleepRegularityResponse>;
   fetchBaseline: (
     windowDays: number,
+    signal?: AbortSignal,
   ) => Promise<LifeOpsPersonalBaselineResponse>;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
+/** Maximum time allowed for one sleep-data request. */
+export const HEALTH_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getHealthJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = HEALTH_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
   if (!response.ok) {
-    throw new Error(`Sleep request failed (${response.status}): ${path}`);
+    throw new Error(`Sleep request failed (${response.status}): ${url}`);
   }
   return (await response.json()) as T;
 }
 
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return getHealthJsonWithFetch<T>(
+    `${client.getBaseUrl()}${path}`,
+    globalThis.fetch,
+    HEALTH_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
+}
+
 const defaultFetchers: SleepFetchers = {
-  fetchHistory: (windowDays) =>
+  fetchHistory: (windowDays, signal) =>
     getJson<LifeOpsSleepHistoryResponse>(
       `/api/lifeops/sleep/history?windowDays=${windowDays}&includeNaps=true`,
+      signal,
     ),
-  fetchRegularity: (windowDays) =>
+  fetchRegularity: (windowDays, signal) =>
     getJson<LifeOpsSleepRegularityResponse>(
       `/api/lifeops/sleep/regularity?windowDays=${windowDays}`,
+      signal,
     ),
-  fetchBaseline: (windowDays) =>
+  fetchBaseline: (windowDays, signal) =>
     getJson<LifeOpsPersonalBaselineResponse>(
       `/api/lifeops/sleep/baseline?windowDays=${windowDays}`,
+      signal,
     ),
 };
 
@@ -233,22 +262,25 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
-  const load = useCallback((days: WindowDays) => {
-    let cancelled = false;
-    setState({ kind: "loading" });
+  const load = useCallback((days: WindowDays, background = false) => {
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
+    if (!background) setState({ kind: "loading" });
     Promise.all([
-      fetchersRef.current.fetchHistory(days),
-      fetchersRef.current.fetchRegularity(days),
-      fetchersRef.current.fetchBaseline(days),
+      fetchersRef.current.fetchHistory(days, controller.signal),
+      fetchersRef.current.fetchRegularity(days, controller.signal),
+      fetchersRef.current.fetchBaseline(days, controller.signal),
     ])
       .then(([history, regularity, baseline]) => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setState({ kind: "ready", data: { history, regularity, baseline } });
         }
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
@@ -256,35 +288,29 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
               ? error.message
               : "Could not load sleep data.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) {
+          activeLoadRef.current = null;
+        }
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Initial load + reload on window change.
-  useEffect(() => load(windowDays), [load, windowDays]);
+  useEffect(() => {
+    load(windowDays);
+  }, [load, windowDays]);
 
   // Quiet background poll keeps the view fresh without a manual refresh control:
   // it swaps in newer data on success and never flashes the loading state or
   // clobbers a populated view with a transient fetch error.
   useEffect(() => {
-    const id = setInterval(() => {
-      Promise.all([
-        fetchersRef.current.fetchHistory(windowDays),
-        fetchersRef.current.fetchRegularity(windowDays),
-        fetchersRef.current.fetchBaseline(windowDays),
-      ])
-        .then(([history, regularity, baseline]) => {
-          setState({ kind: "ready", data: { history, regularity, baseline } });
-        })
-        // error-policy:J4 the initial `load()` above owns the error render
-        // (kind:"error"); this quiet poll intentionally keeps the last-good view
-        // on a transient refresh failure rather than clobbering populated data.
-        .catch(() => {});
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [windowDays]);
+    const id = setInterval(() => load(windowDays, true), POLL_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+      activeLoadRef.current?.abort();
+    };
+  }, [load, windowDays]);
 
   const snapshot = useMemo<HealthSnapshot>(() => {
     if (state.kind === "loading") {

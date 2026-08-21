@@ -129,10 +129,10 @@ ElizaClient.prototype.unregisterPushToken = async function (
   this: ElizaClient,
   token: string,
 ): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>(
-    `/api/notifications/push-tokens/${encodeURIComponent(token)}`,
-    { method: "DELETE" },
-  );
+  return this.fetch<{ ok: boolean }>("/api/notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token }),
+  });
 };
 
 // Dev-only seed (the server 404s it in production builds): paints a demo

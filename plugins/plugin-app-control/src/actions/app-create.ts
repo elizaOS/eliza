@@ -30,6 +30,7 @@ import type { InstalledAppInfo } from "../types.js";
 import {
 	findAsyncCodingDelegationActionName,
 	preflightCodingDispatch,
+	resolveAppsLandingRoot,
 	resolveScaffoldTemplateDir,
 	templateMissingGuidance,
 } from "./scaffold-env.js";
@@ -190,10 +191,12 @@ async function copyTemplate(
 }
 
 async function findFreeWorkdir(
-	repoRoot: string,
 	baseName: string,
 ): Promise<{ workdir: string; appDirName: string }> {
-	const baseDir = path.join(repoRoot, APPS_RELATIVE_PATH);
+	// Landing is env-explicit or the state dir — NEVER the cwd-fallback repo
+	// root, which is the running agent's own checkout (see
+	// resolveAppsLandingRoot).
+	const baseDir = resolveAppsLandingRoot();
 	let appDirName = `app-${baseName}`;
 	let candidate = path.join(baseDir, appDirName);
 	let suffix = 2;
@@ -701,6 +704,8 @@ async function locateInstalledAppWorkdir(
 ): Promise<string | null> {
 	const basename = app.pluginName.replace(/^@[^/]+\//, "").trim();
 	const candidates = [
+		path.join(resolveAppsLandingRoot(), basename),
+		path.join(resolveAppsLandingRoot(), basename.replace(/^app-/, "")),
 		path.join(repoRoot, APPS_RELATIVE_PATH, basename),
 		path.join(repoRoot, APPS_RELATIVE_PATH, basename.replace(/^app-/, "")),
 		path.join(repoRoot, "eliza", "plugins", basename),
@@ -765,7 +770,7 @@ async function createNewApp({
 		};
 	}
 
-	const { workdir, appDirName } = await findFreeWorkdir(repoRoot, name);
+	const { workdir, appDirName } = await findFreeWorkdir(name);
 
 	await copyTemplate(templateSrc, workdir, {
 		[NAME_PLACEHOLDER]: name,

@@ -9,7 +9,6 @@
  * (from a backup file or a modification-history entry).
  */
 import path from "node:path";
-import fs from "fs-extra";
 import { z } from "zod";
 import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
@@ -19,6 +18,7 @@ import type {
 	MessageExampleGroup,
 } from "../../../../types/index.ts";
 import { Service } from "../../../../types/service.ts";
+import * as fs from "../../../../utils/fs-extra-lite.ts";
 import { resolveStateDir } from "../../../../utils/state-dir";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
@@ -133,7 +133,7 @@ export class CharacterFileManager extends Service {
 		for (const filePath of possiblePaths) {
 			if (await fs.pathExists(filePath)) {
 				try {
-					const content = await fs.readJSON(filePath);
+					const content = await fs.readJson(filePath);
 					if (content.name === character.name) {
 						this.characterFilePath = filePath;
 						logger.debug({ path: filePath }, "Character file detected");
@@ -436,7 +436,7 @@ export class CharacterFileManager extends Service {
 
 			// Write to file if available
 			if (this.characterFilePath) {
-				await fs.writeJSON(this.characterFilePath, currentCharacter, {
+				await fs.writeJson(this.characterFilePath, currentCharacter, {
 					spaces: 2,
 				});
 				logger.info("Character file updated successfully");
@@ -567,7 +567,7 @@ export class CharacterFileManager extends Service {
 			}
 
 			// Read and validate backup content
-			const backupContent = await fs.readJSON(backupPath);
+			const backupContent = await fs.readJson(backupPath);
 
 			if (!backupContent.name || typeof backupContent.name !== "string") {
 				return {
@@ -584,7 +584,7 @@ export class CharacterFileManager extends Service {
 
 			// If we have a character file path, update the file
 			if (this.characterFilePath) {
-				await fs.writeJSON(this.characterFilePath, backupContent, {
+				await fs.writeJson(this.characterFilePath, backupContent, {
 					spaces: 2,
 				});
 			}

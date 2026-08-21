@@ -80,6 +80,7 @@ plugins/plugin-agent-skills/
 │   ├── services/
 │   │   ├── skills.ts           # AgentSkillsService (AGENT_SKILLS_SERVICE)
 │   │   ├── install.ts          # Dependency install helpers (brew/apt/pip/cargo/npm)
+│   │   ├── bin-lookup.ts       # Shared allowlisted PATH probe (argv form, no shell) for requires/install bins
 │   │   ├── skill-catalog-client.ts  # Cached catalog client (skills/.cache/catalog.json)
 │   │   └── skill-marketplace.ts     # Marketplace install/uninstall/search
 │   ├── api/
@@ -165,6 +166,7 @@ Auto-enable gate (not a runtime env var): `config.features.agentSkills` must be 
 - **USE_SKILL vs SKILL:** `USE_SKILL` is the stable invocation surface for callers. `SKILL` (and its promoted `SKILL_<OP>` variants) covers lifecycle management. Keep them separate.
 - **Catalog cache:** Lives at `skills/.cache/catalog.json` on disk. `AgentSkillsService` has in-memory TTL caches (catalog 1 h, details 30 min, search 5 min) with a 5-min error cooldown to avoid hammering the registry.
 - **Script timeout:** `USE_SKILL` script execution times out at 60 seconds (`SCRIPT_TIMEOUT_MS`).
+- **Install download deadline:** catalog, GitHub, and direct-URL installs share one network deadline across headers and body reads. The budget inherits `AgentSkillsServiceConfig.fetchTimeoutMs` (30 seconds by default); `InstallSkillOptions.downloadTimeoutMs` accepts any positive finite per-install override or explicit `null` opt-out, and long delays are scheduled in native-safe segments. `InstallSkillOptions.signal` always composes downstream caller cancellation.
 - **Node.js only:** `package.json` `eliza.platforms` lists `node`. Do not add browser-incompatible code outside of guarded filesystem paths.
 
 See root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and git workflow.

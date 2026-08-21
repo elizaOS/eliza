@@ -31,10 +31,14 @@ const clientMock = vi.hoisted(() => ({
   startAgent: vi.fn(),
   listConversations: vi.fn(),
   fetch: vi.fn(),
+  getBaseUrl: vi.fn(),
+  setBaseUrl: vi.fn(),
+  setToken: vi.fn(),
 }));
 
 const persistenceMock = vi.hoisted(() => ({
   loadPersistedActiveServer: vi.fn(),
+  clearPersistedActiveServer: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -43,6 +47,7 @@ vi.mock("../api", () => ({
 
 vi.mock("./persistence", () => ({
   loadPersistedActiveServer: persistenceMock.loadPersistedActiveServer,
+  clearPersistedActiveServer: persistenceMock.clearPersistedActiveServer,
 }));
 
 function createDeps() {
@@ -51,6 +56,7 @@ function createDeps() {
     setConnected: vi.fn(),
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
+    setFirstRunComplete: vi.fn(),
     setAuthRequired: vi.fn(),
     setPairingEnabled: vi.fn(),
     setPairingExpiresAt: vi.fn(),
@@ -74,6 +80,13 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     clientMock.getBootProgress.mockResolvedValue(null);
     clientMock.getStatus.mockResolvedValue(RUNNING_STATUS);
     clientMock.hasToken.mockReturnValue(true);
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://agent-123.cloud.eliza.app/api/v1/eliza/agents/agent-123",
+    );
+    clientMock.fetch.mockResolvedValue({
+      state: "starting",
+      canRespond: false,
+    });
     // Default: no persisted server (behaves as non-cloud for the shared paths).
     persistenceMock.loadPersistedActiveServer.mockReturnValue(null);
   });
@@ -168,6 +181,73 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     expect(runningDispatches).toHaveLength(1);
   });
 
+  it("clears a terminal failed agent and returns directly to agent selection", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Failed Cloud Agent",
+    });
+    clientMock.listConversations.mockRejectedValue({
+      status: 503,
+      code: "agent_error_state",
+      message: "machine-readable failure",
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    expect(persistenceMock.clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(clientMock.setToken).toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "CLOUD_AGENT_SELECTION_REQUIRED",
+    });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
+  it("advances from the genuine proxy status when conversations are slow or unavailable", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.listConversations.mockRejectedValue({
+      status: 404,
+      message: "Agent not found",
+    });
+    clientMock.fetch.mockResolvedValue({ state: "running", canRespond: true });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    expect(clientMock.fetch).toHaveBeenCalledWith(
+      "/api/status",
+      { signal: expect.any(AbortSignal) },
+      { timeoutMs: 30_000 },
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
   it("warms first, then advances: 404 → 404 → serving dispatches AGENT_RUNNING once", async () => {
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       id: "cloud:agent-123",
@@ -238,6 +318,60 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     },
   );
 
+  it("advances to the auth gate without waiting for a stalled status probe", async () => {
+    vi.useFakeTimers();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.listConversations.mockRejectedValue({
+      status: 401,
+      message: "Unauthorized",
+    });
+    clientMock.fetch.mockImplementation(
+      (_path, init) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve({ state: "starting", canRespond: false }),
+            30_000,
+          );
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    let settled = false;
+    const run = runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    ).then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    await run;
+    const statusRequest = clientMock.fetch.mock.calls[0]?.[1];
+    expect(statusRequest?.signal).toBeInstanceOf(AbortSignal);
+    expect(statusRequest?.signal.aborted).toBe(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
   it("keeps a tokenless native 401 in warmup while credential injection is pending", async () => {
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       id: "cloud:agent-123",
@@ -303,7 +437,11 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     );
 
     // We fell back to /api/status once the 5xx streak crossed threshold.
-    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status");
+    expect(clientMock.fetch).toHaveBeenCalledWith(
+      "/api/status",
+      { signal: expect.any(AbortSignal) },
+      { timeoutMs: 30_000 },
+    );
     // And advanced to chat exactly once instead of stranding on the boot screen.
     const runningDispatches = dispatch.mock.calls.filter(
       ([e]) => e.type === "AGENT_RUNNING",
@@ -387,9 +525,9 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
       "cloud-managed",
     );
 
-    // A single blip never crossed the streak threshold, so /api/status was not
-    // consulted and no error was surfaced — it simply advanced when serving.
-    expect(clientMock.fetch).not.toHaveBeenCalled();
+    // The genuine proxy status is consulted concurrently on each warmup probe;
+    // its non-ready result does not turn a one-off list failure into an error.
+    expect(clientMock.fetch).toHaveBeenCalledTimes(2);
     expect(deps.setStartupError).not.toHaveBeenCalled();
     const runningDispatches = dispatch.mock.calls.filter(
       ([e]) => e.type === "AGENT_RUNNING",

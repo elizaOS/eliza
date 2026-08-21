@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * CLI for the cross-environment routing verifier.
  *
@@ -20,6 +21,7 @@
  * A GitHub step summary is appended when $GITHUB_STEP_SUMMARY is set.
  */
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 
 import {
   classifyProbe,
@@ -151,7 +153,10 @@ async function main() {
   process.exit(verdict.ok ? 0 : 1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((err) => {
     // error-policy:J1 boundary translation - an unexpected verifier crash must
     // leave CI red instead of being mistaken for healthy routing.

@@ -9,9 +9,12 @@
  * no-ops as unavailable when the plugin is not loaded; `accountId` is carried
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type DraftRequest,
+  EventType,
   type IAgentRuntime,
   type ListOptions,
   type ManageOperation,
@@ -46,7 +49,10 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  const wellFormedValue = toWellFormedUnicode(value);
+  return wellFormedValue.length > maxLength
+    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
+    : wellFormedValue;
 }
 
 function refId(messageId: string): string {
@@ -101,6 +107,7 @@ function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary):
       ...message.metadata,
       accountId,
       htmlLink: message.htmlLink,
+      replyTo: message.replyTo,
       likelyReplyNeeded: message.likelyReplyNeeded,
       triageReason: message.triageReason,
     },
@@ -161,6 +168,34 @@ function getGoogleService(runtime: IAgentRuntime): GoogleGmailAdapterService | n
 
 function messageAccountId(message: MessageRef | null | undefined): string {
   return message?.worldId ?? DEFAULT_GOOGLE_ACCOUNT_ID;
+}
+
+async function emitCommittedGmailMutation(
+  runtime: IAgentRuntime,
+  receipt: {
+    messageId: string;
+    operation: "mark_read" | "replied";
+    domainEventId: string;
+  }
+): Promise<void> {
+  try {
+    await runtime.emitEvent(EventType.MESSAGE_MUTATED, {
+      runtime,
+      messageSource: "gmail",
+      messageId: refId(receipt.messageId),
+      operation: receipt.operation,
+      domainEventId: receipt.domainEventId,
+      committedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    // error-policy:J7 the provider mutation already committed; downstream
+    // diagnostics and learning consumers cannot rewrite its successful result.
+    runtime.reportError("GoogleGmailAdapter.emitMutationReceipt", error, {
+      messageId: receipt.messageId,
+      operation: receipt.operation,
+      domainEventId: receipt.domainEventId,
+    });
+  }
 }
 
 /**
@@ -298,14 +333,23 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
     }
     const message = await this.ensureMessage(runtime, request.inReplyToId);
+    const replyTarget =
+      metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier;
     const sent = await service.sendGmailReply({
       accountId: messageAccountId(message),
-      to: [message.from.identifier],
+      to: [replyTarget],
       subject: message.subject ?? "Re: your message",
       bodyText: request.body,
       inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
       references: metadataString(message.metadata ?? {}, "references"),
     });
+    if (sent.messageId) {
+      await emitCommittedGmailMutation(runtime, {
+        messageId: message.externalId,
+        operation: "replied",
+        domainEventId: `gmail_reply:${messageAccountId(message)}:${sent.messageId}`,
+      });
+    }
     return {
       externalId: sent.messageId ?? `gmail-reply:${message.externalId}`,
     };
@@ -348,6 +392,14 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       messageIds: [externalMessageId(messageId)],
       labelIds: mapped.labelIds,
     });
+    if (op.kind === "mark_read" && op.read) {
+      const externalId = externalMessageId(messageId);
+      await emitCommittedGmailMutation(runtime, {
+        messageId: externalId,
+        operation: "mark_read",
+        domainEventId: `gmail_mark_read:${accountId}:${externalId}`,
+      });
+    }
     return { ok: true };
   }
 

@@ -50,6 +50,7 @@ import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
   createService,
+  ElizaError,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
@@ -2750,9 +2751,38 @@ function resampleLinear(
   fromHz: number,
   toHz: number,
 ): Float32Array {
+  const minRateHz = 1_000;
+  const maxRateHz = 192_000;
+  const maxDurationSeconds = 120;
+  const maxOutputSamples = 16_000 * maxDurationSeconds;
+  for (const [label, rate] of [
+    ["source", fromHz],
+    ["target", toHz],
+  ] as const) {
+    if (!Number.isSafeInteger(rate) || rate < minRateHz || rate > maxRateHz) {
+      throw new ElizaError(`Invalid ${label} audio sample rate`, {
+        code: "AUDIO_RESAMPLE_RATE_INVALID",
+        context: { label, rate },
+      });
+    }
+  }
+  const durationSeconds = samples.length / fromHz;
+  if (durationSeconds > maxDurationSeconds) {
+    throw new ElizaError("Audio frame exceeds the resampling duration budget", {
+      code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+      context: { durationSeconds, maxDurationSeconds },
+    });
+  }
   if (fromHz === toHz) return samples;
   const ratio = toHz / fromHz;
-  const out = new Float32Array(Math.max(1, Math.round(samples.length * ratio)));
+  const outLen = Math.max(1, Math.round(samples.length * ratio));
+  if (!Number.isSafeInteger(outLen) || outLen > maxOutputSamples) {
+    throw new ElizaError("Audio resample output exceeds the sample budget", {
+      code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
+      context: { outLen, maxOutputSamples },
+    });
+  }
+  const out = new Float32Array(outLen);
   for (let i = 0; i < out.length; i++) {
     const src = i / ratio;
     const i0 = Math.floor(src);

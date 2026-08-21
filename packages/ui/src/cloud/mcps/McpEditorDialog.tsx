@@ -11,6 +11,10 @@
  * selection here (a `containerId` picker is a follow-up tied to that surface).
  */
 
+import {
+  formatOrganizationCreditUsd,
+  legacyMcpPointsToOrganizationCredits,
+} from "@elizaos/cloud-shared/billing";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
@@ -76,7 +80,7 @@ interface FormState {
   externalEndpoint: string;
   endpointPath: string;
   pricingType: McpPricingType;
-  creditsPerRequest: string;
+  priceUsd: string;
   x402PriceUsd: string;
   x402Enabled: boolean;
   toolsText: string;
@@ -92,12 +96,50 @@ function emptyForm(): FormState {
     externalEndpoint: "",
     endpointPath: "/mcp",
     pricingType: "credits",
-    creditsPerRequest: "1",
+    priceUsd: "0.01",
     x402PriceUsd: "0.0001",
     x402Enabled: false,
     toolsText: "",
     documentationUrl: "",
   };
+}
+
+/** Default credit price seeded when no usable stored price exists. */
+const DEFAULT_CREDIT_PRICE_USD = "0.01";
+
+/** Parse a price field, returning null instead of coercing a typo to free. */
+export function parseEditorPriceUsd(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+/**
+ * Seed the price field from the record. `price_usd` is only meaningful for a
+ * credits-priced MCP — the server projects "0" for every other pricing type,
+ * so switching an x402 MCP to credits must fall back to the default rather
+ * than pre-filling a free price.
+ */
+export function resolveEditorPriceUsd(mcp: UserMcpRecord): string {
+  if (mcp.pricing_type !== "credits") return DEFAULT_CREDIT_PRICE_USD;
+
+  const canonical = mcp.price_usd?.trim();
+  if (canonical && parseEditorPriceUsd(canonical) !== null) return canonical;
+
+  const legacyPoints = parseEditorPriceUsd(
+    String(mcp.credits_per_request ?? ""),
+  );
+  // Quantize through the shared credit authority: a bare `points / 100` seeds
+  // the field with a float artifact such as "0.011000000000000001".
+  if (legacyPoints !== null) {
+    return formatOrganizationCreditUsd(
+      legacyMcpPointsToOrganizationCredits(legacyPoints),
+    );
+  }
+
+  return DEFAULT_CREDIT_PRICE_USD;
 }
 
 function formFromRecord(mcp: UserMcpRecord): FormState {
@@ -109,7 +151,7 @@ function formFromRecord(mcp: UserMcpRecord): FormState {
     externalEndpoint: mcp.external_endpoint ?? "",
     endpointPath: mcp.endpoint_path ?? "/mcp",
     pricingType: mcp.pricing_type,
-    creditsPerRequest: mcp.credits_per_request ?? "1",
+    priceUsd: resolveEditorPriceUsd(mcp),
     x402PriceUsd: mcp.x402_price_usd ?? "0.0001",
     x402Enabled: mcp.x402_enabled,
     toolsText: mcp.tools.map((t) => `${t.name}: ${t.description}`).join("\n"),
@@ -166,13 +208,34 @@ export function McpEditorDialog({
 
   const tools = useMemo(() => parseTools(form.toolsText), [form.toolsText]);
 
+  // A malformed price must block submission: coercing it to 0 would silently
+  // republish a paid MCP as free.
+  const priceUsd =
+    form.pricingType === "credits"
+      ? parseEditorPriceUsd(form.priceUsd)
+      : undefined;
+  const x402PriceUsd =
+    form.pricingType === "x402"
+      ? parseEditorPriceUsd(form.x402PriceUsd)
+      : undefined;
+
   const valid =
     form.name.trim().length > 0 &&
     form.description.trim().length > 0 &&
     (isEdit || form.slug.trim().length > 0) &&
-    (isEdit || form.externalEndpoint.trim().length > 0);
+    (isEdit || form.externalEndpoint.trim().length > 0) &&
+    (form.pricingType !== "credits" || priceUsd !== null) &&
+    (form.pricingType !== "x402" || x402PriceUsd !== null);
 
   const onSubmit = async () => {
+    if (!valid) {
+      toast.error(
+        t("cloud.mcps.invalidPrice", {
+          defaultValue: "Enter a valid non-negative price per request.",
+        }),
+      );
+      return;
+    }
     try {
       if (isEdit && editing) {
         const input: UpdateUserMcpInput = {
@@ -182,14 +245,8 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          creditsPerRequest:
-            form.pricingType === "credits"
-              ? Number(form.creditsPerRequest) || 0
-              : undefined,
-          x402PriceUsd:
-            form.pricingType === "x402"
-              ? Number(form.x402PriceUsd) || 0
-              : undefined,
+          priceUsd: priceUsd ?? undefined,
+          x402PriceUsd: x402PriceUsd ?? undefined,
           x402Enabled: form.x402Enabled,
           documentationUrl: form.documentationUrl.trim() || null,
         };
@@ -206,14 +263,8 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          creditsPerRequest:
-            form.pricingType === "credits"
-              ? Number(form.creditsPerRequest) || 0
-              : undefined,
-          x402PriceUsd:
-            form.pricingType === "x402"
-              ? Number(form.x402PriceUsd) || 0
-              : undefined,
+          priceUsd: priceUsd ?? undefined,
+          x402PriceUsd: x402PriceUsd ?? undefined,
           x402Enabled: form.x402Enabled,
           documentationUrl: form.documentationUrl.trim() || undefined,
         };
@@ -368,19 +419,28 @@ export function McpEditorDialog({
 
           {form.pricingType === "credits" && (
             <div className="grid gap-2">
-              <Label htmlFor="mcp-credits">
+              <Label htmlFor="mcp-price-usd">
                 {t("cloud.mcps.creditsLabel", {
-                  defaultValue: "Credits per request",
+                  defaultValue: "Price per request (USD cloud credit)",
                 })}
               </Label>
               <Input
-                id="mcp-credits"
+                id="mcp-price-usd"
                 type="number"
                 min={0}
-                step="0.1"
-                value={form.creditsPerRequest}
-                onChange={(e) => update_("creditsPerRequest", e.target.value)}
+                step="0.0001"
+                value={form.priceUsd}
+                aria-invalid={priceUsd === null}
+                onChange={(e) => update_("priceUsd", e.target.value)}
               />
+              {priceUsd === null && (
+                <p role="alert" className="text-destructive text-xs">
+                  {t("cloud.mcps.invalidPrice", {
+                    defaultValue:
+                      "Enter a valid non-negative price per request.",
+                  })}
+                </p>
+              )}
             </div>
           )}
 

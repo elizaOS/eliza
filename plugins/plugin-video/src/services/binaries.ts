@@ -18,6 +18,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { elizaLogger, resolveStateDir } from "@elizaos/core";
+import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import youtubeDl from "youtube-dl-exec";
 
 const require = createRequire(import.meta.url);
@@ -25,7 +26,7 @@ const execFileAsync = promisify(execFile);
 
 export type YtDlpRunner = (
   url: string,
-  flags?: Record<string, string | boolean | number | undefined>,
+  flags?: YtDlpFlags,
   opts?: object,
 ) => Promise<unknown>;
 
@@ -283,10 +284,7 @@ export class BinaryResolver {
    * Run yt-dlp with one auto-update + retry attempt on extractor-failure
    * patterns, when the active binary is the managed cache.
    */
-  async runYtDlp(
-    url: string,
-    flags: Record<string, string | boolean | number | undefined>,
-  ): Promise<unknown> {
+  async runYtDlp(url: string, flags: YtDlpFlags): Promise<unknown> {
     const runner = await this.getYtDlpRunner();
     try {
       return await runner(url, flags);

@@ -78,6 +78,9 @@ export interface ChatMessageProps {
    * transcript row.
    */
   actionAccessory?: React.ReactNode;
+  /** Interactive content visually grouped with this turn but rendered as a
+   * sibling below the message bubble rather than inside its chrome. */
+  afterBubbleContent?: React.ReactNode;
   agentName?: string;
   /** Chrome: theme-token `panel` (default) or the overlay's floating `glass`. */
   appearance?: ChatMessageAppearance;
@@ -410,6 +413,7 @@ function arePropsEqual(
   const sharedEqual =
     prev.isGrouped === next.isGrouped &&
     prev.actionAccessory === next.actionAccessory &&
+    Boolean(prev.afterBubbleContent) === Boolean(next.afterBubbleContent) &&
     prev.agentName === next.agentName &&
     prev.appearance === next.appearance &&
     prev.reduceMotion === next.reduceMotion &&
@@ -474,6 +478,7 @@ function arePropsEqual(
 export const ChatMessage = memo(function ChatMessage({
   message,
   actionAccessory,
+  afterBubbleContent,
   appearance = "panel",
   isGrouped = false,
   agentName = "Agent",
@@ -1106,6 +1111,7 @@ export const ChatMessage = memo(function ChatMessage({
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
+        data-failure={isAssistant ? message.failureKind : undefined}
         // A very short opacity-only entrance keeps fast-model turns immediate
         // without fighting the scroller's bottom anchor.
         initial={initial}
@@ -1194,6 +1200,14 @@ export const ChatMessage = memo(function ChatMessage({
               {bubbleContent}
             </ChatBubble>
           )}
+          {afterBubbleContent ? (
+            <div
+              className="mt-2 w-full max-w-[13.5rem] pointer-events-auto"
+              data-testid="thread-line-after-bubble"
+            >
+              {afterBubbleContent}
+            </div>
+          ) : null}
           {hasActionLane ? (
             <motion.div
               data-testid="thread-line-actions"

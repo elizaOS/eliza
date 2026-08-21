@@ -61,6 +61,7 @@
 
 import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
+import { isCanonicalModelCapabilityDisabled } from "../../runtime/canonical-model-capabilities";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
@@ -236,6 +237,17 @@ export async function embedRecallQuery(
 	}
 	const normalized = normalizeQuery(queryText);
 	if (!normalized) {
+		return null;
+	}
+	// A host that deliberately omits canonical embeddings has no registered
+	// TEXT_EMBEDDING handler. Keyword recall is the intended steady state, not a
+	// per-turn runtime failure: do not ask useModel to assert a capability the
+	// host explicitly does not advertise. Real registered-provider failures
+	// still flow through reportUnexpectedEmbeddingFailure below.
+	if (
+		typeof runtime.getSetting === "function" &&
+		isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+	) {
 		return null;
 	}
 

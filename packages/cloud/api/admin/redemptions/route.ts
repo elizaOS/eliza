@@ -13,11 +13,13 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
 import { parseClampedLimit } from "@/lib/utils/clamp-limit";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -209,10 +211,15 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
 });
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const { user: adminUser } = await requireAdmin(c);
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validation = AdminActionSchema.safeParse(body);
 
     if (!validation.success) {

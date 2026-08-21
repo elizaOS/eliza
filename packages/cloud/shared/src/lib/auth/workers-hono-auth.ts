@@ -15,11 +15,13 @@
 
 import { getCookie } from "hono/cookie";
 import type { UserWithOrganization } from "../../db/repositories/users";
+import type { ApiKey } from "../../db/schemas/api-keys";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
 import {
+  isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
@@ -50,6 +52,17 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 function isLocalDevAdminEnabled(c: AppContext): boolean {
+  // Hard fail in production, mirroring isLocalDevAdminRequest in the global
+  // middleware: NEVER grant the dev-admin bypass regardless of env vars, so
+  // both layers fail closed identically (SOC2 CC6.1).
+  if (c.env.NODE_ENV === "production") {
+    if (c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" || c.env.LOCAL_DEV === "true") {
+      logger.error("[Auth] Refusing dev-admin bypass in production — env var ignored", {
+        path: new URL(c.req.url).pathname,
+      });
+    }
+    return false;
+  }
   const explicit = c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
   const devMode = c.env.NODE_ENV !== "production" && c.env.LOCAL_DEV === "true";
   if (!explicit && !devMode) return false;
@@ -135,8 +148,44 @@ async function validateApiKeyOrServiceUnavailable(
   }
 }
 
+/**
+ * Resolves one explicitly presented API key and records its exact database ID.
+ * Session cookies and JWTs are excluded, while two credential headers are
+ * rejected so self-revocation can never select an ambiguous credential.
+ */
+export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  const bearerKey = bearerMatch?.[1]?.trim() || null;
+
+  if (headerKey && bearerKey) {
+    throw AuthenticationError("Present exactly one API key credential");
+  }
+  const presented = headerKey ?? bearerKey;
+  if (!presented?.startsWith("eliza_")) {
+    throw AuthenticationError("An API key credential is required");
+  }
+
+  const validated = await validateApiKeyOrServiceUnavailable(presented);
+  if (!validated) throw AuthenticationError("Invalid or expired API key");
+  if (!validated.is_active) throw ForbiddenError("API key is inactive");
+  if (validated.expires_at && new Date(validated.expires_at) <= new Date()) {
+    throw AuthenticationError("API key has expired");
+  }
+  if (!validated.id) {
+    throw AuthenticationError("Validated API key has no credential identity");
+  }
+
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", validated.id);
+  return validated;
+}
+
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
+    NODE_ENV: typeof env.NODE_ENV === "string" ? env.NODE_ENV : undefined,
+    ENVIRONMENT: typeof env.ENVIRONMENT === "string" ? env.ENVIRONMENT : undefined,
     PLAYWRIGHT_TEST_AUTH:
       typeof env.PLAYWRIGHT_TEST_AUTH === "string" ? env.PLAYWRIGHT_TEST_AUTH : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
@@ -147,7 +196,7 @@ function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
 }
 
 async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> {
-  if (c.env.PLAYWRIGHT_TEST_AUTH !== "true") return null;
+  if (!isPlaywrightTestAuthEnabled(testAuthEnv(c.env))) return null;
 
   const token = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
   if (!token) return null;
@@ -256,6 +305,34 @@ export async function requireUserWithOrg(c: AppContext): Promise<
     organization_id: string;
     organization: NonNullable<AuthedUser["organization"]>;
   };
+}
+
+/** API-key lifecycle management always requires an interactive user session. */
+export async function requireSessionUserWithOrg(c: AppContext): Promise<
+  AuthedUser & {
+    organization_id: string;
+    organization: NonNullable<AuthedUser["organization"]>;
+  }
+> {
+  const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
+  const bearer = readBearer(c);
+  if (apiKeyHeader || bearer?.startsWith("eliza_")) {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+
+  const user = await requireUserWithOrg(c);
+  if (c.get("authMethod") !== "session") {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+  return user;
 }
 
 type AuthedUserWithOrg = AuthedUser & {

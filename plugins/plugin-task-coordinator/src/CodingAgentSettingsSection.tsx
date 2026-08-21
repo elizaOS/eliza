@@ -38,6 +38,8 @@ import { GlobalPrefsSection } from "./GlobalPrefsSection";
 import { LlmProviderSection } from "./LlmProviderSection";
 import { ModelConfigSection } from "./ModelConfigSection";
 
+const PREFLIGHT_REQUEST_TIMEOUT_MS = 15_000;
+
 function AgentAdvancedSettingsDisclosure({
   children,
 }: {
@@ -79,10 +81,12 @@ export function CodingAgentSettingsSection() {
           client.getConfig(),
           client.fetchModels("anthropic", false).catch(() => null),
           client.fetchModels("openai", false).catch(() => null),
-          fetch("/api/coding-agents/preflight", {
-            signal: controller.signal,
-          })
-            .then((response) => (response.ok ? response.json() : null))
+          client
+            .fetch<AgentPreflightResult[]>(
+              "/api/coding-agents/preflight",
+              { signal: controller.signal },
+              { timeoutMs: PREFLIGHT_REQUEST_TIMEOUT_MS },
+            )
             .catch(() => null),
         ]);
 
@@ -269,11 +273,13 @@ export function CodingAgentSettingsSection() {
     return () => clearTimeout(timer);
   }, [prefs, loading]);
 
-  const refreshPreflight = useCallback(async () => {
+  const refreshPreflight = useCallback(async (signal?: AbortSignal) => {
     try {
-      const preflightRes = await fetch("/api/coding-agents/preflight");
-      if (!preflightRes.ok) return null;
-      const results = await preflightRes.json();
+      const results = await client.fetch<AgentPreflightResult[]>(
+        "/api/coding-agents/preflight",
+        { signal },
+        { timeoutMs: PREFLIGHT_REQUEST_TIMEOUT_MS },
+      );
       if (!Array.isArray(results)) return null;
       const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
       for (const item of results as AgentPreflightResult[]) {
@@ -284,63 +290,65 @@ export function CodingAgentSettingsSection() {
       setPreflightByAgent(mapped);
       return mapped;
     } catch (err) {
+      if (signal?.aborted) return null;
       console.warn("[coding-agents] Failed to refresh preflight", err);
       return null;
     }
   }, []);
 
-  // Ref to any in-flight auth-polling interval so we can cancel it on
-  // unmount or when a new auth flow starts. Without this, closing the
-  // settings panel while a poll is active leaks a network-request loop.
-  const authPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const authPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const authControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
       if (authPollRef.current !== null) {
-        clearInterval(authPollRef.current);
+        clearTimeout(authPollRef.current);
         authPollRef.current = null;
       }
+      authControllerRef.current?.abort();
+      authControllerRef.current = null;
     };
   }, []);
 
   const handleAuth = useCallback(
     async (agent: AgentTab) => {
       if (authPollRef.current !== null) {
-        clearInterval(authPollRef.current);
+        clearTimeout(authPollRef.current);
         authPollRef.current = null;
       }
+      authControllerRef.current?.abort();
+      const controller = new AbortController();
+      authControllerRef.current = controller;
       setAuthInProgress(agent);
       setAuthResult(null);
       try {
-        const res = await fetch(`/api/coding-agents/auth/${agent}`, {
-          method: "POST",
-        });
-        if (!res.ok) {
-          setAuthResult({
-            agent,
-            launched: false,
-            instructions: `Failed to start auth (${res.status}). Try again, or run the CLI's login command directly.`,
-          });
-          setAuthInProgress(null);
-          return;
-        }
-        const data = await res.json();
+        const data = await client.fetch<Omit<AuthResult, "agent">>(
+          `/api/coding-agents/auth/${agent}`,
+          { method: "POST", signal: controller.signal },
+          { timeoutMs: PREFLIGHT_REQUEST_TIMEOUT_MS },
+        );
+        if (controller.signal.aborted) return;
         setAuthResult({ agent, ...data });
         let attempts = 0;
         const maxAttempts = 40;
-        const poll = setInterval(async () => {
+        const poll = async () => {
+          if (controller.signal.aborted) return;
           attempts++;
-          const mapped = await refreshPreflight();
+          const mapped = await refreshPreflight(controller.signal);
+          if (controller.signal.aborted) return;
           const authed = mapped?.[agent]?.auth?.status === "authenticated";
           if (authed || attempts >= maxAttempts) {
-            clearInterval(poll);
-            if (authPollRef.current === poll) authPollRef.current = null;
+            authPollRef.current = null;
+            authControllerRef.current = null;
             setAuthInProgress(null);
             if (authed) setAuthResult(null);
+            return;
           }
-        }, 3000);
-        authPollRef.current = poll;
+          authPollRef.current = setTimeout(() => void poll(), 3000);
+        };
+        authPollRef.current = setTimeout(() => void poll(), 3000);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setAuthResult({
           agent,
           launched: false,
@@ -350,6 +358,13 @@ export function CodingAgentSettingsSection() {
               : "Auth request failed. Try again, or run the CLI's login command directly.",
         });
         setAuthInProgress(null);
+      } finally {
+        if (
+          authControllerRef.current === controller &&
+          authPollRef.current === null
+        ) {
+          authControllerRef.current = null;
+        }
       }
     },
     [refreshPreflight],

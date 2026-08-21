@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./logger": "./src/logger.ts",
     "./k8s-service-account": "./src/k8s-service-account.ts",
+    "./k8s-deployment-wake": "./src/k8s-deployment-wake.ts",
     "./identity-link-code": "./src/identity-link-code.ts",
     "./gateway-auth": "./src/gateway-auth.ts",
     "./response-attempts": "./src/response-attempts.ts",

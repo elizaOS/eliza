@@ -83,6 +83,7 @@ import {
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceView,
   type LifeOpsPersonalBaseline,
+  type LifeOpsProgressEvent,
   type LifeOpsProposalProposer,
   type LifeOpsProposalStatus,
   type LifeOpsRelationshipInteraction,
@@ -160,6 +161,7 @@ import {
   toBoolean,
   toNumber,
   toText,
+  withTransaction,
 } from "./sql.js";
 import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
@@ -306,22 +308,49 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+function briefRewardMarkerId(agentId: string, engagementId: string): string {
+  return `brief_reward_${crypto
+    .createHash("sha256")
+    .update([agentId, engagementId].join("\0"))
+    .digest("hex")
+    .slice(0, 20)}`;
+}
+
 /**
- * Owner-identity scope for definition reads and mutations. When supplied,
- * every predicate binds `subject_type + subject_id` alongside `agent_id` so
- * one subject can never read or mutate another subject's definitions under
- * the same agent.
+ * Domain and owner-identity scope for definition reads and mutations. When
+ * supplied, every predicate binds `domain + subject_type + subject_id`
+ * alongside `agent_id` so neither a cross-domain nor cross-subject row can be
+ * read or mutated under the same agent.
  */
 export type LifeOpsDefinitionScope = {
+  domain: LifeOpsTaskDefinition["domain"];
   subjectType: LifeOpsTaskDefinition["subjectType"];
   subjectId: string;
 };
 
-function definitionScopePredicate(scope?: LifeOpsDefinitionScope): string {
+function definitionScopePredicate(
+  scope?: LifeOpsDefinitionScope,
+  tableAlias?: string,
+): string {
   if (!scope) return "";
+  const prefix = tableAlias ? `${tableAlias}.` : "";
   return `
-          AND subject_type = ${sqlQuote(scope.subjectType)}
-          AND subject_id = ${sqlQuote(scope.subjectId)}`;
+          AND ${prefix}domain = ${sqlQuote(scope.domain)}
+          AND ${prefix}subject_type = ${sqlQuote(scope.subjectType)}
+          AND ${prefix}subject_id = ${sqlQuote(scope.subjectId)}`;
+}
+
+function definitionScopeSetPredicate(
+  scopes?: readonly LifeOpsDefinitionScope[],
+  tableAlias = "definition",
+): string {
+  if (scopes === undefined) return "";
+  if (scopes.length === 0) return " AND FALSE";
+  const clauses = scopes.map(
+    (scope) =>
+      `(${tableAlias}.domain = ${sqlQuote(scope.domain)} AND ${tableAlias}.subject_type = ${sqlQuote(scope.subjectType)} AND ${tableAlias}.subject_id = ${sqlQuote(scope.subjectId)})`,
+  );
+  return ` AND (${clauses.join(" OR ")})`;
 }
 
 function parseOwnershipFields(row: Record<string, unknown>) {
@@ -392,6 +421,12 @@ function parseTaskDefinition(
       row.progression_rule_json,
       { kind: "none" },
     ),
+    checkInPolicy: row.check_in_policy_json
+      ? parseJsonValue<LifeOpsTaskDefinition["checkInPolicy"]>(
+          row.check_in_policy_json,
+          null,
+        )
+      : null,
     websiteAccess: row.website_access_json
       ? parseJsonValue<LifeOpsTaskDefinition["websiteAccess"]>(
           row.website_access_json,
@@ -436,6 +471,31 @@ function parseOccurrence(row: Record<string, unknown>): LifeOpsOccurrence {
 function parseOccurrenceView(
   row: Record<string, unknown>,
 ): LifeOpsOccurrenceView {
+  const cadence = parseJsonRecord(
+    row.definition_cadence_json,
+  ) as LifeOpsOccurrenceView["cadence"];
+  const rawProgress = Number(row.progress_completed_count);
+  if (cadence.kind === "count_per_day" && !Number.isFinite(rawProgress)) {
+    throw new Error(
+      `LifeOpsRepository: invalid quota projection for occurrence ${toText(row.id)}`,
+    );
+  }
+  const progress =
+    cadence.kind === "count_per_day"
+      ? (() => {
+          const completedCount = Math.min(
+            Math.max(Math.trunc(rawProgress), 0),
+            cadence.targetCount,
+          );
+          return {
+            completedCount,
+            targetCount: cadence.targetCount,
+            remainingCount: Math.max(cadence.targetCount - completedCount, 0),
+            unit: cadence.unit,
+            perOccurrenceWork: cadence.perOccurrenceWork,
+          };
+        })()
+      : null;
   return {
     ...parseOccurrence(row),
     definitionKind: toText(
@@ -444,15 +504,14 @@ function parseOccurrenceView(
     definitionStatus: toText(
       row.definition_status,
     ) as LifeOpsOccurrenceView["definitionStatus"],
-    cadence: parseJsonRecord(
-      row.definition_cadence_json,
-    ) as LifeOpsOccurrenceView["cadence"],
+    cadence,
     title: toText(row.definition_title),
     description: toText(row.definition_description),
     priority: toNumber(row.definition_priority, 3),
     timezone: toText(row.definition_timezone),
     source: toText(row.definition_source, "manual"),
     goalId: row.definition_goal_id ? toText(row.definition_goal_id) : null,
+    progress,
   };
 }
 
@@ -1322,12 +1381,46 @@ function parseWorkflowRun(row: Record<string, unknown>): LifeOpsWorkflowRun {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     workflowId: toText(row.workflow_id),
+    idempotencyKey:
+      typeof row.idempotency_key === "string" ? row.idempotency_key : null,
     startedAt: toText(row.started_at),
     finishedAt: row.finished_at ? toText(row.finished_at) : null,
     status: toText(row.status) as LifeOpsWorkflowRun["status"],
     result: parseJsonRecord(row.result_json),
     auditRef: row.audit_ref ? toText(row.audit_ref) : null,
   };
+}
+
+const TERMINAL_WORKFLOW_RUN_STATUSES = new Set<LifeOpsWorkflowRun["status"]>([
+  "success",
+  "failed",
+  "failed_uncompensated",
+  "cancelled",
+]);
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
+  "elizaos:life_workflow_runs:idempotency-backfill:v1";
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
+
+function assertValidWorkflowRunIdempotencyKey(
+  idempotencyKey: string | null | undefined,
+): void {
+  if (idempotencyKey === null || idempotencyKey === undefined) return;
+  if (
+    idempotencyKey.length === 0 ||
+    idempotencyKey.length > 256 ||
+    idempotencyKey.includes("\0")
+  ) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Workflow run idempotency key must contain 1 to 256 non-NUL characters",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_KEY_INVALID",
+        context: {
+          length: idempotencyKey.length,
+          containsNul: idempotencyKey.includes("\0"),
+        },
+      },
+    );
+  }
 }
 
 function parseReminderAttempt(
@@ -2581,6 +2674,218 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+  }
+
+  /**
+   * Repair pre-column workflow-run tables and lift one deterministic legacy
+   * `result.idempotencyKey` row per scope into the indexed column. The
+   * application-side parser tolerates historical TEXT values PostgreSQL
+   * cannot cast to jsonb (notably JSON strings containing `\\u0000`). When
+   * older code wrote duplicate keys, the most recent `(started_at, id)` row
+   * becomes canonical and the other rows deliberately remain unkeyed.
+   *
+   * A durable comment on the completed unique index is the backfill marker.
+   * The schema migrator can create an uncommented index before this repair,
+   * so index existence alone is not evidence that the one-time scan ran.
+   *
+   * This is a protocol cutover, not a rolling compatibility shim: deployments
+   * must quiesce pre-column workflow writers before starting this migration.
+   * Those writers reserve replay keys only after their side effects, so no
+   * backfill can make mixed-version execution safely idempotent. A table lock
+   * closes the narrower race with writes already draining during the scan.
+   */
+  static async ensureWorkflowRunIdempotencyKey(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    if (!(await tableExists(runtime, "app_lifeops.life_workflow_runs"))) {
+      return;
+    }
+    const markerQuery = `SELECT description.description
+         FROM pg_catalog.pg_description AS description
+         JOIN pg_catalog.pg_class AS index_class
+           ON index_class.oid = description.objoid
+         JOIN pg_catalog.pg_namespace AS namespace
+           ON namespace.oid = index_class.relnamespace
+        WHERE namespace.nspname = 'app_lifeops'
+          AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+          AND description.classoid = 'pg_catalog.pg_class'::regclass
+          AND description.objsubid = 0
+          AND description.description = ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}
+        LIMIT 1`;
+    const markerRows = await executeRawSql(runtime, markerQuery);
+    if (markerRows.length > 0) {
+      return;
+    }
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE app_lifeops.life_workflow_runs ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
+    );
+    await withTransaction(runtime, async (tx) => {
+      // Serialize concurrent bootstraps and stop legacy INSERTs from landing
+      // behind the keyset cursor while the one-time scan is in flight.
+      await executeRawSqlTx(
+        tx,
+        "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
+      );
+      if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        return;
+      }
+      await executeRawSqlTx(
+        tx,
+        `CREATE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency_backfill_scan
+           ON app_lifeops.life_workflow_runs (started_at DESC, id DESC)
+        WHERE idempotency_key IS NULL`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `WITH ranked_existing AS (
+           SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY agent_id, workflow_id, idempotency_key
+                    ORDER BY started_at DESC, id DESC
+                  ) AS row_number
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NOT NULL
+         )
+         UPDATE app_lifeops.life_workflow_runs AS run
+            SET idempotency_key = NULL
+           FROM ranked_existing
+          WHERE run.id = ranked_existing.id
+            AND ranked_existing.row_number > 1`,
+      );
+
+      let cursor: { startedAt: string; id: string } | null = null;
+      while (true) {
+        const cursorClause = cursor
+          ? `AND (started_at, id) < (${sqlQuote(cursor.startedAt)}, ${sqlQuote(cursor.id)})`
+          : "";
+        const rows = await executeRawSqlTx(
+          tx,
+          `SELECT id, agent_id, workflow_id, started_at, result_json
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NULL
+              ${cursorClause}
+            ORDER BY started_at DESC, id DESC
+            LIMIT ${WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE}`,
+        );
+        if (rows.length === 0) {
+          break;
+        }
+
+        const candidates: Array<{
+          id: string;
+          agentId: string;
+          workflowId: string;
+          idempotencyKey: string;
+          ordinal: number;
+        }> = [];
+        for (const [ordinal, row] of rows.entries()) {
+          let result: Record<string, unknown>;
+          try {
+            result = parseJsonRecord(row.result_json);
+          } catch {
+            // error-policy:J3 corrupt stored JSON produces an explicit skip
+            // rather than a fabricated key, so one bad historical row cannot
+            // block the compatibility migration for every other run. Logged
+            // with the row id, because "backfill completed" and "backfill
+            // silently dropped 4,000 rows" must not look identical.
+            logger.warn(
+              { workflowRunId: row.id },
+              "[lifeops-repository] skipped a workflow run whose stored result could not be parsed during idempotency backfill",
+            );
+            continue;
+          }
+          const legacyKey = result.idempotencyKey;
+          if (
+            typeof legacyKey !== "string" ||
+            legacyKey.length === 0 ||
+            legacyKey.length > 256 ||
+            legacyKey.includes("\0")
+          ) {
+            continue;
+          }
+          candidates.push({
+            id: toText(row.id),
+            agentId: toText(row.agent_id),
+            workflowId: toText(row.workflow_id),
+            idempotencyKey: legacyKey,
+            ordinal,
+          });
+        }
+
+        if (candidates.length > 0) {
+          const values = candidates
+            .map(
+              (candidate) =>
+                `(${sqlQuote(candidate.id)}, ${sqlQuote(candidate.agentId)}, ${sqlQuote(candidate.workflowId)}, ${sqlQuote(candidate.idempotencyKey)}, ${sqlInteger(candidate.ordinal)})`,
+            )
+            .join(",\n");
+          await executeRawSqlTx(
+            tx,
+            `WITH candidates (
+               id, agent_id, workflow_id, idempotency_key, ordinal
+             ) AS (
+               VALUES ${values}
+             ), ranked AS (
+               SELECT candidate.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY candidate.agent_id,
+                                     candidate.workflow_id,
+                                     candidate.idempotency_key
+                        ORDER BY candidate.ordinal ASC
+                      ) AS row_number
+                 FROM candidates AS candidate
+             ), available AS (
+               SELECT candidate.*
+                 FROM ranked AS candidate
+                WHERE candidate.row_number = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM app_lifeops.life_workflow_runs AS claimed
+                     WHERE claimed.agent_id = candidate.agent_id
+                       AND claimed.workflow_id = candidate.workflow_id
+                       AND claimed.idempotency_key = candidate.idempotency_key
+                  )
+             )
+             UPDATE app_lifeops.life_workflow_runs AS run
+                SET idempotency_key = candidate.idempotency_key
+               FROM available AS candidate
+              WHERE run.id = candidate.id
+                AND run.agent_id = candidate.agent_id
+                AND run.workflow_id = candidate.workflow_id
+                AND run.idempotency_key IS NULL`,
+          );
+        }
+
+        const last = rows.at(-1);
+        if (!last) {
+          break;
+        }
+        cursor = {
+          startedAt: toText(last.started_at),
+          id: toText(last.id),
+        };
+      }
+
+      await executeRawSqlTx(
+        tx,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency
+         ON app_lifeops.life_workflow_runs (
+           agent_id, workflow_id, idempotency_key
+         )
+        WHERE idempotency_key IS NOT NULL`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+           IS ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        "DROP INDEX IF EXISTS app_lifeops.idx_life_workflow_runs_idempotency_backfill_scan",
+      );
+    });
   }
 
   static async ensureSchedulingNegotiationColumns(
@@ -2791,26 +3096,40 @@ export class LifeOpsRepository {
 
   async recordBriefItemEngagement(
     input: LifeOpsBriefItemEngagementWrite,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsBriefItemEngagementRecord> {
     const createdAt = input.createdAt ?? isoNow();
+    const domainEventId =
+      typeof input.metadata.domainEventId === "string"
+        ? input.metadata.domainEventId
+        : null;
     const id =
       input.id ??
       `brief_eng_${crypto
         .createHash("sha256")
         .update(
-          [
-            input.agentId,
-            input.briefingId,
-            input.itemId,
-            input.eventType,
-            input.eventAt,
-          ].join("\0"),
+          domainEventId
+            ? [
+                input.agentId,
+                input.briefingId,
+                input.itemId,
+                input.source,
+                input.sourceId,
+                input.eventType,
+                domainEventId,
+              ].join("\0")
+            : [
+                input.agentId,
+                input.briefingId,
+                input.itemId,
+                input.eventType,
+                input.eventAt,
+                "",
+              ].join("\0"),
         )
         .digest("hex")
         .slice(0, 20)}`;
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_brief_item_engagements (
+    const insertSql = `INSERT INTO app_lifeops.life_brief_item_engagements (
         id, agent_id, briefing_id, item_id, source, kind, source_id,
         item_class, event_type, event_at, weight, metadata_json, created_at
       ) VALUES (
@@ -2828,26 +3147,25 @@ export class LifeOpsRepository {
         ${sqlJson(input.metadata)},
         ${sqlQuote(createdAt)}
       )
-      ON CONFLICT (agent_id, briefing_id, item_id, event_type, event_at)
+      ON CONFLICT (id)
       DO UPDATE SET
         source = EXCLUDED.source,
         kind = EXCLUDED.kind,
         source_id = EXCLUDED.source_id,
         item_class = EXCLUDED.item_class,
         weight = EXCLUDED.weight,
-        metadata_json = EXCLUDED.metadata_json`,
-    );
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
+        metadata_json = EXCLUDED.metadata_json
+      WHERE app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id`;
+    if (tx) await executeRawSqlTx(tx, insertSql);
+    else await executeRawSql(this.runtime, insertSql);
+    const selectSql = `SELECT *
          FROM app_lifeops.life_brief_item_engagements
         WHERE agent_id = ${sqlQuote(input.agentId)}
-          AND briefing_id = ${sqlQuote(input.briefingId)}
-          AND item_id = ${sqlQuote(input.itemId)}
-          AND event_type = ${sqlQuote(input.eventType)}
-          AND event_at = ${sqlQuote(input.eventAt)}
-        LIMIT 1`,
-    );
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, selectSql)
+      : await executeRawSql(this.runtime, selectSql);
     const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
     if (!row) {
       throw new ElizaError(
@@ -2891,6 +3209,7 @@ export class LifeOpsRepository {
       itemClass?: string;
       sinceIso?: string;
       untilIso?: string;
+      includeOperational?: boolean;
     } = {},
   ): Promise<LifeOpsBriefItemEngagementRecord[]> {
     const where = [`agent_id = ${sqlQuote(agentId)}`];
@@ -2906,12 +3225,89 @@ export class LifeOpsRepository {
     if (options.untilIso) {
       where.push(`event_at <= ${sqlQuote(options.untilIso)}`);
     }
+    if (!options.includeOperational) {
+      where.push("event_type <> 'rewarded'");
+    }
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_brief_item_engagements
         WHERE ${where.join(" AND ")}
         ORDER BY event_at ASC, created_at ASC`,
+    );
+    return rows.map(parseBriefItemEngagement);
+  }
+
+  /**
+   * Return a bounded batch of non-zero outcomes whose durable reward receipt
+   * has not completed. Reward recovery deliberately has no editorial recency
+   * cutoff: an old outcome must remain retryable after a long outage, while
+   * completed receipts and operational marker rows never enter the batch.
+   */
+  async listPendingBriefEngagementRewards(
+    agentId: string,
+    options: { limit?: number; nowIso?: string } = {},
+  ): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    const limit = options.limit ?? 250;
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 1_000) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Invalid pending reward batch limit",
+        {
+          code: "LIFEOPS_BRIEF_REWARD_BATCH_LIMIT_INVALID",
+          context: { limit },
+        },
+      );
+    }
+    const requestedNowIso = options.nowIso ?? isoNow();
+    const parsedNow = Date.parse(requestedNowIso);
+    if (!Number.isFinite(parsedNow)) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Invalid pending reward scan time",
+        {
+          code: "LIFEOPS_BRIEF_REWARD_SCAN_TIME_INVALID",
+          context: { nowIso: requestedNowIso },
+        },
+      );
+    }
+    const nowIso = new Date(parsedNow).toISOString();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT outcome.*
+         FROM app_lifeops.life_brief_item_engagements outcome
+        WHERE outcome.agent_id = ${sqlQuote(agentId)}
+          AND outcome.event_type IN (
+            'opened', 'replied', 'completed', 'rescheduled', 'kept',
+            'dismissed', 'ignored'
+          )
+          AND outcome.weight <> 0
+          AND NULLIF(BTRIM(outcome.metadata_json::jsonb ->> 'trajectoryId'), '') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+              FROM app_lifeops.life_brief_item_engagements receipt
+             WHERE receipt.agent_id = outcome.agent_id
+               AND receipt.event_type = 'rewarded'
+               AND receipt.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
+               AND CASE receipt.metadata_json::jsonb ->> 'rewardState'
+                 WHEN 'released' THEN FALSE
+                 WHEN 'claimed' THEN receipt.event_at::timestamptz >
+                   ${sqlQuote(nowIso)}::timestamptz
+                 ELSE TRUE
+               END
+          )
+        ORDER BY COALESCE(
+          (
+            SELECT MAX(retry_order.created_at::timestamptz)
+              FROM app_lifeops.life_brief_item_engagements retry_order
+             WHERE retry_order.agent_id = outcome.agent_id
+               AND retry_order.event_type = 'rewarded'
+               AND retry_order.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
+          ),
+          outcome.event_at::timestamptz
+        ) ASC,
+        outcome.event_at::timestamptz ASC,
+        outcome.created_at::timestamptz ASC,
+        outcome.id ASC
+        LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseBriefItemEngagement);
   }
@@ -2928,6 +3324,328 @@ export class LifeOpsRepository {
     );
   }
 
+  /**
+   * Attribute an authoritative domain mutation to the newest delivered brief
+   * item for the same structural source during its delivery window. Callers pass
+   * only events they have already committed successfully; the ledger never
+   * guesses from user prose. The domain event id makes retries idempotent even
+   * when two handlers observe the same mutation concurrently.
+   */
+  async attributeBriefItemEngagement(input: {
+    agentId: string;
+    source: LifeOpsBriefItemSource;
+    sourceId: string;
+    eventType: Extract<
+      LifeOpsBriefEngagementEventType,
+      "opened" | "replied" | "completed" | "rescheduled" | "kept"
+    >;
+    eventAt: string;
+    domainEventId: string;
+    weight: number;
+    metadata?: Record<string, unknown>;
+    windowHours?: number;
+  }): Promise<LifeOpsBriefItemEngagementRecord | null> {
+    const eventMs = Date.parse(input.eventAt);
+    if (!Number.isFinite(eventMs)) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Invalid brief engagement time",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_TIME_INVALID",
+          context: {
+            eventAt: input.eventAt,
+            domainEventId: input.domainEventId,
+          },
+        },
+      );
+    }
+    const windowHours = input.windowHours ?? 24;
+    if (!Number.isFinite(windowHours) || windowHours <= 0) {
+      throw new ElizaError("[LifeOpsRepository] Invalid engagement window", {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_WINDOW_INVALID",
+        context: { windowHours },
+      });
+    }
+    const windowStart = new Date(
+      eventMs - windowHours * 60 * 60 * 1_000,
+    ).toISOString();
+    return withTransaction(this.runtime, async (tx) => {
+      const rows = await executeRawSqlTx(
+        tx,
+        `SELECT *
+           FROM app_lifeops.life_brief_item_engagements
+          WHERE agent_id = ${sqlQuote(input.agentId)}
+            AND source = ${sqlQuote(input.source)}
+            AND source_id = ${sqlQuote(input.sourceId)}
+            AND event_type = 'rendered'
+            AND event_at > ${sqlQuote(windowStart)}
+            AND event_at <= ${sqlQuote(input.eventAt)}
+          ORDER BY event_at DESC, created_at DESC
+          LIMIT 1 FOR UPDATE`,
+      );
+      const rendered = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+      if (!rendered) return null;
+      const ignored = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_brief_item_engagements
+          WHERE agent_id = ${sqlQuote(input.agentId)}
+            AND briefing_id = ${sqlQuote(rendered.briefingId)}
+            AND item_id = ${sqlQuote(rendered.itemId)}
+            AND event_type = 'ignored'
+          LIMIT 1`,
+      );
+      if (ignored.length > 0) return null;
+      return this.recordBriefItemEngagement(
+        {
+          agentId: input.agentId,
+          briefingId: rendered.briefingId,
+          itemId: rendered.itemId,
+          source: rendered.source,
+          kind: rendered.kind,
+          sourceId: rendered.sourceId,
+          itemClass: rendered.itemClass,
+          eventType: input.eventType,
+          eventAt: input.eventAt,
+          weight: input.weight,
+          metadata: {
+            ...rendered.metadata,
+            ...(input.metadata ?? {}),
+            domainEventId: input.domainEventId,
+            attributedRenderedEventId: rendered.id,
+          },
+        },
+        tx,
+      );
+    });
+  }
+
+  /**
+   * Close expired delivery windows as ignored. The derived expiry instant is
+   * stable, so concurrent finalizers converge on the table's unique key. A
+   * delivered item with any acted-on event in its window is never ignored.
+   */
+  async finalizeExpiredBriefItemEngagements(
+    agentId: string,
+    options: { asOfIso?: string; windowHours?: number } = {},
+  ): Promise<number> {
+    const asOfIso = options.asOfIso ?? isoNow();
+    const windowHours = options.windowHours ?? 24;
+    if (!Number.isFinite(windowHours) || windowHours <= 0) {
+      throw new ElizaError("[LifeOpsRepository] Invalid engagement window", {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_WINDOW_INVALID",
+        context: { windowHours },
+      });
+    }
+    const cutoffIso = new Date(
+      Date.parse(asOfIso) - windowHours * 60 * 60 * 1_000,
+    ).toISOString();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT rendered.*
+         FROM app_lifeops.life_brief_item_engagements rendered
+        WHERE rendered.agent_id = ${sqlQuote(agentId)}
+          AND rendered.event_type = 'rendered'
+          AND rendered.event_at <= ${sqlQuote(cutoffIso)}
+          AND NOT EXISTS (
+            SELECT 1
+              FROM app_lifeops.life_brief_item_engagements outcome
+             WHERE outcome.agent_id = rendered.agent_id
+               AND outcome.briefing_id = rendered.briefing_id
+               AND outcome.item_id = rendered.item_id
+               AND outcome.event_type IN (
+                 'opened', 'replied', 'completed', 'rescheduled', 'kept',
+                 'dismissed', 'ignored'
+               )
+               AND outcome.event_at >= rendered.event_at
+               AND outcome.event_at::timestamptz <=
+                 rendered.event_at::timestamptz +
+                 (${sqlNumber(windowHours)} * INTERVAL '1 hour')
+          )
+        ORDER BY rendered.event_at ASC, rendered.id ASC`,
+    );
+    let finalized = 0;
+    for (const raw of rows) {
+      const rendered = parseBriefItemEngagement(raw);
+      const expiryAt = new Date(
+        Date.parse(rendered.eventAt) + windowHours * 60 * 60 * 1_000,
+      ).toISOString();
+      const inserted = await withTransaction(this.runtime, async (tx) => {
+        const locked = await executeRawSqlTx(
+          tx,
+          `SELECT id
+             FROM app_lifeops.life_brief_item_engagements
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND id = ${sqlQuote(rendered.id)}
+            LIMIT 1 FOR UPDATE`,
+        );
+        if (locked.length === 0) return false;
+        const outcomes = await executeRawSqlTx(
+          tx,
+          `SELECT id
+             FROM app_lifeops.life_brief_item_engagements
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND briefing_id = ${sqlQuote(rendered.briefingId)}
+              AND item_id = ${sqlQuote(rendered.itemId)}
+              AND event_type IN (
+                'opened', 'replied', 'completed', 'rescheduled', 'kept',
+                'dismissed', 'ignored'
+              )
+              AND event_at >= ${sqlQuote(rendered.eventAt)}
+              AND event_at::timestamptz <=
+                ${sqlQuote(rendered.eventAt)}::timestamptz +
+                (${sqlNumber(windowHours)} * INTERVAL '1 hour')
+            LIMIT 1`,
+        );
+        if (outcomes.length > 0) return false;
+        await this.recordBriefItemEngagement(
+          {
+            agentId,
+            briefingId: rendered.briefingId,
+            itemId: rendered.itemId,
+            source: rendered.source,
+            kind: rendered.kind,
+            sourceId: rendered.sourceId,
+            itemClass: rendered.itemClass,
+            eventType: "ignored",
+            eventAt: expiryAt,
+            weight: -0.25,
+            metadata: {
+              ...rendered.metadata,
+              attributedRenderedEventId: rendered.id,
+              finalizationWindowHours: windowHours,
+            },
+          },
+          tx,
+        );
+        return true;
+      });
+      if (inserted) finalized += 1;
+    }
+    return finalized;
+  }
+
+  /**
+   * Acquire a crash-recoverable lease for one delayed reward write. The
+   * deterministic marker id is the durable outbox identity; an expired claim
+   * may be taken by another process, while a completed marker is permanent.
+   */
+  async claimBriefEngagementReward(
+    engagement: LifeOpsBriefItemEngagementRecord,
+    options: { nowIso?: string; leaseSeconds?: number } = {},
+  ): Promise<string | null> {
+    const id = briefRewardMarkerId(engagement.agentId, engagement.id);
+    const requestedNowIso = options.nowIso ?? isoNow();
+    const parsedNow = Date.parse(requestedNowIso);
+    const leaseSeconds = options.leaseSeconds ?? 60;
+    const leaseExpiresMs = parsedNow + leaseSeconds * 1_000;
+    if (
+      !Number.isFinite(parsedNow) ||
+      !Number.isInteger(leaseSeconds) ||
+      leaseSeconds <= 0 ||
+      leaseSeconds > 3_600 ||
+      !Number.isFinite(new Date(leaseExpiresMs).getTime())
+    ) {
+      throw new ElizaError("[LifeOpsRepository] Invalid reward lease", {
+        code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID",
+        context: { nowIso: requestedNowIso, leaseSeconds },
+      });
+    }
+    const nowIso = new Date(parsedNow).toISOString();
+    const leaseExpiresAt = new Date(leaseExpiresMs).toISOString();
+    const claimToken = crypto.randomUUID();
+    const claimMetadata = {
+      engagementEventId: engagement.id,
+      rewardState: "claimed",
+      claimToken,
+      leaseExpiresAt,
+    };
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_brief_item_engagements (
+        id, agent_id, briefing_id, item_id, source, kind, source_id,
+        item_class, event_type, event_at, weight, metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(id)}, ${sqlQuote(engagement.agentId)},
+        ${sqlQuote(engagement.briefingId)}, ${sqlQuote(engagement.itemId)},
+        ${sqlQuote(engagement.source)}, ${sqlQuote(engagement.kind)},
+        ${sqlQuote(engagement.sourceId)}, ${sqlQuote(engagement.itemClass)},
+        'rewarded', ${sqlQuote(leaseExpiresAt)},
+        ${sqlNumber(engagement.weight)},
+        ${sqlJson(claimMetadata)}, ${sqlQuote(nowIso)}
+      ) ON CONFLICT (id) DO UPDATE SET
+        event_at = EXCLUDED.event_at,
+        metadata_json = EXCLUDED.metadata_json,
+        created_at = EXCLUDED.created_at
+      WHERE app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id
+        AND CASE app_lifeops.life_brief_item_engagements.metadata_json::jsonb ->> 'rewardState'
+          WHEN 'released' THEN TRUE
+          WHEN 'claimed' THEN
+            app_lifeops.life_brief_item_engagements.event_at::timestamptz <=
+              ${sqlQuote(nowIso)}::timestamptz
+          ELSE FALSE
+        END
+      RETURNING id`,
+    );
+    return rows.length === 1 ? claimToken : null;
+  }
+
+  /** Mark the lease complete only after the trajectory receipt committed. */
+  async completeBriefEngagementRewardClaim(
+    engagement: LifeOpsBriefItemEngagementRecord,
+    claimToken: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_brief_item_engagements
+          SET metadata_json = ${sqlJson({
+            engagementEventId: engagement.id,
+            rewardState: "completed",
+            trajectoryRewardKey: `brief-engagement:${engagement.id}`,
+          })}
+        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.agentId, engagement.id))}
+          AND agent_id = ${sqlQuote(engagement.agentId)}
+          AND metadata_json LIKE ${sqlQuote(`%"claimToken":"${claimToken}"%`)}`,
+    );
+  }
+
+  /**
+   * Release only the caller's failed lease. Retaining the marker's attempt
+   * time rotates a poison row behind other pending outcomes without delaying
+   * its later retry.
+   */
+  async releaseBriefEngagementRewardClaim(
+    engagement: LifeOpsBriefItemEngagementRecord,
+    claimToken: string,
+  ): Promise<void> {
+    const releasedAt = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_brief_item_engagements AS reward
+          SET event_at = ${sqlQuote(releasedAt)},
+              created_at = GREATEST(
+                ${sqlQuote(releasedAt)}::timestamptz,
+                reward.created_at::timestamptz + INTERVAL '1 microsecond',
+                COALESCE(
+                  (
+                    SELECT MAX(peer.created_at::timestamptz) + INTERVAL '1 microsecond'
+                      FROM app_lifeops.life_brief_item_engagements peer
+                     WHERE peer.agent_id = reward.agent_id
+                       AND peer.event_type = 'rewarded'
+                       AND peer.id <> reward.id
+                  ),
+                  '-infinity'::timestamptz
+                )
+              )::text,
+              metadata_json = ${sqlJson({
+                engagementEventId: engagement.id,
+                rewardState: "released",
+              })}
+        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.agentId, engagement.id))}
+          AND agent_id = ${sqlQuote(engagement.agentId)}
+          AND metadata_json LIKE ${sqlQuote(`%"claimToken":"${claimToken}"%`)}`,
+    );
+  }
+
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -2935,7 +3653,7 @@ export class LifeOpsRepository {
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
-        progression_rule_json, website_access_json, reminder_plan_id, goal_id, source,
+        progression_rule_json, check_in_policy_json, website_access_json, reminder_plan_id, goal_id, source,
         metadata_json, created_at, updated_at
       ) VALUES (
         ${sqlQuote(definition.id)},
@@ -2956,6 +3674,11 @@ export class LifeOpsRepository {
         ${sqlJson(definition.windowPolicy)},
         ${sqlJson(definition.progressionRule)},
         ${sqlText(
+          definition.checkInPolicy
+            ? JSON.stringify(definition.checkInPolicy)
+            : null,
+        )},
+        ${sqlText(
           definition.websiteAccess
             ? JSON.stringify(definition.websiteAccess)
             : null,
@@ -2971,22 +3694,29 @@ export class LifeOpsRepository {
   }
 
   /**
-   * Persist a definition mutation. The predicate binds the row to the
-   * definition's own subject identity so a write can never land on another
-   * subject's record, and an optional `expectedUpdatedAt` turns the write
-   * into an optimistic-concurrency mutation: when the stored revision has
-   * moved (or the row is gone / owned by another subject) exactly zero rows
-   * match and a typed `LIFEOPS_DEFINITION_CONFLICT` error is thrown for the
-   * caller to re-resolve.
+   * Persist a definition mutation. The predicate binds the row to the supplied
+   * expected scope, or to the definition's target scope when no move is being
+   * made, so an authorized caller can move a row without making its old scope
+   * writable by unrelated callers. `expectedUpdatedAt` adds optimistic
+   * concurrency; a stale, missing, or differently scoped row raises a typed
+   * `LIFEOPS_DEFINITION_CONFLICT` for the caller to re-resolve.
    */
   async updateDefinition(
     definition: LifeOpsTaskDefinition,
-    options?: { expectedUpdatedAt?: string },
+    options?: {
+      expectedUpdatedAt?: string;
+      expectedScope?: LifeOpsDefinitionScope;
+    },
   ): Promise<void> {
     const revisionPredicate = options?.expectedUpdatedAt
       ? `
          AND updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
       : "";
+    const expectedScope = options?.expectedScope ?? {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_task_definitions
@@ -3004,6 +3734,11 @@ export class LifeOpsRepository {
              cadence_json = ${sqlJson(definition.cadence)},
              window_policy_json = ${sqlJson(definition.windowPolicy)},
              progression_rule_json = ${sqlJson(definition.progressionRule)},
+             check_in_policy_json = ${sqlText(
+               definition.checkInPolicy
+                 ? JSON.stringify(definition.checkInPolicy)
+                 : null,
+             )},
              website_access_json = ${sqlText(
                definition.websiteAccess
                  ? JSON.stringify(definition.websiteAccess)
@@ -3016,8 +3751,9 @@ export class LifeOpsRepository {
              updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
          AND agent_id = ${sqlQuote(definition.agentId)}
-         AND subject_type = ${sqlQuote(definition.subjectType)}
-         AND subject_id = ${sqlQuote(definition.subjectId)}${revisionPredicate}
+         AND domain = ${sqlQuote(expectedScope.domain)}
+         AND subject_type = ${sqlQuote(expectedScope.subjectType)}
+         AND subject_id = ${sqlQuote(expectedScope.subjectId)}${revisionPredicate}
        RETURNING id`,
     );
     if (rows.length !== 1) {
@@ -3028,7 +3764,11 @@ export class LifeOpsRepository {
           context: {
             definitionId: definition.id,
             agentId: definition.agentId,
+            domain: definition.domain,
             subjectType: definition.subjectType,
+            expectedDomain: expectedScope.domain,
+            expectedSubjectType: expectedScope.subjectType,
+            expectedSubjectId: expectedScope.subjectId,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
         },
@@ -3084,11 +3824,11 @@ export class LifeOpsRepository {
 
   /**
    * Destructive removal of a definition and its dependents. The definition
-   * row is deleted first under the subject-scope and optional revision
+   * row is deleted first under the domain/subject scope and optional revision
    * predicates; when it does not match exactly one row the whole operation
    * aborts with a typed `LIFEOPS_DEFINITION_CONFLICT` before any dependent
    * (reminder plans, goal links, occurrences) is touched, so a stale or
-   * cross-subject delete can never cascade.
+   * cross-domain or cross-subject delete can never cascade.
    */
   async deleteDefinition(
     agentId: string,
@@ -3117,6 +3857,7 @@ export class LifeOpsRepository {
           context: {
             definitionId,
             agentId,
+            domain: options?.scope?.domain ?? null,
             subjectType: options?.scope?.subjectType ?? null,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
@@ -3188,9 +3929,30 @@ export class LifeOpsRepository {
         relevance_start_at = excluded.relevance_start_at,
         relevance_end_at = excluded.relevance_end_at,
         window_name = excluded.window_name,
-        state = excluded.state,
-        snoozed_until = excluded.snoozed_until,
-        completion_payload_json = excluded.completion_payload_json,
+        -- A re-materialization computed from a snapshot taken before a
+        -- concurrent completion must not resurrect the day: when the stored
+        -- row is already completed and the incoming row is non-terminal, the
+        -- completed state and its payload win. Real terminal transitions go
+        -- through completeOccurrenceIfNonTerminal / the skip and expire
+        -- writers, which always carry a terminal state here.
+        state = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.state
+          ELSE excluded.state
+        END,
+        snoozed_until = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN NULL
+          ELSE excluded.snoozed_until
+        END,
+        completion_payload_json = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.completion_payload_json
+          ELSE excluded.completion_payload_json
+        END,
         derived_target_json = excluded.derived_target_json,
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
@@ -3236,13 +3998,17 @@ export class LifeOpsRepository {
   async getOccurrence(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrence | null> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_task_occurrences
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(occurrenceId)}
+      `SELECT occurrence.*
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
+           ON definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id
+        WHERE occurrence.agent_id = ${sqlQuote(agentId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3252,6 +4018,7 @@ export class LifeOpsRepository {
   async getOccurrenceView(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrenceView | null> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3265,12 +4032,16 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND occurrence.id = ${sqlQuote(occurrenceId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3280,6 +4051,7 @@ export class LifeOpsRepository {
   async listOccurrenceViewsForOverview(
     agentId: string,
     horizonIso: string,
+    definitionScopes?: readonly LifeOpsDefinitionScope[],
   ): Promise<LifeOpsOccurrenceView[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3293,12 +4065,16 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND definition.status = 'active'
+          AND definition.status = 'active'${definitionScopeSetPredicate(definitionScopes)}
           AND (
             occurrence.state IN ('visible', 'snoozed')
             OR (
@@ -3320,15 +4096,19 @@ export class LifeOpsRepository {
    * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
    * the owner's local day in TypeScript where timezone math belongs.
    *
-   * `subjectType` is pushed into SQL rather than filtered by the caller so the
-   * LIMIT can never evict matching rows: under multi-room load, agent-subject
-   * completions interleaved with the owner's would otherwise consume the
-   * window and silently drop owner wins from the evening brief.
+   * Ownership filters are pushed into SQL rather than applied after the LIMIT.
+   * Callers serving one owner must pass the exact definition scope: filtering
+   * only on `subjectType` would mix every owner under the same agent and expose
+   * another owner's completed-item titles through recap surfaces.
    */
   async listCompletedOccurrenceViewsSince(
     agentId: string,
     sinceIso: string,
-    options: { subjectType?: "owner" | "agent"; limit?: number } = {},
+    options: {
+      subjectType?: "owner" | "agent";
+      definitionScopes?: readonly LifeOpsDefinitionScope[];
+      limit?: number;
+    } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
     const subjectFilter = options.subjectType
@@ -3346,6 +4126,10 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
@@ -3353,17 +4137,38 @@ export class LifeOpsRepository {
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
           AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
-          ${subjectFilter}
+          ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
         ORDER BY occurrence.updated_at DESC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseOccurrenceView);
   }
 
-  async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await executeRawSql(
+  /**
+   * Persist an occurrence mutation under the owning definition's current
+   * scope and optional occurrence/definition revisions. Caller-facing flows
+   * pass every guard so an ownership move cannot turn a previously authorized
+   * read into a stale write against another owner's row.
+   */
+  async updateOccurrence(
+    occurrence: LifeOpsOccurrence,
+    options?: {
+      definitionScope?: LifeOpsDefinitionScope;
+      expectedUpdatedAt?: string;
+      expectedDefinitionUpdatedAt?: string;
+    },
+  ): Promise<void> {
+    const occurrenceRevisionPredicate = options?.expectedUpdatedAt
+      ? `
+          AND occurrence.updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const definitionRevisionPredicate = options?.expectedDefinitionUpdatedAt
+      ? `
+          AND definition.updated_at = ${sqlQuote(options.expectedDefinitionUpdatedAt)}`
+      : "";
+    const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
           SET domain = ${sqlQuote(occurrence.domain)},
               subject_type = ${sqlQuote(occurrence.subjectType)},
               subject_id = ${sqlQuote(occurrence.subjectId)},
@@ -3380,9 +4185,62 @@ export class LifeOpsRepository {
               derived_target_json = ${occurrence.derivedTarget ? sqlJson(occurrence.derivedTarget) : "NULL"},
               metadata_json = ${sqlJson(occurrence.metadata)},
               updated_at = ${sqlQuote(occurrence.updatedAt)}
-        WHERE id = ${sqlQuote(occurrence.id)}
-          AND agent_id = ${sqlQuote(occurrence.agentId)}`,
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}${occurrenceRevisionPredicate}${definitionRevisionPredicate}
+       RETURNING occurrence.id`,
     );
+    if (rows.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] occurrence update matched no row for this definition scope and revision",
+        {
+          code: "LIFEOPS_OCCURRENCE_CONFLICT",
+          context: {
+            occurrenceId: occurrence.id,
+            definitionId: occurrence.definitionId,
+            agentId: occurrence.agentId,
+            expectedDomain: options?.definitionScope?.domain ?? null,
+            expectedSubjectType: options?.definitionScope?.subjectType ?? null,
+            expectedSubjectId: options?.definitionScope?.subjectId ?? null,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+            expectedDefinitionUpdatedAt:
+              options?.expectedDefinitionUpdatedAt ?? null,
+          },
+        },
+      );
+    }
+  }
+
+  /**
+   * Atomically wins one nonterminal-to-completed transition under the owning
+   * definition's current scope. Callers perform completion side effects only
+   * when this returns true, preventing duplicate rollups and grants when
+   * concurrent quota increments reach the target. Unlike updateOccurrence it
+   * deliberately carries no occurrence-revision guard: the terminal-state
+   * predicate is the race arbiter.
+   */
+  async completeOccurrenceIfNonTerminal(
+    occurrence: LifeOpsOccurrence,
+    options?: { definitionScope?: LifeOpsDefinitionScope },
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
+          SET state = 'completed',
+              snoozed_until = NULL,
+              completion_payload_json = ${occurrence.completionPayload ? sqlJson(occurrence.completionPayload) : "NULL"},
+              updated_at = ${sqlQuote(occurrence.updatedAt)}
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}
+          AND occurrence.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+      RETURNING occurrence.id`,
+    );
+    return rows.length === 1;
   }
 
   async pruneNonTerminalOccurrences(
@@ -3657,6 +4515,129 @@ export class LifeOpsRepository {
    * when the id already existed. Used by circadian event emission to dedupe
    * across runtime restarts (same state transition -> same id).
    */
+  /**
+   * Appends one quota progress increment under an occurrence-row lock. The
+   * transaction serializes the aggregate read with the append, while the
+   * unique idempotency key keeps message replays as no-ops.
+   */
+  async appendProgressEventIfNew(
+    event: LifeOpsProgressEvent,
+    targetCount: number,
+  ): Promise<number | null> {
+    return withTransaction(this.runtime, async (tx) => {
+      const locked = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_occurrences
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND id = ${sqlQuote(event.occurrenceId)}
+          FOR UPDATE`,
+      );
+      if (locked.length !== 1) return null;
+      const duplicate = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}
+            AND idempotency_key = ${sqlQuote(event.idempotencyKey)}
+          LIMIT 1`,
+      );
+      if (duplicate.length > 0) return null;
+      const totals = await executeRawSqlTx(
+        tx,
+        `SELECT COALESCE(SUM(quantity), 0) AS total
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}`,
+      );
+      const currentTotal = Number(totals[0]?.total);
+      if (!Number.isInteger(currentTotal) || currentTotal < 0) {
+        throw new Error(
+          `LifeOpsRepository: invalid progress total for occurrence ${event.occurrenceId}`,
+        );
+      }
+      const quantity = Math.min(
+        Math.trunc(event.quantity),
+        Math.max(Math.trunc(targetCount) - currentTotal, 0),
+      );
+      if (quantity <= 0) return null;
+      const rows = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_task_progress_events (
+          id, agent_id, definition_id, occurrence_id, local_date_key,
+          idempotency_key, quantity, unit, note, actor, created_at
+        ) VALUES (
+          ${sqlQuote(event.id)},
+          ${sqlQuote(event.agentId)},
+          ${sqlQuote(event.definitionId)},
+          ${sqlQuote(event.occurrenceId)},
+          ${sqlQuote(event.localDateKey)},
+          ${sqlQuote(event.idempotencyKey)},
+          ${quantity},
+          ${sqlQuote(event.unit)},
+          ${event.note === null ? "NULL" : sqlQuote(event.note)},
+          ${sqlQuote(event.actor)},
+          ${sqlQuote(event.createdAt)}
+        )
+        ON CONFLICT (agent_id, occurrence_id, idempotency_key) DO NOTHING
+        RETURNING quantity`,
+      );
+      if (rows.length !== 1) return null;
+      return quantity;
+    });
+  }
+
+  /** Derived completed count for an occurrence: always summed from the append-only rows. */
+  async sumProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}`,
+    );
+    const raw = rows[0]?.total;
+    const total = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(total)) {
+      throw new Error(
+        `LifeOpsRepository: non-numeric progress sum for occurrence ${occurrenceId}`,
+      );
+    }
+    return Math.trunc(total);
+  }
+
+  async listProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<LifeOpsProgressEvent[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}
+        ORDER BY created_at ASC, id ASC`,
+    );
+    return rows.map((row) => ({
+      id: String(row.id),
+      agentId: String(row.agent_id),
+      definitionId: String(row.definition_id),
+      occurrenceId: String(row.occurrence_id),
+      localDateKey: String(row.local_date_key),
+      idempotencyKey: String(row.idempotency_key),
+      quantity: Number(row.quantity),
+      unit: String(row.unit),
+      note:
+        row.note === null || row.note === undefined ? null : String(row.note),
+      actor: String(row.actor),
+      createdAt: String(row.created_at),
+    }));
+  }
+
   async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
@@ -5802,15 +6783,17 @@ export class LifeOpsRepository {
   }
 
   async createWorkflowRun(run: LifeOpsWorkflowRun): Promise<void> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_workflow_runs (
-        id, agent_id, workflow_id, started_at, finished_at, status,
-        result_json, audit_ref
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
       ) VALUES (
         ${sqlQuote(run.id)},
         ${sqlQuote(run.agentId)},
         ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
         ${sqlQuote(run.startedAt)},
         ${sqlText(run.finishedAt)},
         ${sqlQuote(run.status)},
@@ -5818,6 +6801,109 @@ export class LifeOpsRepository {
         ${sqlText(run.auditRef)}
       )`,
     );
+  }
+
+  /**
+   * Atomically reserve a workflow run before any workflow step can perform a
+   * side effect. The unique `(agent, workflow, idempotency key)` index elects
+   * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
+   * independent.
+   */
+  async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (run.status !== "running" || run.finishedAt !== null) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run claims must be unfinished running records",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_CLAIM_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_workflow_runs (
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
+      ) VALUES (
+        ${sqlQuote(run.id)},
+        ${sqlQuote(run.agentId)},
+        ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
+        ${sqlQuote(run.startedAt)},
+        NULL,
+        'running',
+        ${sqlJson(run.result)},
+        ${sqlText(run.auditRef)}
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length === 1;
+  }
+
+  async getWorkflowRunByIdempotencyKey(
+    agentId: string,
+    workflowId: string,
+    idempotencyKey: string,
+  ): Promise<LifeOpsWorkflowRun | null> {
+    assertValidWorkflowRunIdempotencyKey(idempotencyKey);
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_workflow_runs
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND workflow_id = ${sqlQuote(workflowId)}
+          AND idempotency_key = ${sqlQuote(idempotencyKey)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseWorkflowRun(row) : null;
+  }
+
+  /**
+   * Finalize only the still-running reservation represented by `run`. A stale
+   * writer, a losing claimant, a mismatched key, or a repeated completion sees
+   * zero affected rows and returns false.
+   */
+  async completeWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (
+      !TERMINAL_WORKFLOW_RUN_STATUSES.has(run.status) ||
+      run.finishedAt === null
+    ) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run completion requires a terminal status and finish time",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_COMPLETION_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_runs
+          SET finished_at = ${sqlQuote(run.finishedAt)},
+              status = ${sqlQuote(run.status)},
+              result_json = ${sqlJson(run.result)},
+              audit_ref = ${sqlText(run.auditRef)}
+        WHERE id = ${sqlQuote(run.id)}
+          AND agent_id = ${sqlQuote(run.agentId)}
+          AND workflow_id = ${sqlQuote(run.workflowId)}
+          AND idempotency_key IS NOT DISTINCT FROM ${sqlText(run.idempotencyKey)}
+          AND status = 'running'
+          AND finished_at IS NULL
+      RETURNING id`,
+    );
+    return rows.length === 1;
   }
 
   async listWorkflowRuns(
@@ -8705,11 +9791,16 @@ export class LifeOpsRepository {
 }
 
 export function createLifeOpsTaskDefinition(
-  params: Omit<LifeOpsTaskDefinition, "id" | "createdAt" | "updatedAt">,
+  params: Omit<
+    LifeOpsTaskDefinition,
+    "id" | "createdAt" | "updatedAt" | "checkInPolicy"
+  > &
+    Pick<Partial<LifeOpsTaskDefinition>, "checkInPolicy">,
 ): LifeOpsTaskDefinition {
   const timestamp = isoNow();
   return {
     ...params,
+    checkInPolicy: params.checkInPolicy ?? null,
     id: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,

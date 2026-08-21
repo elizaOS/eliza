@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { client } from "../../api";
+import { isLimitedCloudAgentApiBase } from "../../api/app-shell-capabilities";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
   type MobileRuntimeMode,
@@ -57,12 +58,30 @@ function useActiveChatSource(): {
   activeChat: ActiveChatSource | null;
   activeChatResolved: boolean;
 } {
+  // Some embedded surface harnesses intentionally provide a minimal client;
+  // absence of the optional base accessor means "unknown/full shell", not a
+  // reason to crash the composer.
+  const agentBase =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+  const limitedCloudAgent = isLimitedCloudAgentApiBase(agentBase);
   const [state, setState] = useState<{
     activeChat: ActiveChatSource | null;
     activeChatResolved: boolean;
-  }>({ activeChat: null, activeChatResolved: false });
+  }>(() =>
+    limitedCloudAgent
+      ? {
+          activeChat: {
+            provider: "Eliza Cloud",
+            family: "ELIZAOS_CLOUD",
+            endpoint: agentBase,
+          },
+          activeChatResolved: true,
+        }
+      : { activeChat: null, activeChatResolved: false },
+  );
 
   useEffect(() => {
+    if (limitedCloudAgent) return;
     let disposed = false;
     // The chip mounts on the chat overlay, which is rendered by surfaces and
     // harnesses that stub the API client down to the calls they need. A
@@ -88,7 +107,7 @@ function useActiveChatSource(): {
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [limitedCloudAgent]);
 
   return state;
 }

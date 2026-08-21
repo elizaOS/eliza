@@ -25,6 +25,7 @@ import {
   type OcrWithCoordsBlock,
   RapidOcrCoordAdapter,
   readPngDimensions,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords";
 import type { OCRResult } from "./types";
 
@@ -167,8 +168,48 @@ describe("readPngDimensions", () => {
 
   it("rejects non-PNG inputs", async () => {
     await expect(readPngDimensions(new Uint8Array(64))).rejects.toThrow(
-      /PNG signature/,
+      /not a well-formed PNG/,
     );
+  });
+});
+
+// ── readPngDimensionsOrNull (fail-closed OCR-adapter reader) ─────────────────
+
+describe("readPngDimensionsOrNull", () => {
+  it("parses a synthesized 320x240 PNG", () => {
+    expect(readPngDimensionsOrNull(makePng(320, 240))).toEqual({
+      width: 320,
+      height: 240,
+    });
+  });
+
+  it("returns null for non-PNG bytes instead of garbage dimensions", () => {
+    // A JPEG/arbitrary buffer at >= 24 bytes previously yielded whatever the
+    // bytes at offsets 16/20 happened to hold, silently poisoning the
+    // semantic-position thirds. Now it must fail closed.
+    expect(readPngDimensionsOrNull(new Uint8Array(64))).toBeNull();
+  });
+
+  it("returns null for input shorter than a PNG header", () => {
+    expect(readPngDimensionsOrNull(new Uint8Array(12))).toBeNull();
+  });
+
+  it("returns null when the first chunk is not IHDR", () => {
+    const withSignature = new Uint8Array(64);
+    PNG_SIG.forEach((b, i) => {
+      withSignature[i] = b;
+    });
+    // Signature present but the first chunk type is "XXXX", not "IHDR".
+    withSignature[12] = 0x58;
+    withSignature[13] = 0x58;
+    withSignature[14] = 0x58;
+    withSignature[15] = 0x58;
+    expect(readPngDimensionsOrNull(withSignature)).toBeNull();
+  });
+
+  it("returns null for non-positive dimensions", () => {
+    expect(readPngDimensionsOrNull(makePng(0, 240))).toBeNull();
+    expect(readPngDimensionsOrNull(makePng(320, 0))).toBeNull();
   });
 });
 

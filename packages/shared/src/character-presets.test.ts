@@ -94,6 +94,24 @@ describe("character preset resolution with a shared avatarIndex", () => {
 describe("default Eliza persona safety", () => {
   const definition = CHARACTER_DEFINITIONS.find(({ id }) => id === "eliza");
 
+  it("keeps conversational identity to the agent's name", () => {
+    expect(definition).toBeDefined();
+    const identity = [
+      definition?.system,
+      ...(definition?.bio ?? []),
+      ...(definition?.messageExamples ?? []).flatMap((conversation) =>
+        conversation.map(({ content }) => content.text),
+      ),
+    ].join("\n");
+    expect(definition?.system).toContain('say "I\'m {{name}}."');
+    expect(definition?.messageExamples[0]?.[1]?.content.text).toBe(
+      "I'm {{agentName}}.",
+    );
+    expect(identity).not.toMatch(
+      /eliza research|san francisco|elizaos|open source|self-host|github\.com|\b(?:shaw|nubs|shad0w)\b/i,
+    );
+  });
+
   it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {
     expect(definition).toBeDefined();
     expect(definition?.system).toContain(
@@ -140,6 +158,28 @@ describe("default Eliza persona safety", () => {
       );
       expect(preset?.system).toContain(
         "Make the user's next five minutes easier.",
+      );
+    }
+  });
+
+  it("carries epistemic honesty into every resolved prompt instruction set", () => {
+    expect(definition).toBeDefined();
+    for (const language of Object.keys(definition?.variants ?? {})) {
+      const preset = resolveStylePresetById(
+        "eliza",
+        language as keyof NonNullable<typeof definition>["variants"],
+      );
+      const renderedInstructions = [
+        preset?.system,
+        ...(preset?.style.all ?? []),
+        ...(preset?.style.chat ?? []),
+      ].join("\n");
+
+      expect(renderedInstructions).toContain(
+        "separate what you know, what you checked, and what you inferred",
+      );
+      expect(renderedInstructions).toContain(
+        "never invent memory, use remembered details only when they are actually present",
       );
     }
   });

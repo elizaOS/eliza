@@ -308,6 +308,9 @@ export interface CacheOptions {
 
 	/** Bypass cache entirely */
 	forceRefresh?: boolean;
+
+	/** Cancel an in-flight registry request when the caller is no longer waiting. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -336,6 +339,22 @@ export interface InstallSkillOptions {
 
 	/** Force reinstall even if already installed */
 	force?: boolean;
+
+	/** Cancel all requests and body reads in this install lifecycle. */
+	signal?: AbortSignal;
+
+	/**
+	 * Wall-clock deadline shared by all network requests and body reads in this
+	 * install. Defaults to the service `fetchTimeoutMs`; `null` explicitly
+	 * disables the deadline for this install.
+	 */
+	downloadTimeoutMs?: number | null;
+
+	/**
+	 * Rethrow typed download-boundary failures instead of returning `false`.
+	 * Defaults to `false` to preserve the established boolean install API.
+	 */
+	throwOnDownloadError?: boolean;
 }
 
 // ============================================================
@@ -369,6 +388,16 @@ export const SKILL_BODY_RECOMMENDED_TOKENS = 5000;
 
 /** Pattern for valid skill names */
 export const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/**
+ * Pattern for valid binary names in skill `requires.bins` / `install[].bins`
+ * metadata. Bare executable names only: must start alphanumeric, then allow
+ * letters, digits, `.`, `_`, `+`, `-` (covers `g++`, `python3.12`,
+ * `docker-compose`). Anything else — whitespace, shell metacharacters, path
+ * separators, leading dashes (option injection) — is rejected because these
+ * registry-controlled strings are passed to `which`/`where` probes.
+ */
+export const SKILL_BIN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 
 // ============================================================
 // ELIGIBILITY TYPES
@@ -462,6 +491,9 @@ export interface SkillsServiceConfig {
 
 	/** Registry API URL */
 	registryUrl?: string;
+
+	/** Remote request deadline in milliseconds. Set to null to disable. */
+	fetchTimeoutMs?: number | null;
 
 	/** Sync the remote skill catalog during service initialization */
 	syncCatalogOnStart?: boolean;
@@ -557,6 +589,7 @@ export interface InstallDependencyResult {
  */
 export type SkillSource =
 	| "workspace" // 5 - highest precedence
+	| "marketplace" // 4.5 - workspace-local repository installs
 	| "managed" // 4
 	| "bundled" // 3
 	| "plugin" // 2
@@ -567,6 +600,7 @@ export type SkillSource =
  */
 export const SKILL_SOURCE_PRECEDENCE: Record<SkillSource, number> = {
 	workspace: 5,
+	marketplace: 4.5,
 	managed: 4,
 	bundled: 3,
 	plugin: 2,

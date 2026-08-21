@@ -221,9 +221,6 @@ export default scenario({
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "media"],
   isolation: "shared-runtime",
-  requires: {
-    plugins: ["scenario-deterministic-media-actions"],
-  },
   seed: [
     {
       type: "custom",

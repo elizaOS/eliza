@@ -11,7 +11,10 @@
  */
 
 import { Hono } from "hono";
-import { createLifeOpsGithubReturnResponse } from "@/lib/services/agent-github-return";
+import {
+  createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin,
+} from "@/lib/services/agent-github-return";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -22,17 +25,24 @@ async function __hono_GET(
 ) {
   const searchParams = new URL(request.url).searchParams;
   const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const targetOrigin = normalizePostMessageTargetOrigin(baseUrl);
   const githubConnected = searchParams.get("github_connected");
   const githubError = searchParams.get("github_error");
   const connectionId = searchParams.get("connection_id");
   const rawTarget = searchParams.get("target");
   const agentId = searchParams.get("agent_id");
-  const postMessage = searchParams.get("post_message") === "1";
+  const requestedPostMessageValues = searchParams.getAll("post_message");
+  const requestedPostMessage = requestedPostMessageValues[0];
+  if (
+    requestedPostMessageValues.length > 1 ||
+    (requestedPostMessage != null &&
+      requestedPostMessage !== "" &&
+      requestedPostMessage !== "1")
+  ) {
+    return Response.json({ error: "Invalid post_message" }, { status: 400 });
+  }
+  const postMessage = requestedPostMessage === "1";
   const returnUrl = searchParams.get("return_url");
-  // GitHub OAuth landing identity, not leftover tax on Life Ops inbox
-  // bools, X connectionRole, or influencer bookings party. Unknown
-  // tokens (AGENT / OWNER / foo) used to fall through to the owner
-  // connections tab.
   if (
     rawTarget != null &&
     rawTarget !== "" &&
@@ -63,6 +73,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     return Response.redirect(
@@ -88,6 +99,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     return Response.redirect(
@@ -113,6 +125,7 @@ async function __hono_GET(
       },
       postMessage,
       returnUrl,
+      targetOrigin,
     });
   }
 

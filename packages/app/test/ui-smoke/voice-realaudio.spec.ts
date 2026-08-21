@@ -22,11 +22,14 @@
  *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts
  */
 import { expect, type Page, type Response, test } from "@playwright/test";
+import { KNOWN_PHRASE_WAV_DATA_URL } from "../../../ui/src/voice/voice-selftest/fixtures/known-phrase";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
+import { selectVoiceTrajectory } from "./voice-live-trajectory";
 
 const EXPECTED_PHRASE = "what time is it";
 const CHAT_CONVERSATION_ID = "voice-realaudio-convo";
@@ -187,12 +190,12 @@ async function installAudioSourceProbe(page: Page): Promise<void> {
 
         source.start = ((...args: unknown[]) => {
           probe.starts += 1;
-          probe.events.push({ type: "start", id, at: performance.now() });
+          probe.events.push({ type: "start", id, at: Date.now() });
           return originalStart(...args);
         }) as AudioBufferSourceNode["start"];
         source.stop = ((...args: unknown[]) => {
           probe.stops += 1;
-          probe.events.push({ type: "stop", id, at: performance.now() });
+          probe.events.push({ type: "stop", id, at: Date.now() });
           return originalStop(...args);
         }) as AudioBufferSourceNode["stop"];
         source.disconnect = ((...args: unknown[]) => {
@@ -200,13 +203,13 @@ async function installAudioSourceProbe(page: Page): Promise<void> {
           probe.events.push({
             type: "disconnect",
             id,
-            at: performance.now(),
+            at: Date.now(),
           });
           return originalDisconnect(...args);
         }) as AudioBufferSourceNode["disconnect"];
         source.addEventListener("ended", () => {
           probe.ended += 1;
-          probe.events.push({ type: "ended", id, at: performance.now() });
+          probe.events.push({ type: "ended", id, at: Date.now() });
         });
         return source;
       };
@@ -425,6 +428,12 @@ async function installVoiceBackendMocks(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
+  // The production web bundle this lane serves brands itself cloud-only, and
+  // the shell auth gate (#20483) silently parks every mic engagement behind
+  // Cloud sign-in when no usable Steward session exists — turning each tap
+  // into a dead no-op long before getUserMedia runs. These cells assert the
+  // signed-in voice pipeline, so seed the canonical session up front.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
   await installVoiceBackendMocks(page);
 });
@@ -906,7 +915,7 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
 
   test("injected known-phrase WAV round-trips through real cloud STT → agent → cloud TTS", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await installCloudVoiceConfig(page);
     await installAudioSourceProbe(page);
 
@@ -922,6 +931,16 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       await page.unroute(r).catch(() => {});
     }
 
+    const startedAt = Date.now();
+    let capturedMicWav: Buffer | null = null;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().includes("/api/asr/cloud")
+      ) {
+        capturedMicWav = request.postDataBuffer();
+      }
+    });
     const asrResponsePromise = page.waitForResponse(
       // The product client deliberately retries the deferred runtime's
       // `feature_starting` 503. Observe the settled request rather than
@@ -930,6 +949,21 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
         response.url().includes("/api/asr/cloud") && response.status() !== 503,
       { timeout: 60_000 },
     );
+    // Register every response observer before starting capture. On a fast live
+    // stack the SSE and TTS requests can complete between the mic-stop click
+    // and the next statement; attaching waiters afterward turns a healthy run
+    // into a timeout and, worse, loses the response bytes needed for evidence.
+    const streamResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/messages/stream") &&
+        response.request().method() === "POST",
+      { timeout: 120_000 },
+    );
+    const ttsResponses: Response[] = [];
+    page.on("response", (response) => {
+      if (response.url().includes("/api/tts/cloud"))
+        ttsResponses.push(response);
+    });
 
     await openAppPath(page, "/chat");
     await expect(page.getByTestId("chat-overlay")).toBeVisible({
@@ -939,6 +973,26 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     await expect(mic).toHaveAttribute("aria-label", "talk", {
       timeout: 15_000,
     });
+
+    // Put the exact injected phrase on the browser's real audio-output graph
+    // before capture. CI records the system sink monitor, so its audio artifact
+    // contains the audible input reference followed by the actual product TTS
+    // playback; it is not a post-hoc payload concatenation.
+    const referenceOutput = await page.evaluate(async (source) => {
+      const audio = new Audio(source);
+      const startedAt = new Date().toISOString();
+      await new Promise<void>((resolve, reject) => {
+        audio.addEventListener("ended", () => resolve(), { once: true });
+        audio.addEventListener(
+          "error",
+          () => reject(new Error("known-phrase output playback failed")),
+          { once: true },
+        );
+        void audio.play().catch(reject);
+      });
+      return { startedAt, endedAt: new Date().toISOString() };
+    }, KNOWN_PHRASE_WAV_DATA_URL);
+    const ttsProbeBaseline = (await readAudioProbe(page)).starts;
 
     await mic.click();
     await expect(mic).toHaveAttribute("aria-label", "end conversation", {
@@ -958,12 +1012,79 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       "cloud STT must transcribe the injected known phrase",
     ).toContain("time");
 
-    // Real cloud TTS returned decoded, non-silent audio that actually played.
-    const ttsResponsePromise = page.waitForResponse(
-      (response) => response.url().includes("/api/tts/cloud"),
-      { timeout: 120_000 },
+    const streamResponse = await streamResponsePromise;
+    expect(
+      streamResponse.ok(),
+      await describeVoiceRouteFailure(streamResponse),
+    ).toBe(true);
+    const streamText = (await streamResponse.body()).toString("utf8");
+    const streamDone = streamText
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => {
+        try {
+          return JSON.parse(line.slice(5).trim()) as {
+            type?: unknown;
+            messageId?: unknown;
+            userMessageId?: unknown;
+            fullText?: unknown;
+          };
+        } catch {
+          // error-policy:J3 the SSE stream is untrusted response data; invalid
+          // lines are excluded and the required done/message id fails below.
+          return null;
+        }
+      })
+      .find((event) => event?.type === "done");
+    expect(
+      streamDone?.messageId,
+      "the live stream must return its persisted assistant message id",
+    ).toEqual(expect.any(String));
+    expect(
+      streamDone?.userMessageId,
+      "the live stream must return the persisted user message id used by trajectory metadata",
+    ).toEqual(expect.any(String));
+    const conversationId = new URL(streamResponse.url()).pathname.match(
+      /\/api\/conversations\/([^/]+)\/messages\/stream$/,
+    )?.[1];
+    expect(conversationId).toEqual(expect.any(String));
+    expect(streamDone?.fullText).toEqual(expect.any(String));
+    const conversationsResponse = await page.request.get("/api/conversations");
+    expect(conversationsResponse.ok()).toBe(true);
+    const conversationsPayload = (await conversationsResponse.json()) as {
+      conversations?: Array<{ id?: unknown; roomId?: unknown }>;
+    };
+    const conversation = conversationsPayload.conversations?.find(
+      (candidate) =>
+        candidate.id === decodeURIComponent(String(conversationId)),
     );
-    const ttsResponse = await ttsResponsePromise;
+    expect(
+      conversation?.roomId,
+      "the live conversation must expose the room used for trajectory correlation",
+    ).toEqual(expect.any(String));
+
+    // Real cloud TTS returned decoded, non-silent audio that actually played.
+    const responseMatchesVoiceReply = (response: Response) => {
+      try {
+        const body = JSON.parse(response.request().postData() ?? "{}") as {
+          text?: unknown;
+        };
+        return body.text === streamDone?.fullText;
+      } catch {
+        // error-policy:J3 captured request bodies are untrusted input;
+        // malformed candidates cannot match the exact completed turn.
+        return false;
+      }
+    };
+    await expect
+      .poll(() => ttsResponses.some(responseMatchesVoiceReply), {
+        timeout: 120_000,
+        message: "cloud TTS must synthesize the exact persisted voice reply",
+      })
+      .toBe(true);
+    const ttsResponse = ttsResponses.find(responseMatchesVoiceReply);
+    expect(ttsResponse).toBeDefined();
+    if (!ttsResponse) return;
     expect(ttsResponse.ok(), await describeVoiceRouteFailure(ttsResponse)).toBe(
       true,
     );
@@ -975,12 +1096,33 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       "cloud TTS must return a non-trivial audio body",
     ).toBeGreaterThan(2000);
     expect(ttsContentType).toContain("audio");
+    const ttsExtension = ttsContentType.includes("mpeg") ? "mp3" : "wav";
+    await testInfo.attach(`voice-live-tts.${ttsExtension}`, {
+      body: ttsAudio,
+      contentType: ttsContentType,
+    });
+    expect(
+      capturedMicWav?.byteLength,
+      "the live lane must retain the exact browser-captured mic WAV",
+    ).toBeGreaterThan(1000);
+    await testInfo.attach("voice-live-input.wav", {
+      body: capturedMicWav as Buffer,
+      contentType: "audio/wav",
+    });
     await expect
       .poll(async () => (await readAudioProbe(page)).starts, {
         timeout: 30_000,
         message: "the decoded cloud TTS audio must start real playback",
       })
-      .toBeGreaterThan(0);
+      .toBeGreaterThan(ttsProbeBaseline);
+    const ttsStartEvent = (await readAudioProbe(page)).events.filter(
+      (event) => event.type === "start",
+    )[ttsProbeBaseline];
+    expect(
+      ttsStartEvent?.at,
+      "the product TTS playback must expose its exact AudioBufferSource start time",
+    ).toBeGreaterThan(startedAt);
+    const ttsOutputStartedAt = new Date(ttsStartEvent.at).toISOString();
 
     // Report the real audio characteristics for the PR evidence log.
     if (ttsAudio) {
@@ -995,5 +1137,79 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
         );
       }
     }
+
+    const trajectoryListResponse = await page.request.get(
+      "/api/trajectories?limit=50",
+    );
+    expect(
+      trajectoryListResponse.ok(),
+      "the live lane must export the correlated agent trajectory",
+    ).toBe(true);
+    const trajectoryList = (await trajectoryListResponse.json()) as {
+      trajectories?: Array<{
+        id?: unknown;
+        startTime?: unknown;
+        roomId?: unknown;
+        llmCallCount?: unknown;
+        metadata?: unknown;
+      }>;
+    };
+    const trajectory = selectVoiceTrajectory(
+      trajectoryList.trajectories ?? [],
+      {
+        startedAt,
+        roomId: String(conversation?.roomId),
+        userMessageId: String(streamDone?.userMessageId),
+      },
+    );
+    expect(
+      trajectory?.id,
+      "a new live-model trajectory with at least one LLM call is required",
+    ).toEqual(expect.any(String));
+    const trajectoryResponse = await page.request.get(
+      `/api/trajectories/${encodeURIComponent(String(trajectory?.id))}`,
+    );
+    expect(trajectoryResponse.ok()).toBe(true);
+    const trajectoryDetail = await trajectoryResponse.json();
+    await testInfo.attach("voice-live-trajectory.json", {
+      body: Buffer.from(`${JSON.stringify(trajectoryDetail, null, 2)}\n`),
+      contentType: "application/json",
+    });
+    await testInfo.attach("voice-live-network.json", {
+      body: Buffer.from(
+        `${JSON.stringify(
+          {
+            startedAt: new Date(startedAt).toISOString(),
+            audioOutput: {
+              reference: referenceOutput,
+              ttsStartedAt: ttsOutputStartedAt,
+            },
+            asr: {
+              path: new URL(asrResponse.url()).pathname,
+              status: asrResponse.status(),
+              transcript: asrTranscript,
+            },
+            agent: {
+              path: new URL(streamResponse.url()).pathname,
+              status: streamResponse.status(),
+              conversationId,
+              roomId: conversation?.roomId,
+              messageId: streamDone?.messageId,
+              userMessageId: streamDone?.userMessageId,
+              trajectoryId: trajectory?.id,
+            },
+            tts: {
+              path: new URL(ttsResponse.url()).pathname,
+              status: ttsResponse.status(),
+              contentType: ttsContentType,
+              bytes: ttsBytes,
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+      contentType: "application/json",
+    });
   });
 });

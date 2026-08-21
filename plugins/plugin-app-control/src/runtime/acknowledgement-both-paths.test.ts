@@ -93,7 +93,7 @@ describe("view-switch response context ownership", () => {
 	});
 	afterEach(() => vi.unstubAllGlobals());
 
-	it("keeps open-notes completion singular and leaves the following wyd turn untouched", async () => {
+	it("keeps the open-notes effect internal and leaves the following wyd turn untouched", async () => {
 		const callback = vi.fn(async () => []);
 		const result = await runViewsShow({
 			client: viewsClient,
@@ -101,15 +101,19 @@ describe("view-switch response context ownership", () => {
 			callback,
 		});
 
-		expect(callback).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith({ text: "Opened Notes." });
+		expect(callback).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
 			success: true,
-			text: "Opened Notes.",
 			transcriptVisibility: "internal",
-			userFacingText: "Opened Notes.",
-			verifiedUserFacing: true,
-			turnComplete: true,
+			modelReplyRequired: true,
+		});
+		expect(result).not.toHaveProperty("turnComplete");
+		expect(result).not.toHaveProperty("userFacingText");
+		expect(result).not.toHaveProperty("verifiedUserFacing");
+		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "accepted",
+			viewId: "notes",
 		});
 		expect(fetch).toHaveBeenCalledTimes(1);
 

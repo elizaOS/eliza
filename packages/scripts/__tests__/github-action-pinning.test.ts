@@ -35,6 +35,8 @@ const smokeLanesE2eCommand =
 const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
 const smokeLanesCoreBuildCondition =
   "needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'";
+const liveSmokeCloudCondition =
+  "inputs.suite == 'all' || inputs.suite == 'cloud'";
 
 function assertJobBrowserBootstrap(
   steps: WorkflowStep[],
@@ -103,6 +105,44 @@ function assertSmokeLanesCoreBootstrap(source: string): void {
   }
   if (e2eIndex < 0 || buildIndex >= e2eIndex) {
     throw new Error("Smoke lanes must build the core contract before E2E");
+  }
+}
+
+function assertLiveSmokeCloudCoreBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: { smoke?: { steps?: WorkflowStep[] } };
+  };
+  const steps = workflow.jobs?.smoke?.steps ?? [];
+  const setupIndex = steps.findIndex(
+    (step) => step.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const buildIndex = steps.findIndex(
+    (step) =>
+      step.name === "Build core runtime contract" &&
+      step.run === "bun run build:core",
+  );
+  const e2eIndex = steps.findIndex(
+    (step) =>
+      step.name === "Cloud end-to-end" && step.run === "bun run test:cloud:e2e",
+  );
+
+  if (setupIndex < 0 || buildIndex < 0 || e2eIndex < 0) {
+    throw new Error(
+      "Live Smoke must retain workspace setup, core build, and Cloud e2e steps",
+    );
+  }
+  if (
+    steps[buildIndex]?.if !== liveSmokeCloudCondition ||
+    steps[e2eIndex]?.if !== liveSmokeCloudCondition
+  ) {
+    throw new Error(
+      "Live Smoke core build and Cloud e2e must share the cloud-suite condition",
+    );
+  }
+  if (!(setupIndex < buildIndex && buildIndex < e2eIndex)) {
+    throw new Error(
+      "Live Smoke must build the core edge contract before Cloud e2e",
+    );
   }
 }
 
@@ -329,6 +369,43 @@ describe("GitHub action supply-chain references", () => {
       ),
     ).toThrow(
       "Smoke lanes must build the core contract for cloud and zero-key work",
+    );
+  });
+
+  test("builds the compiled core edge contract before Live Smoke cloud E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "live-smoke.yml"),
+      "utf8",
+    );
+
+    expect(() => assertLiveSmokeCloudCoreBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertLiveSmokeCloudCoreBootstrap(
+        source.replace(
+          "run: bun run build:core",
+          "run: echo core-build-removed",
+        ),
+      ),
+    ).toThrow(
+      "Live Smoke must retain workspace setup, core build, and Cloud e2e steps",
+    );
+
+    const buildStep = `      # Cloud API e2e loads the compiled Workerd export from
+      # @elizaos/core/edge. The lean install above skips lifecycle scripts, so
+      # this artifact must be built explicitly on a clean runner.
+      - name: Build core runtime contract
+        if: ${liveSmokeCloudCondition}
+        run: bun run build:core
+
+`;
+    const afterE2e = source
+      .replace(buildStep, "")
+      .replace(
+        "        run: bun run test:cloud:e2e\n",
+        (command) => `${command}\n${buildStep}`,
+      );
+    expect(() => assertLiveSmokeCloudCoreBootstrap(afterE2e)).toThrow(
+      "Live Smoke must build the core edge contract before Cloud e2e",
     );
   });
 

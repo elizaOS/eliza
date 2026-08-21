@@ -3,6 +3,12 @@
  *
  * Sets the anonymous-session cookie when a user arrives with a session
  * token (e.g. via affiliate link). Public endpoint — no auth required.
+ *
+ * The token is accepted only for a session the deployment itself minted
+ * (DB lookup below), and the mutation is guarded like the other session
+ * mutations: exact-host Origin policy plus a non-simple-request marker
+ * (X-Eliza-CSRF header or JSON content type), so a cross-site form POST
+ * cannot plant an attacker-known cookie into a victim's browser.
  */
 
 import { eq } from "drizzle-orm";
@@ -11,11 +17,16 @@ import { setCookie } from "hono/cookie";
 import { dbWrite } from "@/db/client";
 import { anonymousSessions, users } from "@/db/schemas";
 import {
+  checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
+} from "@/lib/auth/browser-origin-policy";
+import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { usersService } from "@/lib/services/users";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -28,13 +39,29 @@ app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
 app.post("/", async (c) => {
   logger.info("[Set Session] Received request to set anonymous session cookie");
 
-  let body: { sessionToken?: string };
-  try {
-    body = await c.req.json();
-  } catch (err) {
-    logger.error("[Set Session] Failed to parse request body:", err);
+  // A cross-site simple request (hidden form POST) cannot satisfy this gate,
+  // so an attacker cannot plant a session cookie they know into a victim's
+  // browser and later read or merge the victim's anonymous activity.
+  const originCheck = checkElizaMutatingRequestOrigin(
+    c.req,
+    c.env.NODE_ENV === "production",
+  );
+  if (!originCheck.ok) {
+    logger.warn("[Set Session] rejected cross-origin POST", {
+      detail: originCheck.reason,
+    });
+    return c.json({ error: "Forbidden", code: "forbidden_origin" }, 403);
+  }
+  if (!hasElizaNonSimpleRequestMarker(c.req)) {
+    return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
+  }
+
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
     return c.json({ error: "Invalid JSON body" }, 400);
   }
+  const body = decodedBody.value as { sessionToken?: string };
 
   const { sessionToken } = body;
   if (!sessionToken || typeof sessionToken !== "string") {
@@ -85,7 +112,9 @@ app.post("/", async (c) => {
   setCookie(c, ANON_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: c.env.NODE_ENV === "production",
-    sameSite: "Lax",
+    // Strict, matching the mint routes: the anonymous cookie is a first-party
+    // session handle and is never needed on a cross-site request.
+    sameSite: "Strict",
     path: "/",
     expires: session.expires_at,
   });

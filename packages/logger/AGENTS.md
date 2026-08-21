@@ -31,8 +31,10 @@ bun run --cwd packages/logger format
 
 ## Gotchas
 
-- Leaf package: depends only on `adze` + `fast-redact`. Do NOT add an `@elizaos/*`
+- Leaf package: depends only on `adze`. Do NOT add an `@elizaos/*`
   dependency — that would re-introduce the bundle-coupling this split removed.
+  Secret redaction is the built-in deep-walk redactor in `src/logger.ts`; its
+  key-name policy mirrors `@elizaos/core`'s `security/redact.ts` by hand.
 - Consumers that only need logging should import `@elizaos/logger`, not
   `@elizaos/core`, to stay off the core runtime's module graph.
 - The renderer resolves `@elizaos/logger` to source via a vite alias in

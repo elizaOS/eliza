@@ -20,6 +20,7 @@ import {
   gcUnreferencedMedia,
   handleMediaRouteRequest,
   isStoredMediaUrl,
+  MEDIA_URL_IN_TEXT_RE,
   mediaFileNameFromUrl,
   persistAttachmentUrlIfInline,
   persistMediaBytes,
@@ -258,6 +259,18 @@ export function collectReferencedMedia(
       | undefined;
     addUrl(metadata?.mediaUrl);
     addUrl(metadata?.audioUrl);
+
+    // Re-shared media: a message can reference a stored file by pasting its
+    // `/api/media/<sha256>.<ext>` capability URL into the body text with no
+    // attachment/metadata field pointing at it. The export capture already
+    // treats such text URLs as live references; the GC must agree, or the
+    // sweep unlinks the file and the visible chat reference 404s.
+    const text = (memory.content as { text?: unknown } | undefined)?.text;
+    if (typeof text === "string" && text.includes("/api/media/")) {
+      for (const match of text.matchAll(MEDIA_URL_IN_TEXT_RE)) {
+        addUrl(match[0]);
+      }
+    }
 
     // Transcript rows persist the rich record as JSON in `content.transcript`.
     // Voice captures can retain their WAV solely through the record's `audioUrl`,

@@ -217,6 +217,82 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(typeof logger.logLlmCall).toBe("function");
   });
 
+  it("persists semantic decision stages through the patched logSemanticStage", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    expect(typeof patched.logSemanticStage).toBe("function");
+    await logger.startTrajectory?.("step-semantic-1", {
+      agentId: runtime.agentId,
+      source: "test",
+    });
+    await flushTrajectoryWrites(runtime);
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-1",
+      stage: {
+        stageId: "stage-tool-search-1",
+        kind: "toolSearch",
+        iteration: 1,
+        startedAt: 100,
+        endedAt: 112,
+        latencyMs: 12,
+        toolSearch: {
+          query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+          results: [
+            { name: "OWNER_ROUTINES", score: 0.91, rank: 1 },
+            { name: "VIEWS", score: 0.22, rank: 2 },
+          ],
+          selectedActions: ["OWNER_ROUTINES"],
+        },
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    const persistenceSql = trajectoryPersistenceSql(execute);
+    expect(persistenceSql.length).toBeGreaterThan(0);
+    const stageWrite = persistenceSql.find((query) =>
+      query.includes("semanticStages"),
+    );
+    expect(stageWrite).toBeDefined();
+    expect(stageWrite).toContain("stage-tool-search-1");
+    expect(stageWrite).toContain("OWNER_ROUTINES");
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed semantic stage as an invalid capture without a write", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-2",
+      stage: {
+        stageId: "bad-stage",
+        kind: "toolSearch",
+        startedAt: 10,
+        endedAt: 5,
+        latencyMs: -5,
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    expect(trajectoryPersistenceSql(execute)).toHaveLength(0);
+    expect(reportError).toHaveBeenCalledWith(
+      "TrajectoryStorage.captureValidation",
+      expect.anything(),
+      expect.objectContaining({ captureType: "semanticStage" }),
+    );
+  });
+
   it("honors live enablement across patched lifecycle and legacy helpers", async () => {
     const { runtime, logger, execute } = makeRuntime({
       statefulEnablement: true,
@@ -856,6 +932,103 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
       stepMappings: 0,
       activeOwners: 0,
     });
+  });
+
+  it("stores delayed rewards in the canonical nested component map", async () => {
+    const { runtime, execute } = makeRuntime();
+    const persistedAt = Date.now();
+    execute.mockImplementation(async (query: unknown) => {
+      const text = sqlText(query);
+      if (
+        text.includes("SELECT * FROM trajectories") &&
+        text.includes("agent-reward-parent")
+      ) {
+        return [
+          {
+            id: "agent-reward-parent",
+            agent_id: runtime.agentId,
+            source: "morning-brief",
+            status: "completed",
+            start_time: persistedAt,
+            end_time: persistedAt + 1,
+            duration_ms: 1,
+            steps_json: "[]",
+            metadata_json: "{}",
+            metrics_json: '{"episodeLength":0,"finalStatus":"completed"}',
+            reward_components_json:
+              '{"environmentReward":0,"components":{"existing":0.25}}',
+            total_reward: 0,
+            created_at: new Date(persistedAt).toISOString(),
+            updated_at: new Date(persistedAt + 1).toISOString(),
+          },
+        ];
+      }
+      return [];
+    });
+    const standalone = new DatabaseTrajectoryLogger(runtime);
+    standalone.setEnabled(true);
+    expect(
+      await standalone.applyReward({
+        trajectoryId: "agent-reward-parent",
+        idempotencyKey: "brief-engagement:event-1",
+        reward: 0.75,
+        component: "briefEngagementReward",
+      }),
+    ).toBe(true);
+    const writes = trajectoryParentWriteSql(execute);
+    expect(
+      writes.some(
+        (query) =>
+          query.includes(
+            '"components":{"existing":0.25,"briefEngagementReward":0.75}',
+          ) && !query.includes('"briefEngagementReward":0.75,"components"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects malformed persisted delayed-reward components", async () => {
+    const { runtime, execute } = makeRuntime();
+    const persistedAt = Date.now();
+    execute.mockImplementation(async (query: unknown) => {
+      const text = sqlText(query);
+      if (
+        text.includes("SELECT * FROM trajectories") &&
+        text.includes("agent-reward-corrupt")
+      ) {
+        return [
+          {
+            id: "agent-reward-corrupt",
+            agent_id: runtime.agentId,
+            source: "morning-brief",
+            status: "completed",
+            start_time: persistedAt,
+            end_time: persistedAt + 1,
+            duration_ms: 1,
+            steps_json: "[]",
+            metadata_json: "{}",
+            metrics_json: '{"episodeLength":0,"finalStatus":"completed"}',
+            reward_components_json:
+              '{"environmentReward":0,"components":"corrupt"}',
+            total_reward: 0,
+            created_at: new Date(persistedAt).toISOString(),
+            updated_at: new Date(persistedAt + 1).toISOString(),
+          },
+        ];
+      }
+      return [];
+    });
+    const standalone = new DatabaseTrajectoryLogger(runtime);
+    standalone.setEnabled(true);
+
+    await expect(
+      standalone.applyReward({
+        trajectoryId: "agent-reward-corrupt",
+        idempotencyKey: "brief-engagement:event-corrupt",
+        reward: 0.75,
+        component: "briefEngagementReward",
+      }),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_CAPTURE_INVALID" });
+    expect(trajectoryParentWriteSql(execute)).toEqual([]);
   });
 
   it("keeps canonical metrics valid across provider/LLM appends and completion", async () => {

@@ -11,21 +11,26 @@
  * mid-hold, or sliding the pointer more than {@link SLIDE_CANCEL_PX} off the
  * pill before releasing.
  *
- * On a cloud-only build the `needs-auth` phase replaces both gestures with a
- * labeled chip that launches Cloud sign-in. Hold is not armed there.
+ * On a cloud-only build the `needs-auth` phase keeps the same neutral resting
+ * affordance; activating it launches Cloud sign-in. Hold is not armed there.
  */
 
-import { LoaderCircle, LogIn } from "lucide-react";
+import { AudioWaveform, Plus, Square } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { computeWaveBarScales, FLATLINE_SCALE } from "./home-pill-wave";
 import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
   phase: ShellPhase;
+  /** Whether the chat overlay is actually open. Voice activity can enter
+   *  `responding` while the pill remains closed, so phase cannot own this. */
+  open?: boolean;
   onOpen: () => void;
   onClose: () => void;
   /** Begin hold-to-talk capture (wired to `startRecording("ptt")`). When
@@ -36,12 +41,29 @@ export interface HomePillProps {
   onHoldEnd?: () => void;
   /** Abandon hold-to-talk without sending (Esc mid-hold, slide-off). */
   onHoldCancel?: () => void;
+  /** Live capture analyser while recording (`controller.analyser`). When
+   *  present, the listening chip's bars are metered from real microphone
+   *  energy — a flat line means the mic is dead, the honest failure signal.
+   *  Absent (mic still opening, host without capture, permission or device
+   *  failure) the bars hold the static flatline: decorative motion must never
+   *  imply a hot mic. */
+  analyser?: AnalyserNode | null;
   /** True while the assistant reply is being spoken aloud. Sharpens the
    *  responding glow so "speaking" and "thinking" read differently. */
   speaking?: boolean;
   /** True while Cloud sign-in is in flight from this pill. Pulses the
    *  `needs-auth` chip so the wait is visible. */
   signingIn?: boolean;
+  /** Reports the idle pill's shallow composer-preview hover state. Desktop
+   *  uses this to widen the transparent native hit area before painting it. */
+  onPreviewHoverChange?: (hovered: boolean) => void;
+  /** True once the native host has acknowledged its wider shallow frame. Hover
+   *  and listening lanes stay compact until then so WKWebView cannot clip them
+   *  into the resting 96px window. Web callers leave this unset. */
+  previewHostReady?: boolean;
+  /** Whether hovering may render HomePill's lightweight visual preview. Hosts
+   *  that mount the real ChatOverlay input detent must disable this duplicate. */
+  showComposerPreview?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -53,20 +75,26 @@ export const HOLD_THRESHOLD_MS = 150;
  *  the iOS "slide off to cancel" convention. */
 export const SLIDE_CANCEL_PX = 44;
 
-/** Listening-state waveform bars: nine bars with center-weighted, symmetric
- *  stagger delays so the chip reads as a live waveform (shimmering from the
- *  middle out) rather than a marching sequence — mirroring the density of the
- *  studied Wispr Flow bar. Ids are stable keys; delays repeat symmetrically. */
+/** Listening-state waveform bars: fifteen bars with a center-weighted,
+ *  symmetric height silhouette — mirroring the density of the studied Wispr
+ *  Flow bar. Ids are stable keys. Motion comes only from live analyser
+ *  frames; without them the bars rest at the flatline. */
 const WAVE_BARS = [
-  { id: "l4", delayMs: 420 },
-  { id: "l3", delayMs: 240 },
-  { id: "l2", delayMs: 120 },
-  { id: "l1", delayMs: 60 },
-  { id: "c0", delayMs: 0 },
-  { id: "r1", delayMs: 60 },
-  { id: "r2", delayMs: 120 },
-  { id: "r3", delayMs: 240 },
-  { id: "r4", delayMs: 420 },
+  { id: "l7", height: 10 },
+  { id: "l6", height: 13 },
+  { id: "l5", height: 17 },
+  { id: "l4", height: 16 },
+  { id: "l3", height: 21 },
+  { id: "l2", height: 22 },
+  { id: "l1", height: 26 },
+  { id: "c0", height: 28 },
+  { id: "r1", height: 26 },
+  { id: "r2", height: 22 },
+  { id: "r3", height: 21 },
+  { id: "r4", height: 16 },
+  { id: "r5", height: 17 },
+  { id: "r6", height: 13 },
+  { id: "r7", height: 10 },
 ] as const;
 
 /** Processing-state dots: the mic closed but transcription is in flight —
@@ -88,7 +116,7 @@ const PROCESS_DOTS = [
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
  *   booting     — dim pulsing handle ("waking up").
- *   needs-auth  — orange labeled action ("Sign in with {appName} Cloud").
+ *   needs-auth  — same neutral handle and hover preview as idle.
  *   idle        — solid white handle ("here, ready").
  *   listening   — dark chip, live waveform bars ("mic is hot").
  *   processing  — dark chip, pulsing dots — mic closed,
@@ -100,21 +128,43 @@ const PROCESS_DOTS = [
  */
 export function HomePill({
   phase,
+  open,
   onOpen,
   onClose,
   onHoldStart,
   onHoldEnd,
   onHoldCancel,
+  analyser = null,
   speaking = false,
   signingIn = false,
+  onPreviewHoverChange,
+  previewHostReady = true,
+  showComposerPreview = true,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
-  // The pill reads as "open" (its click will close) only for the overlay
-  // surfaces. `listening` is deliberately NOT included: hold-to-talk runs with
-  // the overlay closed, and treating it as open would flash the label/pressed
-  // state during every hold (#20483).
-  const isOpen = phase === "summoned" || phase === "responding";
+  // Hosts with a controller must pass its real overlay state. The phase-only
+  // fallback preserves standalone stories and consumers, but cannot distinguish
+  // a closed-pill voice response from a response inside an open chat.
+  const isOpen = open ?? (phase === "summoned" || phase === "responding");
+  const previewEligible =
+    showComposerPreview && (phase === "idle" || needsAuth);
+  const [previewHovered, setPreviewHovered] = React.useState(false);
+
+  const setPreviewHover = React.useCallback(
+    (hovered: boolean) => {
+      const next = previewEligible && hovered;
+      setPreviewHovered(next);
+      onPreviewHoverChange?.(next);
+    },
+    [onPreviewHoverChange, previewEligible],
+  );
+
+  React.useEffect(() => {
+    if (previewEligible || !previewHovered) return;
+    setPreviewHovered(false);
+    onPreviewHoverChange?.(false);
+  }, [onPreviewHoverChange, previewEligible, previewHovered]);
 
   const holdTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdActiveRef = React.useRef(false);
@@ -218,8 +268,42 @@ export function HomePill({
   }, [isOpen, onOpen, onClose]);
 
   const signInLabel = `Sign in with ${appName} Cloud`;
-  const chipExpanded =
-    phase === "listening" || phase === "processing" || needsAuth;
+  const previewVisible = previewHovered && previewHostReady;
+  const listening = phase === "listening";
+  const reduceMotion = useReducedMotion() ?? false;
+  // Bars go live only when real audio frames exist to drive them; without an
+  // analyser (or under reduced motion) they hold the static flatline.
+  const metered = listening && analyser !== null && !reduceMotion;
+  const waveBarRefs = React.useRef<Array<HTMLSpanElement | null>>([]);
+
+  // Audio-frame writes stay imperative (direct style.transform) so live mic
+  // activity never rerenders the pill while a hold is in flight.
+  React.useEffect(() => {
+    if (!metered || !analyser) return undefined;
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    const renderFrame = () => {
+      analyser.getByteTimeDomainData(samples);
+      const scales = computeWaveBarScales(samples, WAVE_BARS.length);
+      waveBarRefs.current.forEach((bar, index) => {
+        if (!bar) return;
+        bar.style.transform = `scaleY(${scales[index] ?? FLATLINE_SCALE})`;
+      });
+      frame = window.requestAnimationFrame(renderFrame);
+    };
+    frame = window.requestAnimationFrame(renderFrame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      // Return the bars to the honest resting flatline; a stale live scale
+      // must not survive an analyser teardown mid-listen (device loss).
+      waveBarRefs.current.forEach((bar) => {
+        if (bar) bar.style.transform = `scaleY(${FLATLINE_SCALE})`;
+      });
+    };
+  }, [metered, analyser]);
+  const listeningExpanded = listening && previewHostReady;
+  const chipExpanded = listening || phase === "processing";
+  const composerSized = previewVisible || listeningExpanded;
   const label = needsAuth
     ? signingIn
       ? `Signing in to ${appName} Cloud`
@@ -247,11 +331,18 @@ export function HomePill({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onMouseEnter={() => setPreviewHover(true)}
+      onMouseLeave={() => setPreviewHover(false)}
+      // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
+      // the wide hover host on the first scroll gesture so subsequent trackpad
+      // momentum reaches the application underneath instead of being trapped
+      // by a decorative preview.
+      onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
-        needsAuth ? "h-12 w-[18rem]" : "h-8 w-16",
-        "transition-transform duration-200 hover:bg-transparent",
+        composerSized ? "h-16 w-[36rem]" : "h-8 w-16",
+        "transition-[width,height,transform] duration-200 hover:bg-transparent motion-reduce:transition-none",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
@@ -262,18 +353,20 @@ export function HomePill({
         className={cn(
           "flex items-center justify-center rounded-full",
           "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
-          // Listening/processing/needs-auth grow the capsule into a dark chip.
-          // Listening carries live bars; processing swaps them for dots;
-          // needs-auth fills the chip with the sign-in label.
-          needsAuth
-            ? "h-11 w-full gap-2 bg-[#FF5800] px-5 group-hover:bg-[#D94B00]"
-            : chipExpanded
-              ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
-              : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          needsAuth
-            ? "shadow-[0_8px_24px_rgba(255,88,0,0.42),0_0_0_1px_rgba(255,255,255,0.18)]"
+          // Listening/processing grow the capsule into a dark status chip.
+          // Logged-out and idle states share the neutral handle/hover preview.
+          previewVisible
+            ? "h-14 w-full justify-start overflow-hidden border border-white/55 bg-[linear-gradient(180deg,rgba(38,39,40,0.98),rgba(18,19,21,0.98))] px-5"
+            : listeningExpanded
+              ? "h-14 w-full justify-between overflow-hidden border border-white/55 bg-neutral-900/95 px-5"
+              : chipExpanded
+                ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
+                : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
+          previewVisible
+            ? "shadow-[0_14px_36px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.12)]"
             : chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
           !chipExpanded &&
+            !previewVisible &&
             (phase === "responding"
               ? speaking
                 ? // Speaking: stronger, tighter warm glow than thinking — the
@@ -288,40 +381,67 @@ export function HomePill({
             "animate-pulse opacity-90 motion-reduce:animate-none",
         )}
       >
-        {needsAuth && (
+        {previewVisible && (
           <>
-            {signingIn ? (
-              <LoaderCircle
-                aria-hidden="true"
-                data-testid="shell-home-pill-sign-in-spinner"
-                className="size-4 shrink-0 animate-spin text-white motion-reduce:animate-none"
-                strokeWidth={2}
-              />
-            ) : (
-              <LogIn
-                aria-hidden="true"
-                data-testid="shell-home-pill-sign-in-icon"
-                className="size-4 shrink-0 text-white"
-                strokeWidth={2}
-              />
-            )}
+            <Plus
+              aria-hidden="true"
+              data-testid="shell-home-pill-preview-plus"
+              className="size-5 shrink-0 text-white"
+              strokeWidth={2}
+            />
             <span
-              data-testid="shell-home-pill-sign-in"
-              className="whitespace-nowrap text-sm font-semibold leading-none text-white"
+              data-testid="shell-home-pill-preview-label"
+              className="ml-5 whitespace-nowrap text-sm font-normal leading-none text-white/85"
             >
-              {signInLabel}
+              Message {appName}
             </span>
+            <span className="absolute inset-x-0 top-4 flex justify-center">
+              <span className="h-2 w-12 rounded-full bg-white/95" />
+            </span>
+            <AudioWaveform
+              aria-hidden="true"
+              data-testid="shell-home-pill-preview-waveform"
+              className="ml-auto size-5 shrink-0 text-white"
+              strokeWidth={2}
+            />
           </>
         )}
-        {phase === "listening" &&
-          WAVE_BARS.map((bar) => (
-            <span
-              key={bar.id}
-              data-testid="shell-home-pill-wave-bar"
-              className="home-pill-wave-bar h-[6px] w-[3px] rounded-full bg-white/95 motion-reduce:animate-none"
-              style={{ animationDelay: `${bar.delayMs}ms` }}
+        {phase === "listening" ? (
+          <>
+            <span className="w-5 shrink-0" aria-hidden="true" />
+            <span className="flex flex-1 items-center justify-center gap-2 px-6">
+              {WAVE_BARS.map((bar, index) => (
+                <span
+                  key={bar.id}
+                  ref={(node) => {
+                    waveBarRefs.current[index] = node;
+                  }}
+                  data-testid="shell-home-pill-wave-bar"
+                  data-live={metered || undefined}
+                  className={cn(
+                    "w-1 origin-center rounded-full bg-white/95 shadow-[0_0_9px_rgba(255,255,255,0.4)]",
+                    // Live-metered: the analyser drives scaleY each frame; in
+                    // silence the bars flatline — the honest dead-mic signal.
+                    metered && "transition-transform duration-75",
+                  )}
+                  style={{
+                    height: `${bar.height}px`,
+                    // Flat is the truthful rest state: no analyser frames (mic
+                    // opening, capture-less host, reduced motion) means no
+                    // motion — never a decorative shimmer.
+                    transform: `scaleY(${FLATLINE_SCALE})`,
+                  }}
+                />
+              ))}
+            </span>
+            <Square
+              aria-hidden="true"
+              data-testid="shell-home-pill-listening-stop"
+              className="size-5 shrink-0 fill-white/90 text-white/90"
+              strokeWidth={1.5}
             />
-          ))}
+          </>
+        ) : null}
         {phase === "processing" &&
           PROCESS_DOTS.map((dot) => (
             <span

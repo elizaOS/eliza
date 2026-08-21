@@ -22,11 +22,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ChannelKeyError,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
   type ScheduledTaskFireResult,
   type ScheduledTaskRunnerHandle,
 } from "../scheduled-task/index.js";
 import {
+  scheduledTaskEditPayloadSchema,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSnoozePayloadSchema,
@@ -303,15 +305,31 @@ async function handleScheduledTasks(
 
   // List.
   if (method === "GET" && pathname === PATH_PREFIX) {
+    const url = ctx.url;
+    const requestedOwnerVisibleValues =
+      url.searchParams.getAll("ownerVisibleOnly");
+    const requestedOwnerVisible = requestedOwnerVisibleValues[0];
+    if (
+      requestedOwnerVisibleValues.length > 1 ||
+      (requestedOwnerVisible != null &&
+        requestedOwnerVisible !== "" &&
+        requestedOwnerVisible !== "1")
+    ) {
+      error(
+        res,
+        'ownerVisibleOnly must be specified at most once as "1".',
+        400,
+      );
+      return true;
+    }
     const runner = await deps.resolveRunner(ctx);
     if (!runner) return true;
-    const url = ctx.url;
     const filterParse = scheduledTaskFilterSchema.safeParse({
       kind: url.searchParams.get("kind") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
       source: url.searchParams.get("source") ?? undefined,
       firedSince: url.searchParams.get("firedSince") ?? undefined,
-      ownerVisibleOnly: url.searchParams.get("ownerVisibleOnly") === "1",
+      ownerVisibleOnly: requestedOwnerVisible === "1",
     });
     if (!filterParse.success) {
       error(
@@ -482,6 +500,39 @@ async function handleScheduledTasks(
             error(
               res,
               `invalid snooze payload: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+              400,
+            );
+            return true;
+          }
+          payload = parsed.data;
+        } else if (verb === "edit") {
+          // `applyEdit` merges this body onto the live task with
+          // `Object.assign`, so it needs the same edge validation `snooze`
+          // already gets. Unvalidated, a caller writes wrong-typed fields
+          // straight into a persisted `ScheduledTask` — and `{"trigger":null}`
+          // crashes `computeNextFireAt` into a 500 instead of the 400 this
+          // boundary promises for malformed input. A `JSON.parse`-produced own
+          // `"__proto__"` key additionally re-parents the task object, because
+          // `Object.assign` writes through `[[Set]]`.
+          const raw = (body ?? {}) as Record<string, unknown>;
+          // Refuse the read-only keys up front, with the runner's own message
+          // and the 409 the boundary already documents for a read-only field.
+          // Zod reports neither: `.strict()` skips `__proto__`, and the two
+          // server-managed keys would degrade to a generic unknown-key 400.
+          const readOnly = SCHEDULED_TASK_EDIT_READONLY_KEYS.find((key) =>
+            Object.hasOwn(raw, key),
+          );
+          if (readOnly) {
+            error(res, `edit: ${readOnly} is read-only`, 409);
+            return true;
+          }
+          const parsed = scheduledTaskEditPayloadSchema.safeParse(raw);
+          if (!parsed.success) {
+            error(
+              res,
+              `invalid edit payload: ${parsed.error.issues
+                .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+                .join("; ")}`,
               400,
             );
             return true;

@@ -15,7 +15,10 @@ import {
   resolveGitHubAccount,
   resolveGitHubAccountSelection,
 } from "./accounts";
-import { createGitHubConnectorAccountProvider } from "./connector-account-provider";
+import {
+  createGitHubConnectorAccountProvider,
+  createGitHubConnectorAccountProviderForTest,
+} from "./connector-account-provider";
 
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return createTestRuntime({
@@ -49,6 +52,101 @@ describe("GitHub account resolution", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("rejects non-loopback OAuth endpoint overrides before credentials can be sent", () => {
+    const priorNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    try {
+      expect(() =>
+        createGitHubConnectorAccountProviderForTest(runtime({}), {
+          authorizationEndpoint: "http://127.0.0.1:3000/oauth/authorize",
+          tokenEndpoint: "https://attacker.example/oauth/token",
+          userEndpoint: "http://127.0.0.1:3000/user",
+          requestTimeoutMs: 1_000,
+        }),
+      ).toThrow(/loopback URL/i);
+    } finally {
+      process.env.NODE_ENV = priorNodeEnv;
+    }
+  });
+
+  it.each([
+    "http://user:secret@127.0.0.1:3000/oauth/token",
+    "http://127.0.0.1:3000/oauth/token?access_token=secret",
+    "http://127.0.0.1:3000/oauth/token#secret",
+  ])("rejects unsafe loopback endpoint data in %s", (tokenEndpoint) => {
+    const priorNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    try {
+      expect(() =>
+        createGitHubConnectorAccountProviderForTest(runtime({}), {
+          authorizationEndpoint: "http://127.0.0.1:3000/oauth/authorize",
+          tokenEndpoint,
+          userEndpoint: "http://127.0.0.1:3000/user",
+          requestTimeoutMs: 1_000,
+        }),
+      ).toThrow(/credential-free loopback URL/i);
+    } finally {
+      process.env.NODE_ENV = priorNodeEnv;
+    }
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5, 60_001])(
+    "rejects invalid OAuth test request deadline %s",
+    (requestTimeoutMs) => {
+      const priorNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "test";
+      try {
+        expect(() =>
+          createGitHubConnectorAccountProviderForTest(runtime({}), {
+            authorizationEndpoint: "http://127.0.0.1:3000/oauth/authorize",
+            tokenEndpoint: "http://127.0.0.1:3000/oauth/token",
+            userEndpoint: "http://127.0.0.1:3000/user",
+            requestTimeoutMs,
+          }),
+        ).toThrow(/request timeout must be finite/i);
+      } finally {
+        process.env.NODE_ENV = priorNodeEnv;
+      }
+    },
+  );
+
+  it("disables the loopback endpoint seam outside test processes", () => {
+    const priorNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() =>
+        createGitHubConnectorAccountProviderForTest(runtime({}), {
+          authorizationEndpoint: "http://127.0.0.1:3000/oauth/authorize",
+          tokenEndpoint: "http://127.0.0.1:3000/oauth/token",
+          userEndpoint: "http://127.0.0.1:3000/user",
+          requestTimeoutMs: 1_000,
+        }),
+      ).toThrow(/only when NODE_ENV=test/i);
+    } finally {
+      process.env.NODE_ENV = priorNodeEnv;
+    }
+  });
+
+  it("rejects a caller-selected OAuth redirect outside the provider registration", async () => {
+    const provider = createGitHubConnectorAccountProvider(
+      runtime({
+        GITHUB_OAUTH_CLIENT_ID: "github-client",
+        GITHUB_OAUTH_CLIENT_SECRET: "github-secret",
+        GITHUB_OAUTH_REDIRECT_URI: "http://localhost/oauth/github/callback",
+      }),
+    );
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "github",
+          redirectUri: "https://attacker.example/oauth/callback",
+          flow: { state: "provider-owned-state" },
+        } as never,
+        {} as never,
+      ),
+    ).rejects.toThrow(/match the provider registration/i);
   });
 
   it("keeps legacy user/agent PATs as role-tagged accounts", () => {
@@ -230,6 +328,8 @@ describe("GitHub account resolution", () => {
           provider: "github",
           state: "state-1",
           status: "pending",
+          accountId: "acct_github_durable_1",
+          codeVerifier: "github-pkce-verifier",
           createdAt: Date.now(),
           updatedAt: Date.now(),
           metadata: { role: "TEAM" },
@@ -323,6 +423,8 @@ describe("GitHub account resolution", () => {
             provider: "github",
             state: "state-1",
             status: "pending",
+            accountId: "acct_github_durable_1",
+            codeVerifier: "github-pkce-verifier",
             createdAt: Date.now(),
             updatedAt: Date.now(),
             metadata: {},

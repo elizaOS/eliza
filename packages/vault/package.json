@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/vault",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Simple secrets/config vault for Eliza agents. One API for sensitive credentials and non-sensitive configuration; routes to OS keychain, file, or password manager based on the user's choice.",
   "type": "module",
   "license": "MIT",
@@ -69,7 +69,7 @@
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public",

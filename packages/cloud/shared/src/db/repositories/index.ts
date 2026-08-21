@@ -23,6 +23,7 @@
  *    - DO NOT MODIFY - elizaOS manages these
  */
 
+export * from "./account-deletion-requests";
 // ============================================
 // Advertising Domain
 // ============================================
@@ -35,6 +36,7 @@ export * from "./ad-report-shares";
 export * from "./ad-transactions";
 export * from "./affiliates";
 export * from "./agent-billing";
+export * from "./agent-billing-runs";
 export * from "./agent-events";
 // ============================================
 // Eliza Cloud Sandboxes
@@ -102,14 +104,19 @@ export * from "./generations";
 // Background Jobs
 // ============================================
 export * from "./jobs";
+export * from "./mobile-app-auth-grants";
 export * from "./model-pricing";
 // ============================================
 // Core Platform Repositories
 // ============================================
 export * from "./org-rate-limit-overrides";
+export * from "./org-storage-mutations";
 export * from "./org-storage-quota";
+export * from "./org-storage-reads";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./phone-message-logs";
+export * from "./phone-metadata-readers";
 export * from "./press-releases";
 export * from "./provider-health";
 // ============================================
@@ -124,7 +131,6 @@ export * from "./service-pricing";
 // Token Redemptions (elizaOS payouts)
 // ============================================
 export * from "./token-redemptions";
-export * from "./usage-quotas";
 export * from "./usage-records";
 // ============================================
 // User MCPs (Monetizable MCP Servers)

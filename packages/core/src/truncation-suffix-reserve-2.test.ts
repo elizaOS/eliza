@@ -70,6 +70,7 @@ describe("truncation suffix reserve batch 2 — 7 real provider sites", () => {
 		};
 		const runtime = {
 			getRecentReportedErrors: () => [entry],
+			redactSecrets: (text: string) => text,
 		} as unknown as import("./types/index.ts").IAgentRuntime;
 		const res = await recentErrorsProvider.get(
 			runtime,

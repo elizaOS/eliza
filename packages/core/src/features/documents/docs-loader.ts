@@ -201,10 +201,14 @@ export async function addDocumentFromFilePath({
 		clientDocumentId: "" as UUID,
 		contentType,
 		originalFilename: fileName,
-		worldId: worldId || agentId,
+		// Only a truly omitted (undefined) value defaults to agentId. An
+		// explicit "" is not omission -- it's forwarded as-is so
+		// DocumentService.addDocument's requireDocumentScopeUuid check rejects
+		// it with a typed error instead of this call silently masking it.
+		worldId: worldId ?? agentId,
 		content,
-		roomId: roomId || agentId,
-		entityId: entityId || agentId,
+		roomId: roomId ?? agentId,
+		entityId: entityId ?? agentId,
 		scope,
 		scopedToEntityId,
 		addedBy,

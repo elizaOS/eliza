@@ -2,23 +2,18 @@
 import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
+import { agentTable } from "../schemas/eliza";
 import { elizaRoomCharactersTable } from "../schemas/eliza-room-characters";
 import {
   type NewUserCharacter,
   type UserCharacter,
   userCharacters,
 } from "../schemas/user-characters";
+import { escapeLikePattern } from "../utils/like-pattern";
 
 export type { NewUserCharacter, UserCharacter };
-
-/**
- * Escapes special LIKE pattern characters to prevent pattern injection.
- * Characters %, _, and \ have special meaning in SQL LIKE patterns.
- */
-function escapeLikePattern(str: string): string {
-  return str.replace(/[%_\\]/g, "\\$&");
-}
 
 function ilikeEscaped(column: unknown, query: string): SQL {
   return sql`${column as SQL} ILIKE ${`%${escapeLikePattern(query)}%`} ESCAPE '\\'`;
@@ -277,20 +272,28 @@ export class UserCharactersRepository {
   /**
    * Checks if a username exists.
    */
-  async usernameExists(username: string): Promise<boolean> {
-    const result = await dbRead
-      .select({ id: userCharacters.id })
-      .from(userCharacters)
-      .where(eq(userCharacters.username, username.toLowerCase()))
-      .limit(1);
+  async usernameExists(username: string, tx?: DbTransaction): Promise<boolean> {
+    const result = tx
+      ? await tx
+          .select({ id: userCharacters.id })
+          .from(userCharacters)
+          .where(eq(userCharacters.username, username.toLowerCase()))
+          .limit(1)
+      : await dbRead
+          .select({ id: userCharacters.id })
+          .from(userCharacters)
+          .where(eq(userCharacters.username, username.toLowerCase()))
+          .limit(1);
     return result.length > 0;
   }
 
   /**
    * Gets all existing usernames (for bulk uniqueness check).
    */
-  async getAllUsernames(): Promise<Set<string>> {
-    const result = await dbRead.select({ username: userCharacters.username }).from(userCharacters);
+  async getAllUsernames(tx?: DbTransaction): Promise<Set<string>> {
+    const result = tx
+      ? await tx.select({ username: userCharacters.username }).from(userCharacters)
+      : await dbRead.select({ username: userCharacters.username }).from(userCharacters);
 
     const usernames = new Set<string>();
     for (const row of result) {
@@ -355,9 +358,10 @@ export class UserCharactersRepository {
 
   /**
    * Checks whether an organization has any character of the given source.
-   * Bounded existence probe for hot paths (e.g. the session-time
-   * default-character self-heal) — never use listByOrganization just to test
-   * emptiness, character rows are fat and the list is unbounded.
+   * Bounded existence probe for callers that only need emptiness — never use
+   * listByOrganization just to test it, character rows are fat and the list
+   * is unbounded. Default-character self-heal uses the stronger mirror-health
+   * probe below.
    */
   async existsForOrganization(
     organizationId: string,
@@ -371,6 +375,31 @@ export class UserCharactersRepository {
       )
       .limit(1);
     return result.length > 0;
+  }
+
+  /**
+   * Read-intent bootstrap fast path. The oldest Cloud character is the same
+   * candidate the locked bootstrap authority repairs; it is healthy only when
+   * its runtime mirror is visible in the same replica query.
+   *
+   * Replica lag can produce a false negative, which safely falls back to the
+   * primary locked ensure. This probe never authorizes a create.
+   */
+  async hasHealthyCloudCharacterMirror(organizationId: string): Promise<boolean> {
+    const [candidate] = await dbRead
+      .select({
+        characterId: userCharacters.id,
+        mirrorId: agentTable.id,
+      })
+      .from(userCharacters)
+      .leftJoin(agentTable, eq(agentTable.id, userCharacters.id))
+      .where(
+        and(eq(userCharacters.organization_id, organizationId), eq(userCharacters.source, "cloud")),
+      )
+      .orderBy(userCharacters.created_at, userCharacters.id)
+      .limit(1);
+
+    return Boolean(candidate?.characterId && candidate.mirrorId === candidate.characterId);
   }
 
   /**
@@ -454,10 +483,15 @@ export class UserCharactersRepository {
   }
 
   /**
-   * Creates a new character.
+   * Creates a new character inside the caller's writer transaction.
+   *
+   * Character creation authority lives in CharactersService: callers must
+   * hold its organization lock and quota decision transaction. Requiring the
+   * transaction here prevents this public repository from becoming an
+   * accidental uncapped create path.
    */
-  async create(data: NewUserCharacter): Promise<UserCharacter> {
-    const [character] = await dbWrite.insert(userCharacters).values(data).returning();
+  async create(data: NewUserCharacter, tx: DbTransaction): Promise<UserCharacter> {
+    const [character] = await tx.insert(userCharacters).values(data).returning();
     return character;
   }
 
@@ -712,6 +746,16 @@ export class UserCharactersRepository {
       .where(eq(userCharacters.id, id));
   }
 }
+
+type AssertTrue<T extends true> = T;
+
+/**
+ * Compile-time fence: changing create's writer transaction back to optional
+ * makes this exported contract fail the shared package typecheck.
+ */
+export type UserCharacterCreateTransactionContract = AssertTrue<
+  1 extends Parameters<UserCharactersRepository["create"]>["length"] ? false : true
+>;
 
 /**
  * Singleton instance of UserCharactersRepository.

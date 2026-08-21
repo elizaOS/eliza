@@ -44,6 +44,19 @@ function escapeRegExp(value: string): string {
 /** Default pre-auth key TTL (minutes) when `HEADSCALE_PREAUTH_TTL_MIN` is unset. */
 export const DEFAULT_PREAUTH_TTL_MIN = 1440;
 
+/** Exact positive-decimal minutes. Rejects exponent, hex, fraction, and 0-prefix. */
+const PREAUTH_TTL_MINUTES_GRAMMAR = /^[1-9]\d*$/;
+
+/**
+ * Operational ceiling (30 days). Longer reusable keys baked into Docker env
+ * become multi-millennial credentials; larger values also overflow TimeClip
+ * in `new Date(Date.now() + ms).toISOString()`.
+ */
+export const MAX_PREAUTH_TTL_MIN = 43_200;
+
+/** ECMA-262 TimeClip magnitude. */
+export const ECMA_TIME_CLIP_MS = 8.64e15;
+
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
  * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
@@ -59,12 +72,59 @@ export const DEFAULT_PREAUTH_TTL_MIN = 1440;
  * fix an already-baked expired key on its own (the durable fix is the
  * reconnect-first + re-key entrypoint), but it widens the window in which a
  * freshly provisioned agent can survive a delayed first boot or an early
- * reboot. Env-overridable via `HEADSCALE_PREAUTH_TTL_MIN` so it survives a
- * daemon redeploy and ops can retune without a code change.
+ * reboot. Env-overridable via `HEADSCALE_PREAUTH_TTL_MIN` (exact positive
+ * decimal minutes in `[1, MAX_PREAUTH_TTL_MIN]`) so it survives a daemon
+ * redeploy and ops can retune without a code change.
  */
 export function resolvePreAuthTtlMs(): number {
-  const minutes = Number.parseInt(process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "", 10);
-  return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PREAUTH_TTL_MIN) * 60 * 1000;
+  const fallback = DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+  // Literal grammar: do not trim. Padded " 90 " is not an exact positive decimal.
+  const raw = process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "";
+  if (!PREAUTH_TTL_MINUTES_GRAMMAR.test(raw)) {
+    return fallback;
+  }
+  const minutes = Number(raw);
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > MAX_PREAUTH_TTL_MIN) {
+    return fallback;
+  }
+  const ms = minutes * 60 * 1000;
+  if (!Number.isFinite(ms)) {
+    return fallback;
+  }
+  return ms;
+}
+
+function isoExpirationOrThrow(nowMs: number, ttlMs: number): string {
+  const expirationMs = nowMs + ttlMs;
+  if (!Number.isFinite(expirationMs) || Math.abs(expirationMs) > ECMA_TIME_CLIP_MS) {
+    throw new Error("[headscale] pre-auth expiration is outside TimeClip");
+  }
+  try {
+    return new Date(expirationMs).toISOString();
+  } catch (error) {
+    // error-policy:J2 TimeClip-invalid Date must not reach Headscale.
+    throw new Error("[headscale] pre-auth expiration is outside TimeClip", {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Build the ISO expiration used by {@link HeadscaleClient.createPreAuthKey}.
+ * Tries the env TTL, then the 24h fallback. Throws (fetch must not run) if
+ * even the fallback instant is outside TimeClip.
+ */
+export function resolvePreAuthExpirationIso(nowMs: number = Date.now()): string {
+  const envTtl = resolvePreAuthTtlMs();
+  const fallback = DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+  try {
+    return isoExpirationOrThrow(nowMs, envTtl);
+  } catch (error) {
+    if (envTtl === fallback) {
+      throw error;
+    }
+    return isoExpirationOrThrow(nowMs, fallback);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +361,7 @@ export class HeadscaleClient {
     // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
     // registration -> container re-auth loop). Default 24h, env-overridable
     // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
-    const expirationTime = expiration ?? new Date(Date.now() + resolvePreAuthTtlMs()).toISOString();
+    const expirationTime = expiration ?? resolvePreAuthExpirationIso();
 
     const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
 

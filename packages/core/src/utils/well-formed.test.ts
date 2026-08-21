@@ -4,12 +4,15 @@
  * slice produced a lone leading surrogate that Cerebras's strict JSON parser
  * rejected with `wrong_api_format`), and the sanitizers must turn any lone
  * surrogate into U+FFFD so a serialized request body never carries a bare
- * \uD8xx escape.
+ * \uD8xx escape. Also covers fail-closed depth, cycle, and visit bounds.
  */
 
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors.ts";
 import {
 	deepToWellFormedUnicode,
+	MAX_WELL_FORMED_DEPTH,
+	MAX_WELL_FORMED_VISITS,
 	tailWellFormed,
 	toWellFormedUnicode,
 	truncateWellFormed,
@@ -420,5 +423,175 @@ describe("#18025 wire regression: the captured Cerebras failure shape", () => {
 			messages: [{ role: "tool", content: safe }],
 		});
 		expect(LONE_SURROGATE_ESCAPE.test(body)).toBe(false);
+	});
+});
+
+describe("deepToWellFormedUnicode unbounded input", () => {
+	function nestArray(depth: number): unknown {
+		let value: unknown = ["ok"];
+		for (let i = 0; i < depth; i++) {
+			value = [value];
+		}
+		return value;
+	}
+
+	function nestObject(depth: number): unknown {
+		let value: unknown = { s: "ok" };
+		for (let i = 0; i < depth; i++) {
+			value = { child: value };
+		}
+		return value;
+	}
+
+	it("sanitizes an honest nested provider body under the depth cap", () => {
+		const input = nestObject(8);
+		expect(deepToWellFormedUnicode(input)).toBe(input);
+	});
+
+	it("accepts a diamond DAG (shared child is not a cycle)", () => {
+		const shared = { s: "ok" };
+		const input = { a: shared, b: shared };
+		expect(deepToWellFormedUnicode(input)).toBe(input);
+	});
+
+	it("throws WELL_FORMED_UNBOUNDED on a cyclic object", () => {
+		const input: Record<string, unknown> = { a: "ok" };
+		input.self = input;
+		try {
+			deepToWellFormedUnicode(input);
+			expect.unreachable("cyclic object must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("cycle");
+		}
+	});
+
+	it("throws WELL_FORMED_UNBOUNDED on a cyclic array", () => {
+		const input: unknown[] = ["ok"];
+		input.push(input);
+		try {
+			deepToWellFormedUnicode(input);
+			expect.unreachable("cyclic array must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("cycle");
+		}
+	});
+
+	it("throws WELL_FORMED_UNBOUNDED before a 20k-deep array can blow the stack", () => {
+		try {
+			deepToWellFormedUnicode(nestArray(20_000));
+			expect.unreachable("20k-deep array must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("depth");
+		}
+	});
+
+	it("accepts nesting exactly at the depth cap", () => {
+		// nestArray(n) wraps n times around ["ok"], so n=63 is 64 containers.
+		const input = nestArray(MAX_WELL_FORMED_DEPTH - 1);
+		expect(deepToWellFormedUnicode(input)).toBe(input);
+	});
+
+	it(`throws WELL_FORMED_UNBOUNDED one past depth ${MAX_WELL_FORMED_DEPTH}`, () => {
+		try {
+			deepToWellFormedUnicode(nestArray(MAX_WELL_FORMED_DEPTH));
+			expect.unreachable("depth cap must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).context?.reason).toBe("depth");
+		}
+	});
+
+	it("accepts a visit count exactly at the budget", () => {
+		// Array node + (MAX-1) strings = MAX visits.
+		const input = new Array<string>(MAX_WELL_FORMED_VISITS - 1).fill("ok");
+		expect(deepToWellFormedUnicode(input)).toBe(input);
+	});
+
+	it("charges sparse array holes before provider serialization", () => {
+		const exact = new Array(MAX_WELL_FORMED_VISITS - 1);
+		expect(deepToWellFormedUnicode(exact)).toBe(exact);
+
+		const oversized = new Array(MAX_WELL_FORMED_VISITS);
+		expect(() => deepToWellFormedUnicode(oversized)).toThrowError(
+			expect.objectContaining({
+				code: "WELL_FORMED_UNBOUNDED",
+				context: expect.objectContaining({ reason: "visits" }),
+			}),
+		);
+	});
+
+	it("rejects an over-budget object before invoking an enumerable getter", () => {
+		const input: Record<string, unknown> = {};
+		for (let i = 0; i < MAX_WELL_FORMED_VISITS - 1; i++) {
+			input[`key-${i}`] = "ok";
+		}
+		let getterCalls = 0;
+		Object.defineProperty(input, "hostile", {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				return "should not run";
+			},
+		});
+
+		expect(() => deepToWellFormedUnicode(input)).toThrow(
+			/WELL_FORMED|visit budget/i,
+		);
+		expect(getterCalls).toBe(0);
+	});
+
+	it("rejects an enumerable getter without invoking it", () => {
+		let getterCalls = 0;
+		const input = {};
+		Object.defineProperty(input, "hostile", {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				return "observed";
+			},
+		});
+
+		expect(() => deepToWellFormedUnicode(input)).toThrowError(
+			expect.objectContaining({
+				code: "WELL_FORMED_UNSAFE_VALUE",
+				context: { operation: "accessor" },
+			}),
+		);
+		expect(getterCalls).toBe(0);
+	});
+
+	it("wraps revoked proxy reflection as a typed wire failure", () => {
+		const { proxy, revoke } = Proxy.revocable({ value: "opaque" }, {});
+		revoke();
+
+		try {
+			deepToWellFormedUnicode(proxy);
+			expect.unreachable("revoked proxy must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+			expect((error as ElizaError).context).toEqual({
+				operation: "reflection",
+			});
+			expect((error as Error).cause).toBeInstanceOf(TypeError);
+		}
+	});
+
+	it("throws WELL_FORMED_UNBOUNDED on a visit-budget array of strings", () => {
+		const input = new Array<string>(MAX_WELL_FORMED_VISITS).fill("ok");
+		try {
+			deepToWellFormedUnicode(input);
+			expect.unreachable("visit budget must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("visits");
+		}
 	});
 });

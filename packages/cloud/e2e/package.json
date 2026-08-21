@@ -7,6 +7,7 @@
     "test": "bun --conditions=eliza-source playwright test",
     "test:headed": "bun --conditions=eliza-source playwright test --headed",
     "test:ui": "bun --conditions=eliza-source playwright test --ui",
+    "test:mock-llm": "bun test src/fixtures/mock-llm.test.ts",
     "domains:ledger": "bun scripts/domain-purchase-ledger.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
@@ -15,10 +16,11 @@
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.62.1",
     "bun-types": "^1.3.13",
     "@types/node": "^22.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",

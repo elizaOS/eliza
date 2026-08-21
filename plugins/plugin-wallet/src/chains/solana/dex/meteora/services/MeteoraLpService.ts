@@ -71,7 +71,7 @@ export class MeteoraLpService extends Service {
 
   public async getPools(tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]> {
     try {
-      const response = await fetch(this.METEORA_API_URL);
+      const response = await fetch(this.METEORA_API_URL, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

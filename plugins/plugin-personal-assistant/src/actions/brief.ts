@@ -29,6 +29,7 @@ import type {
 } from "@elizaos/core";
 import {
   getDefaultTriageService,
+  getTrajectoryContext,
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
@@ -42,6 +43,7 @@ import {
   recalibrateBriefItemClasses,
   selectRecalibrationCandidates,
 } from "../lifeops/briefing/editorial-judgment.js";
+import { retryBriefEngagementRewards } from "../lifeops/briefing/engagement-reward.js";
 import {
   buildCommitmentRegretAudit,
   type CommitmentRegretAuditItem,
@@ -70,6 +72,13 @@ export {
 } from "../lifeops/optimized-prompt-instructions.js";
 
 const ACTION_NAME = "BRIEF";
+const ENGAGEMENT_RECENCY_DAYS = 30;
+
+function engagementSinceIso(now = new Date()): string {
+  return new Date(
+    now.getTime() - ENGAGEMENT_RECENCY_DAYS * 24 * 60 * 60 * 1_000,
+  ).toISOString();
+}
 
 const COMPOSE_SUBACTIONS = [
   "compose_morning",
@@ -258,29 +267,40 @@ async function loadCalendarFromLifeOps(args: {
       timeMax: end.toISOString(),
     });
     const events = Array.isArray(feed.events) ? feed.events : [];
-    return events.map((event) => {
-      const record = asRecord(event);
-      const location = readString(record, "location");
-      return {
-        id: readString(record, "id") ?? "calendar-event",
-        title: readString(record, "title") ?? "Untitled event",
-        startAt:
-          readString(record, "startAt") ??
-          readString(record, "start") ??
-          start.toISOString(),
-        endAt:
-          readString(record, "endAt") ??
-          readString(record, "end") ??
-          end.toISOString(),
-        ...(location ? { location } : {}),
-      };
-    });
+    return events.map((event) =>
+      mapCalendarFeedEventToBriefingItem(event, {
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+      }),
+    );
   } catch (error) {
     logger.warn(
       `[BRIEF] calendar load failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     return [];
   }
+}
+
+/** Preserve the calendar provider event id used by later mutation receipts. */
+export function mapCalendarFeedEventToBriefingItem(
+  event: unknown,
+  fallback: { startAt: string; endAt: string },
+): LifeOpsBriefingCalendarItem {
+  const record = asRecord(event);
+  const location = readString(record, "location");
+  return {
+    id: readString(record, "id") ?? "calendar-event",
+    title: readString(record, "title") ?? "Untitled event",
+    startAt:
+      readString(record, "startAt") ??
+      readString(record, "start") ??
+      fallback.startAt,
+    endAt:
+      readString(record, "endAt") ??
+      readString(record, "end") ??
+      fallback.endAt,
+    ...(location ? { location } : {}),
+  };
 }
 
 async function loadInboxFromTriage(args: {
@@ -453,9 +473,18 @@ async function loadEngagementSummariesFromLifeOps(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
   try {
-    return await new LifeOpsRepository(
-      args.runtime,
-    ).summarizeBriefItemEngagements(args.runtime.agentId);
+    const repository = new LifeOpsRepository(args.runtime);
+    await repository.finalizeExpiredBriefItemEngagements(args.runtime.agentId);
+    await retryBriefEngagementRewards({
+      runtime: args.runtime,
+      repository,
+    });
+    return await repository.summarizeBriefItemEngagements(
+      args.runtime.agentId,
+      {
+        sinceIso: engagementSinceIso(),
+      },
+    );
   } catch (error) {
     // error-policy:J4 engagement history improves editorial ranking but is not
     // required to render a brief. Keep the degradation observable instead of
@@ -476,8 +505,17 @@ async function loadEngagementSummariesFromLifeOps(args: {
 async function recordRenderedImpressionsInLifeOps(args: {
   runtime: IAgentRuntime;
   briefing: LifeOpsBriefing;
+  deliveredText: string;
+  format: "narrative" | "json";
 }): Promise<number> {
   const repository = new LifeOpsRepository(args.runtime);
+  const normalizedDeliveredText = args.deliveredText
+    .normalize("NFKC")
+    .toLocaleLowerCase();
+  const trajectory =
+    args.briefing.optimizationTrace?.task === "morning_brief"
+      ? args.briefing.optimizationTrace
+      : undefined;
   const itemsById = new Map(
     args.briefing.editorial.items.map((item) => [item.itemId, item]),
   );
@@ -486,6 +524,19 @@ async function recordRenderedImpressionsInLifeOps(args: {
     if (decision.action === "omit") continue;
     const item = itemsById.get(decision.itemId);
     if (!item) continue;
+    // A JSON-format action callback carries only the generic confirmation;
+    // its structured result is machine data, not proof the owner saw every
+    // item. Narratives count an impression only when the delivered text names
+    // the item's exact title. This intentionally under-counts paraphrases
+    // instead of fabricating engagement from the pre-render editorial plan.
+    if (
+      args.format !== "narrative" ||
+      !normalizedDeliveredText.includes(
+        item.title.normalize("NFKC").toLocaleLowerCase(),
+      )
+    ) {
+      continue;
+    }
     await repository.recordBriefItemEngagement({
       agentId: args.runtime.agentId,
       briefingId: args.briefing.id,
@@ -501,6 +552,14 @@ async function recordRenderedImpressionsInLifeOps(args: {
         briefingKind: args.briefing.kind,
         period: args.briefing.period,
         decision: decision.action,
+        deliveryFormat: args.format,
+        ...(trajectory?.trajectoryId
+          ? { trajectoryId: trajectory.trajectoryId }
+          : {}),
+        ...(trajectory?.trajectoryStepId
+          ? { trajectoryStepId: trajectory.trajectoryStepId }
+          : {}),
+        ...(trajectory?.traceId ? { traceId: trajectory.traceId } : {}),
       },
     });
     recorded += 1;
@@ -546,6 +605,8 @@ export interface BriefComposers {
   recordRenderedImpressions: (args: {
     runtime: IAgentRuntime;
     briefing: LifeOpsBriefing;
+    deliveredText: string;
+    format: "narrative" | "json";
   }) => Promise<number>;
 }
 
@@ -721,7 +782,13 @@ async function composeNarrative(args: {
   sections: LifeOpsBriefingSections;
   editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
-}): Promise<string | undefined> {
+}): Promise<
+  | {
+      text: string;
+      optimizationTrace?: NonNullable<LifeOpsBriefing["optimizationTrace"]>;
+    }
+  | undefined
+> {
   if (typeof args.runtime.useModel !== "function") {
     return undefined;
   }
@@ -740,9 +807,13 @@ async function composeNarrative(args: {
   // which all fall back to a safe default rather than propagating the error.
   let raw: unknown;
   try {
-    raw = await runWithTrajectoryPurpose(args.optimizationTask, () =>
-      args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
-    );
+    raw = await runWithTrajectoryPurpose(args.optimizationTask, async () => {
+      const active = getTrajectoryContext();
+      const response = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
+      return { response, active };
+    });
   } catch (error) {
     logger.warn(
       {
@@ -754,7 +825,26 @@ async function composeNarrative(args: {
     );
     return undefined;
   }
-  return typeof raw === "string" ? raw.trim() : undefined;
+  if (!raw || typeof raw !== "object") return undefined;
+  const response = (raw as { response?: unknown }).response;
+  if (typeof response !== "string") return undefined;
+  const active = (raw as { active?: ReturnType<typeof getTrajectoryContext> })
+    .active;
+  return {
+    text: response.trim(),
+    ...(active?.trajectoryId
+      ? {
+          optimizationTrace: {
+            task: args.optimizationTask,
+            trajectoryId: active.trajectoryId,
+            ...(active.trajectoryStepId
+              ? { trajectoryStepId: active.trajectoryStepId }
+              : {}),
+            ...(active.traceId ? { traceId: active.traceId } : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 async function assembleBriefing(args: {
@@ -816,9 +906,9 @@ async function assembleBriefing(args: {
     sections,
     engagementSummaries,
   });
-  let narrative: string | undefined;
+  let narrativeResult: Awaited<ReturnType<typeof composeNarrative>>;
   if (args.format === "narrative") {
-    narrative = await composeNarrative({
+    narrativeResult = await composeNarrative({
       runtime: args.runtime,
       kind,
       period: args.period,
@@ -835,7 +925,10 @@ async function assembleBriefing(args: {
     generatedAt: new Date().toISOString(),
     sections,
     editorial,
-    ...(narrative ? { narrative } : {}),
+    ...(narrativeResult?.text ? { narrative: narrativeResult.text } : {}),
+    ...(narrativeResult?.optimizationTrace
+      ? { optimizationTrace: narrativeResult.optimizationTrace }
+      : {}),
   };
   return briefing;
 }
@@ -870,12 +963,12 @@ async function handleRecalibration(args: {
   const commandAt = new Date().toISOString();
   const summaries = await repository.summarizeBriefItemEngagements(
     args.runtime.agentId,
-    { untilIso: commandAt },
+    { sinceIso: engagementSinceIso(new Date(commandAt)), untilIso: commandAt },
   );
 
   const writeMarker = async (
     itemClass: string,
-    eventType: "demoted" | "kept",
+    eventType: "demoted" | "restored",
     metadata: Record<string, unknown>,
   ): Promise<void> => {
     const rows = await repository.listBriefItemEngagements(
@@ -894,7 +987,7 @@ async function handleRecalibration(args: {
       itemClass,
       eventType,
       eventAt: commandAt,
-      weight: eventType === "demoted" ? -1 : 1,
+      weight: eventType === "demoted" ? -1 : 0,
       metadata,
     });
   };
@@ -943,7 +1036,7 @@ async function handleRecalibration(args: {
     }
     const lines = candidates.map(
       (candidate) =>
-        `- ${candidate.itemClass} (surfaced ${candidate.renderedCount + candidate.ignoredCount} times, acted on ${candidate.actedOnCount})`,
+        `- ${candidate.itemClass} (surfaced ${candidate.renderedCount} times, acted on ${candidate.actedOnCount})`,
     );
     return {
       text: [
@@ -964,7 +1057,7 @@ async function handleRecalibration(args: {
     ? demotedNow.filter((itemClass) => itemClass === args.itemClass)
     : demotedNow;
   for (const itemClass of targets) {
-    await writeMarker(itemClass, "kept", {
+    await writeMarker(itemClass, "restored", {
       verb: "reset_recalibration",
       requestedItemClass: args.itemClass,
     });
@@ -1142,7 +1235,12 @@ export const briefAction: Action & {
     // propagates before this point, so a failed delivery never writes rows.
     if (callback) {
       try {
-        await activeComposers.recordRenderedImpressions({ runtime, briefing });
+        await activeComposers.recordRenderedImpressions({
+          runtime,
+          briefing,
+          deliveredText: text,
+          format,
+        });
       } catch (error) {
         // error-policy:J7 the engagement ledger is a learning signal; failing
         // to persist it must not retract an already-delivered brief. The

@@ -164,21 +164,25 @@ export class BackgroundShellService extends Service {
       signalHostProcessGroup(started.process, "SIGKILL");
       throw new Error("background shell process did not expose output streams");
     }
-    started.process.stdout.on("data", (chunk: Buffer) => {
+    // Decode before ring/redaction processing so chunk boundaries cannot
+    // replace valid partial code points with U+FFFD.
+    started.process.stdout.setEncoding("utf8");
+    started.process.stderr.setEncoding("utf8");
+    started.process.stdout.on("data", (chunk: string) => {
       appendSessionOutput(
         this.runtime,
         session,
         "stdout",
-        chunk.toString("utf8"),
+        chunk,
         this.bufferChars,
       );
     });
-    started.process.stderr.on("data", (chunk: Buffer) => {
+    started.process.stderr.on("data", (chunk: string) => {
       appendSessionOutput(
         this.runtime,
         session,
         "stderr",
-        chunk.toString("utf8"),
+        chunk,
         this.bufferChars,
       );
     });

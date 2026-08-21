@@ -27,7 +27,27 @@
  * the whole point of the pattern. The BROWSER action stays one action.
  */
 
-import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type AuthorizedInteractionAction,
+  ElizaError,
+  type IAgentRuntime,
+  type InteractionCapabilitySet,
+  type InteractionConfirmationGrant,
+  type InteractionConfirmationGrantConsumer,
+  type InteractionProfileGrantVerifier,
+  type InteractionSession,
+  logger,
+  Service,
+} from "@elizaos/core";
+import {
+  authorizeBrowserUpload,
+  type BrowserAuthorizedUploadExecution,
+  createBrowserUploadReceipt,
+} from "./browser-command-authority.js";
+import {
+  browserDomainPolicyRequestForCommand,
+  evaluateBrowserDomainPolicies,
+} from "./browser-domain-policy.js";
 import {
   BrowserDispatchFailure,
   isBrowserDispatchFailure,
@@ -43,6 +63,7 @@ import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
 } from "./workspace/browser-workspace.js";
+import { normalizeBrowserWorkspaceCommand } from "./workspace/browser-workspace-helpers.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -120,6 +141,65 @@ export interface BrowserTarget {
   execute(
     command: BrowserWorkspaceCommand,
   ): Promise<BrowserWorkspaceCommandResult>;
+  /**
+   * Optional proof-producing upload boundary. Generic `execute(upload)` is
+   * never called; a target must opt in and return an exact effect receipt.
+   */
+  executeAuthorizedUpload?(action: AuthorizedInteractionAction): Promise<{
+    result: BrowserWorkspaceCommandResult;
+    effectReceipt: unknown;
+  }>;
+}
+
+function findBlockedGenericCommand(
+  command: BrowserWorkspaceCommand,
+): "eval" | "upload" | "realistic-upload" | null {
+  const pending = [command];
+  const visited = new Set<BrowserWorkspaceCommand>();
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (!candidate || visited.has(candidate)) continue;
+    visited.add(candidate);
+    for (const value of [candidate.subaction, candidate.operation]) {
+      const normalized =
+        typeof value === "string"
+          ? value.trim().toLowerCase().replaceAll("_", "-")
+          : "";
+      if (
+        normalized === "eval" ||
+        normalized === "upload" ||
+        normalized === "realistic-upload"
+      ) {
+        return normalized;
+      }
+    }
+    if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
+      pending.push(...candidate.steps);
+    }
+  }
+  return null;
+}
+
+/**
+ * Flattens a command and its nested batch steps so every step is policy
+ * checked individually — a blocked navigation cannot hide inside a batch.
+ */
+function flattenBrowserCommands(
+  command: BrowserWorkspaceCommand,
+): BrowserWorkspaceCommand[] {
+  const flat: BrowserWorkspaceCommand[] = [];
+  const pending = [command];
+  const visited = new Set<BrowserWorkspaceCommand>();
+  while (pending.length > 0) {
+    const candidate = pending.pop();
+    if (!candidate || visited.has(candidate)) continue;
+    visited.add(candidate);
+    flat.push(candidate);
+    if (candidate.subaction === "batch" && Array.isArray(candidate.steps)) {
+      pending.push(...candidate.steps);
+    }
+  }
+  return flat;
 }
 
 export class BrowserService extends Service {
@@ -325,6 +405,138 @@ export class BrowserService extends Service {
    * throwing deep inside the target).
    */
   async execute(
+    command: BrowserWorkspaceCommand,
+    targetId?: string,
+  ): Promise<BrowserWorkspaceCommandResult> {
+    command = normalizeBrowserWorkspaceCommand(command);
+    const blockedCommand = findBlockedGenericCommand(command);
+    if (blockedCommand) {
+      throw new BrowserDispatchFailure(
+        "POLICY_BLOCKED",
+        blockedCommand === "eval"
+          ? "Generic browser eval is disabled. Use typed browser commands instead."
+          : "Browser upload requires an exact consume-once interaction confirmation.",
+        { targetId: targetId ?? null },
+      );
+    }
+    // Per-domain policy hooks (issue #19882): every step — including nested
+    // batch steps — is evaluated against the registered policies before any
+    // target is selected. The first non-allow decision blocks the whole
+    // dispatch; nothing has executed yet, so failing here is side-effect free.
+    for (const step of flattenBrowserCommands(command)) {
+      const decision = evaluateBrowserDomainPolicies(
+        browserDomainPolicyRequestForCommand(step, targetId ?? null),
+      );
+      if (decision.verdict !== "allow") {
+        throw new BrowserDispatchFailure(
+          "POLICY_BLOCKED",
+          decision.verdict === "require_confirmation"
+            ? `Browser command "${step.subaction}" requires explicit confirmation by domain policy "${decision.policyId}": ${decision.reason}`
+            : `Browser command "${step.subaction}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+          { targetId: targetId ?? null },
+        );
+      }
+    }
+    return this.executeSelected(command, targetId);
+  }
+
+  /**
+   * Executes one confirmed upload through the v2 interaction contract. The
+   * confirmation is consumed before dispatch and the target is pinned to the
+   * session adapter, preventing account or backend substitution.
+   */
+  async executeConfirmedUpload(
+    command: BrowserWorkspaceCommand,
+    authorization: {
+      actionId: string;
+      requestedAt: string;
+      confirmationGrant: InteractionConfirmationGrant;
+      confirmationGrantConsumer: InteractionConfirmationGrantConsumer;
+      profileGrantVerifier?: InteractionProfileGrantVerifier;
+      session: InteractionSession;
+      capabilities: InteractionCapabilitySet;
+    },
+  ): Promise<BrowserAuthorizedUploadExecution> {
+    // `execute()` hard-blocks upload before any target is reached, so this is
+    // the only path a real authorized upload takes — and therefore the only
+    // place the per-domain `upload` policy can apply. Evaluate before the
+    // confirmation grant is consumed or any target work starts, so a blocked
+    // upload burns nothing and leaves no side effect.
+    for (const step of flattenBrowserCommands(command)) {
+      const decision = evaluateBrowserDomainPolicies({
+        ...browserDomainPolicyRequestForCommand(
+          step,
+          authorization.session.adapterId,
+        ),
+      });
+      if (decision.verdict !== "allow") {
+        throw new BrowserDispatchFailure(
+          "POLICY_BLOCKED",
+          decision.verdict === "require_confirmation"
+            ? `Confirmed browser upload "${step.subaction}" requires explicit confirmation by domain policy "${decision.policyId}": ${decision.reason}`
+            : `Confirmed browser upload "${step.subaction}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+          { targetId: authorization.session.adapterId },
+        );
+      }
+    }
+    const [target] = await this.resolveTargets(
+      authorization.session.adapterId,
+      command,
+    );
+    if (target && target.id !== authorization.session.adapterId) {
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "Resolved browser target identity changed before authorization.",
+        { targetId: authorization.session.adapterId },
+      );
+    }
+    const executeAuthorizedUpload =
+      target?.executeAuthorizedUpload?.bind(target);
+    if (!target || !executeAuthorizedUpload) {
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        `Browser target "${authorization.session.adapterId}" does not provide proof-producing upload execution.`,
+        { targetId: authorization.session.adapterId },
+      );
+    }
+    if (target.supports && !target.supports(command)) {
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        `Browser target "${authorization.session.adapterId}" does not support confirmed upload execution.`,
+        { targetId: authorization.session.adapterId },
+      );
+    }
+    const authorized = await authorizeBrowserUpload({
+      ...authorization,
+      command,
+    });
+    try {
+      const targetOutput = await executeAuthorizedUpload(authorized.action);
+      return Object.freeze({
+        result: targetOutput.result,
+        receipt: createBrowserUploadReceipt(
+          authorized,
+          targetOutput.result,
+          targetOutput.effectReceipt,
+        ),
+      });
+    } catch (error) {
+      // error-policy:J1 The dispatch boundary preserves uncertain mutation outcomes as a typed failure.
+      if (
+        isBrowserDispatchFailure(error) &&
+        error.kind === "UNCERTAIN_OUTCOME"
+      ) {
+        throw error;
+      }
+      throw new BrowserDispatchFailure(
+        "UNCERTAIN_OUTCOME",
+        `Browser target "${target.id}" failed after confirmed upload dispatch; the outcome is uncertain and must not be replayed.`,
+        { targetId: target.id, cause: error },
+      );
+    }
+  }
+
+  private async executeSelected(
     command: BrowserWorkspaceCommand,
     targetId?: string,
   ): Promise<BrowserWorkspaceCommandResult> {

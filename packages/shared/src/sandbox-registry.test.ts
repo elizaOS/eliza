@@ -10,6 +10,14 @@ import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class extends Error {
+    readonly code: string;
+
+    constructor(message: string, options: { code: string }) {
+      super(message);
+      this.code = options.code;
+    }
+  },
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -33,7 +41,7 @@ function installFetch(): void {
   store.clear();
   failNextFetch = false;
   nextPipelineResponse = null;
-  global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+  global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (failNextFetch) {
       failNextFetch = false;
       throw new Error("simulated upstash failure");
@@ -70,6 +78,14 @@ function installFetch(): void {
         ok: true,
         json: async () => ({ result: cmd.length - 1 }),
       } as unknown as Response;
+    }
+    if (cmd[0] === "EVAL") {
+      // Simulates the registry's compare-and-delete script: EVAL, script,
+      // numkeys, key1, key2, expected1, expected2.
+      const [, , , key1, key2, expected1, expected2] = cmd;
+      if (store.get(key1) === expected1) store.delete(key1);
+      if (store.get(key2) === expected2) store.delete(key2);
+      return { ok: true, json: async () => ({ result: 1 }) } as Response;
     }
     return { ok: true, json: async () => ({ result: null }) } as Response;
   }) as unknown as typeof fetch;
@@ -138,6 +154,33 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     store.set("agent:char-123:server", "sandbox-other");
     store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
     await reg.unregister();
+    expect(store.get("agent:char-123:server")).toBe("sandbox-other");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+  });
+
+  it("unregister() does not delete keys another sandbox claims in the same instant it decides to delete", async () => {
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    // Wrap fetch so a concurrent register() from another sandbox lands right
+    // as this unregister() call reaches the command that actually decides
+    // what to delete (the old two-step implementation's DEL, or the atomic
+    // implementation's EVAL) -- the exact TOCTOU window a read-then-delete
+    // race would fall into.
+    const realFetch = global.fetch as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        const verb = Array.isArray(body) ? body[0] : undefined;
+        if (verb === "DEL" || verb === "EVAL") {
+          store.set("agent:char-123:server", "sandbox-other");
+          store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+        }
+        return realFetch(input, init);
+      },
+    ) as unknown as typeof fetch;
+
+    await reg.unregister();
+
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
   });
@@ -271,6 +314,7 @@ interface FakeRedis {
 async function startFakeRedis(opts?: {
   requirePassword?: string;
   fragmentReplies?: boolean;
+  hostileReply?: string | Buffer;
 }): Promise<FakeRedis> {
   const store = new Map<string, string>();
   const authedWith: string[][] = [];
@@ -278,6 +322,19 @@ async function startFakeRedis(opts?: {
   const server = net.createServer((socket) => {
     let buf = Buffer.alloc(0);
     let authed = !opts?.requirePassword;
+
+    socket.on("error", (error) => {
+      // Hostile-reply tests expect the bounded client to destroy the socket
+      // while the fake peer is still writing its deliberately oversized data.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (
+        opts?.hostileReply !== undefined &&
+        (code === "ECONNRESET" || code === "EPIPE")
+      ) {
+        return;
+      }
+      throw error;
+    });
 
     const send = (s: string): void => {
       if (opts?.fragmentReplies) {
@@ -314,6 +371,11 @@ async function startFakeRedis(opts?: {
       buf = Buffer.concat([buf, chunk]);
       let cmd = tryParseCommand();
       while (cmd) {
+        if (opts?.hostileReply !== undefined) {
+          socket.write(opts.hostileReply);
+          cmd = tryParseCommand();
+          continue;
+        }
         const verb = cmd[0]?.toUpperCase();
         if (verb === "AUTH") {
           authedWith.push(cmd.slice(1));
@@ -337,6 +399,13 @@ async function startFakeRedis(opts?: {
           let n = 0;
           for (const k of cmd.slice(1)) if (store.delete(k)) n++;
           send(`:${n}\r\n`);
+        } else if (verb === "EVAL") {
+          // Simulates the registry's compare-and-delete script: EVAL, script,
+          // numkeys, key1, key2, expected1, expected2.
+          const [, , , key1, key2, expected1, expected2] = cmd;
+          if (store.get(key1) === expected1) store.delete(key1);
+          if (store.get(key2) === expected2) store.delete(key2);
+          send(":1\r\n");
         } else {
           send("-ERR unknown command\r\n");
         }
@@ -407,5 +476,32 @@ describe("SandboxRegistry (native TCP transport)", () => {
     const reg = new SandboxRegistry(tcpConfig(fake.port));
     await reg.register();
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("rejects an oversized declared bulk length through the real TCP path", async () => {
+    fake = await startFakeRedis({ hostileReply: "$2000000000\r\n" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+    });
+  });
+
+  it("rejects non-RESP numeric bulk lengths", async () => {
+    fake = await startFakeRedis({ hostileReply: "$1e2\r\n" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toThrow("exceeds TCP budget");
+  });
+
+  it("rejects a payload flood through the real TCP path", async () => {
+    fake = await startFakeRedis({
+      hostileReply: Buffer.alloc(1_048_577, 0x78),
+    });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+    });
   });
 });

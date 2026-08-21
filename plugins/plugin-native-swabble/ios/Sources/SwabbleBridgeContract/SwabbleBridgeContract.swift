@@ -105,11 +105,18 @@ enum SwabbleWakeBridgeContract {
 
     static func fuzzyTokenMatch(_ a: String, _ b: String) -> Bool {
         if a == b { return true }
+        guard a.utf16.count <= maxFuzzyTokenCodeUnits,
+              b.utf16.count <= maxFuzzyTokenCodeUnits else {
+            return false
+        }
         let maxLen = max(a.count, b.count)
         guard maxLen > 2 else { return false }
         let threshold = max(1, (maxLen + 1) / 3)
         return editDistance(a, b) <= threshold
     }
+
+    /// Bounds both the dynamic-programming table and each retained Character.
+    static let maxFuzzyTokenCodeUnits = 64
 
     private static let wsPunct = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
 
@@ -118,6 +125,10 @@ enum SwabbleWakeBridgeContract {
     }
 
     private static func editDistance(_ a: String, _ b: String) -> Int {
+        guard a.utf16.count <= maxFuzzyTokenCodeUnits,
+              b.utf16.count <= maxFuzzyTokenCodeUnits else {
+            return Int.max
+        }
         let ac = Array(a), bc = Array(b)
         let m = ac.count, n = bc.count
         if m == 0 { return n }

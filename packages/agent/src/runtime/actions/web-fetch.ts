@@ -24,6 +24,8 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
 
@@ -45,6 +47,19 @@ export function isWebFetchEnabled(): boolean {
 interface WebFetchParams {
   url?: string;
   extract?: string;
+}
+
+const EXPLICIT_WEB_SEARCH_REQUEST =
+  /\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/i;
+const PUBLIC_HTTPS_URL = /https:\/\/[^\s<>"']+/i;
+
+/**
+ * Preserve an explicit user choice of discovery over direct URL retrieval.
+ * A named URL still belongs to WEB_FETCH even when surrounding prose mentions
+ * search; without a URL, an explicit web-search request must reach WEB_SEARCH.
+ */
+export function userExplicitlyRequiresWebSearch(text: string): boolean {
+  return EXPLICIT_WEB_SEARCH_REQUEST.test(text) && !PUBLIC_HTTPS_URL.test(text);
 }
 
 function readParams(options: unknown): WebFetchParams {
@@ -93,7 +108,7 @@ function extractValue(body: string, extract: string | undefined): string {
       // Body was not JSON, or extract did not resolve — fall through to snippet.
     }
   }
-  return body.slice(0, WEB_FETCH_SNIPPET_CHARS);
+  return truncateWellFormed(toWellFormedUnicode(body), WEB_FETCH_SNIPPET_CHARS);
 }
 
 export const webFetch: Action & Record<string, unknown> = {
@@ -144,7 +159,12 @@ export const webFetch: Action & Record<string, unknown> = {
     },
   ],
 
-  validate: async (): Promise<boolean> => isWebFetchEnabled(),
+  validate: async (_runtime, message): Promise<boolean> => {
+    if (!isWebFetchEnabled()) return false;
+    const text =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    return !userExplicitlyRequiresWebSearch(text);
+  },
 
   handler: async (
     _runtime: IAgentRuntime,

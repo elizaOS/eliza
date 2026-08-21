@@ -190,7 +190,7 @@ function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 }
 
 function isPrivateIpv4(parts: number[]): boolean {
-	const [octet1, octet2] = parts;
+	const [octet1, octet2, octet3] = parts;
 	if (octet1 === 0) {
 		return true;
 	}
@@ -212,20 +212,138 @@ function isPrivateIpv4(parts: number[]): boolean {
 	if (octet1 === 100 && octet2 >= 64 && octet2 <= 127) {
 		return true;
 	}
+	// Special-purpose ranges kept in parity with the cloud outbound guard:
+	// not globally routable, but internally reachable on carrier/lab networks.
+	if (octet1 === 192 && octet2 === 0 && octet3 === 0) {
+		return true;
+	}
+	if (octet1 === 198 && (octet2 === 18 || octet2 === 19)) {
+		return true;
+	}
+	if (octet1 >= 224) {
+		return true;
+	}
 	return false;
+}
+
+/**
+ * Expand an IPv6 address string into its eight 16-bit groups, handling `::`
+ * compression and a dotted-quad tail (`64:ff9b::169.254.169.254`, the
+ * inet_pton mixed form). Returns null when the string is not a syntactically
+ * valid IPv6 address — the caller then falls back to the first-hextet
+ * classification only.
+ */
+function parseIpv6Hextets(address: string): number[] | null {
+	let input = address;
+	// A dotted tail carries the final 32 bits as IPv4 text; rewrite it in place
+	// as two hex groups so the expansion below stays uniform. Keeping the colon
+	// that precedes the tail preserves a `::` compression spanning it.
+	if (input.includes(".")) {
+		const colon = input.lastIndexOf(":");
+		if (colon === -1) return null;
+		const ipv4 = parseIpv4(input.slice(colon + 1));
+		if (!ipv4) return null;
+		input = `${input.slice(0, colon + 1)}${(((ipv4[0] << 8) | ipv4[1]) & 0xffff).toString(16)}:${(((ipv4[2] << 8) | ipv4[3]) & 0xffff).toString(16)}`;
+	}
+	const parseGroups = (text: string): number[] | null => {
+		if (!text) return [];
+		const groups: number[] = [];
+		for (const part of text.split(":")) {
+			if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
+			groups.push(Number.parseInt(part, 16));
+		}
+		return groups;
+	};
+	const halves = input.split("::");
+	if (halves.length > 2) return null;
+	const head = parseGroups(halves[0] ?? "");
+	if (head === null) return null;
+	if (halves.length === 1) {
+		return head.length === 8 ? head : null;
+	}
+	const tail = parseGroups(halves[1] ?? "");
+	if (tail === null) return null;
+	// "::" must compress at least one all-zero group.
+	const zeros = 8 - (head.length + tail.length);
+	if (zeros < 1) return null;
+	return [...head, ...new Array<number>(zeros).fill(0), ...tail];
+}
+
+/**
+ * Extract the policy-relevant embedded IPv4 from the transition/coexistence
+ * ranges an attacker can route to internal space: IPv4-compatible `::/96`
+ * (deprecated, still honored by some stacks), NAT64 `64:ff9b::/96` (RFC 6052
+ * well-known prefix — live on AWS IPv6-only/DNS64 subnets), 6to4 `2002::/16`
+ * (RFC 3056, IPv4 in bits 16..48), and Teredo `2001:0000::/32` (RFC 4380,
+ * client IPv4 XOR-obfuscated in the low 32 bits). On those network paths a
+ * literal URL never touches DNS, so screening the embedded IPv4 is the only
+ * chance to classify the address the packet actually reaches. Returns null
+ * when the address is outside those ranges.
+ */
+function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
+	const [h0, h1, h2, , , h5, h6, h7] = hextets;
+	const low32ToIpv4 = (): number[] => [
+		(h6 >> 8) & 0xff,
+		h6 & 0xff,
+		(h7 >> 8) & 0xff,
+		h7 & 0xff,
+	];
+	// IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96 spellings that
+	// survived normalizeIpForPolicy — the embedded address is the low 32 bits.
+	// (`::` and `::1` are classified by the caller before this runs.)
+	if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
+		if (hextets[4] === 0 && (h5 === 0 || h5 === 0xffff)) {
+			return low32ToIpv4();
+		}
+	}
+	// NAT64 well-known prefix 64:ff9b::/96 — embedded IPv4 is the low 32 bits.
+	if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && hextets[3] === 0) {
+		if (hextets[4] === 0 && h5 === 0) {
+			return low32ToIpv4();
+		}
+	}
+	// 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
+	if (h0 === 0x2002) {
+		return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];
+	}
+	// Teredo 2001:0000::/32 — client IPv4 is the low 32 bits XOR 0xffffffff.
+	if (h0 === 0x2001 && h1 === 0x0000) {
+		return [
+			((h6 ^ 0xffff) >> 8) & 0xff,
+			(h6 ^ 0xffff) & 0xff,
+			((h7 ^ 0xffff) >> 8) & 0xff,
+			(h7 ^ 0xffff) & 0xff,
+		];
+	}
+	return null;
 }
 
 function isPrivateIpv6(address: string): boolean {
 	if (address === "::" || address === "::1") return true;
 	const firstHextet = /^([0-9a-f]{1,4})(?=:|$)/i.exec(address)?.[1];
-	if (!firstHextet) return false;
-	const first = Number.parseInt(firstHextet, 16);
-	return (
-		(first & 0xfe00) === 0xfc00 || // fc00::/7 unique-local
-		(first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
-		(first & 0xffc0) === 0xfec0 || // fec0::/10 deprecated site-local
-		(first & 0xff00) === 0xff00 // ff00::/8 multicast
-	);
+	if (firstHextet) {
+		const first = Number.parseInt(firstHextet, 16);
+		if (
+			(first & 0xfe00) === 0xfc00 || // fc00::/7 unique-local
+			(first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+			(first & 0xffc0) === 0xfec0 || // fec0::/10 deprecated site-local
+			(first & 0xff00) === 0xff00 // ff00::/8 multicast
+		) {
+			return true;
+		}
+	}
+	// Transition ranges embed an IPv4 the network may translate the literal to
+	// (e.g. http://[64:ff9b::a9fe:a9fe]/ reaching 169.254.169.254 through
+	// NAT64), so screen that embedded address with the IPv4 policy too. This
+	// also covers leading-"::" spellings the first-hextet scan above can't see.
+	const hextets = parseIpv6Hextets(address);
+	if (hextets) {
+		const embedded = embeddedIpv4ForPolicy(hextets);
+		if (embedded && isPrivateIpv4(embedded)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /**

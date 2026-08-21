@@ -587,7 +587,9 @@ let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
 function isChatGestureTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest("[data-chat-gesture-surface]") !== null
+    target.closest(
+      "[data-chat-gesture-surface], [data-chat-overlay-control]",
+    ) !== null
   );
 }
 
@@ -1842,7 +1844,7 @@ export function NotificationsHomeCenter({
     };
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
-      if (e.touches.length !== 1 || !t) {
+      if (e.touches.length !== 1 || !t || isChatGestureTarget(e.target)) {
         abortTouchPull();
         return;
       }
@@ -1991,6 +1993,7 @@ export function NotificationsHomeCenter({
       // surface. The home listener only fills the otherwise dead background.
       if (
         !usesEmptyBackground ||
+        isChatGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
         return;
@@ -2059,6 +2062,7 @@ export function NotificationsHomeCenter({
       if (
         event.touches.length !== 1 ||
         !touch ||
+        isChatGestureTarget(target) ||
         isInteractiveGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
@@ -2147,6 +2151,7 @@ export function NotificationsHomeCenter({
       const target = event.target;
       if (
         event.deltaY >= 0 ||
+        isChatGestureTarget(target) ||
         isInteractiveGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
@@ -2204,6 +2209,7 @@ export function NotificationsHomeCenter({
         !shadeGestureRef.current.canCollapse ||
         !(target instanceof Node) ||
         list.contains(target) ||
+        isChatGestureTarget(target) ||
         isInteractiveGestureTarget(target)
       ) {
         abort();
@@ -2333,6 +2339,7 @@ export function NotificationsHomeCenter({
       if (
         event.pointerType !== "mouse" ||
         !event.isPrimary ||
+        isChatGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
         return;

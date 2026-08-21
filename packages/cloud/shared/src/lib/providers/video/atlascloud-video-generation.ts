@@ -11,6 +11,24 @@ import type {
 
 const ATLAS_POLL_INTERVAL_MS = 2_000;
 const ATLAS_POLL_TIMEOUT_MS = 180_000;
+const ATLAS_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Atlas Cloud REST hop so a hung or rate-limited API cannot pin
+ * the video-generation worker indefinitely. A caller-provided abort signal
+ * wins.
+ */
+export function atlasFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = ATLAS_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 function atlasBaseUrl(request: VideoGenerationRequest): string {
   return (request.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(/\/+$/, "");
@@ -107,7 +125,7 @@ export async function generateAtlasCloudVideo(
 
   const baseUrl = atlasBaseUrl(request);
   const authHeader = { authorization: `Bearer ${apiKey}` };
-  const submitResponse = await fetch(`${baseUrl}/api/v1/model/generateVideo`, {
+  const submitResponse = await atlasFetch(`${baseUrl}/api/v1/model/generateVideo`, {
     method: "POST",
     headers: { ...authHeader, "content-type": "application/json" },
     body: JSON.stringify(buildAtlasVideoInput(request)),
@@ -138,7 +156,7 @@ export async function generateAtlasCloudVideo(
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
 
-    const pollResponse = await fetch(pollUrl, { headers: authHeader });
+    const pollResponse = await atlasFetch(pollUrl, { headers: authHeader });
     const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
     if (!pollResponse.ok) {
       throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
@@ -175,7 +193,7 @@ export async function getAtlasCloudVideoJobStatus(
     /\/+$/,
     "",
   );
-  const response = await fetch(`${baseUrl}/api/v1/model/prediction/${req.requestId}`, {
+  const response = await atlasFetch(`${baseUrl}/api/v1/model/prediction/${req.requestId}`, {
     headers: { authorization: `Bearer ${apiKey}` },
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;

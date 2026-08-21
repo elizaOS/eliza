@@ -4,6 +4,16 @@
  * cwd confinement, and idle/exit reaping — driven with an injected fake PTY
  * (`makeFakeSpawn`), no OS process.
  */
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionOutputEvent } from "../services/pty-contract";
 import {
@@ -172,13 +182,91 @@ describe("PtySessionStore.start", () => {
     await expect(store.start(spec())).rejects.toThrow(/session limit/i);
   });
 
-  it("confines cwd to the allowed root", async () => {
-    const { store, fake } = makeStore({ allowedRoot: "/work" });
-    await store.start(spec({ cwd: "/work/repo/sub" })); // ok
-    expect(fake.calls).toHaveLength(1);
-    await expect(store.start(spec({ cwd: "/etc" }))).rejects.toThrow(
-      /outside the allowed root/i,
+  it("confines cwd to an existing directory under the allowed root", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
+    const inside = path.join(root, "repo", "sub");
+    mkdirSync(inside, { recursive: true });
+
+    try {
+      const { store, fake } = makeStore({ allowedRoot: root });
+      await store.start(spec({ cwd: inside }));
+      expect(fake.calls).toHaveLength(1);
+      await expect(store.start(spec({ cwd: tmpdir() }))).rejects.toThrow(
+        /outside the allowed root/i,
+      );
+      await expect(
+        store.start(spec({ cwd: path.join(root, "missing") })),
+      ).rejects.toMatchObject({ code: "PTY_CWD_RESOLUTION_FAILED" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a cwd that is a symlink to a directory outside the allowed root", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "pty-outside-"));
+    writeFileSync(path.join(outside, "marker.txt"), "outside-jail");
+    const link = path.join(root, "escape");
+    symlinkSync(
+      outside,
+      link,
+      process.platform === "win32" ? "junction" : "dir",
     );
+
+    try {
+      const { store, fake } = makeStore({ allowedRoot: root });
+      await expect(store.start(spec({ cwd: link }))).rejects.toThrow(
+        /outside the allowed root/i,
+      );
+      expect(fake.calls).toHaveLength(0);
+
+      const inside = path.join(root, "ok");
+      mkdirSync(inside);
+      const innerLink = path.join(root, "alias");
+      symlinkSync(
+        inside,
+        innerLink,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await store.start(spec({ cwd: innerLink }));
+      expect(fake.calls).toHaveLength(1);
+      expect(fake.calls[0].opts.cwd).toBe(realpathSync(inside));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("rechecks cwd after the lazy spawn resolver yields", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "pty-outside-"));
+    const inside = path.join(root, "inside");
+    mkdirSync(inside);
+    const fake = makeFakeSpawn();
+    const bridge = new PtyConsoleBridge();
+    const store = new PtySessionStore(
+      bridge,
+      async () => {
+        rmSync(inside, { recursive: true, force: true });
+        symlinkSync(
+          outside,
+          inside,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        return fake.spawn;
+      },
+      { allowedRoot: root },
+    );
+
+    try {
+      await expect(store.start(spec({ cwd: inside }))).rejects.toThrow(
+        /outside the allowed root/i,
+      );
+      expect(fake.calls).toHaveLength(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

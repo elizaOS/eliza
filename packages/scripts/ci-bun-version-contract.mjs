@@ -79,6 +79,10 @@ import { isMap, isScalar, isSeq, parseDocument } from "yaml";
  * device-proven shipping boundary: they are inventoried as excluded, never
  * version-checked here.
  */
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
 const DEFAULT_REPO_ROOT = resolve(
@@ -159,8 +163,61 @@ const GATE_WORKFLOWS = [
 const CONTRACT_ENFORCEMENT_WORKFLOWS = new Set(["test.yml", "develop-pr.yml"]);
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.
-// `canary`, `latest`, and `${{ ... }}` expressions deliberately do not match.
-const CONCRETE_PIN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
+// Parse it deterministically because nested suffix quantifiers let a malformed
+// version consume unbounded CI time before it is rejected.
+function scanSemverIdentifiers(value, start, stopAtBuild) {
+  let cursor = start;
+  let identifierLength = 0;
+  while (cursor < value.length) {
+    const code = value.charCodeAt(cursor);
+    if (stopAtBuild && code === 43) {
+      return identifierLength === 0 ? null : cursor;
+    }
+    if (code === 46) {
+      if (identifierLength === 0) return null;
+      identifierLength = 0;
+      cursor += 1;
+      continue;
+    }
+    const valid =
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      code === 45;
+    if (!valid) return null;
+    identifierLength += 1;
+    cursor += 1;
+  }
+  return identifierLength === 0 ? null : cursor;
+}
+
+export function isConcretePin(value) {
+  if (typeof value !== "string" || value.length === 0) return false;
+  let cursor = 0;
+  for (let component = 0; component < 3; component += 1) {
+    const start = cursor;
+    while (cursor < value.length) {
+      const code = value.charCodeAt(cursor);
+      if (code < 48 || code > 57) break;
+      cursor += 1;
+    }
+    if (cursor === start) return false;
+    if (component < 2) {
+      if (value[cursor] !== ".") return false;
+      cursor += 1;
+    }
+  }
+  if (cursor === value.length) return true;
+  if (value[cursor] === "-") {
+    const prereleaseEnd = scanSemverIdentifiers(value, cursor + 1, true);
+    if (prereleaseEnd === null) return false;
+    cursor = prereleaseEnd;
+  }
+  if (cursor === value.length) return true;
+  if (value[cursor] !== "+") return false;
+  const buildEnd = scanSemverIdentifiers(value, cursor + 1, false);
+  return buildEnd === value.length;
+}
 const FLOATING = new Set(["canary", "latest"]);
 
 // Fixture-tree walk only (real repos are enumerated via git ls-files);
@@ -544,7 +601,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
 
   const manifest = JSON.parse(read(VERSION_FILE));
   const canonical = manifest.version;
-  if (typeof canonical !== "string" || !CONCRETE_PIN.test(canonical)) {
+  if (!isConcretePin(canonical)) {
     throw new Error(
       `${VERSION_FILE}: "version" must be a concrete Bun pin (semver), got ${JSON.stringify(canonical)}`,
     );
@@ -732,7 +789,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
         }
         continue;
       }
-      if (!CONCRETE_PIN.test(raw)) {
+      if (!isConcretePin(raw)) {
         record({ ...site, classification: "unparseable" });
         violate(
           `${rel}:${line}: unparseable Bun version value ${JSON.stringify(raw)} — pin the canonical ${canonical} (${VERSION_FILE}).`,
@@ -898,9 +955,14 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
         const pin = def
           ? null
           : line.match(
-              /^\s*(?:export\s+)?BUN_VERSION=["']?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*)["']?\s*(?:#.*)?$/,
+              /^\s*(?:export\s+)?BUN_VERSION=(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*(?:#.*)?$/,
             );
-        const value = def?.[1] ?? pin?.[1];
+        const pinValue = pin?.[1] ?? pin?.[2] ?? pin?.[3];
+        const value =
+          def?.[1] ??
+          (pinValue !== undefined && isConcretePin(pinValue)
+            ? pinValue
+            : undefined);
         if (value === undefined) continue;
         defaults.push({ line: i + 1, value });
         record({
@@ -918,10 +980,10 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
       }
     } else if (/\.mjs$/.test(rel)) {
       for (const [i, line] of lines.entries()) {
-        const def = line.match(
-          /\bBUN_VERSION\s*=\s*["'](\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*)["']/,
-        );
-        if (!def) continue;
+        const def =
+          line.match(/\bBUN_VERSION\s*=\s*"([^"]+)"/) ??
+          line.match(/\bBUN_VERSION\s*=\s*'([^']+)'/);
+        if (!def || !isConcretePin(def[1])) continue;
         defaults.push({ line: i + 1, value: def[1] });
         record({
           surface: "script-default",
@@ -942,10 +1004,11 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
       // workflow-shaped files, so validate the literal here).
       for (const [i, line] of lines.entries()) {
         const def = line.match(
-          /^\s*BUN_VERSION:\s*["']?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*)["']?\s*(?:#.*)?$/,
+          /^\s*BUN_VERSION:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*(?:#.*)?$/,
         );
-        if (!def) continue;
-        defaults.push({ line: i + 1, value: def[1] });
+        const value = def?.[1] ?? def?.[2] ?? def?.[3];
+        if (value === undefined || !isConcretePin(value)) continue;
+        defaults.push({ line: i + 1, value });
       }
     }
     scanInstallLines({

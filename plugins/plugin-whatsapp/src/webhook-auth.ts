@@ -22,6 +22,21 @@ export function resolveWhatsAppAppSecret(runtime: IAgentRuntime): string | null 
 }
 
 /**
+ * Constant-time string equality for webhook shared secrets (the subscription
+ * verify token). Never use `===`/`!==` on a secret: the comparison runs on the
+ * public Meta handshake endpoint, where response timing could leak it
+ * byte-by-byte.
+ */
+export function timingSafeEqualSecretString(provided: string, expected: string): boolean {
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+  return (
+    expectedBuffer.length === providedBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+  );
+}
+
+/**
  * Verify Meta WhatsApp webhook signature (X-Hub-Signature-256).
  * @see https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests
  */

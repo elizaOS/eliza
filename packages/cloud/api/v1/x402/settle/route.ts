@@ -5,8 +5,8 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
@@ -14,7 +14,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STRICT));
+app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   let body: Record<string, unknown>;
@@ -57,6 +57,9 @@ app.post("/", async (c) => {
 
     return c.json(result, result.success ? 200 : 400);
   } catch (err) {
+    // error-policy:J1 route boundary — settlement failures return a constant
+    // reason to unauthenticated callers; upstream RPC/provider detail stays in
+    // server logs only.
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[x402-settle] Settlement error: ${msg}`);
     return c.json(
@@ -64,7 +67,7 @@ app.post("/", async (c) => {
         success: false,
         transaction: "",
         network: "",
-        errorReason: `internal_error: ${msg}`,
+        errorReason: "internal_error",
       },
       500,
     );

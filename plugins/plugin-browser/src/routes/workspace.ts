@@ -13,7 +13,10 @@ import {
   createBrowserWorkspaceError,
   isBrowserWorkspaceError,
 } from "../workspace/browser-workspace-errors.js";
-import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
+import {
+  assertBrowserWorkspaceUserScriptAllowed,
+  normalizeBrowserWorkspaceCommand,
+} from "../workspace/browser-workspace-helpers.js";
 import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
@@ -68,6 +71,9 @@ type BrowserWorkspaceConnectorReference = {
   connectorAccountId?: string | null;
 };
 
+const MAX_BROWSER_WORKSPACE_COMMAND_DEPTH = 32;
+const MAX_BROWSER_WORKSPACE_COMMANDS = 256;
+
 export interface BrowserWorkspaceRouteContext extends RouteRequestContext {
   url?: URL;
   state?: {
@@ -93,6 +99,7 @@ function statusFromBrowserWorkspaceErrorCode(
         : 409;
     case "script_forbidden":
     case "connector_secret_export_forbidden":
+    case "path_forbidden":
       return 403;
     case "timeout":
       return 504;
@@ -159,6 +166,79 @@ function isBrowserWorkspaceRouteBodyObject(
   value: unknown,
 ): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function validateBrowserWorkspaceCommandTree(
+  value: unknown,
+  path = "command",
+  depth = 0,
+  state = { commandCount: 0 },
+): string | null {
+  if (!isBrowserWorkspaceRouteBodyObject(value)) {
+    return `${path} must be a JSON object`;
+  }
+  if (depth > MAX_BROWSER_WORKSPACE_COMMAND_DEPTH) {
+    return `${path} exceeds the maximum nesting depth of ${MAX_BROWSER_WORKSPACE_COMMAND_DEPTH}`;
+  }
+  state.commandCount += 1;
+  if (state.commandCount > MAX_BROWSER_WORKSPACE_COMMANDS) {
+    return `command tree exceeds the maximum of ${MAX_BROWSER_WORKSPACE_COMMANDS} commands`;
+  }
+
+  if (value.steps === undefined) {
+    return null;
+  }
+  if (!Array.isArray(value.steps)) {
+    return `${path}.steps must be an array`;
+  }
+
+  for (let index = 0; index < value.steps.length; index += 1) {
+    if (!(index in value.steps)) {
+      return `${path}.steps[${index}] must be a JSON object`;
+    }
+    const nestedError = validateBrowserWorkspaceCommandTree(
+      value.steps[index],
+      `${path}.steps[${index}]`,
+      depth + 1,
+      state,
+    );
+    if (nestedError) {
+      return nestedError;
+    }
+  }
+  return null;
+}
+
+function validateBrowserWorkspaceBatchSteps(
+  command: BrowserWorkspaceCommand,
+  path = "command",
+): string | null {
+  if (
+    typeof command.subaction !== "string" ||
+    command.subaction.trim().length === 0
+  ) {
+    return `${path}.subaction is required`;
+  }
+  if (
+    command.subaction === "batch" &&
+    (!Array.isArray(command.steps) || command.steps.length === 0)
+  ) {
+    return `${path}.steps must contain at least one command`;
+  }
+
+  if (!Array.isArray(command.steps)) {
+    return null;
+  }
+  for (let index = 0; index < command.steps.length; index += 1) {
+    const nestedError = validateBrowserWorkspaceBatchSteps(
+      command.steps[index],
+      `${path}.steps[${index}]`,
+    );
+    if (nestedError) {
+      return nestedError;
+    }
+  }
+  return null;
 }
 
 function rejectMalformedBrowserWorkspacePayload(
@@ -242,16 +322,33 @@ export async function handleBrowserWorkspaceRoutes(
       if (!isBrowserWorkspaceRouteBodyObject(body)) {
         return rejectMalformedBrowserWorkspacePayload(ctx);
       }
-      if (!body?.subaction) {
+      const shapeError = validateBrowserWorkspaceCommandTree(body);
+      if (shapeError) {
+        json(res, { error: shapeError }, 400);
+        return true;
+      }
+      // Normalize once at the boundary so `operation` aliases and
+      // case/whitespace variants resolve before subaction validation and
+      // account-gating, matching the action path's canonicalization.
+      const command = normalizeBrowserWorkspaceCommand(body);
+      if (
+        typeof command.subaction !== "string" ||
+        command.subaction.trim().length === 0
+      ) {
         json(res, { error: "subaction is required" }, 400);
+        return true;
+      }
+      const batchError = validateBrowserWorkspaceBatchSteps(command);
+      if (batchError) {
+        json(res, { error: batchError }, 400);
         return true;
       }
       await assertBrowserWorkspaceCommandConnectorAccountGate({
         runtime: ctx.state?.runtime ?? null,
-        command: body,
+        command,
         operation: "browser workspace command",
       });
-      json(res, await executeBrowserWorkspaceCommand(body));
+      json(res, await executeBrowserWorkspaceCommand(command));
       return true;
     }
 

@@ -11,11 +11,14 @@
 
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
 import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const BUILTIN = new Set<string>(["time", "weather", "crypto"]);
 const COINGECKO = "https://api.coingecko.com/api/v3";
+
+export const MCP_PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
 
 type JsonRpcId = string | number | null;
 type JsonObject = Record<string, unknown>;
@@ -248,6 +251,7 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
   url.searchParams.set("language", "en");
   const res = await fetch(url.toString(), {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as GeocodeResponse;
@@ -338,6 +342,7 @@ async function callWeatherTool(
 
   const res = await fetch(forecastUrl.toString(), {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) return errorResult({ error: "Weather provider request failed" });
   const data = (await res.json()) as ForecastResponse;
@@ -359,6 +364,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return errorResult({ error: "CoinGecko trending failed" });
     const data = (await res.json()) as {
@@ -387,6 +393,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return errorResult({ error: "CoinGecko request failed" });
     const data = (await res.json()) as Record<string, Record<string, number>>;
@@ -406,6 +413,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok)
       return errorResult({ error: `CoinGecko error: ${res.status}` });
@@ -510,6 +518,17 @@ export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
           allowed: ["mcp", "streamable-http"],
         },
         404,
+      );
+    }
+
+    if (isKillSwitched(c.env, provider, provider)) {
+      return c.json(
+        {
+          success: false,
+          error: "integration_disabled",
+          reason: `The ${provider} integration is disabled by the operator kill switch.`,
+        },
+        503,
       );
     }
 

@@ -13,6 +13,8 @@ import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import type { ComputeProvider } from "./containers/compute-provider";
+import { getComputeProvider } from "./containers/compute-provider";
 import {
   buildEmbeddingSidecarProbeCmd,
   buildEnsureEmbeddingSidecarCmd,
@@ -20,6 +22,10 @@ import {
   embeddingSidecarStatusFromMetadata,
   parseEmbeddingSidecarProbe,
 } from "./containers/embedding-sidecar";
+import {
+  attestHetznerCloudNode,
+  isTypedHetznerCloudNode,
+} from "./containers/hetzner-node-attestation";
 import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
 import {
   dockerPlatformFlag,
@@ -668,7 +674,11 @@ export function __resetPrePullFailureStateForTests(): void {
 export class DockerNodeManager {
   private static instance: DockerNodeManager;
 
-  private constructor() {}
+  constructor(private readonly provider?: ComputeProvider) {}
+
+  private computeProvider(): ComputeProvider {
+    return this.provider ?? getComputeProvider();
+  }
 
   static getInstance(): DockerNodeManager {
     if (!DockerNodeManager.instance) {
@@ -841,6 +851,9 @@ export class DockerNodeManager {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
+        if (isTypedHetznerCloudNode(node)) {
+          await attestHetznerCloudNode(node, this.computeProvider());
+        }
         const ssh = this.sshClientForNode(node);
         await ssh.connect();
         const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
@@ -1135,6 +1148,9 @@ export class DockerNodeManager {
    */
   async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
     try {
+      if (isTypedHetznerCloudNode(node)) {
+        await attestHetznerCloudNode(node, this.computeProvider());
+      }
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
       const dockerInfoCommand = "docker info --format '{{.ID}}|{{.Architecture}}'";

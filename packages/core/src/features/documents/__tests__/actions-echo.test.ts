@@ -50,6 +50,10 @@ function makeMessage(text: string, source?: string): Memory {
 		entityId: USER_ID,
 		agentId: AGENT_ID,
 		roomId: ROOM_ID,
+		// The canonical tenant-scope path resolves worldId before any file
+		// existence check; the harness message carries one so scope
+		// resolution cannot mask the behavior under test.
+		worldId: "00000000-0000-0000-0000-0000000000bb" as UUID,
 		content: { text, ...(source ? { source } : {}) },
 		createdAt: Date.now(),
 	} as Memory;
@@ -263,8 +267,9 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 			options({ action: "import_file", filePath: `/tmp/${BLOB_QUERY}` }),
 		);
 		expect(res.text).toBe(
-			"No file exists at that path; tell the user it couldn't be found.",
+			"Only the owner or agent runtime can import a local host file. Upload the document content or use a URL instead.",
 		);
+		expect(res.values).toMatchObject({ error: "forbidden" });
 		const filePath = (res.values as { filePath: string }).filePath;
 		expect(filePath).not.toContain("\n");
 		expect(filePath.length).toBeLessThanOrEqual(121);

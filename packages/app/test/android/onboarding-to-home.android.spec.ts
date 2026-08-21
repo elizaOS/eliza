@@ -11,9 +11,9 @@
 // (the original `choice-remote` / `first-run-remote-address` / `choice-connect`
 // flow). Replaces the lane quarantined in #10322.
 //
-// The deterministic host agent listens on host port 31337 and is exposed on a
-// non-reserved device loopback port through `adb reverse`; loopback needs no
-// confirm prompt.
+// The deterministic host agent binds a kernel-assigned host port and is
+// exposed on a non-reserved device loopback port through `adb reverse`;
+// loopback needs no confirm prompt.
 //
 // Liveness contract (#14359): this lane is STUB-BACKED by default — the host
 // agent is the deterministic ui-smoke stub, so a "real model" reply cannot be
@@ -28,6 +28,7 @@ import {
   adbReverse,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
+import { parsePort } from "../../scripts/lib/host-agent.mjs";
 import {
   assertOnboardingLiveness,
   sendChatAndReadReply,
@@ -39,8 +40,9 @@ import { expect, ORIGIN, test } from "./android-harness";
 // the deterministic stub.
 const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
-const HOST_AGENT_PORT = Number(
+const HOST_AGENT_PORT = parsePort(
   process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
+  "ELIZA_ANDROID_HOST_AGENT_PORT",
 );
 // Android reserves loopback:31337 for the bundled local agent. Expose the host
 // on a distinct device port so remote adoption exercises HTTP through adb

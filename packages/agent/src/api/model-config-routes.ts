@@ -32,6 +32,7 @@ import {
   type AgentRuntime,
   ElizaError,
   logger,
+  ModelType,
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
@@ -555,6 +556,20 @@ function hostOf(value: string | undefined): string | null {
   }
 }
 
+function hasOpenAiTextHandlerRegistered(runtime: AgentRuntime): boolean {
+  try {
+    return (runtime.getModelRegistrations?.() ?? []).some(
+      (entry) =>
+        (entry.modelType === ModelType.TEXT_SMALL ||
+          entry.modelType === ModelType.TEXT_LARGE) &&
+        entry.provider === "openai",
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+    return false;
+  }
+}
+
 export function resolveActiveChat(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
@@ -576,6 +591,25 @@ export function resolveActiveChat(
         : undefined;
   } else if (llmText?.transport === "direct" && backend !== undefined) {
     provider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+  } else if (routing === null) {
+    // Legacy/local launches may configure plugin-openai directly from the
+    // environment without persisting a serviceRouting block. ELIZA_PROVIDER is
+    // itself plugin-openai's explicit routing selector, so it is stronger
+    // evidence than guessing from a base URL or credential presence. Preserve
+    // the cloud-proxy fall-through above: an unsigned Cloud route must still
+    // report no external brain and fall back locally.
+    const explicitProvider = resolveEffective(
+      config,
+      processEnv,
+      "ELIZA_PROVIDER",
+    )?.value.toLowerCase();
+    if (
+      explicitProvider === "cerebras" &&
+      runtime &&
+      hasOpenAiTextHandlerRegistered(runtime)
+    ) {
+      provider = "cerebras";
+    }
   }
   const family =
     provider === "openai"

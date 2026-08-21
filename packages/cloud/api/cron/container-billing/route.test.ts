@@ -54,6 +54,8 @@ const recordSuccessfulDailyBilling = mock(
     newBalance: input.newBalance,
     transactionId: "tx-mock",
     alreadyBilled: false,
+    amount: input.dailyCost,
+    fromEarnings: input.fromEarnings,
   }),
 );
 
@@ -114,6 +116,10 @@ mock.module("@/lib/services/email", () => ({
 
 mock.module("@/lib/services/container-stop-job-service", () => ({
   enqueueContainerStop: mock(async () => undefined),
+  enqueueContainerStopOnce: mock(async () => ({
+    id: "stop-job",
+    created: true,
+  })),
 }));
 
 mock.module("@/lib/services/container-jobs-writer", () => ({
@@ -198,6 +204,8 @@ describe("container-billing cron", () => {
       newBalance: input.newBalance,
       transactionId: "tx-mock",
       alreadyBilled: false,
+      amount: input.dailyCost,
+      fromEarnings: input.fromEarnings,
     }));
     convertToCredits.mockImplementation(async () => ({
       success: true,
@@ -298,18 +306,18 @@ describe("container-billing cron", () => {
     expect(b.fromEarnings).toBeCloseTo(0.33, 4);
     expect(b.fromCredits).toBeCloseTo(0.34, 4);
 
-    // Both earnings portions were converted (one per container).
-    expect(convertToCredits).toHaveBeenCalledTimes(2);
+    // Conversion is owned by the repository transaction, never the route.
+    expect(convertToCredits).not.toHaveBeenCalled();
   });
 
-  test("FALLBACK: when convertToCredits throws, the full day is charged to credits (regression guard)", async () => {
+  test("route never performs a crash-separable earnings conversion", async () => {
     listBillableContainers.mockImplementation(async () => [makeContainer()]);
     listBillingOrganizations.mockImplementation(async () => [
       makeOrg({ credit_balance: "100" }),
     ]);
-    // Owner has earnings, so the route attempts an earnings conversion...
+    // Owner has earnings; the repository will lock and convert atomically.
     getBalance.mockImplementation(async () => ({ availableBalance: 1.0 }));
-    // ...but the conversion THROWS (insufficient/contended earnings ledger).
+    // A legacy route-level conversion seam throwing must be irrelevant.
     convertToCredits.mockImplementation(async () => {
       throw new Error("earnings ledger contended");
     });
@@ -330,15 +338,14 @@ describe("container-billing cron", () => {
     expect(json.data.errors).toBe(0);
     expect(json.data.results[0].action).toBe("billed");
 
-    // The whole $0.67 went to credits (fromEarnings reset to 0), because the
-    // earnings were never actually debited.
+    expect(convertToCredits).not.toHaveBeenCalled();
     const billArg = recordSuccessfulDailyBilling.mock.calls[0][0] as {
       fromEarnings: number;
       fromCredits: number;
       dailyCost: number;
     };
-    expect(billArg.fromEarnings).toBeCloseTo(0, 4);
-    expect(billArg.fromCredits).toBeCloseTo(0.67, 4);
+    expect(billArg.fromEarnings).toBeCloseTo(0.67, 4);
+    expect(billArg.fromCredits).toBeCloseTo(0, 4);
     expect(billArg.dailyCost).toBeCloseTo(0.67, 4);
   });
 

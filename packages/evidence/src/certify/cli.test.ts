@@ -181,6 +181,20 @@ describe("runCertifyCli (in-process)", () => {
     expect(code).toBe(1);
     expect(errLines.join("\n")).toContain("SIGN_BUNDLE_TAMPERED");
   });
+
+  it("rollup cannot overwrite a finalized bundle leaf", async () => {
+    const bundleDir = await fixtureBundle();
+    const manifestPath = path.join(bundleDir, "manifest.json");
+    const originalManifest = fs.readFileSync(manifestPath);
+    const { io, errLines } = capture();
+    const code = await runCertifyCli(
+      ["rollup", "--bundle", bundleDir, "--out", manifestPath],
+      io,
+    );
+    expect(code).toBe(1);
+    expect(errLines.join("\n")).toContain("CERTIFICATION_OUTPUT_UNSAFE");
+    expect(fs.readFileSync(manifestPath)).toEqual(originalManifest);
+  });
 });
 
 describe("certify CLI end-to-end (execFile)", () => {

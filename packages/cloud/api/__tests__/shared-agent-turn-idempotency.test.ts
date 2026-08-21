@@ -111,6 +111,10 @@ mock.module("@/lib/services/ai-billing", () => ({
     return { totalCost: 0.004, inputTokens: 12, outputTokens: 4 };
   },
   recordUsageAnalytics: async () => null,
+  billFlatUsage: async () => {
+    billSettlements++;
+    return { totalCost: 0.004, inputTokens: 0, outputTokens: 0 };
+  },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     required = 1;
     available = 0;
@@ -121,11 +125,15 @@ mock.module("@/lib/services/ai-billing-records", () => ({
 }));
 mock.module("@/lib/services/inference-admission-gate", () => ({
   isInferenceAdmissionDispatchMarkError: () => false,
+  warmInferenceAdmissionGate: async () => undefined,
+  warmInferenceRateLimitGate: async () => undefined,
 }));
 mock.module("@/lib/services/inference-billing-fast-path", () => ({
   InferenceBalanceCacheWarmingError: class extends Error {},
 }));
 mock.module("@/lib/services/shared-runtime/run-shared-agent-turn", () => ({
+  appendSharedInput: mock(),
+  appendSharedTurn: mock(),
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
     message: string;

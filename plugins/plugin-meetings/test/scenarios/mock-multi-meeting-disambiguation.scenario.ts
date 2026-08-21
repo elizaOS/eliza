@@ -35,6 +35,11 @@ async function bothStillActive(
 export default scenario({
   id: "mock-multi-meeting-disambiguation",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Mocked LEAVE_MEETING asks which meeting when two are active",
   domain: "meetings",
   tags: ["mock", "meetings", "leave-meeting", "disambiguation"],

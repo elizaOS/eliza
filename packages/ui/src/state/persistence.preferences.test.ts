@@ -6,6 +6,7 @@
  * defaults, normalization, round trips, and clearing behavior as one contract.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import {
   clearAvatarIndex,
   hasStoredUiLanguage,
@@ -57,9 +58,33 @@ import {
   saveWalletEnabled,
 } from "./persistence";
 
+type TestWindow = Window & {
+  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+};
+
 describe("shell preference persistence", () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, "", "/");
+    delete (window as TestWindow).__ELIZA_ELECTROBUN_RPC__;
+  });
+
+  it("defaults a fresh elizaOS appliance session to always-on voice", () => {
+    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = {
+      request: {},
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
+    window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    expect(loadContinuousChatMode()).toBe("always-on");
+    saveContinuousChatMode("off");
+    expect(loadContinuousChatMode()).toBe("off");
+  });
+
+  it("does not trust a malformed desktop bridge marker from a public page", () => {
+    (window as TestWindow).__ELIZA_ELECTROBUN_RPC__ = null as never;
+    window.history.replaceState({}, "", "/?elizaOSAlwaysOnVoice=1");
+    expect(loadContinuousChatMode()).toBe("off");
   });
 
   it("exposes the designed defaults for a fresh device", () => {

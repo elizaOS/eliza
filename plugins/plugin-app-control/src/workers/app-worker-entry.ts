@@ -21,9 +21,18 @@
  * host-approved capabilities are exposed: app metadata, gated fs/net,
  * and selected runtime bridge methods. Any other `runtime.*` access is
  * rejected instead of leaking the host runtime into the worker.
+ * Filesystem operations walk from the canonical sandbox root, reject symlink
+ * components, and pin the final file descriptor before reading or writing.
  */
 
-import { promises as fsPromises } from "node:fs";
+import { constants as fsConstants } from "node:fs";
+import {
+	type FileHandle,
+	lstat,
+	mkdir,
+	open,
+	realpath,
+} from "node:fs/promises";
 import nodePath from "node:path";
 import { isMainThread, parentPort, workerData } from "node:worker_threads";
 
@@ -50,7 +59,13 @@ interface RpcRequest {
 
 type RpcResponse =
 	| { id: number; ok: true; result: unknown }
-	| { id: number; ok: false; reason: string };
+	| {
+			id: number;
+			ok: false;
+			reason: string;
+			code?: string;
+			context?: Record<string, unknown>;
+	  };
 
 interface RuntimeBridgeResponse {
 	id: number;
@@ -64,6 +79,12 @@ interface InvokeActionParams {
 	actionName: string;
 	content?: unknown;
 	options?: Record<string, unknown>;
+}
+
+interface RpcFailureFields {
+	reason: string;
+	code?: string;
+	context?: Record<string, unknown>;
 }
 
 interface LoadedAction {
@@ -171,43 +192,353 @@ async function gatedFetch(
 	return fetch(parsed, init);
 }
 
-function checkFsAccess(
+/**
+ * Serializable worker-side counterpart to ElizaError. This entry intentionally
+ * does not load the full core runtime dependency tree; the host reconstructs an
+ * ElizaError from this stable code and context at the RPC boundary.
+ */
+class SandboxFsError extends Error {
+	override readonly name = "SandboxFsError";
+	readonly code: string;
+	readonly context: Record<string, unknown>;
+
+	constructor(
+		message: string,
+		code: string,
+		context: Record<string, unknown>,
+		cause?: unknown,
+	) {
+		super(message, cause === undefined ? undefined : { cause });
+		this.code = code;
+		this.context = context;
+	}
+}
+
+function errnoCode(error: unknown): string | undefined {
+	return error && typeof error === "object" && "code" in error
+		? String((error as NodeJS.ErrnoException).code)
+		: undefined;
+}
+
+function fsFailure(
+	code: string,
+	message: string,
+	operation: "read" | "write",
+	target?: string,
+	cause?: unknown,
+): SandboxFsError {
+	return new SandboxFsError(
+		message,
+		code,
+		{ operation, statePath, ...(target ? { target } : {}) },
+		cause,
+	);
+}
+
+function relativeSegments(root: string, candidate: string): string[] | null {
+	const relative = nodePath.relative(root, candidate);
+	if (
+		relative === ".." ||
+		relative.startsWith(`..${nodePath.sep}`) ||
+		nodePath.isAbsolute(relative)
+	) {
+		return null;
+	}
+	return relative === "" ? [] : relative.split(nodePath.sep);
+}
+
+async function resolveSandboxRoot(
+	operation: "read" | "write",
+	requestedPath: string,
+): Promise<{ root: string; segments: string[] }> {
+	if (!statePath) {
+		throw fsFailure(
+			"APP_WORKER_FS_ROOT_MISSING",
+			"fs access requires a statePath to be assigned to the app at spawn time",
+			operation,
+			requestedPath,
+		);
+	}
+	const resolved = nodePath.resolve(requestedPath);
+	const segments = relativeSegments(statePath, resolved);
+	if (!segments) {
+		throw fsFailure(
+			"APP_WORKER_FS_ESCAPE",
+			`fs access to ${resolved} escapes the sandbox statePath (${statePath})`,
+			operation,
+			resolved,
+		);
+	}
+	try {
+		const root = await realpath(statePath);
+		const rootStat = await lstat(root);
+		if (!rootStat.isDirectory()) {
+			throw fsFailure(
+				"APP_WORKER_FS_ROOT_INVALID",
+				`fs access requires statePath to be a directory (${statePath})`,
+				operation,
+				resolved,
+			);
+		}
+		return { root, segments };
+	} catch (error) {
+		// error-policy:J2 preserve the root resolution failure in a typed error.
+		if (error instanceof SandboxFsError) throw error;
+		throw fsFailure(
+			"APP_WORKER_FS_ROOT_UNAVAILABLE",
+			`fs access requires an existing, resolvable statePath (${statePath})`,
+			operation,
+			resolved,
+			error,
+		);
+	}
+}
+
+async function validateDirectoryComponent(
+	root: string,
+	candidate: string,
+	operation: "read" | "write",
+	target: string,
+): Promise<string> {
+	try {
+		const stat = await lstat(candidate);
+		if (stat.isSymbolicLink() || !stat.isDirectory()) {
+			throw fsFailure(
+				"APP_WORKER_FS_UNSAFE_COMPONENT",
+				`fs access to ${target} crosses a symlink or non-directory component`,
+				operation,
+				target,
+			);
+		}
+		const canonical = await realpath(candidate);
+		if (!relativeSegments(root, canonical)) {
+			throw fsFailure(
+				"APP_WORKER_FS_ESCAPE",
+				`fs access to ${target} escapes the sandbox statePath (${statePath})`,
+				operation,
+				target,
+			);
+		}
+		return canonical;
+	} catch (error) {
+		// error-policy:J2 preserve component resolution failures in a typed error.
+		if (error instanceof SandboxFsError) throw error;
+		throw fsFailure(
+			"APP_WORKER_FS_PATH_UNAVAILABLE",
+			`fs access could not validate directory component ${candidate}`,
+			operation,
+			target,
+			error,
+		);
+	}
+}
+
+async function resolveParentDirectory(
+	root: string,
+	segments: string[],
+	operation: "read" | "write",
+	target: string,
+): Promise<{ parent: string; basename: string }> {
+	if (segments.length === 0) {
+		throw fsFailure(
+			"APP_WORKER_FS_ROOT_TARGET",
+			"fs file access cannot target the sandbox root directory",
+			operation,
+			target,
+		);
+	}
+	let parent = root;
+	for (const segment of segments.slice(0, -1)) {
+		const next = nodePath.join(parent, segment);
+		try {
+			parent = await validateDirectoryComponent(root, next, operation, target);
+		} catch (error) {
+			// error-policy:J3 only a missing write directory may be created;
+			// every other untrusted path shape remains a hard failure.
+			if (
+				operation !== "write" ||
+				!(error instanceof SandboxFsError) ||
+				errnoCode(error.cause) !== "ENOENT"
+			) {
+				throw error;
+			}
+			try {
+				await mkdir(next);
+			} catch (mkdirError) {
+				// error-policy:J3 EEXIST is revalidated as a directory below; all
+				// other mkdir failures are wrapped and rejected.
+				if (errnoCode(mkdirError) !== "EEXIST") {
+					throw fsFailure(
+						"APP_WORKER_FS_MKDIR_FAILED",
+						`fs access could not create sandbox directory ${next}`,
+						operation,
+						target,
+						mkdirError,
+					);
+				}
+			}
+			parent = await validateDirectoryComponent(root, next, operation, target);
+		}
+	}
+	return { parent, basename: segments.at(-1) as string };
+}
+
+async function openSandboxFile(
 	absolutePath: string,
 	operation: "read" | "write",
-): void {
+): Promise<FileHandle> {
 	if (!grantedSet.has("fs")) {
-		throw new Error(
+		throw fsFailure(
+			"APP_WORKER_FS_NOT_GRANTED",
 			"fs access not granted by user (sandbox: grantedNamespaces does not include 'fs')",
+			operation,
+			absolutePath,
 		);
 	}
 	if (!hasDeclaredFsOperation(operation)) {
-		throw new Error(`fs.${operation} access not allowed by manifest`);
-	}
-	if (!statePath) {
-		throw new Error(
-			"fs access requires a statePath to be assigned to the app at spawn time",
+		throw fsFailure(
+			"APP_WORKER_FS_NOT_DECLARED",
+			`fs.${operation} access not allowed by manifest`,
+			operation,
+			absolutePath,
 		);
 	}
-	const resolved = nodePath.resolve(absolutePath);
-	const root = `${statePath}${nodePath.sep}`;
-	if (resolved !== statePath && !resolved.startsWith(root)) {
-		throw new Error(
-			`fs access to ${resolved} escapes the sandbox statePath (${statePath})`,
+	const { root, segments } = await resolveSandboxRoot(operation, absolutePath);
+	const { parent, basename } = await resolveParentDirectory(
+		root,
+		segments,
+		operation,
+		absolutePath,
+	);
+	// Revalidate the immediate parent immediately before open. The descriptor
+	// pins the selected file for the subsequent I/O, and O_NOFOLLOW (where the
+	// platform exposes it) prevents a final-component symlink swap. Node does not
+	// expose portable openat/mkdirat APIs, so an external actor can still rename
+	// an intermediate directory between this path check and open/mkdir. The
+	// post-open canonical check prevents content I/O through such a swap, though
+	// O_CREAT could leave an empty file and mkdir could leave an empty directory.
+	const canonicalParent = await validateDirectoryComponent(
+		root,
+		parent,
+		operation,
+		absolutePath,
+	);
+	const target = nodePath.join(canonicalParent, basename);
+	try {
+		const targetStat = await lstat(target);
+		if (targetStat.isSymbolicLink() || !targetStat.isFile()) {
+			throw fsFailure(
+				"APP_WORKER_FS_UNSAFE_TARGET",
+				`fs access to ${absolutePath} targets a symlink or non-file`,
+				operation,
+				absolutePath,
+			);
+		}
+	} catch (error) {
+		// error-policy:J3 only a missing final write target is valid input.
+		if (error instanceof SandboxFsError) throw error;
+		if (errnoCode(error) !== "ENOENT" || operation === "read") {
+			throw fsFailure(
+				operation === "read" && errnoCode(error) === "ENOENT"
+					? "APP_WORKER_FS_NOT_FOUND"
+					: "APP_WORKER_FS_PATH_UNAVAILABLE",
+				`fs.${operation} could not validate ${absolutePath}`,
+				operation,
+				absolutePath,
+				error,
+			);
+		}
+	}
+	const noFollow = fsConstants.O_NOFOLLOW ?? 0;
+	const flags =
+		operation === "read"
+			? fsConstants.O_RDONLY | noFollow
+			: fsConstants.O_WRONLY | fsConstants.O_CREAT | noFollow;
+	let handle: FileHandle;
+	try {
+		handle = await open(target, flags, 0o600);
+	} catch (error) {
+		// error-policy:J2 preserve the OS open failure in a typed boundary error.
+		throw fsFailure(
+			operation === "read" && errnoCode(error) === "ENOENT"
+				? "APP_WORKER_FS_NOT_FOUND"
+				: "APP_WORKER_FS_OPEN_FAILED",
+			`fs.${operation} could not open ${absolutePath}`,
+			operation,
+			absolutePath,
+			error,
+		);
+	}
+	try {
+		const [stat, targetStat, canonicalTarget] = await Promise.all([
+			handle.stat({ bigint: true }),
+			lstat(target, { bigint: true }),
+			realpath(target),
+		]);
+		const descriptorMatchesPath =
+			stat.dev === targetStat.dev && stat.ino === targetStat.ino;
+		// A canonical path check alone is insufficient: an attacker can swap an
+		// outside parent in for open(), then restore the inside parent before this
+		// check. Device/inode identity proves the descriptor and checked path still
+		// name the same file before truncate/read begins.
+		if (
+			!stat.isFile() ||
+			targetStat.isSymbolicLink() ||
+			!descriptorMatchesPath ||
+			!relativeSegments(root, canonicalTarget)
+		) {
+			throw fsFailure(
+				"APP_WORKER_FS_ESCAPE",
+				`fs access to ${absolutePath} escapes the sandbox statePath (${statePath})`,
+				operation,
+				absolutePath,
+			);
+		}
+		return handle;
+	} catch (error) {
+		// error-policy:J2 preserve descriptor revalidation failures before I/O.
+		await handle.close();
+		if (error instanceof SandboxFsError) throw error;
+		throw fsFailure(
+			"APP_WORKER_FS_REVALIDATION_FAILED",
+			`fs.${operation} could not revalidate ${absolutePath}`,
+			operation,
+			absolutePath,
+			error,
 		);
 	}
 }
 
 const gatedFs = {
 	async readFile(path: string): Promise<string> {
-		checkFsAccess(path, "read");
-		return fsPromises.readFile(path, "utf8");
+		const handle = await openSandboxFile(path, "read");
+		try {
+			return await handle.readFile("utf8");
+		} finally {
+			await handle.close();
+		}
 	},
 	async writeFile(path: string, content: string): Promise<void> {
-		checkFsAccess(path, "write");
-		await fsPromises.mkdir(nodePath.dirname(path), { recursive: true });
-		await fsPromises.writeFile(path, content, "utf8");
+		const handle = await openSandboxFile(path, "write");
+		try {
+			await handle.truncate(0);
+			await handle.writeFile(content, "utf8");
+		} finally {
+			await handle.close();
+		}
 	},
 };
+
+function rpcFailure(error: unknown): RpcFailureFields {
+	if (error instanceof SandboxFsError) {
+		return {
+			reason: error.message,
+			code: error.code,
+			context: error.context,
+		};
+	}
+	return { reason: error instanceof Error ? error.message : String(error) };
+}
 
 interface PendingRuntimeCall {
 	resolve: (value: unknown) => void;
@@ -384,7 +715,7 @@ function makeSandboxRuntimeFacade(): unknown {
 
 async function dispatchInvokeAction(
 	params: unknown,
-): Promise<{ ok: true; result: unknown } | { ok: false; reason: string }> {
+): Promise<{ ok: true; result: unknown } | ({ ok: false } & RpcFailureFields)> {
 	if (
 		typeof params !== "object" ||
 		params === null ||
@@ -416,7 +747,7 @@ async function dispatchInvokeAction(
 	} catch (error) {
 		return {
 			ok: false,
-			reason: error instanceof Error ? error.message : String(error),
+			...rpcFailure(error),
 		};
 	}
 }
@@ -440,7 +771,7 @@ async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 	if (req.method === "invokeAction") {
 		const result = await dispatchInvokeAction(req.params);
 		if (!result.ok) {
-			return { id: req.id, ok: false, reason: result.reason };
+			return { id: req.id, ...result };
 		}
 		return { id: req.id, ok: true, result: result.result };
 	}
@@ -459,7 +790,7 @@ async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 		return {
 			id: req.id,
 			ok: false,
-			reason: error instanceof Error ? error.message : String(error),
+			...rpcFailure(error),
 		};
 	}
 }

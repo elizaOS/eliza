@@ -72,14 +72,25 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { getBootConfig } from "../config/boot-config";
+import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
-import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
+import {
+  ACCENT_PRESETS,
+  useAppSelector,
+  useAppSelectorShallow,
+} from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   claimCloudLoginWindow,
+  prepareDesktopCloudLoginSession,
   releaseClaimedCloudLoginWindow,
 } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
+import {
+  createFirstRunTranscriptEpoch,
+  observeFirstRunTranscriptEpoch,
+} from "../state/first-run-transcript-epoch";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
@@ -336,7 +347,10 @@ const CLOUD_ONLY_ERROR_CHOICE = [
  * detail for context. The recovery framing tracks the runtime chooser: with the
  * chooser off there is no "different way to run" to offer.
  */
-function finishErrorMessage(message: string): string {
+function finishErrorMessage(
+  message: string,
+  runtimeChooserEnabled: boolean,
+): string {
   const detail = message.trim();
   const isTerse = /^(not found|failed to fetch|forbidden|unauthorized)$/i.test(
     detail,
@@ -344,7 +358,7 @@ function finishErrorMessage(message: string): string {
   const lead = isTerse
     ? `I couldn't finish setting up your agent (${detail}).`
     : `I couldn't finish setting up your agent: ${detail}`;
-  const recovery = isRuntimeChooserEnabled()
+  const recovery = runtimeChooserEnabled
     ? "You can try again, pick a different way to run your agent, or configure a model provider yourself in Settings."
     : "You can try again, or configure a model provider yourself in Settings.";
   return `${lead}\n\n${recovery}`;
@@ -407,14 +421,17 @@ interface FirstRunTurnWriter {
   replaceTurn(id: string, next: ConversationMessage): void;
 }
 
-export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
+export function surfaceCloudLoginRetryTurn(
+  writer: FirstRunTurnWriter,
+  runtimeChooserEnabled = isRuntimeChooserEnabled(),
+): void {
   // Replacing the turn re-parses its CHOICE block, so the re-offered runtime
   // buttons arrive unlocked even when an earlier pick locked the originals —
   // without this the "pick again" instruction is a dead end (every prior
   // runtime widget locked itself on first tap). In cloud-only mode there is no
   // runtime to re-pick: the retry turn re-offers the single sign-in button
   // (whose tap re-enters the cloud flow with a fresh user gesture).
-  const retryText = isRuntimeChooserEnabled()
+  const retryText = runtimeChooserEnabled
     ? `Sign in to Eliza Cloud to continue. You can also pick how to run your agent again.\n\n${runtimeChoiceBlock()}`
     : CLOUD_SIGN_IN_CHOICE;
   const connectTurn = makeTurn("first-run:cloud-oauth", retryText);
@@ -423,6 +440,8 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
 }
 
 export function useFirstRunConductor(): void {
+  const { cloudOnly } = useBranding();
+  const runtimeChooserEnabled = isRuntimeChooserEnabled(cloudOnly === true);
   const {
     firstRunComplete,
     firstRunName,
@@ -472,6 +491,11 @@ export function useFirstRunConductor(): void {
   // Generation guard for cloud sign-in attempts (#19255): outcomes of an
   // attempt the deadline abandoned must not mutate newer state.
   const cloudLoginAttemptRef = React.useRef(createAttemptGuard());
+  // The visible waiting turn offers an immediate retry. Its callback abandons
+  // the current owned attempt before launching the replacement, so the old
+  // popup/provision promise can never keep the busy latch or mutate the new
+  // flow when it settles late.
+  const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
   // Latched by the first tutorial pick: the store flip unregisters the handler
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
@@ -618,7 +642,7 @@ export function useFirstRunConductor(): void {
       },
       setTab,
       completeFirstRun: () => {
-        if (isRuntimeChooserEnabled()) {
+        if (runtimeChooserEnabled) {
           seedTutorial();
           return;
         }
@@ -649,6 +673,7 @@ export function useFirstRunConductor(): void {
       seedTutorial,
       completeCloudOnly,
       seedTurn,
+      runtimeChooserEnabled,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -669,11 +694,11 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,
-          `${finishErrorMessage(message)}\n\n${isRuntimeChooserEnabled() ? ERROR_CHOICE : CLOUD_ONLY_ERROR_CHOICE}`,
+          `${finishErrorMessage(message, runtimeChooserEnabled)}\n\n${runtimeChooserEnabled ? ERROR_CHOICE : CLOUD_ONLY_ERROR_CHOICE}`,
         ),
       );
     },
-    [seedTurn],
+    [runtimeChooserEnabled, seedTurn],
   );
 
   // Explicit, non-finish escape hatch out of onboarding: flip the real gate and
@@ -701,7 +726,7 @@ export function useFirstRunConductor(): void {
       );
       // Cloud-only mode has no runtime to go back to; only offer the back
       // affordance when the chooser owns this flow.
-      if (isRuntimeChooserEnabled()) {
+      if (runtimeChooserEnabled) {
         lines.push(BACK_TO_RUNTIME_OPTION);
       }
       seedFreshChoiceTurn(
@@ -709,7 +734,7 @@ export function useFirstRunConductor(): void {
         `Which Eliza Cloud agent should I use?\n\n[CHOICE:first-run id=cloud-agent]\n${lines.join("\n")}\n[/CHOICE]`,
       );
     },
-    [seedFreshChoiceTurn],
+    [runtimeChooserEnabled, seedFreshChoiceTurn],
   );
 
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
@@ -737,7 +762,7 @@ export function useFirstRunConductor(): void {
           // provisioning's completeFirstRun port already ran the wrap-up
           // (tutorial offer, or the cloud-only real completion).
           if (!provisionedRef.current) {
-            if (isRuntimeChooserEnabled()) seedTutorial();
+            if (runtimeChooserEnabled) seedTutorial();
             else completeCloudOnly();
           }
           return;
@@ -749,7 +774,7 @@ export function useFirstRunConductor(): void {
           // Compatibility path for any legacy/stale picker outcome. The main
           // Cloud first-run path now binds the best healthy agent directly so
           // onboarding stays a single sign-in flow.
-          if (!isRuntimeChooserEnabled()) {
+          if (!runtimeChooserEnabled) {
             const first = outcome.agents[0]?.agent_id;
             if (outcome.agents.length === 1 && first) {
               bindCloudAgentByIdRef.current?.(first);
@@ -780,7 +805,10 @@ export function useFirstRunConductor(): void {
           // Asking for a sign-in ends a silent entry: the session turned out
           // not to be usable, so the flow is back to the visible ask path.
           silentCloudEntryRef.current = false;
-          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
+          surfaceCloudLoginRetryTurn(
+            { seedTurn, replaceTurn },
+            runtimeChooserEnabled,
+          );
           return;
         }
         case "error":
@@ -795,6 +823,7 @@ export function useFirstRunConductor(): void {
       seedTurn,
       replaceTurn,
       seedError,
+      runtimeChooserEnabled,
     ],
   );
 
@@ -815,13 +844,38 @@ export function useFirstRunConductor(): void {
     // A sign-in completed after abandonment lands via the auto-resume effect.
     const abortController = new AbortController();
     let loginDeadline: { cancel(): void } | null = null;
+    const abandonAttempt = () => {
+      if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+      cloudLoginAttemptRef.current.invalidate();
+      abortController.abort();
+      loginDeadline?.cancel();
+      busyRef.current = false;
+      releaseClaimedCloudLoginWindow();
+      if (activeCloudLoginCancelRef.current === abandonAttempt) {
+        activeCloudLoginCancelRef.current = null;
+      }
+    };
+    activeCloudLoginCancelRef.current = abandonAttempt;
     const seedWaitingTurn = () => {
-      seedTurn(
-        makeTurn(
-          "first-run:cloud-login-waiting",
-          "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
-        ),
+      const waitingTurn = makeTurn(
+        "first-run:cloud-login-waiting",
+        [
+          "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          "",
+          `[CHOICE:first-run id=cloud-login-retry-${attempt}]`,
+          `${FIRST_RUN_ACTION_PREFIX}cloud-login:retry=Open sign-in again`,
+          "[/CHOICE]",
+        ].join("\n"),
       );
+      setConversationMessages((prev) => {
+        const index = prev.findIndex(
+          ({ id }) => id === "first-run:cloud-login-waiting",
+        );
+        if (index === -1) return [...prev, waitingTurn];
+        return prev.map((turn, turnIndex) =>
+          turnIndex === index ? waitingTurn : turn,
+        );
+      });
     };
     // Idempotent: armed up front for a visible entry, or at the moment a
     // silent entry (#15133) degrades into interactive OAuth via the finish
@@ -832,13 +886,7 @@ export function useFirstRunConductor(): void {
       loginDeadline = armCloudLoginWaitDeadline({
         onDeadline: () => {
           if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
-          cloudLoginAttemptRef.current.invalidate();
-          abortController.abort();
-          busyRef.current = false;
-          // This attempt still owns the claimed popup here (busy was held
-          // until the line above, so no newer attempt can hold a claim);
-          // release exactly once, at the ownership transfer point.
-          releaseClaimedCloudLoginWindow();
+          abandonAttempt();
           // The notice carries the sign-in choice itself: at this point the
           // original cloud-oauth turn has been consumed, so re-seeding by
           // that id can no-op and "try again below" would have no below.
@@ -918,9 +966,12 @@ export function useFirstRunConductor(): void {
         if (cloudLoginAttemptRef.current.isCurrent(attempt)) {
           busyRef.current = false;
           releaseClaimedCloudLoginWindow();
+          if (activeCloudLoginCancelRef.current === abandonAttempt) {
+            activeCloudLoginCancelRef.current = null;
+          }
         }
       });
-  }, [handleOutcome, seedError, seedTurn, replaceTurn]);
+  }, [handleOutcome, replaceTurn, seedError, setConversationMessages]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
@@ -1032,6 +1083,16 @@ export function useFirstRunConductor(): void {
       const group = separator === -1 ? suffix : suffix.slice(0, separator);
       const id = separator === -1 ? "" : suffix.slice(separator + 1);
 
+      // Waiting for an external browser is always recoverable. This action is
+      // intentionally handled before the generic busy guard: it abandons the
+      // current owned attempt, then starts a fresh sign-in from the new user
+      // gesture. Late completion from the old attempt is generation-gated.
+      if (group === "cloud-login" && id === "retry") {
+        activeCloudLoginCancelRef.current?.();
+        startCloudProvisionFlow();
+        return true;
+      }
+
       // One provisioning flow at a time. Stale widgets survive in the
       // transcript (error re-seeds, the cloud-agent picker next to a re-offered
       // runtime choice), so a confused user can tap a second option while a
@@ -1056,7 +1117,7 @@ export function useFirstRunConductor(): void {
       // can only be a stale widget from a chooser-mode transcript (or
       // garbage) — consume those untouched so they can't start a local/remote
       // flow (there is no runtime chooser to go "back" to).
-      if (!isRuntimeChooserEnabled()) {
+      if (!runtimeChooserEnabled) {
         if (
           group === "provider" ||
           group === "backup-restore" ||
@@ -1294,7 +1355,7 @@ export function useFirstRunConductor(): void {
           exitToSettings();
           return true;
         }
-        if (id === "restart" && isRuntimeChooserEnabled()) {
+        if (id === "restart" && runtimeChooserEnabled) {
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
           // how their agent runs after a failed finish — unwinding whatever
           // the failed local path committed first (#14390), so switching to
@@ -1355,6 +1416,7 @@ export function useFirstRunConductor(): void {
       startCloudProvisionFlow,
       startProviderFinish,
       setUiAccent,
+      runtimeChooserEnabled,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
@@ -1381,7 +1443,7 @@ export function useFirstRunConductor(): void {
             ? FIRST_RUN_TEXT_REPLY.wrapUp
             : erroredRef.current
               ? FIRST_RUN_TEXT_REPLY.error
-              : isRuntimeChooserEnabled()
+              : runtimeChooserEnabled
                 ? FIRST_RUN_TEXT_REPLY.choosing
                 : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
@@ -1396,7 +1458,7 @@ export function useFirstRunConductor(): void {
       seedTurn(makeTurn(`first-run:reply:${seq}`, reply));
       return true;
     },
-    [seedTurn],
+    [runtimeChooserEnabled, seedTurn],
   );
   const handleTextRef = React.useRef(handleFirstRunText);
   handleTextRef.current = handleFirstRunText;
@@ -1445,7 +1507,7 @@ export function useFirstRunConductor(): void {
     // is needed — any stale chooser-mode marker is dropped. The local-backup
     // restore probe is skipped: restoring a local agent is a chooser-mode
     // concept.
-    if (!isRuntimeChooserEnabled()) {
+    if (!runtimeChooserEnabled) {
       clearCloudLoginPending();
       draftRef.current = {
         ...draftRef.current,
@@ -1489,6 +1551,11 @@ export function useFirstRunConductor(): void {
       // THIS path only — a greeting was genuinely shown, so silently yanking
       // the conversation would read as broken.
       const seedSignInGreetingAndPoll = () => {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase?.trim() || "https://eliza.app";
+        void prepareDesktopCloudLoginSession(cloudApiBase, () =>
+          client.cloudLoginDirect(cloudApiBase),
+        );
         seedTurn(makeTurn("first-run:greeting", CLOUD_SIGN_IN_GREETING));
         seedTurn(makeTurn("first-run:cloud-oauth", CLOUD_SIGN_IN_CHOICE));
         startTokenPoll();
@@ -1622,11 +1689,53 @@ export function useFirstRunConductor(): void {
     seedRuntimeChoice,
     seedTurn,
     setConversationMessages,
+    runtimeChooserEnabled,
   ]);
 }
 
-/** Mount point — call once inside the AppContext provider tree. Renders null. */
-export function FirstRunConductorMount(): null {
+/**
+ * Mount point for the conductor. The callback fires only after an active
+ * conductor has produced a first-run turn in the shared transcript.
+ */
+export function FirstRunConductorMount({
+  onFirstRunTranscriptMounted,
+  firstRunMountEpoch = null,
+  firstRunAuthorityEpoch = null,
+}: {
+  onFirstRunTranscriptMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
+  firstRunAuthorityEpoch?: number | null;
+} = {}): null {
   useFirstRunConductor();
+  const firstRunIncomplete = useAppSelector(
+    (state) => state.firstRunComplete === false,
+  );
+  const { conversationMessages } = useConversationMessages();
+  const transcriptEpochRef = React.useRef(
+    createFirstRunTranscriptEpoch(conversationMessages, firstRunIncomplete),
+  );
+  React.useLayoutEffect(() => {
+    const transcriptWasMounted = transcriptEpochRef.current.transcriptMounted;
+    transcriptEpochRef.current = observeFirstRunTranscriptEpoch(
+      transcriptEpochRef.current,
+      conversationMessages,
+      firstRunIncomplete,
+    );
+    if (
+      firstRunMountEpoch !== null &&
+      ((!transcriptWasMounted &&
+        transcriptEpochRef.current.transcriptMounted) ||
+        (firstRunAuthorityEpoch === firstRunMountEpoch &&
+          transcriptEpochRef.current.transcriptMounted))
+    ) {
+      onFirstRunTranscriptMounted?.(firstRunMountEpoch);
+    }
+  }, [
+    conversationMessages,
+    firstRunAuthorityEpoch,
+    firstRunIncomplete,
+    firstRunMountEpoch,
+    onFirstRunTranscriptMounted,
+  ]);
   return null;
 }

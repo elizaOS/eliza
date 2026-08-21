@@ -485,6 +485,18 @@ export async function handleVoiceModelsRoutes(
 
 	// GET /api/local-inference/voice-models/check
 	if (method === "GET" && pathname === `${ROUTE_PREFIX}/check`) {
+		const requestedForceValues = url.searchParams.getAll("force");
+		const requestedForce = requestedForceValues[0];
+		if (
+			requestedForceValues.length > 1 ||
+			(requestedForce != null &&
+				requestedForce !== "" &&
+				requestedForce !== "1")
+		) {
+			sendJsonError(res, 'force must be specified at most once as "1".', 400);
+			return true;
+		}
+		const force = requestedForce === "1";
 		const [installed, pins] = await Promise.all([
 			resolveInstalledVersions(),
 			readPins(),
@@ -495,7 +507,7 @@ export async function handleVoiceModelsRoutes(
 			statuses = await updater.check(
 				{ installed, bundleVersion: resolveBundleVersion() },
 				{ pinned: pins },
-				{ force: url.searchParams.get("force") === "1" },
+				{ force },
 			);
 		} catch (err) {
 			logger.warn(
@@ -573,7 +585,15 @@ export async function handleVoiceModelsRoutes(
 				)
 			: null;
 	if (idActionMatch) {
-		const rawId = decodeURIComponent(idActionMatch[1] ?? "");
+		let rawId: string;
+		try {
+			rawId = decodeURIComponent(idActionMatch[1] ?? "");
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — malformed percent-encoding
+			// is an invalid voice-model id, not a route/server failure.
+			sendJsonError(res, "Invalid voice model id encoding", 400);
+			return true;
+		}
 		const action = idActionMatch[2] as "update" | "pin";
 		if (!KNOWN_VOICE_MODEL_IDS.has(rawId)) {
 			sendJsonError(res, `unknown voice model id: ${rawId}`, 404);

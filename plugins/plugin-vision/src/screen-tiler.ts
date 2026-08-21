@@ -16,6 +16,7 @@
  *   `reconstructAbsoluteCoords`). This is what lets the planner click the
  *   thing the model just read.
  */
+import { ElizaError } from "@elizaos/core";
 import { getSharp } from "./image/sharp-compat";
 
 /**
@@ -71,6 +72,7 @@ export interface TileScreenshotOptions {
 export const DEFAULT_MAX_EDGE = 1280;
 /** Default seam overlap (12%). */
 export const DEFAULT_OVERLAP_FRACTION = 0.12;
+const MAX_SCREEN_TILES = 512;
 
 /**
  * Tile a captured screenshot into local-VLM-sized PNG patches with
@@ -97,6 +99,19 @@ export async function tileScreenshot(
   const { maxEdge, overlapFraction } = opts;
   validateOptions(maxEdge, overlapFraction);
 
+  const cols = Math.max(1, Math.ceil(width / maxEdge));
+  const rows = Math.max(1, Math.ceil(height / maxEdge));
+  const tileCount = cols * rows;
+  if (!Number.isSafeInteger(tileCount) || tileCount > MAX_SCREEN_TILES) {
+    throw new ElizaError(
+      `Screen tile grid requires ${tileCount} tiles; maximum is ${MAX_SCREEN_TILES}`,
+      {
+        code: "SCREEN_TILE_BUDGET_EXCEEDED",
+        context: { cols, rows, tileCount, maxTiles: MAX_SCREEN_TILES },
+      },
+    );
+  }
+
   if (width <= maxEdge && height <= maxEdge) {
     return [
       {
@@ -113,8 +128,6 @@ export async function tileScreenshot(
     ];
   }
 
-  const cols = Math.max(1, Math.ceil(width / maxEdge));
-  const rows = Math.max(1, Math.ceil(height / maxEdge));
   const tileWidth = Math.min(
     maxEdge,
     Math.ceil(width / cols + maxEdge * overlapFraction),
@@ -125,10 +138,20 @@ export async function tileScreenshot(
   );
   // Stride between top-left corners of adjacent tiles. With a single tile per
   // axis, stride is the full width/height — no overlap math needed.
+  //
+  // Round the stride *up*: intermediate tiles advance by `stride` while the
+  // final tile is anchored to `width - tileWidth`. A floored stride can leave
+  // the penultimate tile ending before the anchored last tile begins, which
+  // opens a strip of source pixels present in no tile (dropping any glyph in
+  // that column/row from the whole OCR/VLM pipeline). Ceiling guarantees the
+  // penultimate tile's far edge reaches the last tile's near edge because
+  // `tileWidth * cols >= width`, so the grid still fully covers the capture;
+  // `extract()` clamps `sourceW/sourceH` to the source bounds, so a ceil-ed
+  // stride never crops past the screen.
   const strideX =
-    cols > 1 ? Math.floor((width - tileWidth) / (cols - 1)) : tileWidth;
+    cols > 1 ? Math.ceil((width - tileWidth) / (cols - 1)) : tileWidth;
   const strideY =
-    rows > 1 ? Math.floor((height - tileHeight) / (rows - 1)) : tileHeight;
+    rows > 1 ? Math.ceil((height - tileHeight) / (rows - 1)) : tileHeight;
 
   const sharp = await getSharp();
   const image = sharp(pngBytes);

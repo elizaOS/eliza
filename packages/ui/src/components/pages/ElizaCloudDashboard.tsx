@@ -389,8 +389,9 @@ export function CloudDashboard() {
       }
 
       const checkoutUrl = resolveCheckoutUrl(response);
-      if (checkoutUrl) {
-        await openExternalUrl(checkoutUrl);
+      // The checkout URL is a wire value — a rejected target (helper returns
+      // false) falls through to the visible checkout-unavailable error below.
+      if (checkoutUrl && (await openExternalUrl(checkoutUrl))) {
         return;
       }
 

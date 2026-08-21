@@ -27,6 +27,17 @@
 # Optional release-host upload secrets:
 #   RELEASE_UPLOAD_KEY           – SSH private key for releases server
 #   RELEASE_HOST_FINGERPRINT     – pinned SSH host key entry for releases host
+#
+# Required repo configuration (release integrity):
+#   - GitHub Environment `production-release` with required reviewers. The
+#     authorize-release job is the single human approval gate; no signing,
+#     release-upload, or OTA-publish job can start until it succeeds.
+#   - A tag protection ruleset restricting `v*` tag creation to release
+#     maintainers. Branch protection does not cover tags: without a ruleset,
+#     any account with repo write access could tag an unreviewed commit and
+#     run this pipeline against it. Defense in depth, the prepare job also
+#     requires the tagged commit to be an ancestor of origin/main or
+#     origin/develop before anything is built.
 name: Build & Release (Electrobun)
 
 on:
@@ -109,6 +120,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
+          # Full history so the protected-branch ancestry check below can
+          # resolve a merge base (same contract as deploy-aasa.yml).
+          fetch-depth: 0
           submodules: false
           persist-credentials: false
 
@@ -131,6 +145,25 @@ jobs:
             --event-name "$EVENT_NAME" \
             --event-sha "$GITHUB_SHA" \
             --github-output "$GITHUB_OUTPUT"
+
+      - name: Require tagged commit on a protected branch
+        env:
+          SOURCE_SHA: ${{ steps.version.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          # Branch protection does not cover tags, so a tag can point at any
+          # commit write access can reach. Refuse to sign and publish a commit
+          # that never landed on a reviewed branch (mirrors deploy-aasa.yml).
+          git fetch --force origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/develop:refs/remotes/origin/develop"
+          if git merge-base --is-ancestor "$SOURCE_SHA" origin/main || \
+             git merge-base --is-ancestor "$SOURCE_SHA" origin/develop; then
+            echo "Release commit $SOURCE_SHA is contained in origin/main or origin/develop."
+          else
+            echo "::error::Release tag commit $SOURCE_SHA is not contained in origin/main or origin/develop; refusing to build and publish an unreviewed commit." >&2
+            exit 1
+          fi
 
       - name: Select desktop platform matrix
         id: desktop-matrix
@@ -158,6 +191,20 @@ jobs:
 
           echo "desktop_matrix=$(tr -d '\n' < "$RUNNER_TEMP/desktop-matrix.json")" >> "$GITHUB_OUTPUT"
           cat "$RUNNER_TEMP/desktop-matrix.json"
+
+  authorize-release:
+    name: Authorize desktop release
+    needs: prepare
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    # Approval only, mirroring cloud-cf-deploy.yml's authorize-production: the
+    # protected `production-release` environment owns the required-reviewer
+    # gate, so no signing, release-upload, or OTA-publish job can start from an
+    # unreviewed tag push. This job must not join a mutation concurrency group.
+    environment: production-release
+    steps:
+      - name: Record release authorization
+        run: echo "production-release environment authorized for ${{ needs.prepare.outputs.tag }}"
 
   validate-release:
     name: Validate Release Inputs
@@ -264,9 +311,30 @@ jobs:
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
+      # The heavy suites gate on a real Chromium binary; without one they
+      # self-skip and run-heavy-e2e.mjs fails the lane closed. Install the
+      # browser revision pinned by the workspace's Playwright lock entry.
+      - name: Provision Chromium for heavy E2E regression suite
+        id: provision-chrome
+        run: |
+          .github/scripts/install-playwright-browsers.sh chromium
+          chrome_path="$(bun -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
+          if [ ! -x "$chrome_path" ]; then
+            echo "::error::Pinned Playwright Chromium is not executable at $chrome_path; the heavy E2E gate cannot run." >&2
+            exit 1
+          fi
+          echo "chrome-path=$chrome_path" >> "$GITHUB_OUTPUT"
+
+      # run-heavy-e2e.mjs fails closed: missing env here turns the step red
+      # instead of letting both suites self-skip to a vacuous green.
       - name: Run heavy E2E regression suite
-        # TODO: verify this target exists in eliza root package.json.
         run: bun run test:e2e:heavy
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZA_CHROME_PATH: ${{ steps.provision-chrome.outputs.chrome-path }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Probe optional cloud live regression key
         id: probe-cloud-live-key
@@ -314,8 +382,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.platform.name }}
-    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') }}
-    needs: [prepare, validate-release]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') && needs.authorize-release.result == 'success' }}
+    needs: [prepare, validate-release, authorize-release]
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 150
     defaults:
@@ -421,7 +489,15 @@ jobs:
             curl \
             desktop-file-utils \
             file \
-            rpm
+            flatpak \
+            libayatana-appindicator3-1 \
+            rpm \
+            xauth \
+            xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive -y flathub \
+            org.gnome.Platform//49 \
+            org.gnome.Sdk//49
 
       - name: Install root dependencies
         # --ignore-scripts skips native dependency install scripts (e.g. @tensorflow/tfjs-node
@@ -832,6 +908,37 @@ jobs:
             --version=${{ needs.prepare.outputs.version }} \
             --channel=${{ needs.prepare.outputs.env }} \
             --arch=x64
+          node packages/app-core/scripts/package-electrobun-flatpak.mjs \
+            --version=${{ needs.prepare.outputs.version }} \
+            --arch=x86_64
+
+      - name: Smoke test packaged Linux desktop
+        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELIZA_TEST_PACKAGED_AUTO_BUILD: "0"
+          STARTUP_TIMEOUT: "420"
+          LIVENESS_TIMEOUT: "10"
+          SKIP_BUILD: "1"
+          SKIP_SIGNATURE_CHECK: "1"
+        run: bun run test:desktop:packaged
+
+      - name: Install and launch Flatpak artifact
+        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
+        run: |
+          bundle="$(find packages/app-core/platforms/electrobun/artifacts -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
+          test -n "$bundle"
+          flatpak install --user --noninteractive -y --reinstall "$bundle"
+          set +e
+          timeout 45s xvfb-run --auto-servernum \
+            --server-args="-screen 0 1280x900x24 -nolisten tcp" \
+            flatpak run ai.elizaos.app
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "::error::Flatpak app exited before the 45-second liveness window (status $status)."
+            exit 1
+          fi
+          flatpak info --user ai.elizaos.app
 
       - name: List build output
         run: |
@@ -863,9 +970,21 @@ jobs:
         shell: pwsh
         run: |
           $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe"
+          # SHA256-pinned like the actionlint/gitleaks installers; bump the
+          # version, URL, and hash together. Recorded from the is-6_7_1 release
+          # asset digest exposed by the GitHub API.
+          $expectedSha256 = "4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0"
           $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.1.exe"
           Write-Host "Downloading Inno Setup 6.7.1..."
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          # This job holds the Windows signing certificate, so the installer
+          # bytes must be verified before they are executed.
+          $actualSha256 = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            Write-Error "Inno Setup installer SHA256 mismatch: expected $expectedSha256, got $actualSha256"
+            exit 1
+          }
+          Write-Host "SHA256 verified: $actualSha256"
           Write-Host "Installing silently..."
           Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -NoNewWindow
 
@@ -1566,6 +1685,7 @@ jobs:
             packages/app-core/platforms/electrobun/artifacts/*.AppImage
             packages/app-core/platforms/electrobun/artifacts/*.deb
             packages/app-core/platforms/electrobun/artifacts/*.rpm
+            packages/app-core/platforms/electrobun/artifacts/*.flatpak
             packages/app-core/platforms/electrobun/artifacts/*.tar.zst
             packages/app-core/platforms/electrobun/artifacts/*.exe
             packages/app-core/platforms/electrobun/artifacts/*.exe.zip

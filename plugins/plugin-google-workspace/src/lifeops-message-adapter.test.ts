@@ -1,10 +1,13 @@
 /**
  * Unit coverage for `GoogleGmailAdapter`: message mapping, manage-operation
- * translation, and reply drafting/sending against a mock runtime whose "google"
- * service is a `vi.fn` stub — deterministic, no live Gmail API.
+ * translation, reply drafting/sending, and post-commit mutation receipts
+ * against a mock runtime whose "google" service is a `vi.fn` stub. The harness
+ * is deterministic and does not call the live Gmail API.
  */
-import type { IAgentRuntime } from "@elizaos/core/node";
+import { EventType, type IAgentRuntime } from "@elizaos/core/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GoogleApiClientFactory } from "./client-factory.js";
+import { GoogleGmailClient } from "./gmail.js";
 import { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -34,6 +37,8 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
   return {
     agentId: "agent-1",
     getService: vi.fn((serviceType: string) => (serviceType === "google" ? googleService : null)),
+    emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -150,6 +155,63 @@ describe("GoogleGmailAdapter", () => {
       references: "<root@example.com>",
     });
     expect(sent.externalId).toBe("sent_1");
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MESSAGE_MUTATED,
+      expect.objectContaining({
+        messageSource: "gmail",
+        messageId: "gmail:msg_1",
+        operation: "replied",
+        domainEventId: "gmail_reply:acct_google_1:sent_1",
+      })
+    );
+  });
+
+  it("sends a real-client mapped reply to Reply-To instead of From", async () => {
+    const list = vi.fn().mockResolvedValue({ data: { messages: [{ id: "msg_1" }] } });
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        id: "msg_1",
+        threadId: "thread_1",
+        snippet: "Reply here",
+        labelIds: ["INBOX"],
+        internalDate: "0",
+        payload: {
+          headers: [
+            { name: "Subject", value: "Reply routing" },
+            { name: "From", value: "Sender <sender@example.com>" },
+            { name: "Reply-To", value: '"Support, West" <support@example.com>' },
+            { name: "To", value: "owner@example.com" },
+          ],
+        },
+      },
+    });
+    const client = new GoogleGmailClient({
+      gmail: vi.fn().mockResolvedValue({ users: { messages: { list, get } } }),
+    } as unknown as GoogleApiClientFactory);
+    const sendGmailReply = vi.fn(async () => ({ messageId: "sent_reply_to" }));
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: client.listGmailTriageMessages.bind(client),
+      sendGmailReply,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const [message] = await adapter.listMessages(runtime, {
+      worldIds: ["acct_google_1"],
+      limit: 1,
+    });
+    if (!message) throw new Error("expected mapped Gmail message");
+    expect(message.from.identifier).toBe("sender@example.com");
+    expect(message.metadata?.replyTo).toBe("support@example.com");
+
+    const draft = await adapter.createDraft(runtime, {
+      inReplyToId: message.id,
+      body: "Routed correctly.",
+    });
+    await adapter.sendDraft(runtime, draft.draftId);
+
+    expect(sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["support@example.com"] })
+    );
   });
 
   it("advertises new-email send capability alongside reply", () => {
@@ -186,6 +248,119 @@ describe("GoogleGmailAdapter", () => {
       bodyText: "Please stop smoking.",
     });
     expect(sent.externalId).toBe("sent_new_1");
+  });
+
+  it("clips draft body preview without tearing UTF-16 surrogate pairs at 240 limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+
+    const body = `${"x".repeat(236)}\u{1F98A}yyyy`;
+    const draft = await adapter.createDraft(runtime, {
+      source: "gmail",
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      body,
+      worldId: "acct_google_1",
+    });
+
+    expect(draft.preview.length).toBeLessThanOrEqual(240);
+    expect(draft.preview.isWellFormed()).toBe(true);
+    expect(draft.preview.endsWith("...")).toBe(true);
+    expect(draft.preview).toBe(`${"x".repeat(236)}...`);
+  });
+
+  it("preserves well-formed draft previews at and below the 240-code-unit limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const bodies = ["ready 🦊", "x".repeat(240)];
+
+    for (const body of bodies) {
+      const draft = await adapter.createDraft(runtime, {
+        source: "gmail",
+        to: [{ identifier: "test@example.com" }],
+        subject: "Test Subject",
+        body,
+        worldId: "acct_google_1",
+      });
+
+      expect(draft.preview).toBe(body);
+      expect(draft.preview.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("normalizes lone surrogates in short and clipped draft previews", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+
+    const shortDraft = await adapter.createDraft(runtime, {
+      ...baseRequest,
+      body: "short\ud800preview",
+    });
+    const longDraft = await adapter.createDraft(runtime, {
+      ...baseRequest,
+      body: `${"x".repeat(237)}\udc00tail`,
+    });
+
+    expect(shortDraft.preview).toBe("short�preview");
+    expect(longDraft.preview).toBe(`${"x".repeat(237)}...`);
+    expect(shortDraft.preview.isWellFormed()).toBe(true);
+    expect(longDraft.preview.isWellFormed()).toBe(true);
+    expect(longDraft.preview.length).toBeLessThanOrEqual(240);
+  });
+
+  it("normalizes either lone-surrogate half on both sides of the preview limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+    const bodies = [
+      "short\ud800preview",
+      "short\udc00preview",
+      `${"h".repeat(236)}\ud800tail`,
+      `${"l".repeat(236)}\udc00tail`,
+    ];
+
+    const previews: string[] = [];
+    for (const body of bodies) {
+      const draft = await adapter.createDraft(runtime, { ...baseRequest, body });
+      previews.push(draft.preview);
+    }
+
+    expect(previews).toEqual([
+      "short�preview",
+      "short�preview",
+      `${"h".repeat(236)}�...`,
+      `${"l".repeat(236)}�...`,
+    ]);
+    expect(previews.every((preview) => preview.isWellFormed())).toBe(true);
+    expect(previews.every((preview) => preview.length <= 240)).toBe(true);
+  });
+
+  it("reserves the suffix only after the 240-code-unit boundary", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+
+    const exact = await adapter.createDraft(runtime, { ...baseRequest, body: "m".repeat(240) });
+    const over = await adapter.createDraft(runtime, { ...baseRequest, body: "n".repeat(241) });
+
+    expect(exact.preview).toBe("m".repeat(240));
+    expect(over.preview).toBe(`${"n".repeat(237)}...`);
   });
 
   it("refuses a new draft without an email-address recipient", async () => {
@@ -248,5 +423,14 @@ describe("GoogleGmailAdapter", () => {
       fromAddress: "guest@example.com",
       trash: true,
     });
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MESSAGE_MUTATED,
+      expect.objectContaining({
+        messageSource: "gmail",
+        messageId: "gmail:msg_1",
+        operation: "mark_read",
+        domainEventId: "gmail_mark_read:acct_google_1:msg_1",
+      })
+    );
   });
 });

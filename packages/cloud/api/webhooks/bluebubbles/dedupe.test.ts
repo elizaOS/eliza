@@ -59,7 +59,14 @@ let closeDb: (() => Promise<void>) | undefined;
 let bbRoute: typeof import("./route").default;
 
 const SECRET = "bb-secret";
-const ENV = { BLUEBUBBLES_GATEWAY_SECRET: SECRET };
+// The legacy (secret-header) path requires an explicit gateway identity since
+// the fabricated org/phone defaults were removed; without these the route
+// returns 503 before the dedupe claim.
+const ENV = {
+  BLUEBUBBLES_GATEWAY_SECRET: SECRET,
+  BLUEBUBBLES_GATEWAY_ORG_ID: "org-1",
+  BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+14159611510",
+};
 
 function delivery(guid: string) {
   const app = new Hono();

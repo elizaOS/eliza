@@ -114,7 +114,7 @@ async function toBlob(audio: AudioInput, mimeHint?: string): Promise<Blob> {
 
 async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
   // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const { fetchWithSsrfGuard } = await import("@elizaos/core/node");
+  const { fetchWithSsrfGuard, readResponseWithLimit } = await import("@elizaos/core/node");
   const { response, release } = await fetchWithSsrfGuard({
     url,
     timeoutMs: 30_000,
@@ -130,11 +130,10 @@ async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blo
     if (Number.isFinite(contentLength) && contentLength > 25 * 1024 * 1024) {
       throw new Error("Ollama transcription audio exceeds the 25 MiB limit");
     }
-    const bytes = await response.arrayBuffer();
-    if (bytes.byteLength > 25 * 1024 * 1024) {
-      throw new Error("Ollama transcription audio exceeds the 25 MiB limit");
-    }
-    return new Blob([bytes], {
+    // Stream under the hard cap: a missing or lying Content-Length must never
+    // let the body buffer unbounded into memory before the size check runs.
+    const bytes = await readResponseWithLimit(response, 25 * 1024 * 1024);
+    return new Blob([new Uint8Array(bytes)], {
       type: response.headers.get("content-type") ?? "audio/wav",
     });
   } finally {

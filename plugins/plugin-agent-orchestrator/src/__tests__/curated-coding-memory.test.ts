@@ -240,6 +240,46 @@ describe("curated coding memory", () => {
     );
   });
 
+  it("redacts token formats the retired local denylist missed", () => {
+    // Fixtures assembled at runtime so secret scanners do not flag them.
+    // Each row defeated the previous hand-maintained pattern list; the notes
+    // file is injected as coding context, so a miss here is a live credential
+    // handed to a future sub-agent. See issue #23419.
+    const cases: Array<[string, string]> = [
+      ["stripe live", ["sk", "_live_51H8xQ2LmNpQrStUv"].join("")],
+      [
+        "github fine-grained pat",
+        ["github", "_pat_11ABCDE0Y0aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"].join(""),
+      ],
+      [
+        "slack app token",
+        ["xapp", "-1-A01B2C3D4-1234567890-abcdefabcdef"].join(""),
+      ],
+    ];
+    for (const [label, fixture] of cases) {
+      const redacted = redactCodingMemoryText(`Decision: used ${fixture} here`);
+      expect(redacted, label).not.toContain(fixture);
+    }
+  });
+
+  it("redacts a quoted credential inside a serialized provider error body", () => {
+    // The shape a provider error `detail` actually carries. The retired
+    // pattern's value class excluded quotes, so it matched nothing at all.
+    const fixture = ["sk", "_live_9ZyXwVuTsRqPoNmL"].join("");
+    const body = JSON.stringify({ error: "auth_failed", api_key: fixture });
+    expect(redactCodingMemoryText(body)).not.toContain(fixture);
+  });
+
+  it("does not maintain a local credential pattern list", async () => {
+    // Structural: a second hand-maintained denylist is how this drifted in the
+    // first place. Credential shapes must come from the canonical core set.
+    const source = await readFile(
+      join(import.meta.dirname, "../services/curated-coding-memory.ts"),
+      "utf8",
+    );
+    expect(source).toContain("getDefaultRedactPatterns");
+  });
+
   it("dedupes similar notes and merges provenance", async () => {
     const workdir = await tempWorkspace();
     try {

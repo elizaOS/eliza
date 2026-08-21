@@ -4,8 +4,10 @@
  * `models[]` / `metadata` shape — skips not-ready models, and derives chat vs
  * image categories, with global fetch stubbed.
  */
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchNearAIModels } from "./model-provider-helpers";
+import { resolveModelsCacheDir } from "../config/paths.ts";
+import { fetchNearAIModels, providerCachePath } from "./model-provider-helpers";
 
 describe("fetchNearAIModels", () => {
   afterEach(() => {
@@ -58,7 +60,10 @@ describe("fetchNearAIModels", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud-api.near.ai/v1/models",
-      { headers: { Authorization: "Bearer near-key" } },
+      expect.objectContaining({
+        headers: { Authorization: "Bearer near-key" },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -92,7 +97,38 @@ describe("fetchNearAIModels", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud-api.near.ai/v1/models",
-      { headers: {} },
+      expect.objectContaining({
+        headers: {},
+        signal: expect.any(AbortSignal),
+      }),
     );
+  });
+});
+
+describe("providerCachePath (W1-024)", () => {
+  it("keeps canonical provider ids directly inside the models cache dir", () => {
+    for (const providerId of ["openai", "google-genai", "zai", "xai-2"]) {
+      expect(providerCachePath(providerId)).toBe(
+        path.join(resolveModelsCacheDir(), `${providerId}.json`),
+      );
+    }
+  });
+
+  it("rejects ids that would traverse out of the cache dir", () => {
+    for (const providerId of [
+      "../eliza",
+      "../../etc/passwd",
+      "..",
+      "a/b",
+      "a\\b",
+      ".hidden",
+      "openai.json",
+      "OPENAI",
+      "",
+    ]) {
+      expect(() => providerCachePath(providerId), providerId).toThrowError(
+        expect.objectContaining({ code: "INVALID_MODEL_PROVIDER_ID" }),
+      );
+    }
   });
 });

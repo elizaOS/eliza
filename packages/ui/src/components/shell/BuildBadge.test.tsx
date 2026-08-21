@@ -4,7 +4,7 @@
 // BuildBadge — renders the label from /build-info.json, hides on tap for
 // the rest of the session, and stays silently hidden when the stamp is absent.
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuildBadge } from "./BuildBadge";
@@ -140,6 +140,61 @@ describe("BuildBadge", () => {
     );
     render(<BuildBadge />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByTestId("build-badge")).toBeNull();
+  });
+
+  it("bounds the build-info request and aborts it on unmount", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    const requestSignal = { current: null as AbortSignal | null };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal.current = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal.current?.addEventListener(
+            "abort",
+            () => reject(requestSignal.current?.reason),
+            { once: true },
+          );
+        });
+      }) as unknown as typeof fetch,
+    );
+
+    const view = render(<BuildBadge />);
+    await waitFor(() => expect(requestSignal.current).not.toBeNull());
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    expect(requestSignal.current?.aborted).toBe(false);
+
+    view.unmount();
+    expect(requestSignal.current?.aborted).toBe(true);
+  });
+
+  it("keeps the optional badge hidden when its deadline expires", async () => {
+    const timeoutController = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(init.signal?.reason),
+              { once: true },
+            );
+          }),
+      ) as unknown as typeof fetch,
+    );
+
+    render(<BuildBadge />);
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    await act(async () => {
+      timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+      await Promise.resolve();
+    });
     expect(screen.queryByTestId("build-badge")).toBeNull();
   });
 });

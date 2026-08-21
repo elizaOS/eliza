@@ -6,12 +6,17 @@ import { ElizaError } from "@elizaos/core";
 
 export const DEFAULT_JUPITER_API_BASE_URL = "https://lite-api.jup.ag/swap/v1";
 export const JUPITER_API_BASE_URL_SETTING = "JUPITER_API_BASE_URL";
+export const DEFAULT_JUPITER_FETCH_TIMEOUT_MS = 10_000;
 
 type RuntimeSettings = { getSetting(key: string): unknown };
 type JupiterStage = "quote" | "swap";
 
 function stageCode(stage: JupiterStage, suffix: string): string {
   return `JUPITER_${stage.toUpperCase()}_${suffix}`;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
 }
 
 export function resolveJupiterApiBaseUrl(runtime: RuntimeSettings): string {
@@ -58,9 +63,11 @@ export async function fetchJupiterJson(
   stage: JupiterStage,
   init?: RequestInit
 ): Promise<Record<string, unknown>> {
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_JUPITER_FETCH_TIMEOUT_MS);
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
   let response: Response;
   try {
-    response = await fetchFn(url, init);
+    response = await fetchFn(url, { ...init, signal });
   } catch (cause) {
     // error-policy:J2 Classify DNS/network failures while retaining the fetch cause.
     throw new ElizaError(`Jupiter ${stage} request failed`, {
@@ -83,6 +90,17 @@ export async function fetchJupiterJson(
   try {
     payload = await response.json();
   } catch (cause) {
+    if (signal.aborted || isAbortLikeError(cause)) {
+      // error-policy:J2 A deadline or caller cancellation can occur after the
+      // response headers arrive. It remains an ephemeral transport failure,
+      // not a fatal malformed-provider-response verdict.
+      throw new ElizaError(`Jupiter ${stage} response body was interrupted`, {
+        code: stageCode(stage, "TRANSPORT_FAILED"),
+        cause,
+        context: { url, status: response.status },
+        severity: "ephemeral",
+      });
+    }
     // error-policy:J2 The response boundary adds endpoint context to malformed JSON.
     throw new ElizaError(`Jupiter ${stage} response was not valid JSON`, {
       code: stageCode(stage, "INVALID_RESPONSE"),

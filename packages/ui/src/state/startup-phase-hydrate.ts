@@ -7,7 +7,6 @@
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
-  createNavigateViewEvent,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
@@ -21,6 +20,7 @@ import {
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
 import { registerDeviceControlInteractHandler } from "../components/views/device-control-interact";
 import {
@@ -169,19 +169,36 @@ export async function runHydrating(
   // Start the WS bridge before history hydration finishes so restored-session
   // flows regain live updates without waiting for conversation restore.
   client.connectWs();
-  const greetConvId = await deps.hydrateInitialConversationState();
-  deps.setFirstRunLoading(false);
-  if (greetConvId) void deps.requestGreetingWhenRunningRef.current(greetConvId);
-
   const appShellRoutesSupported = supportsFullAppShellRoutes(
     client.getBaseUrl(),
   );
+  const hydrateConversation = async (): Promise<void> => {
+    const greetConvId = await deps.hydrateInitialConversationState();
+    if (greetConvId) {
+      void deps.requestGreetingWhenRunningRef.current(greetConvId);
+    }
+  };
+
+  if (appShellRoutesSupported) {
+    await hydrateConversation();
+  } else {
+    // Direct Cloud agent adapters can take several seconds to list history and
+    // then fetch messages. The active conversation ID is persisted locally, so
+    // history restoration is not required to paint a usable chat shell. Keep
+    // restoring the exact same state, but do it behind first paint.
+    void hydrateConversation().catch((err: unknown) => {
+      warn("conversation history", err);
+    });
+  }
+  deps.setFirstRunLoading(false);
 
   if (appShellRoutesSupported) {
     void deps.loadWorkbench();
     void deps.loadPlugins();
   }
-  void deps.loadCharacter();
+  if (appShellRoutesSupported) {
+    void deps.loadCharacter();
+  }
 
   if (appShellRoutesSupported) {
     // Warm the apps catalog cache so the Apps tab opens with the real
@@ -211,42 +228,46 @@ export async function runHydrating(
       })();
     }
 
-    void (async () => {
-      // Avatar / VRM selection — resolve from server config, then stream
-      // settings, then localStorage.  Cloud containers that skip first-run
-      // setup have their character defaults written server-side, so we must
-      // read the config to pick up the correct avatarIndex.
-      let resolvedIdx = loadAvatarIndex();
-      try {
-        const cfg = await client.getConfig();
-        const cfgAvatarIdx = cfg.ui?.avatarIndex;
-        if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
-          const normalized = normalizeAvatarIndex(cfgAvatarIdx);
-          if (normalized > 0) {
-            resolvedIdx = normalized;
-            deps.setSelectedVrmIndex(resolvedIdx);
+    if (appShellRoutesSupported)
+      void (async () => {
+        // Avatar / VRM selection — resolve from server config, then stream
+        // settings, then localStorage.  Cloud containers that skip first-run
+        // setup have their character defaults written server-side, so we must
+        // read the config to pick up the correct avatarIndex.
+        let resolvedIdx = loadAvatarIndex();
+        try {
+          const cfg = await client.getConfig();
+          const cfgAvatarIdx = cfg.ui?.avatarIndex;
+          if (
+            typeof cfgAvatarIdx === "number" &&
+            Number.isFinite(cfgAvatarIdx)
+          ) {
+            const normalized = normalizeAvatarIndex(cfgAvatarIdx);
+            if (normalized > 0) {
+              resolvedIdx = normalized;
+              deps.setSelectedVrmIndex(resolvedIdx);
+            }
           }
+        } catch (e: unknown) {
+          warn("config avatar index", e);
         }
-      } catch (e: unknown) {
-        warn("config avatar index", e);
-      }
-      try {
-        if (typeof client.getStreamSettings === "function") {
-          const stream = await client.getStreamSettings();
-          const si = stream.settings?.avatarIndex;
-          if (typeof si === "number" && Number.isFinite(si)) {
-            resolvedIdx = normalizeAvatarIndex(si);
-            deps.setSelectedVrmIndex(resolvedIdx);
+        try {
+          if (typeof client.getStreamSettings === "function") {
+            const stream = await client.getStreamSettings();
+            const si = stream.settings?.avatarIndex;
+            if (typeof si === "number" && Number.isFinite(si)) {
+              resolvedIdx = normalizeAvatarIndex(si);
+              deps.setSelectedVrmIndex(resolvedIdx);
+            }
           }
+        } catch (e: unknown) {
+          warn("stream settings avatar", e);
         }
-      } catch (e: unknown) {
-        warn("stream settings avatar", e);
-      }
-      // No avatar chosen by config/stream settings → fall back to the first
-      // built-in avatar. (The old custom-VRM / custom-background existence
-      // probes were removed with the 3D companion feature, #10434.)
-      if (resolvedIdx === 0) deps.setSelectedVrmIndex(1);
-    })();
+        // No avatar chosen by config/stream settings → fall back to the first
+        // built-in avatar. (The old custom-VRM / custom-background existence
+        // probes were removed with the 3D companion feature, #10434.)
+        if (resolvedIdx === 0) deps.setSelectedVrmIndex(1);
+      })();
 
     void (async () => {
       try {
@@ -467,7 +488,7 @@ export function bindReadyPhase(
     (data: Record<string, unknown>) => {
       if (typeof window === "undefined") return;
       const payload = normalizeShellNavigateViewPayload(data);
-      window.dispatchEvent(createNavigateViewEvent(payload));
+      dispatchCompletedActionNavigation(payload);
     },
   );
 

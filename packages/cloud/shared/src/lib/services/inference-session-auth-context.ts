@@ -54,7 +54,10 @@ export type InferenceSessionAuthResolution =
     }
   | { kind: "suspended"; userId?: string }
   | { kind: "rejected"; status: 401 | 403 }
-  | { kind: "warming" };
+  | {
+      kind: "warming";
+      hydration?: Promise<InferenceSessionAuthDecision | undefined>;
+    };
 
 function looksLikeJwt(token: string): boolean {
   const parts = token.split(".");
@@ -321,7 +324,7 @@ export async function resolveInferenceSessionAuthContext(
 
   if (options.useAuthCache && options.cacheOnly) {
     if (cache.isAvailable() && options.executionCtx) {
-      const hydration = getOrCreateHydration(
+      const hydrationDecision = getOrCreateHydration(
         {
           stewardUserId: claims.userId,
           email: claims.email,
@@ -329,7 +332,8 @@ export async function resolveInferenceSessionAuthContext(
           walletChain: claims.walletChain,
         },
         true,
-      )
+      );
+      const observed = hydrationDecision
         .then(() => undefined)
         .catch((error) => {
           // error-policy:J7 authoritative hydration is observed by waitUntil;
@@ -338,7 +342,21 @@ export async function resolveInferenceSessionAuthContext(
             error: error instanceof Error ? error.message : String(error),
           });
         });
-      options.executionCtx.waitUntil(hydration);
+      options.executionCtx.waitUntil(observed);
+      return {
+        kind: "warming",
+        hydration: hydrationDecision.then(
+          (decision) => decision,
+          (error) => {
+            // error-policy:J7 a failed hydration stays a retryable warming
+            // outcome for cache-only callers instead of becoming an opaque 500.
+            logger.warn("[InferenceSessionAuth] Inline hydration await failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
+          },
+        ),
+      };
     }
     return { kind: "warming" };
   }

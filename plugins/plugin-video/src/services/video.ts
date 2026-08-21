@@ -8,6 +8,8 @@ import path from "node:path";
 import {
   ElizaError,
   elizaLogger,
+  fetchRemoteMedia,
+  fetchWithSsrfGuard,
   type IAgentRuntime,
   type ITranscriptionService,
   IVideoService,
@@ -21,8 +23,18 @@ import {
   type VideoProcessingOptions,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
+import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import { BinaryResolver } from "./binaries";
 import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
+
+/** Hard cap on caption/subtitle downloads (SRT/VTT/caption-JSON are tiny). */
+const CAPTION_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Hard cap on a direct-media download buffered through memory before it hits
+ * disk on the audio-extraction path — an unbounded read of a hostile or
+ * boosted attachment URL is a memory-exhaustion DoS.
+ */
+const DIRECT_MEDIA_MAX_BYTES = 256 * 1024 * 1024;
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
@@ -226,16 +238,15 @@ export class VideoService extends IVideoService {
     }
 
     try {
-      const downloadOptions: Record<string, string | boolean> = {
+      const downloadOptions: YtDlpFlags = {
         verbose: true,
         output: outputFile,
-        writeInfoJson: true,
+        writeInfoJson: options?.writeInfoJson ?? true,
       };
 
       if (options?.format) {
         downloadOptions.format = options.format;
-      }
-      if (options?.quality) {
+      } else if (options?.quality) {
         downloadOptions.format = options.quality;
       }
       if (options?.audioOnly) {
@@ -244,6 +255,12 @@ export class VideoService extends IVideoService {
       }
       if (options?.videoOnly) {
         downloadOptions.format = "bestvideo[ext=mp4]/best[ext=mp4]/best";
+      }
+      if (options?.subtitles) {
+        downloadOptions.writeSub = true;
+      }
+      if (options?.embedSubs) {
+        downloadOptions.embedSubs = true;
       }
 
       await this.binaries.runYtDlp(url, downloadOptions);
@@ -500,14 +517,30 @@ export class VideoService extends IVideoService {
   async fetchVideoInfo(url: string): Promise<YtDlpJson> {
     if (url.endsWith(".mp4") || url.includes(".mp4?")) {
       try {
-        const response = await fetch(url);
-        if (response.ok) {
-          // If the URL is a direct link to an MP4 file, return a simplified video info object
-          return {
-            title: path.basename(url),
-            description: "",
-            channel: "",
-          };
+        // Guarded existence probe: the URL is caller-influenced, so it must
+        // pass the SSRF screen (DNS-pinned, per-hop redirect validation). The
+        // body is never read — only the status decides the direct-mp4 path.
+        const { response, release } = await fetchWithSsrfGuard({
+          url,
+          timeoutMs: 30_000,
+        });
+        try {
+          if (response.ok) {
+            // If the URL is a direct link to an MP4 file, return a simplified video info object
+            return {
+              title: path.basename(url),
+              description: "",
+              channel: "",
+            };
+          }
+        } finally {
+          try {
+            await response.body?.cancel();
+          } catch {
+            // error-policy:J6 best-effort teardown of an unread probe body;
+            // release() below still clears the guard's timeout.
+          }
+          await release();
         }
       } catch (error) {
         elizaLogger.log("Error downloading MP4 file:", loggableError(error));
@@ -578,11 +611,13 @@ export class VideoService extends IVideoService {
 
   private async downloadCaption(url: string): Promise<string> {
     elizaLogger.log("Downloading caption from:", url);
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to download caption: ${response.statusText}`);
-    }
-    return await response.text();
+    // Caption URLs come from extractor output (video-page-influenced), so the
+    // fetch must be SSRF-guarded and byte-capped, not a raw unbounded fetch.
+    const { buffer } = await fetchRemoteMedia({
+      url,
+      maxBytes: CAPTION_MAX_BYTES,
+    });
+    return buffer.toString("utf8");
   }
 
   private parseCaption(captionContent: string): string {
@@ -638,8 +673,11 @@ export class VideoService extends IVideoService {
 
   private async downloadSRT(url: string): Promise<string> {
     elizaLogger.log("downloadSRT");
-    const response = await fetch(url);
-    return await response.text();
+    const { buffer } = await fetchRemoteMedia({
+      url,
+      maxBytes: CAPTION_MAX_BYTES,
+    });
+    return buffer.toString("utf8");
   }
 
   async transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string> {
@@ -719,14 +757,10 @@ export class VideoService extends IVideoService {
           "Direct MP4 file detected, downloading and converting to MP3",
         );
         const tempMp4File = path.join(tmpdir(), `${this.getVideoId(url)}.mp4`);
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to download MP4: ${response.status} ${response.statusText}`,
-          );
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const { buffer } = await fetchRemoteMedia({
+          url,
+          maxBytes: DIRECT_MEDIA_MAX_BYTES,
+        });
         fs.writeFileSync(tempMp4File, buffer);
 
         await this.configureFfmpeg();

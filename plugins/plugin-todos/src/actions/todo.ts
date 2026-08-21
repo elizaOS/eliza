@@ -778,7 +778,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       {
         name: "todos",
         description:
-          "Array of {id?, content, status, activeForm?, parentTodoId?} for action=write. Replaces the user's list for this conversation.",
+          "Array of {id?, content, status, activeForm?, parentTodoId?} for action=write. Replaces the user's full shared list across conversations.",
         required: false,
         schema: {
           type: "array" as const,

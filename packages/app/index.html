@@ -229,6 +229,22 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="__APP_THEME_COLOR__" />
   <meta name="color-scheme" content="dark" />
+  <!--
+    CSP hardening notes (W1-053):
+    - `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, and
+      `manifest-src 'self'` are hard backstops: the app renders no
+      <object>/<embed>/<base> tags and submits no cross-origin native forms.
+    - `script-src` still carries 'unsafe-inline' for the inline bootstrap
+      scripts in this file (WebGPU polyfill, Android IPC fetch bridge,
+      marketing launch surface) and 'unsafe-eval'/'wasm-unsafe-eval' for
+      runtime-evaluating dependencies. Dropping 'unsafe-inline' means moving
+      those bootstraps to external files or build-time CSP hashes — tracked as
+      follow-up, not safe to do blind.
+    - Session tokens (steward_session_token et al.) live in localStorage by
+      SPA bearer-token design; any script-injection sink therefore reaches
+      them. Output-encoding guards at each sink are the mitigation; this CSP
+      is the backstop, not the boundary.
+  -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://*__APP_CSP_LOCAL_HTTP__;
                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*__APP_CSP_LOCAL_HTTP__;
                style-src 'self' 'unsafe-inline' https://*__APP_CSP_LOCAL_HTTP__;
@@ -237,6 +253,10 @@
                media-src 'self' blob: https://*__APP_CSP_LOCAL_HTTP__;
                frame-src 'self' https://*__APP_CSP_LOCAL_HTTP__;
                worker-src 'self' blob:;
+               object-src 'none';
+               base-uri 'none';
+               form-action 'self';
+               manifest-src 'self';
                font-src 'self' data: https://*__APP_CSP_LOCAL_HTTP__;" />
   <title>__APP_NAME__</title>
   <meta name="description" content="__APP_DESCRIPTION__" />

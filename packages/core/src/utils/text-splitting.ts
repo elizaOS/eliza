@@ -1,92 +1,220 @@
 /**
- * Splits text into the first sentence and the rest of the text.
- * Handles common abbreviations to avoid false positives.
+ * Finds first-sentence boundaries for direct and incremental text consumers.
+ * The scanner preserves abbreviation, decimal, closer, and Unicode-whitespace
+ * semantics while keeping reply/TTS streaming work linear in appended input.
  */
+
+const ABBREVIATIONS = new Set([
+	"mr",
+	"mrs",
+	"ms",
+	"dr",
+	"prof",
+	"sr",
+	"jr",
+	"st",
+	"vs",
+	"etc",
+	"e.g",
+	"i.e",
+]);
+
+const SENTENCE_END = new Set([".", "?", "!"]);
+const BOUNDARY_FOLLOWERS = new Set([
+	'"',
+	"'",
+	"\u201D",
+	"\u2019",
+	")",
+	"]",
+	"}",
+]);
+const TRAILING_CLOSERS = "\"'\u201D\u2019)]}";
+
+function isAsciiWordChar(ch: string): boolean {
+	return (
+		(ch >= "A" && ch <= "Z") ||
+		(ch >= "a" && ch <= "z") ||
+		(ch >= "0" && ch <= "9") ||
+		ch === "_"
+	);
+}
+
+function isBoundaryFollower(ch: string | undefined): boolean {
+	return ch === undefined || /\s/.test(ch) || BOUNDARY_FOLLOWERS.has(ch);
+}
+
+export interface FirstSentenceScanner {
+	/**
+	 * Scan only the newly appended text. Returns the absolute boundary offset
+	 * once a complete first sentence is found.
+	 */
+	push(chunk: string, endOfInput?: boolean): number | undefined;
+}
+
+export interface FirstSentenceStreamTracker {
+	/** Scan one authoritative structured-field delta and its accumulation. */
+	push(
+		chunk: string,
+		accumulated: string,
+		streamRevision?: number,
+	): number | undefined;
+	/** Resolve punctuation still pending when the structured stream ends. */
+	finish(): number | undefined;
+}
+
+/**
+ * Incremental sentence-boundary scanner for append-only model streams.
+ */
+export function createFirstSentenceScanner(): FirstSentenceScanner {
+	let lastWord = "";
+	let scanned = 0;
+	let completeAt: number | undefined;
+	let pendingBoundary:
+		| { boundary: number; normalizedWord: string; sawCloser: boolean }
+		| undefined;
+
+	return {
+		push(chunk: string, endOfInput = false): number | undefined {
+			if (completeAt !== undefined) return completeAt;
+			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
+				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
+					let closerOffset = 0;
+					while (
+						closerOffset < chunk.length &&
+						TRAILING_CLOSERS.includes(chunk[closerOffset])
+					) {
+						closerOffset += 1;
+					}
+					if (closerOffset > 0) {
+						pendingBoundary.boundary += closerOffset;
+						pendingBoundary.sawCloser = true;
+						scanned += closerOffset;
+					}
+					if (closerOffset === chunk.length) {
+						if (!endOfInput) return undefined;
+						completeAt = pendingBoundary.boundary;
+						return completeAt;
+					}
+					if (
+						pendingBoundary.sawCloser ||
+						isBoundaryFollower(chunk[closerOffset])
+					) {
+						completeAt = pendingBoundary.boundary;
+						return completeAt;
+					}
+				}
+				pendingBoundary = undefined;
+			}
+
+			for (let offset = 0; offset < chunk.length; offset += 1) {
+				const char = chunk[offset];
+				if (
+					SENTENCE_END.has(char) &&
+					chunk[offset + 1] === undefined &&
+					!endOfInput
+				) {
+					const word = lastWord.endsWith(".")
+						? lastWord.slice(0, -1)
+						: lastWord;
+					pendingBoundary = {
+						boundary: scanned + offset + 1,
+						normalizedWord: word.toLowerCase(),
+						sawCloser: false,
+					};
+				} else if (
+					SENTENCE_END.has(char) &&
+					isBoundaryFollower(chunk[offset + 1])
+				) {
+					const word = lastWord.endsWith(".")
+						? lastWord.slice(0, -1)
+						: lastWord;
+					if (!ABBREVIATIONS.has(word.toLowerCase())) {
+						let boundary = offset + 1;
+						while (
+							boundary < chunk.length &&
+							TRAILING_CLOSERS.includes(chunk[boundary])
+						) {
+							boundary += 1;
+						}
+						if (boundary === chunk.length && !endOfInput) {
+							pendingBoundary = {
+								boundary: scanned + boundary,
+								normalizedWord: word.toLowerCase(),
+								sawCloser: boundary > offset + 1,
+							};
+							break;
+						}
+						completeAt = scanned + boundary;
+						return completeAt;
+					}
+				}
+				if (isAsciiWordChar(char) || char === ".") {
+					lastWord += char;
+				} else {
+					lastWord = "";
+				}
+			}
+
+			scanned += chunk.length;
+			return undefined;
+		},
+	};
+}
+
+/**
+ * Reconciles authoritative structured-stream accumulation with incremental
+ * scanning. A retry starts a shorter or otherwise non-appended accumulation;
+ * replay that new attempt instead of combining it with stale scanner state.
+ */
+export function createFirstSentenceStreamTracker(): FirstSentenceStreamTracker {
+	let scanner = createFirstSentenceScanner();
+	let accumulatedLength = 0;
+	let activeRevision: number | undefined;
+
+	return {
+		push(
+			chunk: string,
+			accumulated: string,
+			streamRevision?: number,
+		): number | undefined {
+			if (
+				streamRevision !== undefined &&
+				activeRevision !== undefined &&
+				streamRevision < activeRevision
+			) {
+				return undefined;
+			}
+			const revisionChanged =
+				streamRevision !== undefined && streamRevision !== activeRevision;
+			const appended =
+				accumulated.length === accumulatedLength + chunk.length &&
+				accumulated.slice(accumulatedLength) === chunk;
+			if (revisionChanged || !appended) {
+				scanner = createFirstSentenceScanner();
+				accumulatedLength = accumulated.length;
+				activeRevision = streamRevision;
+				return scanner.push(accumulated);
+			}
+			accumulatedLength = accumulated.length;
+			activeRevision = streamRevision;
+			return scanner.push(chunk);
+		},
+		finish(): number | undefined {
+			return scanner.push("", true);
+		},
+	};
+}
+
 export function extractFirstSentence(text: string): {
 	first: string;
 	rest: string;
 	/** Whether a sentence boundary was actually found in `text`. */
 	complete: boolean;
 } {
-	// Regex for finding sentence boundaries.
-	// Looks for a period, question mark, or exclamation mark followed by a space or end of string.
-	const abbreviations = [
-		"Mr",
-		"Mrs",
-		"Ms",
-		"Dr",
-		"Prof",
-		"Sr",
-		"Jr",
-		"St",
-		"vs",
-		"etc",
-		"e.g",
-		"i.e",
-	];
+	const boundaryIndex = createFirstSentenceScanner().push(text, true);
 
-	let boundaryIndex = -1;
-
-	// Simple iteration to find the first valid boundary
-	for (let i = 0; i < text.length; i++) {
-		const char = text[i];
-		if (".?!".includes(char)) {
-			// Check if it's followed by a space, closing delimiter, or end of string
-			const nextChar = text[i + 1];
-			if (
-				nextChar === undefined ||
-				/\s/.test(nextChar) ||
-				nextChar === '"' ||
-				nextChar === "'" ||
-				nextChar === "\u201D" ||
-				nextChar === "\u2019" ||
-				nextChar === ")" ||
-				nextChar === "]" ||
-				nextChar === "}"
-			) {
-				// Potential boundary. Check prior context for abbreviations.
-				// We look at the word preceding the punctuation.
-				const preText = text.substring(0, i);
-				// Include "." in the preceding word so dotted abbreviations match.
-				// \w excludes ".", so the old \b(\w+)$ extracted only "g" from
-				// "e.g" — the "e.g"/"i.e" list entries were dead and those got split
-				// mid-token (the first-sentence / TTS early-emit path chopped "e.g."
-				// into "e."). Strip a trailing dot before comparing to the list.
-				// No prefix anchor: leftmost matching captures the maximal trailing
-				// [\w.] run, and any other char (space, quote, paren, asterisk, dash)
-				// or start-of-string delimits it — a (?:^|\s) anchor rejected
-				// punctuation-preceded abbreviations ('"Dr' / '(Mr') that the
-				// original \b handled, chopping mid-name.
-				const lastWordMatch = preText.match(/([\w.]+)$/);
-
-				let isAbbreviation = false;
-				if (lastWordMatch) {
-					const lastWord = lastWordMatch[1].replace(/\.$/, "");
-					// Case insensitive check
-					if (
-						abbreviations.some(
-							(abbr) => abbr.toLowerCase() === lastWord.toLowerCase(),
-						)
-					) {
-						isAbbreviation = true;
-					}
-				}
-
-				if (!isAbbreviation) {
-					boundaryIndex = i + 1;
-					while (
-						boundaryIndex < text.length &&
-						"\"'\u201D\u2019)]}".includes(text[boundaryIndex])
-					) {
-						boundaryIndex++;
-					}
-					break;
-				}
-			}
-		}
-	}
-
-	if (boundaryIndex !== -1) {
+	if (boundaryIndex !== undefined) {
 		const first = text.substring(0, boundaryIndex).trim();
 		const rest = text.substring(boundaryIndex).trim();
 		return { first, rest, complete: true };

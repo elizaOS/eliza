@@ -1,8 +1,12 @@
 /**
  * Multi-account configuration model for the iMessage connector: config shapes,
  * the merge order (env defaults < base config < per-account overrides), and the
- * DM/group policy + allowlist checks (`isIMessageUserAllowed`,
- * `isIMessageMentionRequired`) that decide whether an inbound message is handled.
+ * mention-policy check (`isIMessageMentionRequired`) that decides whether a
+ * group inbound message is handled. DM access is gated live by
+ * `IMessageService.checkDmAccess`, which routes the `pairing` policy through
+ * the core PairingService. The deprecated synchronous DM helper remains for
+ * source compatibility but fails closed for `pairing`, because it cannot
+ * perform that stateful handshake.
  * Config is read from `character.settings.imessage`. In practice one macOS host
  * runs a single Messages account (`DEFAULT_ACCOUNT_ID`); these helpers still model
  * the general inventory so the connector-account provider and service share one
@@ -39,8 +43,6 @@ export interface IMessageAccountConfig {
   name?: string;
   /** If false, do not start this iMessage account */
   enabled?: boolean;
-  /** Path to the iMessage CLI tool */
-  cliPath?: string;
   /** Path to the iMessage database */
   dbPath?: string;
   /** iMessage service type (iMessage or SMS) */
@@ -71,7 +73,6 @@ export interface IMessageAccountConfig {
 export interface IMessageMultiAccountConfig {
   /** Default/base configuration applied to all accounts */
   enabled?: boolean;
-  cliPath?: string;
   dbPath?: string;
   service?: "iMessage" | "SMS";
   region?: string;
@@ -93,7 +94,6 @@ export interface ResolvedIMessageAccount {
   accountId: string;
   enabled: boolean;
   name?: string;
-  cliPath: string;
   dbPath?: string;
   configured: boolean;
   config: IMessageAccountConfig;
@@ -123,7 +123,6 @@ export function getMultiAccountConfig(runtime: IAgentRuntime): IMessageMultiAcco
 
   return {
     enabled: characterIMessage?.enabled,
-    cliPath: characterIMessage?.cliPath,
     dbPath: characterIMessage?.dbPath,
     service: characterIMessage?.service,
     region: characterIMessage?.region,
@@ -196,13 +195,11 @@ function mergeIMessageAccountConfig(
   const accountConfig = getAccountConfig(runtime, accountId) ?? {};
 
   // Get environment/runtime settings for the base config
-  const envCliPath = runtime.getSetting("IMESSAGE_CLI_PATH") as string | undefined;
   const envDbPath = runtime.getSetting("IMESSAGE_DB_PATH") as string | undefined;
   const envDmPolicy = runtime.getSetting("IMESSAGE_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("IMESSAGE_GROUP_POLICY") as string | undefined;
 
   const envConfig: IMessageAccountConfig = {
-    cliPath: envCliPath || undefined,
     dbPath: envDbPath || undefined,
     dmPolicy: envDmPolicy as IMessageAccountConfig["dmPolicy"] | undefined,
     groupPolicy: envGroupPolicy as IMessageAccountConfig["groupPolicy"] | undefined,
@@ -231,12 +228,9 @@ export function resolveIMessageAccount(
   const accountEnabled = merged.enabled !== false;
   const enabled = baseEnabled && accountEnabled;
 
-  const cliPath = merged.cliPath?.trim() || "imsg";
-
   // Determine if this account is actually configured
   const configured = Boolean(
-    merged.cliPath?.trim() ||
-      merged.dbPath?.trim() ||
+    merged.dbPath?.trim() ||
       merged.service ||
       merged.region?.trim() ||
       (merged.allowFrom && merged.allowFrom.length > 0) ||
@@ -253,7 +247,6 @@ export function resolveIMessageAccount(
     accountId: normalizedAccountId,
     enabled,
     name: merged.name?.trim() || undefined,
-    cliPath,
     dbPath: merged.dbPath?.trim() || undefined,
     configured,
     config: merged,
@@ -299,7 +292,12 @@ export function resolveIMessageGroupConfig(
 }
 
 /**
- * Checks if a user is allowed based on policy and allowlist
+ * Synchronous compatibility helper for legacy callers that only need static
+ * allowlist/group-policy evaluation.
+ *
+ * @deprecated Pairing is stateful; use `IMessageService.checkDmAccess` for
+ * inbound authorization. This helper deliberately fails closed for the
+ * `pairing` policy instead of pretending an unknown sender is authorized.
  */
 export function isIMessageUserAllowed(params: {
   identifier: string;
@@ -312,47 +310,21 @@ export function isIMessageUserAllowed(params: {
 
   if (isGroup) {
     const policy = accountConfig.groupPolicy ?? "allowlist";
-    if (policy === "disabled") {
-      return false;
-    }
-
-    if (policy === "open") {
-      return true;
-    }
-
-    // Check group-specific allowlist first
+    if (policy === "disabled") return false;
+    if (policy === "open") return true;
     if (groupConfig?.allowFrom?.length) {
       return groupConfig.allowFrom.some((allowed) => String(allowed) === identifier);
     }
-
-    // Check account-level group allowlist
     if (accountConfig.groupAllowFrom?.length) {
       return accountConfig.groupAllowFrom.some((allowed) => String(allowed) === identifier);
     }
-
-    return policy !== "allowlist";
-  }
-
-  // DM handling
-  const policy = accountConfig.dmPolicy ?? "pairing";
-  if (policy === "disabled") {
     return false;
   }
 
-  if (policy === "open") {
-    return true;
-  }
-
-  if (policy === "pairing") {
-    return true;
-  }
-
-  // Allowlist policy
-  if (accountConfig.allowFrom?.length) {
-    return accountConfig.allowFrom.some((allowed) => String(allowed) === identifier);
-  }
-
-  return false;
+  const policy = accountConfig.dmPolicy ?? "pairing";
+  if (policy === "disabled" || policy === "pairing") return false;
+  if (policy === "open") return true;
+  return Boolean(accountConfig.allowFrom?.some((allowed) => String(allowed) === identifier));
 }
 
 /**

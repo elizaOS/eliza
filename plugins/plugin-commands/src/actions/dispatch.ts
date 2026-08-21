@@ -13,7 +13,7 @@
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
-import { findCommandByKeyForRuntime } from "../registry";
+import { findCommandByKeyForRuntime, useRuntime } from "../registry";
 import type { CommandContext, ParsedCommand } from "../types";
 import { isDeterministicCommand, runCommand } from "./handlers";
 
@@ -76,6 +76,7 @@ export async function resolveCommand(
 	message: Memory,
 	options: CommandDispatchOptions = {},
 ): Promise<CommandDispatchResult> {
+	useRuntime(runtime.agentId);
 	const text = message.content.text ?? "";
 	if (!hasCommand(text)) return { handled: false };
 

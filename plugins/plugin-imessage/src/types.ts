@@ -2,7 +2,7 @@
  * Type definitions for the iMessage plugin.
  */
 
-import type { Service } from "@elizaos/core";
+import { type Service, truncateWellFormed } from "@elizaos/core";
 
 /** Maximum message length for iMessage */
 export const MAX_IMESSAGE_MESSAGE_LENGTH = 4000;
@@ -36,8 +36,6 @@ export type IMessageChatType = "direct" | "group";
  * Configuration settings for the iMessage plugin
  */
 export interface IMessageSettings {
-  /** Path to iMessage CLI tool */
-  cliPath: string;
   /** Path to iMessage database */
   dbPath?: string;
   /** Polling interval in ms */
@@ -202,13 +200,6 @@ export class IMessageNotSupportedError extends IMessagePluginError {
   }
 }
 
-export class IMessageCliError extends IMessagePluginError {
-  constructor(message: string, exitCode?: number) {
-    super(message, "CLI_ERROR", exitCode !== undefined ? { exitCode } : undefined);
-    this.name = "IMessageCliError";
-  }
-}
-
 // Utility functions
 
 /**
@@ -225,7 +216,16 @@ export function isPhoneNumber(input: string): boolean {
  * Check if a string looks like an email
  */
 export function isEmail(input: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+  const at = input.indexOf("@");
+  if (at <= 0 || at !== input.lastIndexOf("@")) return false;
+  const dot = input.indexOf(".", at + 2);
+  if (dot < 0 || dot === input.length - 1) return false;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+    if (character === "@") continue;
+    if (character?.trim() === "") return false;
+  }
+  return true;
 }
 
 /**
@@ -277,11 +277,31 @@ export function formatPhoneNumber(phone: string): string {
 /**
  * Split text for iMessage
  */
+// truncateWellFormed(text, 1) returns "" when text opens with a surrogate
+// pair (backing the one-unit cut off to 0): an astral scalar needs both
+// code units to stay well-formed, so no head chunk can honor a 1-unit
+// bound without either splitting the pair or producing nothing. Widening
+// by exactly one unit in that single case keeps the caller making forward
+// progress instead of looping forever on an empty chunk; every other
+// bound is unaffected since truncateWellFormed only ever backs off by one
+// unit, which stays non-empty for any limit >= 2.
+function takeAtLeastOneUnit(text: string, limit: number): string {
+  const chunk = truncateWellFormed(text, limit);
+  return chunk.length > 0 ? chunk : truncateWellFormed(text, limit + 1);
+}
+
 export function splitMessageForIMessage(
   text: string,
   maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH
 ): string[] {
-  if (text.length <= maxLength) {
+  if (!Number.isFinite(maxLength) || maxLength < 1) {
+    throw new Error(
+      `splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`
+    );
+  }
+  const limit = Math.floor(maxLength);
+
+  if (text.length <= limit) {
     return [text];
   }
 
@@ -289,27 +309,30 @@ export function splitMessageForIMessage(
   let remaining = text;
 
   while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
+    if (remaining.length <= limit) {
       chunks.push(remaining);
       break;
     }
 
-    let breakPoint = maxLength;
+    let breakPoint = limit;
 
     // Try newline first
-    const newlineIdx = remaining.lastIndexOf("\n", maxLength);
-    if (newlineIdx > maxLength / 2) {
+    const newlineIdx = remaining.lastIndexOf("\n", limit);
+    if (newlineIdx > limit / 2) {
       breakPoint = newlineIdx + 1;
     } else {
       // Try space
-      const spaceIdx = remaining.lastIndexOf(" ", maxLength);
-      if (spaceIdx > maxLength / 2) {
+      const spaceIdx = remaining.lastIndexOf(" ", limit);
+      if (spaceIdx > limit / 2) {
         breakPoint = spaceIdx + 1;
       }
     }
 
-    chunks.push(remaining.slice(0, breakPoint).trimEnd());
-    remaining = remaining.slice(breakPoint).trimStart();
+    // truncateWellFormed backs the cut off by one unit instead of splitting
+    // a surrogate pair (emoji) when no newline/space break point was found.
+    const head = takeAtLeastOneUnit(remaining, breakPoint);
+    chunks.push(head.trimEnd());
+    remaining = remaining.slice(head.length).trimStart();
   }
 
   return chunks;

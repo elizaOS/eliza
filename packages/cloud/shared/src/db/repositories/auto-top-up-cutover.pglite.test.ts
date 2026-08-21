@@ -45,21 +45,63 @@ async function insertOrganization(input: {
   customerId?: string | null;
   paymentMethodId?: string | null;
 }): Promise<void> {
+  const customerId =
+    input.customerId === undefined ? `cus_${input.id.slice(-1)}` : input.customerId;
   await dbWrite.execute(sql`
     INSERT INTO organizations (
-      id, name, slug, credit_balance, settings, stripe_customer_id,
+      id, name, slug, credit_balance, settings,
       stripe_default_payment_method, auto_top_up_enabled,
       auto_top_up_threshold, auto_top_up_amount, is_active, updated_at
     ) VALUES (
       ${input.id}, ${`Org ${input.id.slice(-1)}`}, ${`org-${input.id.slice(-1)}`},
       ${input.balance ?? "1.000000"}::numeric, '{}'::jsonb,
-      ${input.customerId === undefined ? `cus_${input.id.slice(-1)}` : input.customerId},
       ${input.paymentMethodId === undefined ? `pm_${input.id.slice(-1)}` : input.paymentMethodId},
       ${input.enabled ?? true},
       ${input.threshold === undefined ? "5.00" : input.threshold}::numeric,
       ${input.amount === undefined ? "10.00" : input.amount}::numeric,
       ${input.active ?? true}, ${at(0)}
     )
+  `);
+  if (customerId === null) return;
+
+  const authorityAttemptId = randomUUID();
+  const requestDigest = "a".repeat(64);
+  await dbWrite.execute(sql`
+    INSERT INTO stripe_customer_attempts (
+      id, organization_id, generation, request_digest, caller_intent, idempotency_key
+    ) VALUES (
+      ${authorityAttemptId}, ${input.id}, 1, ${requestDigest}, 'auto_top_up',
+      ${`eliza-customer-attempt:${authorityAttemptId}`}
+    )
+  `);
+  await dbWrite.execute(sql`
+    UPDATE stripe_customer_attempts
+    SET status = 'provider_started', provider_started_at = ${at(0)}
+    WHERE id = ${authorityAttemptId}
+  `);
+  const receipt = {
+    binding_kind: "attempt_created",
+    created: 1_700_000_000,
+    customer_id: customerId,
+    livemode: false,
+    metadata: {
+      organization_id: input.id,
+      eliza_organization_id: input.id,
+      eliza_customer_attempt_id: authorityAttemptId,
+      eliza_customer_generation: "1",
+      eliza_customer_request_digest: requestDigest,
+      eliza_customer_provider: "stripe",
+    },
+  };
+  await dbWrite.execute(sql`
+    UPDATE stripe_customer_attempts
+    SET status = 'bound', provider_customer_id = ${customerId},
+        provider_receipt = ${JSON.stringify(receipt)}::jsonb,
+        provider_livemode = false, bound_at = ${at(0)}
+    WHERE id = ${authorityAttemptId}
+  `);
+  await dbWrite.execute(sql`
+    UPDATE organizations SET stripe_customer_id = ${customerId} WHERE id = ${input.id}
   `);
 }
 
@@ -185,6 +227,8 @@ beforeAll(async () => {
       id uuid PRIMARY KEY,
       organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE
     );
+    CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
+      ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
   `);
   const migrations = await Promise.all([
     readFile(
@@ -206,6 +250,13 @@ beforeAll(async () => {
     ),
   ]);
   await getPgliteClientForTests().exec(migrations.join("\n"));
+  const customerAuthorityMigration = await readFile(
+    new URL("../migrations/0267_stripe_customer_attempts.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of customerAuthorityMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  }
 }, TIMEOUT);
 
 beforeEach(async () => {
@@ -213,10 +264,20 @@ beforeEach(async () => {
     UPDATE auto_top_up_control
     SET mode = 'durable', legacy_reconciled_through = paused_at
     WHERE singleton = true;
+    ALTER TABLE stripe_customer_attempts
+      DISABLE TRIGGER stripe_customer_attempt_delete_guard;
+    ALTER TABLE stripe_customer_legacy_quarantines
+      DISABLE TRIGGER stripe_customer_legacy_quarantine_delete_guard;
     DELETE FROM auto_top_up_attempts;
     DELETE FROM auto_top_up_legacy_payment_quarantine;
+    DELETE FROM stripe_customer_legacy_quarantines;
+    DELETE FROM stripe_customer_attempts;
     DELETE FROM credit_transactions;
     DELETE FROM organizations;
+    ALTER TABLE stripe_customer_attempts
+      ENABLE TRIGGER stripe_customer_attempt_delete_guard;
+    ALTER TABLE stripe_customer_legacy_quarantines
+      ENABLE TRIGGER stripe_customer_legacy_quarantine_delete_guard;
     UPDATE auto_top_up_control
     SET mode = 'paused', paused_at = '${at(0).toISOString()}',
         legacy_reconciled_through = NULL, updated_at = '${at(0).toISOString()}'
@@ -278,6 +339,38 @@ describe("AutoTopUpAttemptsRepository", () => {
     expect(lockedQuarantine).toBeLessThan(lockedCredit);
     expect(resolve.slice(resolveOrganization, lockedQuarantine)).toContain('.for("update")');
     expect(resolve.slice(lockedQuarantine, lockedCredit)).toContain('.for("update")');
+  });
+
+  test("uses 0267 receipt authority instead of trusting the organization customer alone", async () => {
+    await insertOrganization({ id: ORG_A });
+    expect(
+      await scalar<{ authoritative: boolean }>(sql`
+        SELECT stripe_customer_binding_is_authoritative(${ORG_A}, 'cus_1') AS authoritative
+      `),
+    ).toEqual({ authoritative: true });
+
+    // Corrupt only the test fixture through a privileged bypass, then restore
+    // the immutable-authority guard before exercising the production function.
+    await getPgliteClientForTests().exec(
+      "ALTER TABLE stripe_customer_attempts DISABLE TRIGGER stripe_customer_attempt_authority_guard",
+    );
+    await dbWrite.execute(sql`
+      UPDATE stripe_customer_attempts
+      SET provider_receipt = jsonb_set(
+        provider_receipt,
+        '{metadata,organization_id}',
+        to_jsonb(${ORG_B}::text)
+      )
+      WHERE organization_id = ${ORG_A}
+    `);
+    await getPgliteClientForTests().exec(
+      "ALTER TABLE stripe_customer_attempts ENABLE TRIGGER stripe_customer_attempt_authority_guard",
+    );
+    expect(
+      await scalar<{ authoritative: boolean }>(sql`
+        SELECT stripe_customer_binding_is_authoritative(${ORG_A}, 'cus_1') AS authoritative
+      `),
+    ).toEqual({ authoritative: false });
   });
 
   test("starts from an explicit control state and paused mode blocks only new claims", async () => {
@@ -950,11 +1043,20 @@ describe("AutoTopUpAttemptsRepository", () => {
     );
     expect(count.count).toBe("1");
 
+    // Model out-of-band publication drift without weakening the real 0267
+    // guard for the rest of the suite. The replay must retain its persisted
+    // provider snapshot even if a privileged repair changes the organization.
+    await getPgliteClientForTests().exec(
+      "ALTER TABLE organizations DISABLE TRIGGER organization_stripe_customer_publication_guard",
+    );
     await dbWrite.execute(sql`
       UPDATE organizations
       SET auto_top_up_amount = 20, stripe_customer_id = 'cus_changed'
       WHERE id = ${ORG_A}
     `);
+    await getPgliteClientForTests().exec(
+      "ALTER TABLE organizations ENABLE TRIGGER organization_stripe_customer_publication_guard",
+    );
     const replay = await repository.claimEligibleAttempt({
       organizationId: ORG_A,
       triggerSource: "manual",

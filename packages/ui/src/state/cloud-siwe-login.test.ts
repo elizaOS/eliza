@@ -689,4 +689,48 @@ describe("SIWE chain binding (#18458)", () => {
     ).rejects.toThrow(/kept switching chains/);
     expect(window.localStorage.getItem("steward_session_token")).toBeNull();
   });
+
+  it("fails closed on a hung SIWE verify hop instead of waiting forever", async () => {
+    window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
+    await installE2eWalletIfRequested();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/auth/siwe/nonce")) {
+          return new Response(JSON.stringify(NONCE_RESPONSE), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return;
+          const abort = () => reject(signal.reason);
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+        });
+      }),
+    );
+    const started = Date.now();
+    await expect(
+      siweLoginWithInjectedWallet("https://api.test/"),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(window.localStorage.getItem("steward_session_token")).toBeNull();
+  });
 });

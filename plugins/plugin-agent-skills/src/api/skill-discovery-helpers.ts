@@ -5,10 +5,12 @@
  * filesystem and AgentSkillsService, and Binance skill exposure filtering.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { getSkillsDir } from "@elizaos/skills";
+import { decodeFrontmatterScalarString } from "../parser";
 import type { ElizaConfig, SkillEntry } from "./skills-routes";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
@@ -28,6 +30,12 @@ interface AgentSkillsServiceLike {
   getSkillScanStatus?: (
     slug: string,
   ) => "clean" | "warning" | "critical" | "blocked" | null;
+	acknowledgeSkillScan?: (slug: string, reportDigest: string) => boolean;
+	setSkillEnabled?: (
+		slug: string,
+		enabled: boolean,
+		options?: { reportDigest?: string },
+	) => boolean;
 }
 
 function isAgentSkillsServiceLike(
@@ -78,7 +86,7 @@ const SKILL_ACK_CACHE_KEY = "eliza:skill-scan-acknowledgments";
 
 type SkillAcknowledgmentMap = Record<
   string,
-  { acknowledgedAt: string; findingCount: number }
+	{ acknowledgedAt: string; findingCount: number; reportDigest: string }
 >;
 
 /**
@@ -251,6 +259,58 @@ export function shouldExposeBinanceSkillRecord(skill: {
   return true;
 }
 
+function readScanReport(reportPath: string): Record<string, unknown> | null {
+  if (!fs.existsSync(reportPath)) return null;
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    // error-policy:J3 A malformed report is not treated as an acknowledged scan.
+    return null;
+  }
+}
+
+function readScanStatus(reportPath: string): SkillEntry["scanStatus"] {
+  const status = readScanReport(reportPath)?.status;
+  return status === "clean" ||
+    status === "warning" ||
+    status === "critical" ||
+    status === "blocked"
+    ? status
+    : null;
+}
+
+function readScanFindingCount(reportPath: string): number {
+  const report = readScanReport(reportPath);
+  return (
+    (Array.isArray(report?.findings) ? report.findings.length : 0) +
+    (Array.isArray(report?.manifestFindings)
+      ? report.manifestFindings.length
+      : 0)
+  );
+}
+
+function scanReportDigest(reportPath: string): string | null {
+	const report = readScanReport(reportPath);
+	if (!report) return null;
+	return createHash("sha256")
+		.update(
+			JSON.stringify({
+				scannedAt: report.scannedAt,
+				status: report.status,
+				findings: report.findings,
+				manifestFindings: report.manifestFindings,
+			}),
+		)
+		.digest("hex");
+}
+
+function isFindingStatus(status: SkillEntry["scanStatus"]): boolean {
+  return status === "warning" || status === "critical" || status === "blocked";
+}
+
 /**
  * Discover skills from @elizaos/skills and workspace, applying
  * database preferences and config filtering.
@@ -267,6 +327,7 @@ export async function discoverSkills(
 ): Promise<SkillEntry[]> {
   // Load persisted preferences from the agent database
   const dbPrefs = await loadSkillPreferences(runtime);
+  const acknowledgments = await loadSkillAcknowledgments(runtime);
 
   // ── Primary path: pull from AgentSkillsService (most accurate) ──────────
   if (runtime) {
@@ -305,16 +366,54 @@ export async function discoverSkills(
                 }
               }
 
-              return {
+              const findingCount = scanStatus
+								? readScanFindingCount(path.join(s.path, ".scan-results.json"))
+								: 0;
+							const reportDigest = scanReportDigest(
+								path.join(s.path, ".scan-results.json"),
+							);
+							const acknowledged =
+								findingCount > 0 &&
+								acknowledgments[s.slug]?.findingCount === findingCount &&
+								acknowledgments[s.slug]?.reportDigest === reportDigest;
+							const configuredEnabled = resolveSkillEnabled(
+								s.slug,
+								config,
+								dbPrefs,
+							);
+							if (acknowledged && reportDigest) {
+								svc.acknowledgeSkillScan?.(s.slug, reportDigest);
+							}
+							const enabled =
+								configuredEnabled &&
+								(!isFindingStatus(scanStatus) || acknowledged);
+							svc.setSkillEnabled?.(s.slug, enabled, {
+								reportDigest: acknowledged ? (reportDigest ?? undefined) : undefined,
+							});
+							return {
                 id: s.slug,
                 name: s.name || s.slug,
                 description: (s.description || "").slice(0, 200),
-                enabled: resolveSkillEnabled(s.slug, config, dbPrefs),
+								enabled,
                 scanStatus,
               };
             });
 
-          return skills.sort((a, b) => a.name.localeCompare(b.name));
+						const marketplaceDir = path.join(
+							workspaceDir,
+							"skills",
+							".marketplace",
+						);
+						const seen = new Set(skills.map((skill) => skill.id));
+						scanSkillsDir(
+							marketplaceDir,
+							skills,
+							seen,
+							config,
+							dbPrefs,
+							acknowledgments,
+						);
+						return skills.sort((a, b) => a.name.localeCompare(b.name));
         }
       }
     } catch {
@@ -381,7 +480,7 @@ export async function discoverSkills(
   const seen = new Set<string>();
 
   for (const dir of skillsDirs) {
-    scanSkillsDir(dir, skills, seen, config, dbPrefs);
+    scanSkillsDir(dir, skills, seen, config, dbPrefs, acknowledgments);
   }
 
   return skills
@@ -398,6 +497,7 @@ export function scanSkillsDir(
   seen: Set<string>,
   config: ElizaConfig,
   dbPrefs: SkillPreferencesMap,
+  acknowledgments: SkillAcknowledgmentMap = {},
 ): void {
   if (!fs.existsSync(dir)) return;
 
@@ -437,10 +537,13 @@ export function scanSkillsDir(
           const fmBlock = fmMatch[1];
           const nameMatch = /^name:\s*(.+)$/m.exec(fmBlock);
           const descMatch = /^description:\s*(.+)$/m.exec(fmBlock);
+          // Decode via the shared frontmatter scalar decoder so a quoted,
+          // JSON-escaped description written by the create scaffold round-trips
+          // to its exact value instead of leaking literal backslashes.
           if (nameMatch)
-            skillName = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+            skillName = decodeFrontmatterScalarString(nameMatch[1]);
           if (descMatch)
-            description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+            description = decodeFrontmatterScalarString(descMatch[1]);
         }
 
         // Fallback to heading / first paragraph
@@ -457,18 +560,36 @@ export function scanSkillsDir(
           description = descLine?.trim() ?? "";
         }
 
-        skills.push({
+			const reportPath = path.join(entryPath, ".scan-results.json");
+			const scanStatus = readScanStatus(reportPath);
+			const findingCount = readScanFindingCount(reportPath);
+			const reportDigest = scanReportDigest(reportPath);
+			const acknowledged =
+				findingCount > 0 &&
+				acknowledgments[entry]?.findingCount === findingCount &&
+				acknowledgments[entry]?.reportDigest === reportDigest;
+			skills.push({
           id: entry,
           name: skillName,
           description: description.slice(0, 200),
-          enabled: resolveSkillEnabled(entry, config, dbPrefs),
+				enabled:
+					resolveSkillEnabled(entry, config, dbPrefs) &&
+					(!isFindingStatus(scanStatus) || acknowledged),
+				scanStatus,
         });
       } catch {
         /* skip unreadable */
       }
     } else {
       // Recurse into subdirectories for nested skill groups
-      scanSkillsDir(entryPath, skills, seen, config, dbPrefs);
+      scanSkillsDir(
+				entryPath,
+				skills,
+				seen,
+				config,
+				dbPrefs,
+				acknowledgments,
+			);
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/macosreminders",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
   "type": "module",
   "main": "./dist/index.js",
@@ -54,7 +54,7 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "author": "elizaOS",
   "license": "MIT",

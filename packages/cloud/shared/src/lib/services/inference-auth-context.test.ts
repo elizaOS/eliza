@@ -77,6 +77,7 @@ mock.module("./api-keys", () => ({
       incrementUsageCalls.push(id);
     },
   },
+  isMobileApiKeySecret: (value: string) => /^eliza_mobile_[0-9a-f]{64}$/.test(value),
 }));
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
@@ -117,9 +118,11 @@ const {
   readInferenceAuthContext,
   invalidateInferenceAuthContextByKeyHash,
   isInferenceAuthContext,
+  writeInferenceAuthContext,
 } = await import("./inference-auth-cache");
 
 const KEY = "test-api-key";
+const MOBILE_KEY = `eliza_mobile_${"a".repeat(64)}`;
 
 function reqWithApiKey(key = KEY): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -229,6 +232,40 @@ describe("resolveInferenceAuthContext", () => {
     expect(res.kind).toBe("slow_path");
   });
 
+  test("mobile credentials bypass even a pre-existing positive inference cache entry", async () => {
+    const keyHash = hashApiKey(MOBILE_KEY);
+    await writeInferenceAuthContext({
+      v: 1,
+      cachedAt: Date.now(),
+      userId: "stale-mobile-user",
+      orgId: "stale-mobile-org",
+      apiKeyId: "stale-mobile-key",
+      keyHash,
+    });
+    const availability = spyOn(cache, "isAvailable");
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const cacheWrite = spyOn(cache, "setWithOutcome");
+
+    try {
+      const result = await resolveInferenceAuthContext(reqWithApiKey(MOBILE_KEY));
+
+      expect(result).toEqual({
+        kind: "slow_path",
+        reason: "mobile_api_key",
+      });
+      expect(bypassCacheCalls).toEqual([]);
+      expect(incrementUsageCalls).toEqual([]);
+      expect(availability).not.toHaveBeenCalled();
+      expect(cacheRead).not.toHaveBeenCalled();
+      expect(cacheWrite).not.toHaveBeenCalled();
+    } finally {
+      availability.mockRestore();
+      cacheRead.mockRestore();
+      cacheWrite.mockRestore();
+      await invalidateInferenceAuthContextByKeyHash(keyHash);
+    }
+  });
+
   test("miss -> runs authoritative chain, authorizes, and caches", async () => {
     let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
     const res = await resolveInferenceAuthContext(reqWithApiKey(), {
@@ -276,7 +313,8 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(result).toEqual({ kind: "warming" });
+    expect(result).toMatchObject({ kind: "warming" });
+    expect(result.kind === "warming" && result.hydration).toBeTruthy();
     expect(waited.length).toBeGreaterThan(0);
     await waited[0];
     await Promise.all(waited);
@@ -316,8 +354,8 @@ describe("resolveInferenceAuthContext", () => {
       }),
     ]);
 
-    expect(first).toEqual({ kind: "warming" });
-    expect(second).toEqual({ kind: "warming" });
+    expect(first).toMatchObject({ kind: "warming" });
+    expect(second).toMatchObject({ kind: "warming" });
     expect(waited).toHaveLength(2);
     expect(waited[0]).toBe(waited[1]);
 
@@ -341,7 +379,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
 
@@ -365,7 +403,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(cold).toEqual({ kind: "warming" });
+    expect(cold).toMatchObject({ kind: "warming" });
     await Promise.all(waited);
     expect(moderationCalls).toBe(1);
 
@@ -571,7 +609,7 @@ describe("resolveInferenceAuthContext", () => {
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       });
 
-      expect(result).toEqual({ kind: "warming" });
+      expect(result).toMatchObject({ kind: "warming" });
       expect(chainCalls).toBe(0);
       expect(waited).toHaveLength(0);
     } finally {

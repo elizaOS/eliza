@@ -16,6 +16,15 @@
  * link-local, ULA, carrier-grade NAT, multicast, the cloud-metadata IP) is
  * blocked.
  *
+ * Because the probed URLs come from model-controlled narration, the loopback
+ * carve-out is itself an oracle: an injected sub-agent could name
+ * `http://127.0.0.1:<any-port>/` and read status/HTML back through the
+ * verification verdict. Callers that probe untrusted text therefore pass
+ * `allowedLoopbackPorts` — the ports the operator/supervisor actually
+ * configured — and loopback targets on any other port are rejected like any
+ * other non-public address. Callers talking to known local services
+ * (e.g. the model gateway) omit the option and keep the open carve-out.
+ *
  * Two attack vectors are closed:
  *   1. Direct fetch of an internal host — `assertUrlAllowed` resolves the
  *      hostname and rejects if *any* resolved address is in a blocked range
@@ -196,6 +205,27 @@ export function classifyIpLiteral(
 }
 
 /**
+ * Gate a loopback target on the caller-sanctioned port set. A no-op when the
+ * caller did not pass `allowedLoopbackPorts` (trusted local-service callers);
+ * otherwise any loopback port outside the set is rejected like a non-public
+ * address, so untrusted-text probes can't port-scan the loopback interface.
+ */
+function assertLoopbackPortAllowed(
+  host: string,
+  port: number | undefined,
+  allowedLoopbackPorts: ReadonlySet<number> | undefined,
+): void {
+  if (!allowedLoopbackPorts) return;
+  const effectivePort = port ?? 80;
+  if (!allowedLoopbackPorts.has(effectivePort)) {
+    throw new SsrfBlockedError(
+      host,
+      `loopback port ${effectivePort} is not in the allowed set`,
+    );
+  }
+}
+
+/**
  * Resolve `hostname` and assert every resolved address is fetch-safe
  * (loopback or public). Throws `SsrfBlockedError` if the host is, or resolves
  * to, a blocked (non-public, non-loopback) address. Checking *all* resolved
@@ -209,16 +239,23 @@ export function classifyIpLiteral(
  */
 export async function assertHostAllowed(
   hostname: string,
+  opts: { port?: number; allowedLoopbackPorts?: ReadonlySet<number> } = {},
 ): Promise<string[] | null> {
   const host = hostname.replace(/^\[|\]$/g, "");
   // `localhost` is loopback by convention; allow without a DNS round-trip.
-  if (host.toLowerCase() === "localhost") return null;
+  if (host.toLowerCase() === "localhost") {
+    assertLoopbackPortAllowed(host, opts.port, opts.allowedLoopbackPorts);
+    return null;
+  }
 
   // IP literal: classify directly, no DNS.
   if (isIP(host) !== 0) {
     const verdict = classifyIpLiteral(host);
     if (verdict === "blocked") {
       throw new SsrfBlockedError(host, `non-public address ${host}`);
+    }
+    if (verdict === "loopback") {
+      assertLoopbackPortAllowed(host, opts.port, opts.allowedLoopbackPorts);
     }
     return null;
   }
@@ -242,11 +279,15 @@ export async function assertHostAllowed(
     throw new SsrfBlockedError(host, `no addresses resolved for ${host}`);
   }
   for (const address of addresses) {
-    if (classifyIpLiteral(address) === "blocked") {
+    const verdict = classifyIpLiteral(address);
+    if (verdict === "blocked") {
       throw new SsrfBlockedError(
         host,
         `${host} resolves to non-public address ${address}`,
       );
+    }
+    if (verdict === "loopback") {
+      assertLoopbackPortAllowed(host, opts.port, opts.allowedLoopbackPorts);
     }
   }
   return addresses;
@@ -255,9 +296,13 @@ export async function assertHostAllowed(
 /**
  * Assert the full URL's host is fetch-safe. Returns the vetted addresses to
  * pin the connection to (`null` when the host is an IP literal/localhost).
+ * When `allowedLoopbackPorts` is set, loopback targets are additionally
+ * restricted to those ports (scheme default 80/443 when the URL has no
+ * explicit port).
  */
 export async function assertUrlAllowed(
   url: string | URL,
+  allowedLoopbackPorts?: ReadonlySet<number>,
 ): Promise<string[] | null> {
   let parsed: URL;
   try {
@@ -272,7 +317,14 @@ export async function assertUrlAllowed(
       `unsupported protocol ${parsed.protocol}`,
     );
   }
-  return assertHostAllowed(parsed.hostname);
+  const explicitPort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+  const port =
+    explicitPort !== null && Number.isInteger(explicitPort)
+      ? explicitPort
+      : parsed.protocol === "https:"
+        ? 443
+        : 80;
+  return assertHostAllowed(parsed.hostname, { port, allowedLoopbackPorts });
 }
 
 /** Node-style lookup callback signature (`net.connect`/`tls.connect`). */
@@ -382,6 +434,17 @@ export function setPinnedTransport(transport?: PinnedTransport): void {
   pinnedTransport = transport ?? nodePinnedTransport;
 }
 
+/** Options controlling {@link safeFetch} policy beyond the request init. */
+export interface SafeFetchOptions {
+  /**
+   * When set, loopback targets (127.0.0.0/8, ::1, `localhost`, or a hostname
+   * resolving to them) are only allowed on these ports — applied to the
+   * initial URL AND every redirect hop. Pass the supervisor/operator-started
+   * port set when probing untrusted text; omit for trusted local services.
+   */
+  allowedLoopbackPorts?: ReadonlySet<number>;
+}
+
 /**
  * SSRF-safe replacement for `fetch(url, { redirect: "follow" })`.
  *
@@ -402,10 +465,14 @@ export function setPinnedTransport(transport?: PinnedTransport): void {
 export async function safeFetch(
   url: string,
   init: Omit<RequestInit, "redirect"> = {},
+  options?: SafeFetchOptions,
 ): Promise<Response> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const pinned = await assertUrlAllowed(current);
+    const pinned = await assertUrlAllowed(
+      current,
+      options?.allowedLoopbackPorts,
+    );
     const res = pinned
       ? await pinnedTransport(current, init, pinned)
       : await fetch(current, { ...init, redirect: "manual" });

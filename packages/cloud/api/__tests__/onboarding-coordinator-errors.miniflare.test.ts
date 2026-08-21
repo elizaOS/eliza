@@ -107,7 +107,6 @@ describe("onboarding coordinator error integration", () => {
               loader: "ts",
               contents: `
                 const none = { status: "none", agentId: null, bridgeUrl: null, sandbox: null };
-                export async function ensureElizaAppProvisioning() { return none; }
                 export async function getElizaAppProvisioningStatus() { return none; }
                 export function publicElizaAppProvisioningPayload(value) { return value; }
               `,
@@ -132,6 +131,9 @@ describe("onboarding coordinator error integration", () => {
               loader: "ts",
               contents: `export async function launchManagedElizaAgent() {
                 throw new Error("launch is outside this authorization test");
+              }
+              export async function readManagedElizaAgentConnection() {
+                throw new Error("connection reads are outside this authorization test");
               }`,
             }));
             build.onLoad(

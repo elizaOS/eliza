@@ -21,9 +21,15 @@
  * ## Storage Strategy
  *
  * ### Sessions
- * - Stored as components with type: `form_session:{roomId}`
- * - One active session per user per room
- * - Scoping ensures different rooms have different contexts
+ * - Stored as components with type: `form_session:{roomId}:{sessionId}`
+ * - One active/ready session per user per room, but multiple stashed
+ *   sessions (and a stashed session alongside a new active one) can coexist
+ * - The session id is part of the component type so distinct sessions in the
+ *   same room map to distinct natural keys and never overwrite each other
+ * - Room scoping ensures different rooms have different contexts
+ * - Deployments upgrading from the pre-session-id `form_session:{roomId}` key
+ *   have their in-flight session's legacy component retired on the next
+ *   saveSession/deleteSession so the stale row cannot shadow the new key
  *
  * ### Submissions
  * - Stored as components with type: `form_submission:{formId}:{submissionId}`
@@ -50,7 +56,13 @@
  * operational queries.
  */
 
-import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
+import {
+  type Component,
+  ElizaError,
+  type IAgentRuntime,
+  type JsonValue,
+  type UUID,
+} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { isExpired, isExpiringSoon } from "./ttl";
 import type { FormAutofillData, FormSession, FormSubmission } from "./types";
@@ -76,7 +88,9 @@ const resolveComponentContext = async (
   return { roomId: runtime.agentId, worldId: runtime.agentId };
 };
 
-const isFormSession = (data: JsonValue | object): data is FormSession => {
+const isFormSessionIdentity = (
+  data: JsonValue | object,
+): data is FormSession => {
   if (!isRecord(data)) return false;
   return (
     typeof data.id === "string" &&
@@ -86,7 +100,294 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
   );
 };
 
+const isFormSession = (data: JsonValue | object): data is FormSession =>
+  isFormSessionIdentity(data) &&
+  typeof data.updatedAt === "number" &&
+  Number.isFinite(data.updatedAt);
+
 const isLiveSession = (session: FormSession): boolean => !isExpired(session);
+
+export const MAX_FORM_COMPONENT_DATA_DEPTH = 64;
+export const MAX_FORM_COMPONENT_DATA_NODES = 100_000;
+export const MAX_FORM_COMPONENT_DATA_BYTES = 1024 * 1024;
+export const FORM_COMPONENT_DATA_UNBOUNDED = "FORM_COMPONENT_DATA_UNBOUNDED";
+
+const OMIT_COMPONENT_VALUE = Symbol("omit-component-value");
+type ComponentValue = JsonValue | typeof OMIT_COMPONENT_VALUE;
+type ComponentWalk = {
+  bytes: number;
+  nodes: number;
+  visiting: WeakSet<object>;
+};
+
+function failComponentData(
+  reason: string,
+  context: Record<string, unknown> = {},
+  cause?: unknown,
+): never {
+  throw new ElizaError("Form component data is not bounded JSON", {
+    code: FORM_COMPONENT_DATA_UNBOUNDED,
+    context: { reason, ...context },
+    cause,
+  });
+}
+
+function inspectComponentData<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect();
+  } catch (cause) {
+    // error-policy:J2 Preserve hostile reflection failures at the persistence boundary.
+    failComponentData("reflection", { operation }, cause);
+  }
+}
+
+function reserveNodes(walk: ComponentWalk, count = 1): void {
+  if (count > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+    failComponentData("nodes", {
+      maxNodes: MAX_FORM_COMPONENT_DATA_NODES,
+      nodes: walk.nodes + count,
+    });
+  }
+  walk.nodes += count;
+}
+
+function reserveBytes(walk: ComponentWalk, count: number): void {
+  if (count > MAX_FORM_COMPONENT_DATA_BYTES - walk.bytes) {
+    failComponentData("bytes", {
+      maxBytes: MAX_FORM_COMPONENT_DATA_BYTES,
+      bytes: walk.bytes + count,
+    });
+  }
+  walk.bytes += count;
+}
+
+function jsonStringBytes(value: string): number {
+  if (value.length > MAX_FORM_COMPONENT_DATA_BYTES) {
+    failComponentData("bytes", {
+      maxBytes: MAX_FORM_COMPONENT_DATA_BYTES,
+      minimumBytes: value.length,
+    });
+  }
+  const encoded = JSON.stringify(value);
+  return new TextEncoder().encode(encoded).byteLength;
+}
+
+function defineComponentProperty(
+  target: Record<string, JsonValue>,
+  key: string,
+  value: JsonValue,
+): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
+function toComponentValue(
+  value: unknown,
+  walk: ComponentWalk,
+  depth: number,
+  arrayElement = false,
+): ComponentValue {
+  if (depth > MAX_FORM_COMPONENT_DATA_DEPTH) {
+    failComponentData("depth", {
+      depth,
+      maxDepth: MAX_FORM_COMPONENT_DATA_DEPTH,
+    });
+  }
+  reserveNodes(walk);
+
+  if (value === null) {
+    reserveBytes(walk, 4);
+    return null;
+  }
+  switch (typeof value) {
+    case "string":
+      reserveBytes(walk, jsonStringBytes(value));
+      return value;
+    case "boolean":
+      reserveBytes(walk, value ? 4 : 5);
+      return value;
+    case "number": {
+      if (!Number.isFinite(value)) {
+        reserveBytes(walk, 4);
+        return null;
+      }
+      reserveBytes(walk, String(value).length);
+      return value;
+    }
+    case "undefined":
+    case "function":
+    case "symbol":
+      if (arrayElement) {
+        reserveBytes(walk, 4);
+        return null;
+      }
+      return OMIT_COMPONENT_VALUE;
+    case "bigint":
+      failComponentData("unsupported", { type: "bigint" });
+  }
+
+  if (walk.visiting.has(value)) {
+    failComponentData("cycle");
+  }
+  walk.visiting.add(value);
+  try {
+    const isArray = inspectComponentData("Array.isArray", () =>
+      Array.isArray(value),
+    );
+    if (isArray) {
+      const lengthDescriptor = inspectComponentData("array.length", () =>
+        Object.getOwnPropertyDescriptor(value, "length"),
+      );
+      const length = lengthDescriptor?.value;
+      if (!Number.isSafeInteger(length) || length < 0) {
+        failComponentData("array-length");
+      }
+      if (length > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+        failComponentData("nodes", {
+          maxNodes: MAX_FORM_COMPONENT_DATA_NODES,
+          nodes: walk.nodes + length,
+        });
+      }
+      const result: JsonValue[] = new Array(length);
+      reserveBytes(walk, 2 + Math.max(0, length - 1));
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = inspectComponentData(`array[${index}]`, () =>
+          Object.getOwnPropertyDescriptor(value, String(index)),
+        );
+        if (!descriptor) {
+          reserveNodes(walk);
+          reserveBytes(walk, 4);
+          result[index] = null;
+          continue;
+        }
+        if (!("value" in descriptor)) {
+          failComponentData("accessor", { key: String(index) });
+        }
+        const item = toComponentValue(descriptor.value, walk, depth + 1, true);
+        result[index] = item === OMIT_COMPONENT_VALUE ? null : item;
+      }
+      return result;
+    }
+
+    const prototype = inspectComponentData("Object.getPrototypeOf", () =>
+      Object.getPrototypeOf(value),
+    );
+    if (prototype !== null && prototype !== Object.prototype) {
+      failComponentData("unsupported", { type: "non-plain-object" });
+    }
+    const keys = inspectComponentData("Reflect.ownKeys", () =>
+      Reflect.ownKeys(value),
+    );
+    if (keys.length > MAX_FORM_COMPONENT_DATA_NODES - walk.nodes) {
+      failComponentData("nodes", {
+        maxNodes: MAX_FORM_COMPONENT_DATA_NODES,
+        nodes: walk.nodes + keys.length,
+      });
+    }
+    const result: Record<string, JsonValue> = Object.create(null);
+    reserveBytes(walk, 2);
+    let properties = 0;
+    for (const key of keys) {
+      if (typeof key !== "string") {
+        reserveNodes(walk);
+        continue;
+      }
+      const descriptor = inspectComponentData(`object.${key}`, () =>
+        Object.getOwnPropertyDescriptor(value, key),
+      );
+      if (!descriptor?.enumerable) {
+        reserveNodes(walk);
+        continue;
+      }
+      if (!("value" in descriptor)) {
+        failComponentData("accessor", { key });
+      }
+      const child = toComponentValue(descriptor.value, walk, depth + 1);
+      if (child === OMIT_COMPONENT_VALUE) continue;
+      reserveBytes(walk, jsonStringBytes(key) + 1 + (properties > 0 ? 1 : 0));
+      defineComponentProperty(result, key, child);
+      properties += 1;
+    }
+    return result;
+  } finally {
+    walk.visiting.delete(value);
+  }
+}
+
+/**
+ * Safely serialize data into plain JSON component data, guarding against
+ * circular structures and non-serializable objects.
+ */
+export function toComponentData<T extends object>(
+  value: T,
+): Record<string, JsonValue> {
+  const walk: ComponentWalk = {
+    bytes: 0,
+    nodes: 0,
+    visiting: new WeakSet(),
+  };
+  const data = toComponentValue(value, walk, 0);
+  if (data === OMIT_COMPONENT_VALUE || Array.isArray(data) || !isRecord(data)) {
+    failComponentData("root");
+  }
+  return data;
+}
+
+/**
+ * Build the component type (natural key suffix) for a session.
+ *
+ * WHY the session id is included:
+ * - The runtime stores/looks up components by the natural key (entityId, type).
+ * - Keying only by room (`form_session:{roomId}`) let a single (entity, room)
+ *   hold just one session component, so stashing a session and then starting a
+ *   new one in the same room silently overwrote and destroyed the stash.
+ * - Including the session id gives every session its own natural key, so a
+ *   stashed session survives new activity in the same room.
+ */
+const sessionComponentType = (roomId: UUID, sessionId: string): string =>
+  `${FORM_SESSION_COMPONENT}:${roomId}:${sessionId}`;
+
+/**
+ * Build the pre-upgrade component type that keyed a session by room only.
+ *
+ * WHY this still matters:
+ * - Deployments that ran the old code persisted in-flight sessions under
+ *   `form_session:{roomId}` (one row per room, no session id).
+ * - After upgrading, saveSession/deleteSession write the new session-id key,
+ *   which is a different natural key, so getComponent misses the legacy row.
+ * - Left untouched, that stale `active` row keeps satisfying getActiveSession
+ *   and blocks startSession. retireLegacySessionComponent removes it once the
+ *   owning session has been re-persisted (or deleted) under the new key.
+ */
+const legacySessionComponentType = (roomId: UUID): string =>
+  `${FORM_SESSION_COMPONENT}:${roomId}`;
+
+/**
+ * Delete the pre-upgrade room-only component for a session, if present.
+ *
+ * Only removes the legacy row when it actually holds this session's data, so a
+ * room-only row belonging to a different session id is never touched.
+ */
+const retireLegacySessionComponent = async (
+  runtime: IAgentRuntime,
+  session: FormSession,
+): Promise<void> => {
+  const legacy = await runtime.getComponent(
+    session.entityId,
+    legacySessionComponentType(session.roomId),
+  );
+  if (
+    legacy?.data &&
+    isFormSession(legacy.data) &&
+    legacy.data.id === session.id
+  ) {
+    await runtime.deleteComponent(legacy.id);
+  }
+};
 
 const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = [
   "active",
@@ -182,23 +483,27 @@ export async function getActiveSession(
   entityId: UUID,
   roomId: UUID,
 ): Promise<FormSession | null> {
-  // Component type includes roomId for room-level scoping
-  const component = await runtime.getComponent(
-    entityId,
-    `${FORM_SESSION_COMPONENT}:${roomId}`,
-  );
+  // Session components are now keyed by (roomId, sessionId), so we scan the
+  // entity's session components and match on the session's own roomId rather
+  // than reading a single room-keyed component. startSession enforces at most
+  // one active/ready session per room, so the first match is the active one.
+  const components = await runtime.getComponents(entityId);
 
-  if (!component?.data || !isFormSession(component.data)) return null;
+  for (const component of components) {
+    if (!component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) continue;
+    if (!component.data || !isFormSession(component.data)) continue;
 
-  const session = component.data;
+    const session = component.data;
 
-  // Only return if active (not stashed, submitted, cancelled, or expired)
-  // WHY: Other statuses require explicit action to restore/continue
-  if (
-    isLiveSession(session) &&
-    (session.status === "active" || session.status === "ready")
-  ) {
-    return session;
+    // Only return if active (not stashed, submitted, cancelled, or expired)
+    // WHY: Other statuses require explicit action to restore/continue
+    if (
+      session.roomId === roomId &&
+      isLiveSession(session) &&
+      (session.status === "active" || session.status === "ready")
+    ) {
+      return session;
+    }
   }
 
   return null;
@@ -320,28 +625,49 @@ export async function getSessionById(
  *
  * @param runtime - Agent runtime for database access
  * @param session - Session to save
+ * @param refreshUpdatedAt - Refresh the timestamp on the inert staged snapshot
  */
 export async function saveSession(
   runtime: IAgentRuntime,
   session: FormSession,
+  refreshUpdatedAt = false,
 ): Promise<void> {
-  const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
-  const existing = await runtime.getComponent(session.entityId, componentType);
-  const context = await resolveComponentContext(runtime, session.roomId);
+  const stagedSession = toComponentData(session);
+  if (!isFormSessionIdentity(stagedSession)) {
+    failComponentData("session-shape");
+  }
+  if (refreshUpdatedAt) stagedSession.updatedAt = Date.now();
+  const componentData = toComponentData(stagedSession);
+  if (!isFormSession(componentData)) {
+    failComponentData("session-shape");
+  }
+  const persistedSession = componentData;
+  const componentType = sessionComponentType(
+    persistedSession.roomId,
+    persistedSession.id,
+  );
+  const existing = await runtime.getComponent(
+    persistedSession.entityId,
+    componentType,
+  );
+  const context = await resolveComponentContext(
+    runtime,
+    persistedSession.roomId,
+  );
   const resolvedWorldId = existing?.worldId ?? context.worldId;
 
   const component: Component = {
     id: existing?.id || (uuidv4() as UUID),
-    entityId: session.entityId,
+    entityId: persistedSession.entityId,
     agentId: runtime.agentId,
-    roomId: session.roomId,
+    roomId: persistedSession.roomId,
     // WHY preserve worldId: Avoids breaking existing component relationships
     worldId: resolvedWorldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
     // Store session as component data
-    data: JSON.parse(JSON.stringify(session)) as Record<string, JsonValue>,
+    data: componentData,
   };
 
   if (existing) {
@@ -349,6 +675,10 @@ export async function saveSession(
   } else {
     await runtime.createComponent(component);
   }
+
+  // Retire any pre-upgrade room-only component for this session so the stale
+  // `active` row cannot shadow the freshly written session-id key.
+  await retireLegacySessionComponent(runtime, persistedSession);
 }
 
 /**
@@ -366,12 +696,16 @@ export async function deleteSession(
   runtime: IAgentRuntime,
   session: FormSession,
 ): Promise<void> {
-  const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
+  const componentType = sessionComponentType(session.roomId, session.id);
   const existing = await runtime.getComponent(session.entityId, componentType);
 
   if (existing) {
     await runtime.deleteComponent(existing.id);
   }
+
+  // Also remove a pre-upgrade room-only component so deleting a session leaves
+  // no ghost row behind under the legacy key.
+  await retireLegacySessionComponent(runtime, session);
 }
 
 // ============================================================================
@@ -395,21 +729,26 @@ export async function saveSubmission(
   runtime: IAgentRuntime,
   submission: FormSubmission,
 ): Promise<void> {
+  const componentData = toComponentData(submission);
+  if (!isFormSubmission(componentData)) {
+    failComponentData("submission-shape");
+  }
+  const persistedSubmission = componentData;
   // Use a unique component type per submission
   // WHY: Allows multiple submissions per form
-  const componentType = `${FORM_SUBMISSION_COMPONENT}:${submission.formId}:${submission.id}`;
+  const componentType = `${FORM_SUBMISSION_COMPONENT}:${persistedSubmission.formId}:${persistedSubmission.id}`;
   const context = await resolveComponentContext(runtime);
 
   const component: Component = {
     id: uuidv4() as UUID,
-    entityId: submission.entityId,
+    entityId: persistedSubmission.entityId,
     agentId: runtime.agentId,
     roomId: context.roomId,
     worldId: context.worldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
-    createdAt: submission.submittedAt,
-    data: JSON.parse(JSON.stringify(submission)) as Record<string, JsonValue>,
+    createdAt: persistedSubmission.submittedAt,
+    data: componentData,
   };
 
   await runtime.createComponent(component);
@@ -533,16 +872,18 @@ export async function saveAutofillData(
   formId: string,
   values: Record<string, JsonValue>,
 ): Promise<void> {
+  const componentData = toComponentData({
+    formId,
+    values,
+    updatedAt: Date.now(),
+  });
+  if (!isFormAutofillData(componentData)) {
+    failComponentData("autofill-shape");
+  }
   const componentType = `${FORM_AUTOFILL_COMPONENT}:${formId}`;
   const existing = await runtime.getComponent(entityId, componentType);
   const context = await resolveComponentContext(runtime);
   const resolvedWorldId = existing?.worldId ?? context.worldId;
-
-  const data: FormAutofillData = {
-    formId,
-    values,
-    updatedAt: Date.now(),
-  };
 
   const component: Component = {
     id: existing?.id || (uuidv4() as UUID),
@@ -553,7 +894,7 @@ export async function saveAutofillData(
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
-    data: JSON.parse(JSON.stringify(data)) as Record<string, JsonValue>,
+    data: componentData,
   };
 
   if (existing) {

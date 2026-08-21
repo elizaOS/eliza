@@ -33,6 +33,8 @@ import {
   Service,
   type TargetInfo,
   type ThreadHandle,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
   type World,
   type WorldPayload,
@@ -57,6 +59,7 @@ import {
   registerTelegramCommandHandlers,
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
 import { MessageManager } from "./messageManager";
 import {
@@ -283,6 +286,14 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
 }
 
 /**
+ * Caps a forum-topic name at Telegram's 128-code-unit limit without splitting a
+ * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
+ */
+export function truncateForumTopicName(name?: string): string {
+  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
+}
+
+/**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
  * This service handles all Telegram-specific functionality including:
  * - Initializing and managing the Telegram bot
@@ -505,7 +516,23 @@ export class TelegramService extends Service {
       (target as AccountScopedTargetInfo | null | undefined)?.accountId ??
       fallback?.accountId;
     if (direct) {
-      return normalizeTelegramAccountId(direct);
+      const normalized = normalizeTelegramAccountId(direct);
+      // Only enforce this in real multi-account mode. In legacy single-bot
+      // mode accountStates is empty and getAccountState() always falls back
+      // to the one configured bot regardless of accountId -- there is no
+      // second account an unrecognized id could be confused with, so an
+      // explicit id that isn't the exact defaultAccountId string is not an
+      // error there (existing single-bot callers may pass any identifier).
+      if (
+        this.accountStates instanceof Map &&
+        this.accountStates.size > 0 &&
+        this.getAccountState(normalized) === null
+      ) {
+        throw new Error(
+          `Telegram account ${normalized} is not configured or active`,
+        );
+      }
+      return normalized;
     }
     const roomId = target?.roomId ?? fallback?.roomId;
     if (roomId && typeof runtime.getRoom === "function") {
@@ -1076,8 +1103,10 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Authorization middleware - checks if chat is allowed to interact with the bot
-   * based on the TELEGRAM_ALLOWED_CHATS configuration.
+   * Authorization middleware - checks if chat is allowed to interact with the
+   * bot based on the TELEGRAM_ALLOWED_CHATS configuration and, for private
+   * chats without an allowlist, the TELEGRAM_DM_POLICY gate. A denied sender
+   * who was issued a pairing code receives it as a one-time reply.
    *
    * @param {Context} ctx - The context of the incoming update
    * @param {Function} next - The function to call to proceed to the next middleware
@@ -1089,7 +1118,8 @@ export class TelegramService extends Service {
     next: MiddlewareNext,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    if (!(await this.isGroupAuthorized(ctx, accountId))) {
+    const access = await this.checkChatAccess(ctx, accountId);
+    if (!access.allowed) {
       // Skip further processing if chat is not authorized
       logger.debug(
         {
@@ -1100,6 +1130,25 @@ export class TelegramService extends Service {
         },
         "Chat not authorized, skipping",
       );
+      if (access.pairingReplyMessage) {
+        try {
+          await ctx.reply(access.pairingReplyMessage);
+        } catch (error) {
+          // error-policy:J1 The middleware is the transport boundary: a failed
+          // pairing reply is logged with context and the update stays blocked;
+          // the sender can retry on their next message.
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+              chatId: ctx.chat?.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to deliver pairing reply",
+          );
+        }
+      }
       return;
     }
     await next();
@@ -1263,61 +1312,101 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
+   * Checks if a chat is authorized to interact with the bot.
+   *
+   * A configured allowlist (per-account `allowedChats`, else the
+   * TELEGRAM_ALLOWED_CHATS JSON array) is authoritative for every chat type.
+   * With no allowlist configured, non-private chats stay open — a bot only
+   * sees groups it was invited to — while private DMs fall to the
+   * TELEGRAM_DM_POLICY gate, which fails closed to the core pairing handshake
+   * by default so an unconfigured bot is never default-open to strangers.
+   *
    * @param {Context} ctx - The context of the incoming update.
-   * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
+   * @returns {Promise<{allowed: boolean, pairingReplyMessage?: string}>} The
+   *   access decision, plus the pairing-code reply to deliver when the DM
+   *   policy issued one.
    */
-  private async isGroupAuthorized(
+  private async checkChatAccess(
     ctx: Context,
     accountId = this.defaultAccountId,
-  ): Promise<boolean> {
+  ): Promise<{ allowed: boolean; pairingReplyMessage?: string }> {
     const chatId = ctx.chat?.id.toString();
     if (!chatId) {
-      return false;
+      return { allowed: false };
     }
 
     const accountAllowedChats =
       this.getAccountState(accountId)?.account.config.allowedChats;
     if (accountAllowedChats?.length) {
-      return accountAllowedChats.includes(chatId);
+      return { allowed: accountAllowedChats.includes(chatId) };
     }
 
     const allowedChats = this.runtime.getSetting("TELEGRAM_ALLOWED_CHATS");
-    if (!allowedChats) {
-      return true;
-    }
-    if (typeof allowedChats !== "string") {
-      logger.warn(
-        { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
-        "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
-      );
-      return false;
-    }
-
-    try {
-      const parsed = JSON.parse(allowedChats);
-      if (!Array.isArray(parsed)) {
-        // A bare JSON string (e.g. "-1001234567") would make `.includes` a
-        // substring match and silently over-authorize — fail closed instead.
+    if (allowedChats) {
+      if (typeof allowedChats !== "string") {
         logger.warn(
           { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
           "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
         );
-        return false;
+        return { allowed: false };
       }
-      return parsed.map((entry) => String(entry)).includes(chatId);
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
-          accountId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error parsing TELEGRAM_ALLOWED_CHATS",
-      );
-      return false;
+
+      try {
+        const parsed = JSON.parse(allowedChats);
+        if (!Array.isArray(parsed)) {
+          // A bare JSON string (e.g. "-1001234567") would make `.includes` a
+          // substring match and silently over-authorize — fail closed instead.
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+            },
+            "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+          );
+          return { allowed: false };
+        }
+        return {
+          allowed: parsed.map((entry) => String(entry)).includes(chatId),
+        };
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error parsing TELEGRAM_ALLOWED_CHATS",
+        );
+        return { allowed: false };
+      }
     }
+
+    if (ctx.chat?.type !== "private") {
+      return { allowed: true };
+    }
+
+    const senderId = ctx.from?.id?.toString();
+    if (!senderId) {
+      // A private chat without a stable sender id cannot complete the pairing
+      // handshake — fail closed rather than skipping the DM policy.
+      return { allowed: false };
+    }
+    const policy = resolveTelegramDmPolicy(
+      this.runtime.getSetting("TELEGRAM_DM_POLICY"),
+    );
+    const access = await checkTelegramDmAccess(this.runtime, {
+      policy,
+      senderId,
+      username: ctx.from?.username,
+    });
+    return {
+      allowed: access.allowed,
+      ...(access.replyMessage
+        ? { pairingReplyMessage: access.replyMessage }
+        : {}),
+    };
   }
 
   /**
@@ -2281,7 +2370,7 @@ export class TelegramService extends Service {
     // create the new topic on the parent chat (the pattern preserves negative ids).
     const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
     const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
-    const name = (params.name ?? "thread").slice(0, 128);
+    const name = truncateForumTopicName(params.name ?? "thread");
     const topic = await bot.telegram.createForumTopic(parentChatId, name);
     return {
       threadId: String(topic.message_thread_id),

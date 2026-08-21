@@ -1,3 +1,7 @@
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -34,7 +38,22 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
 	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+	// Quoted credential keys with arbitrary naming. The ENV-style row above
+	// requires the key's word boundary to be followed immediately by `=`/`:`,
+	// which a quoted key never is — the closing quote intervenes — so
+	// `{"api_key": "…"}` matched nothing at all. Serialized provider error
+	// bodies are exactly this shape, and they are the payloads most likely to
+	// be logged verbatim, so the blind spot pointed at the highest-risk input.
+	// The name vocabulary is open-ended: an optional separator-terminated
+	// prefix followed by a credential word, which keeps ordinary words that
+	// merely end in one ("monkey", "turkey") from matching because they have no
+	// separator before the suffix. Both quote styles are accepted so JS/Python
+	// reprs are covered alongside JSON. The prefix repeat is capped at 8
+	// segments (real key names never nest that deep) rather than left
+	// unbounded, keeping worst-case matching linear in input length instead of
+	// letting the engine explore every possible split of a long benign run.
+	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// Authorization credentials are either one token68 value or a complete
@@ -85,6 +104,13 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
 	String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
 	String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+	// Google OAuth credentials. Refresh tokens (`1//0…`) and access tokens
+	// (`ya29.…`) carry no key name when echoed by a token-endpoint error body,
+	// and neither shape survives a `\b`-anchored alphanumeric pattern: `1//`
+	// opens with a digit followed by slashes. Case-sensitive `ya29.` avoids
+	// folding unrelated prose.
+	String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
+	String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
 ];
 
 /**
@@ -167,6 +193,14 @@ export function isSensitiveKeyName(key: string): boolean {
 	) {
 		return true;
 	}
+	// Separator-free concatenations (masterKey, MASTERKEY, encryption-key, …)
+	// have no word boundary for the substring rules above; a closed suffix set
+	// on the normalized name catches them without opening `key$` to lookalikes
+	// (monkey/turnkey/KEYBOARD stay non-sensitive). Same closed set as the leaf
+	// logger's isSensitiveLogKey and the agent's isSensitiveConfigKey.
+	if (/(?:master|signing|ssh|encryption)key$/i.test(normalized)) {
+		return true;
+	}
 	return false;
 }
 
@@ -227,12 +261,23 @@ function resolvePatterns(value?: string[]): readonly RegExp[] {
 	return value.map(parsePattern).filter((re): re is RegExp => Boolean(re));
 }
 
-function maskToken(token: string): string {
+function maskToken(tokenInput: string): string {
+	const token = toWellFormedUnicode(tokenInput);
 	if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
 		return "***";
 	}
-	const start = token.slice(0, DEFAULT_REDACT_KEEP_START);
-	const end = token.slice(-DEFAULT_REDACT_KEEP_END);
+	const start = truncateWellFormed(token, DEFAULT_REDACT_KEEP_START);
+	let tailStart = token.length - DEFAULT_REDACT_KEEP_END;
+	if (
+		tailStart > 0 &&
+		token.charCodeAt(tailStart - 1) >= 0xd800 &&
+		token.charCodeAt(tailStart - 1) <= 0xdbff &&
+		token.charCodeAt(tailStart) >= 0xdc00 &&
+		token.charCodeAt(tailStart) <= 0xdfff
+	) {
+		tailStart += 1;
+	}
+	const end = token.slice(tailStart);
 	return `${start}…${end}`;
 }
 
@@ -276,7 +321,8 @@ function redactMatch(match: string, groups: string[]): string {
 	// the scheme/prefix, so splice the known tail position directly.
 	const tailIndex = match.length - token.length;
 	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
-		return `${match.slice(0, tailIndex)}${masked}`;
+		const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex);
+		return `${head}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a
@@ -529,6 +575,20 @@ const MAX_LOG_REDACT_DEPTH = 8;
  * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
  * or not the caller wrapped the context first.
  *
+ * Function values never survive the walk. They are executable serializer hooks
+ * (toJSON/valueOf/toString), and a copied hook re-runs when a JSON sink
+ * stringifies the clone, able to reconstitute the very secrets the walk just
+ * masked. A bare function argument collapses to null and a function-valued
+ * property is dropped outright — matching JSON.stringify, which emits null for
+ * array functions and omits object function props. Symbol-keyed hooks such as
+ * util.inspect.custom never reach the clone because the walk copies string keys
+ * only.
+ *
+ * Buffer/TypedArray/DataView/ArrayBuffer values collapse to a size-only marker:
+ * the indexed walk would otherwise emit the raw bytes as {"0":115,…} under an
+ * innocent-looking key, and JSON.stringify would emit them as
+ * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
+ *
  * Depth is bounded and cycles are broken (returning the mask) so a pathological
  * log payload cannot hang or blow the stack — a redactor must never be the thing
  * that takes the process down.
@@ -541,6 +601,9 @@ function redactLogArg(
 	if (typeof value === "string") {
 		return redactSensitiveText(value);
 	}
+	if (typeof value === "function") {
+		return null;
+	}
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
@@ -549,7 +612,15 @@ function redactLogArg(
 	}
 	seen.add(value);
 	if (Array.isArray(value)) {
-		return value.map((item) => redactLogArg(item, seen, depth + 1));
+		// Do not call value.map: an Array subclass, custom Symbol.species, or own
+		// map property can return caller-owned data carrying a serializer hook.
+		// Index into the input but construct the output with the intrinsic Array
+		// constructor so no caller-controlled method or result prototype survives.
+		const result: unknown[] = [];
+		for (let index = 0; index < value.length; index += 1) {
+			result.push(redactLogArg(value[index], seen, depth + 1));
+		}
+		return result;
 	}
 	if (value instanceof Error) {
 		// Preserve the Error shape (name/stack) callers rely on, but scrub the
@@ -559,10 +630,27 @@ function redactLogArg(
 		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
 		return redacted;
 	}
-	const result: Record<string, unknown> = {};
+	// Binary payloads carry raw bytes that JSON serializes verbatim
+	// ({"type":"Buffer","data":[...]}); walked as indexed objects they emit the
+	// same bytes as {"0":115,...} under an innocent-looking key, so mask with a
+	// size-only marker (same marker shape as the leaf logger's).
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
+	}
+	// A null-prototype target prevents a __proto__ input key from changing the
+	// clone's prototype and reintroducing inherited serializer behavior.
+	const result = Object.create(null) as Record<string, unknown>;
 	for (const [key, entry] of Object.entries(value)) {
 		if (isSensitiveKeyName(key)) {
 			result[key] = REDACTED_MASK;
+			continue;
+		}
+		// Function-valued properties are executable serializer hooks
+		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
+		// JSON-stringifies the clone and can reconstitute the very secrets the
+		// walk just masked. JSON.stringify omits function props anyway, so
+		// dropping the key matches serialization semantics.
+		if (typeof entry === "function") {
 			continue;
 		}
 		result[key] = redactLogArg(entry, seen, depth + 1);

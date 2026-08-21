@@ -39,6 +39,8 @@ import {
   isTrajectoryRecordingEnabled,
   ModelType,
   type RecordedStage,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
@@ -299,7 +301,10 @@ const EMPTY_EVIDENCE_SUMMARY =
 const MALFORMED_RESPONSE_SUMMARY =
   "Verifier returned a response that could not be parsed; defaulting to fail.";
 
-const MAX_EVIDENCE_CHARS = 12_000;
+// Sized to admit the full evidence bundle (24KB cap) — trimming the middle
+// of it was cutting FS-VERIFIED FILE CONTENTS exactly where content criteria
+// were judged (velvet-moth live park).
+const MAX_EVIDENCE_CHARS = 28_000;
 
 function trimEvidence(evidence: string): string {
   if (evidence.length <= MAX_EVIDENCE_CHARS) return evidence;
@@ -419,7 +424,7 @@ export function parseJudgeResponse(
   const passed = passedRaw === true && missing.length === 0;
   const summary =
     typeof summaryRaw === "string" && summaryRaw.trim().length > 0
-      ? summaryRaw.trim().slice(0, 280)
+      ? truncateWellFormed(toWellFormedUnicode(summaryRaw.trim()), 280)
       : passed
         ? "All acceptance criteria confirmed by verifier."
         : "Verifier did not confirm every acceptance criterion.";
@@ -496,7 +501,7 @@ export async function verifyGoalCompletion(
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
-      summary: `Verifier model call failed: ${detail.slice(0, 200)}`,
+      summary: `Verifier model call failed: ${truncateWellFormed(toWellFormedUnicode(detail), 200)}`,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
     };

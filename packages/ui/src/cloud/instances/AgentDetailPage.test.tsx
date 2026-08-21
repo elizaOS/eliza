@@ -1,4 +1,4 @@
-/** Verifies agent detail rendering rejects malformed API timestamps. */
+/** Verifies agent detail rendering rejects malformed API timestamps and avoids duplicate dates. */
 // @vitest-environment jsdom
 
 import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
@@ -25,7 +25,7 @@ vi.mock("../lib/use-document-title", () => ({
 }));
 
 const agentState: {
-  data: AgentDetailDto;
+  data: AgentDetailDto | undefined;
   isLoading: boolean;
   error: Error | null;
 } = {
@@ -39,34 +39,15 @@ vi.mock("./lib/data/eliza-agents", () => ({
 }));
 
 vi.mock("./components/agent-actions", () => ({
-  ElizaAgentActions: () => null,
-}));
-vi.mock("./components/docker-logs-viewer", () => ({
-  DockerLogsViewer: () => null,
-}));
-vi.mock("./components/eliza-agent-backups-panel", () => ({
-  ElizaAgentBackupsPanel: () => null,
-}));
-vi.mock("./components/eliza-agent-logs-viewer", () => ({
-  ElizaAgentLogsViewer: () => null,
-}));
-vi.mock("./components/eliza-agent-tabs", () => ({
-  ElizaAgentTabs: () => null,
+  ElizaAgentActions: () => <div>Lifecycle actions</div>,
 }));
 vi.mock("./components/eliza-connect-button", () => ({
   ElizaConnectButton: () => null,
 }));
 
 import { PageHeaderProvider } from "../../cloud-ui/components/layout";
-import AgentDetailPage, {
-  formatDate,
-  formatRelativeShort,
-} from "./AgentDetailPage";
-
-const t = vi.fn(
-  (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
-) as never;
+import { ApiError } from "../lib/api-client";
+import AgentDetailPage from "./AgentDetailPage";
 
 const baseAgent: AgentDetailDto = {
   id: "test-agent-1",
@@ -93,7 +74,7 @@ const baseAgent: AgentDetailDto = {
   adminDetails: null,
 };
 
-function renderPage(agent: AgentDetailDto) {
+function renderPage(agent: AgentDetailDto | undefined) {
   agentState.data = agent;
   return render(
     <MemoryRouter initialEntries={["/dashboard/agents/test-agent-1"]}>
@@ -106,70 +87,108 @@ function renderPage(agent: AgentDetailDto) {
   );
 }
 
-describe("AgentDetailPage date formatting", () => {
+describe("AgentDetailPage product detail", () => {
   afterEach(() => {
     cleanup();
-    vi.useRealTimers();
+    agentState.data = baseAgent;
+    agentState.isLoading = false;
+    agentState.error = null;
   });
 
-  it("renders an unavailable fallback for malformed non-null dates", async () => {
-    expect(formatDate("not-a-date")).toBe("—");
-    expect(formatRelativeShort("not-a-date", t)).toBe("Never");
-  });
+  it("keeps a deleted agent visible as a distinct recoverable state", () => {
+    agentState.error = new ApiError(404, "NOT_FOUND", "Agent not found");
+    renderPage(undefined);
 
-  it("preserves valid and null date behavior", () => {
-    expect(formatDate(null)).toBe("—");
-    expect(formatRelativeShort(null, t)).toBe("Never");
-    expect(formatRelativeShort(new Date().toISOString(), t)).toBe("Just now");
-  });
-
-  it("renders intentional fallbacks for malformed non-null timestamps", () => {
-    const { container } = renderPage({
-      ...baseAgent,
-      createdAt: "not-a-date",
-      lastHeartbeatAt: "not-a-date",
-    });
-
-    expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(3);
-    expect(screen.getByText("Never")).toBeTruthy();
-  });
-
-  it("renders intentional fallbacks outside the ECMAScript TimeClip range", () => {
-    const outsideTimeClipRange = "+275760-09-13T00:00:00.001Z";
-    expect(Number.isNaN(new Date(outsideTimeClipRange).getTime())).toBe(true);
-
-    const { container } = renderPage({
-      ...baseAgent,
-      createdAt: outsideTimeClipRange,
-      lastHeartbeatAt: outsideTimeClipRange,
-    });
-
-    expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(3);
-    expect(screen.getByText("Never")).toBeTruthy();
-  });
-
-  it("preserves ordinary rendered date, time, and relative-time values", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-12T12:00:00.000Z"));
-    const createdAt = "2026-08-11T09:15:00.000Z";
-    const lastHeartbeatAt = "2026-08-12T11:30:00.000Z";
-
-    renderPage({ ...baseAgent, createdAt, lastHeartbeatAt });
-
-    expect(screen.getByText(formatDate(createdAt))).toBeTruthy();
     expect(
-      screen.getByText(
-        new Date(createdAt).toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      ),
+      screen.getByRole("heading", { name: "Agent no longer available" }),
     ).toBeTruthy();
-    expect(screen.getByText("30m ago")).toBeTruthy();
-    expect(screen.getByText(formatDate(lastHeartbeatAt))).toBeTruthy();
-    expect(screen.queryByText("—")).toBeNull();
-    expect(screen.queryByText("Never")).toBeNull();
+    expect(screen.getByText(/deleted or is no longer available/i)).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Return to Agents" })
+        .getAttribute("href"),
+    ).toBe("/cloud/agents");
+  });
+
+  it("does not disguise a successful response with missing data as deletion", () => {
+    renderPage(undefined);
+
+    expect(
+      screen.getByText("The agent response did not include agent details."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Agent no longer available")).toBeNull();
+  });
+
+  it("presents shared agents without infrastructure or admin panels", () => {
+    const { container } = renderPage({
+      ...baseAgent,
+      adminDetails: {
+        isDockerBacked: true,
+        nodeId: "node-1",
+        containerName: "container-1",
+        dockerImage: "private-image",
+        headscaleIp: "100.64.0.1",
+        bridgePort: 31337,
+        webUiPort: 5173,
+        webUiUrl: "https://private-web-ui.example",
+        sshCommand: "ssh private-host",
+      },
+      bridgeUrl: "https://private-bridge.example",
+    });
+
+    expect(screen.getByRole("heading", { name: "Shared Agent" })).toBeTruthy();
+    expect(screen.getAllByText("Shared Agent")).toHaveLength(1);
+    expect(screen.getAllByText("running")).toHaveLength(1);
+    expect(screen.getByText("Free")).toBeTruthy();
+    expect(screen.getByText("Lifecycle actions")).toBeTruthy();
+    for (const rejected of [
+      "Sandbox",
+      "Managed runtime",
+      "Infrastructure",
+      "SSH Access",
+      "Backups & History",
+      "Agent Logs",
+      "Docker Logs",
+      "Save Snapshot",
+      "$0.01/hr",
+      "Wallet",
+      "Transactions",
+      "Policies",
+      "Database",
+      "Connected",
+      "Created",
+      "Last Heartbeat",
+      "test-agent-1",
+      "Timestamp Test Agent",
+      "private-image",
+      "private-host",
+    ]) {
+      expect(container.textContent).not.toContain(rejected);
+    }
+  });
+
+  it("maps every non-shared hosted tier to Dedicated Agent", () => {
+    renderPage({ ...baseAgent, executionTier: "dedicated-always" });
+
+    expect(screen.getByText("Dedicated Agent")).toBeTruthy();
+    expect(screen.getByText("$0.01/hr")).toBeTruthy();
+    expect(screen.queryByText("Shared Agent")).toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("keeps backing-system failures out of the product error state", () => {
+    renderPage({
+      ...baseAgent,
+      status: "error",
+      errorCount: 2,
+      errorMessage: "Container runtime image unavailable",
+    });
+
+    expect(screen.getByText("This agent needs attention")).toBeTruthy();
+    expect(screen.getByText(/contact support/i)).toBeTruthy();
+    expect(
+      screen.queryByText("Container runtime image unavailable"),
+    ).toBeNull();
+    expect(document.body.textContent).not.toMatch(/container|runtime/i);
   });
 });

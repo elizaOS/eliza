@@ -22,6 +22,7 @@ import { useAppSelector } from "../../state/app-store";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -401,6 +402,22 @@ export function AddAccountDialog({
     if (!open || !activeProviderId) return;
     const pending = readSubscriptionOAuth(activeProviderId);
     if (!pending || restoredSessionRef.current === pending.sessionId) return;
+    if (pending.oauthUrl && !isSafeNavigationUrl(pending.oauthUrl)) {
+      clearSubscriptionOAuth(activeProviderId);
+      void client
+        .cancelAccountOAuth(activeProviderId, { sessionId: pending.sessionId })
+        .catch(() => {
+          // error-policy:J6 The server independently expires an abandoned OAuth flow.
+        });
+      setErrorMessage(
+        t("accounts.add.oauth.invalidAuthUrl", {
+          defaultValue:
+            "The sign-in link returned by the server is not a valid URL.",
+        }),
+      );
+      setStep("error");
+      return;
+    }
     restoredSessionRef.current = pending.sessionId;
     sessionIdRef.current = pending.sessionId;
     setSessionId(pending.sessionId);
@@ -410,7 +427,7 @@ export function AddAccountDialog({
       pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
     );
     subscribeToFlow(pending.sessionId);
-  }, [open, activeProviderId, subscribeToFlow]);
+  }, [open, activeProviderId, subscribeToFlow, t]);
 
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
@@ -442,6 +459,33 @@ export function AddAccountDialog({
             ? { replaceAccountId: credentialRepairAccount.id }
             : {}),
         });
+        // Validate before persisting or subscribing. All modes either navigate
+        // this wire value or render it as a clickable link, and a rejected
+        // flow must not survive in local storage or keep polling in the
+        // background.
+        if (!isSafeNavigationUrl(flow.authUrl)) {
+          try {
+            win?.close();
+          } catch {
+            // error-policy:J6 Best-effort teardown of the pre-opened popup.
+          }
+          try {
+            await client.cancelAccountOAuth(activeProviderId, {
+              sessionId: flow.sessionId,
+            });
+          } catch {
+            // error-policy:J6 The server independently expires an abandoned OAuth flow.
+          }
+          clearSubscriptionOAuth(activeProviderId);
+          setErrorMessage(
+            t("accounts.add.oauth.invalidAuthUrl", {
+              defaultValue:
+                "The sign-in link returned by the server is not a valid URL.",
+            }),
+          );
+          setStep("error");
+          return;
+        }
         sessionIdRef.current = flow.sessionId;
         restoredSessionRef.current = flow.sessionId;
         setSessionId(flow.sessionId);
@@ -464,7 +508,18 @@ export function AddAccountDialog({
         }
         subscribeToFlow(flow.sessionId);
         if (opensWindow) {
-          navigatePreOpenedWindow(win, flow.authUrl);
+          // The authUrl is a wire value navigated into a same-origin
+          // pre-opened popup — a rejected target surfaces the dialog's
+          // visible error state instead of navigating.
+          if (!navigatePreOpenedWindow(win, flow.authUrl)) {
+            setErrorMessage(
+              t("accounts.add.oauth.invalidAuthUrl", {
+                defaultValue:
+                  "The sign-in link returned by the server is not a valid URL.",
+              }),
+            );
+            setStep("error");
+          }
         }
       } catch (err) {
         // error-policy:J4 Enrollment failures remain visible and retryable in the dialog.

@@ -15,6 +15,7 @@ type WorkflowRecord = {
   id: string;
   name?: string;
   source?: string;
+  steps?: Array<{ id: string; label: string }>;
 };
 
 type WorkflowExecution = {
@@ -27,6 +28,7 @@ type WorkflowExecution = {
 
 type TriggerRecord = {
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   id: string;
   kind?: string;
   runCount?: number;
@@ -70,18 +72,43 @@ test.describe("real local workflow journey", () => {
   test("creates, triggers, runs, inspects, and reloads a Smithers workflow", async ({
     page,
   }) => {
+    const suffix = Date.now().toString(36);
+    const sourceName = `Native event source ${suffix}`;
+    const targetName = `Real browser digest ${suffix}`;
+
     await seedAppStorage(page);
     await openAppPath(page, "/automations");
     await expect(page.getByTestId("automations-shell")).toBeVisible({
       timeout: 60_000,
     });
 
+    const createSourceResponse = await page.request.post(
+      "/api/workflow/workflows",
+      {
+        data: {
+          name: sourceName,
+          source: SOURCE,
+          language: "tsx",
+          steps: [{ id: "run", label: "Run", kind: "task" }],
+        },
+      },
+    );
+    const createSourceText = await createSourceResponse.text();
+    expect(
+      createSourceResponse.status(),
+      `source creation failed: ${createSourceText}`,
+    ).toBe(201);
+    const sourceWorkflow = JSON.parse(createSourceText) as WorkflowRecord;
+    expect(sourceWorkflow.steps).toContainEqual(
+      expect.objectContaining({ id: "run" }),
+    );
+
     await page.getByRole("button", { name: "New automation" }).click();
     await page.getByRole("button", { name: "New workflow" }).click();
     await expect(page.getByTestId("workflow-studio")).toBeVisible();
     await expect(page.getByTestId("smithers-canvas")).toBeVisible();
 
-    await page.getByLabel("Workflow name").fill("Real browser digest");
+    await page.getByLabel("Workflow name").fill(targetName);
     await page.getByRole("button", { name: "Source" }).click();
     await page.getByTestId("smithers-source-editor").fill(SOURCE);
 
@@ -95,15 +122,40 @@ test.describe("real local workflow journey", () => {
     expect(createResponse.status()).toBe(201);
     const workflow = (await createResponse.json()) as WorkflowRecord;
     expect(workflow).toMatchObject({
-      name: "Real browser digest",
+      name: targetName,
       active: false,
     });
     expect(workflow.id).toBeTruthy();
     expect(workflow.source).toContain('from "smthrs/create"');
     expect(workflow.source).toContain("retries={2}");
 
+    const addWidgetResponse = await page.request.put(
+      `/api/workflow/workflows/${workflow.id}`,
+      {
+        data: {
+          ...workflow,
+          widgets: [
+            {
+              id: "message",
+              title: "Message",
+              surface: "both",
+              component: "markdown",
+              dataPath: "0.message",
+            },
+          ],
+        },
+      },
+    );
+    expect(
+      addWidgetResponse.ok(),
+      `widget manifest update failed: ${await addWidgetResponse.text()}`,
+    ).toBe(true);
+
     await page.getByRole("button", { name: "Add workflow trigger" }).click();
     await page.getByRole("button", { name: "Event" }).click();
+    await page.getByLabel("Event source").selectOption("step");
+    await page.getByLabel("Source workflow").selectOption(sourceWorkflow.id);
+    await page.getByLabel("Source step").selectOption("run");
     const createTriggerResponsePromise = page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
@@ -122,7 +174,14 @@ test.describe("real local workflow journey", () => {
       (candidate) => candidate.workflowId === workflow.id,
     );
     expect(trigger).toMatchObject({
-      eventKind: "MESSAGE_RECEIVED",
+      eventKind: "workflow_run_event",
+      eventFilter: {
+        event: {
+          type: "NodeFinished",
+          workflowId: sourceWorkflow.id,
+          nodeId: "run",
+        },
+      },
       kind: "workflow",
       runCount: 0,
       workflowId: workflow.id,
@@ -138,14 +197,41 @@ test.describe("real local workflow journey", () => {
       })
       .toBe(true);
 
-    const triggerResponse = await page.request.post(
-      `/api/triggers/${trigger?.id}/execute`,
+    const activateSourceResponse = await page.request.post(
+      `/api/workflow/workflows/${sourceWorkflow.id}/activate`,
     );
-    const triggerResponseText = await triggerResponse.text();
+    const activateSourceText = await activateSourceResponse.text();
     expect(
-      triggerResponse.ok(),
-      `trigger execution failed: ${triggerResponse.status()} ${triggerResponseText}`,
+      activateSourceResponse.ok(),
+      `source activation failed: ${activateSourceResponse.status()} ${activateSourceText}`,
     ).toBe(true);
+
+    const sourceRunResponse = await page.request.post(
+      `/api/workflow/workflows/${sourceWorkflow.id}/run`,
+      { data: { input: { origin: "workflow-real-local" } } },
+    );
+    const sourceRunText = await sourceRunResponse.text();
+    expect(
+      sourceRunResponse.status(),
+      `source execution failed: ${sourceRunText}`,
+    ).toBe(202);
+
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(
+            `/api/workflow/workflows/${sourceWorkflow.id}/executions`,
+          );
+          const body = (await response.json()) as {
+            executions: WorkflowExecution[];
+          };
+          return body.executions.find(
+            (execution) => execution.mode === "manual",
+          )?.status;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe("finished");
 
     let triggeredExecution: WorkflowExecution | undefined;
     await expect
@@ -169,6 +255,14 @@ test.describe("real local workflow journey", () => {
       finished: true,
       mode: "trigger",
     });
+    await expect
+      .poll(async () => {
+        const response = await page.request.get("/api/triggers");
+        const body = (await response.json()) as { triggers: TriggerRecord[] };
+        return body.triggers.find((candidate) => candidate.id === trigger?.id)
+          ?.runCount;
+      })
+      .toBe(1);
     const triggeredMessage = executionMessage(triggeredExecution);
     expect(triggeredMessage).toEqual(expect.any(String));
     if (!triggeredMessage)
@@ -214,6 +308,8 @@ test.describe("real local workflow journey", () => {
       /Real browser digest/,
       { timeout: 60_000 },
     );
-    await expect(page.getByTitle("Message")).toBeVisible();
+    await page.getByRole("button", { name: "Widgets" }).click();
+    await expect(page.getByText("Message", { exact: true })).toBeVisible();
+    await expect(page.getByText(manualMessage, { exact: true })).toBeVisible();
   });
 });

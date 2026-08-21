@@ -3,10 +3,15 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  __resetPendingWebSocketsForTests,
   applyCors,
   CORS_ALLOWED_HEADERS,
   isAuthorized,
   isServerTokenAuthorized,
+  MAX_PENDING_WEBSOCKETS_PER_PEER,
+  pendingWebSocketCount,
+  releasePendingWebSocket,
+  tryAcquirePendingWebSocket,
 } from "../../src/api/server-helpers-auth";
 
 class HeaderCapture extends http.ServerResponse {
@@ -70,6 +75,72 @@ describe("applyCors", () => {
     expect(allowedHeaders).toContain("X-ElizaOS-UI-Language");
     expect(allowedHeaders).toContain("X-ElizaOS-Token");
     expect(allowedHeaders).toContain("X-Waifu-Chat-Access-Token");
+  });
+
+  it("never enables ambient browser credentials for reflected cloud origins", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("https://untrusted.example"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://untrusted.example",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeUndefined();
+  });
+
+  it("retains credentials for an explicitly configured browser origin", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_ALLOWED_ORIGINS = "https://trusted.example";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("https://trusted.example"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://trusted.example",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  });
+
+  it("retains credentials for an app-owned WebView origin", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(requestWithOrigin("capacitor://localhost"), res, "/api/status"),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  });
+
+  it("never grants ambient credentials to file origins", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("file:///tmp/index.html"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "file:///tmp/index.html",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeUndefined();
   });
 
   it("allows waifu token-page iframe ancestors when hosted chat JWT auth is enabled", () => {
@@ -308,5 +379,51 @@ describe("SSE query-token auth (?token= for EventSource)", () => {
       { Accept: "text/event-stream", Authorization: `Bearer ${API_TOKEN}` },
     );
     expect(isAuthorized(req)).toBe(true);
+  });
+});
+
+describe("unauthenticated WebSocket pending-socket bounds (W5-015)", () => {
+  afterEach(() => {
+    __resetPendingWebSocketsForTests();
+  });
+
+  it("admits pre-auth sockets up to the per-peer cap, then refuses", () => {
+    for (let i = 0; i < MAX_PENDING_WEBSOCKETS_PER_PEER; i++) {
+      expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    }
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(
+      MAX_PENDING_WEBSOCKETS_PER_PEER,
+    );
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(false);
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(
+      MAX_PENDING_WEBSOCKETS_PER_PEER,
+    );
+  });
+
+  it("tracks caps independently per peer", () => {
+    for (let i = 0; i < MAX_PENDING_WEBSOCKETS_PER_PEER; i++) {
+      expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    }
+    expect(tryAcquirePendingWebSocket("198.51.100.7")).toBe(true);
+  });
+
+  it("releases slots back down to zero and tolerates over-release", () => {
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(1);
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(0);
+    // Releasing a peer with no held slots is a no-op, not a negative count.
+    releasePendingWebSocket("203.0.113.10");
+    expect(pendingWebSocketCount("203.0.113.10")).toBe(0);
+    expect(tryAcquirePendingWebSocket("203.0.113.10")).toBe(true);
+  });
+
+  it("buckets a missing peer address under the shared unknown key", () => {
+    expect(tryAcquirePendingWebSocket(undefined)).toBe(true);
+    expect(pendingWebSocketCount(null)).toBe(1);
+    releasePendingWebSocket(undefined);
+    expect(pendingWebSocketCount(undefined)).toBe(0);
   });
 });

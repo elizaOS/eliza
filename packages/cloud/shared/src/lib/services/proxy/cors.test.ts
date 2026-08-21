@@ -8,7 +8,7 @@
  * headers the client sends.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { applyCorsHeaders, getCorsHeaders, handleCorsOptions, isAppOrigin } from "./cors";
 
 describe("isAppOrigin", () => {
@@ -27,6 +27,40 @@ describe("isAppOrigin", () => {
   });
 });
 
+describe("isAppOrigin — environment gating of loopback dev origins", () => {
+  const savedEnvironment = process.env.ENVIRONMENT;
+
+  afterEach(() => {
+    if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+    else process.env.ENVIRONMENT = savedEnvironment;
+  });
+
+  test("any-port loopback origins are not app origins in production", () => {
+    process.env.ENVIRONMENT = "production";
+    expect(isAppOrigin("http://localhost:5173")).toBe(false);
+    expect(isAppOrigin("http://localhost")).toBe(false);
+    expect(isAppOrigin("https://localhost:2138")).toBe(false);
+    expect(isAppOrigin("http://127.0.0.1:3000")).toBe(false);
+    expect(isAppOrigin("http://[::1]:8080")).toBe(false);
+    // The native WebView + scheme origins stay first-party in production.
+    expect(isAppOrigin("https://localhost")).toBe(true);
+    expect(isAppOrigin("capacitor://localhost")).toBe(true);
+    expect(isAppOrigin("electrobun://localhost")).toBe(true);
+  });
+
+  test("a loopback origin in production falls back to wildcard WITHOUT credentials", () => {
+    process.env.ENVIRONMENT = "production";
+    const h = getCorsHeaders("POST, OPTIONS", "http://localhost:5173");
+    expect(h["Access-Control-Allow-Origin"]).toBe("*");
+    expect(h["Access-Control-Allow-Credentials"]).toBeUndefined();
+  });
+
+  test("loopback dev origins stay app origins outside production (local dev)", () => {
+    delete process.env.ENVIRONMENT;
+    expect(isAppOrigin("http://localhost:5173")).toBe(true);
+  });
+});
+
 describe("getCorsHeaders", () => {
   test("app origin → reflected origin + credentials + Vary: Origin", () => {
     const h = getCorsHeaders("POST, OPTIONS", "https://localhost");
@@ -41,6 +75,8 @@ describe("getCorsHeaders", () => {
     expect(allow).toContain("x-elizaos-client-id");
     expect(allow).toContain("x-eliza-client-id");
     expect(allow).toContain("x-elizaos-ui-language");
+    expect(allow).toContain("x-elizaos-turn-correlation");
+    expect(allow).toContain("x-elizaos-turn-attempt");
   });
 
   test("non-app origin → wildcard, NO credentials", () => {

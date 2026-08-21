@@ -6,6 +6,7 @@
  *   if (report.status === "blocked") { ... }
  */
 
+import { findInvalidSkillBinNames, parseFrontmatter } from "../parser";
 import {
 	buildManifestEntriesFromDisk,
 	buildManifestEntriesFromMemory,
@@ -19,6 +20,7 @@ import type {
 	SkillScanReport,
 	SkillScanStatus,
 } from "./types";
+import { truncateEvidence } from "./types";
 
 export type { ManifestFileEntry } from "./manifest-scanner";
 export {
@@ -47,6 +49,34 @@ const BLOCKING_RULE_IDS = new Set([
 	"symlink-escape",
 	"missing-skill-md",
 ]);
+
+/**
+ * Scan SKILL.md frontmatter for invalid binary names in Otto metadata.
+ * `requires.bins` / `install[].bins` entries reach `which`/`where` probes, so
+ * names outside the allowlist are flagged critical — the same rule
+ * validateFrontmatter enforces at load time.
+ */
+function scanFrontmatterBins(
+	content: string,
+	filePath: string,
+): SkillScanFinding[] {
+	const { frontmatter } = parseFrontmatter(content);
+	if (!frontmatter) return [];
+
+	return findInvalidSkillBinNames(frontmatter).map(({ field, bin }) => ({
+		ruleId: "invalid-bin-name",
+		severity: "critical",
+		file: filePath,
+		line: 1,
+		message: `Invalid binary name in ${field}: must be a bare executable name (letters, digits, . _ + -)`,
+		evidence: truncateEvidence(`${field}: ${JSON.stringify(bin)}`),
+	}));
+}
+
+/** Match a SKILL.md at package root or any nested path (either separator). */
+function isSkillMd(relativePath: string): boolean {
+	return /(^|[/\\])SKILL\.md$/.test(relativePath);
+}
 
 function buildReport(
 	skillPath: string,
@@ -97,17 +127,26 @@ export async function scanSkillDirectory(
 	const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
 	const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
 	const safeDomains = options.additionalSafeDomains ?? [];
+	const signal = options.signal;
+	signal?.throwIfAborted();
 
 	const fs = await import("node:fs/promises");
 	const path = await import("node:path");
 
-	const manifestEntries = await buildManifestEntriesFromDisk(dirPath);
-	const manifestFindings = scanManifest(manifestEntries, dirPath);
+	// Resolve the root through the same filesystem canonicalization used for
+	// symlink targets before comparing them. This avoids false escapes through
+	// aliases such as macOS `/tmp` -> `/private/tmp`.
+	const canonicalDirPath = await fs.realpath(dirPath);
+	signal?.throwIfAborted();
+	const manifestEntries = await buildManifestEntriesFromDisk(canonicalDirPath);
+	signal?.throwIfAborted();
+	const manifestFindings = scanManifest(manifestEntries, canonicalDirPath);
 
 	const allFindings: SkillScanFinding[] = [];
 	let scannedCount = 0;
 
 	for (const entry of manifestEntries) {
+		signal?.throwIfAborted();
 		if (scannedCount >= maxFiles) break;
 		if (entry.isSymlink || entry.sizeBytes > maxFileBytes) continue;
 
@@ -118,12 +157,14 @@ export async function scanSkillDirectory(
 		let content: string;
 		try {
 			content = await fs.readFile(
-				path.join(dirPath, entry.relativePath),
+				path.join(canonicalDirPath, entry.relativePath),
 				"utf-8",
 			);
 		} catch {
+			signal?.throwIfAborted();
 			continue;
 		}
+		signal?.throwIfAborted();
 
 		scannedCount++;
 		if (isCode)
@@ -132,9 +173,16 @@ export async function scanSkillDirectory(
 			allFindings.push(
 				...scanMarkdownSource(content, entry.relativePath, safeDomains),
 			);
+		if (isSkillMd(entry.relativePath))
+			allFindings.push(...scanFrontmatterBins(content, entry.relativePath));
 	}
 
-	return buildReport(dirPath, scannedCount, allFindings, manifestFindings);
+	return buildReport(
+		canonicalDirPath,
+		scannedCount,
+		allFindings,
+		manifestFindings,
+	);
 }
 
 export function scanSkillPackage(
@@ -165,6 +213,8 @@ export function scanSkillPackage(
 			allFindings.push(
 				...scanMarkdownSource(content, relativePath, safeDomains),
 			);
+		if (isSkillMd(relativePath))
+			allFindings.push(...scanFrontmatterBins(content, relativePath));
 	}
 
 	return buildReport(skillPath, scannedCount, allFindings, manifestFindings);

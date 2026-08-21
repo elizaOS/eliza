@@ -26,6 +26,23 @@ import { getStandaloneBottomReclaimState } from "../../platform/standalone-botto
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
 
+const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
+
+async function fetchBuildInfo(signal: AbortSignal): Promise<BuildInfo> {
+  const response = await globalThis.fetch(BUILD_INFO_URL, {
+    method: "GET",
+    cache: "no-store",
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(BUILD_BADGE_JSON_TIMEOUT_MS),
+    ]),
+  });
+  if (!response.ok) {
+    throw new Error(`Build info request failed (${response.status})`);
+  }
+  return (await response.json()) as BuildInfo;
+}
+
 interface BuildInfo {
   commit?: string;
   builtAt?: string;
@@ -290,20 +307,18 @@ export function BuildBadge() {
 
   useEffect(() => {
     if (dismissed) return;
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch(BUILD_INFO_URL, { cache: "no-store" });
-        if (!res.ok) return;
-        const info = (await res.json()) as BuildInfo;
-        if (!cancelled) setLabel(toLabel(info));
+        const info = await fetchBuildInfo(controller.signal);
+        setLabel(toLabel(info));
       } catch {
-        // Best-effort: no build info available (production builds without the
-        // build-time stamp). Stay hidden silently.
+        // error-policy:J4 a missing, invalid, timed-out, or cancelled build
+        // stamp keeps this optional diagnostics surface hidden.
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [dismissed]);
 

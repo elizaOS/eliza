@@ -11,6 +11,11 @@
 export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
   let lock: Promise<void> = Promise.resolve();
   return <T>(fn: () => Promise<T>): Promise<T> => {
+    if (typeof fn !== "function") {
+      return Promise.reject(
+        new TypeError("Expected function for serialised execution"),
+      );
+    }
     const prev = lock;
     let resolve: () => void;
     lock = new Promise<void>((r) => {

@@ -2,7 +2,8 @@
  * Silo-ingestor tests against fixture trees replicating each silo's real
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
  * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
- * test-results, walkthrough/live-run reports, scenario-runner reports). Also
+ * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
+ * scenario-runner reports). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
  * empty silo reports `ingested` with zero artifacts — never the same result.
  */
@@ -13,7 +14,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBundle, type EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
-import { ingestAllSilos, ingestNamedSilo, SILO_NAMES } from "./ingest.ts";
+import {
+  assertSafeBundleOutput,
+  captureSiloSnapshot,
+  ingestAllSilos,
+  ingestNamedSilo,
+  SILO_NAMES,
+} from "./ingest.ts";
 import type { ArtifactEntry } from "./schema.ts";
 
 const tmpDirs: string[] = [];
@@ -75,13 +82,23 @@ function buildFixtureRepo(): string {
     "png-f",
   );
   write(repo, "packages/app/test-results/.last-run.json", "{}");
-  // Walkthrough reports exist under BOTH roots — exercises namespacing.
+  // iOS device/simulator capture lanes.
+  write(
+    repo,
+    "packages/app/ios/build/boot-capture/run-1/shards/chat/screen.png",
+    "ios-png",
+  );
+  write(
+    repo,
+    "packages/app/ios/build/boot-capture/run-1/test-summary.json",
+    "{}",
+  );
+  write(repo, "packages/app/ios/build/device-logs/device.log", "ios-log");
+  // Canonical walkthrough output is repo-root reports/walkthrough.
   write(repo, "reports/walkthrough/desktop.mp4", "mp4-repo");
-  write(repo, "packages/app/reports/walkthrough/mobile.mp4", "mp4-app");
   // Live test runs.
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
-  // scenario-runner reports + repo-level scenario reports.
-  write(repo, "packages/scenario-runner/reports/report.json", "{}");
+  // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
@@ -114,6 +131,233 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("includes a byte-identical file rewritten during the run", async () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/reused.log");
+    write(repo, "packages/app/test-results/reused.log", "same");
+    const baseline = captureSiloSnapshot(repo);
+    fs.writeFileSync(file, "same");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/rewrite",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+    await ingestAllSilos(bundle, repo, baseline);
+    expect((await bundle.finalize()).manifest.artifacts).toHaveLength(1);
+  });
+
+  it("copies the same stable bytes that won the baseline comparison", async () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/race.log");
+    write(repo, "packages/app/test-results/race.log", "OLD");
+    const baseline = captureSiloSnapshot(repo);
+    const originalRead = fs.readSync;
+    let changed = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (!changed && count > 0) {
+        changed = true;
+        fs.writeFileSync(file, "NEW");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      const bundle = createBundle({
+        rootDir: tmpDir(),
+        provenance: {
+          commit: "abcdef0123456789abcdef0123456789abcdef01",
+          branch: "fix/race",
+          runner: "local",
+          tier: "cpu",
+          envFingerprint: { node: "v24" },
+        },
+      });
+      await ingestAllSilos(bundle, repo, baseline);
+      const finalized = await bundle.finalize();
+      expect(finalized.manifest.artifacts).toHaveLength(1);
+      expect(
+        fs.readFileSync(
+          path.join(bundle.dir, finalized.manifest.artifacts[0].path),
+          "utf8",
+        ),
+      ).toBe("NEW");
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("fails after bounded retries when a producer file never stabilizes", () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/churning.log");
+    write(repo, "packages/app/test-results/churning.log", "AAA");
+    const originalRead = fs.readSync;
+    let toggle = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (count > 0) {
+        toggle = !toggle;
+        fs.writeFileSync(file, toggle ? "BBB" : "AAA");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      expect(() => captureSiloSnapshot(repo)).toThrow(
+        expect.objectContaining({ code: "SILO_SOURCE_UNSTABLE" }),
+      );
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("rejects symlinked producer roots and bundle-output overlap", () => {
+    const repo = tmpDir();
+    const external = tmpDir();
+    write(external, "outside.log", "outside");
+    fs.symlinkSync(external, path.join(repo, "e2e-recordings"), "dir");
+    expect(() => captureSiloSnapshot(repo)).toThrow(/canonical evidence root/);
+    expect(() =>
+      assertSafeBundleOutput(repo, path.join(repo, "e2e-recordings", "runs")),
+    ).toThrow();
+
+    fs.rmSync(path.join(repo, "e2e-recordings"), { recursive: true });
+    fs.mkdirSync(path.join(repo, "packages/app/test-results"), {
+      recursive: true,
+    });
+    expect(() =>
+      assertSafeBundleOutput(
+        repo,
+        path.join(repo, "packages/app/test-results/bundles"),
+      ),
+    ).toThrow(/overlaps canonical evidence root/);
+    expect(() => assertSafeBundleOutput(repo, repo)).toThrow(
+      /overlaps canonical evidence root/,
+    );
+  });
+
+  it("rejects hardlinked files that can expose bytes outside a silo", () => {
+    const repo = tmpDir();
+    const external = path.join(tmpDir(), "external-secret.log");
+    fs.writeFileSync(external, "not producer evidence");
+    const producer = path.join(repo, "packages/app/test-results/leak.log");
+    fs.mkdirSync(path.dirname(producer), { recursive: true });
+    fs.linkSync(external, producer);
+
+    expect(() => captureSiloSnapshot(repo)).toThrow(
+      expect.objectContaining({ code: "SILO_SOURCE_UNSAFE" }),
+    );
+  });
+
+  it("rejects direct-library self-ingest when the bundle is under a producer", async () => {
+    const repo = tmpDir();
+    write(repo, "packages/app/test-results/current.log", "current");
+    const bundle = createBundle({
+      rootDir: path.join(repo, "packages/app/test-results/evidence-runs"),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/self-ingest",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+
+    await expect(ingestAllSilos(bundle, repo)).rejects.toMatchObject({
+      code: "BUNDLE_OUTPUT_UNSAFE",
+    });
+  });
+
+  it("excludes unchanged stale files and includes only exact-run deltas", async () => {
+    const repo = tmpDir();
+    write(repo, "packages/app/test-results/stale.log", "old");
+    write(repo, "reports/scenarios/stale.jsonl", "old\n");
+    const baseline = captureSiloSnapshot(repo);
+
+    write(repo, "packages/app/test-results/current.log", "new");
+    write(repo, "reports/scenarios/stale.jsonl", "changed\n");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/exact-run",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {
+          node: "v24",
+          platform: "linux",
+          arch: "x64",
+          tier: "cpu",
+        },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    const { manifest } = await bundle.finalize();
+
+    expect(manifest.artifacts.map((artifact) => artifact.path)).toEqual([
+      "lanes/e2e/logs/current.log",
+      "trajectories/scenario-runner/stale.jsonl",
+    ]);
+    expect(
+      results.find((result) => result.silo === "playwright-test-results"),
+    ).toMatchObject({ status: "ingested", artifactCount: 1 });
+    expect(
+      manifest.artifacts.some((artifact) =>
+        artifact.path.includes("stale.log"),
+      ),
+    ).toBe(false);
+  });
+
+  it("contributes zero artifacts when every producer file is unchanged", async () => {
+    const repo = buildFixtureRepo();
+    const baseline = captureSiloSnapshot(repo);
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/skipped-lane",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {
+          node: "v24",
+          platform: "linux",
+          arch: "x64",
+          tier: "cpu",
+        },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    const { manifest } = await bundle.finalize();
+    expect(manifest.artifacts).toEqual([]);
+    expect(results.every((result) => result.artifactCount === 0)).toBe(true);
+  });
+
+  it("does not relabel a file deleted during the run as current evidence", async () => {
+    const repo = tmpDir();
+    const deleted = path.join(repo, "packages/app/test-results/deleted.log");
+    write(repo, "packages/app/test-results/deleted.log", "old");
+    const baseline = captureSiloSnapshot(repo);
+    fs.rmSync(deleted);
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/delete",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    expect((await bundle.finalize()).manifest.artifacts).toEqual([]);
+    expect(
+      results.find((result) => result.silo === "playwright-test-results"),
+    ).toMatchObject({ status: "ingested", artifactCount: 0 });
+  });
+
   it("ingests every fixture silo with honest per-silo counts", async () => {
     const { results } = await build(buildFixtureRepo());
     expect(Object.fromEntries(results.map((r) => [r.silo, r]))).toEqual({
@@ -137,10 +381,15 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 2,
       },
+      "ios-device-capture": {
+        silo: "ios-device-capture",
+        status: "ingested",
+        artifactCount: 3,
+      },
       "walkthrough-reports": {
         silo: "walkthrough-reports",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 1,
       },
       "live-test-runs": {
         silo: "live-test-runs",
@@ -150,7 +399,7 @@ describe("ingestAllSilos", () => {
       "scenario-runner": {
         silo: "scenario-runner",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 1,
       },
     });
   });
@@ -182,30 +431,37 @@ describe("ingestAllSilos", () => {
       source: "e2e-recordings",
     });
     expect(
-      byPath["trajectories/scenario-runner/repo/live/native.jsonl"],
+      byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
-    expect(byPath["lanes/scenario/runner/report.json"]).toMatchObject({
-      kind: "report",
-      source: "scenario-runner",
-    });
     expect(
-      byPath["lanes/native/app/android-2026-07-05T01-02-03-004Z/summary.json"],
+      byPath["lanes/native/android-2026-07-05T01-02-03-004Z/summary.json"],
     ).toMatchObject({ kind: "report", source: "device-e2e" });
     expect(
       byPath[
-        "visual/device-e2e/app/android-2026-07-05T01-02-03-004Z/inline/screen.jpg"
+        "visual/device-e2e/android-2026-07-05T01-02-03-004Z/inline/screen.jpg"
       ],
     ).toMatchObject({ kind: "screenshot", lane: "native" });
     expect(
-      byPath["visual/playwright/chat-smoke/test-failed-1.png"],
+      byPath["visual/app-test-results/chat-smoke/test-failed-1.png"],
     ).toMatchObject({
       kind: "screenshot",
       lane: "e2e",
     });
+    expect(
+      byPath[
+        "visual/ios-device-capture/boot-capture/run-1/shards/chat/screen.png"
+      ],
+    ).toMatchObject({
+      kind: "screenshot",
+      source: "ios-device-capture",
+      lane: "native",
+    });
+    expect(byPath["lanes/native/logs/device-logs/device.log"]).toMatchObject({
+      kind: "log",
+      source: "ios-device-capture",
+    });
 
-    // Multi-root walkthrough silo namespaces by root label.
-    expect(byPath["video/walkthrough/repo/desktop.mp4"]).toBeDefined();
-    expect(byPath["video/walkthrough/app/mobile.mp4"]).toBeDefined();
+    expect(byPath["video/walkthrough/desktop.mp4"]).toBeDefined();
 
     // node_modules content is never evidence.
     expect(artifacts.some((entry) => entry.path.includes("node_modules"))).toBe(

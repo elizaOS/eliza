@@ -280,15 +280,20 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 			fullRegistry(),
 		);
 		expect(result?.values).toMatchObject({ mode: "show", viewId: "chat" });
-		expect(result?.text).toBe("Opened Home.");
-		expect(callback).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith({ text: "Opened Home." });
+		expect(callback).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
 			success: true,
 			transcriptVisibility: "internal",
-			userFacingText: "Opened Home.",
-			verifiedUserFacing: true,
-			turnComplete: true,
+			modelReplyRequired: true,
+		});
+		expect(result).not.toHaveProperty("turnComplete");
+		expect(result).not.toHaveProperty("userFacingText");
+		expect(result).not.toHaveProperty("verifiedUserFacing");
+		expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "accepted",
+			viewId: "chat",
+			label: "Home",
 		});
 		expect(fetchMock).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/chat/navigate",
@@ -312,13 +317,15 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		});
 
 		expect(result.success).toBe(false);
-		expect(result.text).toBe(
-			"Couldn't switch to Home at / — the shell did not confirm the change.",
-		);
+		expect(JSON.parse(result.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "unconfirmed",
+			viewId: "chat",
+			label: "Home",
+		});
 		expect(result).not.toHaveProperty("verifiedUserFacing");
-		expect(result).not.toHaveProperty("turnComplete");
-		expect(callback).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith({ text: result.text });
+		expect(result.turnComplete).toBe(false);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("still reaches Notes through an explicit interact capability request", async () => {

@@ -167,7 +167,10 @@ export async function prepareCrossChannelSend(args: {
       }
       return {
         provider: "sms",
-        supportsProviderIdempotency: true,
+        // Twilio's Messages create endpoint has no documented client-side
+        // idempotency contract. Ambiguous outcomes require reconciliation and
+        // must not be treated as safely replayable at the provider boundary.
+        supportsProviderIdempotency: false,
         dispatch: async (providerIdempotencyKey) => {
           const result = await sendTwilioSms({
             credentials,

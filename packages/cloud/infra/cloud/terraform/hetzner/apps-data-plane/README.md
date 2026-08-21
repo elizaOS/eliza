@@ -34,6 +34,17 @@ The **per-env** pieces of the apps data plane:
 | `hcloud_firewall.app_node` | SSH + 80/443. |
 | `cloudflare_dns_record.apps_wildcard` | `*.<apps_base_domain>` → app node (use an LB for >1 node). |
 
+Runtime-created burst nodes are separate from these Terraform-managed app
+nodes. Their authoritative reconciler is
+`packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts`, backed
+by `docker_nodes` provider IDs plus provider environment/tier labels. The
+control-plane environment must set one reviewed firewall set in
+`CONTAINERS_HCLOUD_FIREWALL_IDS`; creation fails closed when it is absent,
+malformed, duplicated, or when an existing provider attachment drifts from the
+exact set. Names and age alone never authorize adoption or deletion. Existing
+host convergence remains a protected, plan-reviewed operator action rather
+than an autoscaler mutation.
+
 The shared private network, tenant Postgres node, and `random_password` admin
 secret live in [`../apps-shared`](../apps-shared/). This module reads them via
 a `terraform_remote_state` data source pointed at

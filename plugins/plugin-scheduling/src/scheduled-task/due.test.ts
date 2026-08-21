@@ -12,6 +12,7 @@ import {
   isScheduledTaskDue,
   markWindowFireIfNeeded,
   pendingPromptRoomIdForTask,
+  windowOccurrenceKey,
 } from "./due.js";
 import type { ScheduledTask } from "./types.js";
 
@@ -440,5 +441,184 @@ describe("during_window night wrap-around — no double-fire across midnight (#1
       due: false,
       reason: "window_already_fired",
     });
+  });
+});
+
+describe("during_window midnight-wrapping owner windows (#22053)", () => {
+  // Owner's evening runs past midnight: 18:00 -> 00:30 next day.
+  const WRAP_FACTS = {
+    timezone: "UTC",
+    morningWindow: { start: "06:00", end: "11:00" },
+    eveningWindow: { start: "18:00", end: "00:30" },
+  };
+  const windowTask = (
+    windowKey: string,
+    overrides: Partial<ScheduledTask> = {},
+  ): ScheduledTask =>
+    task({ trigger: { kind: "during_window", windowKey }, ...overrides });
+
+  it("evening 18:00-00:30 is due at 20:00 (was permanently window_inactive)", async () => {
+    const decision = await isScheduledTaskDue(windowTask("evening"), {
+      now: new Date("2026-08-18T20:00:00.000Z"),
+      ownerFacts: WRAP_FACTS,
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+
+  it("evening 18:00-00:30 is due in the post-midnight tail at 00:15", async () => {
+    const decision = await isScheduledTaskDue(windowTask("evening"), {
+      now: new Date("2026-08-19T00:15:00.000Z"),
+      ownerFacts: WRAP_FACTS,
+    });
+    expect(decision).toMatchObject({ due: true, reason: "window_due" });
+  });
+
+  it("evening 18:00-00:30 is NOT due at 13:00 (outside the window)", async () => {
+    const decision = await isScheduledTaskDue(windowTask("evening"), {
+      now: new Date("2026-08-18T13:00:00.000Z"),
+      ownerFacts: WRAP_FACTS,
+    });
+    expect(decision).toMatchObject({ due: false, reason: "window_inactive" });
+  });
+
+  it("occurrence key is identical at 23:50 and 00:15 within one wrapped evening (no double-fire)", () => {
+    const preMidnight = windowOccurrenceKey(
+      new Date("2026-08-18T23:50:00.000Z"),
+      "UTC",
+      "evening",
+      WRAP_FACTS,
+    );
+    const postMidnight = windowOccurrenceKey(
+      new Date("2026-08-19T00:15:00.000Z"),
+      "UTC",
+      "evening",
+      WRAP_FACTS,
+    );
+    expect(preMidnight).toBe("2026-08-18:evening:evening");
+    expect(postMidnight).toBe(preMidnight);
+  });
+
+  it("derived night shrinks to [wrapped-evening end, morning start) and no longer leaks into daytime", () => {
+    // Night = 00:30 -> 06:00 only.
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T02:00:00.000Z"),
+        "UTC",
+        "night",
+        WRAP_FACTS,
+      ),
+    ).toBe("2026-08-18:night:night");
+    // Before the fix, night was [00:30, 24:00) ∪ [0, 06:00) — active at 13:00.
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T13:00:00.000Z"),
+        "UTC",
+        "night",
+        WRAP_FACTS,
+      ),
+    ).toBeNull();
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T23:00:00.000Z"),
+        "UTC",
+        "night",
+        WRAP_FACTS,
+      ),
+    ).toBeNull();
+  });
+
+  it("non-wrapped windows behave identically to before", async () => {
+    const saneFacts = {
+      timezone: "UTC",
+      morningWindow: { start: "06:00", end: "11:00" },
+      eveningWindow: { start: "18:00", end: "22:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("evening"), {
+        now: new Date("2026-08-18T20:00:00.000Z"),
+        ownerFacts: saneFacts,
+      }),
+    ).resolves.toMatchObject({ due: true, reason: "window_due" });
+    await expect(
+      isScheduledTaskDue(windowTask("evening"), {
+        now: new Date("2026-08-18T23:00:00.000Z"),
+        ownerFacts: saneFacts,
+      }),
+    ).resolves.toMatchObject({ due: false, reason: "window_inactive" });
+    // Night still spans 22:00 -> 06:00 across midnight.
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T23:00:00.000Z"),
+        "UTC",
+        "night",
+        saneFacts,
+      ),
+    ).toBe("2026-08-18:night:night");
+  });
+
+  it("end === start is invalid and falls back to that window's default bounds", async () => {
+    // Documented choice: an owner window with end === start is ambiguous
+    // (zero-length vs full-day), so the resolver substitutes the defaults —
+    // evening defaults to 18:00-22:00 here.
+    const degenerate = {
+      timezone: "UTC",
+      eveningWindow: { start: "18:00", end: "18:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("evening"), {
+        now: new Date("2026-08-18T20:00:00.000Z"),
+        ownerFacts: degenerate,
+      }),
+    ).resolves.toMatchObject({ due: true, reason: "window_due" });
+    await expect(
+      isScheduledTaskDue(windowTask("evening"), {
+        now: new Date("2026-08-18T23:00:00.000Z"),
+        ownerFacts: degenerate,
+      }),
+    ).resolves.toMatchObject({ due: false, reason: "window_inactive" });
+  });
+
+  it("does not turn an overlapping derived afternoon gap into an almost-all-day window", async () => {
+    const overlappingFacts = {
+      timezone: "UTC",
+      morningWindow: { start: "16:00", end: "19:00" },
+      eveningWindow: { start: "18:00", end: "22:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("afternoon"), {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: overlappingFacts,
+      }),
+    ).resolves.toMatchObject({ due: false, reason: "window_inactive" });
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T17:00:00.000Z"),
+        "UTC",
+        "morning",
+        overlappingFacts,
+      ),
+    ).toBe("2026-08-18:morning:morning");
+  });
+
+  it("keeps a legitimate wrapping afternoon gap for a coherent night-shift partition", async () => {
+    const nightShiftFacts = {
+      timezone: "UTC",
+      morningWindow: { start: "16:00", end: "19:00" },
+      eveningWindow: { start: "06:00", end: "08:00" },
+    };
+    await expect(
+      isScheduledTaskDue(windowTask("afternoon"), {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: nightShiftFacts,
+      }),
+    ).resolves.toMatchObject({ due: true, reason: "window_due" });
+    expect(
+      windowOccurrenceKey(
+        new Date("2026-08-18T03:00:00.000Z"),
+        "UTC",
+        "afternoon",
+        nightShiftFacts,
+      ),
+    ).toBe("2026-08-17:afternoon:afternoon");
   });
 });

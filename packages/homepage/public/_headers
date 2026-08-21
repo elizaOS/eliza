@@ -1,3 +1,37 @@
+# Cloudflare Pages headers for the public Eliza homepage.
+# Format: https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Cloudflare Pages drops headers larger than ~2000 bytes silently. Keep the CSP
+# line under ~1900 bytes; verify with `wc -L < public/_headers`.
+#
+# The /* security block mirrors the suite packages/app sets for the unified
+# deploy, scoped to what the homepage actually loads:
+# - script-src keeps the app's 'unsafe-eval'/'unsafe-inline'/'wasm-unsafe-eval'
+#   renderer posture and adds https://telegram.org, the one external script the
+#   /get-started Telegram login widget injects.
+# - style-src 'unsafe-inline' is required by the inline style attribute on the
+#   index.html <body>.
+# - frame-src/child-src allow https://oauth.telegram.org (the widget iframe);
+#   form-action allows it for the widget's auth POST.
+# - connect-src covers the canonical and legacy Eliza Cloud API origins
+#   (api.eliza.app default in src/lib/api/client.ts); Discord/Telegram/WhatsApp
+#   sign-in links are top-level navigations, not fetches.
+# frame-ancestors 'self' + X-Frame-Options deny cross-origin framing of the
+# onboarding/auth pages (clickjacking); no homepage route is a designed embed.
+#
+# There is deliberately NO Cache-Control on /*: multiple matching _headers rules
+# aggregate into one comma-joined value instead of overriding, so a global rule
+# would poison the durable per-path cache policies below.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self' https://oauth.telegram.org; frame-ancestors 'self'; child-src 'self' blob: https://oauth.telegram.org; frame-src 'self' https://oauth.telegram.org; connect-src 'self' https://eliza.app https://*.eliza.app wss://*.eliza.app https://elizacloud.ai https://*.elizacloud.ai wss://*.elizacloud.ai; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' data: blob: https:
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-XSS-Protection: 1; mode=block
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self)
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
 /assets/*
   Cache-Control: public, max-age=0, must-revalidate
 

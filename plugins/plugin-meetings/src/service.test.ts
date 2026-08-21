@@ -161,6 +161,87 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapters[0].session).not.toBeNull();
   });
 
+  it("keeps the same-URL reservation atomic while initial billing awaits", async () => {
+    const firstBilling = new FakeMeetingBillingSession();
+    const unusedBilling = new FakeMeetingBillingSession();
+    const { service, adapters } = makeService(undefined, [
+      firstBilling,
+      unusedBilling,
+    ]);
+
+    const results = await Promise.allSettled([
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+      service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: "https://meet.google.com/abcdefghij",
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ code: "already_joined" });
+    expect(service.listSessions({ active: true })).toHaveLength(1);
+    expect(firstBilling.reserveInitialCalls).toBe(1);
+    expect(unusedBilling.reserveInitialCalls).toBe(0);
+    await adapters[0].started;
+    expect(adapters[0].session).not.toBeNull();
+  });
+
+  it("releases a failed initial billing reservation so the same URL can retry", async () => {
+    const failedBilling = new FakeMeetingBillingSession();
+    failedBilling.initialReserveError = new Error(
+      "billing provider unavailable",
+    );
+    const retryBilling = new FakeMeetingBillingSession();
+    const { service } = makeService(undefined, [failedBilling, retryBilling]);
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toThrow("billing provider unavailable");
+    expect(service.listSessions({ active: true })).toHaveLength(0);
+    expect(failedBilling.reserveInitialCalls).toBe(1);
+    expect(failedBilling.reconcileCalls).toEqual(["error"]);
+
+    const retried = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: "https://meet.google.com/abcdefghij",
+    });
+    expect(retried.status).toBe("requested");
+    expect(service.listSessions({ active: true })).toHaveLength(1);
+    expect(retryBilling.reserveInitialCalls).toBe(1);
+  });
+
+  it("preserves both setup and billing-release failures", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const billing = new FakeMeetingBillingSession();
+    const reserveFailure = new Error("billing provider unavailable");
+    const releaseFailure = new Error("billing release unavailable");
+    billing.initialReserveError = reserveFailure;
+    billing.reconcileError = releaseFailure;
+    const { service } = makeService([adapter], [billing]);
+
+    const failure = await service
+      .requestJoin({ platform: "google_meet", meetingUrl: MEET_URL })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([
+      reserveFailure,
+      releaseFailure,
+    ]);
+    expect(service.listSessions()).toHaveLength(0);
+    expect(adapter.session).toBeNull();
+    expect(billing.reconcileCalls).toEqual(["error"]);
+  });
+
   it("releases the reservation when join setup throws, so a retry succeeds (BL-5)", async () => {
     const billing = new FakeMeetingBillingSession();
     const retryBilling = new FakeMeetingBillingSession();
@@ -279,6 +360,7 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapter.session).toBeNull();
     expect(service.listSessions()).toHaveLength(0);
     expect(billing.reserveInitialCalls).toBe(1);
+    expect(billing.reconcileCalls).toEqual(["error"]);
   });
 });
 

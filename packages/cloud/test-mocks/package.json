@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
-    "./control-plane": "./src/control-plane/index.ts"
+    "./control-plane": "./src/control-plane/index.ts",
+    "./steward": "./src/steward/index.ts",
+    "./provider-contract": "./src/provider-contract/index.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",
@@ -17,15 +19,22 @@
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
     "start:control-plane": "bun run ./bin/control-plane-mock.ts",
     "test": "bun --conditions=eliza-source test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check package.json src test bin",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
     "format:check": "bunx @biomejs/biome format package.json src test bin"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "hono": "4.13.1"
   },
   "devDependencies": {
+    "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-whatsapp": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "*"
   },
   "elizaos": {

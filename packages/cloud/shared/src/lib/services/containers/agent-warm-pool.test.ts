@@ -15,7 +15,9 @@ import {
   decideReplenish,
   decideRollout,
   envWarmPoolPolicy,
+  immutableImageReference,
   type PoolStateSnapshot,
+  type TenantContentionSnapshot,
 } from "./agent-warm-pool";
 import {
   computeForecast,
@@ -25,6 +27,11 @@ import {
 
 function policy(overrides: Partial<WarmPoolPolicy> = {}): WarmPoolPolicy {
   return { ...DEFAULT_WARM_POOL_POLICY, ...overrides };
+}
+
+/** Abundant slack + no backlog: the starvation guard never binds. */
+function uncontended(overrides: Partial<TenantContentionSnapshot> = {}): TenantContentionSnapshot {
+  return { pendingTenantJobs: 0, clusterFreeCapacity: 1000, ...overrides };
 }
 
 function state(overrides: Partial<PoolStateSnapshot> = {}): PoolStateSnapshot {
@@ -38,11 +45,34 @@ function state(overrides: Partial<PoolStateSnapshot> = {}): PoolStateSnapshot {
   };
 }
 
+describe("immutableImageReference", () => {
+  test("replaces a mutable tag while preserving a registry port", () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    expect(immutableImageReference("registry.example:5000/team/agent:stable", digest)).toBe(
+      `registry.example:5000/team/agent@${digest}`,
+    );
+  });
+
+  test("rebinds an already pinned reference to the sweep digest", () => {
+    const digest = `sha256:${"b".repeat(64)}`;
+    expect(immutableImageReference(`ghcr.io/elizaos/eliza@sha256:${"a".repeat(64)}`, digest)).toBe(
+      `ghcr.io/elizaos/eliza@${digest}`,
+    );
+  });
+
+  test("rejects a non-canonical registry digest", () => {
+    expect(() => immutableImageReference("ghcr.io/elizaos/eliza:stable", "sha256:short")).toThrow(
+      "canonical sha256",
+    );
+  });
+});
+
 describe("decideReplenish", () => {
   test("creates up to the deficit when under target with headroom + burst room", () => {
     const d = decideReplenish(
       state({ readyCount: 2, targetPoolSize: 5 }),
       policy({ maxPoolSize: 10, replenishBurstLimit: 3 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(3);
     expect(d.reason).toContain("creating 3");
@@ -53,6 +83,7 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 1, targetPoolSize: 8 }),
       policy({ maxPoolSize: 10, replenishBurstLimit: 3 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(3);
     expect(d.reason).toContain("burst limit 3");
@@ -62,6 +93,7 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 1, provisioningCount: 2, targetPoolSize: 3 }),
       policy({ maxPoolSize: 10, replenishBurstLimit: 5 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(0);
     expect(d.reason).toMatch(/steady/);
@@ -71,6 +103,7 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 8, targetPoolSize: 10 }),
       policy({ maxPoolSize: 9, replenishBurstLimit: 3 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(1); // headroom = 9 - 8
   });
@@ -79,6 +112,7 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 10, targetPoolSize: 12 }),
       policy({ maxPoolSize: 10, replenishBurstLimit: 3 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(0);
     expect(d.reason).toContain("at maxPoolSize 10");
@@ -88,6 +122,7 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 3, targetPoolSize: 3 }),
       policy({ maxPoolSize: 10 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(0);
     expect(d.reason).toMatch(/steady/);
@@ -97,8 +132,74 @@ describe("decideReplenish", () => {
     const d = decideReplenish(
       state({ readyCount: 6, targetPoolSize: 2 }),
       policy({ maxPoolSize: 10 }),
+      uncontended(),
     );
     expect(d.toCreate).toBe(0);
+  });
+});
+
+describe("decideReplenish tenant starvation guard", () => {
+  test("a queued tenant backlog clips the fill burst to the leftover slack", () => {
+    // Wants 3; cluster has 7 free, 3 queued tenants + reserve 2 leaves 2.
+    const d = decideReplenish(
+      state({ readyCount: 2, targetPoolSize: 5 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: 3, clusterFreeCapacity: 7 }),
+    );
+    expect(d.toCreate).toBe(2);
+    expect(d.reason).toContain("tenant starvation guard");
+    expect(d.reason).toContain("creating 2 (wanted 3)");
+  });
+
+  test("the reserve alone binds on a nearly-full cluster with no backlog", () => {
+    // Wants 3; 3 free minus reserve 2 grants 1 even with zero queued tenants.
+    const d = decideReplenish(
+      state({ readyCount: 2, targetPoolSize: 5 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: 0, clusterFreeCapacity: 3 }),
+    );
+    expect(d.toCreate).toBe(1);
+    expect(d.reason).toContain("tenant starvation guard");
+  });
+
+  test("clips to zero when the backlog consumes every free slot", () => {
+    const d = decideReplenish(
+      state({ readyCount: 0, targetPoolSize: 3 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: 5, clusterFreeCapacity: 4 }),
+    );
+    expect(d.toCreate).toBe(0);
+    expect(d.reason).toContain("tenant starvation guard");
+    expect(d.reason).toContain("creating 0 (wanted 3)");
+  });
+
+  test("an empty cluster (no placeable slack) never warm-fills", () => {
+    const d = decideReplenish(
+      state({ readyCount: 0, targetPoolSize: 3 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: 0, clusterFreeCapacity: 0 }),
+    );
+    expect(d.toCreate).toBe(0);
+    expect(d.reason).toContain("tenant starvation guard");
+  });
+
+  test("abundant slack leaves the uncontended decision and reason untouched", () => {
+    const d = decideReplenish(
+      state({ readyCount: 2, targetPoolSize: 5 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: 1, clusterFreeCapacity: 50 }),
+    );
+    expect(d.toCreate).toBe(3);
+    expect(d.reason).not.toContain("starvation");
+  });
+
+  test("a negative pending-jobs reading is treated as zero, never extra slack", () => {
+    const d = decideReplenish(
+      state({ readyCount: 2, targetPoolSize: 5 }),
+      policy({ maxPoolSize: 10, replenishBurstLimit: 3, tenantReserveSlots: 2 }),
+      uncontended({ pendingTenantJobs: -10, clusterFreeCapacity: 4 }),
+    );
+    expect(d.toCreate).toBe(2); // 4 free - reserve 2
   });
 });
 
@@ -136,6 +237,7 @@ describe("decideDrain", () => {
             id: "fresh",
             pool_ready_at: new Date(now - 100),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -143,6 +245,7 @@ describe("decideDrain", () => {
             id: "fresh2",
             pool_ready_at: new Date(now - 200),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -166,6 +269,7 @@ describe("decideDrain", () => {
             id: "newest",
             pool_ready_at: new Date(now - 2000),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -173,6 +277,7 @@ describe("decideDrain", () => {
             id: "oldest",
             pool_ready_at: new Date(now - 9000),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -180,6 +285,7 @@ describe("decideDrain", () => {
             id: "middle",
             pool_ready_at: new Date(now - 5000),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -199,11 +305,19 @@ describe("decideDrain", () => {
         readyCount: 3,
         targetPoolSize: 1,
         unclaimedRows: [
-          { id: "noTs", pool_ready_at: null, docker_image: null, node_id: null, health_url: null },
+          {
+            id: "noTs",
+            pool_ready_at: null,
+            docker_image: null,
+            image_digest: null,
+            node_id: null,
+            health_url: null,
+          },
           {
             id: "old",
             pool_ready_at: new Date(now - 9000),
             docker_image: null,
+            image_digest: null,
             node_id: null,
             health_url: null,
           },
@@ -217,39 +331,68 @@ describe("decideDrain", () => {
 });
 
 describe("decideRollout", () => {
-  test("replaces rows whose image differs from the current image", () => {
-    const d = decideRollout(
-      [
-        { id: "ok", docker_image: "img:v2" },
-        { id: "stale", docker_image: "img:v1" },
-      ],
-      "img:v2",
-    );
-    expect(d.toReplace).toEqual(["stale"]);
-    expect(d.reason).toContain("replacing 1");
-  });
+  const TARGET = `sha256:${"a".repeat(64)}`;
+  const STALE = `sha256:${"b".repeat(64)}`;
 
-  test("treats every row as current when all images match", () => {
+  test("fences every known-stale row but preserves physical ready rows until target capacity exists", () => {
     const d = decideRollout(
       [
-        { id: "a", docker_image: "img:v2" },
-        { id: "b", docker_image: "img:v2" },
+        { id: "old-a", image_digest: STALE, claimable: true },
+        { id: "old-b", image_digest: STALE, claimable: true },
       ],
-      "img:v2",
+      TARGET,
+      policy({ minPoolSize: 1, replenishBurstLimit: 2 }),
     );
+    expect(d.toFence).toEqual(["old-a", "old-b"]);
     expect(d.toReplace).toEqual([]);
-    expect(d.reason).toMatch(/all rows on current image/);
+    expect(d.counts).toMatchObject({ stale: 2, selected: 0, deferred: 2 });
+    expect(d.reason).toContain("claim-fencing all 2");
+    expect(d.reason).toContain("physical ready-container floor 1");
   });
 
-  test("does NOT replace rows with an unknown (null) image", () => {
+  test("once target capacity exists, replacement is burst-bounded and preserves the ready floor", () => {
     const d = decideRollout(
       [
-        { id: "nullimg", docker_image: null },
-        { id: "stale", docker_image: "img:v1" },
+        { id: "target", image_digest: TARGET, claimable: true },
+        { id: "old-a", image_digest: STALE, claimable: true },
+        { id: "old-b", image_digest: STALE, claimable: true },
+        { id: "old-c", image_digest: STALE, claimable: true },
       ],
-      "img:v2",
+      TARGET,
+      policy({ minPoolSize: 2, replenishBurstLimit: 2 }),
     );
-    expect(d.toReplace).toEqual(["stale"]);
+    expect(d.toFence).toEqual(["old-a", "old-b", "old-c"]);
+    expect(d.toReplace).toEqual(["old-a", "old-b"]);
+    expect(d.counts).toMatchObject({ targetReady: 1, selected: 2, deferred: 1 });
+  });
+
+  test("same persisted digest is a no-op even when the mutable tag moved", () => {
+    const d = decideRollout(
+      [
+        { id: "a", image_digest: TARGET, claimable: true },
+        { id: "b", image_digest: TARGET, claimable: false },
+      ],
+      TARGET,
+      policy(),
+    );
+    expect(d.toFence).toEqual([]);
+    expect(d.toReplace).toEqual([]);
+    expect(d.reason).toMatch(/all 2 generations on target digest/);
+  });
+
+  test("null digest is stale, unclaimable, and consumes the bounded teardown budget", () => {
+    const d = decideRollout(
+      [
+        { id: "unknown", image_digest: null, claimable: false },
+        { id: "old", image_digest: STALE, claimable: false },
+        { id: "old-deferred", image_digest: STALE, claimable: false },
+      ],
+      TARGET,
+      policy({ replenishBurstLimit: 2 }),
+    );
+    expect(d.toFence).toEqual(["unknown", "old", "old-deferred"]);
+    expect(d.toReplace).toEqual(["unknown", "old"]);
+    expect(d.counts).toMatchObject({ unknownDigest: 1, selected: 2, deferred: 1 });
   });
 });
 
@@ -300,7 +443,11 @@ describe("envWarmPoolPolicy", () => {
       maxPoolSize: p.maxPoolSize,
     });
     expect(forecast.targetPoolSize).toBe(4);
-    const d = decideReplenish(state({ readyCount: 0, targetPoolSize: forecast.targetPoolSize }), p);
+    const d = decideReplenish(
+      state({ readyCount: 0, targetPoolSize: forecast.targetPoolSize }),
+      p,
+      uncontended(),
+    );
     expect(d.toCreate).toBe(3); // deficit 4, capped by default burst limit 3
     expect(d.reason).toContain("burst limit 3");
   });

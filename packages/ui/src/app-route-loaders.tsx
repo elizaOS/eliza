@@ -103,10 +103,6 @@ export const LazyMemoryViewerView = lazyNamedView(
   () => import("./components/pages/MemoryViewerView"),
   "MemoryViewerView",
 );
-export const LazyMyAppsView = lazyNamedView(
-  () => import("./components/pages/MyAppsView"),
-  "MyAppsView",
-);
 export const LazyPluginsPageView = lazyNamedView(
   () => import("./components/pages/PluginsPageView"),
   "PluginsPageView",

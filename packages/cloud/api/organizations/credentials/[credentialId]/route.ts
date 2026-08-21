@@ -23,6 +23,7 @@ import {
   TeamCredentialPoolError,
   updatePooledCredential,
 } from "@/lib/services/team-credential-pool/service";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { assertOrgMembership } from "../../../src/middleware/org-membership";
 
@@ -73,7 +74,13 @@ app.patch("/", async (c) => {
       );
     }
 
-    const validated = updateSchema.parse(await c.req.json());
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    const validated = updateSchema.parse(rawBody);
     const credential = await updatePooledCredential({
       credentialId,
       organizationId: user.organization_id,

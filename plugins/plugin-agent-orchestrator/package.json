@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -82,7 +82,7 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
@@ -93,7 +93,7 @@
     "git-workspace-service": "0.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -142,6 +142,13 @@
         "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos and pi-agent.",
         "required": false,
         "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_ACP_WARM_SPAWN": {
+        "type": "boolean",
+        "description": "Pre-initialize one native elizaos ACP child without session credentials and claim it once at spawn time.",
+        "required": false,
+        "default": false,
         "sensitive": false
       },
       "ELIZA_DEFAULT_AGENT_TYPE": {

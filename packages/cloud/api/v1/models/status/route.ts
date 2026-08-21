@@ -15,6 +15,7 @@ import {
   hasGatewayProviderConfigured,
 } from "@/lib/providers/language-model";
 import { getCachedMergedModelCatalog } from "@/lib/services/model-catalog";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,8 +63,16 @@ app.post("/", async (c) => {
   try {
     await getCurrentUser(c).catch(() => null);
 
-    const body = (await c.req.json()) as { modelIds?: unknown };
-    const modelIds = body.modelIds;
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
+    const modelIds =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as { modelIds?: unknown }).modelIds
+        : undefined;
 
     if (!Array.isArray(modelIds) || modelIds.length === 0) {
       return c.json({ error: "modelIds array is required" }, 400);

@@ -36,7 +36,9 @@ function buildUrl(options: ServerHealthOptions): string {
 		host = "localhost",
 		protocol = "http",
 	} = options;
-	return `${protocol}://${host}:${port}${endpoint}`;
+	const formattedEndpoint =
+		endpoint && !endpoint.startsWith("/") ? `/${endpoint}` : endpoint;
+	return `${protocol}://${host}:${port}${formattedEndpoint}`;
 }
 
 /**

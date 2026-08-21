@@ -52,7 +52,7 @@ The Earnings dashboard shows "Spent on hosting" separately from token redemption
 
 ## Redeem for elizaOS Tokens
 
-Redemptions use `pointsAmount`, where 100 points equals $1.00.
+Earnings balances are held in **USD** (four decimal places). Redemptions use `pointsAmount`, an integer **API-boundary representation** where 100 points equals $1.00 — stored balances, ledgers, and conversion records are always USD, and the `100:1` ratio is applied only at this boundary.
 
 1. Check `/api/v1/redemptions/balance`.
 2. Quote `/api/v1/redemptions/quote?network=base&pointsAmount=10000`.
@@ -65,11 +65,12 @@ curl -X POST "https://api.eliza.app/api/v1/redemptions" \
   -d '{
     "pointsAmount": 10000,
     "network": "base",
+    "asset": "eliza",
     "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678"
   }'
 ```
 
-Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
+Send `asset: "eliza"` explicitly for this token-quote flow. Legacy raw requests that omit `asset` default to `usdc`; do not rely on that fallback when pairing a quote and redemption. Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
 
 <Info>
   Large redemptions can require admin approval, and network availability can change with hot-wallet balances. Always request a quote immediately before creating a redemption.

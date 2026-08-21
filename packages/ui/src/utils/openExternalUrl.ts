@@ -1,16 +1,29 @@
 /**
  * Opens an external URL on the current platform: desktop bridge, Capacitor
  * in-app browser, or a new tab, so links leave the app shell safely.
+ *
+ * These helpers are the central enforcement point for wire-supplied
+ * navigation targets (billing checkout links, connector OAuth `authUrl`s,
+ * login `browserUrl`s, server-signed download URLs, plugin-declared links):
+ * every URL passes the `isSafeNavigationUrl` scheme allowlist before any
+ * platform handoff, and a rejected URL never reaches `window.open`,
+ * `popup.location.href`, the Electrobun bridge, or the Capacitor browser.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequestWithTimeout,
 } from "../bridge/electrobun-rpc";
+import { isSafeNavigationUrl } from "./navigation-url";
 
 interface CapacitorBrowserPlugin {
   open: (options: { url: string; presentationStyle?: string }) => Promise<void>;
   close?: () => Promise<void>;
+}
+
+export interface OpenExternalUrlOptions {
+  /** Explicit, caller-owned protocol allowlist for trusted OS deep links. */
+  extraSchemes?: readonly string[];
 }
 
 let registeredCapacitorBrowser: CapacitorBrowserPlugin | null = null;
@@ -35,14 +48,27 @@ function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
   return registeredCapacitorBrowser;
 }
 
-export async function openExternalUrl(url: string): Promise<void> {
+/**
+ * Open `url` outside the app shell. Returns `true` when a navigation was
+ * initiated, `false` when nothing was opened — either because the URL failed
+ * the navigation scheme allowlist (wire-supplied `javascript:`/`data:`/
+ * custom-scheme targets fail closed here) or because no open channel exists
+ * in this environment. Callers handling wire-supplied URLs should surface
+ * their existing visible error state on `false`.
+ */
+export async function openExternalUrl(
+  url: string,
+  options: OpenExternalUrlOptions = {},
+): Promise<boolean> {
+  if (!isSafeNavigationUrl(url, options.extraSchemes)) return false;
+
   // Capacitor native (iOS WKWebView / Android WebView): use the Browser
   // plugin. Avoids `window.open` which loses user-gesture context across
   // awaits and is silently dropped by WKWebView.
   const capacitorBrowser = getCapacitorBrowser();
   if (capacitorBrowser) {
     await capacitorBrowser.open({ url });
-    return;
+    return true;
   }
 
   const bridged = await invokeDesktopBridgeRequestWithTimeout<void>({
@@ -52,22 +78,23 @@ export async function openExternalUrl(url: string): Promise<void> {
     timeoutMs: 10_000,
   });
 
-  if (bridged !== null && bridged.status === "ok") return;
+  if (bridged !== null && bridged.status === "ok") return true;
 
   // Inside Electrobun — never fall through to window.open() which spawns an
   // unmanaged BrowserView to an external URL and crashes the shell.
   if (getElectrobunRendererRpc() !== undefined) {
     // desktopOpenExternal RPC returned null — skip window.open fallback to
     // avoid spawning an unmanaged BrowserView inside Electrobun.
-    return;
+    return false;
   }
 
   // Non-desktop (web browser) fallback.
   if (typeof window === "undefined" || typeof window.open !== "function") {
-    return;
+    return false;
   }
 
   window.open(url, "_blank", "noopener,noreferrer");
+  return true;
 }
 
 export async function closeExternalBrowser(): Promise<void> {
@@ -111,12 +138,27 @@ export function preOpenWindow(target = "_blank"): Window | null {
 /**
  * Navigate a pre-opened window to the real URL, or fall back to
  * `openExternalUrl` if the pre-open was blocked / we're on desktop.
+ *
+ * Returns `false` when the URL fails the navigation scheme allowlist — the
+ * pre-opened about:blank popup is same-origin, so an unchecked `javascript:`
+ * assignment would execute in the app origin; on rejection the popup is
+ * closed and the caller surfaces its existing visible error state.
  */
 export function navigatePreOpenedWindow(
   popup: Window | null,
   url: string,
   options?: { preserveOpener?: boolean },
-): void {
+): boolean {
+  if (!isSafeNavigationUrl(url)) {
+    if (popup && !popup.closed) {
+      try {
+        popup.close();
+      } catch {
+        // error-policy:J6 best-effort popup teardown on a rejected target.
+      }
+    }
+    return false;
+  }
   if (popup && !popup.closed) {
     if (!options?.preserveOpener) {
       // Security: sever the opener while the pre-opened about:blank document
@@ -130,8 +172,9 @@ export function navigatePreOpenedWindow(
       }
     }
     popup.location.href = url;
-    return;
+    return true;
   }
   // Fallback — desktop RPC or retry window.open
   void openExternalUrl(url);
+  return true;
 }

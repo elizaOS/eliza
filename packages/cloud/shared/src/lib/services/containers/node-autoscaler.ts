@@ -17,7 +17,6 @@
  *    provision and drain.
  */
 
-import { requireCanonicalProviderServerId } from "../../../db/repositories/agent-backup-source-authority";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../config/containers-env";
@@ -31,8 +30,20 @@ import {
   inferNodeArchitectureFromMetadata,
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
-import { type ComputeProvider, getComputeProvider, isComputeConfigured } from "./compute-provider";
+import {
+  type ComputeProvider,
+  type ComputeServer,
+  getComputeProvider,
+  isComputeConfigured,
+} from "./compute-provider";
 import { HetznerCloudError, isHetznerCloudConfigured } from "./hetzner-cloud-api";
+import {
+  assertAuthoritativeHetznerServer,
+  attestHetznerCloudNode,
+  type HetznerServerAuthority,
+  isTypedHetznerCloudNode,
+  requireSafeHetznerServerId,
+} from "./hetzner-node-attestation";
 import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
 import { withNodeProvisionAuthority } from "./node-provision-authority";
 
@@ -75,6 +86,9 @@ export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   defaultImage: "ubuntu-24.04",
   defaultCapacity: containersEnv.defaultAutoscaleNodeCapacity(),
 };
+
+const HCLOUD_FIREWALL_SETTLEMENT_ATTEMPTS = 5;
+const HCLOUD_FIREWALL_SETTLEMENT_DELAY_MS = 1_000;
 
 export interface CapacityDecision {
   totalCapacity: number;
@@ -130,6 +144,8 @@ export class NodeAutoscaler {
     // unchanged. Injecting `InMemoryComputeProvider` here lets tests drive the
     // provision/drain path without monkey-patching the module. #8919
     private readonly provider?: ComputeProvider,
+    private readonly settlementSleep: (delayMs: number) => Promise<void> = (delayMs) =>
+      new Promise((resolve) => setTimeout(resolve, delayMs)),
   ) {}
 
   /** The compute provider for this run — injected fake, or the configured default. */
@@ -145,7 +161,7 @@ export class NodeAutoscaler {
     const nodes = await dockerNodesRepository.findAll();
     const enabled = nodes.filter((n) => n.enabled);
     const requiredPlatform = containersEnv.defaultAgentImagePlatform();
-    const healthyEnabled = enabled.filter(
+    const healthyCandidates = enabled.filter(
       (n) =>
         n.status === "healthy" &&
         n.metadata.capacityProvisional !== true &&
@@ -154,6 +170,15 @@ export class NodeAutoscaler {
           requiredPlatform,
         ),
     );
+    let provider: ComputeProvider | undefined;
+    const healthyEnabled: DockerNode[] = [];
+    for (const node of healthyCandidates) {
+      if (isTypedHetznerCloudNode(node)) {
+        provider ??= this.computeProvider();
+        await attestHetznerCloudNode(node, provider);
+      }
+      healthyEnabled.push(node);
+    }
     const allocatedByNode = new Map(
       await Promise.all(
         healthyEnabled.map(
@@ -248,6 +273,27 @@ export class NodeAutoscaler {
     const requestedCapacity = request.capacity ?? policyCapacity;
     const prePullImages = request.prePullImages ?? [containersEnv.defaultAgentImage()];
     const networkIds = containersEnv.defaultHcloudNetworkIds();
+    const providerName =
+      process.env.COMPUTE_PROVIDER === "digitalocean" ? "digitalocean" : "hetzner";
+    let firewallIds: number[] | undefined;
+    if (providerName === "hetzner") {
+      try {
+        firewallIds = containersEnv.defaultHcloudFirewallIds();
+      } catch (error) {
+        throw new HetznerCloudError(
+          "invalid_input",
+          error instanceof Error ? error.message : "Invalid Hetzner firewall configuration",
+          undefined,
+          error,
+        );
+      }
+      if (firewallIds.length === 0) {
+        throw new HetznerCloudError(
+          "invalid_input",
+          "CONTAINERS_HCLOUD_FIREWALL_IDS is required for Hetzner node provisioning",
+        );
+      }
+    }
 
     const userData = buildContainerNodeUserData({
       nodeId,
@@ -268,8 +314,6 @@ export class NodeAutoscaler {
     // shipped a staging node tagged `environment=production` in the first
     // place. Caller overrides via `request.labels` win (test seams).
     const environment = containersEnv.environment();
-    const providerName =
-      process.env.COMPUTE_PROVIDER === "digitalocean" ? "digitalocean" : "hetzner";
     const labels = {
       ...request.labels,
       "managed-by": "eliza-cloud",
@@ -280,16 +324,58 @@ export class NodeAutoscaler {
 
     return withNodeProvisionAuthority(`${providerName}:${environment}`, async (authority) => {
       const existingRow = authority.nodes.find((node) => node.node_id === nodeId);
-      if (existingRow) return provisionResultFromNode(existingRow);
+      if (existingRow) {
+        if (providerName === "hetzner") {
+          await attestHetznerCloudNode(existingRow, client);
+        }
+        return provisionResultFromNode(existingRow);
+      }
 
-      const providerServers = await client.listServers({
-        "managed-by": "eliza-cloud",
-        environment,
-        tier: "data-plane",
-      });
-      const existingServer = providerServers.find(
-        (server) => server.labels?.["node-id"] === nodeId || server.name === nodeId,
+      const inventory = await client.listServers(
+        providerName === "hetzner"
+          ? undefined
+          : {
+              "managed-by": "eliza-cloud",
+              environment,
+              tier: "data-plane",
+            },
       );
+      const providerServers =
+        providerName === "hetzner"
+          ? inventory.filter(
+              (server) =>
+                server.labels?.["managed-by"] === "eliza-cloud" &&
+                server.labels.environment === environment &&
+                server.labels.tier === "data-plane",
+            )
+          : inventory;
+      const allocationMatches = providerServers.filter(
+        (server) => server.labels?.["node-id"] === nodeId,
+      );
+      if (providerName === "hetzner" && allocationMatches.length > 1) {
+        throw new HetznerCloudError(
+          "invalid_input",
+          `Provider inventory has multiple Hetzner allocations for node ${nodeId}`,
+        );
+      }
+      const existingServer = allocationMatches[0];
+      const sameNameServers = inventory.filter((server) => server.name === nodeId);
+      if (
+        providerName === "hetzner" &&
+        sameNameServers.some((server) => String(server.id) !== String(existingServer?.id))
+      ) {
+        throw new HetznerCloudError(
+          "invalid_input",
+          `Provider inventory has a same-name Hetzner server without the exact allocation labels for node ${nodeId}`,
+        );
+      }
+      if (providerName === "hetzner" && existingServer) {
+        assertAuthoritativeHetznerServer(existingServer, {
+          nodeId,
+          environment,
+          firewallIds: firewallIds ?? [],
+        });
+      }
       const environmentNodes = authority.nodes.filter((node) => {
         const metadata = (node.metadata ?? {}) as Record<string, unknown>;
         const nodeProvider = metadata.provider;
@@ -347,16 +433,23 @@ export class NodeAutoscaler {
             image,
             userData,
             networkIds,
+            ...(firewallIds ? { firewallIds } : {}),
             labels,
           });
-      const ip = provisioned.server.publicIpv4 ?? provisioned.server.name;
-      const hcloudServerId = Number(provisioned.server.id);
+      const hcloudServerId = assertSafeCreatedHetznerServerId(provisioned.server.id, providerName);
+      let authoritativeServer = provisioned.server;
 
       try {
-        const providerServerId =
-          providerName === "hetzner"
-            ? requireCanonicalProviderServerId(String(provisioned.server.id))
-            : null;
+        if (providerName === "hetzner" && !existingServer) {
+          authoritativeServer = await this.settleCreatedHetznerServer(client, hcloudServerId, {
+            nodeId,
+            environment,
+            firewallIds: firewallIds ?? [],
+            serverId: hcloudServerId,
+          });
+        }
+        const ip = authoritativeServer.publicIpv4 ?? authoritativeServer.name;
+        const providerServerId = providerName === "hetzner" ? String(hcloudServerId) : null;
         await authority.createNode({
           node_id: nodeId,
           hostname: ip,
@@ -390,28 +483,51 @@ export class NodeAutoscaler {
             capacityPolicyFallback: policyCapacity,
           },
         });
+
+        logger.info("[autoscaler] Provisioned new container node", {
+          nodeId,
+          hcloudServerId,
+          ip,
+          serverType,
+          location,
+          capacityProvisional: true,
+        });
+
+        return {
+          nodeId,
+          hostname: ip,
+          hcloudServerId,
+          rootPassword: provisioned.rootPassword,
+          idempotent: Boolean(existingServer),
+        };
       } catch (error) {
-        if (!existingServer) await client.deleteServer(Number(provisioned.server.id));
+        if (!existingServer) await client.deleteServer(hcloudServerId);
         throw error;
       }
-
-      logger.info("[autoscaler] Provisioned new container node", {
-        nodeId,
-        hcloudServerId,
-        ip,
-        serverType,
-        location,
-        capacityProvisional: true,
-      });
-
-      return {
-        nodeId,
-        hostname: ip,
-        hcloudServerId,
-        rootPassword: provisioned.rootPassword,
-        idempotent: Boolean(existingServer),
-      };
     });
+  }
+
+  private async settleCreatedHetznerServer(
+    client: ComputeProvider,
+    serverId: number,
+    expected: HetznerServerAuthority & { serverId: number },
+  ): Promise<ComputeServer> {
+    for (let attempt = 1; attempt <= HCLOUD_FIREWALL_SETTLEMENT_ATTEMPTS; attempt += 1) {
+      const server = await client.getServer(serverId);
+      if (server) {
+        const state = assertAuthoritativeHetznerServer(server, expected, {
+          allowSettling: true,
+        });
+        if (state === "applied") return server;
+      }
+      if (attempt < HCLOUD_FIREWALL_SETTLEMENT_ATTEMPTS) {
+        await this.settlementSleep(HCLOUD_FIREWALL_SETTLEMENT_DELAY_MS);
+      }
+    }
+    throw new HetznerCloudError(
+      "invalid_input",
+      `New Hetzner server ${serverId} did not reach the authoritative firewall state after ${HCLOUD_FIREWALL_SETTLEMENT_ATTEMPTS} reads`,
+    );
   }
 
   /**
@@ -454,17 +570,16 @@ export class NodeAutoscaler {
     }
 
     if (!isHetznerCloudConfigured()) {
-      logger.warn("[autoscaler] HCLOUD_TOKEN not set; cannot delete Hetzner server", {
-        nodeId,
-        hcloudServerId,
-      });
-      await dockerNodesRepository.delete(node.id);
-      return;
+      throw new HetznerCloudError(
+        "missing_token",
+        `Cannot attest or delete Hetzner server ${hcloudServerId} without HCLOUD_TOKEN`,
+      );
     }
 
     const client = this.computeProvider();
     try {
-      await client.deleteServer(hcloudServerId);
+      const attested = await attestHetznerCloudNode(node, client);
+      await client.deleteServer(attested.serverId);
     } catch (err) {
       // error-policy:J6 idempotent teardown — a not_found means the server is
       // already deprovisioned (the desired end state), so the DB row is safe to
@@ -540,6 +655,23 @@ export class NodeAutoscaler {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function assertSafeCreatedHetznerServerId(
+  value: number | string,
+  providerName: "hetzner" | "digitalocean",
+): number {
+  if (providerName === "hetzner") {
+    return requireSafeHetznerServerId(value, "New Hetzner server response");
+  }
+  const providerId = Number(value);
+  if (!Number.isSafeInteger(providerId) || providerId <= 0) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      "New compute server response has an invalid provider ID",
+    );
+  }
+  return providerId;
+}
 
 function generateNodeId(): string {
   // Short hex id with a deterministic prefix — easy to scan in the dashboard.

@@ -33,10 +33,6 @@ import {
   validateReleasePlan,
   validateReleaseState,
 } from "./release-contract.mjs";
-import {
-  replaceWorkspaceReferences,
-  restoreWorkspaceReferences,
-} from "./release-manifests.mjs";
 import { execFileSync, spawnSync } from "./spawn-sync-captured.mjs";
 
 export const RELEASE_PLAN_FILENAME = "release-plan.json";
@@ -89,30 +85,6 @@ function assertManifestsUnchanged(snapshots) {
       throw new Error(
         `${name} package.json changed after release planning; discard and rebuild the candidate`,
       );
-    }
-  }
-}
-
-const MANIFEST_DEPENDENCY_SECTIONS = [
-  "dependencies",
-  "optionalDependencies",
-  "peerDependencies",
-  "devDependencies",
-];
-
-function assertNoWorkspaceRanges(snapshots) {
-  for (const [name, snapshot] of snapshots) {
-    const manifest = JSON.parse(snapshot.bytes.toString("utf8"));
-    for (const section of MANIFEST_DEPENDENCY_SECTIONS) {
-      for (const [dependencyName, range] of Object.entries(
-        manifest[section] ?? {},
-      )) {
-        if (typeof range === "string" && range.startsWith("workspace:")) {
-          throw new Error(
-            `${name} ${section}.${dependencyName} still uses ${range} after workspace reference rewriting; ensure the package is release-managed by lerna.json`,
-          );
-        }
-      }
     }
   }
 }
@@ -328,69 +300,31 @@ export function buildAndPackReleaseCandidate({
     assertCleanExpectedCommit(root, identity);
     assertManifestsUnchanged(snapshots);
 
-    // Workspace protocol ranges cannot ship in published manifests, so packing
-    // happens inside a journaled rewrite window: every workspace:* range is
-    // replaced with the exact target version, tarballs are packed, and the
-    // byte-exact originals are restored before the clean-tree contract is
-    // re-asserted. The plan records the ORIGINAL manifest hashes because later
-    // verification re-reads the source tree at the same commit.
-    const workspaceRefJournal = `${stagingDirectory}.workspace-refs.json`;
-    replaceWorkspaceReferences({
-      repoRoot: root,
-      journalPath: workspaceRefJournal,
-    });
     const packages = [];
-    let packError = null;
-    try {
-      const rewrittenSnapshots = manifestSnapshots(root, cohort);
-      assertNoWorkspaceRanges(rewrittenSnapshots);
-      const filenames = new Set();
-      for (const packageRecord of cohort.packages) {
-        const snapshot = snapshots.get(packageRecord.name);
-        const tarball = packOnce({
-          repoRoot: root,
-          stagingDirectory,
-          packageRecord,
-          npmCommand,
-        });
-        if (filenames.has(tarball.filename))
-          throw new Error(`Duplicate tarball filename ${tarball.filename}`);
-        filenames.add(tarball.filename);
-        packages.push({
-          ...packageRecord,
-          manifest: {
-            path: `${packageRecord.directory}/package.json`,
-            sha512: sha512Hex(snapshot.bytes),
-            integrity: sha512Integrity(snapshot.bytes),
-          },
-          tarball,
-        });
-        assertManifestsUnchanged(rewrittenSnapshots);
-      }
-    } catch (error) {
-      // error-policy:J2 defer rethrow until the source tree is restored
-      packError = error;
-    }
-    let restoreError = null;
-    try {
-      restoreWorkspaceReferences({
+    const filenames = new Set();
+    for (const packageRecord of cohort.packages) {
+      const snapshot = snapshots.get(packageRecord.name);
+      const tarball = packOnce({
         repoRoot: root,
-        journalPath: workspaceRefJournal,
+        stagingDirectory,
+        packageRecord,
+        npmCommand,
       });
-    } catch (error) {
-      // error-policy:J2 a failed restore leaves the tree rewritten and must surface
-      restoreError = error;
+      if (filenames.has(tarball.filename))
+        throw new Error(`Duplicate tarball filename ${tarball.filename}`);
+      filenames.add(tarball.filename);
+      packages.push({
+        ...packageRecord,
+        manifest: {
+          path: `${packageRecord.directory}/package.json`,
+          sha512: sha512Hex(snapshot.bytes),
+          integrity: sha512Integrity(snapshot.bytes),
+        },
+        tarball,
+      });
+      assertManifestsUnchanged(snapshots);
     }
-    if (packError && restoreError) {
-      throw new AggregateError(
-        [packError, restoreError],
-        "Candidate packing and workspace reference restore failed",
-      );
-    }
-    if (packError) throw packError;
-    if (restoreError) throw restoreError;
     assertCleanExpectedCommit(root, identity);
-    assertManifestsUnchanged(snapshots);
 
     const cohortIntegrity = deriveReleaseCohortIntegrity(identity, {
       packages,

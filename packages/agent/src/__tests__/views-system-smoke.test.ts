@@ -15,16 +15,25 @@
  */
 
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  findHeroOnDisk,
   generateViewHeroSvg,
   getBundleDiskPath,
   getFrameDiskPath,
+  getHeroDiskPath,
   getView,
   listViews,
   registerPluginViews,
@@ -349,7 +358,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       const registryEntry = getView("smoke.main");
       expect(registryEntry).toBeTruthy();
       expect(registryEntry ? getFrameDiskPath(registryEntry) : null).toBe(
-        path.join(pluginDir, "dist", "views", "frame.html"),
+        await realpath(path.join(pluginDir, "dist", "views", "frame.html")),
       );
     } finally {
       await rm(pluginDir, { recursive: true, force: true });
@@ -553,6 +562,76 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     );
   });
 
+  it("rejects bundle, frame, and hero declarations equal to the plugin root", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-root-"));
+    try {
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "plugin-root confinement fixture",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: ".",
+              framePath: ".",
+              heroImagePath: ".",
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const entry = getView("smoke.main");
+      expect(entry).toBeDefined();
+      if (!entry) throw new Error("Expected smoke.main to be registered");
+      expect(entry.available).toBe(false);
+      expect(getBundleDiskPath(entry)).toBeNull();
+      expect(getFrameDiskPath(entry)).toBeNull();
+      expect(getHeroDiskPath(entry)).toBeNull();
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "getBundleDiskPath rejects a bundle reached through a directory symlink",
+    async () => {
+      const pluginDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-view-root-"),
+      );
+      const outsideDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-view-outside-"),
+      );
+      try {
+        await mkdir(path.join(outsideDir, "views"), { recursive: true });
+        await writeFile(
+          path.join(outsideDir, "views", "bundle.js"),
+          "export {};",
+        );
+        await symlink(outsideDir, path.join(pluginDir, "dist"), "dir");
+        await registerPluginViews(
+          {
+            name: SMOKE_PLUGIN,
+            description: "symlink confinement fixture",
+            actions: [],
+            views: [SMOKE_VIEW],
+          },
+          pluginDir,
+        );
+
+        const entry = getView("smoke.main");
+        expect(entry).toBeDefined();
+        expect(entry ? getBundleDiskPath(entry) : null).toBeNull();
+      } finally {
+        await rm(pluginDir, { recursive: true, force: true });
+        await rm(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("serves relative chunks emitted beside the root bundle", async () => {
     const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-"));
     const viewsDir = path.join(pluginDir, "dist", "views");
@@ -737,6 +816,34 @@ describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder"
     expect(svg).toContain("<svg");
     expect(svg).toContain("Smoke View");
   });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "rejects a fallback hero symlink that escapes the plugin",
+    async () => {
+      const pluginDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-hero-root-"),
+      );
+      const outsideDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-hero-outside-"),
+      );
+      try {
+        const assetsDir = path.join(pluginDir, "assets");
+        const outsideHero = path.join(outsideDir, "secret.png");
+        await mkdir(assetsDir, { recursive: true });
+        await writeFile(outsideHero, "outside-secret");
+        await symlink(outsideHero, path.join(assetsDir, "hero.png"), "file");
+
+        await expect(
+          findHeroOnDisk({ pluginDir, heroImagePath: undefined }),
+        ).resolves.toBeNull();
+      } finally {
+        await rm(pluginDir, { recursive: true, force: true });
+        await rm(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

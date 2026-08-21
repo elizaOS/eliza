@@ -16,12 +16,15 @@ import type { DockerNode } from "../../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../../config/containers-env";
 import { logger } from "../../../utils/logger";
 import { buildAppContainerSecurityFlags } from "../../app-network-utils";
+import { isContainerAbsentMessage } from "../../docker-error-classifier";
 import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
   allocatePort,
+  buildDockerEnvFileStdinTransport,
   buildEnsureNetworkCmd,
   shellQuote,
+  validateDockerEnvFileStdinEnvironment,
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
 } from "../../docker-sandbox-utils";
@@ -42,7 +45,6 @@ import {
   derivePublicHostname,
   deriveVolumePath,
   validateContainerMountPath,
-  validateEnvKey,
 } from "./paths";
 import { buildContainerPortPublishFlag } from "./port-publish";
 import { ensureRegistryAccess, readPulledImageDigest } from "./registry";
@@ -74,6 +76,20 @@ function cpuUnitsToDockerCpus(cpuUnits: number): string {
   return (Math.round(vcpus * 1000) / 1000).toString();
 }
 
+function validateContainerEnvironment(environment: Readonly<Record<string, string>>): void {
+  try {
+    validateDockerEnvFileStdinEnvironment(environment);
+  } catch (error) {
+    // error-policy:J2 boundary translation — the public Hetzner route maps
+    // invalid_input to 400, so transport validation must not escape as a 500.
+    throw new HetznerClientError(
+      "invalid_input",
+      `Invalid container environment: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
+}
+
 export class HetznerContainersClient {
   // ----------------------------------------------------------------------
   // CRUD
@@ -97,9 +113,7 @@ export class HetznerContainersClient {
         `desiredCount must be 1; multi-replica containers are not supported on the Hetzner-Docker pool.`,
       );
     }
-    if (input.environmentVars) {
-      for (const key of Object.keys(input.environmentVars)) validateEnvKey(key);
-    }
+    validateContainerEnvironment(input.environmentVars ?? {});
     const volumeMountPath = validateContainerMountPath(input.volumeMountPath);
 
     // 1. Pre-create the DB row in `pending` so the rest of the flow has an id.
@@ -121,7 +135,11 @@ export class HetznerContainersClient {
       metadata: { provider: "hetzner-docker", image: input.image },
     };
 
-    const row = await containersRepository.createWithQuotaCheck(newRow);
+    const admitted = await containersRepository.createWithProjectIntentAndQuotaCheck(newRow);
+    const row = admitted.container;
+    if (!admitted.created) {
+      return rowToSummary(row);
+    }
 
     // 2. Hetzner Cloud volume pre-flight. Create or find the volume before
     // node selection so scheduling can respect the volume's location.
@@ -141,50 +159,59 @@ export class HetznerContainersClient {
     let hcloudVolumeId: number | undefined;
     let hcloudVolumeLocation: string | undefined;
 
-    if (wantHcloudVolume) {
-      const volService = getHetznerVolumeService();
-      const defaultLocation = containersEnv.defaultHcloudLocation();
-      const volume = await volService.getOrCreateProjectVolume(
-        { organizationId: input.organizationId, projectName: input.projectName },
-        { sizeGb: input.volumeSizeGb ?? 10, location: defaultLocation },
-      );
-      hcloudVolumeId = volume.id;
-      hcloudVolumeLocation = volume.location.name;
-    }
-
-    // 3. Node selection.
-    //
-    // Stateful workloads need to land on the same node as the existing
-    // volume. For Hetzner Cloud volumes, the node MUST be in the same
-    // Hetzner location as the volume (location-bound block storage).
-    //
-    // Priority:
-    //   a) Sticky node from a prior container in this project (if healthy,
-    //      has capacity, and for hcloud volumes is in the right location)
-    //   b) Least-loaded node in the volume's location (hcloud volumes only)
-    //   c) Global least-loaded node (stateless or local-volume workloads)
     let node: DockerNode | null = null;
+    try {
+      if (wantHcloudVolume) {
+        const volService = getHetznerVolumeService();
+        const defaultLocation = containersEnv.defaultHcloudLocation();
+        const volume = await volService.getOrCreateProjectVolume(
+          { organizationId: input.organizationId, projectName: input.projectName },
+          { sizeGb: input.volumeSizeGb ?? 10, location: defaultLocation },
+        );
+        hcloudVolumeId = volume.id;
+        hcloudVolumeLocation = volume.location.name;
+      }
 
-    if (input.persistVolume) {
-      const sticky = await findStickyNodeForProject(input.organizationId, input.projectName);
-      if (sticky) {
-        if (hcloudVolumeLocation) {
-          if (getDockerNodeLocation(sticky) === hcloudVolumeLocation) {
+      // 3. Node selection.
+      //
+      // Stateful workloads need to land on the same node as the existing
+      // volume. For Hetzner Cloud volumes, the node MUST be in the same
+      // Hetzner location as the volume (location-bound block storage).
+      //
+      // Priority:
+      //   a) Sticky node from a prior container in this project (if healthy,
+      //      has capacity, and for hcloud volumes is in the right location)
+      //   b) Least-loaded node in the volume's location (hcloud volumes only)
+      //   c) Global least-loaded node (stateless or local-volume workloads)
+      if (input.persistVolume) {
+        const sticky = await findStickyNodeForProject(input.organizationId, input.projectName);
+        if (sticky) {
+          if (hcloudVolumeLocation) {
+            if (getDockerNodeLocation(sticky) === hcloudVolumeLocation) {
+              node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
+            }
+          } else {
             node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
           }
-        } else {
-          node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
         }
       }
-    }
 
-    if (!node && hcloudVolumeLocation) {
-      const located = await findNodeInLocation(hcloudVolumeLocation);
-      node = located && (await dockerNodeManager.ensureNodeReady(located)) ? located : null;
-    }
+      if (!node && hcloudVolumeLocation) {
+        const located = await findNodeInLocation(hcloudVolumeLocation);
+        node = located && (await dockerNodeManager.ensureNodeReady(located)) ? located : null;
+      }
 
-    if (!node && !hcloudVolumeLocation) {
-      node = await dockerNodeManager.getAvailableNode();
+      if (!node && !hcloudVolumeLocation) {
+        node = await dockerNodeManager.getAvailableNode();
+      }
+    } catch (error) {
+      // error-policy:J2 a created intent must become terminal when provider
+      // preflight fails; otherwise future single-flight retries would
+      // reconstruct a permanently-pending row and never retry provisioning.
+      const message = error instanceof Error ? error.message : String(error);
+      await containersRepository.updateStatus(row.id, "failed", message);
+      if (error instanceof HetznerClientError) throw error;
+      throw new HetznerClientError("container_create_failed", message, error);
     }
 
     if (!node) {
@@ -253,33 +280,36 @@ export class HetznerContainersClient {
         bootstrapStats = await hydrateBootstrapSource(ssh, volumePath, input.bootstrapSource);
       }
 
-      const envFlags = Object.entries(input.environmentVars ?? {})
-        .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
-        .join(" ");
-
       let hostPort: number | undefined;
       const maxPortAttempts = 5;
       for (let attempt = 1; attempt <= maxPortAttempts; attempt++) {
-        hostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
-        const dockerCreateCmd = [
-          "docker create",
-          `--name ${shellQuote(containerName)}`,
-          "--restart unless-stopped",
-          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-          `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
-          `--memory ${input.memoryMb}m`,
-          ...buildAppContainerSecurityFlags(),
-          ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
-          buildContainerPortPublishFlag(hostPort, input.port),
-          envFlags,
-          shellQuote(input.image),
-        ]
-          .filter((part) => part.length > 0)
-          .join(" ");
+        const candidateHostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
+        hostPort = candidateHostPort;
+        const createTransport = buildDockerEnvFileStdinTransport(
+          input.environmentVars ?? {},
+          (envFilePath) =>
+            [
+              "docker create",
+              `--name ${shellQuote(containerName)}`,
+              "--restart unless-stopped",
+              `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+              `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
+              `--memory ${input.memoryMb}m`,
+              ...buildAppContainerSecurityFlags(),
+              ...(volumePath
+                ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`]
+                : []),
+              buildContainerPortPublishFlag(candidateHostPort, input.port),
+              `--env-file ${envFilePath}`,
+              shellQuote(input.image),
+            ]
+              .filter((part) => part.length > 0)
+              .join(" "),
+        );
 
         try {
           await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-          await ssh.exec(dockerCreateCmd, 60_000);
+          await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
           break;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -488,6 +518,61 @@ export class HetznerContainersClient {
   }
 
   /**
+   * Provider-only billing stop under a database-held lifecycle fence.
+   *
+   * The billing dispatcher owns the control-plane transaction and final row
+   * transition, so this method must not update the container row or release its
+   * node slot. It verifies the tenant and lifecycle revision against the
+   * committed row, then proves the Docker runtime absent. The caller performs
+   * the fenced DB confirmation and idempotent slot release afterward.
+   */
+  async stopContainerRuntimeForBilling(
+    containerId: string,
+    organizationId: string,
+    expectedLifecycleRevision: number,
+  ): Promise<{ nodeId: string | null }> {
+    const row = await containersRepository.findById(containerId, organizationId);
+    if (!row) {
+      throw new HetznerClientError("container_not_found", `container ${containerId} not found`);
+    }
+    if (row.lifecycle_revision !== expectedLifecycleRevision) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `container ${containerId} lifecycle generation changed before billing stop`,
+      );
+    }
+    const meta = readMetadata(row);
+    if (!meta) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `container ${containerId} is missing valid Hetzner provider metadata`,
+      );
+    }
+    await this.execOnNode(meta, async (ssh) => {
+      // error-policy:J6 graceful stop is best effort; rm -f is the provider
+      // absence proof and its failure propagates to durable recovery.
+      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000).catch((err) => {
+        logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      try {
+        await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isContainerAbsentMessage(message) || !message.includes(meta.containerName)) {
+          throw error;
+        }
+        logger.info("[hetzner-client] billing stop confirmed runtime already absent", {
+          containerId,
+          containerName: meta.containerName,
+        });
+      }
+    });
+    return { nodeId: meta.nodeId };
+  }
+
+  /**
    * Tear down a container: stop + remove on the host, decrement the
    * node's allocated count, then delete the DB row. Errors during the
    * SSH stage are surfaced — we do NOT silently delete the row if the
@@ -605,15 +690,23 @@ export class HetznerContainersClient {
 
   /** Restart a container in-place (`docker restart`). Status flips to `deploying`; the cron monitor confirms `running`. */
   async restartContainer(containerId: string, organizationId: string): Promise<ContainerSummary> {
+    await containersRepository.prepareFundedRestart(containerId, organizationId, new Date());
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
 
-    await this.execOnNode(meta, (ssh) =>
-      ssh.exec(`docker restart ${shellQuote(meta.containerName)}`, 30_000),
-    );
+    try {
+      await this.execOnNode(meta, (ssh) =>
+        ssh.exec(`docker restart ${shellQuote(meta.containerName)}`, 30_000),
+      );
+    } catch (error) {
+      await containersRepository.update(containerId, organizationId, {
+        status: "failed",
+        error_message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const updated = await containersRepository.update(containerId, organizationId, {
-      status: "deploying",
       deployment_log: "Container restarted; waiting for health check...",
     });
     return rowToSummary(updated ?? row.row);
@@ -630,9 +723,35 @@ export class HetznerContainersClient {
     organizationId: string,
     environmentVars: Record<string, string>,
   ): Promise<ContainerSummary> {
-    for (const key of Object.keys(environmentVars)) validateEnvKey(key);
+    // Validate the complete frame before funding state or the existing
+    // container is touched. Invalid input must not turn setEnv into a
+    // destructive stop/remove followed by an impossible replacement.
+    validateContainerEnvironment(environmentVars);
+    await containersRepository.prepareFundedRestart(containerId, organizationId, new Date());
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
+
+    const createTransport = buildDockerEnvFileStdinTransport(environmentVars, (envFilePath) =>
+      [
+        "docker create",
+        `--name ${shellQuote(meta.containerName)}`,
+        "--restart unless-stopped",
+        `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+        `--cpus ${cpuUnitsToDockerCpus(row.row.cpu)}`,
+        `--memory ${row.row.memory}m`,
+        ...buildAppContainerSecurityFlags(),
+        ...(meta.volumePath
+          ? [
+              `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
+            ]
+          : []),
+        buildContainerPortPublishFlag(meta.hostPort, meta.containerPort),
+        `--env-file ${envFilePath}`,
+        shellQuote(meta.image),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
 
     await this.execOnNode(meta, async (ssh) => {
       // error-policy:J6 best-effort stop before the authoritative rm -f below;
@@ -647,33 +766,8 @@ export class HetznerContainersClient {
         );
       await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
-      const envFlags = Object.entries(environmentVars)
-        .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
-        .join(" ");
-
       await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-      await ssh.exec(
-        [
-          "docker create",
-          `--name ${shellQuote(meta.containerName)}`,
-          "--restart unless-stopped",
-          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-          `--cpus ${cpuUnitsToDockerCpus(row.row.cpu)}`,
-          `--memory ${row.row.memory}m`,
-          ...buildAppContainerSecurityFlags(),
-          ...(meta.volumePath
-            ? [
-                `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
-              ]
-            : []),
-          buildContainerPortPublishFlag(meta.hostPort, meta.containerPort),
-          envFlags,
-          shellQuote(meta.image),
-        ]
-          .filter(Boolean)
-          .join(" "),
-        60_000,
-      );
+      await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
       await ssh.exec(`docker start ${shellQuote(meta.containerName)}`, 60_000);
     });
 

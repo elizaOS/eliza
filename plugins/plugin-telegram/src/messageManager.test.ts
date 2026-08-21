@@ -3,10 +3,39 @@
  * handling: over-limit messages hard-split at Telegram's size cap (preferring
  * newline boundaries), interaction-only replies still carry fallback text, and
  * unknown attachment types degrade to a document upload. Telegraf is mocked.
+ * Document bytes resolve through core's SSRF-guarded `resolveAttachmentBytes`
+ * (the repo media invariant) — the mock pins that boundary, not a raw fetch.
+ * The capability-reference tests pin the W9-M1 invariant: stored attachments
+ * carry `telegram-file:<file_id>`, the token-bearing Bot API URL stays inside
+ * the fetch path, and model handlers receive bytes, never the URL.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type Content,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
+
+const { loggerErrorMock, loggerWarnMock, resolveAttachmentBytesMock } =
+  vi.hoisted(() => ({
+    loggerErrorMock: vi.fn(),
+    loggerWarnMock: vi.fn(),
+    resolveAttachmentBytesMock: vi.fn(),
+  }));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      ...actual.logger,
+      error: loggerErrorMock,
+      warn: loggerWarnMock,
+    },
+    resolveAttachmentBytes: resolveAttachmentBytesMock,
+  };
+});
 
 function createManager() {
   let messageId = 0;
@@ -30,6 +59,45 @@ function createManager() {
     sendChatAction,
     sendMessage,
   };
+}
+
+async function captureReactionCallback() {
+  const emitEvent = vi.fn();
+  const reply = vi.fn(async (text: string) => ({
+    message_id: 100,
+    date: 1_700_000_000,
+    text,
+    chat: { id: 123, type: "private" },
+  }));
+  const manager = new MessageManager(
+    {} as never,
+    { agentId: "agent-1", emitEvent } as unknown as IAgentRuntime,
+  );
+
+  await manager.handleReaction({
+    from: { id: 42, first_name: "Ada", is_bot: false },
+    chat: { id: 123, type: "private" },
+    update: {
+      message_reaction: {
+        chat: { id: 123, type: "private" },
+        message_id: 99,
+        date: 1,
+        old_reaction: [],
+        new_reaction: [{ type: "emoji", emoji: "👍" }],
+      },
+    },
+    reply,
+  } as never);
+
+  expect(emitEvent).toHaveBeenCalledTimes(2);
+  const payload = emitEvent.mock.calls[0]?.[1] as
+    | { callback?: (content: Content) => Promise<Memory[]> }
+    | undefined;
+  expect(payload?.callback).toBeTypeOf("function");
+  if (!payload?.callback) {
+    throw new Error("expected the reaction event to expose its reply callback");
+  }
+  return { callback: payload.callback, reply };
 }
 
 describe("MessageManager long message splitting", () => {
@@ -80,6 +148,32 @@ describe("MessageManager long message splitting", () => {
     expect(sendMessage.mock.calls.every((call) => call[1].length <= 4096)).toBe(
       true,
     );
+    expect(sentMessages.map((message) => message.text).join("")).toBe(text);
+  });
+
+  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", async () => {
+    const { manager, sendMessage } = createManager();
+    // "x" * 4095 then a 2-code-unit emoji then more text: a naive slice(0, 4096)
+    // would cut between the emoji's high and low surrogate.
+    const text = `${"x".repeat(4095)}\u{1F600}${"y".repeat(10)}`;
+
+    const sentMessages = await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const sentTexts = sendMessage.mock.calls.map((call) => call[1] as string);
+    for (const chunk of sentTexts) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(sentTexts.join("")).toBe(text);
     expect(sentMessages.map((message) => message.text).join("")).toBe(text);
   });
 
@@ -147,13 +241,12 @@ describe("MessageManager malformed payload handling", () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/report.txt"),
     );
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 503,
-      text: vi.fn(),
-    }));
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", fetchMock);
+    // The guarded byte resolver failing (HTTP error, SSRF block, oversize —
+    // any failure shape) must degrade to an explicit error attachment, never
+    // drop the document or the caption.
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      new Error("guarded fetch failed: 503"),
+    );
     const manager = new MessageManager(
       {
         telegram: { getFileLink },
@@ -161,43 +254,45 @@ describe("MessageManager malformed payload handling", () => {
       { agentId: "agent-1" } as never,
     );
 
-    try {
-      const result = await manager.processMessage({
-        message_id: 1,
-        date: 1,
-        chat: { id: 123, type: "private" },
-        caption: "please read this",
-        document: {
-          file_id: "doc-1",
-          file_unique_id: "unique-1",
-          file_name: "report.txt",
-          mime_type: "text/plain",
-          file_size: 42,
-        },
-      } as never);
+    const result = await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      caption: "please read this",
+      document: {
+        file_id: "doc-1",
+        file_unique_id: "unique-1",
+        file_name: "report.txt",
+        mime_type: "text/plain",
+        file_size: 42,
+      },
+    } as never);
 
-      expect(fetchMock).toHaveBeenCalledWith("https://files.test/report.txt");
-      expect(getFileLink).toHaveBeenCalledTimes(2);
-      expect(result.processedContent).toBe("please read this");
-      expect(result.attachments).toEqual([
-        expect.objectContaining({
-          id: "doc-1",
-          url: "https://files.test/report.txt",
-          title: "Text Document: report.txt",
-          source: "Document",
-          description: expect.stringContaining("Error: Unable to read content"),
-          text: "",
-        }),
-      ]);
-    } finally {
-      vi.stubGlobal("fetch", originalFetch);
-    }
+    expect(resolveAttachmentBytesMock).toHaveBeenCalledWith(
+      "https://files.test/report.txt",
+    );
+    expect(getFileLink).toHaveBeenCalledTimes(1);
+    expect(result.processedContent).toBe("please read this");
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        id: "doc-1",
+        url: "telegram-file:doc-1",
+        title: "Text Document: report.txt",
+        source: "Document",
+        description: expect.stringContaining("Error: Unable to read content"),
+        text: "",
+      }),
+    ]);
   });
 
-  it("does not throw when image description or file lookup fails", async () => {
+  it("does not throw when image description fails after the byte fetch", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/photo.jpg"),
     );
+    resolveAttachmentBytesMock.mockResolvedValueOnce({
+      buffer: Buffer.from("image-bytes"),
+      contentType: "image/jpeg",
+    });
     const useModel = vi.fn(async () => {
       throw new Error("vision failed");
     });
@@ -217,11 +312,45 @@ describe("MessageManager malformed payload handling", () => {
     expect(useModel).toHaveBeenCalled();
   });
 
-  it("does not throw when Telegram fails the second image file lookup", async () => {
-    const getFileLink = vi
-      .fn()
-      .mockResolvedValueOnce(new URL("https://files.test/photo.jpg"))
-      .mockRejectedValueOnce(new Error("telegram file expired"));
+  it("never writes a token-bearing media fetch failure into connector logs", async () => {
+    loggerErrorMock.mockClear();
+    loggerWarnMock.mockClear();
+    const getFileLink = vi.fn(
+      async () =>
+        new URL("https://api.telegram.org/file/bot123:SECRET/photos/p1.jpg"),
+    );
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      new Error(
+        "Failed to fetch media from https://api.telegram.org/file/bot123:SECRET/photos/p1.jpg",
+      ),
+    );
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      { agentId: "agent-1", useModel: vi.fn() } as never,
+    );
+
+    await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
+    } as never);
+
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain("SECRET");
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain("SECRET");
+  });
+
+  it("persists a token-free capability reference and feeds the vision model inline bytes", async () => {
+    // The Bot API file URL embeds the operator's bot token; it must reach
+    // neither the stored attachment nor the model handler.
+    const getFileLink = vi.fn(
+      async () =>
+        new URL("https://api.telegram.org/file/bot123:SECRET/photos/p1.jpg"),
+    );
+    resolveAttachmentBytesMock.mockResolvedValueOnce({
+      buffer: Buffer.from("image-bytes"),
+      contentType: "image/jpeg",
+    });
     const useModel = vi.fn(async () => ({
       title: "Receipt",
       description: "Total is visible",
@@ -231,19 +360,27 @@ describe("MessageManager malformed payload handling", () => {
       { agentId: "agent-1", useModel } as never,
     );
 
-    await expect(
-      manager.processMessage({
-        message_id: 1,
-        date: 1,
-        chat: { id: 123, type: "private" },
-        photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
-      } as never),
-    ).resolves.toEqual({ processedContent: "", attachments: [] });
-    expect(getFileLink).toHaveBeenCalledTimes(2);
-    expect(useModel).toHaveBeenCalledWith(
-      "IMAGE_DESCRIPTION",
-      "https://files.test/photo.jpg",
-    );
+    const result = await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
+    } as never);
+
+    expect(getFileLink).toHaveBeenCalledTimes(1);
+    const modelInput = useModel.mock.calls[0]?.[1] as string;
+    expect(useModel).toHaveBeenCalledWith("IMAGE_DESCRIPTION", modelInput);
+    expect(modelInput.startsWith("data:image/jpeg;base64,")).toBe(true);
+    expect(modelInput).not.toContain("SECRET");
+    expect(result.attachments).toEqual([
+      expect.objectContaining({
+        id: "p1",
+        url: "telegram-file:p1",
+        contentType: "image",
+        description: "[Image: Receipt\nTotal is visible]",
+      }),
+    ]);
+    expect(JSON.stringify(result.attachments)).not.toContain("SECRET");
   });
 
   it("degrades an unknown attachment content type to a document send (and still awaits failures)", async () => {
@@ -340,7 +477,7 @@ describe("MessageManager malformed payload handling", () => {
     expect(sent).toEqual([]);
   });
 
-  it("ingests an inbound voice message as an AUDIO attachment", async () => {
+  it("ingests an inbound voice message as an AUDIO attachment with a token-free reference", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/voice.ogg"),
     );
@@ -361,10 +498,13 @@ describe("MessageManager malformed payload handling", () => {
       },
     } as never);
 
+    // No file lookup at ingest: bytes (and the token URL behind them) are only
+    // resolved at enrichment time inside the reply path.
+    expect(getFileLink).not.toHaveBeenCalled();
     expect(result.attachments).toEqual([
       expect.objectContaining({
         id: "v1",
-        url: "https://files.test/voice.ogg",
+        url: "telegram-file:v1",
         contentType: "audio",
       }),
     ]);
@@ -394,6 +534,47 @@ describe("MessageManager malformed payload handling", () => {
 
     expect(emitEvent).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["lone high surrogate", `before\ud800after`, "before�after"],
+    ["lone low surrogate", `before\udc00after`, "before�after"],
+    ["exact 4096-unit text", `${"a".repeat(4094)}🦊`, `${"a".repeat(4094)}🦊`],
+    ["4097-unit text", "a".repeat(4097), "a".repeat(4096)],
+    [
+      "astral character crossing the cap",
+      `${"a".repeat(4095)}🦊tail`,
+      "a".repeat(4095),
+    ],
+  ])(
+    "keeps the reaction callback wire reply and returned memory aligned for %s",
+    async (_label, input, expected) => {
+      const { callback, reply } = await captureReactionCallback();
+
+      const memories = await callback({
+        text: input,
+        action: "REPLY",
+        data: { marker: "preserved" },
+      });
+
+      expect(reply).toHaveBeenCalledTimes(1);
+      const wireText = reply.mock.calls[0]?.[0];
+      // This observes the production callback argument, so restoring the raw
+      // `ctx.reply(content.text)` path breaks the malformed/over-limit cases.
+      expect(wireText).toBe(expected);
+      expect(wireText?.length).toBeLessThanOrEqual(4096);
+      expect(wireText?.isWellFormed()).toBe(true);
+
+      expect(memories).toHaveLength(1);
+      const memoryContent = memories[0]?.content;
+      expect(memoryContent?.text).toBe(wireText);
+      expect(memoryContent?.text?.length).toBeLessThanOrEqual(4096);
+      expect(memoryContent?.text?.isWellFormed()).toBe(true);
+      expect(memoryContent?.action).toBe("REPLY");
+      expect(memoryContent?.data).toEqual({ marker: "preserved" });
+      expect(memoryContent?.inReplyTo).toBeDefined();
+      expect(memoryContent?.metadata).toEqual({ accountId: "default" });
+    },
+  );
 
   it("rejects missing chat context when sending media", async () => {
     const manager = new MessageManager(
@@ -595,6 +776,162 @@ describe("MessageManager malformed payload handling", () => {
       expect.objectContaining({
         code: "TELEGRAM_INBOUND_MEMORY_PERSISTENCE_FAILED",
       }),
+    );
+  });
+});
+
+describe("MessageManager telegram-file capability references", () => {
+  function replyPathHarness(transcript: string) {
+    const cache = new Map<string, unknown>();
+    const handleMessage = vi.fn(async () => undefined);
+    const getFileLink = vi.fn(
+      async () =>
+        new URL("https://api.telegram.org/file/bot123:SECRET/voice/v1.ogg"),
+    );
+    const useModel = vi.fn(async () => transcript);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory: vi.fn(async () => undefined),
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
+      getSetting: vi.fn((key: string) =>
+        key === "TELEGRAM_AUTO_REPLY" ? "true" : undefined,
+      ),
+      messageService: { handleMessage },
+      useModel,
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      runtime,
+    );
+    return { manager, handleMessage, useModel, getFileLink };
+  }
+
+  const voiceCtx = {
+    from: { id: 42, first_name: "Ada", username: "ada", is_bot: false },
+    chat: { id: 123, type: "private", first_name: "Ada" },
+    message: {
+      message_id: 99,
+      date: 1_700_000_000,
+      chat: { id: 123, type: "private", first_name: "Ada" },
+      voice: {
+        file_id: "v1",
+        file_unique_id: "u1",
+        duration: 3,
+        mime_type: "audio/ogg",
+      },
+    },
+  } as never;
+
+  it("transcribes a voice reference in the reply path without leaking the bot token", async () => {
+    resolveAttachmentBytesMock.mockResolvedValueOnce({
+      buffer: Buffer.from("ogg-bytes"),
+      contentType: "audio/ogg",
+    });
+    const { manager, handleMessage, useModel, getFileLink } =
+      replyPathHarness("a voice transcript");
+
+    await manager.handleMessage(voiceCtx);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const memory = handleMessage.mock.calls[0][1];
+    expect(memory.content.attachments).toEqual([
+      expect.objectContaining({
+        id: "v1",
+        url: "telegram-file:v1",
+        contentType: "audio",
+        text: "a voice transcript",
+        description: "Transcript: a voice transcript",
+      }),
+    ]);
+    // The token-bearing getFileLink URL stayed inside the fetch helper: the
+    // model received raw bytes and the memory carries no trace of it.
+    expect(useModel).toHaveBeenCalledWith(
+      "TRANSCRIPTION",
+      Buffer.from("ogg-bytes"),
+    );
+    expect(getFileLink).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(memory)).not.toContain("SECRET");
+  });
+
+  it("leaves the attachment un-enriched (but stored) when the byte fetch fails", async () => {
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      new Error("guarded fetch failed: 404"),
+    );
+    const { manager, handleMessage } = replyPathHarness("unused");
+
+    await manager.handleMessage(voiceCtx);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const memory = handleMessage.mock.calls[0][1];
+    expect(memory.content.attachments).toEqual([
+      expect.objectContaining({
+        id: "v1",
+        url: "telegram-file:v1",
+        contentType: "audio",
+      }),
+    ]);
+    // cleanText normalizes the unset transcript to "" during ingest; the
+    // failed enrichment must not fabricate one.
+    expect(memory.content.attachments[0].text).toBe("");
+    expect(JSON.stringify(memory)).not.toContain("SECRET");
+  });
+
+  it("keeps the token-bearing file URL out of failure logs", async () => {
+    // Core's MediaFetchError embeds the fetched URL in its message; for a
+    // Bot API file URL that message carries the bot token, so the connector
+    // rethrows a sanitized failure before any log sink sees it.
+    resolveAttachmentBytesMock.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          "Failed to fetch media from https://api.telegram.org/file/bot123:SECRET/voice/v1.ogg: HTTP 404",
+        ),
+        { name: "MediaFetchError", code: "http_error" },
+      ),
+    );
+    const warnSpy = vi
+      .spyOn(logger, "warn")
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    try {
+      const { manager, handleMessage } = replyPathHarness("unused");
+
+      await manager.handleMessage(voiceCtx);
+
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const logCalls = [...warnSpy.mock.calls, ...errorSpy.mock.calls];
+      expect(logCalls.length).toBeGreaterThan(0);
+      expect(JSON.stringify(logCalls)).not.toContain("SECRET");
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("re-sends a stored reference outbound by bare file_id", async () => {
+    const sendPhoto = vi.fn(async () => undefined);
+    const manager = new MessageManager(
+      { telegram: { sendPhoto } } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
+    );
+
+    await manager.sendMedia(
+      { chat: { id: 123 }, telegram: { sendPhoto } } as never,
+      "telegram-file:p1",
+      MediaType.PHOTO,
+    );
+
+    expect(sendPhoto).toHaveBeenCalledWith(
+      123,
+      "p1",
+      expect.objectContaining({ caption: undefined }),
     );
   });
 });

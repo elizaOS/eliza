@@ -20,18 +20,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const callbackState = vi.hoisted(() => ({
   hasCallback: true,
+  returnedState: "state-1" as string | null,
+  expectedState: "state-1" as string | null,
+  pkceVerifier: "verifier-1" as string | undefined,
+  exchangeCalls: 0,
   exchange: (): Promise<{ token?: string }> => new Promise(() => {}),
 }));
 
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
-  consumeStewardTokensFromHash: () => null,
-  exchangeStewardCodeViaApi: () => callbackState.exchange(),
+  consumeStewardOAuthStateFromCallback: () => callbackState.returnedState,
+  stripLegacyTokenHashFromAddressBar: () => false,
+  exchangeStewardCodeViaApi: () => {
+    callbackState.exchangeCalls += 1;
+    return callbackState.exchange();
+  },
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
+
+vi.mock("@elizaos/shared/steward-session-client", async () => {
+  const actual = await vi.importActual<
+    typeof import("@elizaos/shared/steward-session-client")
+  >("@elizaos/shared/steward-session-client");
+  return {
+    ...actual,
+    peekStewardOAuthState: () => callbackState.expectedState,
+  };
+});
 
 vi.mock("@stwd/sdk", () => ({
   StewardAuth: class {
@@ -77,7 +95,7 @@ vi.mock("../../lib/steward-oauth-url", async () => {
   >("../../lib/steward-oauth-url");
   return {
     ...actual,
-    consumeStewardPkceVerifier: () => undefined,
+    consumeStewardPkceVerifier: () => callbackState.pkceVerifier,
     buildStewardOAuthRedirectUri: () => "https://app.example.test/login",
   };
 });
@@ -90,9 +108,9 @@ vi.mock("../../lib/login-return-to", () => ({
 
 import StewardLoginSection from "./steward-login-section";
 
-function renderSection() {
+function renderSection(initialUrl = "/login?code=callback-code&state=state-1") {
   return render(
-    <MemoryRouter initialEntries={["/login?code=callback-code"]}>
+    <MemoryRouter initialEntries={[initialUrl]}>
       <StewardLoginSection />
     </MemoryRouter>,
   );
@@ -101,6 +119,10 @@ function renderSection() {
 describe("StewardLoginSection — OAuth callback completion state (#13519)", () => {
   beforeEach(() => {
     callbackState.hasCallback = true;
+    callbackState.returnedState = "state-1";
+    callbackState.expectedState = "state-1";
+    callbackState.pkceVerifier = "verifier-1";
+    callbackState.exchangeCalls = 0;
     callbackState.exchange = () => new Promise(() => {});
   });
 
@@ -162,5 +184,50 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
     expect(screen.queryByText(/Unauthorized/)).toBeNull();
     expect(screen.queryByText("Completing sign-in…")).toBeNull();
     expect(screen.getByPlaceholderText("you@example.com")).toBeTruthy();
+  });
+
+  it("refuses the exchange when the callback state does not match the stashed state", async () => {
+    callbackState.expectedState = "different-state";
+
+    renderSection("/login?code=callback-code&state=state-1");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "This sign-in link is invalid or has expired. Please start sign-in again.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(callbackState.exchangeCalls).toBe(0);
+    expect(screen.queryByText("Completing sign-in…")).toBeNull();
+  });
+
+  it("refuses the exchange when the callback carries no state echo", async () => {
+    callbackState.returnedState = null;
+    renderSection("/login?code=callback-code");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "This sign-in link is invalid or has expired. Please start sign-in again.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(callbackState.exchangeCalls).toBe(0);
+  });
+
+  it("refuses the exchange when the stored PKCE verifier is gone", async () => {
+    callbackState.pkceVerifier = undefined;
+
+    renderSection("/login?code=callback-code&state=state-1");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "This sign-in was started in another tab or has expired. Please start sign-in again.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(callbackState.exchangeCalls).toBe(0);
   });
 });

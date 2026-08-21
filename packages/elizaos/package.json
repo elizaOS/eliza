@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "elizaOS CLI - Create and upgrade elizaOS projects and plugins",
   "type": "module",
   "bin": {
@@ -45,7 +45,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   },
   "keywords": [
     "elizaos",

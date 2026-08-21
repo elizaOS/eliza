@@ -19,5 +19,24 @@ source-archive collectors consumed by later PII and LifeOps mock-loader work.
 - Collector output must be idempotent and resumable: re-running against the
   same input reuses byte-identical shards and rewrites only missing or changed
   ones.
+- The loader (`src/loader.ts`) is the release gate for downstream consumers:
+  its scrub floor defaults to `verified` and any shard validation issue aborts
+  the load. Never add a consumer path that bypasses it to read shards
+  directly.
+- The loader is also the corpus's single identity domain. `readCorpusShard`
+  scopes duplicate-id detection and reply resolution to one shard, so the
+  loader re-derives both across every collected row. It validates the caller's
+  selection at that boundary rather than trusting the type system: an
+  unrecognized `minScrubState` must abort, never compare against `undefined`
+  and release everything, and `platforms`/`accountIds`/`threadIds` must be
+  arrays, never a bare string that `String.prototype.includes` would widen
+  into a substring filter.
+- Corpus-wide identity is proven over the collected corpus; selection may
+  still cut a thread. A released row whose parent selection removed is emitted
+  with `replyToId` dropped, so a consumer never receives a handle it cannot
+  resolve.
+- Reviewed deletion is two-phase and derived-output-only. Never mutate raw
+  shards; bind every owner decision to the exact queue/rules/source hashes and
+  keep review contents local while exposing only sanitized counts and digests.
 
 Repo-wide rules and evidence standards are in the root `CLAUDE.md`.

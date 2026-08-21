@@ -106,7 +106,35 @@ export function analyzePngScreenshot(buffer: Buffer): ScreenshotQuality {
 
   const bpp = bytesPerPixel(colorType);
   const stride = width * bpp;
-  const inflated = inflateSync(Buffer.concat(idatChunks));
+  // Fail-closed pixel budget mirrors scene/dhash.ts. IHDR is attacker-declared
+  // so a 69-byte bomb cannot drive an unbounded inflateSync allocation.
+  const MAX_DECODE_PNG_PIXELS = 7_680 * 4_320;
+  if (height > 0 && width > Math.floor(MAX_DECODE_PNG_PIXELS / height)) {
+    throw new Error(
+      `PNG dimensions exceed pixel budget: ${width}x${height} > ${MAX_DECODE_PNG_PIXELS}`,
+    );
+  }
+  if (stride + 1 > Number.MAX_SAFE_INTEGER / height) {
+    throw new Error(`PNG stride overflows: ${width}x${height} bpp=${bpp}`);
+  }
+  const expected = (stride + 1) * height;
+  let inflated: Buffer;
+  try {
+    inflated = inflateSync(Buffer.concat(idatChunks), {
+      maxOutputLength: expected,
+    });
+  } catch (error) {
+    // error-policy:J3 Malformed or bomb-compressed PNG produces an explicit
+    // invalid result rather than an unbounded allocation.
+    throw new Error(
+      `PNG decompression failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (inflated.length !== expected) {
+    throw new Error(
+      `PNG decompression length mismatch: expected ${expected}, got ${inflated.length}`,
+    );
+  }
   const buckets = new Map<string, number>();
   let previous: Buffer<ArrayBufferLike> = Buffer.alloc(stride);
   let cursor = 0;

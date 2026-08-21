@@ -22,6 +22,10 @@ describe("isSafeExecutableValue", () => {
     "../bin/tool",
     "~/bin/tool",
     "C:\\Program Files\\Eliza\\eliza.exe",
+    "\\\\server\\share\\eliza.exe",
+    "\\\\?\\C:\\Tools\\eliza.exe",
+    "/tmp/--tool",
+    ".\\-tool.exe",
   ])("accepts bare executable names and explicit paths: %s", (value) => {
     expect(isSafeExecutableValue(value)).toBe(true);
   });
@@ -39,6 +43,10 @@ describe("isSafeExecutableValue", () => {
     "bun $(whoami)",
     "bun\nwhoami",
     "bun\rwhoami",
+    "\nnode",
+    "node\n",
+    "\rnode",
+    "node\r",
     "bun\0whoami",
     "'bun'",
     '"bun"',
@@ -47,8 +55,37 @@ describe("isSafeExecutableValue", () => {
     "/usr/bin/env node",
     "./run task --verbose",
     "C:\\Tools\\node.exe --version",
+    "--config=/etc/app.conf",
+    "-I/usr/local/include",
+    "-L/usr/lib",
+    "--output=./build",
+    "-./script.sh",
+    "-C:\\Tools\\node.exe",
+    "-\\\\server\\share\\tool.exe",
   ])("rejects shell-like executable values: %s", (value) => {
     expect(isSafeExecutableValue(value)).toBe(false);
+  });
+
+  it("rejects non-string or nullish values", () => {
+    expect(isSafeExecutableValue(null)).toBe(false);
+    expect(isSafeExecutableValue(undefined)).toBe(false);
+    expect(isSafeExecutableValue(123)).toBe(false);
+    expect(isSafeExecutableValue({})).toBe(false);
+    expect(isSafeExecutableValue([])).toBe(false);
+  });
+
+  it("rejects an executable argument after an adversarial whitespace run", () => {
+    const value = `/usr/local/bin/bun${"\t".repeat(100_000)}--version`;
+    expect(isSafeExecutableValue(value)).toBe(false);
+  });
+
+  it("fuzzes every ASCII-dash-leading value as unsafe", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 100 }), (suffix) => {
+        expect(isSafeExecutableValue(`-${suffix}`)).toBe(false);
+      }),
+      { numRuns: 500 },
+    );
   });
 
   it("fuzzes dangerous shell metacharacters as always unsafe", () => {
@@ -72,8 +109,6 @@ describe("isSafeExecutableValue", () => {
         fc.string({ maxLength: 40 }),
         (left, marker, right) => {
           const value = `${left}${marker}${right}`;
-          fc.pre(value.trim().includes(marker));
-
           expect(isSafeExecutableValue(value)).toBe(false);
         },
       ),

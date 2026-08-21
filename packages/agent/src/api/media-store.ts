@@ -96,11 +96,22 @@ export function isValidStoredMediaFileName(fileName: string): boolean {
 const MEDIA_URL_PREFIX = "/api/media/";
 
 /**
+ * Matches served media URLs embedded in free text (e.g. a message body that
+ * re-shares an image by pasting its capability URL). Shared by the export
+ * capture and the orphan-media GC so both agree on what counts as a live
+ * text reference; matches are re-validated through `mediaFileNameFromUrl`.
+ */
+export const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
+
+/**
  * MIME types that are safe to render inline in a browser context. Everything
- * else — notably `image/svg+xml`, `text/html`, and unknown/active types — is
- * served with `Content-Disposition: attachment` so it can never execute script
- * on the dashboard origin (stored-XSS defence). SVG is deliberately excluded:
- * it is an XML document that can carry `<script>` and event handlers.
+ * else — notably `image/svg+xml`, `application/pdf`, `text/html`, and
+ * unknown/active types — is served with `Content-Disposition: attachment` so it
+ * can never execute script on the dashboard origin (stored-XSS defence). SVG is
+ * deliberately excluded: it is an XML document that can carry `<script>` and
+ * event handlers. PDF is excluded for parity: inline plugin/viewer rendering
+ * adds script surface the sandboxed CSP cannot fully confine, and these pre-auth
+ * capability URLs must never inline-execute active content.
  */
 export function isInlineSafeMime(mime: string): boolean {
   const m = (mime.split(";")[0] ?? "").trim().toLowerCase();
@@ -108,8 +119,7 @@ export function isInlineSafeMime(mime: string): boolean {
   return (
     (m.startsWith("image/") && m !== "image/svg+xml") ||
     m.startsWith("audio/") ||
-    m.startsWith("video/") ||
-    m === "application/pdf"
+    m.startsWith("video/")
   );
 }
 
@@ -159,7 +169,7 @@ export function sniffMarkupMime(buffer: Buffer): string | null {
  * Build the security headers for a served media response. Always sets
  * `X-Content-Type-Options: nosniff` (so a mislabelled image is never sniffed to
  * HTML) and a fully-sandboxed CSP (applies when the URL is navigated to as a
- * document). Inline-safe types render inline; everything else (SVG, HTML,
+ * document). Inline-safe types render inline; everything else (SVG, PDF, HTML,
  * unknown/active) is forced to download so it cannot execute on this origin.
  */
 function mediaSecurityHeaders(
@@ -345,10 +355,13 @@ export function persistMediaBytes(
 
 /**
  * Read a stored media file's raw bytes by its `<sha256>.<ext>` name, or null if
- * absent/unreadable. Path-traversal-safe (the resolved path must stay in the
- * store dir). Used by agent backup/export to bundle referenced media bytes.
+ * absent. Only the strict content-addressed name pattern is accepted — anything
+ * else (traversal segments, or a sibling ledger name like the GC-pin/redaction
+ * JSON files) is rejected before the path is even resolved. Used by agent
+ * backup/export to bundle referenced media bytes.
  */
 export function readStoredMediaBytes(fileName: string): Buffer | null {
+  if (!MEDIA_FILE_NAME.test(fileName)) return null;
   const filePath = path.join(mediaDir(), fileName);
   if (path.dirname(filePath) !== mediaDir()) return null;
   // Absence is a valid answer — the file may have been evicted/GC'd since it was
@@ -370,14 +383,18 @@ export function readStoredMediaBytes(fileName: string): Buffer | null {
 
 /**
  * Write raw bytes to a stored media file by its `<sha256>.<ext>` name (the name
- * is the content hash, so this is idempotent). Path-traversal-safe. Used by
- * agent restore/import to rehydrate the content-addressed media store.
+ * is the content hash, so this is idempotent). Only the strict content-addressed
+ * name pattern is accepted — anything else (traversal segments, or a sibling
+ * ledger name like the GC-pin/redaction JSON files) is rejected before the path
+ * is even resolved. Used by agent restore/import to rehydrate the
+ * content-addressed media store.
  */
 export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
+  // A pattern/traversal-rejecting name is invalid input, not a failure — return
+  // false so the caller skips it. A write that then fails (ENOSPC/EACCES) is a
+  // real failure and must not be swallowed into a silent "restored fewer files".
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
   const filePath = path.join(mediaDir(), fileName);
-  // A traversal-rejecting name is invalid input, not a failure — return false so
-  // the caller skips it. A write that then fails (ENOSPC/EACCES) is a real
-  // failure and must not be swallowed into a silent "restored fewer files".
   if (path.dirname(filePath) !== mediaDir()) return false;
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
@@ -819,7 +836,7 @@ export function handleMediaRouteRequest(
   }
   const headers: Record<string, string> = {
     "Content-Type": resolved.contentType,
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cache-Control": "private, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
     ...mediaSecurityHeaders(resolved.name, resolved.contentType),
   };
@@ -877,7 +894,8 @@ export function handleMediaRouteRequest(
  * Serve a stored media file for `GET/HEAD /api/media/<name>`. Returns true when
  * the request was handled (including 404/400). Supports HTTP Range so `<video>`
  * / `<audio>` seeking works. Bytes are immutable (content-addressed) so they
- * carry a long immutable Cache-Control.
+ * carry a long immutable Cache-Control; `private` keeps shared/proxy caches
+ * from persisting bytes reachable through the pre-auth capability URL.
  */
 export function serveMediaFile(
   req: http.IncomingMessage,
@@ -900,7 +918,7 @@ export function serveMediaFile(
 
   const baseHeaders: Record<string, string | number> = {
     "Content-Type": contentType,
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cache-Control": "private, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
     ...mediaSecurityHeaders(resolved.name, contentType),
   };

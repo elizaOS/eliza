@@ -54,6 +54,8 @@ import {
   mergeStreamingText,
 } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "./auth/sessions";
 import type {
   AccountConnectRequest,
   ChatActionResultSummary,
@@ -89,11 +91,16 @@ const LOCAL_STORAGE_API_BASE_KEY = "elizaos_api_base";
 const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
   "x-elizaos-client-id",
   "x-elizaos-ui-language",
+  // The baseline headers are meaningful only on the shared Worker routes and
+  // are not in the dedicated container server's CORS contract.
+  "x-elizaos-turn-correlation",
+  "x-elizaos-turn-attempt",
 ]);
 const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 ]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
+const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 type StreamChatEvent = {
   type?: string;
@@ -366,24 +373,31 @@ function applyStreamChatTokenEvent(
     provisional?: boolean,
   ) => void,
 ): boolean {
-  const chunk = parsed.text ?? "";
+  const chunk = typeof parsed.text === "string" ? parsed.text : null;
+  const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
+  if (chunk === null && fullText === null) {
+    // error-policy:J3 malformed SSE token frames are ignored at the transport
+    // boundary; they must not become a valid-looking empty text update.
+    return false;
+  }
+  const safeChunk = chunk ?? "";
   const nextFullText =
-    typeof parsed.fullText === "string"
+    fullText !== null
       ? // An explicit snapshot is always authoritative (delta-v2 periodic
         // snapshot AND legacy per-token fullText both land here).
-        parsed.fullText
-      : chunk
+        fullText
+      : safeChunk
         ? // No fullText: a bare delta. Under negotiated delta-v2 the server
           // guarantees pure appends, so bypass mergeStreamingText (its overlap
           // dedupe drops legitimately repeated multi-char deltas). Foreign /
           // un-negotiated streams still ride the merge heuristic.
           state.deltaProtocol
-          ? state.fullText + chunk
-          : mergeStreamingText(state.fullText, chunk)
+          ? state.fullText + safeChunk
+          : mergeStreamingText(state.fullText, safeChunk)
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
-  onToken(chunk, state.fullText, parsed.provisional === true);
+  onToken(safeChunk, state.fullText, parsed.provisional === true);
   return false;
 }
 
@@ -750,6 +764,22 @@ const WARMING_MAX_DELAY_MS = 5_000;
 // its wait clamped to whatever budget remains, and once the deadline passes
 // the structured warming error surfaces instead of another retry.
 const WARMING_TOTAL_BUDGET_MS = 5_000;
+const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
+const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
+
+function generateSharedTurnCorrelation(): string | null {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID().toLowerCase();
+  }
+  if (typeof globalThis.crypto?.getRandomValues !== "function") return null;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex
+    .slice(6, 8)
+    .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
 
 /** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
 function warmingRetryDelayMs(retryAfterSeconds: number | undefined): number {
@@ -1359,7 +1389,17 @@ export class ElizaClient {
     let resumeRetries = 0;
     let warmingRetries = 0;
     let warmingDeadline: number | null = null;
-    let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    let requestAttempt = 0;
+    const requestOnce = () =>
+      this.rawRequestOnce(
+        path,
+        requestUrl,
+        init,
+        options,
+        token,
+        ++requestAttempt,
+      );
+    let res = await requestOnce();
     // Personal-Eliza cutover repoint happens once, before classification: a
     // structural Shared rejection can rebind this client to the dedicated
     // runtime, after which the re-issued request (fresh base/url/token) enters
@@ -1375,7 +1415,7 @@ export class ElizaClient {
       requestBase = this.baseUrl;
       requestUrl = this.rawRequestUrl(path);
       token = this.apiToken;
-      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+      res = await requestOnce();
     }
     while (true) {
       // 401: one token refresh per logical request, wherever in the retry
@@ -1389,13 +1429,7 @@ export class ElizaClient {
         const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
         if (retryToken && retryToken !== token) {
           token = retryToken;
-          res = await this.rawRequestOnce(
-            path,
-            requestUrl,
-            init,
-            options,
-            token,
-          );
+          res = await requestOnce();
           continue;
         }
       }
@@ -1413,13 +1447,7 @@ export class ElizaClient {
           await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
           if (!init?.signal?.aborted) {
             resumeRetries += 1;
-            res = await this.rawRequestOnce(
-              path,
-              requestUrl,
-              init,
-              options,
-              token,
-            );
+            res = await requestOnce();
             continue;
           }
         }
@@ -1447,7 +1475,17 @@ export class ElizaClient {
         path,
         options?.timeoutMs,
         init,
-      ).catch(() => "");
+      ).catch((error: unknown) => {
+        if (
+          error instanceof ApiError &&
+          (error.kind === "timeout" || error.kind === "network")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 a completed HTTP failure remains authoritative when
+        // its optional diagnostic body cannot be read for a non-abort reason.
+        return "";
+      });
       let body: Record<string, unknown> | null = null;
       if (rawText) {
         try {
@@ -1512,13 +1550,7 @@ export class ElizaClient {
           );
           await sleepUnlessAborted(delay, init?.signal);
           if (!init?.signal?.aborted) {
-            res = await this.rawRequestOnce(
-              path,
-              requestUrl,
-              init,
-              options,
-              token,
-            );
+            res = await requestOnce();
             continue;
           }
         }
@@ -1646,6 +1678,7 @@ export class ElizaClient {
     init: RequestInit | undefined,
     options: { allowNonOk?: boolean; timeoutMs?: number } | undefined,
     token: string | null,
+    requestAttempt: number,
   ): Promise<Response> {
     const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
     const abortController = new AbortController();
@@ -1675,6 +1708,7 @@ export class ElizaClient {
         abortController,
         token,
         requestUrl,
+        requestAttempt,
       );
       const transport = await this.rawRequestTransport(requestUrl);
       return await transport.request(requestUrl, requestInit, { timeoutMs });
@@ -1701,8 +1735,10 @@ export class ElizaClient {
     abortController: AbortController,
     token: string | null,
     requestUrl: string,
+    requestAttempt: number,
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
+    const method = (init?.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {
       ...(!isDedicatedCloudRequest
         ? { "X-ElizaOS-Client-Id": this.clientId }
@@ -1713,6 +1749,21 @@ export class ElizaClient {
         : {}),
       ...requestHeadersToRecord(init?.headers),
     };
+    const hasCsrfHeader = Object.keys(headers).some(
+      (name) => name.toLowerCase() === CSRF_HEADER_NAME,
+    );
+    if (
+      !isDedicatedCloudRequest &&
+      !hasCsrfHeader &&
+      CSRF_REQUIRED_METHODS.has(method)
+    ) {
+      const csrfToken = readCsrfTokenFromCookie();
+      if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+    }
+    const correlation = headers[SHARED_TURN_CORRELATION_HEADER];
+    if (correlation) {
+      headers[SHARED_TURN_ATTEMPT_HEADER] = String(requestAttempt);
+    }
     if (isDedicatedCloudRequest) {
       for (const key of Object.keys(headers)) {
         if (DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(key.toLowerCase())) {
@@ -1722,6 +1773,9 @@ export class ElizaClient {
     }
     return {
       ...init,
+      credentials: isDedicatedCloudRequest
+        ? "omit"
+        : (init?.credentials ?? "include"),
       signal: abortController.signal,
       headers,
     };
@@ -1797,25 +1851,79 @@ export class ElizaClient {
     // (chat 600s, ASR/TTS 180s, reset 60s) would spuriously time out on slow
     // on-device builds that emit headers early then take >10s to finish.
     const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, init);
+    const reader = res.body?.getReader();
+    if (!reader) return res.text();
+
+    const decoder = new TextDecoder();
+    let text = "";
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
+    let terminalReason: "timeout" | "caller-abort" | null = null;
+    const interrupted = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        terminalReason = "timeout";
+        reject(
+          new ApiError({
+            kind: "timeout",
+            path,
+            status: res.status,
+            message: `Response body timed out after ${budgetMs}ms`,
+          }),
+        );
+      }, budgetMs);
+
+      if (init?.signal) {
+        abortListener = () => {
+          terminalReason = "caller-abort";
+          reject(
+            new ApiError({
+              kind: "network",
+              path,
+              status: res.status,
+              message: "Request aborted",
+              cause: init.signal?.reason,
+            }),
+          );
+        };
+        if (init.signal.aborted) abortListener();
+        else
+          init.signal.addEventListener("abort", abortListener, { once: true });
+      }
+    });
+
     try {
-      return await Promise.race([
-        res.text(),
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(
-              new ApiError({
-                kind: "timeout",
-                path,
-                status: res.status,
-                message: `Response body timed out after ${budgetMs}ms`,
-              }),
-            );
-          }, budgetMs);
-        }),
-      ]);
+      while (true) {
+        const { done, value } = await Promise.race([
+          reader.read(),
+          interrupted,
+        ]);
+        if (done) return text + decoder.decode();
+        if (value) text += decoder.decode(value, { stream: true });
+      }
+    } catch (error) {
+      try {
+        await reader.cancel(
+          terminalReason === "timeout"
+            ? "elizaos-json-body-timeout"
+            : terminalReason === "caller-abort"
+              ? init?.signal?.reason
+              : "elizaos-json-body-read-failed",
+        );
+      } catch (cancelError) {
+        // error-policy:J6 a failed or already-closed body may reject teardown;
+        // preserve the primary timeout, caller abort, or read failure.
+        logger.debug(
+          { path, error: cancelError },
+          "[ElizaClient] failed to cancel interrupted JSON response body",
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutId);
+      if (init?.signal && abortListener) {
+        init.signal.removeEventListener("abort", abortListener);
+      }
+      reader.releaseLock();
     }
   }
 
@@ -2553,6 +2661,10 @@ export class ElizaClient {
     // takes precedence so the retry is idempotent with the original attempt.
     const resolvedClientMessageId =
       clientMessageId ?? ElizaClient.generateMessageId();
+    // This identifier exists only for short-lived attempt telemetry. Keep it
+    // separate from the persisted/idempotent message ID so natural logs cannot
+    // be joined back to message records or caller-supplied identifiers.
+    const turnCorrelation = generateSharedTurnCorrelation();
     const res = await this.rawRequest(
       path,
       {
@@ -2560,6 +2672,11 @@ export class ElizaClient {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          ...(turnCorrelation
+            ? {
+                [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,
+              }
+            : {}),
         },
         body: JSON.stringify({
           text,

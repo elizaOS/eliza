@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ScreenRecordingState } from "./definitions";
 import { ScreenCaptureWeb } from "./web";
 
 type MediaRecorderEventHandler = ((event: Event) => void) | null;
@@ -65,6 +66,7 @@ class FakeStream {
 
 class FakeMediaRecorder {
   static supported = true;
+  static startError: Error | null = null;
   static instances: FakeMediaRecorder[] = [];
 
   static isTypeSupported(mimeType: string): boolean {
@@ -75,7 +77,9 @@ class FakeMediaRecorder {
   onerror: MediaRecorderEventHandler = null;
   onstop: MediaRecorderEventHandler = null;
   readonly mimeType: string;
-  readonly start = vi.fn((_timeslice?: number) => {});
+  readonly start = vi.fn((_timeslice?: number) => {
+    if (FakeMediaRecorder.startError) throw FakeMediaRecorder.startError;
+  });
   readonly pause = vi.fn();
   readonly resume = vi.fn();
   readonly stop = vi.fn(() => {
@@ -139,6 +143,7 @@ describe("ScreenCaptureWeb", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     FakeMediaRecorder.supported = true;
+    FakeMediaRecorder.startError = null;
     FakeMediaRecorder.instances = [];
   });
 
@@ -279,6 +284,97 @@ describe("ScreenCaptureWeb", () => {
     });
   });
 
+  it("stops the display stream and clears state when microphone capture is denied", async () => {
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const firstVideoTrack = new FakeTrack("video");
+    const firstDisplayStream = new FakeStream([firstVideoTrack]);
+    const secondVideoTrack = new FakeTrack("video");
+    const secondDisplayStream = new FakeStream([secondVideoTrack]);
+    const getDisplayMedia = vi
+      .fn()
+      .mockResolvedValueOnce(firstDisplayStream as unknown as MediaStream)
+      .mockResolvedValueOnce(secondDisplayStream as unknown as MediaStream);
+    const getUserMedia = vi.fn(async (): Promise<MediaStream> => {
+      throw new Error("Permission denied");
+    });
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia,
+        getUserMedia,
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+
+    // Mic denial rejects the start, but the already-acquired display stream must
+    // be released rather than left live behind the OS screen-sharing indicator.
+    await expect(
+      plugin.startRecording({ captureMicrophone: true }),
+    ).rejects.toThrow("Permission denied");
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(firstVideoTrack.stopped).toBe(true);
+    await expect(plugin.getRecordingState()).resolves.toEqual({
+      isRecording: false,
+      duration: 0,
+      fileSize: 0,
+    });
+
+    // The failed stream must not be reused: a fresh start requests a new display
+    // stream instead of orphaning the previous one.
+    getUserMedia.mockResolvedValueOnce(
+      new FakeStream([new FakeTrack("audio")]) as unknown as MediaStream,
+    );
+
+    await plugin.startRecording({ captureMicrophone: true });
+    expect(getDisplayMedia).toHaveBeenCalledTimes(2);
+    expect(FakeMediaRecorder.instances[0].stream).toBe(
+      secondDisplayStream as unknown as MediaStream,
+    );
+    await expect(plugin.getRecordingState()).resolves.toMatchObject({
+      isRecording: true,
+    });
+
+    // Release the live interval/stream started above so the test leaves no
+    // dangling recorder timer behind.
+    await plugin.stopRecording();
+    expect(secondVideoTrack.stopped).toBe(true);
+  });
+
+  it("rolls back every acquired track when MediaRecorder fails to start", async () => {
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    FakeMediaRecorder.startError = new Error("recorder start failed");
+
+    const videoTrack = new FakeTrack("video");
+    const microphoneTrack = new FakeTrack("audio");
+    const displayStream = new FakeStream([videoTrack]);
+    const microphoneStream = new FakeStream([microphoneTrack]);
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia: vi.fn(
+          async () => displayStream as unknown as MediaStream,
+        ),
+        getUserMedia: vi.fn(
+          async () => microphoneStream as unknown as MediaStream,
+        ),
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    await expect(
+      plugin.startRecording({ captureMicrophone: true }),
+    ).rejects.toThrow("recorder start failed");
+
+    expect(videoTrack.stopped).toBe(true);
+    expect(microphoneTrack.stopped).toBe(true);
+    await expect(plugin.getRecordingState()).resolves.toEqual({
+      isRecording: false,
+      duration: 0,
+      fileSize: 0,
+    });
+  });
+
   it.each([
     { fps: 0 },
     { fps: Number.NaN },
@@ -391,6 +487,111 @@ describe("ScreenCaptureWeb", () => {
       duration: 0,
       fileSize: 5,
     });
+  });
+
+  it("excludes an in-progress pause from the stopped recording duration", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const videoTrack = new FakeTrack("video");
+    const displayStream = new FakeStream([videoTrack]);
+    const getDisplayMedia = vi.fn(
+      async () => displayStream as unknown as MediaStream,
+    );
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    const states: ScreenRecordingState[] = [];
+    await plugin.addListener("recordingState", (event) => {
+      states.push(event as ScreenRecordingState);
+    });
+    await plugin.startRecording();
+
+    // Two seconds of active capture, then pause and stop ten seconds later
+    // without ever resuming: only the 2s of recorded content must be reported,
+    // not the 12s of wall-clock time that elapsed.
+    vi.setSystemTime(2_000);
+    await plugin.pauseRecording();
+    vi.setSystemTime(12_000);
+
+    const result = await plugin.stopRecording();
+    expect(result.duration).toBe(2);
+    expect(states[states.length - 1]).toEqual({
+      isRecording: false,
+      duration: 2,
+      fileSize: 0,
+    });
+  });
+
+  it("freezes the polled recording duration while paused", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const videoTrack = new FakeTrack("video");
+    const displayStream = new FakeStream([videoTrack]);
+    const getDisplayMedia = vi.fn(
+      async () => displayStream as unknown as MediaStream,
+    );
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    await plugin.startRecording();
+
+    vi.setSystemTime(3_000);
+    await plugin.pauseRecording();
+
+    // While paused the reported duration must stay frozen at the active capture
+    // length regardless of how much wall-clock time passes between polls.
+    vi.setSystemTime(5_000);
+    await expect(plugin.getRecordingState()).resolves.toMatchObject({
+      isRecording: true,
+      duration: 3,
+    });
+    vi.setSystemTime(9_000);
+    await expect(plugin.getRecordingState()).resolves.toMatchObject({
+      isRecording: true,
+      duration: 3,
+    });
+
+    await plugin.stopRecording();
+  });
+
+  it("counts only active capture across a pause and resume before stopping", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const videoTrack = new FakeTrack("video");
+    const displayStream = new FakeStream([videoTrack]);
+    const getDisplayMedia = vi.fn(
+      async () => displayStream as unknown as MediaStream,
+    );
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    await plugin.startRecording();
+
+    // 2s active, 5s paused, 3s active, then stop: the 5s pause must be excluded
+    // so the result reports 5s of recorded content.
+    vi.setSystemTime(2_000);
+    await plugin.pauseRecording();
+    vi.setSystemTime(7_000);
+    await plugin.resumeRecording();
+    vi.setSystemTime(10_000);
+
+    const result = await plugin.stopRecording();
+    expect(result.duration).toBe(5);
   });
 
   it("surfaces an error event when auto-stop on track end fails", async () => {

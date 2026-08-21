@@ -5,6 +5,7 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
@@ -12,8 +13,10 @@ import { chatSseFrame } from "../chat-sse-frames";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
+import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import { type BridgeExecutionContext, sharedTurnClientMessageId } from "./shared-runtime-chat";
+import type { BridgeExecutionContext } from "./shared-runtime-chat";
+import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const CORS_METHODS = "POST, OPTIONS";
 const STREAM_HEADERS = {
@@ -24,6 +27,8 @@ const STREAM_HEADERS = {
 } as const;
 
 export interface CanonicalScopedStreamRequest {
+  /** Standard request correlation identity resolved by the HTTP boundary. */
+  traceId?: string;
   /**
    * Tenancy-resolved agent supplied by the caller. Requiring this at the type
    * boundary prevents Worker callers from falling through to the legacy
@@ -37,6 +42,12 @@ export interface CanonicalScopedStreamRequest {
   agentKind?: "sandbox" | "personal";
   /** Set only by the authenticated in-process voice adapter for lifecycle turns. */
   trustedMessageRole?: "system";
+  /** Authenticated transport semantics supplied by the route adapter. */
+  channel?: SharedRuntimeChannel;
+  /** Server-attested epoch-ms ceiling for lifecycle history hydration. */
+  trustedHistoryCutoffAt?: number;
+  /** Keep an authenticated control prompt out of durable conversation history. */
+  transientInput?: true;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -76,12 +87,11 @@ export async function handleCanonicalScopedAgentStream(
 ): Promise<Response> {
   const timings = request.timings ?? {};
   const parseStartedAt = nowMs();
-  const text =
-    request.body &&
-    typeof request.body === "object" &&
-    typeof (request.body as { text?: unknown }).text === "string"
-      ? (request.body as { text: string }).text
-      : "";
+  const bodyRecord =
+    request.body && typeof request.body === "object"
+      ? (request.body as Record<string, unknown>)
+      : undefined;
+  const text = typeof bodyRecord?.text === "string" ? bodyRecord.text : "";
   const clientMessageId = sharedTurnClientMessageId(request.body);
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
@@ -91,6 +101,37 @@ export async function handleCanonicalScopedAgentStream(
       request.origin,
     );
   }
+
+  // The body crosses an untrusted HTTP-shaped boundary. Lifecycle controls
+  // become authoritative only beside the role attested by the authenticated
+  // in-process adapter; ordinary public turns cannot mint that separate role.
+  const bodyHistoryCutoffAt =
+    request.trustedMessageRole === "system" ? bodyRecord?.historyCutoffAt : undefined;
+  const trustedHistoryCutoffAt = request.trustedHistoryCutoffAt ?? bodyHistoryCutoffAt;
+  if (
+    trustedHistoryCutoffAt !== undefined &&
+    (request.trustedMessageRole !== "system" ||
+      typeof trustedHistoryCutoffAt !== "number" ||
+      !Number.isSafeInteger(trustedHistoryCutoffAt) ||
+      trustedHistoryCutoffAt <= 0)
+  ) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error: "historyCutoffAt must be a positive safe integer",
+        },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+      request.origin,
+    );
+  }
+  const transientInput =
+    request.trustedMessageRole === "system" &&
+    (request.transientInput === true || bodyRecord?.transientInput === true)
+      ? true
+      : undefined;
 
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -115,6 +156,13 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      channel: request.channel ?? {
+        type: ChannelType.DM,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+      },
+      traceId: request.traceId,
+      trustedHistoryCutoffAt,
+      transientInput,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

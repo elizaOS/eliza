@@ -653,6 +653,45 @@ describe("GET /api/models/config activeChat", () => {
     });
   });
 
+  it("reports explicit local Cerebras routing without a serviceRouting block", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {} as never,
+      processEnv: {
+        ELIZA_PROVIDER: "cerebras",
+        CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      },
+      runtime: {
+        getModelRegistrations: () => [
+          {
+            modelType: ModelType.TEXT_SMALL,
+            provider: "openai",
+            priority: 0,
+            registrationOrder: 1,
+          },
+        ],
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+  });
+
+  it("does not report stale Cerebras env without a registered text handler", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {} as never,
+      processEnv: {
+        ELIZA_PROVIDER: "cerebras",
+        CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      },
+      runtime: { getModelRegistrations: () => [] },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body).not.toHaveProperty("activeChat");
+  });
+
   it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
     const config = {
       serviceRouting: {

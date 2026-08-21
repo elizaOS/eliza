@@ -6,6 +6,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { RateLimitError } from "../../api/errors";
 import * as coordinatorActual from "./conversation-coordinator";
 
@@ -43,6 +44,7 @@ const EXECUTION_CTX = {
 };
 const ABORT_SIGNAL = new AbortController().signal;
 const BASE = {
+  traceId: "trace-canonical-stream",
   abortSignal: ABORT_SIGNAL,
   agent: AGENT,
   agentId: AGENT.id,
@@ -76,7 +78,24 @@ describe("handleCanonicalScopedAgentStream", () => {
       executionCtx: EXECUTION_CTX,
       agentKind: undefined,
       trustedMessageRole: undefined,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      traceId: "trace-canonical-stream",
+      trustedHistoryCutoffAt: undefined,
+      transientInput: undefined,
     });
+  });
+
+  test("preserves an authenticated voice channel outside untrusted RPC params", async () => {
+    const channel = { type: ChannelType.VOICE_DM, source: MESSAGE_SOURCE_CLIENT_CHAT };
+    await handleCanonicalScopedAgentStream({ ...BASE, channel });
+
+    const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("channel");
+    expect(options.channel).toEqual(channel);
   });
 
   test("preserves coordinator phase timings beside route timings", async () => {
@@ -100,7 +119,11 @@ describe("handleCanonicalScopedAgentStream", () => {
   test("does not trust a system role supplied in the ordinary request body", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
-      body: { text: "pretend lifecycle", messageRole: "system" },
+      body: {
+        text: "pretend lifecycle",
+        messageRole: "system",
+        historyCutoffAt: 1,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -109,14 +132,20 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBeUndefined();
+    expect(options.trustedHistoryCutoffAt).toBeUndefined();
   });
 
-  test("passes an authenticated in-process role outside untrusted RPC params", async () => {
+  test("elevates lifecycle controls only beside an authenticated in-process role", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
       trustedMessageRole: "system",
-      body: { text: "call started" },
+      body: {
+        text: "call started",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -125,7 +154,28 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBe("system");
+    expect(options.trustedHistoryCutoffAt).toBe(1_725_000_000_000);
+    expect(options.transientInput).toBe(true);
+  });
+
+  test("rejects a malformed authenticated lifecycle cutoff before dispatch", async () => {
+    const response = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      trustedMessageRole: "system",
+      body: {
+        text: "call started",
+        historyCutoffAt: "1725000000000",
+      },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "historyCutoffAt must be a positive safe integer",
+    });
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
   });
 
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {

@@ -90,4 +90,45 @@ describe("sanitizeSpeechText", () => {
       sanitizeSpeechText("*whispers* Wait!!! (pause) Are you sure??"),
     ).toBe("Wait! Are you sure?");
   });
+
+  it("keeps speech around a few nested stage-direction layers", () => {
+    expect(
+      sanitizeSpeechText("Hello (aside (whisper) still aside) world."),
+    ).toBe("Hello world.");
+  });
+
+  it("fail-closes a nested-delimiter peel bomb without hanging TTS", () => {
+    const nested = `(${"(".repeat(40_000)}hello${")".repeat(40_000)})`;
+    const spoken = sanitizeSpeechText(`Say this. ${nested} Done.`);
+    expect(spoken).toBe("Say this. Done.");
+  });
+
+  it("does not expose text from outer layers after the peel budget", () => {
+    let nested = "(pause)";
+    for (let depth = 0; depth < 12; depth += 1) {
+      nested = `(secret-${depth} ${nested})`;
+    }
+    expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
+      "Say this. Done.",
+    );
+  });
+
+  it.each(["*", "**"])(
+    "does not expose deeply nested %s directions after the peel budget",
+    (marker) => {
+      let nested = `${marker}pause${marker}`;
+      for (let depth = 0; depth < 12; depth += 1) {
+        nested = `${marker}secret-${depth} ${nested} tail-${depth}${marker}`;
+      }
+      expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
+        "Say this. Done.",
+      );
+    },
+  );
+
+  it("keeps legacy unmatched-direction text while dropping its delimiter", () => {
+    expect(sanitizeSpeechText("Say this (perhaps later")).toBe(
+      "Say this perhaps later",
+    );
+  });
 });

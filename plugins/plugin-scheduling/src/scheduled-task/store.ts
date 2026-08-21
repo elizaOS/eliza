@@ -239,17 +239,24 @@ export function createSchedulingSqlScheduledTaskStore(
 ): ScheduledTaskStore {
   const { agentId } = opts;
   const executeSql = schedulingSqlExecutor(opts);
-  return {
-    async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
-      const now = isoNow();
-      const nextFireAtSql =
-        options?.nextFireAtIso === null ||
-        options?.nextFireAtIso === undefined ||
-        options.nextFireAtIso.length === 0
-          ? "NULL"
-          : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
-      await executeSql(
-        `INSERT INTO ${TASK_TABLE} (
+  // Shared by `upsert` and `upsertIfStatus`. `guardStatus` narrows the
+  // conflict-update to rows still showing that lifecycle status, so a stale
+  // post-dispatch snapshot cannot overwrite a user verb that landed while the
+  // dispatcher was in flight.
+  const upsertStatement = (
+    task: ScheduledTask,
+    nextFireAtIso: string | null | undefined,
+    guardStatus?: ScheduledTask["state"]["status"],
+    returningId?: boolean,
+  ): string => {
+    const now = isoNow();
+    const nextFireAtSql =
+      nextFireAtIso === null ||
+      nextFireAtIso === undefined ||
+      nextFireAtIso.length === 0
+        ? "NULL"
+        : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+    return `INSERT INTO ${TASK_TABLE} (
           id, agent_id, kind, prompt_instructions, context_request_json,
           trigger_json, priority, should_fire_json, completion_check_json,
           escalation_json, output_json, pipeline_json, subject_kind, subject_id,
@@ -306,8 +313,75 @@ export function createSchedulingSqlScheduledTaskStore(
           execution_profile = EXCLUDED.execution_profile,
           next_fire_at = EXCLUDED.next_fire_at,
           updated_at = ${sqlQuote(now)}
-        WHERE ${TASK_TABLE}.transfer_status IS NULL`,
+        WHERE ${TASK_TABLE}.transfer_status IS NULL${
+          guardStatus === undefined
+            ? ""
+            : `\n          AND (${TASK_TABLE}.state_json::jsonb ->> 'status') = ${sqlQuote(guardStatus)}`
+        }${returningId ? "\n        RETURNING id" : ""}`;
+  };
+  // `upsertIfStatus` must NOT resurrect a row a concurrent writer deleted.
+  // Reusing the upsert here would take the INSERT branch on a missing row,
+  // return it via RETURNING, and report a won CAS — the opposite of the
+  // in-memory store, which returns false when the row is gone. Deletion is a
+  // live path (deleteCodingAgentSchedule), so this is UPDATE-only: a missing
+  // row matches nothing and the caller correctly learns it lost the race.
+  const guardedUpdateStatement = (
+    task: ScheduledTask,
+    nextFireAtIso: string | null | undefined,
+    guardStatus: ScheduledTask["state"]["status"],
+  ): string => {
+    const now = isoNow();
+    const nextFireAtSql =
+      nextFireAtIso === null ||
+      nextFireAtIso === undefined ||
+      nextFireAtIso.length === 0
+        ? "NULL"
+        : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+    return `UPDATE ${TASK_TABLE} SET
+          kind = ${sqlQuote(task.kind)},
+          prompt_instructions = ${sqlQuote(task.promptInstructions)},
+          context_request_json = ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+          trigger_json = ${sqlJson(task.trigger)},
+          priority = ${sqlQuote(task.priority)},
+          should_fire_json = ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+          completion_check_json = ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+          escalation_json = ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+          output_json = ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+          pipeline_json = ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+          subject_kind = ${sqlText(task.subject?.kind ?? null)},
+          subject_id = ${sqlText(task.subject?.id ?? null)},
+          idempotency_key = ${sqlText(task.idempotencyKey ?? null)},
+          respects_global_pause = ${sqlBoolean(task.respectsGlobalPause)},
+          state_json = ${sqlJson(task.state)},
+          source = ${sqlQuote(task.source)},
+          created_by = ${sqlQuote(task.createdBy)},
+          owner_visible = ${sqlBoolean(task.ownerVisible)},
+          metadata_json = ${sqlJson(task.metadata ?? {})},
+          execution_profile = ${sqlText(task.executionProfile ?? null)},
+          next_fire_at = ${nextFireAtSql},
+          updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(task.taskId)}
+          AND transfer_status IS NULL
+          AND (state_json::jsonb ->> 'status') = ${sqlQuote(guardStatus)}
+        RETURNING id`;
+  };
+  return {
+    async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
+      await executeSql(upsertStatement(task, options?.nextFireAtIso));
+    },
+    async upsertIfStatus(task, options) {
+      const rows = await executeSql(
+        guardedUpdateStatement(
+          task,
+          options.nextFireAtIso,
+          options.expectedStatus,
+        ),
       );
+      // Zero rows means the row is gone, transferred, or no longer in the
+      // expected status — all three are "a concurrent writer moved it", which
+      // is exactly what the caller needs to know.
+      return rows.length > 0;
     },
     async claimForFire(args: {
       taskId: string;
@@ -353,6 +427,107 @@ export function createSchedulingSqlScheduledTaskStore(
       const row = rows[0];
       if (!row) return { kind: "raced" };
       return { kind: "fired", task: parseScheduledTaskRow(row) };
+    },
+    async commitApply({ task, receiptKey, commit, nextFireAtIso }) {
+      const now = isoNow();
+      const nextFireAtSql =
+        nextFireAtIso === null || nextFireAtIso.length === 0
+          ? "NULL"
+          : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+      // PostgreSQL re-evaluates this expression against the current row after
+      // a concurrent updater releases its lock. The proposed metadata remains
+      // authoritative for lifecycle changes, while the receipt map is merged
+      // from that current row so distinct committed keys cannot erase one
+      // another.
+      const mergedMetadataSql = `jsonb_set(
+        ${sqlJson(task.metadata ?? {})}::jsonb,
+        '{schedulingApplyReceipts}',
+        COALESCE(
+          metadata_json::jsonb -> 'schedulingApplyReceipts',
+          '{}'::jsonb
+        ) || jsonb_build_object(${sqlQuote(receiptKey)}, TRUE),
+        true
+      )::text`;
+      const rows = await executeSql(
+        `WITH updated_task AS (
+          UPDATE ${TASK_TABLE}
+             SET state_json = ${sqlJson(task.state)},
+                 metadata_json = ${mergedMetadataSql},
+                 next_fire_at = ${nextFireAtSql},
+                 updated_at = ${sqlQuote(now)},
+                 version = version + 1
+           WHERE agent_id = ${sqlQuote(agentId)}
+             AND id = ${sqlQuote(task.taskId)}
+             AND transfer_status IS NULL
+             AND NOT (
+               COALESCE(
+                 metadata_json::jsonb -> 'schedulingApplyReceipts',
+                 '{}'::jsonb
+               ) ? ${sqlQuote(receiptKey)}
+             )
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM ${LOG_TABLE}
+                WHERE id = ${sqlQuote(commit.logId)}
+             )
+          RETURNING *
+        ), inserted_log AS (
+          INSERT INTO ${LOG_TABLE} (
+            id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+          )
+          SELECT
+            ${sqlQuote(commit.logId)},
+            ${sqlQuote(commit.agentId)},
+            ${sqlQuote(commit.taskId)},
+            ${sqlQuote(commit.occurredAtIso)},
+            ${sqlQuote(commit.transition)},
+            ${sqlText(commit.reason ?? null)},
+            ${sqlBoolean(false)},
+            ${sqlText(commit.detail ? JSON.stringify(commit.detail) : null)}
+          FROM updated_task
+          RETURNING *
+        )
+        SELECT to_jsonb(updated_task) AS task_row,
+               to_jsonb(inserted_log) AS log_row
+          FROM updated_task
+          JOIN inserted_log ON TRUE`,
+      );
+      const applied = rows[0];
+      if (applied) {
+        return {
+          kind: "applied",
+          task: parseScheduledTaskRow(parseJsonRecord(applied.task_row)),
+          commit: parseScheduledTaskLogRow(parseJsonRecord(applied.log_row)),
+        };
+      }
+
+      const replayRows = await executeSql(
+        `SELECT to_jsonb(task_row) AS task_row,
+                to_jsonb(log_row) AS log_row
+           FROM ${TASK_TABLE} AS task_row
+           JOIN ${LOG_TABLE} AS log_row
+             ON log_row.id = ${sqlQuote(commit.logId)}
+            AND log_row.agent_id = task_row.agent_id
+            AND log_row.task_id = task_row.id
+          WHERE task_row.agent_id = ${sqlQuote(agentId)}
+            AND task_row.id = ${sqlQuote(task.taskId)}
+            AND COALESCE(
+              task_row.metadata_json::jsonb -> 'schedulingApplyReceipts',
+              '{}'::jsonb
+            ) ? ${sqlQuote(receiptKey)}
+          LIMIT 1`,
+      );
+      const replayRow = replayRows[0];
+      if (replayRow) {
+        return {
+          kind: "replayed",
+          task: parseScheduledTaskRow(parseJsonRecord(replayRow.task_row)),
+          commit: parseScheduledTaskLogRow(parseJsonRecord(replayRow.log_row)),
+        };
+      }
+      throw new Error(
+        `commitApply: task ${task.taskId} could not commit receipt ${receiptKey}`,
+      );
     },
     async get(taskId: string) {
       const rows = await executeSql(
@@ -480,6 +655,9 @@ export function createSchedulingSqlScheduledTaskLogStore(
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
+            AND NOT (
+              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
+            )
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
@@ -515,6 +693,9 @@ export function createSchedulingSqlScheduledTaskLogStore(
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
             AND transition <> 'scheduled'
+            AND NOT (
+              COALESCE(detail_json::jsonb, '{}'::jsonb) ? 'receiptKey'
+            )
             AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
       );
       let counter = 0;

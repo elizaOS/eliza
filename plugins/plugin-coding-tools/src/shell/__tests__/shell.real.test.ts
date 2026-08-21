@@ -3,7 +3,15 @@
  * spawned shell in a temp directory (no mocks) — command execution, session
  * tracking, and history-provider context injection.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -69,14 +77,11 @@ describePosixShell("shell plugin real local integration", () => {
   });
 
   it("executes a real command in the allowed directory and exposes it through the provider", async () => {
-    const result = await service.executeCommand(
-      'printf "live-shell" > output.txt',
-      "room-1",
-    );
-    expect(result.success).toBe(true);
+    const result = await service.executeCommand("touch output.txt", "room-1");
+    expect(result.success, JSON.stringify(result)).toBe(true);
     expect(
       readFileSync(path.join(allowedDirectory, "output.txt"), "utf8"),
-    ).toBe("live-shell");
+    ).toBe("");
 
     const provider = await shellHistoryProvider.get(
       runtime,
@@ -87,6 +92,26 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.text).toContain("output.txt");
     expect(provider.text).toContain(allowedDirectory);
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
+  });
+
+  it("captures deliberately split multibyte stdout and stderr without corruption", async () => {
+    const script = [
+      'const value = Buffer.from("\u4f60");',
+      "process.stdout.write(value.subarray(0, 1));",
+      "process.stderr.write(value.subarray(0, 2));",
+      "setTimeout(() => {",
+      "  process.stdout.write(value.subarray(1));",
+      "  process.stderr.write(value.subarray(2));",
+      "}, 50);",
+    ].join("");
+    const result = await service.executeCommand(
+      `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+      "room-utf8",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe("\u4f60");
+    expect(result.stderr).toBe("\u4f60");
   });
 
   it("stores and provides only redacted configured bare secrets", async () => {
@@ -120,6 +145,98 @@ describePosixShell("shell plugin real local integration", () => {
       /Cannot navigate outside allowed directory|Command contains forbidden patterns/,
     );
     expect(service.getCurrentDirectory()).toBe(allowedDirectory);
+  });
+
+  it("rejects a real shell workdir symlink that resolves outside", async () => {
+    const outside = mkdtempSync(path.join(tmpdir(), "eliza-shell-outside-"));
+    try {
+      symlinkSync(outside, path.join(allowedDirectory, "escape"));
+      const result = await service.exec("pwd", { workdir: "escape" });
+
+      expect(result.status).toBe("failed");
+      expect(result.reason).toContain("outside allowed directory");
+      expect(service.getCurrentDirectory()).toBe(allowedDirectory);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves an explicit relative workdir from the service current directory", async () => {
+    const parent = path.join(allowedDirectory, "current-parent");
+    const child = path.join(parent, "relative-child");
+    mkdirSync(parent);
+    mkdirSync(child);
+    expect(service.setCurrentDirectory(parent)).toBe(true);
+
+    const result = await service.exec("pwd", { workdir: "relative-child" });
+    const realChild = realpathSync(child);
+
+    expect(result.status).toBe("completed");
+    expect(result.cwd).toBe(realChild);
+    expect(result.aggregated.trim()).toBe(realChild);
+
+    const omitted = await service.exec("pwd");
+    const realParent = realpathSync(parent);
+    expect(omitted.status).toBe("completed");
+    expect(omitted.cwd).toBe(realParent);
+    expect(omitted.aggregated.trim()).toBe(realParent);
+
+    const absolute = await service.exec("pwd", { workdir: child });
+    expect(absolute.status).toBe("completed");
+    expect(absolute.cwd).toBe(realChild);
+    expect(absolute.aggregated.trim()).toBe(realChild);
+  });
+
+  it("rejects blank explicit workdirs without executing", async () => {
+    for (const workdir of ["", " ", "\t\n"]) {
+      const result = await service.exec("pwd", { workdir });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe(
+        "Explicit workdir must be a non-empty string.",
+      );
+      expect(result.aggregated).toBe("");
+    }
+  });
+
+  it("returns structured failures for non-string runtime workdirs", async () => {
+    for (const workdir of [null, 42, { path: allowedDirectory }]) {
+      const result = await service.exec("pwd", {
+        workdir: workdir as unknown as string,
+      });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe(
+        "Explicit workdir must be a non-empty string.",
+      );
+      expect(result.aggregated).toBe("");
+    }
+  });
+
+  it("rejects missing, dangling, and non-directory explicit workdirs", async () => {
+    const regularFile = path.join(allowedDirectory, "not-a-directory.txt");
+    const dangling = path.join(allowedDirectory, "dangling");
+    writeFileSync(regularFile, "not a cwd");
+    symlinkSync(path.join(allowedDirectory, "missing-target"), dangling);
+
+    for (const workdir of ["missing", "dangling", "not-a-directory.txt"]) {
+      const result = await service.exec("pwd", { workdir });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toContain(
+        "unavailable or outside allowed directory",
+      );
+    }
+  });
+
+  it("does not execute from process cwd when an explicit default-root workdir is missing", async () => {
+    await service.stop();
+    delete process.env.SHELL_ALLOWED_DIRECTORY;
+    service = await ShellService.start(createRuntime(null));
+
+    const result = await service.exec("pwd", {
+      workdir: `missing-explicit-${Date.now()}`,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.reason).toContain("unavailable or outside allowed directory");
   });
 
   it("surfaces a model-visible error instead of blank output when history retrieval throws", async () => {

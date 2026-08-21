@@ -11,6 +11,7 @@
  */
 
 import { toast } from "sonner";
+import { isSafeNavigationUrl } from "../../lib/navigation-url";
 
 const MAX_PAIRING_WAIT_MS = 120_000;
 const DEFAULT_RETRY_AFTER_MS = 5_000;
@@ -95,6 +96,13 @@ export async function openWebUIWithPairing(agentId: string): Promise<void> {
       }
 
       if (data.data?.redirectUrl) {
+        if (!isSafeNavigationUrl(data.data.redirectUrl)) {
+          // The redirect URL is a wire value assigned to the popup's top
+          // window — only absolute http(s) may navigate.
+          popup.close();
+          toast.error("Pairing redirect URL is not a valid URL");
+          return;
+        }
         popup.location.href = data.data.redirectUrl;
         return;
       }

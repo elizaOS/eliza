@@ -279,6 +279,7 @@ export interface StartupCoordinatorView {
 
 export interface ApiLikeError {
   kind?: string;
+  code?: string;
   status?: number;
   path?: string;
   message?: string;
@@ -668,7 +669,7 @@ export type LoadConversationMessagesResult =
   | { ok: true }
   | { ok: false; status?: number; message: string };
 
-export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
+export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 export const AGENT_READY_TIMEOUT_MS = 120_000;
 
 export interface SetTabOptions {

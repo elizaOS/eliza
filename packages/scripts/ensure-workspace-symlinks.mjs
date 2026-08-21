@@ -143,10 +143,7 @@ function main() {
   // Add an entry whenever a workspace package depends on a package that
   // (a) appears in NO root manifest (and so isn't auto-hoisted) and
   // (b) is imported across workspace boundaries.
-  const HOIST_TRANSITIVE = [
-    { name: "adze", consumer: "@elizaos/logger" },
-    { name: "fast-redact", consumer: "@elizaos/logger" },
-  ];
+  const HOIST_TRANSITIVE = [{ name: "adze", consumer: "@elizaos/logger" }];
   let hoisted = 0;
   for (const root of NODE_MODULES_DIRS) {
     const nodeModulesRoot = join(REPO_ROOT, root);

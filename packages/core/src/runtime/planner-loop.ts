@@ -10,6 +10,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { promotedParentRoutingHint } from "../actions/promote-subactions";
+import {
+	DEFAULT_SUBACTION_KEYS,
+	readSubaction,
+} from "../actions/subaction-dispatch";
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
@@ -51,9 +55,17 @@ import {
 	isModelProviderError,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
+import {
+	hasReasoningResidue,
+	stripReasoningPrefixes,
+} from "../utils/reasoning-tags";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
-import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
+import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed";
 import {
 	computePrefixHashes,
 	hashString,
@@ -386,6 +398,7 @@ async function runPlannerLoopIterations(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	let memorySearchBudgetDeadRounds = 0;
 	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
 	// terminal REPLY before any non-terminal tool has run is almost always the
 	// "Creating the app now…" narration that leaves nothing on disk. Force the
@@ -482,6 +495,11 @@ async function runPlannerLoopIterations(
 	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
 	// field is absent the gate's other preconditions are honored as before.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// A successful sole action may request one natural, model-authored terminal
+	// reply after its effect completes. This is deliberately narrower than the
+	// evaluator's general CONTINUE path: only an explicit final-scope tool call
+	// can arm it, and any subsequent tool call disarms it.
+	let pendingRequiredModelReply = false;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
@@ -544,6 +562,7 @@ async function runPlannerLoopIterations(
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
+			const synthesizingRequiredModelReply = pendingRequiredModelReply;
 			// Providers occasionally 400 with "Failed to generate tool_calls …
 			// tool_choice = 'required'": the model simply failed to emit a call
 			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
@@ -583,7 +602,13 @@ async function runPlannerLoopIterations(
 				config,
 				modelType: params.modelType,
 				provider: params.provider,
-				tools: params.tools,
+				// A successful final-scope action may ask for one natural closing
+				// sentence. That round is synthesis, not planning: remove the tool
+				// catalog entirely so callPlanner cannot default an omitted toolChoice
+				// to "required" and re-run the action. The branch below consumes this
+				// output exactly once, including when a non-compliant provider invents
+				// a tool call despite receiving no tools.
+				tools: synthesizingRequiredModelReply ? undefined : params.tools,
 				// Force a tool call ONLY while the turn's "use a real tool" requirement
 				// is still unmet. Once a non-terminal tool has executed, relax to
 				// "auto" so the planner is free to synthesize a terminal REPLY from
@@ -591,11 +616,13 @@ async function runPlannerLoopIterations(
 				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
 				// choice would be a no-op because callPlanner defaults undefined back
 				// to "required".
-				toolChoice: requireNonTerminalToolCall
-					? hasExecutedNonTerminalTool(trajectory)
-						? "auto"
-						: "required"
-					: params.toolChoice,
+				toolChoice: synthesizingRequiredModelReply
+					? undefined
+					: requireNonTerminalToolCall
+						? hasExecutedNonTerminalTool(trajectory)
+							? "auto"
+							: "required"
+						: params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -625,6 +652,176 @@ async function runPlannerLoopIterations(
 			// "not complete" blocks. This keeps backward compat with planner
 			// outputs that don't carry either signal.
 			lastPlannerExplicitCompleted = plannerOutput.completed;
+			if (synthesizingRequiredModelReply) {
+				pendingRequiredModelReply = false;
+				if (plannerOutput.toolCalls.length > 0) {
+					// Fail closed (#22609): the required-reply synthesis is a
+					// tool-free round. When a non-compliant provider returns BOTH
+					// prose and an unsolicited tool call, the response is invalid AS
+					// A WHOLE — its prose must NOT be accepted and the invented tool
+					// must NOT run. Route the already-completed sole action (it ran
+					// exactly once before this round was armed) through the normal
+					// evaluator/fallback path, exactly as if the model-reply request
+					// had never been made. This prevents an unsolicited tool call
+					// from smuggling its co-emitted prose past evaluator review.
+					params.runtime.logger?.warn?.(
+						{
+							iteration,
+							inventedToolCalls: plannerOutput.toolCalls.length,
+						},
+						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
+					);
+					let evaluator: EvaluatorOutput;
+					try {
+						evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					} catch (err) {
+						// error-policy:J4 explicit user-facing degrade - the action has
+						// already succeeded, so an expected provider failure must use the
+						// same truthful post-tool fallback as the normal evaluator path.
+						if (!isModelProviderError(err)) throw err;
+						const relay = deterministicSuccessfulToolRelay(trajectory);
+						if (!relay) throw err;
+						params.runtime.logger?.warn?.(
+							{
+								iteration,
+								err: err instanceof Error ? err.message : String(err),
+								...(modelProviderErrorDetail(err)
+									? { providerErrorDetail: modelProviderErrorDetail(err) }
+									: {}),
+							},
+							"[planner-loop] required-reply evaluator model call failed; relaying the completed tool result instead of discarding the turn",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(trajectory, relay),
+								trajectory,
+							),
+						};
+					}
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							evaluator,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					appendEvaluatorContextEvent(
+						trajectory,
+						evaluator,
+						iteration,
+						redactDiagnosticText,
+					);
+					const protocolFailureRelay =
+						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+					if (protocolFailureRelay) {
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									protocolFailureRelay,
+								),
+								trajectory,
+							),
+						};
+					}
+					if (evaluator.decision === "FINISH") {
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									preferredFinalMessageFromToolOrModel(
+										trajectory,
+										evaluator.messageToUser,
+										evaluator.success === false
+											? failedToolFallbackMessage(trajectory)
+											: undefined,
+									),
+									evaluator.success === false
+										? userSafeFailureReport(evaluator.messageToUser, trajectory)
+										: undefined,
+								),
+								trajectory,
+							),
+						};
+					}
+					// The evaluator declined to FINISH, but this round has no tool
+					// catalog and the invented tool must never execute. Relay the
+					// completed action's own truthful result instead of replaying
+					// work or fabricating a save.
+					const relay = deterministicSuccessfulToolRelay(trajectory);
+					return {
+						status: "finished",
+						trajectory,
+						evaluator,
+						finalMessage: userSafeFinalMessage(
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+							),
+							trajectory,
+						),
+					};
+				}
+				const requiredModelReply = userSafeCapturedAnswerCandidate(
+					plannerOutput.messageToUser,
+				);
+				const finalMessage =
+					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+				trajectory.steps.push({
+					iteration,
+					thought: plannerOutput.thought,
+					terminalMessage: finalMessage,
+					terminalOnly: true,
+				});
+				trajectory.context = appendTerminalPlannerOutputEvent({
+					context: trajectory.context,
+					iteration,
+					message: finalMessage,
+				});
+				const gated: EvaluatorOutput = {
+					success: true,
+					decision: "FINISH",
+					thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
+					messageToUser: finalMessage,
+				};
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						gated,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
+				trajectory.context = appendEvaluationEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator: gated,
+					redactDiagnosticText,
+				});
+				const gateStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					runtime: params.runtime,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: gateStartedAt,
+					endedAt: Date.now(),
+					output: gated,
+					reason: "post_tool_model_reply",
+					logger: params.runtime.logger,
+				});
+				return {
+					status: "finished",
+					trajectory,
+					evaluator: gated,
+					finalMessage,
+				};
+			}
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -1189,14 +1386,92 @@ async function runPlannerLoopIterations(
 				);
 			}
 			repeatedNonTerminalToolCalls = 0;
-			trajectory.plannedQueue.push(...validNonTerminalCalls);
+			// Memory-recall search budget: cap `*_SEARCH`-recall rounds per turn and
+			// skip near-duplicate reformulations of a query already executed. Every
+			// extra recall round is a full planner prompt round-trip; the results of
+			// executed searches are already in the trajectory, so skipped calls lose
+			// nothing — the instruction below points the model back at them.
+			const memoryBudget = partitionMemorySearchBudget(
+				validNonTerminalCalls,
+				trajectory,
+				config.maxMemorySearchRounds,
+			);
+			const skippedSearchCalls = [
+				...memoryBudget.skippedOverBudget,
+				...memoryBudget.skippedNearDuplicate,
+			];
+			if (skippedSearchCalls.length > 0) {
+				params.runtime.logger?.warn?.(
+					{
+						iteration,
+						maxMemorySearchRounds: config.maxMemorySearchRounds,
+						skippedOverBudget: memoryBudget.skippedOverBudget.map(
+							(call) => call.name,
+						),
+						skippedNearDuplicate: memoryBudget.skippedNearDuplicate.map(
+							(call) => call.name,
+						),
+					},
+					"Memory-search round budget: skipping recall searches (over budget or near-duplicate query); answering from results already gathered",
+				);
+				const budgetParts: string[] = [];
+				if (memoryBudget.skippedNearDuplicate.length > 0) {
+					budgetParts.push(
+						"A memory search with essentially the same query already ran this " +
+							"turn; rephrasing it will not surface new stored results.",
+					);
+				}
+				if (memoryBudget.skippedOverBudget.length > 0) {
+					budgetParts.push(
+						`The per-turn memory search budget (${config.maxMemorySearchRounds}) is spent.`,
+					);
+				}
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `memory-search-budget:${iteration}`,
+					type: "instruction",
+					source: "planner-loop",
+					createdAt: Date.now(),
+					content:
+						`${budgetParts.join(" ")} The search results already gathered this ` +
+						"turn are in the trajectory above. Answer the user now from those " +
+						"results; if they do not contain the answer, say plainly what you " +
+						"looked for and did not find.",
+				});
+				if (memoryBudget.allowed.length === 0) {
+					// Dead round: every planned call was a skipped recall search. A
+					// model that keeps emitting new-phrase searches after the budget is
+					// spent would otherwise spin here forever; after the same bound as
+					// the repeated-call breaker, force one terminal synthesis from the
+					// results already gathered.
+					memorySearchBudgetDeadRounds++;
+					if (memorySearchBudgetDeadRounds > config.maxRepeatedToolCalls) {
+						return finishWithForcedSynthesis({
+							loop: params,
+							config,
+							trajectory,
+							iteration,
+							onUsage: observePlannerUsage,
+							instruction:
+								"The per-turn memory search budget is spent and further " +
+								"searches were skipped. Do not call any tool. Answer the user " +
+								"now from the search results already in this trajectory; if " +
+								"they do not contain the answer, say plainly what you looked " +
+								"for and did not find.",
+						});
+					}
+					trajectory.plannedQueue.length = 0;
+					continue;
+				}
+			}
+			memorySearchBudgetDeadRounds = 0;
+			trajectory.plannedQueue.push(...memoryBudget.allowed);
 			// The queue keeps the exact raw calls for the handler path; the context
 			// copies below are diagnostics and carry the redacted projection only.
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
 					...(trajectory.context.plannedQueue ?? []),
-					...validNonTerminalCalls.map((toolCall) => ({
+					...memoryBudget.allowed.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
 						args: stringifyToolArgsForDiagnostics(
@@ -1208,7 +1483,7 @@ async function runPlannerLoopIterations(
 					})),
 				],
 			};
-			for (const toolCall of validNonTerminalCalls) {
+			for (const toolCall of memoryBudget.allowed) {
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
 					type: "planned_tool_call",
@@ -1306,6 +1581,19 @@ async function runPlannerLoopIterations(
 		// file write (before the build's SHELL run / verification).
 		if (codingDrainQueue) {
 			trajectory.plannedQueue.length = 0;
+			continue;
+		}
+
+		if (
+			latestResult?.success === true &&
+			latestResult.modelReplyRequired === true &&
+			trajectory.plannedQueue.length === 0 &&
+			failures.length === 0 &&
+			lastPlannerExplicitCompleted === true &&
+			completedToolStepCount(trajectory) === 1 &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
+		) {
+			pendingRequiredModelReply = true;
 			continue;
 		}
 
@@ -3013,8 +3301,13 @@ async function executeQueuedToolCall(params: {
 	assertTrajectoryLimit({
 		kind: "tool_calls",
 		max: params.config.maxToolCalls,
+		// Compaction moves settled steps out of `steps` into `archivedSteps`,
+		// so counting only the live half restarts the budget mid-turn. Every
+		// other trajectory-wide read in this file spans both halves.
 		observed:
-			params.trajectory.steps.filter((step) => step.toolCall).length + 1,
+			[...params.trajectory.archivedSteps, ...params.trajectory.steps].filter(
+				(step) => step.toolCall,
+			).length + 1,
 	});
 
 	const streamingContext = getStreamingContext();
@@ -4018,6 +4311,170 @@ export function partitionRedundantSucceededCalls(
 }
 
 /**
+ * Whether a planned tool call is a memory/knowledge-recall search: the
+ * MEMORY_SEARCH promoted virtual (or the MEMORY umbrella invoked with a
+ * search op) and SEARCH_KNOWLEDGE. Deliberately narrow — web search, message
+ * search, and file search are not recall-over-stored-memory and stay
+ * unbudgeted.
+ */
+export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
+	const name = toolCall.name.trim().toUpperCase();
+	if (name === "MEMORY_SEARCH" || name === "SEARCH_KNOWLEDGE") return true;
+	if (name === "MEMORY") {
+		return (
+			readSubaction(toolCall.params, { allowed: ["search"] as const }) ===
+			"search"
+		);
+	}
+	return false;
+}
+
+/**
+ * Order-insensitive token key for a recall query so reformulations of the SAME
+ * lookup ("alexis gym signup" vs "gym signup alexis" vs "alexis gym signup?")
+ * map to one identity. Null when the call carries no usable query text — such
+ * calls are only governed by the round budget, never the near-dup check.
+ */
+export function normalizedRecallQueryKey(
+	toolCall: PlannerToolCall,
+): string | null {
+	const params = (toolCall.params ?? {}) as Record<string, unknown>;
+	const raw = params.query ?? params.q ?? params.text ?? params.search;
+	if (typeof raw !== "string") return null;
+	const tokens = raw
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length > 0)
+		.sort();
+	if (tokens.length === 0) return null;
+	return tokens.join(" ");
+}
+
+const RECALL_QUERY_PARAMETER_KEYS = new Set(["query", "q", "text", "search"]);
+const RECALL_IDENTITY_IGNORED_KEYS = new Set([
+	...RECALL_QUERY_PARAMETER_KEYS,
+	...DEFAULT_SUBACTION_KEYS,
+]);
+
+/**
+ * Identity for a recall search after its query wording has been normalized.
+ * Scope and window arguments remain part of the identity so a retry against a
+ * different room/entity/type or with a wider limit is never mislabeled as a
+ * mere reformulation. Umbrella discriminator aliases are omitted because they
+ * all select the same already-classified MEMORY search operation.
+ */
+function recallSearchDedupeKey(
+	toolCall: PlannerToolCall,
+	queryKey: string,
+): string {
+	const name = toolCall.name.trim().toUpperCase();
+	const family = name === "MEMORY" ? "MEMORY_SEARCH" : name;
+	const scopeParameters = Object.fromEntries(
+		Object.entries(toolCall.params ?? {}).filter(
+			([key]) => !RECALL_IDENTITY_IGNORED_KEYS.has(key),
+		),
+	);
+	return `${family} ${queryKey} ${stableJsonStringify(scopeParameters)}`;
+}
+
+/**
+ * Per-turn budget for memory/knowledge-recall searches. Two failure modes
+ * escaped the byte-identical redundant-call breaker (live sol-dev 2026-08-17,
+ * 3-5 MEMORY_SEARCH rounds per turn = 30-117s tails):
+ *
+ *  1. near-duplicate reformulations of the same query — skipped here whenever
+ *     an executed step (or an allowed call earlier in this batch) already
+ *     carries the same normalized query tokens for the same tool, regardless
+ *     of remaining budget;
+ *  2. open-ended "search again with a different phrase" churn — bounded by
+ *     `maxRounds` successful recall searches per turn. Failed calls are
+ *     bounded separately by the repeated-failure guard, preserving a
+ *     corrected call after invalid arguments or a backend failure.
+ *
+ * Nothing is lost when a call is skipped: results from executed searches stay
+ * in the trajectory, and the caller appends an instruction to answer from
+ * them. Non-search calls always pass through.
+ */
+export function partitionMemorySearchBudget(
+	calls: PlannerToolCall[],
+	trajectory: PlannerTrajectory,
+	maxRounds: number,
+): {
+	allowed: PlannerToolCall[];
+	skippedOverBudget: PlannerToolCall[];
+	skippedNearDuplicate: PlannerToolCall[];
+} {
+	const executedQueryKeys = new Set<string>();
+	let executedRounds = 0;
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || !step.result) continue;
+		if (!isMemoryRecallSearchCall(step.toolCall)) continue;
+		// Failed calls do not spend the recall-result budget. They are already
+		// bounded by the planner's repeated-failure guard, and charging them here
+		// can suppress the first corrected call after schema/backend failures.
+		if (step.result.success !== true) continue;
+		executedRounds++;
+		// Only SUCCESSFUL executions seed the near-duplicate set: a failed search
+		// (schema rejection, backend error) put no results in context, so a
+		// same-query retry with corrected arguments is legitimate — it competes
+		// only against future successful rounds, never the dedup gate.
+		if (!successfulRecallResultHasContent(step.result)) {
+			continue;
+		}
+		const key = normalizedRecallQueryKey(step.toolCall);
+		if (key) executedQueryKeys.add(recallSearchDedupeKey(step.toolCall, key));
+	}
+	const allowed: PlannerToolCall[] = [];
+	const skippedOverBudget: PlannerToolCall[] = [];
+	const skippedNearDuplicate: PlannerToolCall[] = [];
+	let plannedRounds = executedRounds;
+	for (const call of calls) {
+		if (!isMemoryRecallSearchCall(call)) {
+			allowed.push(call);
+			continue;
+		}
+		const key = normalizedRecallQueryKey(call);
+		const scopedKey = key ? recallSearchDedupeKey(call, key) : null;
+		if (scopedKey && executedQueryKeys.has(scopedKey)) {
+			skippedNearDuplicate.push(call);
+			continue;
+		}
+		if (plannedRounds >= maxRounds) {
+			skippedOverBudget.push(call);
+			continue;
+		}
+		plannedRounds++;
+		if (scopedKey) executedQueryKeys.add(scopedKey);
+		allowed.push(call);
+	}
+	return { allowed, skippedOverBudget, skippedNearDuplicate };
+}
+
+/**
+ * Whether a successful recall result contains an actual match worth deduping.
+ * Search handlers commonly return `success: true` for an empty, valid search;
+ * those misses must leave room for an order-sensitive semantic rephrase.
+ */
+function successfulRecallResultHasContent(result: PlannerToolResult): boolean {
+	const data = result.data;
+	if (data) {
+		for (const key of ["count", "matchCount", "total"] as const) {
+			const count = data[key];
+			if (typeof count === "number" && Number.isFinite(count)) {
+				return count > 0;
+			}
+		}
+		for (const key of ["items", "matches", "results", "memories"] as const) {
+			const items = data[key];
+			if (Array.isArray(items)) return items.length > 0;
+		}
+	}
+	return [result.userFacingText, result.summary, result.text].some(
+		(value) => typeof value === "string" && value.trim().length > 0,
+	);
+}
+
+/**
  * Terminal escape hatch for a planner stuck re-issuing an identical successful
  * call. Makes one `toolChoice: "none"` planner call so the model MUST answer in
  * prose — synthesizing from the tool results already gathered — then returns
@@ -4577,7 +5034,7 @@ async function rescueReplyFromSuccessfulResults(
 		successfulExcerpts.push(
 			[
 				`<tool_result name="${step.toolCall.name}">`,
-				text.slice(0, RESCUE_EXCERPT_MAX_CHARS),
+				truncateWellFormed(toWellFormedUnicode(text), RESCUE_EXCERPT_MAX_CHARS),
 				"</tool_result>",
 			].join("\n"),
 		);
@@ -4990,16 +5447,12 @@ function isJunkCodingReply(text: unknown): boolean {
 }
 
 /**
- * Strip reasoning-model scaffolding that leaks into a final reply: a
- * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
- * thought before it (keep only the answer after the last `</think>`). Observed
- * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
+ * Strip reasoning-model scaffolding that leaks into a final reply. Completed
+ * blocks and stray closes use the shared grammar, keeping only content after
+ * the last private-reasoning close.
  */
 function stripReasoningArtifacts(text: string): string {
-	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-	const lastClose = out.toLowerCase().lastIndexOf("</think>");
-	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
-	return out.replace(/<\/?think>/gi, "").trim();
+	return stripReasoningPrefixes(text).trim();
 }
 
 /**
@@ -5420,7 +5873,8 @@ type GatedEvaluatorDecision = {
 	reason:
 		| "explicit_terminal_reply"
 		| "action_terminal_result"
-		| "action_terminal_failure";
+		| "action_terminal_failure"
+		| "post_tool_model_reply";
 };
 
 function tryGateEvaluator(args: {
@@ -5544,6 +5998,11 @@ function selectGatedEvaluatorReply(
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
+
+const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
@@ -5678,14 +6137,17 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	) {
 		return true;
 	}
-	// Reasoning-token residue and evaluator protocol envelopes are internals,
-	// never replies: a `</think>` anywhere means upstream stripping failed, and
-	// a JSON body carrying the evaluator's decision/success protocol keys is
-	// the verdict envelope itself (live tj-b8809c9841cdfd delivered
+	// Reasoning-tag residue and evaluator protocol envelopes are internals,
+	// never replies: any surviving reasoning markup (open or close, any
+	// canonical spelling, mixed case) means upstream stripping failed, and a
+	// JSON body carrying the evaluator's decision/success protocol keys is the
+	// verdict envelope itself (live tj-b8809c9841cdfd delivered
 	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
-	// Discord when a think-prefixed envelope defeated the parser). Egress is
-	// the last line: reject both shapes regardless of how they got here.
-	if (text.includes("</think>")) return true;
+	// Discord when a think-prefixed envelope defeated the parser; #20080
+	// generalizes the residue gate beyond the exact lowercase `</think>`).
+	// Egress is the last line: reject both shapes regardless of how they got
+	// here.
+	if (hasReasoningResidue(text)) return true;
 	if (
 		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
 		/"success"\s*:\s*(?:true|false)/.test(text)
@@ -5948,9 +6410,11 @@ export function actionResultToPlannerToolResult(
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
+		promptData: result.promptData,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
+		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

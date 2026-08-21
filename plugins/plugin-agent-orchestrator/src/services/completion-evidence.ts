@@ -31,6 +31,7 @@
  * @module services/completion-evidence
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -155,9 +156,6 @@ export interface CompletionEvidenceBundle {
 
 /** Total cap for the assembled evidence string. Sits under the verifier's own
  *  {@link trimEvidence} budget so the section structure survives intact. */
-// Sized so a 3-file static app's full contents + tool output fit un-truncated
-// (≈6k tokens — well inside the verify model's context). At 8k the judge read
-// truncated CSS and failed content criteria on working pages (2026-08-19).
 const MAX_EVIDENCE_CHARS = 24_000;
 const MAX_DIFF_CHARS = 3_000;
 const MAX_DELIVERABLE_CHARS = 1_500;
@@ -188,14 +186,16 @@ export function appendCompletionEvidenceSection(
   }
   if (addition.length >= MAX_EVIDENCE_CHARS) {
     const marker = "\n… [truncated]";
-    return `${addition.slice(0, MAX_EVIDENCE_CHARS - marker.length)}${marker}`;
+    const wellFormedAddition = toWellFormedUnicode(addition);
+    return `${truncateWellFormed(wellFormedAddition, MAX_EVIDENCE_CHARS - marker.length)}${marker}`;
   }
   const marker = "\n… [evidence truncated]";
   const available = Math.max(
     0,
     MAX_EVIDENCE_CHARS - addition.length - separator.length - marker.length,
   );
-  return `${base.slice(0, available)}${marker}${separator}${addition}`;
+  const wellFormedBase = toWellFormedUnicode(base);
+  return `${truncateWellFormed(wellFormedBase, available)}${marker}${separator}${addition}`;
 }
 
 /**
@@ -218,10 +218,11 @@ function isLoopbackUrl(value: string): boolean {
   }
 }
 
-function clamp(text: string, max: number): string {
+export function clamp(text: string, max: number): string {
   const trimmed = text.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max)}\n… [truncated]`;
+  const wellFormed = toWellFormedUnicode(trimmed);
+  if (wellFormed.length <= max) return wellFormed;
+  return `${truncateWellFormed(wellFormed, max)}\n… [truncated]`;
 }
 
 /** Markers that class a signal as TEST output (vitest/jest run, suite result). */
@@ -596,9 +597,10 @@ export function buildCompletionEvidenceString(
   }
 
   const assembled = sections.join("\n\n");
-  return assembled.length > MAX_EVIDENCE_CHARS
-    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
-    : assembled;
+  const wellFormed = toWellFormedUnicode(assembled);
+  return wellFormed.length > MAX_EVIDENCE_CHARS
+    ? `${truncateWellFormed(wellFormed, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    : wellFormed;
 }
 
 /**

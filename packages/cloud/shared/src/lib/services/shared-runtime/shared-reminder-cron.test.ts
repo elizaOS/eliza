@@ -3,10 +3,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const listDueScheduledTaskRefs = mock(async () => [
-  { agentId: "personal:owner", taskId: "reminder-1" },
+  {
+    agentId: "personal:00000000-0000-5000-8000-000000000000",
+    taskId: "reminder-1",
+  },
 ]);
 const listRecoverableScheduledTaskRefs = mock(async () => []);
 const claims = new Set<string>();
+const coordinateSharedPushDispatch = mock(async () => {});
 const createSharedScheduledTaskRunner = mock(
   (
     agentId: string,
@@ -60,6 +64,9 @@ mock.module("./shared-scheduling", () => ({
   createSharedScheduledTaskRunner,
   executeSharedSchedulingSql: mock(async () => []),
 }));
+mock.module("./conversation-coordinator", () => ({
+  coordinateSharedPushDispatch,
+}));
 
 const { processDueSharedReminders, sharedReminderDispatcher } = await import(
   "./shared-reminder-cron"
@@ -72,6 +79,7 @@ afterEach(() => {
   listDueScheduledTaskRefs.mockClear();
   listRecoverableScheduledTaskRefs.mockClear();
   createSharedScheduledTaskRunner.mockClear();
+  coordinateSharedPushDispatch.mockClear();
   mock.restore();
 });
 
@@ -79,6 +87,7 @@ const env = {
   ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example/",
   ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL: "https://gateway-discord.example/",
   GATEWAY_INTERNAL_SECRET: "internal-secret",
+  SHARED_RUNTIME_CONVERSATIONS: { getByName: mock() },
 } as never;
 
 describe("Shared reminder cron", () => {
@@ -118,6 +127,66 @@ describe("Shared reminder cron", () => {
       chatId: "123456789",
       text: "time to stand up and stretch",
       idempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
+    });
+    expect(coordinateSharedPushDispatch).toHaveBeenCalledWith(
+      "personal:00000000-0000-5000-8000-000000000000",
+      {
+        title: "Reminder",
+        body: "time to stand up and stretch",
+        collapseKey: "reminder-1:2026-08-14T20:00:00.000Z",
+        data: {
+          notificationId: "reminder-1:2026-08-14T20:00:00.000Z",
+          category: "reminder",
+          deepLink: "/chat",
+          taskId: "reminder-1",
+          firedAtIso: "2026-08-14T20:00:00.000Z",
+        },
+      },
+      { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+    );
+  });
+
+  test("uses edge-owned Telegram delivery with a durable provider receipt", async () => {
+    const telegramDispatch = mock(async () => ({
+      ok: true as const,
+      acceptedAt: "2026-08-20T19:30:00.100Z",
+      providerMessageIds: ["9010"],
+    }));
+    globalThis.fetch = mock(async () => {
+      throw new Error("Railway egress must not run");
+    }) as typeof fetch;
+    const dispatcher = sharedReminderDispatcher(
+      {
+        SHARED_RUNTIME_CONVERSATIONS: env.SHARED_RUNTIME_CONVERSATIONS,
+      } as never,
+      "personal:00000000-0000-5000-8000-000000000000",
+      { telegramDispatch },
+    );
+
+    const result = await dispatcher.dispatch({
+      taskId: "edge-reminder",
+      promptInstructions: "time to stretch",
+      firedAtIso: "2026-08-20T19:30:00.000Z",
+      metadata: {
+        dispatchIdempotencyKey: "edge-reminder:2026-08-20T19:30:00.000Z",
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    });
+
+    expect(telegramDispatch).toHaveBeenCalledWith({
+      project: "eliza-app",
+      chatId: "123456789",
+      text: "time to stretch",
+      idempotencyKey: "edge-reminder:2026-08-20T19:30:00.000Z",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: true,
+      metadata: { providerMessageIds: ["9010"] },
     });
   });
 
@@ -221,24 +290,38 @@ describe("Shared reminder cron", () => {
         providerMessageIds: ["provider-recovered"],
       });
     }) as typeof fetch;
-    const dispatcher = sharedReminderDispatcher(env);
-    await expect(
-      dispatcher.dispatch({
-        taskId: "recovered-reminder",
-        promptInstructions: "recover me",
-        firedAtIso: "2026-08-15T20:05:00.000Z",
-        metadata: {
-          dispatchIdempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
-          delivery: {
-            platform: "telegram",
-            project: "eliza-app",
-            chatId: "123456789",
-          },
+    const dispatcher = sharedReminderDispatcher(
+      env,
+      "personal:00000000-0000-5000-8000-000000000000",
+    );
+    const recoveredRecord = {
+      taskId: "recovered-reminder",
+      promptInstructions: "recover me",
+      firedAtIso: "2026-08-15T20:05:00.000Z",
+      metadata: {
+        dispatchIdempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
         },
-      }),
-    ).resolves.toMatchObject({ ok: true });
+      },
+    };
+    await expect(dispatcher.dispatch(recoveredRecord)).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(dispatcher.dispatch(recoveredRecord)).resolves.toMatchObject({
+      ok: true,
+    });
     await expect(requests[0]?.json()).resolves.toMatchObject({
       idempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+    });
+    expect(coordinateSharedPushDispatch).toHaveBeenCalledTimes(2);
+    expect(coordinateSharedPushDispatch.mock.calls[0]?.[1]).toMatchObject({
+      collapseKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+    });
+    expect(coordinateSharedPushDispatch.mock.calls[1]?.[1]).toMatchObject({
+      collapseKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
     });
 
     await expect(
@@ -260,7 +343,7 @@ describe("Shared reminder cron", () => {
       acceptance: "not_accepted",
       userActionable: true,
     });
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(2);
   });
 
   for (const status of [403, 429]) {

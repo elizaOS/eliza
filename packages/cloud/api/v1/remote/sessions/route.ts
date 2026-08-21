@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -25,19 +25,18 @@ app.get("/", async (c) => {
         400,
       );
     }
-
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      agentId,
-      user.organization_id,
-    );
-    if (!sandbox) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
+    if (!isRemotePairingUuid(agentId)) {
+      return c.json({ success: false, error: "agentId must be a UUID" }, 400);
     }
 
-    const sessions = await remoteSessionsRepository.listActiveByAgent(
+    const sessions = await remoteSessionsRepository.listActiveByOwnedAgent(
       agentId,
       user.organization_id,
+      user.id,
     );
+    if (!sessions) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     return c.json({
       success: true,

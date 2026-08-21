@@ -5,7 +5,9 @@
  * before shaping it into the metadata from `goal-grounding.ts`.
  *
  * PA re-exports this for back-compat. Model output is untrusted — unknown enum
- * values are rejected rather than passed through.
+ * values are rejected rather than passed through. Goal and evidence graphs are
+ * depth-, work-, and cycle-bounded before they are interpolated into the
+ * prompt so a hostile nest cannot RangeError the review job.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -24,6 +26,15 @@ import {
   type GoalSemanticReviewMetadata,
   type GoalSemanticSuggestionMetadata,
 } from "./goal-grounding.ts";
+import { formatPromptValue } from "./goal-prompt-value.ts";
+
+export {
+  formatPromptValue,
+  GOAL_PROMPT_VALUE_UNBOUNDED,
+  MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
+  MAX_GOAL_PROMPT_VALUE_DEPTH,
+  MAX_GOAL_PROMPT_VALUE_NODES,
+} from "./goal-prompt-value.ts";
 
 const VALID_REVIEW_STATES = new Set<LifeOpsGoalReviewState>([
   "idle",
@@ -105,39 +116,6 @@ function normalizeSuggestions(
       };
     })
     .filter((entry): entry is GoalSemanticSuggestionMetadata => entry !== null);
-}
-
-function formatPromptValue(value: unknown, depth = 0): string {
-  const indent = "  ".repeat(depth);
-  const childIndent = "  ".repeat(depth + 1);
-  if (value === null) return "null";
-  if (value === undefined) return "";
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "(none)";
-    return value
-      .map((entry) => `${childIndent}- ${formatPromptValue(entry, depth + 1)}`)
-      .join("\n");
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return "(empty)";
-    return entries
-      .map(([key, entry]) => {
-        const formatted = formatPromptValue(entry, depth + 1);
-        return formatted.includes("\n")
-          ? `${indent}${key}:\n${formatted}`
-          : `${indent}${key}: ${formatted}`;
-      })
-      .join("\n");
-  }
-  return String(value);
 }
 
 function buildSemanticEvaluationPrompt(args: {
@@ -240,8 +218,8 @@ export async function evaluateGoalProgressWithLlm(args: {
   if (typeof args.runtime.useModel !== "function") {
     return null;
   }
-  const prompt = buildSemanticEvaluationPrompt(args);
   try {
+    const prompt = buildSemanticEvaluationPrompt(args);
     const raw = await runWithTrajectoryPurpose(
       "lifeops-goal-evaluator-first-pass",
       () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
@@ -274,6 +252,7 @@ export async function evaluateGoalProgressWithLlm(args: {
       ? buildSemanticEvaluationResult(repairedParsed, args.nowIso)
       : null;
   } catch (error) {
+    // error-policy:J4 evaluation failed; callers treat null as unavailable review
     logger.warn(
       {
         boundary: "lifeops",

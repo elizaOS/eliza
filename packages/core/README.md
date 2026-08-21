@@ -22,20 +22,77 @@ devtools protocols; computer adapters use OS accessibility, capture, and input.
 Both planes expose the same session, surface, capability, observation, action,
 confirmation, lease, and result envelopes.
 
+The current wire contract is version 2. Version 1 was never released with an
+adapter and is rejected rather than compatibility-normalized because it did not
+bind confirmations, grants, leases, and mutation receipts strongly enough for a
+privileged input boundary. Adapters must normalize capabilities first, normalize
+stored session state separately from executable-session authorization, normalize
+the exact action, and validate results with a trusted clock plus the same
+session/capability/action context.
+
 Adapters must advertise capabilities before dispatch. Unsupported work returns
 `UNSUPPORTED`; stale observations and lease conflicts have separate outcomes;
 and a mutation whose effect cannot be proven returns non-retryable
 `UNCERTAIN_EFFECT`. Results reuse canonical `EffectReceipt` values instead of
 creating a second mutation-proof format. Existing signed-in profiles require an
-explicit grant, while genuinely concurrent pointer or keyboard work belongs in
-isolated sessions rather than competing for the shared physical input devices.
+explicit host-issued grant verified through `InteractionProfileGrantVerifier`.
+Confirmation previews bind to the domain-separated SHA-256 digest returned by
+`computeInteractionActionDigest`; `InteractionConfirmationCoordinator` issues
+and consumes matching grants once. Distributed hosts implement the async
+consumer as one durable atomic consume-if-current operation; a separate
+verify-then-delete sequence is not replay-safe across processes.
+
+Physical input and other shared resources use `InteractionLeaseCoordinator`.
+Exact acquisition replay is idempotent, renewal preserves the stored canonical
+lease, and `assertActionLeases` resolves action lease IDs against the session,
+owner, generation, and required resource before dispatch. Every dispatch must
+provide explicit lease requirements (including `[]` when no shared resource is
+needed), so policy omission cannot silently disable lease enforcement. Trace attributes are
+metadata-only: public scalar values are allowed, sensitive values must be null,
+and any correlation token is an opaque host-keyed token rather than a raw hash
+of personal data or credentials.
 
 Package-owned adapter tests can import
 `runInteractionAdapterConformance` from `@elizaos/core/testing`. The runner
 requires fixtures for success, no-effect failure, uncertain effect, policy
-block, confirmation, unsupported capability, stale observation, and lease
-conflict. Passing this deterministic contract suite does not replace the real
-browser or OS E2E evidence required by the adapter's package.
+block, confirmation, unsupported capability, and a genuinely stale observation;
+it separately exercises coordinator lease contention and expiry. These are
+envelope and invariant checks, not proof that a real adapter induced each OS or
+browser behavior. Every adapter package still needs stateful fault-injection
+tests plus real browser or OS E2E evidence.
+
+## Provider integration authorization contract
+
+`types/provider-integrations.ts` is the provider-neutral boundary for opaque
+connected-account projections and capability dispatch. Adapters keep provider
+arguments and credentials private, expose only a provider-owned SHA-256 input
+digest, and bind that digest to the selected account snapshot, capability,
+operation, contextual risk, and binding time before policy evaluation.
+
+`CapabilityAuthorizationConsumer.consume` is a trusted host boundary. It must
+atomically consume one current policy decision and its exact confirmation grant
+when confirmation is required. Allowed decisions are one-shot too: a successful
+dispatch authorization can never be replayed merely because it did not require
+interactive confirmation. Distributed implementations use one durable
+compare-and-delete transaction and verify that the account/capability snapshot
+is still current; a separate read, verify, and delete sequence is unsafe.
+The in-memory `CapabilityAuthorizationCoordinator` therefore requires a
+synchronous `isSnapshotCurrent` reader. A false result burns the registered
+authority before returning a stale-authorization error, so reconnecting the
+account cannot resurrect consent issued before revocation.
+
+The returned `AuthorizedCapabilityRequest` is an in-process immutable value,
+not a wire credential. `normalizeCapabilityActionReceipt` accepts effect proof
+only against that exact authority and binds the complete policy and confirmation
+digests, request digest, opaque account, capability, operation, input digest,
+and post-authorization chronology. Provider payloads and secrets never belong
+in requests, decisions, confirmations, errors, or receipts.
+
+Policy denials and execution failures use the exported canonical
+`CAPABILITY_POLICY_DENIAL_CODES` and `CAPABILITY_EXECUTION_ERROR_CODES`
+classifications. Adapters must map provider-specific status, prose, and payloads
+to those values; arbitrary provider error text is rejected at normalization and
+must not be forwarded through public error context.
 
 ### Bounded pairing operator reads
 
@@ -107,6 +164,8 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
+- `AUTONOMY_INTERVAL_MS`: Autonomy loop cadence as a canonical positive decimal integer in milliseconds. Values are clamped to 5,000–600,000; malformed or unset values use 30,000.
+- `AUTONOMY_MODEL_SIZE`: Model tier for autonomy background reasoning, exactly `small` or `large`. Malformed or unset values use `large`.
 - `ELIZA_TRAJECTORY_LOGGING`: Canonical trajectory persistence knob. Truthy values (`1`, `true`, `yes`, `on`) enable file and DB trajectory recording; non-empty falsey values disable it; blank is treated as unset. When unset, recording is on for local/dev and unset `NODE_ENV`, but off for `NODE_ENV=test` and `NODE_ENV=production` unless explicitly enabled.
 - `ELIZA_TRAJECTORY_RECORDING`: Legacy alias honored only when `ELIZA_TRAJECTORY_LOGGING` is unset.
 - `ELIZA_DISABLE_TRAJECTORY_LOGGING=1`: Hard opt-out that wins over both trajectory enable knobs.

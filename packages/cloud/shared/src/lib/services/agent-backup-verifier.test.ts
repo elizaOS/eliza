@@ -203,6 +203,12 @@ async function seedScheduledCatalogV2Placeholder(sandboxRecordId: string): Promi
       catalog_agent_id: sandboxRecordId,
       lifecycle_generation: randomUUID(),
       lifecycle_revision: 0n,
+      source_provider: "operator-onboarded",
+      source_node_record_id: randomUUID(),
+      source_node_id: "node-verifier-fixture-1",
+      source_node_incarnation: randomUUID(),
+      source_provider_handle: "verifier-fixture-handle",
+      source_container_id: "b".repeat(64),
       retention_reason: "schedule",
       retention_until: new Date("2030-01-01T00:00:00.000Z"),
     })

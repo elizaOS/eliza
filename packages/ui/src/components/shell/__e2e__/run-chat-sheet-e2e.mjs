@@ -365,9 +365,8 @@ async function snap(p, name) {
 }
 
 // Sample the ACTUAL rendered pixel at a viewport point (decoded from a 1px
-// screenshot clip). Proves visual paint, unlike elementFromPoint which skips
-// pointer-events:none layers — the #12178 opaque onboarding backdrop is
-// intentionally non-interactive yet must still paint over the launcher (#12364).
+// screenshot clip). Proves visual paint rather than only inspecting computed
+// styles, including the wallpaper that remains visible above onboarding.
 async function pixelAt(p, x, y) {
   const buf = await p.screenshot({ clip: { x, y, width: 1, height: 1 } });
   const png = PNG.sync.read(buf);
@@ -1986,7 +1985,7 @@ async function runFingerTrackingSuite(page) {
 function parseColor(value) {
   const m = value.match(/rgba?\(([^)]+)\)/);
   if (m) {
-    const [r, g, b, a = "1"] = m[1].split(",").map((s) => Number.parseFloat(s));
+    const [r, g, b, a = 1] = m[1].split(",").map((s) => Number.parseFloat(s));
     return { r, g, b, a };
   }
   const s = value.match(
@@ -4194,10 +4193,9 @@ try {
     await p.close();
   }
 
-  // ONBOARDING (firstRunOpen): the sheet is pinned full-screen + undismissable.
-  // The greeting/choice widget owns the whole first-run screen; on completion the
-  // sheet settles to HALF so the home appears behind the top half while the
-  // conversation stays in hand.
+  // ONBOARDING (firstRunOpen): the sheet is pinned at the shared HALF detent and
+  // is undismissable. The greeting/choice widget stays in hand while the home
+  // remains visible above it; completion keeps the conversation at HALF.
   {
     const short = await ctrl();
     attachConsole(short, sink);
@@ -4231,13 +4229,14 @@ try {
     await p.waitForTimeout(700);
     const vh = await viewportH(p);
     const top = await panelTop(p);
+    const onboardingHalfH = Math.round(vh * 0.46);
     assert(
-      (await detent(p)) === "full",
-      "ONBOARDING: sheet reports the pinned-open 'full' detent contract",
+      (await detent(p)) === "half",
+      "ONBOARDING: sheet reports the pinned-open 'half' detent contract",
     );
     assert(
-      top < vh * 0.15,
-      `ONBOARDING: sheet is full-screen, not content-sized at the bottom (top ${Math.round(top)} < ${Math.round(vh * 0.15)})`,
+      near(await sheetHeight(p), onboardingHalfH, 36),
+      `ONBOARDING: sheet uses the shared half-height detent (${Math.round(await sheetHeight(p))}px ≈ ${onboardingHalfH}px; top ${Math.round(top)}px)`,
     );
     assert(
       (
@@ -4258,85 +4257,47 @@ try {
         .isDisabled()),
       "ONBOARDING: composer textarea is locked sign-in-first (#15339)",
     );
-    await snap(p, "state-onboarding-full-screen");
+    await snap(p, "state-onboarding-half");
 
-    // WALLPAPER SCRIM: onboarding preserves the configured wallpaper behind a
-    // full-viewport neutral dim layer. The element itself is fully applied while
-    // open, but its paint is translucent so the wallpaper remains visible.
-    const backdrop = await p.evaluate(() => {
-      const el = document.querySelector(
-        '[data-testid="chat-first-run-backdrop"]',
-      );
-      if (!el) return null;
-      const cs = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      return {
-        opaque: el.getAttribute("data-first-run-opaque"),
-        opacity: cs.opacity,
-        bg: cs.backgroundColor,
-        coversW: r.width >= window.innerWidth - 1,
-        coversH: r.height >= window.innerHeight - 1,
-      };
-    });
-    assert(
-      backdrop !== null,
-      "ONBOARDING: opaque first-run backdrop is mounted (#12178)",
+    // Onboarding uses the chat sheet's own opaque surface. The retired
+    // full-viewport backdrop must stay absent so the home remains visible above
+    // the shared half-height conversation.
+    const sheetSurface = parseColor(
+      await p
+        .getByTestId("chat-sheet-surface")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
     );
     assert(
-      backdrop.opaque === "true" && backdrop.opacity === "1",
-      `ONBOARDING: wallpaper scrim is fully applied while onboarding is open (phase ${backdrop?.opaque}, opacity ${backdrop?.opacity})`,
-    );
-    const scrim = parseColor(backdrop.bg);
-    assert(
-      scrim !== null && scrim.a > 0 && scrim.a < 0.4,
-      `ONBOARDING: backdrop paints a subtle translucent scrim (got ${backdrop?.bg})`,
+      sheetSurface !== null && sheetSurface.a === 1,
+      `ONBOARDING: chat sheet owns an opaque local surface (got ${JSON.stringify(sheetSurface)})`,
     );
     assert(
-      backdrop.coversW && backdrop.coversH,
-      "ONBOARDING: backdrop spans the whole viewport (inset-0)",
+      (await p.getByTestId("chat-first-run-backdrop").count()) === 0,
+      "ONBOARDING: retired full-viewport backdrop stays unmounted",
     );
     const wallpaper = parseColor(
       await p
         .getByTestId("fake-view")
         .evaluate((el) => getComputedStyle(el).backgroundColor),
     );
-    const scrimmedWallpaperPx = await pixelAt(p, 8, 8);
-    const expectedScrimmedWallpaper =
-      wallpaper && scrim
-        ? {
-            r: wallpaper.r * (1 - scrim.a) + scrim.r * scrim.a,
-            g: wallpaper.g * (1 - scrim.a) + scrim.g * scrim.a,
-            b: wallpaper.b * (1 - scrim.a) + scrim.b * scrim.a,
-          }
-        : null;
-    const scrimDelta = expectedScrimmedWallpaper
+    const visibleWallpaperPx = await pixelAt(p, 8, 8);
+    const wallpaperDelta = wallpaper
       ? Math.max(
-          Math.abs(scrimmedWallpaperPx.r - expectedScrimmedWallpaper.r),
-          Math.abs(scrimmedWallpaperPx.g - expectedScrimmedWallpaper.g),
-          Math.abs(scrimmedWallpaperPx.b - expectedScrimmedWallpaper.b),
+          Math.abs(visibleWallpaperPx.r - wallpaper.r),
+          Math.abs(visibleWallpaperPx.g - wallpaper.g),
+          Math.abs(visibleWallpaperPx.b - wallpaper.b),
         )
       : Number.POSITIVE_INFINITY;
     assert(
-      scrimDelta <= 8,
-      `ONBOARDING: configured wallpaper remains visible through the neutral scrim (max channel delta ${Math.round(scrimDelta)})`,
+      wallpaperDelta <= 8,
+      `ONBOARDING: configured wallpaper remains undimmed above the half sheet (max channel delta ${Math.round(wallpaperDelta)})`,
     );
-    await snap(p, "state-onboarding-opaque-backdrop");
+    await snap(p, "state-onboarding-visible-home");
 
-    // COMPLETION REVEAL (#12364): drive the falling edge — the backdrop fades
-    // off its opaque state and the sheet settles to HALF, revealing the home
-    // surface behind the conversation.
+    // COMPLETION REVEAL (#12364): drive the falling edge. Authentication opens
+    // the shared conversation at FULL; no backdrop transition is involved.
     await p.evaluate(() => window.__setFirstRun?.(false));
-    await p.waitForTimeout(900);
-    const revealOpaque = await p.evaluate(() => {
-      const el = document.querySelector(
-        '[data-testid="chat-first-run-backdrop"]',
-      );
-      return el ? el.getAttribute("data-first-run-opaque") : "gone";
-    });
-    assert(
-      revealOpaque !== "true",
-      `REVEAL: backdrop drops its opaque state after onboarding completes (got ${revealOpaque})`,
-    );
+    await settleDetent(p, "full");
     const revealPx = await pixelAt(p, 8, 8);
     const revealDelta = wallpaper
       ? Math.max(
@@ -4350,10 +4311,10 @@ try {
       `REVEAL: the undimmed wallpaper is restored after onboarding (max channel delta ${Math.round(revealDelta)})`,
     );
     assert(
-      (await detent(p)) === "half",
-      "REVEAL: the sheet settles to half on completion, revealing home behind the conversation",
+      (await detent(p)) === "full",
+      "REVEAL: the authenticated conversation opens at full on completion",
     );
-    await snap(p, "state-onboarding-reveal-home");
+    await snap(p, "state-onboarding-release-full");
     await p.close();
   }
   }

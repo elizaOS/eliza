@@ -17,6 +17,7 @@ import type {
 	InstallProgressCallback,
 	OttoInstallOption,
 } from "../types";
+import { binaryExistsInPath as binaryExists } from "./bin-lookup";
 
 // ============================================================
 // CONSTANTS
@@ -44,21 +45,6 @@ function detectPlatform(): "darwin" | "linux" | "windows" | "unknown" {
 	if (platform === "linux") return "linux";
 	if (platform === "win32") return "windows";
 	return "unknown";
-}
-
-/**
- * Check if a binary exists in PATH using which/where.
- */
-async function binaryExists(name: string): Promise<boolean> {
-	try {
-		const { execSync } = await import("node:child_process");
-		const platform = detectPlatform();
-		const command = platform === "windows" ? `where ${name}` : `which ${name}`;
-		execSync(command, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 // ============================================================

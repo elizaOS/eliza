@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-native-inference",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
   "type": "module",
   "main": "src/index.ts",

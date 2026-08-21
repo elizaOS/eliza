@@ -13,6 +13,8 @@ import {
   type HydrateConversationClient,
   type HydrateInitialConversationDeps,
   hydrateInitialConversation,
+  settleConversationHydrationForSend,
+  shouldSeedSyntheticConversationGreeting,
 } from "./useChatCallbacks";
 
 const CONVERSATION = {
@@ -39,7 +41,10 @@ function makeFakeClient(
   } as any;
 }
 
-function makeDeps(client: ReturnType<typeof makeFakeClient>) {
+function makeDeps(
+  client: ReturnType<typeof makeFakeClient>,
+  seedSyntheticGreeting = true,
+) {
   const setConversations = vi.fn();
   const setActiveConversationId = vi.fn();
   const setConversationMessages = vi.fn();
@@ -62,6 +67,7 @@ function makeDeps(client: ReturnType<typeof makeFakeClient>) {
     setActiveConversationId,
     setConversationMessages,
     uiLanguage: "en",
+    seedSyntheticGreeting,
   };
   return {
     deps,
@@ -81,6 +87,34 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
+  it("disables synthetic greetings only for native iOS", () => {
+    expect(shouldSeedSyntheticConversationGreeting(true, true)).toBe(false);
+    expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(true);
+    expect(shouldSeedSyntheticConversationGreeting(false, true)).toBe(true);
+    expect(shouldSeedSyntheticConversationGreeting(false, false)).toBe(true);
+  });
+
+  it("starts native iOS with an active empty conversation and no greeting backfill", async () => {
+    const client = makeFakeClient();
+    const {
+      deps,
+      setActiveConversationId,
+      setConversationMessages,
+      greetingFiredRef,
+      loadedConversationIdRef,
+    } = makeDeps(client, false);
+
+    expect(await hydrateInitialConversation(deps)).toBeNull();
+    expect(client.createConversation).toHaveBeenCalledWith(undefined, {
+      bootstrapGreeting: false,
+      lang: "en",
+    });
+    expect(setActiveConversationId).toHaveBeenCalledWith("c1");
+    expect(setConversationMessages.mock.calls.at(-1)?.[0]).toEqual([]);
+    expect(greetingFiredRef.current).toBe(false);
+    expect(loadedConversationIdRef.current).toBe("c1");
+  });
+
   it("seeds a greeted conversation when the server has none, on ANY route (not just /chat)", async () => {
     // Boot on a NON-chat route — exactly the case the old gate left empty.
     window.history.replaceState(null, "", "/views");
@@ -135,6 +169,37 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     // empty-draft cleanup may legitimately judge it by these messages.
     expect(loadedConversationIdRef.current).toBe("c1");
     expect(result).toBeNull(); // already has messages
+  });
+
+  it("selects the restored conversation before its Cloud messages finish loading", async () => {
+    let resolveMessages!: (value: { messages: ConversationMessage[] }) => void;
+    const messagesPending = new Promise<{ messages: ConversationMessage[] }>(
+      (resolve) => {
+        resolveMessages = resolve;
+      },
+    );
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [{ ...CONVERSATION }],
+      })),
+      getConversationMessages: vi.fn(() => messagesPending),
+    });
+    const { deps, setActiveConversationId, setConversationMessages } =
+      makeDeps(client);
+
+    const hydration = hydrateInitialConversation(deps);
+    await vi.waitFor(() =>
+      expect(setActiveConversationId).toHaveBeenCalledWith("c1"),
+    );
+    expect(setConversationMessages).not.toHaveBeenCalled();
+
+    resolveMessages({
+      messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
+    });
+    await expect(hydration).resolves.toBeNull();
+    expect(setConversationMessages).toHaveBeenCalledWith([
+      { id: "m1", role: "user", text: "hello", timestamp: 1 },
+    ]);
   });
 
   it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {
@@ -270,6 +335,18 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(await hydrateInitialConversation(deps)).toBe("c1");
   });
 
+  it("does not backfill an empty restored conversation under the native iOS policy", async () => {
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [{ ...CONVERSATION }],
+      })),
+      getConversationMessages: vi.fn(async () => ({ messages: [] })),
+    });
+    const { deps } = makeDeps(client, false);
+
+    expect(await hydrateInitialConversation(deps)).toBeNull();
+  });
+
   it("never throws — a failed create resolves to null", async () => {
     const client = makeFakeClient({
       createConversation: vi.fn(async () => {
@@ -279,5 +356,29 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     const { deps } = makeDeps(client);
 
     expect(await hydrateInitialConversation(deps)).toBeNull();
+  });
+});
+
+describe("settleConversationHydrationForSend", () => {
+  it("lets a completed startup restore retain conversation ownership", async () => {
+    const taskRef = { current: Promise.resolve<string | null>("c1") };
+    const epochRef = { current: 4 };
+
+    await settleConversationHydrationForSend(taskRef, epochRef, 100);
+
+    expect(epochRef.current).toBe(4);
+    expect(taskRef.current).toBeNull();
+  });
+
+  it("invalidates a hung restore before the send claims conversation ownership", async () => {
+    const taskRef = {
+      current: new Promise<string | null>(() => {}),
+    };
+    const epochRef = { current: 4 };
+
+    await settleConversationHydrationForSend(taskRef, epochRef, 0);
+
+    expect(epochRef.current).toBe(5);
+    expect(taskRef.current).toBeNull();
   });
 });

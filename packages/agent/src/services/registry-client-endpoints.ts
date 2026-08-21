@@ -2,13 +2,21 @@
  * Fetches plugin metadata from user-configured custom registry endpoints and
  * folds it into the plugin map. Every endpoint URL passes an SSRF guard before
  * any request: https-only, literal/private/link-local hosts blocked, DNS
- * resolved and pinned, then re-resolved immediately before fetch to defeat
- * rebinding. Fetches run in parallel with a short timeout and no redirects;
- * custom entries never override a name already present in the map.
+ * resolved and screened up front, and the fetch itself executed through
+ * `fetchWithSsrfGuard` — which re-resolves, pins the connection to the
+ * screened addresses, and forbids redirects — so a rebinding answer between
+ * validation and connect cannot reroute the request. Fetches run in parallel
+ * with a short timeout; custom entries never override a name already present
+ * in the map.
  */
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
-import { isPrivateIpAddress, logger, normalizeHostLike } from "@elizaos/core";
+import {
+  fetchWithSsrfGuard,
+  isPrivateIpAddress,
+  logger,
+  normalizeHostLike,
+} from "@elizaos/core";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
@@ -61,13 +69,6 @@ const BLOCKED_REGISTRY_HOST_LITERALS = new Set([
 ]);
 const REGISTRY_ENDPOINT_FETCH_TIMEOUT_MS = 2_500;
 
-function createRegistryEndpointFetchInit(): RequestInit {
-  return {
-    redirect: "error",
-    signal: AbortSignal.timeout(REGISTRY_ENDPOINT_FETCH_TIMEOUT_MS),
-  };
-}
-
 export function normaliseEndpointUrl(url: string): string {
   return url.replace(/\/{1,1024}$/, "");
 }
@@ -109,7 +110,6 @@ export function parseRegistryEndpointUrl(rawUrl: string): URL {
 type ResolvedRegistryEndpoint = {
   parsed: URL;
   hostname: string;
-  pinnedAddress: string | null;
 };
 
 async function resolveRegistryEndpointUrlRejection(rawUrl: string): Promise<{
@@ -137,7 +137,7 @@ async function resolveRegistryEndpointUrlRejection(rawUrl: string): Promise<{
   if (net.isIP(hostname)) {
     return {
       rejection: null,
-      endpoint: { parsed, hostname, pinnedAddress: hostname },
+      endpoint: { parsed, hostname },
     };
   }
 
@@ -173,7 +173,6 @@ async function resolveRegistryEndpointUrlRejection(rawUrl: string): Promise<{
     endpoint: {
       parsed,
       hostname,
-      pinnedAddress: addresses[0]?.address ?? null,
     },
   };
 }
@@ -192,41 +191,30 @@ async function fetchSingleEndpoint(
   }
 
   try {
-    if (endpoint.pinnedAddress && !net.isIP(endpoint.hostname)) {
-      const refreshed = await dnsLookup(endpoint.hostname, { all: true });
-      const refreshedAddresses = new Set(
-        (Array.isArray(refreshed) ? refreshed : [refreshed]).map((entry) =>
-          normalizeHostLike(entry.address),
-        ),
-      );
-
-      if (!refreshedAddresses.has(normalizeHostLike(endpoint.pinnedAddress))) {
+    // The pre-screen above resolves and rejects blocked answers, but a raw
+    // fetch would resolve DNS AGAIN at connect time — a rebinding window.
+    // fetchWithSsrfGuard re-resolves and pins the connection to the screened
+    // addresses, and maxRedirects: 0 keeps a hostile endpoint from bouncing
+    // the request elsewhere.
+    const { response: resp, release } = await fetchWithSsrfGuard({
+      url,
+      maxRedirects: 0,
+      timeoutMs: REGISTRY_ENDPOINT_FETCH_TIMEOUT_MS,
+    });
+    let data: { registry?: Record<string, RawRegistryEntry> };
+    try {
+      if (!resp.ok) {
         logger.warn(
-          `[registry-client] Endpoint "${label}" (${url}) blocked: host resolution changed before fetch`,
+          `[registry-client] Endpoint "${label}" (${url}): ${resp.status} ${resp.statusText}`,
         );
         return null;
       }
-
-      for (const address of refreshedAddresses) {
-        if (isPrivateIpAddress(address)) {
-          logger.warn(
-            `[registry-client] Endpoint "${label}" (${url}) blocked: host resolves to blocked address ${address}`,
-          );
-          return null;
-        }
-      }
+      data = (await resp.json()) as {
+        registry?: Record<string, RawRegistryEntry>;
+      };
+    } finally {
+      await release();
     }
-
-    const resp = await fetch(url, createRegistryEndpointFetchInit());
-    if (!resp.ok) {
-      logger.warn(
-        `[registry-client] Endpoint "${label}" (${url}): ${resp.status} ${resp.statusText}`,
-      );
-      return null;
-    }
-    const data = (await resp.json()) as {
-      registry?: Record<string, RawRegistryEntry>;
-    };
     if (!data.registry || typeof data.registry !== "object") {
       logger.warn(
         `[registry-client] Endpoint "${label}" (${url}): missing registry field`,
@@ -273,6 +261,8 @@ async function fetchSingleEndpoint(
     }
     return plugins;
   } catch (err) {
+    // error-policy:J1 a failing custom endpoint degrades to a warning and is
+    // skipped — the built-in registry map remains the source of truth.
     logger.warn(
       `[registry-client] Endpoint "${label}" (${url}) failed: ${String(err)}`,
     );

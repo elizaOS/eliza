@@ -6,10 +6,24 @@
  * and updated asynchronously as a recoverable reporting/backup mirror.
  */
 
+import {
+  CloudApnsProvider,
+  resolveCloudApnsConfig,
+} from "@/lib/mobile-push/apns-provider";
+import {
+  MAX_MOBILE_PUSH_TOKEN_CHARACTERS,
+  type MobilePushMessage,
+  type MobilePushPlatform,
+  type MobilePushTokenRecord,
+} from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
-import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type {
+  SharedRuntimeChannel,
+  SharedTurnMessage,
+} from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
+import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
@@ -30,29 +44,45 @@ type ConversationRequest =
       operation: "bridge";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "personal-bridge";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "stream";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "personal-stream";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "prewarm";
@@ -67,6 +97,15 @@ type ConversationRequest =
       roomId: string;
       event: { id: string; content: string; createdAt: number };
     }
+  | { operation: "push-list"; agentId: string }
+  | {
+      operation: "push-register";
+      agentId: string;
+      platform: MobilePushPlatform;
+      token: string;
+    }
+  | { operation: "push-unregister"; agentId: string; token: string }
+  | { operation: "push-dispatch"; agentId: string; message: MobilePushMessage }
   | {
       operation: "cutover-seal";
       agentId: string;
@@ -138,6 +177,26 @@ const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
 const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
   "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
+const MOBILE_PUSH_TOKENS_KEY = "mobile-push-tokens";
+const MAX_MOBILE_PUSH_TOKENS = 32;
+const MOBILE_PUSH_DELIVERY_LEDGER_KEY = "mobile-push-delivery-ledger";
+const MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES = 128;
+const MOBILE_PUSH_PENDING_RETRY_MS = 2 * 60 * 1000;
+
+interface MobilePushDeliveryLedgerEntry {
+  status: "pending" | "retryable" | "accepted";
+  acceptedTokens: string[];
+  updatedAt: number;
+}
+
+async function mobilePushLedgerDigest(value: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+  );
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
 
 /**
  * Retention lifecycle (#17006). The single DO alarm is multiplexed across two
@@ -287,9 +346,16 @@ export class SharedRuntimeConversation {
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
   private hydration: Promise<void> | undefined;
+  private prewarmReady = false;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
+  private mobilePushLedgerQueue: Promise<void> = Promise.resolve();
+  private apnsProvider: CloudApnsProvider | undefined;
+  private readonly activeMobilePushDispatches = new Map<
+    string,
+    Promise<void>
+  >();
   // Instance field rather than a direct constant read so the deterministic
   // unit harness can shorten the stall window without a real two-minute wait.
   private streamStallTimeoutMs = STREAM_STALL_TIMEOUT_MS;
@@ -384,6 +450,8 @@ export class SharedRuntimeConversation {
     channelId: string,
     startEmpty: boolean,
   ): Promise<void> {
+    if (this.prewarmReady) return;
+    const startedAt = Date.now();
     try {
       await this.loadConversation(agentId, channelId, startEmpty);
     } catch (error) {
@@ -394,20 +462,35 @@ export class SharedRuntimeConversation {
     if (!this.conversation) {
       throw new Error("Conversation prewarm failed to hydrate history.");
     }
+    const historyReadyAt = Date.now();
     await this.runWithBindings(async () => {
       const imports: Promise<unknown>[] = [
         import("@/lib/services/shared-runtime/shared-runtime-chat"),
         import("@/lib/services/shared-runtime/cached-agent-dates"),
       ];
-      if (this.env.SHARED_ELIZA_AGENT_RUNTIME === "true") {
-        imports.push(
-          import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-            ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
-          ),
-        );
-      }
+      imports.push(
+        import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
+          ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+        ),
+      );
       await Promise.all(imports);
     });
+    this.prewarmReady = true;
+    const completedAt = Date.now();
+    this.state.waitUntil(
+      import("@/lib/utils/logger").then(({ logger }) => {
+        logger.info(
+          "[SharedRuntimeConversation] conversation prewarm completed",
+          {
+            agentId,
+            channelId,
+            historyMs: historyReadyAt - startedAt,
+            runtimeMs: completedAt - historyReadyAt,
+            totalMs: completedAt - startedAt,
+          },
+        );
+      }),
+    );
   }
 
   /**
@@ -460,6 +543,223 @@ export class SharedRuntimeConversation {
       (await this.state.storage.get<StoredDeletionTombstone>(
         DELETION_TOMBSTONE_KEY,
       )) ?? null
+    );
+  }
+
+  private async mobilePushTokens(): Promise<MobilePushTokenRecord[]> {
+    const stored =
+      (await this.state.storage.get<MobilePushTokenRecord[]>(
+        MOBILE_PUSH_TOKENS_KEY,
+      )) ?? [];
+    return stored.filter(
+      (record) =>
+        typeof record?.token === "string" &&
+        (record.platform === "ios" || record.platform === "android") &&
+        typeof record.createdAt === "number",
+    );
+  }
+
+  private async registerMobilePushToken(
+    platform: MobilePushPlatform,
+    token: string,
+  ): Promise<void> {
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => record.token !== token);
+    next.push({ platform, token, createdAt: Date.now() });
+    await this.state.storage.put(
+      MOBILE_PUSH_TOKENS_KEY,
+      next.slice(-MAX_MOBILE_PUSH_TOKENS),
+    );
+  }
+
+  private async unregisterMobilePushToken(token: string): Promise<boolean> {
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => record.token !== token);
+    if (next.length === current.length) return false;
+    if (next.length > 0)
+      await this.state.storage.put(MOBILE_PUSH_TOKENS_KEY, next);
+    else await this.state.storage.delete(MOBILE_PUSH_TOKENS_KEY);
+    return true;
+  }
+
+  private async unregisterMobilePushTokens(
+    tokens: ReadonlySet<string>,
+  ): Promise<void> {
+    if (tokens.size === 0) return;
+    const current = await this.mobilePushTokens();
+    const next = current.filter((record) => !tokens.has(record.token));
+    if (next.length === current.length) return;
+    if (next.length > 0)
+      await this.state.storage.put(MOBILE_PUSH_TOKENS_KEY, next);
+    else await this.state.storage.delete(MOBILE_PUSH_TOKENS_KEY);
+  }
+
+  private async mobilePushDeliveryLedger(): Promise<
+    Record<string, MobilePushDeliveryLedgerEntry>
+  > {
+    return (
+      (await this.state.storage.get<
+        Record<string, MobilePushDeliveryLedgerEntry>
+      >(MOBILE_PUSH_DELIVERY_LEDGER_KEY)) ?? {}
+    );
+  }
+
+  private async saveMobilePushDeliveryLedger(
+    ledger: Record<string, MobilePushDeliveryLedgerEntry>,
+  ): Promise<void> {
+    const bounded = Object.fromEntries(
+      Object.entries(ledger)
+        .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+        .slice(0, MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES),
+    );
+    await this.state.storage.put(MOBILE_PUSH_DELIVERY_LEDGER_KEY, bounded);
+  }
+
+  private async mutateMobilePushDeliveryLedger<T>(
+    operation: (
+      ledger: Record<string, MobilePushDeliveryLedgerEntry>,
+    ) => Promise<T> | T,
+  ): Promise<T> {
+    let release = () => {};
+    const previous = this.mobilePushLedgerQueue;
+    this.mobilePushLedgerQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      const ledger = await this.mobilePushDeliveryLedger();
+      const result = await operation(ledger);
+      await this.saveMobilePushDeliveryLedger(ledger);
+      return result;
+    } finally {
+      release();
+    }
+  }
+
+  private async performMobilePushDispatch(
+    message: MobilePushMessage,
+  ): Promise<void> {
+    const config = resolveCloudApnsConfig(this.env);
+    if (!config) return;
+    this.apnsProvider ??= new CloudApnsProvider(config);
+    const provider = this.apnsProvider;
+    let records = (await this.mobilePushTokens()).filter(
+      (record) => record.platform === "ios",
+    );
+    let ledgerId: string | undefined;
+    let acceptedTokenIds = new Set<string>();
+    const recordTokenIds = await Promise.all(
+      records.map((record) => mobilePushLedgerDigest(record.token)),
+    );
+    const currentTokenIds = new Set(recordTokenIds);
+    if (message.collapseKey) {
+      ledgerId = await mobilePushLedgerDigest(message.collapseKey);
+      const claim = await this.mutateMobilePushDeliveryLedger((ledger) => {
+        const existing = ledger[ledgerId!];
+        const now = Date.now();
+        const suppress =
+          existing?.status === "accepted" ||
+          (existing?.status === "pending" &&
+            now - existing.updatedAt < MOBILE_PUSH_PENDING_RETRY_MS);
+        if (suppress) return { suppress: true, acceptedTokenIds: [] };
+        const previouslyAccepted = [
+          ...new Set(
+            (existing?.acceptedTokens ?? []).filter((tokenId) =>
+              currentTokenIds.has(tokenId),
+            ),
+          ),
+        ].slice(-MAX_MOBILE_PUSH_TOKENS);
+        ledger[ledgerId!] = {
+          status: "pending",
+          acceptedTokens: previouslyAccepted,
+          updatedAt: now,
+        };
+        return { suppress: false, acceptedTokenIds: previouslyAccepted };
+      });
+      if (claim.suppress) return;
+      acceptedTokenIds = new Set(claim.acceptedTokenIds);
+      records = records.filter(
+        (_record, index) => !acceptedTokenIds.has(recordTokenIds[index]),
+      );
+    }
+    const attempts = await Promise.allSettled(
+      records.map((record) => provider.send(record.token, message)),
+    );
+    const staleTokens = new Set<string>();
+    const settledTokenIds = new Set(acceptedTokenIds);
+    let transportFailures = 0;
+    let providerRejections = 0;
+    for (const [index, attempt] of attempts.entries()) {
+      if (attempt.status === "rejected") {
+        transportFailures++;
+        continue;
+      }
+      const result = attempt.value;
+      if (result.outcome === "unregistered") {
+        staleTokens.add(records[index].token);
+        settledTokenIds.add(await mobilePushLedgerDigest(records[index].token));
+      } else if (result.outcome === "accepted") {
+        settledTokenIds.add(await mobilePushLedgerDigest(records[index].token));
+      } else if (result.outcome === "rejected") {
+        providerRejections++;
+      }
+    }
+    await this.unregisterMobilePushTokens(staleTokens);
+    if (ledgerId) {
+      const registeredTokenIds = new Set(
+        await Promise.all(
+          (await this.mobilePushTokens())
+            .filter((record) => record.platform === "ios")
+            .map((record) => mobilePushLedgerDigest(record.token)),
+        ),
+      );
+      await this.mutateMobilePushDeliveryLedger((ledger) => {
+        const currentAccepted = ledger[ledgerId!]?.acceptedTokens ?? [];
+        ledger[ledgerId!] = {
+          status:
+            transportFailures + providerRejections === 0
+              ? "accepted"
+              : "retryable",
+          acceptedTokens: [...new Set([...currentAccepted, ...settledTokenIds])]
+            .filter((tokenId) => registeredTokenIds.has(tokenId))
+            .slice(-MAX_MOBILE_PUSH_TOKENS),
+          updatedAt: Date.now(),
+        };
+      });
+    }
+    if (transportFailures + providerRejections > 0) {
+      throw new Error(
+        `[SharedRuntimeConversation] APNs delivery failed (${transportFailures} transport, ${providerRejections} provider rejection)`,
+      );
+    }
+  }
+
+  private async dispatchMobilePush(message: MobilePushMessage): Promise<void> {
+    if (!message.collapseKey)
+      return await this.performMobilePushDispatch(message);
+    const active = this.activeMobilePushDispatches.get(message.collapseKey);
+    if (active) return await active;
+    const dispatch = this.performMobilePushDispatch(message).finally(() => {
+      if (
+        this.activeMobilePushDispatches.get(message.collapseKey!) === dispatch
+      ) {
+        this.activeMobilePushDispatches.delete(message.collapseKey!);
+      }
+    });
+    this.activeMobilePushDispatches.set(message.collapseKey, dispatch);
+    return await dispatch;
+  }
+
+  private enqueueMobilePush(message: MobilePushMessage): void {
+    this.state.waitUntil(
+      this.dispatchMobilePush(message).catch(async (error: unknown) => {
+        // error-policy:J7 APNs fan-out is observed after the owning response;
+        // it must not hold the conversation's serialization lock.
+        const { logger } = await import("@/lib/utils/logger");
+        logger.warn("[SharedRuntimeConversation] mobile push dispatch failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
     );
   }
 
@@ -776,6 +1076,22 @@ export class SharedRuntimeConversation {
 
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
+    const suppliedChannel = "channel" in payload ? payload.channel : undefined;
+    const channel =
+      suppliedChannel === undefined
+        ? undefined
+        : parseSharedRuntimeChannel(suppliedChannel);
+    if (suppliedChannel !== undefined && channel === null) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid Shared runtime channel",
+          code: "invalid_channel",
+        },
+        { status: 400 },
+      );
+    }
+    const validatedChannel = channel ?? undefined;
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -790,6 +1106,50 @@ export class SharedRuntimeConversation {
         },
         { status: 410 },
       );
+    }
+    if (payload.operation === "push-list") {
+      return Response.json({ tokens: await this.mobilePushTokens() });
+    }
+    if (payload.operation === "push-register") {
+      const token = payload.token?.trim();
+      if (
+        payload.platform !== "ios" ||
+        !token ||
+        token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS
+      ) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push registration" },
+          { status: 400 },
+        );
+      }
+      await this.registerMobilePushToken(payload.platform, token);
+      return Response.json({ success: true }, { status: 201 });
+    }
+    if (payload.operation === "push-unregister") {
+      const token = payload.token?.trim();
+      if (!token || token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push token" },
+          { status: 400 },
+        );
+      }
+      return Response.json({
+        removed: await this.unregisterMobilePushToken(token),
+      });
+    }
+    if (payload.operation === "push-dispatch") {
+      if (
+        !payload.message ||
+        typeof payload.message.title !== "string" ||
+        !payload.message.title.trim()
+      ) {
+        return Response.json(
+          { success: false, error: "Invalid mobile push message" },
+          { status: 400 },
+        );
+      }
+      this.enqueueMobilePush(payload.message);
+      return Response.json({ success: true }, { status: 202 });
     }
     const personal =
       payload.operation === "personal-bridge" ||
@@ -1317,33 +1677,45 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      const executionEngine =
-        this.env.SHARED_ELIZA_AGENT_RUNTIME === "true"
-          ? ("eliza-runtime" as const)
-          : ("direct-model" as const);
       if (
         payload.operation === "stream" ||
         payload.operation === "personal-stream"
       ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
+          traceId: payload.traceId,
           executionCtx,
           historyStore,
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+          transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
-          executionEngine,
+          channel: validatedChannel,
+          mobilePushDispatch: personal
+            ? async (message: MobilePushMessage) => {
+                this.enqueueMobilePush(message);
+              }
+            : undefined,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        traceId: payload.traceId,
         executionCtx,
         historyStore,
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+        transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
-        executionEngine,
+        channel: validatedChannel,
+        mobilePushDispatch: personal
+          ? async (message: MobilePushMessage) => {
+              this.enqueueMobilePush(message);
+            }
+          : undefined,
       });
       return Response.json(result);
     });

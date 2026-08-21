@@ -1,8 +1,9 @@
 /**
- * GET /api/v1/api-keys — list keys for the authenticated user's organization.
+ * GET /api/v1/api-keys — list user-managed keys for the authenticated organization.
  * POST /api/v1/api-keys — create a new key (returns plainKey once).
  *
- * API key management requires a session — API keys cannot manage other API keys.
+ * Mobile lifecycle credentials are deliberately absent. API key management
+ * requires a session — API keys cannot manage other API keys.
  */
 
 import { Hono } from "hono";
@@ -15,6 +16,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,7 +64,18 @@ app.post("/", async (c) => {
     const user = await requireUserWithOrg(c);
     // Guard a malformed/empty body to a 400 instead of a 500 — the ZodError
     // branch in the catch only handles bad FIELDS, not an unparseable body.
-    const body = await c.req.json().catch(() => null);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json(
+        {
+          error: "Invalid JSON body",
+          details: "Request body must be a valid JSON object",
+        },
+        400,
+      );
+    }
+    const body = decodedBody.value;
     if (!body || typeof body !== "object") {
       return c.json(
         {

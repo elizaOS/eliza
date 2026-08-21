@@ -1,3 +1,6 @@
+import { truncateWellFormed } from "@elizaos/core";
+import { assertValidMessageChunkLength } from "./message-chunking";
+
 // Provides cloud utility telegram helpers helpers shared by backend services.
 export function escapeMarkdownV2(text: string): string {
   if (!text) return "";
@@ -5,6 +8,7 @@ export function escapeMarkdownV2(text: string): string {
 }
 
 export function splitMessage(text: string, maxLength = 4096): string[] {
+  assertValidMessageChunkLength(maxLength);
   const chunks: string[] = [];
   if (!text) return chunks;
 
@@ -18,8 +22,9 @@ export function splitMessage(text: string, maxLength = 4096): string[] {
       if (line.length > maxLength) {
         let remaining = line;
         while (remaining.length > maxLength) {
-          chunks.push(remaining.slice(0, maxLength));
-          remaining = remaining.slice(maxLength);
+          const head = truncateWellFormed(remaining, maxLength);
+          chunks.push(head);
+          remaining = remaining.slice(head.length);
         }
         current = remaining;
       } else {

@@ -157,6 +157,150 @@ describe("@elizaos/plugin-wechat", () => {
     bot.stop();
   });
 
+  it("bounds the dedup cache at its declared cap under sustained inbound traffic", async () => {
+    const onMessage = vi.fn();
+    // A window wide enough that no entry ages out during the test, so the only
+    // thing that can keep the cache bounded is the capacity eviction itself.
+    const bot = new Bot({ onMessage, dedupWindowMs: 60 * 60 * 1000 });
+    const seen = (bot as unknown as { seen: Map<string, number> }).seen;
+    const makeMessage = (id: string): WechatMessageContext => ({
+      id,
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: id,
+      timestamp: Date.now(),
+      raw: {},
+    });
+
+    for (let i = 0; i < 5000; i += 1) {
+      await bot.handleIncoming(makeMessage(`msg-${i}`));
+    }
+
+    // Before the fix this reached 5000 (the DEDUP_MAX_ENTRIES=1000 cap never
+    // evicted while every entry sat inside the dedup window).
+    expect(seen.size).toBeLessThanOrEqual(1000);
+    expect(onMessage).toHaveBeenCalledTimes(5000);
+
+    // Dedup correctness is preserved for the most recent id: a just-seen id is
+    // still recognized as a duplicate and is not re-delivered.
+    onMessage.mockClear();
+    await bot.handleIncoming(makeMessage("msg-4999"));
+    expect(onMessage).not.toHaveBeenCalled();
+
+    // The documented trade-off: an evicted oldest id is treated as new again.
+    onMessage.mockClear();
+    await bot.handleIncoming(makeMessage("msg-0"));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    bot.stop();
+  });
+
+  it("does not evict successful dedup history for concurrent failed deliveries", async () => {
+    const pendingFailures: Array<(error: Error) => void> = [];
+    const onMessage = vi.fn((message: WechatMessageContext) => {
+      if (message.id.startsWith("old-")) {
+        return Promise.resolve();
+      }
+      return new Promise<void>((_resolve, reject) => {
+        pendingFailures.push(reject);
+      });
+    });
+    const bot = new Bot({ onMessage, dedupWindowMs: 60 * 60 * 1000 });
+    const seen = (bot as unknown as { seen: Map<string, number> }).seen;
+    const makeMessage = (id: string): WechatMessageContext => ({
+      id,
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: id,
+      timestamp: Date.now(),
+      raw: {},
+    });
+
+    for (let i = 0; i < 1000; i += 1) {
+      await bot.handleIncoming(makeMessage(`old-${i}`));
+    }
+    const attempts = Array.from({ length: 1000 }, (_, index) =>
+      bot.handleIncoming(makeMessage(`failed-${index}`)),
+    );
+    expect(seen.size).toBe(1000);
+
+    for (const reject of pendingFailures) {
+      reject(new Error("runtime unavailable"));
+    }
+    await Promise.allSettled(attempts);
+
+    expect(seen.size).toBe(1000);
+    expect(Array.from(seen.keys())).toEqual(
+      Array.from({ length: 1000 }, (_, index) => `old-${index}`),
+    );
+    bot.stop();
+  });
+
+  it("expires a cached id at the dedup-window boundary plus one millisecond", async () => {
+    const onMessage = vi.fn();
+    const bot = new Bot({ onMessage, dedupWindowMs: 1000 });
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const message: WechatMessageContext = {
+      id: "boundary-id",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "boundary",
+      timestamp: 10_000,
+      raw: {},
+    };
+
+    await bot.handleIncoming(message);
+    nowSpy.mockReturnValue(11_000);
+    await bot.handleIncoming(message);
+    expect(onMessage).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(11_001);
+    await bot.handleIncoming(message);
+    expect(onMessage).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+    bot.stop();
+  });
+
+  it("evicts entries older than the dedup window during cleanup", async () => {
+    const onMessage = vi.fn();
+    const bot = new Bot({ onMessage, dedupWindowMs: 1000 });
+    const seen = (bot as unknown as { seen: Map<string, number> }).seen;
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+
+    await bot.handleIncoming({
+      id: "stale-1",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "old",
+      timestamp: now,
+      raw: {},
+    });
+    expect(seen.has("stale-1")).toBe(true);
+
+    // Advance past the dedup window and force a cleanup via a fresh insert.
+    nowSpy.mockReturnValue(now + 2000);
+    await bot.handleIncoming({
+      id: "fresh-1",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "new",
+      timestamp: now + 2000,
+      raw: {},
+    });
+    (bot as unknown as { cleanup: () => void }).cleanup();
+
+    expect(seen.has("stale-1")).toBe(false);
+    expect(seen.has("fresh-1")).toBe(true);
+    nowSpy.mockRestore();
+    bot.stop();
+  });
+
   it("marks a failure after sending a reply as non-retryable", async () => {
     const sendText = vi.fn(async () => undefined);
     const persistenceFailure = new Error("database unavailable");
@@ -213,5 +357,73 @@ describe("@elizaos/plugin-wechat", () => {
 
     expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "hello");
     expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
+  });
+
+  it("keeps surrogate pairs intact when chunking text through the proxy client", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 6 });
+
+    await dispatcher.sendText("wxid_alice", "aaaaa\u{1F98A}bbbbb");
+
+    const sent = vi.mocked(client.sendText).mock.calls.map((c) => c[1]);
+    expect(sent.length).toBeGreaterThan(1);
+    for (const chunk of sent) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it.each([0, -1, Number.NaN, 1.5])(
+    "rejects invalid reply chunk size %s",
+    (chunkSize) => {
+      const client = {
+        sendText: vi.fn(async () => undefined),
+      } as unknown as ProxyClient;
+
+      expect(() => new ReplyDispatcher({ client, chunkSize })).toThrow(
+        expect.objectContaining({ code: "WECHAT_REPLY_CHUNK_SIZE_INVALID" }),
+      );
+    },
+  );
+
+  it("fails before sending when the chunk cap cannot fit an emoji", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 1 });
+
+    await expect(dispatcher.sendText("wxid_alice", "🦊abc")).rejects.toEqual(
+      expect.objectContaining({ code: "WECHAT_REPLY_CHUNK_SIZE_TOO_SMALL" }),
+    );
+    expect(client.sendText).not.toHaveBeenCalled();
+  });
+
+  it("keeps the established whitespace-boundary policy explicit", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 6 });
+
+    await dispatcher.sendText("wxid_alice", "hello  world");
+
+    expect(
+      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
+    ).toEqual(["hello ", "world"]);
+  });
+
+  it("sanitizes pre-existing lone surrogates before sending", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 3 });
+
+    await dispatcher.sendText("wxid_alice", "a\ud800bc");
+
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["a�b", "c"]);
+    expect(sent.every((chunk) => chunk.isWellFormed())).toBe(true);
+    expect(sent.every((chunk) => chunk.length <= 3)).toBe(true);
   });
 });

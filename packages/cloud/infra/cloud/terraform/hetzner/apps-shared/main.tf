@@ -28,6 +28,18 @@ locals {
     "managed-by" = "eliza-cloud"
     "tier"       = "apps-shared"
   }
+
+  # Off-host backup pipeline (#21729): armed only when the full credential set
+  # is present. A partially supplied set is rejected by the tenant_db server
+  # precondition below rather than silently shipping unencrypted or nowhere.
+  backup_settings = [
+    var.backup_s3_endpoint,
+    var.backup_s3_bucket,
+    var.backup_s3_access_key,
+    var.backup_s3_secret_key,
+    var.backup_encryption_passphrase,
+  ]
+  backup_enabled = alltrue([for s in local.backup_settings : s != ""])
 }
 
 # Admin password for the tenant Postgres superuser. Stored in TF state (R2,
@@ -55,15 +67,17 @@ resource "random_password" "pgbouncer_auth" {
 
 # ── Private network: apps + tenant DB only; isolated from the agent plane ─────
 resource "hcloud_network" "apps" {
-  name     = "eliza-apps"
-  ip_range = var.network_cidr
-  labels   = local.common_labels
+  name              = "eliza-apps"
+  ip_range          = var.network_cidr
+  labels            = local.common_labels
+  delete_protection = true
 
   # Same convention as the rest of the shared module: ignore Hetzner-side
   # renames so the legacy `eliza-apps-staging` left over from the pre-shared
   # layout doesn't show as a diff. Operators can rename via Console (cosmetic).
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -76,12 +90,13 @@ resource "hcloud_network_subnet" "apps" {
 
 # ── Block storage for all tenant databases (PGDATA) ───────────────────────────
 resource "hcloud_volume" "tenant_db_data" {
-  name      = "eliza-app-tenant-data"
-  size      = var.tenant_db_volume_size_gb
-  location  = var.hcloud_location
-  format    = "ext4"
-  labels    = local.common_labels
-  automount = false
+  name              = "eliza-app-tenant-data"
+  size              = var.tenant_db_volume_size_gb
+  location          = var.hcloud_location
+  format            = "ext4"
+  labels            = local.common_labels
+  automount         = false
+  delete_protection = true
 
   # Volume rename via Hetzner Console is operator-cosmetic; the state-mv migration
   # from the per-env apps-data-plane leaves the legacy `eliza-apps-tenantdb-staging`
@@ -89,7 +104,8 @@ resource "hcloud_volume" "tenant_db_data" {
   # in-place rename. Ignoring keeps the post-migration plan a true no-op so the
   # operator's verification gate ("plan should be clean") is honest.
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy = true
+    ignore_changes  = [name]
   }
 }
 
@@ -122,25 +138,45 @@ resource "hcloud_firewall" "tenant_db" {
 # staging` left over from the pre-shared layout) don't cause drift; operators
 # can rename via the Hetzner Console at their discretion (cosmetic only).
 resource "hcloud_server" "tenant_db" {
-  name         = "eliza-app-tenant"
-  location     = var.hcloud_location
-  server_type  = var.tenant_db_server_type
-  image        = var.hcloud_image
-  firewall_ids = [hcloud_firewall.tenant_db.id]
-  labels       = merge(local.common_labels, { "role" = "tenant-db" })
+  name               = "eliza-app-tenant"
+  location           = var.hcloud_location
+  server_type        = var.tenant_db_server_type
+  image              = var.hcloud_image
+  backups            = true
+  delete_protection  = true
+  rebuild_protection = true
+  firewall_ids       = [hcloud_firewall.tenant_db.id]
+  labels             = merge(local.common_labels, { "role" = "tenant-db" })
 
   user_data = templatefile("${path.module}/cloud-init/tenant-db.yaml.tftpl", {
     hostname                = "eliza-app-tenant"
     admin_password          = random_password.tenant_db_admin.result
     pgbouncer_auth_password = random_password.pgbouncer_auth.result
     operator_ssh_keys       = var.ssh_public_keys
+
+    backup_enabled               = local.backup_enabled
+    backup_s3_endpoint           = var.backup_s3_endpoint
+    backup_s3_bucket             = var.backup_s3_bucket
+    backup_s3_prefix             = var.backup_s3_prefix
+    backup_s3_access_key         = var.backup_s3_access_key
+    backup_s3_secret_key         = var.backup_s3_secret_key
+    backup_encryption_passphrase = var.backup_encryption_passphrase
+    backup_retention_days        = var.backup_retention_days
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename
-  # via Hetzner Console without TF drift; user_data + image swaps re-apply only
-  # on `terraform apply -replace=hcloud_server.tenant_db`.
+  # via Hetzner Console without TF drift. user_data + image swaps require the
+  # separately reviewed guarded replacement procedure in README.md.
   lifecycle {
-    ignore_changes = [user_data, image, name, ssh_keys]
+    prevent_destroy = true
+    ignore_changes  = [user_data, image, name, ssh_keys]
+
+    # All-or-nothing backup configuration: a half-set credential bundle would
+    # either upload plaintext-adjacent artifacts or fail silently every night.
+    precondition {
+      condition     = local.backup_enabled || alltrue([for s in local.backup_settings : s == ""])
+      error_message = "Off-host backup settings are all-or-nothing: set backup_s3_endpoint, backup_s3_bucket, backup_s3_access_key, backup_s3_secret_key, and backup_encryption_passphrase together, or leave all empty to keep the pipeline inert."
+    }
   }
 }
 

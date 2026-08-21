@@ -22,6 +22,10 @@ const MIGRATIONS_DIR = path.join(
   "packages/cloud/shared/src/db/migrations",
 );
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+const STRIPE_CUSTOMER_MIGRATION_PATH = path.join(
+  MIGRATIONS_DIR,
+  "0267_stripe_customer_attempts.sql",
+);
 const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
 const CATALOG_GUARD_CREATED_AT = 1_786_478_400_000;
 const HISTORICAL_DRIFT_CREATED_AT = 1_770_518_468_000;
@@ -110,15 +114,28 @@ async function expectedPendingBanner(): Promise<string> {
   return `pending migrations: ${total - CHECKPOINT_PREFIX_LENGTH}`;
 }
 
-async function seedAppliedPrefix(
-  client: pg.Client,
-  length: number,
-  order: "timestamp" | "journal" | "production-hybrid" = "journal",
-): Promise<void> {
+/**
+ * Materializes the dependency-minimal pre-0185 catalog needed by migrations
+ * after the recorded ledger prefix. Pending migrations deliberately run
+ * against this checkpoint so missing historical dependencies fail in PostgreSQL.
+ */
+async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   await client.query(`
+    CREATE TYPE earnings_source AS ENUM (
+      'miniapp', 'agent', 'mcp', 'affiliate',
+      'app_owner_revenue_share', 'creator_revenue_share'
+    );
+    CREATE TYPE ledger_entry_type AS ENUM (
+      'earning', 'redemption', 'adjustment', 'refund', 'credit_conversion'
+    );
     CREATE TABLE jobs (
-      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      type text NOT NULL DEFAULT 'checkpoint_fixture',
       status text NOT NULL DEFAULT 'pending',
+      data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      data_storage text NOT NULL DEFAULT 'inline',
+      agent_id text,
+      organization_id uuid,
       execution_quiesced_at timestamp with time zone,
       started_at timestamp with time zone,
       completed_at timestamp with time zone,
@@ -126,6 +143,8 @@ async function seedAppliedPrefix(
       updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE agent_sandboxes (
+      id uuid PRIMARY KEY,
+      organization_id uuid,
       container_name text,
       replacement_cleanup_container_name text,
       execution_tier text,
@@ -133,26 +152,291 @@ async function seedAppliedPrefix(
       pool_status text,
       node_id text,
       sandbox_id text,
+      image_digest text,
       bridge_url text,
       health_url text,
       headscale_ip text,
+      last_backup_at timestamp with time zone,
+      billing_status text NOT NULL DEFAULT 'active',
+      last_billed_at timestamp with time zone,
+      hourly_rate numeric(10, 4) DEFAULT '0.0200',
+      total_billed numeric(10, 2) NOT NULL DEFAULT '0.00',
+      shutdown_warning_sent_at timestamp with time zone,
+      scheduled_shutdown_at timestamp with time zone,
+      environment_revision integer NOT NULL DEFAULT 0,
+      deletion_attempt_id uuid,
+      deletion_started_at timestamp with time zone,
       bridge_port integer,
       web_ui_port integer,
       last_heartbeat_at timestamp with time zone,
-      updated_at timestamp with time zone
+      updated_at timestamp with time zone,
+      CONSTRAINT agent_sandboxes_deletion_intent_pair_check CHECK (
+        (deletion_attempt_id IS NULL AND deletion_started_at IS NULL)
+        OR (
+          deletion_attempt_id IS NOT NULL
+          AND deletion_started_at IS NOT NULL
+        )
+      ),
+      CONSTRAINT billing_status_check CHECK (
+        billing_status IN ('active', 'warning', 'shutdown_pending', 'suspended')
+      )
+    );
+    CREATE TABLE agent_sandbox_backups (
+      id uuid PRIMARY KEY,
+      sandbox_record_id uuid NOT NULL REFERENCES agent_sandboxes(id) ON DELETE CASCADE,
+      snapshot_type text NOT NULL,
+      state_data jsonb NOT NULL,
+      state_data_storage text NOT NULL DEFAULT 'inline',
+      state_data_key text,
+      size_bytes bigint,
+      backup_kind text NOT NULL DEFAULT 'full',
+      parent_backup_id uuid,
+      content_hash text,
+      verification_status text,
+      verified_at timestamp with time zone,
+      verification_error text,
+      created_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE users (
-      id uuid PRIMARY KEY
+      id uuid PRIMARY KEY,
+      name text NOT NULL,
+      organization_id uuid,
+      role text NOT NULL,
+      wallet_verified boolean NOT NULL DEFAULT false,
+      is_active boolean NOT NULL DEFAULT true
     );
     CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      name text NOT NULL,
+      slug text NOT NULL UNIQUE,
+      credit_balance numeric(16, 6) NOT NULL DEFAULT '0.000000',
+      is_active boolean NOT NULL DEFAULT true,
+      stripe_customer_id text,
+      billing_email text,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean DEFAULT false,
+      auto_top_up_amount numeric(10, 2),
+      auto_top_up_threshold numeric(10, 2),
+      CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
+    );
+    CREATE TABLE api_keys (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      is_active boolean NOT NULL DEFAULT true,
+      deleted_at timestamp without time zone,
+      updated_at timestamp without time zone NOT NULL DEFAULT now(),
+      key_ciphertext text,
+      key_nonce text,
+      key_auth_tag text,
+      key_kms_key_id text,
+      key_kms_key_version integer
+    );
+    CREATE TABLE organization_billing (
+      organization_id uuid NOT NULL UNIQUE
+        REFERENCES organizations(id) ON DELETE CASCADE,
+      stripe_customer_id text,
+      billing_email text,
+      tax_id_type text,
+      tax_id_value text,
+      billing_address jsonb,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean NOT NULL DEFAULT false,
+      auto_top_up_amount numeric(12, 6),
+      auto_top_up_threshold numeric(12, 6) DEFAULT '0.000000',
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE credit_transactions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      amount numeric(16, 6) NOT NULL,
+      type text NOT NULL,
+      description text,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+      stripe_payment_intent_id text,
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      settled_at timestamp without time zone
+    );
+    CREATE TABLE redeemable_earnings_ledger (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      entry_type ledger_entry_type NOT NULL,
+      amount numeric(18, 4) NOT NULL,
+      earnings_source earnings_source,
+      source_id uuid,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    );
+    CREATE TABLE containers (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      status text NOT NULL DEFAULT 'pending',
+      image_tag text,
+      environment_vars jsonb NOT NULL DEFAULT '{}'::jsonb,
+      desired_count integer NOT NULL DEFAULT 1,
+      cpu integer NOT NULL DEFAULT 1792,
+      memory integer NOT NULL DEFAULT 1792,
+      node_id text,
+      volume_path text,
+      last_billed_at timestamp without time zone,
+      total_billed numeric(10, 2) NOT NULL DEFAULT '0.00'
+    );
+    CREATE TABLE container_billing_records (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      container_id uuid NOT NULL,
+      organization_id uuid NOT NULL,
+      amount numeric(10, 2) NOT NULL,
+      billing_period_start timestamp without time zone NOT NULL,
+      billing_period_end timestamp without time zone NOT NULL,
+      status text NOT NULL DEFAULT 'success',
+      credit_transaction_id uuid,
+      error_message text,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      CONSTRAINT container_billing_records_container_id_containers_id_fk
+        FOREIGN KEY (container_id) REFERENCES containers(id) ON DELETE CASCADE,
+      CONSTRAINT container_billing_records_organization_id_organizations_id_fk
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+      CONSTRAINT container_billing_records_credit_transaction_id_credit_transactions_id_fk
+        FOREIGN KEY (credit_transaction_id) REFERENCES credit_transactions(id) ON DELETE SET NULL
+    );
+    CREATE TABLE credit_packs (
       id uuid PRIMARY KEY
     );
-    -- This fixture records the pre-checkpoint ledger without replaying its SQL.
-    -- It must therefore materialize every pre-checkpoint relation referenced by
-    -- pending migrations. Keep this checkpoint schema in lockstep when a new
-    -- post-checkpoint migration depends on an older table.
+    CREATE TABLE identity_links (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      left_entity_id text NOT NULL,
+      right_entity_id text NOT NULL,
+      provider text,
+      source text NOT NULL DEFAULT 'manual',
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      CONSTRAINT identity_links_source_check CHECK (
+        source IN ('oauth', 'manual', 'wallet')
+      )
+    );
+    CREATE TABLE twilio_inbound_calls (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      call_sid text NOT NULL UNIQUE,
+      account_sid text NOT NULL,
+      from_number text NOT NULL,
+      to_number text NOT NULL,
+      call_status text NOT NULL,
+      agent_id uuid,
+      raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      raw_payload_storage text NOT NULL DEFAULT 'inline',
+      raw_payload_key text,
+      received_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE remote_sessions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agent_id uuid NOT NULL,
+      status text NOT NULL,
+      CONSTRAINT remote_sessions_status_check CHECK (
+        status IN ('pending', 'active', 'denied', 'revoked')
+      )
+    );
     CREATE TABLE docker_nodes (
-      id uuid PRIMARY KEY
+      id uuid PRIMARY KEY,
+      node_id text UNIQUE NOT NULL,
+      host_key_fingerprint text,
+      updated_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE payment_requests (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      provider text NOT NULL CHECK (
+        provider IN ('stripe', 'oxapay', 'x402', 'wallet_native')
+      ),
+      amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
+      currency text NOT NULL DEFAULT 'usd',
+      provider_intent jsonb NOT NULL DEFAULT '{}'::jsonb,
+      status text NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'delivered', 'settled', 'failed', 'expired', 'canceled')
+      ),
+      settled_at timestamp with time zone,
+      settlement_tx_ref text,
+      settlement_proof jsonb
+    );
+    CREATE TABLE payment_request_events (
+      id uuid PRIMARY KEY,
+      payment_request_id uuid NOT NULL REFERENCES payment_requests(id) ON DELETE CASCADE,
+      event_name text NOT NULL CHECK (
+        event_name IN (
+          'payment.created', 'payment.delivered', 'payment.viewed',
+          'payment.proof_received', 'payment.settled', 'payment.failed',
+          'payment.canceled', 'payment.expired', 'callback.dispatched',
+          'callback.failed', 'webhook.received'
+        )
+      ),
+      redacted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE crypto_payments (
+      id uuid PRIMARY KEY,
+      transaction_hash text,
+      status text NOT NULL DEFAULT 'pending',
+      updated_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE service_pricing (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_id text NOT NULL,
+      method text NOT NULL,
+      cost numeric(12, 6) NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE service_pricing_audit (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_pricing_id uuid REFERENCES service_pricing(id) ON DELETE SET NULL,
+      service_id text NOT NULL,
+      method text NOT NULL,
+      old_cost numeric(12, 6),
+      new_cost numeric(12, 6) NOT NULL,
+      change_type text NOT NULL,
+      changed_by text NOT NULL,
+      reason text
+    );
+    CREATE TABLE org_storage_quota (
+      organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+      bytes_used bigint NOT NULL DEFAULT 0,
+      bytes_limit bigint NOT NULL DEFAULT 5368709120,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE apps (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
+    );
+    CREATE TABLE app_earnings_transactions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      type text NOT NULL,
+      amount numeric(10, 6) NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    );
+    CREATE TABLE managed_domains (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      domain text NOT NULL
+    );
+    CREATE TABLE domain_purchase_idempotency (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      key text NOT NULL UNIQUE,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      domain text NOT NULL,
+      status text NOT NULL DEFAULT 'processing',
+      charge_id uuid,
+      charge jsonb,
+      cloudflare_registration_id text,
+      managed_domain_id uuid,
+      response_body jsonb,
+      error_code text,
+      expires_at timestamp without time zone NOT NULL,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
     );
     CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations (
@@ -161,6 +445,14 @@ async function seedAppliedPrefix(
       created_at bigint
     );
   `);
+}
+
+async function seedAppliedPrefix(
+  client: pg.Client,
+  length: number,
+  order: "timestamp" | "journal" | "production-hybrid" = "journal",
+): Promise<void> {
+  await seedPreCheckpointSchema(client);
 
   // Deployed historical runners used both orders. Timestamp mode preserves
   // production inversions where a later journal entry ran first; journal mode
@@ -254,6 +546,370 @@ async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
   throw new Error("Timed out waiting for migration advisory lock");
 }
 
+async function expectPreCheckpointPaymentRequestAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    payment_columns: string[];
+    organization_id_type: string;
+    organization_id_nullable: string;
+    provider_type: string;
+    provider_nullable: string;
+    organization_fk: string;
+    provider_check: string;
+    receipt_table: string | null;
+    receipt_parent_index: string | null;
+  }>(`
+    SELECT
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'payment_requests'::regclass
+          AND attnum > 0 AND NOT attisdropped) AS payment_columns,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'organization_id') AS organization_id_type,
+      (SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'organization_id') AS organization_id_nullable,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'provider') AS provider_type,
+      (SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'provider') AS provider_nullable,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'payment_requests'::regclass AND contype = 'f'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'payment_requests'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'payment_requests'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%provider%') AS provider_check,
+      to_regclass('public.payment_request_receipts')::text AS receipt_table,
+      to_regclass('public.payment_requests_id_organization_provider_unique')::text
+        AS receipt_parent_index
+  `);
+  expect(authority.rows[0]).toEqual({
+    payment_columns: [
+      "id:uuid:required",
+      "organization_id:uuid:required",
+      "provider:text:required",
+      "amount_cents:bigint:required",
+      "currency:text:required",
+      "provider_intent:jsonb:required",
+      "status:text:required",
+      "settled_at:timestamp with time zone:nullable",
+      "settlement_tx_ref:text:nullable",
+      "settlement_proof:jsonb:nullable",
+    ],
+    organization_id_type: "uuid",
+    organization_id_nullable: "NO",
+    provider_type: "text",
+    provider_nullable: "NO",
+    organization_fk:
+      "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+    provider_check:
+      "CHECK ((provider = ANY (ARRAY['stripe'::text, 'oxapay'::text, 'x402'::text, 'wallet_native'::text])))",
+    receipt_table: null,
+    receipt_parent_index: null,
+  });
+}
+
+async function expectPreCheckpointOrganizationBillingAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    organization_columns: string[];
+    billing_columns: string[];
+    organization_fk: string;
+    organization_unique: string;
+    authority_index: string | null;
+    shadow_authority_index: string | null;
+    sync_function: string | null;
+    shadow_guard: string | null;
+  }>(`
+    SELECT
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'organizations'::regclass
+          AND attnum > 0 AND NOT attisdropped AND attname IN (
+            'stripe_customer_id', 'billing_email', 'stripe_payment_method_id',
+            'stripe_default_payment_method', 'auto_top_up_enabled',
+            'auto_top_up_amount', 'auto_top_up_threshold'
+          )) AS organization_columns,
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'organization_billing'::regclass
+          AND attnum > 0 AND NOT attisdropped)
+        AS billing_columns,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'organization_billing'::regclass AND contype = 'f'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'organization_billing'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'organization_billing'::regclass AND contype = 'u'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'organization_billing'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_unique,
+      to_regclass('public.organizations_stripe_customer_authority_unique')::text
+        AS authority_index,
+      to_regclass('public.org_billing_stripe_customer_authority_unique')::text
+        AS shadow_authority_index,
+      to_regprocedure('public.sync_organization_billing_shadow()')::text AS sync_function,
+      to_regprocedure('public.guard_organization_billing_shadow()')::text AS shadow_guard
+  `);
+  expect(authority.rows[0]).toEqual({
+    organization_columns: [
+      "stripe_customer_id:text:nullable",
+      "billing_email:text:nullable",
+      "stripe_payment_method_id:text:nullable",
+      "stripe_default_payment_method:text:nullable",
+      "auto_top_up_enabled:boolean:nullable",
+      "auto_top_up_amount:numeric(10,2):nullable",
+      "auto_top_up_threshold:numeric(10,2):nullable",
+    ],
+    billing_columns: [
+      "organization_id:uuid:required",
+      "stripe_customer_id:text:nullable",
+      "billing_email:text:nullable",
+      "tax_id_type:text:nullable",
+      "tax_id_value:text:nullable",
+      "billing_address:jsonb:nullable",
+      "stripe_payment_method_id:text:nullable",
+      "stripe_default_payment_method:text:nullable",
+      "auto_top_up_enabled:boolean:required",
+      "auto_top_up_amount:numeric(12,6):nullable",
+      "auto_top_up_threshold:numeric(12,6):nullable",
+      "updated_at:timestamp without time zone:required",
+    ],
+    organization_fk:
+      "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+    organization_unique: "UNIQUE (organization_id)",
+    authority_index: null,
+    shadow_authority_index: null,
+    sync_function: null,
+    shadow_guard: null,
+  });
+}
+
+async function expectPreCheckpointComputeBillingAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    container_columns: string[];
+    receipt_columns: string[];
+    jobs_id_type: string;
+    last_backup_type: string;
+    container_lifecycle_revision: string | null;
+    receipt_rate_segments: string | null;
+    container_tenant_index: string | null;
+    agent_receipts: string | null;
+    container_stop_intents: string | null;
+    agent_stop_intents: string | null;
+    rate_segments: string | null;
+  }>(`
+    SELECT
+      (SELECT array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none')) ORDER BY a.attnum)
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'containers'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS container_columns,
+      (SELECT array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none')) ORDER BY a.attnum)
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'container_billing_records'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS receipt_columns,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'id')
+        AS jobs_id_type,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'agent_sandboxes'
+          AND column_name = 'last_backup_at') AS last_backup_type,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'containers'
+          AND column_name = 'lifecycle_revision') AS container_lifecycle_revision,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'container_billing_records'
+          AND column_name = 'rate_segments') AS receipt_rate_segments,
+      to_regclass('public.containers_id_organization_unique')::text AS container_tenant_index,
+      to_regclass('public.agent_billing_records')::text AS agent_receipts,
+      to_regclass('public.container_compute_stop_intents')::text AS container_stop_intents,
+      to_regclass('public.agent_compute_stop_intents')::text AS agent_stop_intents,
+      to_regclass('public.compute_billing_rate_segments')::text AS rate_segments
+  `);
+  expect(authority.rows[0]).toEqual({
+    container_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "organization_id:uuid:required:none",
+      "status:text:required:'pending'::text",
+      "image_tag:text:nullable:none",
+      "environment_vars:jsonb:required:'{}'::jsonb",
+      "desired_count:integer:required:1",
+      "cpu:integer:required:1792",
+      "memory:integer:required:1792",
+      "node_id:text:nullable:none",
+      "volume_path:text:nullable:none",
+      "last_billed_at:timestamp without time zone:nullable:none",
+      "total_billed:numeric(10,2):required:0.00",
+    ],
+    receipt_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "container_id:uuid:required:none",
+      "organization_id:uuid:required:none",
+      "amount:numeric(10,2):required:none",
+      "billing_period_start:timestamp without time zone:required:none",
+      "billing_period_end:timestamp without time zone:required:none",
+      "status:text:required:'success'::text",
+      "credit_transaction_id:uuid:nullable:none",
+      "error_message:text:nullable:none",
+      "created_at:timestamp without time zone:required:now()",
+    ],
+    jobs_id_type: "uuid",
+    last_backup_type: "timestamp with time zone",
+    container_lifecycle_revision: null,
+    receipt_rate_segments: null,
+    container_tenant_index: null,
+    agent_receipts: null,
+    container_stop_intents: null,
+    agent_stop_intents: null,
+    rate_segments: null,
+  });
+}
+
+async function expectPreCheckpointAppReservationSettlementAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    settled_at: string;
+    creator_projection_columns: string[];
+    app_projection_columns: string[];
+    settlement_table: string | null;
+    quarantine_table: string | null;
+    quarantine_uuid_function: string | null;
+    settlement_trigger: string | null;
+    creator_user_fk: string;
+    app_fk: string;
+    app_user_fk: string;
+    ledger_entry_type_labels: string[];
+    earnings_source_labels: string[];
+  }>(`
+    SELECT
+      (SELECT format('%s:%s:%s', format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'credit_transactions'::regclass
+          AND a.attname = 'settled_at' AND NOT a.attisdropped) AS settled_at,
+      (SELECT to_json(array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        ORDER BY a.attnum))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'redeemable_earnings_ledger'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS creator_projection_columns,
+      (SELECT to_json(array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        ORDER BY a.attnum))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'app_earnings_transactions'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS app_projection_columns,
+      to_regclass('public.app_reservation_settlements')::text AS settlement_table,
+      to_regclass('public.app_reservation_settlement_quarantines')::text
+        AS quarantine_table,
+      to_regprocedure('public.app_reservation_quarantine_uuid(text)')::text
+        AS quarantine_uuid_function,
+      (SELECT tgname FROM pg_trigger
+        WHERE tgrelid = 'credit_transactions'::regclass
+          AND tgname = 'credit_transactions_legacy_app_settlement_quarantine_guard'
+          AND NOT tgisinternal) AS settlement_trigger,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'redeemable_earnings_ledger'::regclass
+          AND contype = 'f') AS creator_user_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'app_earnings_transactions'::regclass
+          AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'app_earnings_transactions'::regclass
+              AND attname = 'app_id')]::smallint[]) AS app_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'app_earnings_transactions'::regclass
+          AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'app_earnings_transactions'::regclass
+              AND attname = 'user_id')]::smallint[]) AS app_user_fk,
+      (SELECT to_json(array_agg(e.enumlabel ORDER BY e.enumsortorder))
+        FROM pg_enum e
+        WHERE e.enumtypid = 'ledger_entry_type'::regtype) AS ledger_entry_type_labels,
+      (SELECT to_json(array_agg(e.enumlabel ORDER BY e.enumsortorder))
+        FROM pg_enum e
+        WHERE e.enumtypid = 'earnings_source'::regtype) AS earnings_source_labels
+  `);
+  expect(authority.rows[0]).toEqual({
+    settled_at: "timestamp without time zone:nullable:none",
+    creator_projection_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "user_id:uuid:required:none",
+      "entry_type:ledger_entry_type:required:none",
+      "amount:numeric(18,4):required:none",
+      "earnings_source:earnings_source:nullable:none",
+      "source_id:uuid:nullable:none",
+      "metadata:jsonb:required:'{}'::jsonb",
+    ],
+    app_projection_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "app_id:uuid:required:none",
+      "user_id:uuid:nullable:none",
+      "type:text:required:none",
+      "amount:numeric(10,6):required:none",
+      "metadata:jsonb:required:'{}'::jsonb",
+    ],
+    settlement_table: null,
+    quarantine_table: null,
+    quarantine_uuid_function: null,
+    settlement_trigger: null,
+    creator_user_fk:
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+    app_fk: "FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE",
+    app_user_fk:
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL",
+    ledger_entry_type_labels: [
+      "earning",
+      "redemption",
+      "adjustment",
+      "refund",
+      "credit_conversion",
+    ],
+    earnings_source_labels: [
+      "miniapp",
+      "agent",
+      "mcp",
+      "affiliate",
+      "app_owner_revenue_share",
+      "creator_revenue_share",
+    ],
+  });
+}
+
 describe.skipIf(!ENABLED)(
   "migrate-with-diagnostics real PostgreSQL safety",
   () => {
@@ -269,11 +925,78 @@ describe.skipIf(!ENABLED)(
         );
       }
       await admin.end();
+    }, 300_000);
+
+    test("accepts portable Stripe Customer authority catalogs and rejects semantic drift", async () => {
+      const database = await createDatabase();
+      await database.client.query(`
+        CREATE TABLE organizations (
+          id uuid PRIMARY KEY,
+          name text NOT NULL,
+          slug text NOT NULL UNIQUE,
+          stripe_customer_id text,
+          billing_email text,
+          updated_at timestamp with time zone NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
+          ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+        CREATE TABLE auto_top_up_attempts (
+          id uuid PRIMARY KEY,
+          organization_id uuid NOT NULL REFERENCES organizations(id),
+          stripe_customer_id_snapshot text NOT NULL,
+          provider_request_started_at timestamp with time zone
+        );
+      `);
+      const migration = await readFile(STRIPE_CUSTOMER_MIGRATION_PATH, "utf8");
+      const statements = migration
+        .split("--> statement-breakpoint")
+        .filter((statement) => statement.trim());
+      await database.client.query(migration);
+      await database.client.query(migration);
+
+      const catalog = await database.client.query<{
+        attempts: string;
+        quarantines: string;
+      }>(`
+        SELECT
+          count(*) FILTER (
+            WHERE conrelid='stripe_customer_attempts'::regclass AND contype <> 'n'
+          )::text AS attempts,
+          count(*) FILTER (
+            WHERE conrelid='stripe_customer_legacy_quarantines'::regclass AND contype <> 'n'
+          )::text AS quarantines
+        FROM pg_constraint
+      `);
+      expect(catalog.rows[0]).toEqual({ attempts: "10", quarantines: "7" });
+
+      const postcondition = statements.at(-1);
+      if (!postcondition)
+        throw new Error("Migration has no catalog postcondition");
+      await database.client.query(`ALTER TABLE stripe_customer_attempts
+        ADD CONSTRAINT stripe_customer_attempts_unexpected_check CHECK (generation < 1000000)`);
+      await expect(database.client.query(postcondition)).rejects.toThrow(
+        /exact constraint collision/i,
+      );
+      await database.client.query(`ALTER TABLE stripe_customer_attempts
+        DROP CONSTRAINT stripe_customer_attempts_unexpected_check`);
+      await database.client.query(
+        "ALTER TABLE stripe_customer_attempts ALTER COLUMN status DROP NOT NULL",
+      );
+      await expect(database.client.query(postcondition)).rejects.toThrow(
+        /column collision/i,
+      );
+      await database.client.end();
     }, 120_000);
 
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
+      await expectPreCheckpointPaymentRequestAuthority(database.client);
+      await expectPreCheckpointOrganizationBillingAuthority(database.client);
+      await expectPreCheckpointComputeBillingAuthority(database.client);
+      await expectPreCheckpointAppReservationSettlementAuthority(
+        database.client,
+      );
       await database.client.query(`
         INSERT INTO jobs (
           status,
@@ -339,13 +1062,101 @@ describe.skipIf(!ENABLED)(
 
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
-      expect(second.output).toContain("pending migrations: 0");
+      expect(second.output).toContain("pending migrations: 2");
+      expect(second.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const preflight = await runScript(PREFLIGHT, database.url);
       expect(preflight.exitCode, preflight.output).toBe(0);
       expect(preflight.output).toContain("catalog and journal verified");
       await database.client.end();
     }, 30_000);
+
+    test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
+
+      const safePrefix = await runScript(MIGRATOR, database.url);
+      expect(safePrefix.exitCode, safePrefix.output).toBe(0);
+      expect(safePrefix.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
+
+      const entries = await journalEntries();
+      const dropIndex = entries.findIndex(
+        (entry) => entry.tag === "0282_drop_unused_usage_quotas_table",
+      );
+      const drop = entries[dropIndex];
+      const restore = entries[dropIndex + 1];
+      if (
+        !drop ||
+        restore?.tag !== "0282_01_restore_usage_quotas_compatibility"
+      ) {
+        throw new Error("Missing guarded usage-quotas migration pair");
+      }
+
+      const dropSql = await readFile(
+        path.join(MIGRATIONS_DIR, `${drop.tag}.sql`),
+        "utf8",
+      );
+      await database.client.query(dropSql);
+      await database.client.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+        [createHash("sha256").update(dropSql).digest("hex"), drop.when],
+      );
+
+      const repaired = await runScript(MIGRATOR, database.url);
+      expect(repaired.exitCode, repaired.output).toBe(0);
+      expect(repaired.output).toContain("pending migrations: 1");
+      expect(repaired.output).toContain(
+        "applying 0282_01_restore_usage_quotas_compatibility",
+      );
+      expect(repaired.output).toContain("migrations complete");
+
+      const oldSelection = await database.client.query(`
+        SELECT id, organization_id, quota_type, model_name, period_type,
+          credits_limit, current_usage, period_start, period_end, is_active,
+          created_at, updated_at
+        FROM usage_quotas
+      `);
+      expect(oldSelection.rows).toEqual([]);
+      expect(oldSelection.fields.map((field) => field.name)).toEqual([
+        "id",
+        "organization_id",
+        "quota_type",
+        "model_name",
+        "period_type",
+        "credits_limit",
+        "current_usage",
+        "period_start",
+        "period_end",
+        "is_active",
+        "created_at",
+        "updated_at",
+      ]);
+
+      const indexes = await database.client.query<{ indexname: string }>(`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'usage_quotas'
+        ORDER BY indexname
+      `);
+      expect(indexes.rows.map((row) => row.indexname)).toEqual([
+        "usage_quotas_active_idx",
+        "usage_quotas_org_id_idx",
+        "usage_quotas_period_idx",
+        "usage_quotas_pkey",
+        "usage_quotas_quota_type_idx",
+      ]);
+
+      const restoreLedger = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+        [restore.when],
+      );
+      expect(restoreLedger.rows[0]?.count).toBe("1");
+      await database.client.end();
+    }, 120_000);
 
     test("accepts historical production hash drift but enforces hashes from the checkpoint forward", async () => {
       const database = await createDatabase();
@@ -607,7 +1418,10 @@ describe.skipIf(!ENABLED)(
       const output = `${first.output}${second.output}`;
       expect(output).toContain("lock timeout on attempt");
       expect(output).toContain("migration lock busy on attempt");
-      expect(output).toContain("pending migrations: 0");
+      expect(output).toContain("pending migrations: 2");
+      expect(output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const journal = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",

@@ -36,6 +36,21 @@ let stewardTokenBehavior: () => Promise<unknown> = async () => null;
 const verifyStewardTokenCached = mock(() => stewardTokenBehavior());
 let playwrightTokenBehavior: () => unknown = () => null;
 const verifyPlaywrightTestSessionToken = mock(() => playwrightTokenBehavior());
+// Mirrors the real gate's contract (production hard-fail + flag) so the
+// import added to workers-hono-auth resolves and the enabled/disabled paths
+// below stay exercisable.
+let playwrightEnabledBehavior: (env: {
+  NODE_ENV?: string;
+  ENVIRONMENT?: string;
+  PLAYWRIGHT_TEST_AUTH?: string;
+}) => boolean = (env) =>
+  env.NODE_ENV !== "production" &&
+  env.ENVIRONMENT !== "production" &&
+  env.PLAYWRIGHT_TEST_AUTH === "true";
+const isPlaywrightTestAuthEnabled = mock(
+  (env: { NODE_ENV?: string; ENVIRONMENT?: string; PLAYWRIGHT_TEST_AUTH?: string }) =>
+    playwrightEnabledBehavior(env),
+);
 let adminBehavior: () => Promise<unknown> = async () => ({ isAdmin: false, role: null });
 const getAdminStatusForUser = mock(() => adminBehavior());
 
@@ -65,6 +80,7 @@ mock.module("./steward-client", () => ({
 }));
 
 mock.module("./playwright-test-session", () => ({
+  isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME: "pw-test-session",
   verifyPlaywrightTestSessionToken,
 }));
@@ -80,7 +96,9 @@ const {
   apiKeyScopeHashPrefix,
   getCurrentUser,
   requireAdmin,
+  requireApiKeyCredential,
   requireCronSecret,
+  requireSessionUserWithOrg,
   requireUser,
   requireUserOrApiKey,
   requireUserOrApiKeyWithOrg,
@@ -137,7 +155,12 @@ beforeEach(() => {
   stewardUserBehavior = async () => null;
   stewardTokenBehavior = async () => null;
   playwrightTokenBehavior = () => null;
+  playwrightEnabledBehavior = (env) =>
+    env.NODE_ENV !== "production" &&
+    env.ENVIRONMENT !== "production" &&
+    env.PLAYWRIGHT_TEST_AUTH === "true";
   adminBehavior = async () => ({ isAdmin: false, role: null });
+  validateApiKey.mockClear();
   getWithOrganization.mockClear();
   getByStewardId.mockClear();
   verifyStewardTokenCached.mockClear();
@@ -467,6 +490,74 @@ describe("Workers API-key auth", () => {
     });
   });
 
+  test("API-key org auth resolves the key owner, records context, and tracks usage", async () => {
+    validateBehavior = async () => ({
+      id: "key-1",
+      user_id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+    userBehavior = async () => activeUser();
+    const c = contextWithApiKey("eliza_live_key");
+
+    await expect(requireUserOrApiKeyWithOrg(c as never)).resolves.toMatchObject({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    expect(c.get("authMethod")).toBe("api_key");
+    expect(c.get("apiKeyId")).toBe("key-1");
+    expect(c.executionCtx.waitUntil).toHaveBeenCalled();
+  });
+
+  test("API-key org auth rejects missing, inactive, and organizationless owners", async () => {
+    validateBehavior = async () => ({
+      id: "key-1",
+      user_id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+
+    userBehavior = async () => null;
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 401 });
+
+    userBehavior = async () => activeUser({ is_active: false });
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 403 });
+
+    userBehavior = async () => activeUser({ organization_id: null, organization: null });
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  test("session-only API-key management rejects API keys and accepts cached sessions", async () => {
+    await expect(
+      requireSessionUserWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "session_auth_required",
+    });
+
+    const c = contextWithHeaders({});
+    c.set("user", activeUser());
+    c.set("authMethod", "session");
+    await expect(requireSessionUserWithOrg(c as never)).resolves.toMatchObject({
+      organization_id: "org-1",
+    });
+  });
+
+  test("getCurrentUser caches null when no Steward token is present", async () => {
+    const c = contextWithHeaders({});
+    await expect(getCurrentUser(c as never)).resolves.toBeNull();
+    await expect(getCurrentUser(c as never)).resolves.toBeNull();
+    expect(c.get("user")).toBeNull();
+  });
+
   test("checks cron secrets from bearer or x-cron-secret headers", () => {
     expect(() =>
       requireCronSecret(
@@ -527,5 +618,62 @@ describe("apiKeyScopeHashPrefix (shared-agent scope cache key — COLDPATH-FIX-2
     expect(a).not.toBe(b);
     expect(a).toHaveLength(16);
     expect(b).toHaveLength(16);
+  });
+});
+
+describe("requireApiKeyCredential", () => {
+  test("rejects missing and JWT session auth before validating an API key", async () => {
+    await expect(requireApiKeyCredential(contextWithHeaders({}) as never)).rejects.toMatchObject({
+      status: 401,
+      code: "authentication_required",
+    });
+    await expect(
+      requireApiKeyCredential(
+        contextWithHeaders({ authorization: "Bearer header.payload.signature" }) as never,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+    expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("rejects ambiguous API-key headers before validating either credential", async () => {
+    await expect(
+      requireApiKeyCredential(
+        contextWithHeaders({
+          authorization: "Bearer eliza_bearer_key",
+          "x-api-key": "eliza_header_key",
+        }) as never,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+    expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("records the API-key identity proven by the exact presented credential", async () => {
+    const validated = {
+      id: "11111111-1111-4111-8111-111111111111",
+      key_hash: "a".repeat(64),
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    };
+    validateBehavior = async () => validated;
+    const context = contextWithHeaders({ authorization: "Bearer eliza_exact_key" });
+
+    expect(await requireApiKeyCredential(context as never)).toBe(validated);
+    expect(context.get("authMethod")).toBe("api_key");
+    expect(context.get("apiKeyId")).toBe(validated.id);
+    expect(validateApiKey).toHaveBeenCalledWith("eliza_exact_key");
+  });
+
+  test("distinguishes an invalid key from a validation storage outage", async () => {
+    validateBehavior = async () => null;
+    await expect(
+      requireApiKeyCredential(contextWithApiKey("eliza_invalid") as never),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+
+    validateBehavior = async () => {
+      throw new Error("database unavailable");
+    };
+    await expect(
+      requireApiKeyCredential(contextWithApiKey("eliza_valid_shape") as never),
+    ).rejects.toMatchObject({ status: 503, code: "service_unavailable" });
   });
 });

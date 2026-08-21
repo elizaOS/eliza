@@ -11,7 +11,11 @@ import type { AuthStatusState } from "../../hooks/useAuthStatus";
 import type { ShellPhase } from "./shell-state";
 
 /** Discriminated rest-state of the cloud-only pill auth gate. */
-export type ShellAuthGatePhase = "checking" | "needs-auth" | "clear";
+export type ShellAuthGatePhase =
+  | "checking"
+  | "unavailable"
+  | "needs-auth"
+  | "clear";
 
 export interface ShellAuthGate {
   /** True while capture, overlay summon, and hotkeys must not run. */
@@ -59,6 +63,9 @@ export function deriveShellAuthGate(
   if (input.authPhase === "unauthenticated") {
     return { gated: true, phase: "needs-auth" };
   }
+  if (input.authPhase === "server_unavailable") {
+    return { gated: true, phase: "unavailable" };
+  }
   return { gated: true, phase: "checking" };
 }
 
@@ -74,7 +81,7 @@ export function deriveShellPhase(input: DeriveShellPhaseInput): ShellPhase {
     return "needs-auth";
   }
   if (
-    input.authGate === "checking" &&
+    (input.authGate === "checking" || input.authGate === "unavailable") &&
     !input.isOpen &&
     !input.recording &&
     !input.realtimeVoiceListening &&

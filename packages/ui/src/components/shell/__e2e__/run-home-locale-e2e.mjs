@@ -75,7 +75,8 @@ const stubWeatherDeps = {
       { filter: /^api-client-stub$/, namespace: "home-locale-stub" },
       () => ({
         contents:
-          "export const client = { fetch: async () => ({ lat: 37.77, lon: -122.42 }) };",
+          "export const client = { getBaseUrl: () => '', fetch: async () => ({ lat: 37.77, lon: -122.42 }) };" +
+          "export function ElizaClient() { return client; }",
         loader: "js",
       }),
     );

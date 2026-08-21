@@ -61,6 +61,7 @@ export class ClientBaseTestSuite implements TestSuite {
       TWITTER_ENABLE_POST: "false",
       TWITTER_ENABLE_REPLIES: "true",
       TWITTER_ENABLE_DMS: "true",
+      TWITTER_DM_POLICY: "",
       TWITTER_DM_POLL_INTERVAL_SECONDS: "60",
       TWITTER_ENABLE_ACTIONS: "false",
       TWITTER_POST_INTERVAL: "120",

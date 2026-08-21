@@ -1,6 +1,8 @@
-// LinkedIn Marketing API integration (versioned REST) -
-// https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns
+/**
+ * Implements the versioned LinkedIn Marketing API advertising provider.
+ */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../../../utils/logger";
 import { downloadAdMedia, mediaFileName } from "../media-utils";
 import type {
@@ -24,6 +26,24 @@ const LINKEDIN_OAUTH_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 // "Worldwide" geo URN — the default include location when no targeting is given
 // (LinkedIn requires at least one location facet on every campaign).
 const LINKEDIN_WORLDWIDE_GEO = "urn:li:geo:92000000";
+
+const LINKEDIN_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every LinkedIn REST hop so a hung or rate-limited API cannot pin the
+ * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ */
+export function linkedinFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = LINKEDIN_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 function linkedinVersion(): string {
   return process.env.LINKEDIN_ADS_API_VERSION ?? "202606";
@@ -105,7 +125,7 @@ async function linkedinRequest<T>(
   options: RequestInit & { rawQuery?: string } = {},
 ): Promise<LinkedInRequestResult<T>> {
   const url = `${LINKEDIN_API_BASE_URL}${endpoint}${options.rawQuery ? `?${options.rawQuery}` : ""}`;
-  const response = await fetch(url, {
+  const response = await linkedinFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${credentials.accessToken}`,
@@ -332,25 +352,91 @@ function analyticsDate(date: Date): string {
   return `(year:${date.getUTCFullYear()},month:${date.getUTCMonth() + 1},day:${date.getUTCDate()})`;
 }
 
+function parseAnalyticsMetric(field: string, value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (
+    (typeof value !== "string" && typeof value !== "number") ||
+    (typeof value === "string" && !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value))
+  ) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  return parsed;
+}
+
+function addAnalyticsMetric(total: number, field: string, value: number): number {
+  const next = total + value;
+  if (!Number.isFinite(next)) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  return next;
+}
+
 function sumAnalytics(elements: LinkedInAnalyticsElement[]): CampaignMetrics {
   let spend = 0;
   let impressions = 0;
   let clicks = 0;
   let conversions = 0;
   for (const element of elements) {
-    spend += Number(element.costInLocalCurrency ?? 0) || 0;
-    impressions += element.impressions ?? 0;
-    clicks += element.clicks ?? element.landingPageClicks ?? 0;
-    conversions += (element.externalWebsiteConversions ?? 0) + (element.oneClickLeads ?? 0);
+    spend = addAnalyticsMetric(
+      spend,
+      "costInLocalCurrency",
+      parseAnalyticsMetric("costInLocalCurrency", element.costInLocalCurrency),
+    );
+    impressions = addAnalyticsMetric(
+      impressions,
+      "impressions",
+      parseAnalyticsMetric("impressions", element.impressions),
+    );
+    const clickField =
+      element.clicks === null || element.clicks === undefined ? "landingPageClicks" : "clicks";
+    clicks = addAnalyticsMetric(
+      clicks,
+      clickField,
+      parseAnalyticsMetric(clickField, element.clicks ?? element.landingPageClicks),
+    );
+    conversions = addAnalyticsMetric(
+      conversions,
+      "externalWebsiteConversions",
+      parseAnalyticsMetric("externalWebsiteConversions", element.externalWebsiteConversions),
+    );
+    conversions = addAnalyticsMetric(
+      conversions,
+      "oneClickLeads",
+      parseAnalyticsMetric("oneClickLeads", element.oneClickLeads),
+    );
+  }
+  const ctr = impressions > 0 ? clicks / impressions : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+  for (const [field, value] of Object.entries({ ctr, cpc, cpm })) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+        code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+        context: { field },
+      });
+    }
   }
   return {
     spend,
     impressions,
     clicks,
     conversions,
-    ctr: impressions > 0 ? clicks / impressions : 0,
-    cpc: clicks > 0 ? spend / clicks : 0,
-    cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+    ctr,
+    cpc,
+    cpm,
   };
 }
 
@@ -391,7 +477,7 @@ export const linkedinAdsProvider: AdProvider = {
     if (!clientId || !clientSecret) {
       throw new Error("LinkedIn Ads client credentials are not configured");
     }
-    const response = await fetch(LINKEDIN_OAUTH_TOKEN_URL, {
+    const response = await linkedinFetch(LINKEDIN_OAUTH_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -689,7 +775,7 @@ export const linkedinAdsProvider: AdProvider = {
         if (!uploadUrl || !imageUrn) {
           throw new Error("LinkedIn image upload initialization returned no upload URL");
         }
-        const upload = await fetch(uploadUrl, {
+        const upload = await linkedinFetch(uploadUrl, {
           method: "PUT",
           headers: { Authorization: `Bearer ${credentials.accessToken}` },
           body: bytes,
@@ -724,7 +810,7 @@ export const linkedinAdsProvider: AdProvider = {
       }
       const uploadedPartIds: string[] = [];
       for (const instruction of instructions) {
-        const part = await fetch(instruction.uploadUrl, {
+        const part = await linkedinFetch(instruction.uploadUrl, {
           method: "PUT",
           headers: { Authorization: `Bearer ${credentials.accessToken}` },
           body: bytes.slice(instruction.firstByte, instruction.lastByte + 1),

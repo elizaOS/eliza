@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -27,10 +28,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createPaymentSchema = z.object({
   amount: z
-    .number()
-    .min(1, "Minimum amount is $1")
-    .max(10000, "Maximum amount is $10,000"),
-  currency: z.string().default("USD"),
+    .union([z.string().regex(/^(?:\d+|\d+\.\d+)$/), z.number().finite()])
+    .transform((value) => String(value))
+    .refine((value) => Number(value) >= 1, "Minimum amount is $1")
+    .refine((value) => Number(value) <= 10000, "Maximum amount is $10,000"),
+  currency: z.literal("USD").default("USD"),
   payCurrency: z.enum(SUPPORTED_PAY_CURRENCIES).default("USDT"),
   network: z
     .enum(["ERC20", "TRC20", "BEP20", "POLYGON", "SOL", "BASE", "ARB", "OP"])
@@ -39,7 +41,7 @@ const createPaymentSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
 
@@ -91,6 +93,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         INVALID_UUID: { status: 400, message: "Invalid request format" },
         AMOUNT_TOO_SMALL: { status: 400, message: "Amount too small" },
         AMOUNT_TOO_LARGE: { status: 400, message: "Amount too large" },
+        INVALID_CURRENCY: { status: 400, message: "Currency must be USD" },
         SERVICE_NOT_CONFIGURED: {
           status: 503,
           message: "Service temporarily unavailable",

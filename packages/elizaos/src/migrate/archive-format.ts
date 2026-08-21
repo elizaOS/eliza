@@ -26,7 +26,7 @@ const PBKDF2_ITERATIONS = 600_000; // OWASP 2024 recommendation for SHA-256
 const SALT_LEN = 32;
 const IV_LEN = 12; // AES-256-GCM standard nonce
 const KEY_LEN = 32; // AES-256
-const MIN_PASSWORD_LENGTH = 4;
+export const MIN_PASSWORD_LENGTH = 12;
 
 function deriveKey(password: string, salt: Buffer, iterations: number): Buffer {
   return crypto.pbkdf2Sync(password, salt, iterations, KEY_LEN, "sha256");

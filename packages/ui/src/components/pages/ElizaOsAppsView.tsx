@@ -7,6 +7,7 @@
  * placeholders rather than failing.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   Clock3,
   ContactRound,
@@ -42,6 +43,7 @@ import type {
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -140,6 +142,7 @@ const ANDROID_SMS_GATEWAY_PHONE_LABEL = String(
   import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
     "Eliza Cloud Gateway (+14159611510)",
 );
+const ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS = 15_000;
 
 function useLaunchParams(): URLSearchParams {
   const [params, setParams] = useState(() => readLaunchParams());
@@ -597,10 +600,16 @@ function roleHolderText(role: AndroidRoleStatus): string {
   return role.holders.length > 0 ? role.holders.join(", ") : "none";
 }
 
-function numberFromTelUri(uri: string | null): string {
+export function numberFromTelUri(uri: string | null): string {
   if (!uri) return "";
   if (!uri.startsWith("tel:")) return uri;
-  return decodeURIComponent(uri.slice("tel:".length));
+  try {
+    return decodeURIComponent(uri.slice("tel:".length));
+  } catch {
+    // error-policy:J4 An invalid launch number becomes visibly unavailable and
+    // leaves the dial action disabled instead of preserving a dialable value.
+    return "";
+  }
 }
 
 function primaryPhoneNumber(contact: ContactSummary): string {
@@ -1535,6 +1544,131 @@ function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
   };
 }
 
+/**
+ * Decodes a non-2xx Android SMS gateway response into a human-readable detail.
+ * Reads the body once as text, prefers a structured diagnostic field when the
+ * payload is JSON, and returns an empty string when the gateway sent no usable
+ * detail so the caller falls back to the bare HTTP status.
+ */
+export const ANDROID_SMS_GATEWAY_ERROR_BODY_MAX_BYTES = 4_096;
+export const ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH = 512;
+
+async function readBoundedAndroidSmsGatewayErrorBody(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!response.body) return { text: "", truncated: false };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        text += decoder.decode();
+        return { text, truncated: false };
+      }
+      const remaining = ANDROID_SMS_GATEWAY_ERROR_BODY_MAX_BYTES - bytesRead;
+      if (value.byteLength > remaining) {
+        text += decoder.decode(value.subarray(0, remaining));
+        await reader.cancel();
+        return { text, truncated: true };
+      }
+      bytesRead += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function boundAndroidSmsGatewayErrorDetail(
+  value: string,
+  truncated: boolean,
+): string {
+  const cleaned = toWellFormedUnicode(value).trim();
+  if (!cleaned) return "";
+  if (
+    !truncated &&
+    cleaned.length <= ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH
+  ) {
+    return cleaned;
+  }
+  const prefix = truncateWellFormed(
+    cleaned,
+    ANDROID_SMS_GATEWAY_ERROR_DETAIL_MAX_LENGTH - 1,
+  );
+  return `${prefix}…`;
+}
+
+export async function readAndroidSmsGatewayErrorDetail(
+  response: Response,
+): Promise<string> {
+  let raw: string;
+  let bodyTruncated: boolean;
+  try {
+    ({ text: raw, truncated: bodyTruncated } =
+      await readBoundedAndroidSmsGatewayErrorBody(response));
+  } catch {
+    // error-policy:J4 an unreadable error body degrades to the bare HTTP status
+    return "";
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      for (const field of ["reason", "message", "error", "detail"]) {
+        const value = record[field];
+        if (typeof value === "string" && value.trim()) {
+          return boundAndroidSmsGatewayErrorDetail(value, false);
+        }
+      }
+    }
+    if (typeof parsed === "string" && parsed.trim()) {
+      return boundAndroidSmsGatewayErrorDetail(parsed, false);
+    }
+  } catch {
+    // error-policy:J3 a non-JSON error body is surfaced verbatim as the detail
+  }
+  return boundAndroidSmsGatewayErrorDetail(trimmed, bodyTruncated);
+}
+
+export async function forwardAndroidSmsGateway(
+  incoming: IncomingSmsContext,
+  signal: AbortSignal,
+): Promise<AndroidSmsGatewayReply> {
+  return await fetchWithDeadline(
+    ANDROID_SMS_GATEWAY_WEBHOOK_URL,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-eliza-bridge": "android-sms",
+        "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
+      },
+      body: JSON.stringify(androidSmsGatewayPayload(incoming)),
+    },
+    async (response) => {
+      if (!response.ok) {
+        const detail = await readAndroidSmsGatewayErrorDetail(response);
+        throw new Error(
+          detail
+            ? `Cloud gateway failed (${response.status}): ${detail}`
+            : `Cloud gateway failed (${response.status})`,
+        );
+      }
+      const body: unknown = await response.json();
+      if (body === null || typeof body !== "object" || Array.isArray(body)) {
+        throw new Error("Cloud gateway returned an unparseable reply");
+      }
+      return body as AndroidSmsGatewayReply;
+    },
+    { signal, timeoutMs: ANDROID_SMS_GATEWAY_FETCH_TIMEOUT_MS },
+  );
+}
+
 export function MessagesPageView() {
   const { t } = useTranslation();
   const params = useLaunchParams();
@@ -1619,33 +1753,14 @@ export function MessagesPageView() {
     if (forwardedIncomingIds.current.has(key)) return;
     forwardedIncomingIds.current.add(key);
 
+    const controller = new AbortController();
     let cancelled = false;
     const forward = async () => {
       try {
-        const response = await fetch(ANDROID_SMS_GATEWAY_WEBHOOK_URL, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-eliza-bridge": "android-sms",
-            "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
-          },
-          body: JSON.stringify(androidSmsGatewayPayload(incomingSms)),
-        });
-        let cloudReply: AndroidSmsGatewayReply | Record<string, never> = {};
-        try {
-          cloudReply = (await response.json()) as AndroidSmsGatewayReply;
-        } catch {
-          // error-policy:J3 a non-ok body is only quoted in the error below;
-          // an OK response with an unparseable reply is a real failure.
-          if (response.ok) {
-            throw new Error("Cloud gateway returned an unparseable reply");
-          }
-        }
-        if (!response.ok) {
-          throw new Error(
-            `Cloud gateway failed (${response.status}): ${JSON.stringify(cloudReply)}`,
-          );
-        }
+        const cloudReply = await forwardAndroidSmsGateway(
+          incomingSms,
+          controller.signal,
+        );
 
         const replyText = cloudReply.replyText?.trim();
         if (!replyText) {
@@ -1666,7 +1781,7 @@ export function MessagesPageView() {
           await refresh();
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && !controller.signal.aborted) {
           setError(err instanceof Error ? err.message : String(err));
         }
       }
@@ -1675,6 +1790,9 @@ export function MessagesPageView() {
     void forward();
     return () => {
       cancelled = true;
+      controller.abort(
+        new DOMException("Android SMS forward superseded", "AbortError"),
+      );
     };
   }, [incomingSms, refresh]);
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  hasKnownMacosStatusItemSceneRegression,
   resolveTrayClickAction,
   shouldAttachTrayMenu,
   shouldCreateDesktopTray,
@@ -81,6 +82,26 @@ describe("shouldStartTrayFirst", () => {
     expect(
       shouldStartTrayFirst({ ELIZAOS_SHELL_MODE: "kiosk" }, "darwin", []),
     ).toBe(false);
+  });
+});
+
+describe("hasKnownMacosStatusItemSceneRegression", () => {
+  it("identifies the macOS 26.5 Control Center status-item failure", () => {
+    expect(hasKnownMacosStatusItemSceneRegression("darwin", "25.5.0")).toBe(
+      true,
+    );
+  });
+
+  it("leaves unaffected kernels and platforms alone", () => {
+    expect(hasKnownMacosStatusItemSceneRegression("darwin", "25.4.0")).toBe(
+      false,
+    );
+    expect(hasKnownMacosStatusItemSceneRegression("darwin", "25.6.0")).toBe(
+      false,
+    );
+    expect(hasKnownMacosStatusItemSceneRegression("win32", "25.5.0")).toBe(
+      false,
+    );
   });
 });
 

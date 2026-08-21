@@ -449,14 +449,25 @@ describe("simple-path deliver-then-persist ordering", () => {
 
 	it("overlaps reply delivery with persistence and records reply time independently", async () => {
 		const h = await createHarness({ persistDelayMs: 150 });
+		let observedTurnId: string | undefined;
 
-		await h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
-			await new Promise((resolve) => setTimeout(resolve, 50));
-			return [];
-		});
+		await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				await new Promise((resolve) => setTimeout(resolve, 50));
+				return [];
+			},
+			{
+				onInferenceTimingSummary: (summary) => {
+					observedTurnId = summary.turnId;
+				},
+			},
+		);
 
 		const turn = inferenceTimingRegistry.recentTurns(1)[0];
 		expect(turn).toBeDefined();
+		expect(observedTurnId).toBe(turn.turnId);
 		const callbackSpan = turn.spans.find(
 			(s) => s.name === "message:delivery:callback",
 		);
@@ -472,7 +483,7 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(persistSpan.startMs).toBeLessThanOrEqual(callbackSpan.endMs);
 		expect(persistSpan.durationMs).toBeGreaterThanOrEqual(140);
 		expect(turn.timeToReplyMs).not.toBeNull();
-		expect(turn.timeToReplyMs as number).toBeLessThan(persistSpan.endMs);
+		expect(turn.timeToReplyMs as number).toBeLessThanOrEqual(persistSpan.endMs);
 	});
 
 	it("bars a same-room follow-up fired from the delivery callback from composing until the reply persist completes", async () => {

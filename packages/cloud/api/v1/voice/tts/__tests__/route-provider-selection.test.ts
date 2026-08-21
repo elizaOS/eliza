@@ -14,6 +14,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
@@ -92,6 +93,25 @@ const realFetch = globalThis.fetch;
 const cacheGet = mock(async () => cachedVoiceResponse);
 const cacheHas = mock(async () => true);
 const cachePut = mock(async () => true);
+class MockElizaError extends Error {
+  code: string;
+  context?: Record<string, unknown>;
+  severity?: string;
+  constructor(
+    message: string,
+    options: {
+      code: string;
+      context?: Record<string, unknown>;
+      severity?: string;
+    },
+  ) {
+    super(message);
+    this.name = "ElizaError";
+    this.code = options.code;
+    this.context = options.context;
+    this.severity = options.severity;
+  }
+}
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {
@@ -114,25 +134,32 @@ mock.module("@elizaos/shared/voice/first-sentence-snip", () => ({
 }));
 
 mock.module("@elizaos/core", () => ({
-  ElizaError: class ElizaError extends Error {
-    code: string;
-    context?: Record<string, unknown>;
-    severity?: string;
-    constructor(
-      message: string,
-      options: {
-        code: string;
-        context?: Record<string, unknown>;
-        severity?: string;
-      },
-    ) {
-      super(message);
-      this.name = "ElizaError";
-      this.code = options.code;
-      this.context = options.context;
-      this.severity = options.severity;
-    }
-  },
+  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
+  ChannelType: coreTestContract.ChannelType,
+  DatabaseAdapter: coreTestContract.DatabaseAdapter,
+  decryptedCharacter: coreTestContract.decryptedCharacter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
+    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  documentMutationSnapshotMatches:
+    coreTestContract.documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility:
+    coreTestContract.documentRoleHasGlobalVisibility,
+  encryptedCharacter: coreTestContract.encryptedCharacter,
+  ElizaError: MockElizaError,
+  isElizaError: (error: unknown) => error instanceof MockElizaError,
+  logger: coreTestContract.logger,
+  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
+  redactSensitiveText: (text: string) => text,
+  Service: coreTestContract.Service,
+  validateDocumentFragmentQueryParams:
+    coreTestContract.validateDocumentFragmentQueryParams,
+  validateDocumentListQueryParams:
+    coreTestContract.validateDocumentListQueryParams,
+  validateDocumentRequesterContext:
+    coreTestContract.validateDocumentRequesterContext,
+  validateQueryEntitiesPagination:
+    coreTestContract.validateQueryEntitiesPagination,
+  validateUuid: coreTestContract.validateUuid,
 }));
 
 mock.module("@/lib/auth", () => ({
@@ -168,6 +195,12 @@ mock.module("@/lib/services/credits", () => {
     required = 0;
   }
   return {
+    assertCreditRefundWithinReservation: () => {
+      throw new Error("credit refund assertion is outside this test path");
+    },
+    assertValidCreditSettlementCosts: () => {
+      throw new Error("credit settlement assertion is outside this test path");
+    },
     InsufficientCreditsError,
   };
 });

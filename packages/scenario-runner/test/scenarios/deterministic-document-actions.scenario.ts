@@ -167,6 +167,11 @@ function expectSeededDocumentListed(
 export default scenario({
   id: "deterministic-document-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic DOCUMENT delete contract with owner-only wall",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "documents", "delete"],

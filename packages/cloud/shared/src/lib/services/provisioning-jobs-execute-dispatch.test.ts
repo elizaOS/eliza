@@ -46,6 +46,7 @@ function makeJob(
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
     data_storage: "inline",
@@ -60,6 +61,8 @@ function makeJob(
     error_key: null,
     attempts: 1,
     max_attempts: 3,
+    execution_interruptions: 0,
+    retryable_requeues: 0,
     execution_generation: "55555555-5555-4555-8555-555555555555",
     execution_quiesced_at: null,
     organization_id: ORG,
@@ -97,6 +100,9 @@ function harness(job: Job) {
   );
   const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
+  // agent_delete re-reads durable job data under the lease right before the
+  // destructive boundary; by default the durable row matches the claimed one.
+  const durableReadSpy = spyOn(jobsRepository, "findByIdForWrite").mockResolvedValue(job);
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
@@ -108,10 +114,11 @@ function harness(job: Job) {
       sharedClaimSpy.mockRestore();
       leaseSpy.mockRestore();
       renewLeaseSpy.mockRestore();
+      durableReadSpy.mockRestore();
     },
   };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
-  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
+  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(true);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
     async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
   );
@@ -119,12 +126,17 @@ function harness(job: Job) {
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(job);
+  ).mockImplementation(async (retrySnapshot, _error, _delayMs, _owner, bounded) => ({
+    ...retrySnapshot,
+    status: "pending",
+    retryable_requeues: retrySnapshot.retryable_requeues + (bounded ? 1 : 0),
+  }));
   return {
     job,
     claimSpy,
     leaseSpy,
     renewLeaseSpy,
+    durableReadSpy,
     recoverSpy,
     updateStatusSpy,
     updateSpy,
@@ -479,6 +491,42 @@ describe("executeJob dispatch — success path per job type marks the job comple
       throw new Error("pending cutover audit has no cutover timestamp");
     }
     const retryStartedAt = new Date(Date.parse(pendingAudit.cutoverAt) + 1_000);
+    const hostileRetry = harness(
+      makeJob(arm.type, arm.data, {
+        result: pendingAudit,
+        status: "in_progress",
+        started_at: retryStartedAt,
+        updated_at: retryStartedAt,
+      }),
+    );
+    const { proxy: revokedFailure, revoke } = Proxy.revocable(
+      new Error("cleanup transport failed"),
+      {},
+    );
+    revoke();
+    const hostileConvergeSpy = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockImplementation(async () => {
+      throw revokedFailure;
+    });
+    try {
+      const deferred = await run(arm.type);
+      expect(deferred).toMatchObject({ succeeded: 0, retried: 1, failed: 0 });
+      expect(hostileRetry.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(hostileRetry.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "Admin canary cleanup remains pending: [unstringifiable]",
+      );
+    } finally {
+      hostileConvergeSpy.mockRestore();
+      hostileRetry.claimSpy.mockRestore();
+      hostileRetry.recoverSpy.mockRestore();
+      hostileRetry.updateStatusSpy.mockRestore();
+      hostileRetry.updateSpy.mockRestore();
+      hostileRetry.incrementSpy.mockRestore();
+      hostileRetry.retryLaterSpy.mockRestore();
+    }
+
     const retry = harness(
       makeJob(arm.type, arm.data, {
         result: pendingAudit,
@@ -586,6 +634,37 @@ describe("executeJob dispatch — failure path per job type retries (increments 
     });
   }
 
+  test("a hostile thrown Proxy still persists the failed-job transition", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("hostile prototype");
+      },
+      get() {
+        throw new Error("hostile property read");
+      },
+    });
+    const executeDeletionSpy = spyOn(elizaSandboxService, "executeDeletion").mockImplementation(
+      async () => {
+        throw hostile;
+      },
+    );
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.incrementSpy.mock.calls[0]?.[1]).toBe("[unstringifiable]");
+    } finally {
+      executeDeletionSpy.mockRestore();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("message: bridge error is stored on the job result and the job fails", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
     const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
@@ -629,6 +708,169 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       const res = await run(JOB_TYPES.AGENT_DELETE);
       expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
       expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete carries explicit state-loss authority through execution and completion", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "billing_request",
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: USER,
+        stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+      }),
+    );
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request", true);
+      expect(completedCall(ctx)?.[2]?.result).toMatchObject({
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: USER,
+        stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+      });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete does not honor legacy authority without complete provenance", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      }),
+    );
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request");
+      const result = completedCall(ctx)?.[2]?.result as Record<string, unknown> | undefined;
+      expect(result?.stateLossAcknowledged).toBeUndefined();
+      expect(result?.stateLossAcknowledgedByUserId).toBeUndefined();
+      expect(result?.stateLossAcknowledgedAt).toBeUndefined();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete honors an acknowledgement upgraded after this execution was claimed", async () => {
+    // Race regression: the claimed in-memory job snapshot has no waiver, but a
+    // concurrent acknowledged DELETE upgraded the durable row via upgradeReuse.
+    // The pre-destructive durable re-read must observe and honor it.
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
+    ctx.durableReadSpy.mockResolvedValue({
+      ...ctx.job,
+      data: {
+        ...ctx.job.data,
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: "acknowledging-user",
+        stateLossAcknowledgedAt: "2026-08-21T04:01:00.000Z",
+      },
+    });
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request", true);
+      expect(completedCall(ctx)?.[2]?.result).toMatchObject({
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: "acknowledging-user",
+        stateLossAcknowledgedAt: "2026-08-21T04:01:00.000Z",
+      });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete stays unacknowledged when the durable row was deleted mid-execution", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
+    ctx.durableReadSpy.mockResolvedValue(undefined);
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request");
+      expect(completedCall(ctx)).toBeUndefined();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete retains explicit state-loss authority on a failed partial result", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "billing_request",
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: USER,
+        stateLossAcknowledgedAt: "2026-08-21T04:02:00.000Z",
+      }),
+    );
+    stub("executeDeletion", {
+      success: false,
+      retryable: false,
+      containerStopped: false,
+      rowDeleted: false,
+      error: "provider teardown failed",
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: USER,
+        error: "provider teardown failed",
+      });
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
@@ -732,8 +974,40 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(res.retried).toBe(1);
       expect(res.failed).toBe(0);
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "readiness probe transport_unresolved",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
+    ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
+      ...retrySnapshot,
+      status: "failed",
+      retryable_requeues: 6,
+      completed_at: new Date(),
+    }));
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "readiness probe transport_unresolved",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[4]).toMatchObject({ maxRequeues: 5 });
+      expect(typeof ctx.retryLaterSpy.mock.calls[0]?.[4]?.onExhaustedInTx).toBe("function");
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
@@ -784,10 +1058,14 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       const res = await run(JOB_TYPES.AGENT_PROVISION);
       expect(res).toMatchObject({ claimed: 1, retried: 0, failed: 0 });
       expect(ctx.retryLaterSpy).toHaveBeenCalledWith(
-        ctx.job,
-        "readiness probe transport_unresolved",
+        expect.objectContaining({
+          id: ctx.job.id,
+          result: expect.objectContaining({ error: "readiness probe transport_unresolved" }),
+        }),
+        expect.stringContaining("readiness probe transport_unresolved"),
         expect.any(Number),
         expect.any(String),
+        expect.objectContaining({ maxRequeues: 5 }),
       );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
@@ -1063,7 +1341,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     stub("executeSuspend", { success: true, containerStopped: true });
     ctx.updateStatusSpy
       .mockRejectedValueOnce(new Error("temporary database disconnect"))
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     try {
       const res = await run(JOB_TYPES.AGENT_SUSPEND);
       expect(res.succeeded).toBe(1);

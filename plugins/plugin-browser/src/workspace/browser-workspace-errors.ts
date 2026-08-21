@@ -29,6 +29,8 @@ export type BrowserWorkspaceErrorCode =
   | "script_forbidden"
   /** A connector session tried to export raw cookies/tokens/storage/state. */
   | "connector_secret_export_forbidden"
+  /** Command filePath/outputPath/baselinePath escaped the workspace root. */
+  | "path_forbidden"
   /** A snapshot element ref is stale/unknown (re-snapshot needed). */
   | "unknown_element_ref"
   /** The operation exceeded its timeout. */
@@ -94,7 +96,11 @@ export function classifyBrowserWorkspaceErrorCode(
   if (/rejected invalid URL|only supports http\/https/i.test(message)) {
     return "invalid_url";
   }
-  if (/\(404\)|Tab .+ was not found/i.test(message)) {
+  const lowerMessage = message.toLowerCase();
+  const tabPrefix = lowerMessage.indexOf("tab ");
+  const tabSuffix =
+    tabPrefix < 0 ? -1 : lowerMessage.indexOf(" was not found", tabPrefix + 4);
+  if (message.includes("(404)") || tabSuffix > tabPrefix + 4) {
     return "tab_not_found";
   }
   if (/requires a current tab/i.test(message)) {
@@ -118,6 +124,13 @@ export function classifyBrowserWorkspaceErrorCode(
     /do not allow raw cookie, token, storage, or state export/i.test(message)
   ) {
     return "connector_secret_export_forbidden";
+  }
+  if (
+    /escapes the workspace root|rejected an empty file path|rejected a NUL in file path|rejected a UNC file path/i.test(
+      message,
+    )
+  ) {
+    return "path_forbidden";
   }
   if (/Unknown browser snapshot element ref/i.test(message)) {
     return "unknown_element_ref";

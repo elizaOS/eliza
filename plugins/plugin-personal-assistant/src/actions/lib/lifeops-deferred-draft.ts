@@ -102,6 +102,7 @@ export type DeferredLifeDefinitionDraft = {
     kind: CreateLifeOpsDefinitionRequest["kind"];
     priority?: number;
     progressionRule?: CreateLifeOpsDefinitionRequest["progressionRule"];
+    checkInPolicy?: CreateLifeOpsDefinitionRequest["checkInPolicy"];
     reminderPlan?: CreateLifeOpsDefinitionRequest["reminderPlan"];
     timezone?: string;
     title: string;

@@ -1380,6 +1380,61 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
+  if (view.id === "computer-use-sessions") {
+    await page.route("**/api/computer-use/sessions", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sessions: [
+            {
+              id: "audit-browser",
+              label: "Research browser",
+              target: { kind: "browser", targetId: "chrome-profile" },
+              status: "idle",
+              sequence: 12,
+              createdAt: "2026-08-19T00:00:00.000Z",
+              updatedAt: "2026-08-19T00:00:12.000Z",
+              cursor: {
+                x: 640,
+                y: 360,
+                updatedAt: "2026-08-19T00:00:12.000Z",
+              },
+              lastCommand: "browser_click",
+            },
+            {
+              id: "audit-sandbox",
+              label: "Linux sandbox",
+              target: { kind: "sandbox", targetId: "qemu-linux" },
+              status: "running",
+              sequence: 7,
+              createdAt: "2026-08-19T00:00:00.000Z",
+              updatedAt: "2026-08-19T00:00:11.000Z",
+              lastCommand: "mouse_move",
+            },
+          ],
+        }),
+      });
+    });
+    await page.route(
+      /\/api\/computer-use\/sessions\/[^/]+\/frame$/,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            frame: {
+              mimeType: "image/png",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+              capturedAt: "2026-08-19T00:00:13.000Z",
+              width: 1280,
+              height: 720,
+            },
+          }),
+        });
+      },
+    );
+  }
   // The long capture matrix keeps the fixture server busy enough for a single
   // socket reset to occur without indicating an application failure. Playwright
   // limits maxRetries to ECONNRESET, while HTTP and parse failures still fail

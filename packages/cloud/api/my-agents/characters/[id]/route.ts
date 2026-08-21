@@ -13,6 +13,7 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { ElizaCharacter } from "@/lib/types";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,11 +40,17 @@ app.put("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const elizaCharacter = (await c.req.json()) as ElizaCharacter;
-    // documents/knowledge come verbatim from the unvalidated request body; a
-    // non-array value (e.g. `knowledge: {}`) is not iterable and would 500 the
-    // update (#13637 class). Non-arrays contribute no document sources — this
-    // also keeps the knowledge column an array for downstream readers.
+    const decodedRawBody = await decodeRequestJson(c.req);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const rawBody = decodedRawBody.value;
+    if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+    const elizaCharacter = rawBody as ElizaCharacter;
+    // Only array-valued document sources participate in character knowledge.
     const documentSources = [
       ...(Array.isArray(elizaCharacter.documents)
         ? elizaCharacter.documents

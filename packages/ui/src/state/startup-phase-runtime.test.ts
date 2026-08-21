@@ -24,6 +24,7 @@ function createDeps() {
     setConnected: vi.fn(),
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
+    setFirstRunComplete: vi.fn(),
     setAuthRequired: vi.fn(),
     setPairingEnabled: vi.fn(),
     setPairingExpiresAt: vi.fn(),

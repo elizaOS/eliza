@@ -72,6 +72,29 @@ beforeEach(() => {
 });
 
 describe("runHydrating — non-blocking first-load (F2)", () => {
+  it("does not await conversation history on a limited Cloud agent base", async () => {
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi.fn(() => hangForever());
+    const events: StartupEvent[] = [];
+
+    await Promise.race([
+      runHydrating(deps, (event) => events.push(event), { current: false }),
+      new Promise((_resolve, reject) =>
+        setTimeout(
+          () => reject(new Error("Cloud conversation hydration blocked paint")),
+          1_000,
+        ),
+      ),
+    ]);
+
+    expect(deps.hydrateInitialConversationState).toHaveBeenCalledTimes(1);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(events).toContainEqual({ type: "HYDRATION_COMPLETE" });
+  });
+
   it("dispatches HYDRATION_COMPLETE even when wallet, config, stream settings, and autonomy replay all hang forever", async () => {
     const deps = makeDeps();
     const events: StartupEvent[] = [];

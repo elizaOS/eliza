@@ -1,6 +1,7 @@
 /**
  * DELETE /api/v1/api-keys/[id] — delete a key (org-scoped).
  * PATCH  /api/v1/api-keys/[id] — partial update.
+ * Mobile lifecycle credentials are not addressable through either operation.
  */
 
 import { Hono } from "hono";
@@ -14,6 +15,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,7 +35,7 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await apiKeysService.getManageableById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     await assertOrgMembership(user, existingKey.organization_id, {
       resourceType: "api_key",
@@ -71,7 +73,7 @@ app.patch("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await apiKeysService.getManageableById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     await assertOrgMembership(user, existingKey.organization_id, {
       resourceType: "api_key",
@@ -79,7 +81,12 @@ app.patch("/", async (c) => {
       c,
     });
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const { name, description, rate_limit, is_active, expires_at } =
       updateApiKeySchema.parse(body);
 

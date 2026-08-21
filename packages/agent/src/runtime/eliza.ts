@@ -8,13 +8,7 @@
  * @module eliza
  */
 import crypto from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -22,6 +16,10 @@ import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  initializeBlockingCoreRuntimeForBoot,
+  preregisterCorePluginsInDependencyWaves,
+} from "./blocking-core-boot.ts";
 import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
@@ -80,10 +78,7 @@ import {
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
-import {
-  applyHostActionOwnership,
-  registerFallbackActionIfAbsent,
-} from "./runtime-action-ownership.ts";
+import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
@@ -307,7 +302,11 @@ import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import {
+  ensurePrivateDir,
+  resolveStateDir,
+  resolveUserPath,
+} from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -540,14 +539,14 @@ type CoreStaticPluginRegistration = {
   load: () => Promise<unknown>;
 };
 
-// Blocking-phase loaders. These two plugins each need a bespoke loader (the
-// required SQL adapter with a workspace-source fallback; the local-inference
-// pre-init hook), so they are the only descriptor rows whose `load` is not the
-// generic optional loader. Their membership + required-ness is derived from
-// BLOCKING_CORE_PLUGINS (the single source of truth for the blocking set) rather
-// than re-listed here — buildBlockingStaticRegistrations() below asserts the two
-// stay in lockstep so a change to BLOCKING_CORE_PLUGINS can't silently orphan a
-// loader or register a plugin with no loader.
+// Blocking-phase loaders. These plugins each need an explicit literal loader:
+// SQL has a workspace-source fallback, local-inference installs its pre-init
+// model hooks, and scheduling must be bundled on mobile and register its runner
+// before app-readiness feature services start. Their membership + required-ness
+// is derived from BLOCKING_CORE_PLUGINS (the single source of truth for the
+// blocking set) rather than re-listed here — buildBlockingStaticRegistrations()
+// below asserts the sets stay in lockstep so a change to BLOCKING_CORE_PLUGINS
+// can't silently orphan a loader or register a plugin with no loader.
 const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   Record<string, { required: boolean; load: () => Promise<unknown> }>
 > = {
@@ -555,6 +554,10 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
   "@elizaos/plugin-local-inference": {
     required: false,
     load: () => getPluginLocalEmbedding(),
+  },
+  "@elizaos/plugin-scheduling": {
+    required: true,
+    load: () => import("@elizaos/plugin-scheduling"),
   },
 };
 
@@ -2173,30 +2176,46 @@ export async function autoResolveDiscordAppId(
 }
 
 /**
- * Fetch GitHub OAuth token from cloud if available and no local token is set.
+ * Result of the cloud GitHub token fetch: the OAuth access token that the
+ * cloud minted for ONE managed agent, plus the GitHub login for boot logging.
+ * The token is agent identity material and must stay scoped to that agent —
+ * it is bound into the owning runtime's secrets via
+ * {@link bindCloudGithubTokenToRuntime}, never written to `process.env`
+ * (#15904: a process-global write leaks one agent's GitHub identity to every
+ * co-tenant agent in the host and lets a later fetch overwrite an earlier
+ * agent's credential).
+ */
+export interface CloudGithubTokenResult {
+  accessToken: string;
+  githubUsername: string | null;
+}
+
+/**
+ * Fetch the GitHub OAuth token the cloud holds for this managed agent, if any.
  * Called during async runtime init after cloud config is applied.
  *
- * Flow: If the agent has a managed GitHub connection in the cloud, and no
- * local GITHUB_TOKEN is set, fetch the OAuth token from the cloud API and
- * inject it into process.env so plugins (plugin-github, git-workspace-service)
- * can use it for API calls and git credential helpers.
+ * Returns the token instead of applying it anywhere: the caller binds it to
+ * the specific runtime that owns `agentId` with
+ * {@link bindCloudGithubTokenToRuntime}. A host-level GITHUB_TOKEN/GITHUB_PAT
+ * in the launch env still wins (it was folded into runtime settings at
+ * construction), so the fetch is skipped entirely in that case.
  */
 /** @internal Exported for testing. */
 export async function autoFetchCloudGithubToken(
   agentId?: string,
   timeoutMs = 3_000,
-): Promise<void> {
+): Promise<CloudGithubTokenResult | null> {
   // Skip if a local token is already configured
-  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return;
+  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
 
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
     process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
-  if (!cloudApiKey || !agentId) return;
+  if (!cloudApiKey || !agentId) return null;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
-  if (!managedNs) return;
+  if (!managedNs) return null;
 
   try {
     const url = `${cloudBaseUrl}/api/v1/${managedNs}/agents/${encodeURIComponent(agentId)}/github/token`;
@@ -2215,22 +2234,50 @@ export async function autoFetchCloudGithubToken(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
-      return;
+      return null;
     }
 
     const body = (await res.json()) as {
       success?: boolean;
       data?: { accessToken?: string; githubUsername?: string };
     };
-    if (!body.success || !body.data?.accessToken) return;
+    if (!body.success || !body.data?.accessToken) return null;
 
-    process.env.GITHUB_TOKEN = body.data.accessToken;
     logger.info(
       `[eliza] Fetched GitHub token from cloud for @${body.data.githubUsername || "unknown"}`,
     );
+    return {
+      accessToken: body.data.accessToken,
+      githubUsername: body.data.githubUsername ?? null,
+    };
   } catch (err) {
+    // error-policy:J4 boot-time cloud probe is best-effort; a missing managed
+    // GitHub connection degrades to "no token bound" and the connect UI stays
+    // the recovery path.
     logger.info(`[eliza] Could not fetch cloud GitHub token: ${err}`);
+    return null;
   }
+}
+
+/**
+ * Bind a cloud-fetched GitHub token to the runtime that owns it, as an
+ * agent-scoped secret resolved by `runtime.getSetting("GITHUB_TOKEN")`.
+ * Idempotent, and a no-op when the runtime already resolves a token (an
+ * explicit host env or per-agent secret always wins over the cloud fetch).
+ * Deliberately never touches `process.env`: subprocess spawners must pass the
+ * agent's own resolved token explicitly (see workspace-service), so one
+ * agent's cloud GitHub identity can never leak to co-tenant agents (#15904).
+ */
+/** @internal Exported for testing. */
+export function bindCloudGithubTokenToRuntime(
+  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  result: CloudGithubTokenResult | null,
+): boolean {
+  if (!result?.accessToken) return false;
+  const existing = runtime.getSetting("GITHUB_TOKEN");
+  if (typeof existing === "string" && existing.trim()) return false;
+  runtime.setSetting("GITHUB_TOKEN", result.accessToken, true);
+  return true;
 }
 
 /**
@@ -2662,11 +2709,12 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     }
 
     // Ensure the PGlite data directory exists before init so PGlite does
-    // not silently fall back to in-memory mode on first run.
+    // not silently fall back to in-memory mode on first run. Owner-only:
+    // the tree holds full agent history (heals older 0755 installs too).
     const dataDir = process.env.PGLITE_DATA_DIR;
     if (dataDir) {
       const alreadyExisted = existsSync(dataDir);
-      mkdirSync(dataDir, { recursive: true });
+      ensurePrivateDir(dataDir);
       logger.debug(
         `[eliza] PGlite data dir: ${dataDir} (${alreadyExisted ? "existed" : "created"})`,
       );
@@ -3472,88 +3520,11 @@ async function registerSqlPluginWithRecovery(
   await initializeDatabaseAdapter(runtime, config);
 }
 
-const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
-]);
-
-async function preregisterCorePluginsInDependencyWaves(args: {
-  runtime: AgentRuntime;
-  resolvedPlugins: RuntimeResolvedPlugin[];
-  alreadyPreRegistered: Set<string>;
-  label?: string;
-  abortSignal?: AbortSignal;
-}): Promise<void> {
-  const pending = new Map<string, RuntimeResolvedPlugin>();
-  for (const name of CORE_PLUGINS) {
-    if (args.alreadyPreRegistered.has(name)) continue;
-    const resolved = args.resolvedPlugins.find((p) => p.name === name);
-    if (!resolved) {
-      logger.debug(
-        `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
-      );
-      continue;
-    }
-    pending.set(name, resolved);
-  }
-
-  const registered = new Set(args.alreadyPreRegistered);
-  const context = args.label ? `${args.label}: ` : "";
-
-  const registerOne = async (
-    name: string,
-    resolved: RuntimeResolvedPlugin,
-  ): Promise<void> => {
-    try {
-      args.abortSignal?.throwIfAborted();
-      const regStart = Date.now();
-      logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(
-        applyHostActionOwnership(args.runtime, resolved.plugin),
-      );
-      registered.add(name);
-      logger.debug(
-        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-      );
-    } catch (err) {
-      if (args.abortSignal?.aborted) throw err;
-      registered.add(name);
-      logger.warn(
-        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-      );
-    } finally {
-      pending.delete(name);
-    }
-  };
-
-  while (pending.size > 0) {
-    args.abortSignal?.throwIfAborted();
-    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
-    for (const [name, resolved] of pending) {
-      const declaredDependencies = resolved.plugin.dependencies ?? [];
-      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
-      const dependencies = [...declaredDependencies, ...bootDependencies];
-      const hasPendingDependency = dependencies.some(
-        (dependency) => pending.has(dependency) && !registered.has(dependency),
-      );
-      if (!hasPendingDependency) {
-        ready.push([name, resolved]);
-      }
-    }
-
-    const wave = ready.length > 0 ? ready : Array.from(pending);
-    await Promise.all(
-      wave.map(([name, resolved]) => registerOne(name, resolved)),
-    );
-    // Yield to the event loop between waves so the bound HTTP server can serve
-    // /api/health and other I/O between CPU-bound wave registrations, instead
-    // of starving it until every wave finishes. Mirrors the deferred
-    // static-import yield above; pure scheduling, every plugin still registers
-    // in the same wave order.
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
-}
+const REQUIRED_BLOCKING_CORE_PLUGINS = new Set(
+  Object.entries(BLOCKING_STATIC_PLUGIN_LOADERS)
+    .filter(([, loader]) => loader.required)
+    .map(([packageName]) => packageName),
+);
 
 export {
   buildCharacterFromConfig,
@@ -4081,9 +4052,11 @@ export async function startEliza(
   applyCloudConfigToEnv(config);
 
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
-  // network, up to a 3s timeout each) without blocking. They only write
-  // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
-  // BLOCKING_CORE_PLUGIN reads. The Discord connector and GitHub/git plugins
+  // network, up to a 3s timeout each) without blocking. The Discord lookup
+  // writes DISCORD_APPLICATION_ID (an env var no BLOCKING_CORE_PLUGIN reads);
+  // the GitHub fetch returns a token that is bound to the owning runtime's
+  // agent-scoped secrets at the join site — never process.env (#15904). The
+  // Discord connector and GitHub/git plugins
   // both live in the DEFERRED set, so these joins are awaited inside
   // runDeferredBoot() (before the deferred plugin waves register), not on the
   // gated blocking path. Firing them here lets the round-trips overlap the
@@ -4261,10 +4234,11 @@ export async function startEliza(
     }
     if (!salt) {
       salt = crypto.randomBytes(32).toString("hex");
-      mkdirSync(path.dirname(secretSaltPath), { recursive: true });
-      // 0o600: only the user account that wrote it can read it. The salt
-      // is a key-derivation input — anyone who reads it plus the
-      // ciphertext can decrypt persisted secrets.
+      // Owner-only state dir (also heals older 0755 installs): the salt is a
+      // key-derivation input — anyone who reads it plus the ciphertext can
+      // decrypt persisted secrets.
+      ensurePrivateDir(path.dirname(secretSaltPath));
+      // 0o600: only the user account that wrote it can read it.
       writeFileSync(secretSaltPath, salt, { encoding: "utf8", mode: 0o600 });
       logger.info(
         `[eliza] Generated SECRET_SALT and persisted to ${secretSaltPath}`,
@@ -5408,6 +5382,18 @@ export async function startEliza(
   const startEmbeddingWarmup = async (
     abortSignal: AbortSignal,
   ): Promise<void> => {
+    const canonicalEmbeddings = runtime.getSetting(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+    );
+    if (
+      canonicalEmbeddings === false ||
+      String(canonicalEmbeddings).trim().toLowerCase() === "false"
+    ) {
+      logger.info(
+        "[eliza] Skipping local embedding warmup — canonical service routing omits embeddings.",
+      );
+      return;
+    }
     try {
       await warmEmbeddingModel(abortSignal);
       abortSignal.throwIfAborted();
@@ -5506,23 +5492,34 @@ export async function startEliza(
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
-    if (blockDeferredPluginImports) {
-      // In block-deferred mode the Discord/GitHub plugins register here (not in
-      // runDeferredBoot), so join the env-var lookups before this wave.
-      await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
-      await preregisterCorePluginsInDependencyWaves({
-        runtime,
-        resolvedPlugins,
-        alreadyPreRegistered: new Set<string>([
-          "@elizaos/plugin-sql",
-          "@elizaos/plugin-local-inference",
-        ]),
-        label: "blocking",
-      });
-      bootTimer.lap("register-core-plugin-waves");
-    }
-
-    await initializeCoreRuntime();
+    // Every core plugin selected by the blocking resolver must be registered
+    // before runtime.initialize(). Feature plugins selected by an app manifest
+    // are constructor plugins and may resolve a core service in their start
+    // hook. Keeping this wave behind blockDeferredPluginImports caused normal
+    // two-phase app boots to drop a readiness-promoted core dependency between
+    // phases: it was removed from the runtime constructor by PREREGISTER_PLUGINS
+    // but never registered here, while the deferred resolver correctly
+    // excluded it as already owned by the blocking phase.
+    await initializeBlockingCoreRuntimeForBoot({
+      blockDeferredPluginImports,
+      runtime,
+      resolvedPlugins,
+      requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
+      waitForBlockingEnvironment: async () => {
+        // In block-deferred mode the Discord/GitHub plugins register here (not
+        // in runDeferredBoot), so join the boot lookups before this wave. The
+        // cloud GitHub token binds to THIS runtime's secrets only — never
+        // process.env (#15904).
+        const [, cloudGithubToken] = await Promise.all([
+          discordAppIdPromise,
+          cloudGithubTokenPromise,
+        ]);
+        bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
+      },
+      initializeCoreRuntime,
+      ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+    });
+    bootTimer.lap("register-core-plugin-waves");
     bootTimer.lap("svc:runtime.initialize");
     await ensureConnectorCredentialStoreStarted();
     bootTimer.lap("svc:connector-credential-store-start");
@@ -5716,14 +5713,17 @@ export async function startEliza(
 
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
-    // GitHub/git plugins live in this deferred wave and read the env vars these
-    // promises write. Also join the Claude Code OAuth probe (informational
-    // logging only). All self-handle their errors, so this only waits.
-    await Promise.all([
+    // GitHub/git plugins live in this deferred wave. The cloud GitHub token is
+    // bound to this runtime's agent-scoped secrets, never process.env, so a
+    // co-tenant agent can neither read nor overwrite it (#15904). Also join
+    // the Claude Code OAuth probe (informational logging only). All
+    // self-handle their errors, so this only waits.
+    const [, cloudGithubToken] = await Promise.all([
       discordAppIdPromise,
       cloudGithubTokenPromise,
       subscriptionCredentialsDeferredPromise,
     ]);
+    bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
     abortSignal.throwIfAborted();
     bootTimer.lap("deferred:env-lookups");
 

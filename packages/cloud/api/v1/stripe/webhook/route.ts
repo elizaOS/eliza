@@ -3,9 +3,8 @@
  *
  * Unauthed but signature-verified Stripe webhook for the unified
  * payment_requests flow. Verifies the signature via the Stripe
- * adapter, dedupes by Stripe event id, persists the payment request
- * transition, then publishes a `PaymentSettled` / `PaymentFailed`
- * event to the in-process payment callback bus.
+ * adapter, atomically persists the provider event, request transition, and
+ * organization-credit grant, then dispatches the non-authoritative callback.
  *
  * Distinct from the legacy `/api/stripe/webhook` route, which feeds
  * the app-credit / org-credit settlement queue.
@@ -13,19 +12,23 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
 import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
+import {
+  dispatchPaymentCallbacks,
+  processPaymentProviderEvent,
+  sha256Hex,
+} from "@/lib/services/payment-request-settlement";
 import { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   const rawBody = await c.req.text();
   const signature = c.req.header("stripe-signature") ?? null;
 
@@ -49,6 +52,7 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   try {
     parsed = await stripePaymentAdapter.parseWebhook({ rawBody, signature });
   } catch (error) {
+    // error-policy:J1 translate provider authentication and parsing failures.
     if (error instanceof IgnoredWebhookEvent) {
       logger.info("[StripeWebhook API] Ignored event", {
         reason: error.message,
@@ -64,57 +68,55 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     );
   }
 
-  const providerEventId =
-    typeof parsed.proof.stripe_event_id === "string"
-      ? parsed.proof.stripe_event_id
-      : null;
-  if (providerEventId) {
-    const recorded = paymentCallbackBus.recordProviderEvent(
-      "stripe",
-      providerEventId,
+  if (!parsed.txRef) {
+    return c.json(
+      { success: false, error: "Webhook transaction reference missing" },
+      400,
     );
-    if (!recorded) {
-      logger.debug("[StripeWebhook API] Duplicate event — skipping publish", {
-        providerEventId,
-      });
-      return c.json({ success: true, duplicate: true }, 200);
-    }
   }
 
-  const service = getPaymentRequestsService(c.env);
-
-  if (parsed.status === "settled") {
-    await service.markSettled(
-      parsed.paymentRequestId,
-      parsed.txRef ?? providerEventId ?? "stripe:settled",
-      parsed.proof,
-    );
-    await paymentCallbackBus.publish({
-      name: "PaymentSettled",
-      paymentRequestId: parsed.paymentRequestId,
+  const failureReason =
+    parsed.status === "failed" &&
+    typeof parsed.proof.stripe_failure_message === "string"
+      ? parsed.proof.stripe_failure_message
+      : "Stripe payment failed";
+  let processed: Awaited<ReturnType<typeof processPaymentProviderEvent>>;
+  try {
+    processed = await processPaymentProviderEvent({
       provider: "stripe",
-      txRef: parsed.txRef,
-      providerEventId: providerEventId ?? undefined,
-      settledAt: new Date(),
+      providerEventId: parsed.providerEventId,
+      paymentRequestId: parsed.paymentRequestId,
+      disposition: parsed.status,
+      providerTxRef: parsed.txRef,
+      payloadDigest: await sha256Hex(rawBody),
+      amountCents: parsed.amountCents,
+      currency: parsed.currency,
+      proof: parsed.proof,
+      error: failureReason,
     });
-  } else {
-    const error =
-      typeof parsed.proof.stripe_failure_message === "string"
-        ? parsed.proof.stripe_failure_message
-        : "Stripe payment failed";
-    await service.markFailed(parsed.paymentRequestId, error);
-    await paymentCallbackBus.publish({
-      name: "PaymentFailed",
+  } catch (error) {
+    // error-policy:J1 provider retries on durable settlement failure.
+    logger.error("[StripeWebhook API] Durable fulfillment failed", {
       paymentRequestId: parsed.paymentRequestId,
-      provider: "stripe",
-      txRef: parsed.txRef,
-      providerEventId: providerEventId ?? undefined,
+      providerEventId: parsed.providerEventId,
       error,
-      failedAt: new Date(),
+    });
+    return c.json({ success: false, error: "Webhook fulfillment failed" }, 500);
+  }
+
+  if (
+    processed.callbackState === "pending" ||
+    processed.callbackState === "failed"
+  ) {
+    await paymentCallbackBus.publish(processed.callback);
+    await dispatchPaymentCallbacks({
+      provider: "stripe",
+      providerEventId: processed.callback.providerEventId,
+      limit: 1,
     });
   }
 
-  return c.json({ success: true, published: true }, 200);
+  return c.json({ success: true, duplicate: processed.replay }, 200);
 });
 
 export default app;

@@ -1,4 +1,7 @@
-// Persists jobs records for cloud services through the shared DB boundary.
+/**
+ * Persists background-job state, execution generations, and renewable leases
+ * through the primary and read-intent cloud database boundaries.
+ */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
@@ -14,6 +17,7 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
+  clampInlineDiagnosticText,
   hydrateJsonField,
   hydrateTextField,
   offloadJsonField,
@@ -71,6 +75,9 @@ export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
 
 /** Atomic result of attempting to renew one claimed execution generation. */
 export type ExecutionLeaseRenewal = "renewed" | "settled" | "lost";
+
+/** Outcome of terminally rejecting one exact claimed execution generation. */
+export type ClaimedExecutionRejection = "rejected" | "already-terminal" | "stale" | "lost";
 
 const SETTLED_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -255,6 +262,7 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
     AND ${jobs.execution_interruptions} = ${job.execution_interruptions}
+    AND ${jobs.retryable_requeues} = ${job.retryable_requeues}
     AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
     AND ${msWindowTimestampMatch(jobs.execution_quiesced_at, job.execution_quiesced_at)}
     AND ${msWindowTimestampMatch(jobs.started_at, job.started_at)}
@@ -297,6 +305,7 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.attempts === right.attempts &&
     left.max_attempts === right.max_attempts &&
     left.execution_interruptions === right.execution_interruptions &&
+    left.retryable_requeues === right.retryable_requeues &&
     left.execution_generation === right.execution_generation &&
     sameTimestamp(left.execution_quiesced_at, right.execution_quiesced_at) &&
     sameTimestamp(left.started_at, right.started_at) &&
@@ -443,7 +452,7 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
       ? Promise.resolve(null)
       : forceInlineError
         ? Promise.resolve({
-            value: data.error,
+            value: data.error === null ? null : clampInlineDiagnosticText(data.error),
             storage: "inline" as const,
             key: null,
           })
@@ -454,6 +463,9 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
             field: "error",
             createdAt,
             value: data.error,
+            // A failure reason is a diagnostic string: bound it rather than let
+            // a full dump land in the text column when offload is unavailable.
+            oversizeInline: "clamp",
           }),
   ]);
 
@@ -727,6 +739,23 @@ export class JobsRepository {
     return await hydrateJob(job);
   }
 
+  /** Inserts a deterministic job id once and reconstructs the committed row on retry. */
+  async createOrGetById(jobData: NewJob & { id: string }): Promise<Job> {
+    const insertData = await prepareJobInsertData({ ...jobData, data_storage: "inline" });
+    const [created] = await dbWrite
+      .insert(jobs)
+      .values(insertData)
+      .onConflictDoNothing({ target: jobs.id })
+      .returning();
+    if (created) return await hydrateJob(created);
+
+    const existing = await this.findByIdForWrite(jobData.id);
+    if (!existing) {
+      throw new Error(`Idempotent job ${jobData.id} conflicted but could not be reconstructed`);
+    }
+    return existing;
+  }
+
   /**
    * Atomically claims pending jobs for processing using FOR UPDATE SKIP LOCKED.
    * This prevents race conditions where multiple workers could grab the same jobs.
@@ -965,6 +994,107 @@ export class JobsRepository {
       )
       .limit(1);
     if (!owned) throw new StaleJobExecutionError(claimedJob.id);
+  }
+
+  /**
+   * Terminally rejects an invalid claimed execution before it can acquire a
+   * resource fence. The exact generation and live owner lease are the only
+   * authority; no dependent-row callback or sandbox mutation participates in
+   * this pre-dispatch transition.
+   *
+   * A same-generation terminal row is classified before its lease is read so
+   * a retry after an ambiguous commit acknowledgement reconstructs success
+   * without incrementing attempts twice.
+   */
+  async rejectClaimedExecution(
+    claimedJob: Job,
+    error: string,
+    ownerId: string,
+  ): Promise<ClaimedExecutionRejection> {
+    const generation = requireExecutionGeneration(claimedJob);
+    if (!ownerId) {
+      throw new Error(`Execution owner is required to reject claimed job ${claimedJob.id}`);
+    }
+    const payload = await prepareJobPayload({ error }, claimedJob);
+
+    return await dbWrite.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, claimedJob.id))
+        .for("update")
+        .limit(1);
+      if (!current) return "lost";
+      if (current.executionGeneration !== generation) return "stale";
+      if (SETTLED_JOB_STATUSES.has(current.status)) return "already-terminal";
+      if (current.status !== "in_progress" || current.executionQuiescedAt !== null) {
+        return "stale";
+      }
+
+      const [lease] = await tx
+        .select({ jobId: jobExecutionLeases.job_id })
+        .from(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+            sql`${jobExecutionLeases.expires_at} > NOW()`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lease) return "lost";
+
+      const settledAt = new Date();
+      const [rejected] = await tx
+        .update(jobs)
+        .set({
+          status: "failed",
+          ...payload,
+          attempts: sql`${jobs.attempts} + 1`,
+          completed_at: settledAt,
+          execution_quiesced_at: settledAt,
+          updated_at: settledAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                AND ${jobExecutionLeases.execution_generation} = ${generation}
+                AND ${jobExecutionLeases.owner_id} = ${ownerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!rejected) return "lost";
+
+      const [deletedLease] = await tx
+        .delete(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+          ),
+        )
+        .returning({ jobId: jobExecutionLeases.job_id });
+      if (!deletedLease) {
+        throw new Error(`Rejected job ${claimedJob.id} lost its exact execution lease`);
+      }
+      return "rejected";
+    });
   }
 
   /**
@@ -1232,6 +1362,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             eq(jobs.execution_interruptions, params.job.execution_interruptions),
+            eq(jobs.retryable_requeues, params.job.retryable_requeues),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
@@ -1273,6 +1404,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             eq(jobs.execution_interruptions, params.job.execution_interruptions),
+            eq(jobs.retryable_requeues, params.job.retryable_requeues),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             msWindowTimestampMatch(jobs.execution_quiesced_at, params.job.execution_quiesced_at),
             lt(jobs.started_at, params.startedBefore),
@@ -1462,7 +1594,8 @@ export class JobsRepository {
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
     executionOwnerId?: string,
-  ): Promise<void> {
+    additionalFence?: SQL,
+  ): Promise<boolean> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
@@ -1480,7 +1613,7 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, claimedJob);
     }
 
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(
@@ -1518,6 +1651,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(additionalFence ? [additionalFence] : []),
             sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
@@ -1529,7 +1663,10 @@ export class JobsRepository {
           ),
         )
         .returning({ id: jobs.id });
-      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      if (!updated) {
+        if (additionalFence) return false;
+        throw new StaleJobExecutionError(claimedJob.id);
+      }
 
       await tx
         .delete(jobExecutionLeases)
@@ -1557,6 +1694,7 @@ export class JobsRepository {
             ),
           );
       }
+      return true;
     });
   }
 
@@ -1579,6 +1717,9 @@ export class JobsRepository {
    * @param onFailedInTx - Optional callback run in-transaction when the job
    *   flips to `failed`. Receives the transaction handle and the hydrated job.
    *   Throwing rolls back BOTH the job-status flip and the dependent write.
+   * @param additionalFence - Optional caller-owned CAS predicate evaluated in
+   *   the terminal transition. It lets a stronger durable command invalidate
+   *   a stale execution failure without weakening the standard lease fences.
    * @returns Updated job record or undefined if not found.
    */
   async incrementAttempt(
@@ -1588,6 +1729,7 @@ export class JobsRepository {
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
     expectedExecutionGeneration?: string,
     expectedExecutionOwnerId?: string,
+    additionalFence?: SQL,
   ): Promise<Job | undefined> {
     if (expectedExecutionGeneration && !expectedExecutionOwnerId) {
       throw new Error(`Execution owner is required to retry claimed job ${id}`);
@@ -1658,6 +1800,7 @@ export class JobsRepository {
             eq(jobs.id, id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, job.attempts),
+            ...(additionalFence ? [additionalFence] : []),
             ...(expectedExecutionGeneration
               ? [
                   eq(jobs.execution_generation, expectedExecutionGeneration),
@@ -1725,14 +1868,23 @@ export class JobsRepository {
    * Requeues a job after a transient worker-side ambiguity without consuming
    * its finite retry budget. This is for cases where the job left the target
    * resource in a recoverable in-between state and a later worker pass should
-   * re-check/adopt that state instead of counting it as a failed attempt.
+   * re-check/adopt that state instead of counting it as a failed attempt. A
+   * bounded transition atomically advances database-owned requeue authority
+   * and runs its dependent failure writeback in the terminal transaction.
    */
   async retryLaterWithoutIncrementingAttempts(
     claimedJob: Job,
     error: string,
     delayMs: number,
     executionOwnerId?: string,
+    bounded?: {
+      maxRequeues: number;
+      onExhaustedInTx?: JobFailureWriteback;
+    },
   ): Promise<Job | undefined> {
+    if (bounded && (!Number.isSafeInteger(bounded.maxRequeues) || bounded.maxRequeues < 0)) {
+      throw new Error(`Invalid retryable requeue bound for job ${claimedJob.id}`);
+    }
     const requiresExecutionLease = hasDetachedProvisioningExecution(claimedJob.type);
     if (requiresExecutionLease && !executionOwnerId) {
       throw new Error(`Execution owner is required to requeue claimed job ${claimedJob.id}`);
@@ -1754,6 +1906,9 @@ export class JobsRepository {
     );
 
     const generation = requireExecutionGeneration(claimedJob);
+    const nextRequeues = bounded ? claimedJob.retryable_requeues + 1 : undefined;
+    const exhausted =
+      bounded !== undefined && nextRequeues !== undefined && nextRequeues > bounded.maxRequeues;
     const updated = await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
@@ -1786,12 +1941,13 @@ export class JobsRepository {
       const [row] = await tx
         .update(jobs)
         .set({
-          status: "pending",
+          status: exhausted ? "failed" : "pending",
           ...payload,
-          completed_at: null,
+          ...(nextRequeues === undefined ? {} : { retryable_requeues: nextRequeues }),
+          completed_at: exhausted ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
-          scheduled_for: scheduledFor,
+          scheduled_for: exhausted ? claimedJob.scheduled_for : scheduledFor,
         })
         .where(
           and(
@@ -1816,6 +1972,18 @@ export class JobsRepository {
         )
         .returning();
       if (!row) return undefined;
+      if (exhausted && bounded?.onExhaustedInTx) {
+        // The claimed snapshot already owns hydrated payloads. Do not call
+        // hydrateJob while lifecycle locks are held because R2-backed fields
+        // can require provider I/O.
+        await bounded.onExhaustedInTx(tx, {
+          ...claimedJob,
+          ...row,
+          data: claimedJob.data,
+          result: claimedJob.result,
+          error,
+        });
+      }
       if (requiresExecutionLease && executionOwnerId) {
         await tx
           .delete(jobExecutionLeases)
@@ -1901,6 +2069,24 @@ export class JobsRepository {
       .orderBy(desc(jobs.created_at))
       .limit(1);
     return rows[0]?.created_at ?? null;
+  }
+
+  /**
+   * Outcome census of jobs of `type` created since `since`, grouped by
+   * status. Powers the fleet-liveness monitor's provisioning success rate
+   * (#22548): provisioning health is measured on the `jobs` ledger itself
+   * (`type='agent_provision'`), not on sandbox `status`, which is written at
+   * INSERT and therefore cannot testify to provisioning success.
+   */
+  async summarizeOutcomesByTypeSince(
+    type: string,
+    since: Date,
+  ): Promise<Array<{ status: string; count: number }>> {
+    return dbRead
+      .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.created_at} >= ${since}`))
+      .groupBy(jobs.status);
   }
 }
 

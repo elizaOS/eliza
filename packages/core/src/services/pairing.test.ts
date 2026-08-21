@@ -1,6 +1,10 @@
 /**
- * Public PairingService pagination contract tests. The legacy array APIs stay
- * source-compatible while bounded pages carry validated options into storage.
+ * Public PairingService contract tests: bounded pagination reads (the legacy
+ * array APIs stay source-compatible while bounded pages carry validated
+ * options into storage), the pairing-code entropy source (CSPRNG-only,
+ * fail-closed when no CSPRNG exists), the pending-queue cap (reject-at-max,
+ * never evict), and the per-sender pairing-reply claim window. The storage
+ * adapter is mocked; the service under test is real.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime, MOCK_AGENT_ID } from "../testing/mock-runtime";
@@ -10,7 +14,7 @@ import type {
 	PairingRequest,
 	UUID,
 } from "../types";
-import { normalizePairingPageOptions } from "../types";
+import { normalizePairingPageOptions, PAIRING_CODE_ALPHABET } from "../types";
 import { PairingService } from "./pairing";
 
 function uuid(index: number): UUID {
@@ -271,5 +275,193 @@ describe("PairingService bounded reads", () => {
 		expect(() =>
 			normalizePairingPageOptions({ offset: Number.MAX_SAFE_INTEGER + 1 }),
 		).toThrow(RangeError);
+	});
+});
+
+describe("PairingService pairing-code entropy", () => {
+	const noop = () => undefined;
+
+	function upsertRuntime(): IAgentRuntime {
+		return createMockRuntime({
+			getPairingRequests: vi.fn(async () => [
+				{ channel: "discord", agentId: MOCK_AGENT_ID, requests: [] },
+			]),
+			createPairingRequest: vi.fn(async () => undefined),
+			updatePairingRequest: vi.fn(async () => undefined),
+			deletePairingRequest: vi.fn(async () => undefined),
+			logger: {
+				debug: noop,
+				info: noop,
+				warn: noop,
+				error: noop,
+			} as unknown as IAgentRuntime["logger"],
+		});
+	}
+
+	it("draws codes from the platform CSPRNG, never Math.random", async () => {
+		const getRandomValues = vi.spyOn(globalThis.crypto, "getRandomValues");
+		const mathRandom = vi.spyOn(Math, "random");
+		try {
+			const result = await new PairingService(upsertRuntime()).upsertRequest({
+				channel: "discord",
+				senderId: "sender-entropy",
+			});
+
+			expect(result.created).toBe(true);
+			expect(result.code).toHaveLength(8);
+			for (const char of result.code) {
+				expect(PAIRING_CODE_ALPHABET).toContain(char);
+			}
+			expect(getRandomValues).toHaveBeenCalled();
+			expect(mathRandom).not.toHaveBeenCalled();
+		} finally {
+			getRandomValues.mockRestore();
+			mathRandom.mockRestore();
+		}
+	});
+
+	it("fails closed when the platform has no CSPRNG", async () => {
+		vi.stubGlobal("crypto", undefined);
+		try {
+			await expect(
+				new PairingService(upsertRuntime()).upsertRequest({
+					channel: "discord",
+					senderId: "sender-no-csprng",
+				}),
+			).rejects.toMatchObject({ code: "PAIRING_CSPRNG_UNAVAILABLE" });
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe("PairingService pending-queue cap", () => {
+	const noop = () => undefined;
+
+	function cappedQueueRuntime(pending: PairingRequest[]) {
+		const deletePairingRequest = vi.fn(async () => undefined);
+		const createPairingRequest = vi.fn(async () => undefined);
+		const updatePairingRequest = vi.fn(async () => undefined);
+		const runtime = createMockRuntime({
+			getPairingRequests: vi.fn(async () => [
+				{ channel: "discord", agentId: MOCK_AGENT_ID, requests: pending },
+			]),
+			createPairingRequest,
+			updatePairingRequest,
+			deletePairingRequest,
+			logger: {
+				debug: noop,
+				info: noop,
+				warn: noop,
+				error: noop,
+			} as unknown as IAgentRuntime["logger"],
+		});
+		return {
+			runtime,
+			deletePairingRequest,
+			createPairingRequest,
+			updatePairingRequest,
+		};
+	}
+
+	it("rejects a new sender at the cap instead of evicting the oldest pending request", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-10T00:00:00.000Z"));
+		const pending = [
+			request(1, new Date("2026-01-10T00:00:00.000Z")),
+			request(2, new Date("2026-01-10T00:00:01.000Z")),
+			request(3, new Date("2026-01-10T00:00:02.000Z")),
+		];
+		const { runtime, deletePairingRequest, createPairingRequest } =
+			cappedQueueRuntime(pending);
+
+		const result = await new PairingService(runtime, {
+			maxPendingRequests: 3,
+			requestTtlMs: Number.MAX_SAFE_INTEGER,
+		}).upsertRequest({ channel: "discord", senderId: "sender-new" });
+
+		expect(result).toEqual({ code: "", created: false, request: undefined });
+		expect(createPairingRequest).not.toHaveBeenCalled();
+		// The legitimate pending requests must survive a flood of new identities.
+		expect(deletePairingRequest).not.toHaveBeenCalled();
+	});
+
+	it("still refreshes an existing sender's request when the queue is full", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-10T00:00:00.000Z"));
+		const existing = request(1, new Date("2026-01-10T00:00:00.000Z"));
+		const pending = [
+			existing,
+			request(2, new Date("2026-01-10T00:00:01.000Z")),
+			request(3, new Date("2026-01-10T00:00:02.000Z")),
+		];
+		const { runtime, updatePairingRequest } = cappedQueueRuntime(pending);
+
+		const result = await new PairingService(runtime, {
+			maxPendingRequests: 3,
+			requestTtlMs: Number.MAX_SAFE_INTEGER,
+		}).upsertRequest({ channel: "discord", senderId: existing.senderId });
+
+		expect(result.created).toBe(false);
+		expect(result.code).toBe(existing.code);
+		expect(result.request?.senderId).toBe(existing.senderId);
+		expect(updatePairingRequest).toHaveBeenCalledTimes(1);
+	});
+
+	it("serializes concurrent admissions so the pending queue cannot overrun its cap", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-10T00:00:00.000Z"));
+		const pending: PairingRequest[] = [];
+		const { runtime, createPairingRequest } = cappedQueueRuntime(pending);
+		createPairingRequest.mockImplementation(async (created: PairingRequest) => {
+			// Yield once to make an unguarded read-check-create race deterministic.
+			await Promise.resolve();
+			pending.push(created);
+		});
+		const service = new PairingService(runtime, {
+			maxPendingRequests: 3,
+			requestTtlMs: Number.MAX_SAFE_INTEGER,
+		});
+
+		const results = await Promise.all(
+			Array.from({ length: 12 }, (_, index) =>
+				service.upsertRequest({
+					channel: "discord",
+					senderId: `concurrent-sender-${index}`,
+				}),
+			),
+		);
+
+		expect(results.filter((result) => result.created)).toHaveLength(3);
+		expect(results.filter((result) => !result.code)).toHaveLength(9);
+		expect(pending).toHaveLength(3);
+		expect(createPairingRequest).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("PairingService pairing reply claims", () => {
+	function claimRuntime(): IAgentRuntime {
+		return createMockRuntime({
+			getPairingRequests: vi.fn(async () => [
+				{ channel: "discord", agentId: MOCK_AGENT_ID, requests: [] },
+			]),
+		});
+	}
+
+	it("claims at most one reply per sender per request TTL", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-10T00:00:00.000Z"));
+		const service = new PairingService(claimRuntime(), {
+			requestTtlMs: 60_000,
+		});
+
+		expect(service.claimPairingReply("discord", "sender-1")).toBe(true);
+		expect(service.claimPairingReply("discord", "sender-1")).toBe(false);
+		// Other senders and other channels are independent claims.
+		expect(service.claimPairingReply("discord", "sender-2")).toBe(true);
+		expect(service.claimPairingReply("telegram", "sender-1")).toBe(true);
+
+		vi.setSystemTime(new Date("2026-01-10T00:01:01.000Z"));
+		expect(service.claimPairingReply("discord", "sender-1")).toBe(true);
 	});
 });

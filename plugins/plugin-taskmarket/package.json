@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-taskmarket",
-  "version": "2.0.12-beta.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Read-only Taskmarket task discovery for elizaOS agents",
   "main": "./dist/index.js",
@@ -36,19 +36,16 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@types/node": "^25.0.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.10"
   },
   "elizaos": {
     "plugin": {
       "displayName": "Taskmarket",
       "category": "utility"
     }
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

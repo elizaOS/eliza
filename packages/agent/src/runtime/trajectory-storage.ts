@@ -15,10 +15,15 @@ import {
   type IAgentRuntime,
   type JsonValue,
   omitUnvalidatedProviderSpans,
+  parseTrajectorySemanticStages,
   projectModelCallDiagnosticValue,
   projectToolDiagnosticValue,
+  type RecordedStage,
+  recordedStageToSemanticStage,
   Service,
   sanitizeTrajectoryJsonObject,
+  TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+  type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import type {
   Trajectory,
@@ -63,6 +68,7 @@ import {
   type PersistedLlmCall,
   type PersistedProviderAccess,
   type PersistedTrajectory,
+  parsePersistedTrajectoryRow,
   patchedLoggers,
   pushChatExchange,
   readOrchestratorTrajectoryContext,
@@ -170,7 +176,7 @@ function acceptsNewTrajectoryCapture(
 function reportLateTrajectoryCapture(
   runtime: IAgentRuntime,
   stepId: string,
-  captureType: "llm" | "provider",
+  captureType: "llm" | "provider" | "semanticStage",
   purpose?: string,
 ): void {
   const entry = rememberClosedTrajectoryStep(runtime, stepId);
@@ -223,7 +229,7 @@ function acceptsTrajectoryStepCapture(
   runtime: IAgentRuntime,
   enabled: boolean,
   stepId: string,
-  captureType: "llm" | "provider",
+  captureType: "llm" | "provider" | "semanticStage",
   purpose?: string,
 ): boolean {
   if (!acceptsNewTrajectoryCapture(runtime, enabled)) return false;
@@ -234,7 +240,7 @@ function acceptsTrajectoryStepCapture(
 
 function reportInvalidTrajectoryCapture(
   runtime: IAgentRuntime,
-  captureType: "llm" | "provider",
+  captureType: "llm" | "provider" | "semanticStage",
   error: unknown,
 ): void {
   warnRuntime(runtime, "Rejected invalid trajectory capture", error);
@@ -802,7 +808,7 @@ async function saveActiveTrajectoryCapture(
   runtime: IAgentRuntime,
   trajectory: PersistedTrajectory,
   stepId: string,
-  captureType: "llm" | "provider",
+  captureType: "llm" | "provider" | "semanticStage",
   expectedUpdatedAt: string,
 ): Promise<"saved" | "closed" | "conflict"> {
   try {
@@ -1240,6 +1246,138 @@ async function appendProviderAccess(
   });
 }
 
+/**
+ * Persist one pre-validated semantic decision stage (Stage-1/planner/tool/
+ * evaluation envelope, #17030) onto the bridge-owned step row. Idempotent per
+ * `stageId` so retries after transport ambiguity never double-record.
+ */
+async function appendSemanticStage(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  stepId: string,
+  semantic: TrajectorySemanticStageRecord,
+  retryState?: ActiveCaptureRetryState,
+): Promise<void> {
+  const now = retryState?.timestamp ?? Date.now();
+  const attempt = retryState?.attempt ?? 0;
+  const persisted = await loadTrajectoryByStepId(runtime, trajectoryId);
+  if (!persisted && trajectoryId !== stepId) {
+    throw new ElizaError(
+      "Parent trajectory is unavailable for semantic-stage capture",
+      {
+        code: "TRAJECTORY_PARENT_NOT_FOUND",
+        context: { trajectoryId, stepId },
+      },
+    );
+  }
+  if (persisted && persisted.status !== "active") {
+    releaseTrajectoryBridgeState(runtime, persisted.id);
+    reportLateTrajectoryCapture(runtime, stepId, "semanticStage");
+    return;
+  }
+  const trajectory =
+    persisted ?? createBaseTrajectory(trajectoryId, now, runtime.agentId);
+  const expectedUpdatedAt = trajectory.updatedAt;
+
+  if (
+    trajectory.steps.some((candidate) =>
+      (candidate.semanticStages ?? []).some(
+        (candidateStage) => candidateStage.stageId === semantic.stageId,
+      ),
+    )
+  ) {
+    return;
+  }
+
+  trajectory.source = trajectory.source || "runtime";
+  trajectory.status =
+    trajectory.status === "active" ? "active" : trajectory.status;
+
+  const step = ensureStep(trajectory, stepId, now);
+  const stages = step.semanticStages ?? [];
+  if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
+    throw new ElizaError("Trajectory step semantic stages are full", {
+      code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
+      context: {
+        trajectoryId: trajectory.id,
+        stepId,
+        limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+      },
+    });
+  }
+  const nextStages = [...stages, semantic];
+  // Write ⊆ read: each stage is validated with a fresh budget on the way in,
+  // but the read path decodes the whole array against one shared budget, so a
+  // run of individually-valid stages can produce a step that no longer
+  // normalizes. That poisons the entire trajectory row on read, not just this
+  // step, so the offending stage is rejected here as an invalid capture
+  // instead.
+  try {
+    parseTrajectorySemanticStages(nextStages);
+  } catch (cause) {
+    throw new ElizaError(
+      "Trajectory step semantic stages exceed the decode budget",
+      {
+        code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
+        context: {
+          trajectoryId: trajectory.id,
+          stepId,
+          stageId: semantic.stageId,
+          stageCount: nextStages.length,
+        },
+        cause,
+      },
+    );
+  }
+  step.semanticStages = nextStages;
+  trajectory.startTime = Math.min(trajectory.startTime, now);
+  trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
+  trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);
+
+  const saveResult = await saveActiveTrajectoryCapture(
+    runtime,
+    trajectory,
+    stepId,
+    "semanticStage",
+    expectedUpdatedAt,
+  );
+  if (saveResult !== "conflict") return;
+  if (attempt + 1 >= MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS) {
+    throw new ElizaError("Trajectory changed during semantic-stage capture", {
+      code: "TRAJECTORY_WRITE_CONFLICT",
+      context: {
+        trajectoryId: trajectory.id,
+        stepId,
+        attempts: MAX_ACTIVE_CAPTURE_WRITE_ATTEMPTS,
+      },
+    });
+  }
+  await yieldTrajectoryWriteRetry();
+  await appendSemanticStage(runtime, trajectoryId, stepId, semantic, {
+    attempt: attempt + 1,
+    recordId: semantic.stageId,
+    timestamp: now,
+  });
+}
+
+/**
+ * Validate one `logSemanticStage` payload into its persisted envelope. Returns
+ * null for a structurally absent payload; throws when a present payload is
+ * malformed so the caller can report it as an invalid capture.
+ */
+function normalizeSemanticStagePayload(
+  args: unknown[],
+): { stepId: string; semantic: TrajectorySemanticStageRecord } | null {
+  const record = asRecord(args[0]);
+  if (!record) return null;
+  const stepId = normalizeStepId(record.stepId);
+  if (!stepId) return null;
+  return {
+    stepId,
+    semantic: recordedStageToSemanticStage(record.stage as RecordedStage),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // writeStartedTrajectoryStep / writeCompletedTrajectoryStep
 // ---------------------------------------------------------------------------
@@ -1661,6 +1799,47 @@ export async function installDatabaseTrajectoryLogger(
         trajectoryId,
         normalized.stepId,
         normalized.params,
+      );
+    });
+    const runtimeKey = runtime as object;
+    lastWritePromises.set(runtimeKey, writePromise);
+  };
+
+  (
+    logger as typeof logger & {
+      logSemanticStage?: (...args: unknown[]) => void;
+    }
+  ).logSemanticStage = (...args: unknown[]) => {
+    if (!bridgeAcceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
+    try {
+      normalized = normalizeSemanticStagePayload(args);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(runtime, "semanticStage", error);
+      return;
+    }
+    if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        runtime,
+        bridgeIsEnabled(),
+        normalized.stepId,
+        "semanticStage",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(runtime, normalized.stepId);
+
+    const writePromise = enqueueStepWrite(runtime, trajectoryId, async () => {
+      if (!bridgeIsEnabled()) return;
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+      await appendSemanticStage(
+        runtime,
+        trajectoryId,
+        normalized.stepId,
+        normalized.semantic,
       );
     });
     const runtimeKey = runtime as object;
@@ -2615,6 +2794,82 @@ export class DatabaseTrajectoryLogger extends Service {
     }
   }
 
+  /** Add an idempotent delayed reward without mutating a settled step. */
+  async applyReward(params: {
+    trajectoryId: string;
+    idempotencyKey: string;
+    reward: number;
+    component: string;
+  }): Promise<boolean> {
+    if (!Number.isFinite(params.reward)) {
+      throw new ElizaError("Trajectory reward is invalid", {
+        code: "TRAJECTORY_REWARD_INVALID",
+        context: { trajectoryId: params.trajectoryId },
+      });
+    }
+    let applied = false;
+    await enqueueStepWrite(this.runtime, params.trajectoryId, async () => {
+      if (!this.enabled) return;
+      await executeRawSqlTransaction(this.runtime, async (execute) => {
+        const result = await execute(
+          `SELECT * FROM trajectories
+            WHERE id = ${sqlQuote(params.trajectoryId)}
+              AND agent_id = ${sqlQuote(this.runtime.agentId)}
+            LIMIT 1 FOR UPDATE`,
+        );
+        const rows = extractRequiredRows(result, {
+          operation: "apply delayed trajectory reward",
+          trajectoryId: params.trajectoryId,
+        });
+        const row = rows[0] ? asRecord(rows[0]) : null;
+        if (!row) return;
+        const trajectory = parsePersistedTrajectoryRow(
+          row,
+          params.trajectoryId,
+        );
+        const keys = Array.isArray(trajectory.metadata.appliedRewardKeys)
+          ? trajectory.metadata.appliedRewardKeys.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+        if (keys.includes(params.idempotencyKey)) {
+          applied = true;
+          return;
+        }
+        trajectory.metadata.appliedRewardKeys = [
+          ...keys,
+          params.idempotencyKey,
+        ];
+        trajectory.totalReward += params.reward;
+        const componentValues = trajectory.rewardComponents.components;
+        const components =
+          componentValues === undefined
+            ? {}
+            : normalizeJsonRecord(componentValues, "rewardComponents");
+        const current = components[params.component];
+        trajectory.rewardComponents = {
+          ...trajectory.rewardComponents,
+          components: {
+            ...components,
+            [params.component]:
+              (typeof current === "number" && Number.isFinite(current)
+                ? current
+                : 0) + params.reward,
+          },
+        };
+        await execute(`UPDATE trajectories SET
+          total_reward = ${trajectory.totalReward},
+          reward_components_json = ${sqlQuote(JSON.stringify(trajectory.rewardComponents))},
+          metadata_json = ${sqlQuote(JSON.stringify(trajectory.metadata))},
+          updated_at = ${sqlQuote(new Date().toISOString())}
+          WHERE id = ${sqlQuote(params.trajectoryId)}
+            AND agent_id = ${sqlQuote(this.runtime.agentId)}`);
+        applied = true;
+      });
+    });
+    return applied;
+  }
+
   async flushWriteQueue(trajectoryId?: string): Promise<void> {
     await flushTrajectoryWrites(this.runtime, trajectoryId);
   }
@@ -2751,6 +3006,50 @@ export class DatabaseTrajectoryLogger extends Service {
           trajectoryId,
           normalized.stepId,
           normalized.params,
+        );
+      },
+    );
+    const runtimeKey = this.runtime as object;
+    lastWritePromises.set(runtimeKey, writePromise);
+  }
+
+  logSemanticStage(params: Record<string, unknown>): void {
+    if (!this.acceptsCapture()) return;
+    let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
+    try {
+      normalized = normalizeSemanticStagePayload([params]);
+    } catch (error) {
+      // error-policy:J7 malformed instrumentation cannot fail the agent loop.
+      reportInvalidTrajectoryCapture(this.runtime, "semanticStage", error);
+      return;
+    }
+    if (!normalized) return;
+    if (
+      !acceptsTrajectoryStepCapture(
+        this.runtime,
+        this.enabled,
+        normalized.stepId,
+        "semanticStage",
+      )
+    )
+      return;
+    const trajectoryId = resolveBridgeTrajectoryId(
+      this.runtime,
+      normalized.stepId,
+    );
+
+    const writePromise = enqueueStepWrite(
+      this.runtime,
+      trajectoryId,
+      async () => {
+        if (!this.enabled) return;
+        const tableReady = await ensureTrajectoriesTable(this.runtime);
+        if (!tableReady) return;
+        await appendSemanticStage(
+          this.runtime,
+          trajectoryId,
+          normalized.stepId,
+          normalized.semantic,
         );
       },
     );

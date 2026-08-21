@@ -119,6 +119,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  "computer-use-sessions": [
+    {
+      spec: "plugins/plugin-computeruse/src/views/ComputerUseSessionsView.test.tsx",
+      proves:
+        "Exercises authenticated session/frame rendering, virtual cursors, native floating-window intent, close-session mutation, and retryable failures.",
+      signals: [
+        "renders independent targets, a frame, and a virtual cursor",
+        "requests a native always-on-top viewer",
+        "keeps list failures distinct and retryable",
+      ],
+    },
+  ],
   "lifeops-live-test": [
     {
       spec: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestSpatialView.tsx",
@@ -136,6 +148,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "messages deterministic controls",
         "messages-send",
         "messages-body",
+      ],
+    },
+  ],
+  maps: [
+    {
+      spec: "plugins/plugin-maps/src/components/MapsView.test.tsx",
+      proves:
+        "Searches normalized places, filters and selects details, compares only provider-returned route alternatives, and hands persistent actions to the receipt-enforced agent boundary.",
+      signals: [
+        "shows only provider-returned route alternatives",
+        "MAPS_SAVE",
+        "Route geometry is not drawn",
       ],
     },
   ],
@@ -303,7 +327,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(21);
+    expect(visualCases.length).toBe(23);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

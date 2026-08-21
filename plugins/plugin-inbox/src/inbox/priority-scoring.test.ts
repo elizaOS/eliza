@@ -3,6 +3,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  INBOX_PRIORITY_FLAGS_UNBOUNDED,
+  MAX_INBOX_PRIORITY_FLAGS_OUTPUT,
+} from "./priority-flags.ts";
+import {
   __resetPriorityScoringCacheForTests,
   scoreInboxMessages,
 } from "./priority-scoring.ts";
@@ -55,6 +59,34 @@ describe("scoreInboxMessages", () => {
         count: 2,
         modelId: "test-model",
       }),
+    );
+  });
+
+  it("fails closed at the reachable scorer boundary on delimiter output amplification", async () => {
+    const reportError = vi.fn();
+    const flags = Array.from(
+      { length: MAX_INBOX_PRIORITY_FLAGS_OUTPUT + 1 },
+      () => "urgent",
+    ).join("|");
+    const runtime = {
+      useModel: vi.fn(async () =>
+        JSON.stringify({
+          scores: [{ score: 80, category: "important", flags }],
+        }),
+      ),
+      reportError,
+    } as unknown as IAgentRuntime;
+
+    const result = await scoreInboxMessages(runtime, [message("amplified")], {
+      model: "test-model",
+      concurrency: 1,
+    });
+
+    expect(result).toEqual([null]);
+    expect(reportError).toHaveBeenCalledWith(
+      "lifeops.priority-scoring",
+      expect.objectContaining({ code: INBOX_PRIORITY_FLAGS_UNBOUNDED }),
+      expect.objectContaining({ count: 1, modelId: "test-model" }),
     );
   });
 });

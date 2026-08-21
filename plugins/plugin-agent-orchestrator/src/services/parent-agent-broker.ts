@@ -8,6 +8,8 @@
  * on a follow-up turn; fixed-cost self-spend commands may auto-authorize within
  * the configured spend cap (see spend-allowance.ts), while variable-cost ones
  * always demand confirmation because a child-declared price cannot be trusted.
+ * Cloud command HTTP hops honor `PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS` so a hung
+ * Cloud API cannot stall the parent-agent broker.
  */
 import type {
   HandlerCallback,
@@ -15,7 +17,11 @@ import type {
   Logger,
   Memory,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import {
+  requireConfirmation,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -35,6 +41,8 @@ const ACTION_LIST_LIMIT_DEFAULT = 60;
 const ACTION_LIST_LIMIT_MAX = 200;
 const CLOUD_RESPONSE_MAX_CHARS = 8000;
 const DEFAULT_CLOUD_BASE_URL = "https://api.eliza.app";
+/** Bound for Cloud command `fetch` so a hung peer cannot stall the broker. */
+export const PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS = 30_000;
 
 export const PARENT_AGENT_BROKER_SLUG = "parent-agent";
 
@@ -773,10 +781,11 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   };
 }
 
-function truncate(value: string, maxChars: number): string {
-  const compact = value.replace(/\s+/g, " ").trim();
+export function truncate(value: string, maxChars: number): string {
+  const compact = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
   if (compact.length <= maxChars) return compact;
-  return `${compact.slice(0, maxChars - 3).trimEnd()}...`;
+  const budget = Math.max(0, maxChars - 3);
+  return `${truncateWellFormed(compact, budget).trimEnd()}...`;
 }
 
 function actionDescription(action: {
@@ -1299,15 +1308,32 @@ async function runCloudCommand(args: {
   }
 
   const body = cloudBody(definition, requestParams);
-  const response = await fetch(built.url, {
-    method: definition.method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-API-Key": apiKey,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(built.url, {
+      method: definition.method,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "X-API-Key": apiKey,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // error-policy:J1 hung Cloud command hop is a failed command, never a hang
+    return {
+      success: false,
+      text: `Eliza Cloud command ${definition.command} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      data: {
+        actionName: PARENT_AGENT_BROKER_SLUG,
+        mode: "cloud-command",
+        command: definition.command,
+      },
+    };
+  }
   const payload = await responsePayload(response);
   const payloadText =
     typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);

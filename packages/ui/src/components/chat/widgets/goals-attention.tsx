@@ -10,7 +10,7 @@
  */
 import { Target } from "lucide-react";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -42,24 +42,41 @@ export function GoalsAttentionWidget({
   // `null` distinguishes "first load still pending" from "loaded, empty" so the
   // surface renders nothing (not a card) until we actually know the data.
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
+  const activeLoadRef = useRef<AbortController | null>(null);
   const nav = useWidgetNavigation();
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // the 20s goals poll must stay dormant until the session is authenticated.
   const authenticated = useIsAuthenticated();
 
-  const load = useCallback(async () => {
-    const next = await loadGoalsForGlance(authenticated);
-    // A null return means the fetch failed (J4) - keep the last good render.
-    if (next == null) return;
-    // Skip the state update (and the re-render) when the poll is unchanged.
-    setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
-  }, [authenticated]);
+  const load = useCallback(
+    (background = false) => {
+      activeLoadRef.current?.abort();
+      const controller = new AbortController();
+      activeLoadRef.current = controller;
+      void loadGoalsForGlance(authenticated, controller.signal)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          if (next == null) {
+            if (!background) setGoals([]);
+            return;
+          }
+          setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
+        })
+        .finally(() => {
+          if (activeLoadRef.current === controller) {
+            activeLoadRef.current = null;
+          }
+        });
+    },
+    [authenticated],
+  );
 
   useEffect(() => {
-    void load();
+    load();
+    return () => activeLoadRef.current?.abort();
   }, [load]);
   // Poll only while the document is visible, at the View's 20s cadence.
-  useIntervalWhenDocumentVisible(() => void load(), GOALS_REFRESH_INTERVAL_MS);
+  useIntervalWhenDocumentVisible(() => load(true), GOALS_REFRESH_INTERVAL_MS);
 
   const urgent = useMemo(() => (goals ? mostUrgentGoal(goals) : null), [goals]);
   const count = useMemo(() => (goals ? attentionCount(goals) : 0), [goals]);

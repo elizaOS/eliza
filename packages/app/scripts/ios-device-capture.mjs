@@ -47,16 +47,18 @@ import {
 } from "./ios-device-devicectl.mjs";
 import {
   assertDeviceUnlocked,
+  buildCodesignVerificationPlan,
   buildIosXcuitestShardPlan,
   buildPlistXml,
   buildRunnerCodesignPlan,
   buildSimctlListappsArgs,
   classifyCodesignPreflight,
+  classifyCodesignVerificationResults,
   classifyIsolatedReruns,
   classifyRunnerSigningMode,
   classifyXcresultSummaryForGate,
   DEFAULT_APP_BUNDLE_ID,
-  deriveSigningEntitlements,
+  deriveTargetSigningEntitlements,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
@@ -327,10 +329,51 @@ function runCaptureCommand(command, args, { label, required = true } = {}) {
  */
 function isCodeSigned(appPath) {
   if (!fs.existsSync(appPath)) return false;
-  const result = spawnSync("codesign", ["--verify", "--strict", appPath], {
-    stdio: "ignore",
+  const nested = [];
+  const stack = [appPath];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (/\.(?:appex|app|framework|xctest)$/.test(entry.name)) {
+          nested.push(full);
+        }
+        // Framework contents are sealed as a unit and may contain version
+        // symlink layouts; verify the framework itself without traversing it.
+        if (!entry.name.endsWith(".framework")) stack.push(full);
+      } else if (entry.name.endsWith(".dylib")) {
+        nested.push(full);
+      }
+    }
+  }
+  const targets = [...new Set(nested)].sort((a, b) => b.length - a.length);
+  targets.push(appPath);
+  const results = targets.map((target) => ({
+    path: target,
+    deep: false,
+    valid:
+      spawnSync("codesign", ["--verify", "--strict", target], {
+        stdio: "ignore",
+      }).status === 0,
+  }));
+  results.push({
+    path: appPath,
+    deep: true,
+    valid:
+      spawnSync("codesign", ["--verify", "--deep", "--strict", appPath], {
+        stdio: "ignore",
+      }).status === 0,
   });
-  return result.status === 0;
+  const verdict = classifyCodesignVerificationResults(results);
+  if (!verdict.valid) {
+    log(
+      `codesign reuse rejected: ${verdict.failures
+        .map((failure) => `${failure.path}${failure.deep ? " (deep)" : ""}`)
+        .join(", ")}`,
+    );
+  }
+  return verdict.valid;
 }
 
 /** Loose dylibs under `root`, excluding anything inside a .framework (those are signed as units). */
@@ -383,6 +426,7 @@ function graftSignRunner({ runnerApp, deviceUdid, workDir }) {
   const { selected: profile, rejected } = selectProvisioningProfile(profiles, {
     bundleId: runnerBundleId,
     deviceUdid,
+    requireGetTaskAllow: true,
   });
   if (!profile) {
     const rejectedLines = rejected
@@ -443,7 +487,7 @@ function graftSignRunner({ runnerApp, deviceUdid, workDir }) {
   const entitlementsPath = path.join(workDir, "ent-xctrunner.plist");
   fs.writeFileSync(
     entitlementsPath,
-    buildPlistXml(deriveSigningEntitlements(profile, runnerBundleId)),
+    buildPlistXml(deriveTargetSigningEntitlements(profile, runnerBundleId, {})),
   );
 
   const frameworksDir = path.join(runnerApp, "Frameworks");
@@ -483,8 +527,15 @@ function graftSignRunner({ runnerApp, deviceUdid, workDir }) {
     signArgs.push(step.path);
     runInherit("codesign", signArgs);
   }
-  runInherit("codesign", ["--verify", "--deep", "--strict", runnerApp]);
-  log("runner codesign --verify --deep --strict: OK");
+  for (const verification of buildCodesignVerificationPlan(plan, runnerApp)) {
+    runInherit("codesign", [
+      "--verify",
+      ...(verification.deep ? ["--deep"] : []),
+      "--strict",
+      verification.path,
+    ]);
+  }
+  log("runner explicit nested + deep codesign verification: OK");
 }
 
 /**

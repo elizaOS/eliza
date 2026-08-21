@@ -4,8 +4,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
 import {
   and,
+  asc,
   desc,
   eq,
   type InferInsertModel,
@@ -21,11 +23,16 @@ import {
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
 import { type Database, dbRead, dbWrite } from "../helpers";
+import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
 import { containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizationConfig } from "../schemas/organization-config";
 import { organizations } from "../schemas/organizations";
+import { redeemableEarnings } from "../schemas/redeemable-earnings";
+import { users } from "../schemas/users";
+import { settleComputeRateSegments } from "./compute-billing-segments";
+import { containerBillingRepository } from "./container-billing";
 import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
 
 export type Container = InferSelectModel<typeof containers>;
@@ -48,6 +55,12 @@ export interface QuotaCheckResult {
   current: number;
   max: number;
   error?: string;
+}
+
+/** Result of admitting one canonical project intent under the organization lock. */
+export interface ContainerProjectIntentResult {
+  container: Container;
+  created: boolean;
 }
 
 function resolveContainerLimitFromDatabaseSources(
@@ -104,6 +117,8 @@ async function prepareContainerInsertPayload(
     organizationId: data.organization_id,
     objectId: context.id,
     field: "deployment_log",
+    // Deployment logs are diagnostics; bound them when offload is unavailable.
+    oversizeInline: "clamp" as const,
     createdAt: data.created_at ?? context.created_at,
     value: data.deployment_log,
   });
@@ -129,6 +144,8 @@ async function prepareContainerUpdatePayload(
     organizationId: data.organization_id ?? context.organization_id,
     objectId: context.id,
     field: "deployment_log",
+    // Deployment logs are diagnostics; bound them when offload is unavailable.
+    oversizeInline: "clamp" as const,
     createdAt: data.created_at ?? context.created_at ?? new Date(),
     value: data.deployment_log,
   });
@@ -471,6 +488,127 @@ export class ContainersRepository {
   }
 
   /**
+   * Atomically fences a user restart against billing stop dispatch.
+   *
+   * Lock order matches compute billing: workload, organization, then stop
+   * intent. A restart is admitted only when authoritative credits plus
+   * policy-permitted earnings exceed the exact unsettled segment debt. The
+   * elapsed cursor is preserved and marked immediately due, so the billing
+   * writer must settle it instead of forgiving the grace interval. Changing
+   * status advances lifecycle_revision before provider I/O, so an older
+   * dispatcher can never stop the new run.
+   */
+  async prepareFundedRestart(id: string, organizationId: string, now: Date): Promise<Container> {
+    return await dbWrite.transaction(async (tx) => {
+      const [container] = await tx
+        .select()
+        .from(containers)
+        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+        .for("update")
+        .limit(1);
+      if (!container) throw new Error("Container not found");
+      const [organization] = await tx
+        .select({
+          credit_balance: organizations.credit_balance,
+          pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update")
+        .limit(1);
+      if (!organization) throw new Error("Container billing organization not found");
+      const creditAvailable = new Decimal(organization.credit_balance);
+      if (!creditAvailable.isFinite()) {
+        throw new Error("Container restart credit funding is not a finite numeric value");
+      }
+      let earningsAvailable = new Decimal(0);
+      let earningsSourceUserId: string | null = null;
+      if (organization.pay_as_you_go_from_earnings) {
+        const [sourceUser] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.organization_id, organizationId))
+          .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
+          .limit(1);
+        if (sourceUser) {
+          earningsSourceUserId = sourceUser.id;
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
+          );
+          const [earnings] = await tx
+            .select({ available_balance: redeemableEarnings.available_balance })
+            .from(redeemableEarnings)
+            .where(eq(redeemableEarnings.user_id, sourceUser.id))
+            .for("update")
+            .limit(1);
+          if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
+        }
+      }
+      if (!earningsAvailable.isFinite()) {
+        throw new Error("Container restart earnings funding is not a finite numeric value");
+      }
+      const debt = await settleComputeRateSegments(tx, {
+        organizationId,
+        workloadKind: "container",
+        workloadId: id,
+        periodStart: container.last_billed_at ?? container.created_at,
+        periodEnd: now,
+      });
+      if (creditAvailable.plus(earningsAvailable).lte(debt.amount)) {
+        throw new Error("Container restart requires funding beyond its unsettled compute debt");
+      }
+
+      const settlement = await containerBillingRepository.recordSuccessfulDailyBillingInTransaction(
+        tx,
+        {
+          containerId: id,
+          organizationId,
+          userId: container.user_id,
+          containerName: container.name,
+          dailyRate: 0,
+          earningsSourceUserId,
+          payAsYouGoFromEarnings: organization.pay_as_you_go_from_earnings,
+          newBalance: 0,
+          now,
+        },
+        { forceLifecycleSettlement: true },
+      );
+      if (settlement.insufficient) {
+        throw new Error("Container restart funding changed during accrued debt settlement");
+      }
+
+      await tx
+        .update(containerComputeStopIntents)
+        .set({ status: "superseded", superseded_at: now, updated_at: now })
+        .where(
+          and(
+            eq(containerComputeStopIntents.organization_id, organizationId),
+            eq(containerComputeStopIntents.container_id, id),
+            inArray(containerComputeStopIntents.status, [
+              "pending",
+              "dispatching",
+              "retry",
+              "terminal_attention",
+            ]),
+          ),
+        );
+      const [prepared] = await tx
+        .update(containers)
+        .set({
+          status: "deploying",
+          billing_status: "active",
+          shutdown_warning_sent_at: null,
+          scheduled_shutdown_at: null,
+          updated_at: now,
+        })
+        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+        .returning();
+      if (!prepared) throw new Error("Container restart fence was lost");
+      return prepared;
+    });
+  }
+
+  /**
    * Deletes a container by ID.
    */
   async delete(id: string, organizationId: string): Promise<boolean> {
@@ -600,6 +738,29 @@ export class ContainersRepository {
    * Uses row-level locking (FOR UPDATE) to ensure atomicity.
    */
   async createWithQuotaCheck(data: NewContainer, transaction?: Database): Promise<Container> {
+    const result = await this.createWithQuotaAndOptionalProjectIntent(data, false, transaction);
+    return result.container;
+  }
+
+  /**
+   * Atomically admits one active `(organization_id, project_name)` intent.
+   *
+   * The organization row lock is shared with quota enforcement, so a replica
+   * preflight can never authorize a second provider-bound create. A retry sees
+   * the primary row and returns it without consuming quota or inserting again.
+   */
+  async createWithProjectIntentAndQuotaCheck(
+    data: NewContainer,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
+    return await this.createWithQuotaAndOptionalProjectIntent(data, true, transaction);
+  }
+
+  private async createWithQuotaAndOptionalProjectIntent(
+    data: NewContainer,
+    enforceProjectIntent: boolean,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
     const executeInTransaction = async (tx: Database) => {
       // 1. Lock the organization row to prevent concurrent quota checks
       const [org] = await tx
@@ -613,6 +774,27 @@ export class ContainersRepository {
 
       if (!org) {
         throw new Error("Organization not found");
+      }
+
+      if (enforceProjectIntent) {
+        const [existing] = await tx
+          .select()
+          .from(containers)
+          .where(
+            and(
+              eq(containers.organization_id, data.organization_id),
+              eq(containers.project_name, data.project_name),
+              notInArray(containers.status, ["stopped", "failed", "deleting", "deleted"]),
+            ),
+          )
+          .orderBy(desc(containers.created_at))
+          .limit(1);
+        if (existing) {
+          return {
+            container: await hydrateContainerDeploymentLog(existing),
+            created: false,
+          };
+        }
       }
 
       // Get organization config for settings
@@ -676,7 +858,10 @@ export class ContainersRepository {
 
       const [container] = await tx.insert(containers).values(values).returning();
 
-      return await hydrateContainerDeploymentLog(container);
+      return {
+        container: await hydrateContainerDeploymentLog(container),
+        created: true,
+      };
     };
 
     // Use external transaction if provided, otherwise create new one

@@ -129,9 +129,10 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
   behavior in a host package. Node and edge both use `TodoStore` and
   `createTodosSqlStore`.
 - **Every operation is tenant-scoped.** `agentId` and `entityId` are required in
-  all storage predicates. `roomId` narrows presentation and room-scoped bulk
-  operations; `worldId` is stored and remapped as projection metadata. Neither
-  is an ownership boundary.
+  all storage predicates. `write` replaces the entity-scoped list exposed to
+  the planner across rooms, while `clear` may narrow deletion to the current
+  room. `roomId` and `worldId` otherwise remain projection metadata, not
+  ownership boundaries.
 - **Planner mutations use the ledger.** Calling direct `create` / `update` /
   `delete` from an action bypasses exactly-once replay and is a correctness bug.
 - **`write` is a full replacement.** It reconciles the desired scoped list,

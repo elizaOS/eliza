@@ -49,8 +49,8 @@ export const earningsSourceEnum = pgEnum("earnings_source", [
  * Ledger entry types for audit trail
  */
 export const ledgerEntryTypeEnum = pgEnum("ledger_entry_type", [
-  "earning", // Points earned
-  "redemption", // Points redeemed for tokens
+  "earning", // Earnings credited (USD)
+  "redemption", // USD redeemed for tokens
   "adjustment", // Admin adjustment
   "refund", // Refund from failed redemption
   "credit_conversion", // Earnings converted into org credit balance (self-fund)
@@ -61,6 +61,12 @@ export const ledgerEntryTypeEnum = pgEnum("ledger_entry_type", [
  *
  * One row per user - consolidates all earning sources.
  *
+ * CANONICAL UNIT (issue #22960): every monetary column in this table is
+ * US DOLLARS, NUMERIC(18,4) (4 decimal places). "Points" are a redemption
+ * HTTP-boundary representation only (100 points = $1.00; see
+ * lib/services/earnings-units.ts). No consumer may interpret these values
+ * as points, cents, or any other unit.
+ *
  * CRITICAL CONSTRAINTS:
  * - available_balance = total_earned - total_redeemed - total_pending
  * - available_balance >= 0 (enforced by CHECK constraint)
@@ -70,7 +76,7 @@ export const redeemableEarnings = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    // The user who earned these points
+    // The user who earned this balance (stored in USD, NUMERIC(18,4); #22960)
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" })
@@ -220,6 +226,7 @@ export const redeemableEarningsLedger = pgTable(
         ip_address?: string;
         user_agent?: string;
         idempotency_key?: string;
+        asset?: "eliza" | "usdc";
         completed_at?: string;
         network?: string;
         tx_hash?: string;
@@ -247,6 +254,9 @@ export const redeemableEarningsLedger = pgTable(
         tokens?: number;
         protocol?: string;
         type?: string;
+        container_id?: string;
+        billing_period_start?: string;
+        billing_period_end?: string;
       }>()
       .default({})
       .notNull(),

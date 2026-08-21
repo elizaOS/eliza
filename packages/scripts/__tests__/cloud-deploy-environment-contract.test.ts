@@ -155,8 +155,11 @@ describe("canonical cloud deployment environment contract", () => {
       cloudApiWranglerSource.indexOf("[env.production.vars]"),
     );
 
-    expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
-    expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+    for (const environment of [staging, production]) {
+      expect(environment).toContain('name = "SHARED_RUNTIME_CONVERSATIONS"');
+      expect(environment).toContain('class_name = "SharedRuntimeConversation"');
+      expect(environment).not.toContain("SHARED_ELIZA_AGENT_RUNTIME");
+    }
   });
 
   test("enables Shared semantic memory only in the staging prove-out", () => {
@@ -701,6 +704,25 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of [
+      "ELIZA_APNS_KEY",
+      "ELIZA_APNS_KEY_ID",
+      "ELIZA_APNS_TEAM_ID",
+      "ELIZA_APNS_TOPIC",
+      "ELIZA_APNS_PRODUCTION",
+    ]) {
+      expect(publish.env?.[name]).toBeDefined();
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.ELIZA_APNS_KEY).toContain("secrets.ELIZA_APNS_KEY");
+    expect(publish.env?.ELIZA_APNS_TOPIC).toContain("vars.ELIZA_APNS_TOPIC");
+    expect(publish.env?.ELIZA_APNS_PRODUCTION).toContain(
+      "vars.ELIZA_APNS_PRODUCTION",
+    );
+    expect(publish.run).toContain("verify_apns_binding_candidates");
+    expect(publish.run).toContain("partial existing or configured bindings");
+    expect(publish.run).toContain('ELIZA_APNS_TOPIC" != "ai.elizaos.app');
+    expect(publish.run).toContain('ELIZA_APNS_PRODUCTION" != "0"');
     for (const name of requiredAuthWorkerSecretNames) {
       expect(publish.env?.[name]).toContain("secrets.");
       expect(publish.run).toContain(`\n  ${name} \\\n`);
@@ -743,6 +765,9 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(inventory?.run).toContain(
       "Missing required Worker secret binding name(s)",
+    );
+    expect(inventory?.run).toContain(
+      "Personal Shared APNs bindings are partial",
     );
     expect(inventory?.run).toContain("values were not read");
   });

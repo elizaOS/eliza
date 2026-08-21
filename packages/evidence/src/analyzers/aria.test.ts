@@ -1,7 +1,8 @@
-// tree.aria pure operations on handwritten Playwright ariaSnapshot YAML:
-// normalize is order/whitespace-stable, diff surfaces structural add/remove/
-// change, and prune drops by depth and role. The analyzer reads a captured
-// snapshot file and reports node count + normalized form.
+/**
+ * Exercises tree.aria operations on handwritten Playwright snapshots. The
+ * deterministic harness covers normalization, structural diffing, pruning,
+ * and analyzer output over a real temporary snapshot file.
+ */
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -99,6 +100,13 @@ describe("parseAriaSnapshot", () => {
     expect(tree[0].role).toBe("button");
     expect(tree[0].name).toBe("Save: draft");
     expect(tree[0].children).toEqual([]);
+  });
+
+  it("parses a 100k-character trailing attribute run in one boundary scan", () => {
+    const attributes = " [x]".repeat(25_000);
+    const tree = parseAriaSnapshot(`- exotic role${attributes}`);
+    expect(tree[0].role).toBe("exotic role");
+    expect(tree[0].attributes).toHaveLength(25_000);
   });
 });
 

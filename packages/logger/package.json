@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/logger",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Standalone structured logger for elizaOS (extracted from @elizaos/core).",
   "type": "module",
   "sideEffects": false,
@@ -51,12 +51,10 @@
     }
   },
   "dependencies": {
-    "adze": "^2.2.5",
-    "fast-redact": "^3.5.0"
+    "adze": "^2.2.5"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.0"
   },
   "elizaos": {
@@ -69,8 +67,5 @@
         "server"
       ]
     }
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

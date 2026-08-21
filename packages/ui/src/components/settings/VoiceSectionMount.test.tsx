@@ -45,6 +45,7 @@ vi.mock("./VoiceProfileSection", () => ({
   VoiceProfileSection: () => null,
 }));
 
+import { BrandingContext, DEFAULT_BRANDING } from "../../config/branding";
 import { loadOsIntentAutoStartConsent } from "../../state/persistence";
 import { emitViewEvent } from "../../views/view-event-bus";
 import { VOICE_SETTINGS_APPLY_EVENT } from "../../voice/useVoiceSettingsApplyChannel";
@@ -55,6 +56,37 @@ import {
 import { VoiceSectionMount } from "./VoiceSectionMount";
 
 const WAKE_KEY = "eliza:voice:wake-word-enabled";
+
+describe("VoiceSectionMount — Cloud-only model controls", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    clientMock.getConfig.mockResolvedValue({});
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("does not mount the voice-model group in a Cloud-only build", async () => {
+    render(
+      <BrandingContext.Provider
+        value={{ ...DEFAULT_BRANDING, cloudOnly: true }}
+      >
+        <VoiceSectionMount />
+      </BrandingContext.Provider>,
+    );
+
+    expect(screen.queryByTestId("voice-section-models")).toBeNull();
+    await waitFor(() =>
+      expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
+    );
+  });
+});
 
 describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
   beforeEach(() => {

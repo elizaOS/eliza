@@ -11,6 +11,8 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type { JupiterQuoteResponse } from "../types.ts";
 
+export const DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS = 10_000;
+
 type RaydiumRegisteredProvider = { name: string };
 type RaydiumPositionInfo = { id: PublicKey; [key: string]: unknown };
 type ClmmPoolInfo = {
@@ -77,7 +79,8 @@ export class RaydiumService extends Service {
   }) {
     try {
       const quoteResponse = await fetch(
-        `https://api.raydium.io/v2/main/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`
+        `https://api.raydium.io/v2/main/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`,
+        { signal: AbortSignal.timeout(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS) }
       );
 
       if (!quoteResponse.ok) {
@@ -117,6 +120,7 @@ export class RaydiumService extends Service {
           computeUnitPriceMicroLamports: 5000000,
           dynamicComputeUnitLimit: true,
         }),
+        signal: AbortSignal.timeout(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS),
       });
 
       if (!swapResponse.ok) {
@@ -326,7 +330,8 @@ export class RaydiumService extends Service {
   }> {
     try {
       const response = await fetch(
-        `https://api.raydium.io/v2/main/pairs/${inputMint}/${outputMint}`
+        `https://api.raydium.io/v2/main/pairs/${inputMint}/${outputMint}`,
+        { signal: AbortSignal.timeout(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS) }
       );
 
       if (!response.ok) {
@@ -351,7 +356,8 @@ export class RaydiumService extends Service {
   }): Promise<Array<{ timestamp: number; price: number }>> {
     try {
       const response = await fetch(
-        `https://api.raydium.io/v2/main/prices/${inputMint}/${outputMint}?timeframe=${timeframe}`
+        `https://api.raydium.io/v2/main/prices/${inputMint}/${outputMint}?timeframe=${timeframe}`,
+        { signal: AbortSignal.timeout(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS) }
       );
 
       if (!response.ok) {

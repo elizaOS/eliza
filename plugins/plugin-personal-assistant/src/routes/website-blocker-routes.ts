@@ -21,6 +21,8 @@ import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
 } from "../contracts/index.js";
+import { listCallerDefinitions } from "../lifeops/domains/definition-authorization.js";
+import { defaultOwnerEntityId } from "../lifeops/service-normalize.js";
 import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
 
 type WebsiteBlockerRequestBody = {
@@ -30,6 +32,7 @@ type WebsiteBlockerRequestBody = {
 
 export interface WebsiteBlockerRouteContext extends RouteRequestContext {
   runtime?: IAgentRuntime | null;
+  ownerEntityId?: string | null;
 }
 
 function buildBlockRequest(
@@ -68,14 +71,21 @@ interface WebsiteBlockerHostResponse {
 
 async function resolveRequiredTasksForHost(
   runtime: IAgentRuntime,
+  ownerEntityId: string,
   host: string,
 ): Promise<{ groupKey: string | null; requiredTasks: RequiredTaskInfo[] }> {
   const { LifeOpsRepository } = await import("../lifeops/repository.js");
   const repo = new LifeOpsRepository(runtime);
 
   const agentId = String(runtime.agentId);
-  const definitions: LifeOpsTaskDefinition[] =
-    await repo.listActiveDefinitions(agentId);
+  const definitions: LifeOpsTaskDefinition[] = await listCallerDefinitions(
+    repo,
+    {
+      agentId: () => agentId,
+      ownerEntityId: () => ownerEntityId,
+    },
+    { activeOnly: true },
+  );
 
   const matchingDefinitions = definitions.filter((definition) =>
     definition.websiteAccess?.websites.some(
@@ -122,8 +132,17 @@ async function resolveRequiredTasksForHost(
 export async function handleWebsiteBlockerRoutes(
   ctx: WebsiteBlockerRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, readJsonBody, json, error, runtime } =
-    ctx;
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    readJsonBody,
+    json,
+    error,
+    runtime,
+    ownerEntityId,
+  } = ctx;
 
   if (
     pathname !== "/api/website-blocker" &&
@@ -163,7 +182,11 @@ export async function handleWebsiteBlockerRoutes(
 
     if (hostBlocked && runtime) {
       try {
-        const tasks = await resolveRequiredTasksForHost(runtime, queriedHost);
+        const tasks = await resolveRequiredTasksForHost(
+          runtime,
+          ownerEntityId ?? defaultOwnerEntityId(runtime),
+          queriedHost,
+        );
         result.requiredTasks = tasks.requiredTasks;
         result.groupKey = tasks.groupKey;
       } catch (err) {

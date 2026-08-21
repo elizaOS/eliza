@@ -55,6 +55,26 @@ describe("early local embedding ownership policy", () => {
   });
 });
 
+describe("deferred local embedding warmup canonical capability gate", () => {
+  const start = elizaSource.indexOf("const startEmbeddingWarmup = async (");
+  const end = elizaSource.indexOf(
+    "// Per-agent EVM + Solana wallet bootstrap",
+    start,
+  );
+  const body = elizaSource.slice(start, end);
+
+  it("returns before touching the local model when canonical routing omits embeddings", () => {
+    expect(start).toBeGreaterThan(-1);
+    const canonicalGate = body.indexOf(
+      'runtime.getSetting(\n      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",',
+    );
+    const warmupCall = body.indexOf("await warmEmbeddingModel(abortSignal);");
+    expect(canonicalGate).toBeGreaterThan(-1);
+    expect(body).toContain("canonicalEmbeddings === false");
+    expect(canonicalGate).toBeLessThan(warmupCall);
+  });
+});
+
 /**
  * Slice out the body of the `runDeferredBoot` arrow closure so the ordering
  * assertions cannot be satisfied by an unrelated earlier/later occurrence of

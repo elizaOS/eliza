@@ -25,11 +25,9 @@
  * Per-strategy knobs live beside it in `accountStrategySettings`.
  */
 
-import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { access, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   type AccountCredentialRecord,
   assertCanonicalAccountId,
@@ -63,7 +61,7 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -73,28 +71,16 @@ import {
 } from "@elizaos/shared";
 import * as zod from "zod";
 import type { ElizaConfig } from "../config/types.eliza.ts";
+import {
+  runSubscriptionCliNpm,
+  subscriptionCliCommandAvailable,
+} from "../internal/subscription-cli-process.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
-const execFileAsync = promisify(execFile);
 
 function accountStoragePolicy() {
   return createRuntimeAccountStoragePolicy(resolveStateDir());
-}
-
-async function commandAvailable(command: string): Promise<boolean> {
-  const executablePath = process.env.PATH;
-  if (!executablePath) return false;
-  for (const dir of executablePath.split(path.delimiter)) {
-    if (!dir) continue;
-    try {
-      await access(path.join(dir, command));
-      return true;
-    } catch {
-      // Continue through PATH.
-    }
-  }
-  return false;
 }
 
 const SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS = 2 * 60 * 1000;
@@ -143,11 +129,14 @@ export async function ensureSubscriptionCli(
   } = {},
 ): Promise<void> {
   const command = providerId === "openai-codex" ? "codex" : "claude";
-  const isAvailable = deps.isAvailable ?? commandAvailable;
+  const isAvailable =
+    deps.isAvailable ??
+    ((candidate: string) =>
+      Promise.resolve(subscriptionCliCommandAvailable(candidate)));
   const now = deps.now ?? Date.now;
 
   // A prior per-user install must stay visible to this check AND to the later
-  // bare `spawn("codex"|"claude")` in the login flows — including after a
+  // CLI launch in the login flows — including after a
   // process restart, where the parent PATH doesn't carry the tools dir.
   const binDir = path.join(
     subscriptionCliInstallPrefix(),
@@ -186,17 +175,23 @@ export async function ensureSubscriptionCli(
   const runInstall =
     deps.runInstall ??
     ((args: string[]) =>
-      execFileAsync("npm", args, {
+      runSubscriptionCliNpm(args, {
         timeout: SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS,
       }));
   try {
     await mkdir(prefix, { recursive: true });
     // A user-prefix install, never `-g`: no writes under /usr/lib/node_modules,
     // works for any service user that owns the eliza state dir.
+    // SECURITY: --ignore-scripts keeps npm lifecycle scripts (preinstall/
+    // postinstall) from executing arbitrary code on the host if one of the
+    // pinned CLI packages is ever supply-chain compromised; both CLIs ship as
+    // binaries that work without lifecycle scripts. Same guarantee as
+    // plugin-installer.ts.
     await runInstall([
       "install",
       "--prefix",
       prefix,
+      "--ignore-scripts",
       "--no-fund",
       "--no-audit",
       packageName,
@@ -638,7 +633,7 @@ async function probeAnthropicUsage(accessToken: string): Promise<{
       return {
         ok: false,
         status: response.status,
-        error: `Anthropic ${response.status}: ${text.slice(0, 200)}`,
+        error: `Anthropic ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         latencyMs,
       };
     }
@@ -761,7 +756,7 @@ async function probeCodingPlanKey(
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        error: `${providerId} ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         latencyMs,
       };
     }

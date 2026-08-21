@@ -70,6 +70,25 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     );
   });
 
+  it("loads the subscription catalog without sending stored credentials", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+
+    const result = await client.getSubscriptionPlans();
+
+    expect(result).toEqual({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/subscriptions/plans",
+      method: "GET",
+    });
+    expect(requests[0]?.headers.authorization).toBeUndefined();
+  });
+
   it("rejects apiBaseUrl values that already include a resource path or URL components", () => {
     expect(
       () =>
@@ -169,9 +188,12 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       amount: 25,
       idempotency_key: "idempotency-key-0001",
     });
+    await client.getRedemptionQuote({ network: "base", pointsAmount: 500 });
+    await client.getRedemptionQuote("solana");
     await client.createRedemption({
       pointsAmount: 500,
       network: "base",
+      asset: "eliza",
       payoutAddress: "0x0000000000000000000000000000000000000001",
     });
 
@@ -182,8 +204,16 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     ).toEqual([
       "POST /api/v1/affiliates",
       "POST /api/v1/apps/app_1/earnings/withdraw",
+      "GET /api/v1/redemptions/quote",
+      "GET /api/v1/redemptions/quote",
       "POST /api/v1/redemptions",
     ]);
+    expect(requests[2]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=base&pointsAmount=500",
+    );
+    expect(requests[3]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=solana",
+    );
   });
 });
 
@@ -317,6 +347,14 @@ describe("ElizaCloudClient.createContainer wire contract", () => {
 });
 
 describe("ElizaCloudClient path parameter encoding", () => {
+  it("normalizes 100k trailing API base-url slashes", () => {
+    const client = new ElizaCloudClient({
+      apiBaseUrl: `https://api.eliza.app/api/v1${"/".repeat(100_000)}`,
+    });
+
+    expect(client.apiBaseUrl).toBe("https://api.eliza.app/api/v1");
+  });
+
   it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
     const { client, requests } = createClientRecorder();
 
@@ -339,15 +377,34 @@ describe("ElizaCloudClient path parameter encoding", () => {
       }),
     ).toThrow("Missing path parameter: sessionId");
   });
+
+  it("leaves 100k unmatched template openers unchanged without backtracking", async () => {
+    const { client, requests } = createClientRecorder();
+    const unmatched = "{".repeat(100_000);
+
+    await client.callEndpoint("GET", `/api/literal/${unmatched}`, {
+      pathParams: { unused: "value" },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(
+      decodeURIComponent(new URL(requests[0]?.url ?? "").pathname).endsWith(
+        unmatched,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("ElizaCloudClient CLI login", () => {
   it("uses the API host for session creation but the web host for browser auth", async () => {
     let requestedUrl: string | undefined;
-    const fetchImpl = (async (input) => {
+    let requestedBody: string | undefined;
+    const fetchImpl = (async (input, init) => {
       requestedUrl = String(input);
+      requestedBody = init?.body as string | undefined;
       return new Response(
         JSON.stringify({
+          sessionId: "11111111-2222-4333-8444-555555555555",
           status: "pending",
           expiresAt: "2026-05-14T08:00:00.000Z",
         }),
@@ -368,10 +425,67 @@ describe("ElizaCloudClient CLI login", () => {
     });
 
     expect(requestedUrl).toBe("https://api.eliza.app/api/auth/cli-session");
+    expect(JSON.parse(requestedBody ?? "null")).toEqual({
+      sessionId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    });
     expect(result.browserUrl).toBe(
-      "https://eliza.app/auth/cli-login?session=cli-test-session",
+      "https://eliza.app/auth/cli-login?session=11111111-2222-4333-8444-555555555555",
     );
   });
+
+  it("uses the authoritative server-minted session id", async () => {
+    const fetchImpl = (async (_input: unknown) => {
+      return new Response(
+        JSON.stringify({
+          sessionId: "11111111-2222-4333-8444-555555555555",
+          status: "pending",
+          expiresAt: "2026-05-14T08:00:00.000Z",
+        }),
+        {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://api.eliza.app",
+      fetchImpl,
+    });
+
+    const result = await client.startCliLogin();
+
+    expect(result.sessionId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(result.browserUrl).toBe(
+      "https://eliza.app/auth/cli-login?session=11111111-2222-4333-8444-555555555555",
+    );
+  });
+
+  it.each([
+    undefined,
+    "",
+    "client-chosen",
+    "11111111-2222-6333-8444-555555555555",
+  ])(
+    "rejects a missing or malformed server-minted session id: %s",
+    async (sessionId) => {
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ sessionId }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+      const client = new ElizaCloudClient({
+        baseUrl: "https://api.eliza.app",
+        fetchImpl,
+      });
+
+      await expect(client.startCliLogin()).rejects.toThrow(
+        "invalid login session ID",
+      );
+    },
+  );
 });
 
 describe("ElizaCloudClient web sign-in + app-credits affordances", () => {

@@ -83,6 +83,10 @@ import {
 } from "../../types/primitives.ts";
 import { ServiceType } from "../../types/service.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
+import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseJSONObjectFromText,
@@ -108,7 +112,11 @@ export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./providers/index.ts";
 
-import { describeImageCached } from "../../media/index.ts";
+import {
+	describeImageCached,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../../media/index.ts";
 import { recentErrorsProvider } from "../../providers/recent-errors.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
@@ -206,6 +214,27 @@ interface PostCreationJson {
 
 const MAX_POST_GENERATION_ATTEMPTS = 3;
 
+/** Hard cap for any single media fetch — attacker-supplied URLs can lie about size. */
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+
+async function readBoundedMediaResponse(
+	response: Response,
+	label: string,
+	url: string,
+): Promise<Buffer> {
+	const contentLength = response.headers.get("content-length");
+	if (contentLength !== null) {
+		const declared = Number(contentLength);
+		if (Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) {
+			throw new MediaFetchError(
+				"max_bytes",
+				`${label} exceeds size limit ${declared} > ${MAX_MEDIA_BYTES}: ${url}`,
+			);
+		}
+	}
+	return await readResponseWithLimit(response, MAX_MEDIA_BYTES);
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -218,7 +247,7 @@ function textContainsAgentName(
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -238,7 +267,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
@@ -267,7 +296,11 @@ export async function fetchMediaData(
 					if (!response.ok) {
 						throw new Error(`Failed to fetch file: ${attachment.url}`);
 					}
-					const mediaBuffer = Buffer.from(await response.arrayBuffer());
+					const mediaBuffer = await readBoundedMediaResponse(
+						response,
+						"Media",
+						attachment.url,
+					);
 					const mediaType = attachment.contentType || "image/png";
 					return { data: mediaBuffer, mediaType };
 				} finally {
@@ -328,13 +361,16 @@ export async function processAttachments(
 			let imageUrl = url;
 
 			if (!isRemote) {
-				const res = await fetch(url);
+				// Local media-server hops can hang without a bound — use the same
+				// fail-closed timeout as the remote attachment path so a stalled
+				// local server rejects instead of leaving the
+				// attachment-processing turn pending forever.
+				const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 				if (!res.ok) {
 					throw new Error(`Failed to fetch image: ${res.statusText}`);
 				}
 
-				const arrayBuffer = await res.arrayBuffer();
-				const buffer = Buffer.from(arrayBuffer);
+				const buffer = await readBoundedMediaResponse(res, "Image", url);
 				const contentType =
 					res.headers.get("content-type") || "application/octet-stream";
 				imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
@@ -360,8 +396,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						descriptionPreview:
-							described.description.substring(0, 100) || undefined,
+						descriptionPreview: described.description
+							? truncateWellFormed(
+									toWellFormedUnicode(described.description),
+									100,
+								)
+							: undefined,
 					},
 					"Generated description",
 				);
@@ -375,7 +415,9 @@ export async function processAttachments(
 			attachment.contentType === ContentType.DOCUMENT &&
 			!attachment.text
 		) {
-			const res = await fetch(url);
+			// Same fail-closed bound as the image branch: a stalled local
+			// media-server hop must not hang the attachment-processing turn.
+			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 			if (!res.ok) {
 				throw new Error(`Failed to fetch document: ${res.statusText}`);
 			}
@@ -400,7 +442,9 @@ export async function processAttachments(
 					"Processing text document",
 				);
 
-				const textContent = await res.text();
+				const textContent = (
+					await readBoundedMediaResponse(res, "Text document", url)
+				).toString("utf8");
 				processedAttachment.text = textContent;
 				processedAttachment.title = processedAttachment.title || "Text File";
 
@@ -408,8 +452,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						textPreview:
-							processedAttachment.text.substring(0, 100) || undefined,
+						textPreview: processedAttachment.text
+							? truncateWellFormed(
+									toWellFormedUnicode(processedAttachment.text),
+									100,
+								)
+							: undefined,
 					},
 					"Extracted text content",
 				);
@@ -421,7 +469,7 @@ export async function processAttachments(
 				const { convertPdfToTextFromBuffer } = await import(
 					"../documents/utils"
 				);
-				const pdfBuffer = Buffer.from(await res.arrayBuffer());
+				const pdfBuffer = await readBoundedMediaResponse(res, "PDF", url);
 				const textContent = await convertPdfToTextFromBuffer(
 					pdfBuffer,
 					processedAttachment.title ?? undefined,
@@ -434,7 +482,9 @@ export async function processAttachments(
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						textLength: textContent.length,
-						textPreview: textContent.substring(0, 100) || undefined,
+						textPreview: textContent
+							? truncateWellFormed(toWellFormedUnicode(textContent), 100)
+							: undefined,
 					},
 					"Extracted PDF text content",
 				);
@@ -1049,7 +1099,9 @@ const events: PluginEvents = {
 					new Error(
 						"outbound message contains external-content envelope markers",
 					),
-					{ preview: sentText.slice(0, 120) },
+					{
+						preview: truncateWellFormed(toWellFormedUnicode(sentText), 120),
+					},
 				);
 			}
 		},

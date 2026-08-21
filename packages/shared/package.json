@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "sideEffects": false,
@@ -192,6 +192,16 @@
       },
       "import": "./dist/platform/native-library-policy.js",
       "default": "./dist/platform/native-library-policy.js"
+    },
+    "./canonical-json": {
+      "types": "./dist/canonical-json.d.ts",
+      "eliza-source": {
+        "types": "./src/canonical-json.ts",
+        "import": "./src/canonical-json.ts",
+        "default": "./src/canonical-json.ts"
+      },
+      "import": "./dist/canonical-json.js",
+      "default": "./dist/canonical-json.js"
     },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
@@ -536,7 +546,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   },
   "types": "./dist/index.d.ts",
   "elizaos": {

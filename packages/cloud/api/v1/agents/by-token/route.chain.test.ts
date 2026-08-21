@@ -1,9 +1,6 @@
 /**
- * GET /api/v1/agents/by-token `chain` is public token-rail identity,
- * not leftover tax on SIWS/SIWE chainId or admin-redemption network.
- * Stock develop passed unknown tokens into an exact `token_chain`
- * compare, so `chain=SOLANA` / `ETH` silently 404'd a linked public
- * agent instead of resolving that rail (or a 400).
+ * Exercises public token-chain validation through the HTTP route with a mocked
+ * character repository boundary.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";

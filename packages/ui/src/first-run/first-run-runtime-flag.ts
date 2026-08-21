@@ -65,6 +65,7 @@ function readBuildDefault(): boolean {
 
 /** Inputs to the environment-independent runtime-chooser policy. */
 export interface RuntimeChooserGateInputs {
+  isCloudOnlyBuild: boolean;
   isCloudLockedAndroid: boolean;
   override: boolean | null;
   isViteDev: boolean;
@@ -77,12 +78,13 @@ export interface RuntimeChooserGateInputs {
  * override wins over the development and build defaults.
  */
 export function resolveRuntimeChooserEnabled({
+  isCloudOnlyBuild,
   isCloudLockedAndroid,
   override,
   isViteDev,
   isBuildEnabled,
 }: RuntimeChooserGateInputs): boolean {
-  if (isCloudLockedAndroid) return false;
+  if (isCloudOnlyBuild || isCloudLockedAndroid) return false;
   if (override !== null) return override;
   return isViteDev || isBuildEnabled;
 }
@@ -97,8 +99,9 @@ export function resolveRuntimeChooserEnabled({
  * localStorage override; Android local sideloads no longer special-case the
  * production default.
  */
-export function isRuntimeChooserEnabled(): boolean {
+export function isRuntimeChooserEnabled(isCloudOnlyBuild = false): boolean {
   return resolveRuntimeChooserEnabled({
+    isCloudOnlyBuild,
     isCloudLockedAndroid: isAndroidCloudBuild(),
     override: readOverride(),
     isViteDev: readDevMode(),

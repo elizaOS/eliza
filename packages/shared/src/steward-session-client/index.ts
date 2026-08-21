@@ -80,6 +80,15 @@ export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
  */
 export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 
+/**
+ * Custom CSRF marker header required by the cloud-api cookie-authenticated
+ * auth mutations. Presence alone is the contract: a cross-origin "simple
+ * request" cannot set custom headers, so any request carrying it either
+ * survived a preflight or never needed one (same-origin / non-browser).
+ */
+export const STEWARD_CSRF_HEADER = "x-eliza-csrf";
+export const STEWARD_CSRF_HEADER_VALUE = "1";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -89,8 +98,14 @@ export interface StewardSessionRequest {
   refreshToken?: string | null;
   /** Phone independently re-verified by the Cloud API against this bearer. */
   verifiedPhone?: string;
+}
+
+export interface StewardTelegramClaimConfirmationRequest
+  extends StewardSessionRequest {
   /** Opaque Telegram DM continuation that names an existing rowless account. */
-  telegramContinuation?: string;
+  telegramContinuation: string;
+  /** Explicit confirmation ceremony marker; ordinary login sync never sends it. */
+  telegramClaimConfirmation: "explicit";
 }
 
 const TELEGRAM_ACCOUNT_CLAIM_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
@@ -158,7 +173,15 @@ export type StewardSessionErrorCode =
   | "code_expired"
   | "code_redirect_mismatch"
   | "code_tenant_mismatch"
+  /** The exchange was attempted without the PKCE verifier. The hosted login
+   * always starts the flow with a S256 challenge, so this is a planted or
+   * pre-PKCE callback — the client must restart sign-in. */
+  | "missing_code_verifier"
   | "steward_upstream_unavailable"
+  /** The request carried no non-simple-request marker (custom X-Eliza-CSRF
+   * header or JSON content type), so it could have been a cross-origin
+   * simple request. Rejected before any cookie was read. */
+  | "csrf_marker_required"
   | "forbidden_origin";
 
 export class StewardSessionError extends Error {
@@ -311,7 +334,10 @@ export async function syncStewardSession(
   const response = await f(endpoint, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+    },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -343,8 +369,6 @@ export interface StewardNonceExchangeRequest {
   tenantId?: string;
   /** PKCE verifier paired with the `code_challenge` sent to Steward. */
   codeVerifier?: string;
-  /** Opaque Telegram DM continuation that names an existing rowless account. */
-  telegramContinuation?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
@@ -355,10 +379,10 @@ export interface StewardNonceExchangeResponse extends StewardSessionResponse {
    * write it to localStorage (required by `@stwd/react`'s `useAuth()` to
    * report `isAuthenticated=true`). HttpOnly cookies are still the canonical
    * session — this is the JS-readable copy that keeps the wallet and OAuth
-   * paths symmetric.
+   * paths symmetric. The long-lived refresh token is deliberately NOT
+   * mirrored; it stays in the HttpOnly cookie.
    */
   token?: string;
-  refreshToken?: string;
 }
 
 export interface ExchangeStewardCodeOpts extends SyncOpts {
@@ -392,7 +416,10 @@ export async function exchangeStewardCode(
   const response = await f(endpoint, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE,
+    },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -416,7 +443,9 @@ export {
   consumeStewardPkceVerifier,
   createStewardPkceChallenge,
   createStewardPkcePair,
+  generateStewardOAuthState,
   generateStewardPkceVerifier,
+  peekStewardOAuthState,
   type StewardOAuthProvider,
   type StewardPkcePair,
   storeStewardPkceVerifier,
@@ -427,7 +456,11 @@ export function clearStewardSession(opts: ClearOpts = {}): void {
   const f = opts.fetchImpl ?? (typeof fetch !== "undefined" ? fetch : null);
   if (!f) return;
   for (const url of endpoints) {
-    f(url, { method: "DELETE", credentials: "include" }).catch(() => {
+    f(url, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { [STEWARD_CSRF_HEADER]: STEWARD_CSRF_HEADER_VALUE },
+    }).catch(() => {
       // ignore — see jsdoc
     });
   }

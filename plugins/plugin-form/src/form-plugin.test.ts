@@ -9,7 +9,7 @@ import { formAction } from "./actions/form";
 import { formEvaluator } from "./evaluators/extractor";
 import formPlugin, { FormService } from "./index";
 import { formContextProvider } from "./providers/context";
-import type { FormDefinition, FormSession } from "./types";
+import type { FormControl, FormDefinition, FormSession } from "./types";
 
 const entityId = "00000000-0000-4000-8000-000000000001" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000002" as UUID;
@@ -188,6 +188,43 @@ describe("FORM_CONTEXT provider", () => {
     expect(result.text).not.toContain("# Active Form");
     expect(result.text).not.toContain("- Email");
     expect(result.values?.formContext).toBe(result.text);
+  });
+
+  it("returns an explicit error state for a cyclic next-field graph", async () => {
+    const cyclic = {
+      key: "cyclic",
+      label: "Cyclic",
+      type: "text",
+      fields: [],
+    } as FormControl;
+    cyclic.fields?.push(cyclic);
+    const formService = {
+      getActiveSession: vi.fn(async () => makeSession()),
+      getStashedSessions: vi.fn(async () => []),
+      getForm: vi.fn(() => signupForm),
+      getSessionContext: vi.fn(() => ({
+        hasActiveForm: true,
+        formId: signupForm.id,
+        formName: signupForm.name,
+        progress: 50,
+        filledFields: [],
+        missingRequired: [],
+        uncertainFields: [],
+        nextField: cyclic,
+        status: "active",
+        stashedCount: 0,
+        pendingExternalFields: [],
+      })),
+    };
+
+    const result = await formContextProvider.get(
+      makeRuntime(formService),
+      makeMessage("hello"),
+      EMPTY_STATE,
+    );
+
+    expect(result.data).toMatchObject({ hasActiveForm: false, error: true });
+    expect(result.text).toBe('form_context_json:\n{"error":true}');
   });
 });
 

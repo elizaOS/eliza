@@ -42,6 +42,9 @@ function scriptedFactory(
         else if (type === "close")
           close.push(l as (e: { readonly code?: number }) => void);
       },
+      // The adapter detaches listeners on every terminal path; a missing
+      // removeEventListener throws mid-cancel and hangs the suite.
+      removeEventListener() {},
     };
     queueMicrotask(() => {
       for (const l of open) l();
@@ -125,6 +128,7 @@ describe("synthesizeCartesiaWav", () => {
             );
           }
         },
+        removeEventListener() {},
       };
       queueMicrotask(() => {
         for (const listener of error) {
@@ -217,6 +221,7 @@ describe("synthesizeCartesiaWav", () => {
           else if (type === "close")
             close.push(l as (e: { readonly code?: number }) => void);
         },
+        removeEventListener() {},
       };
       queueMicrotask(() => {
         for (const l of open) l();

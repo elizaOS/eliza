@@ -41,6 +41,10 @@ vi.mock("../data/audit-client", () => ({
 }));
 
 vi.mock("../data/consent-store", () => consentMock);
+vi.mock("../data/account-deletion-client", () => ({
+  submitAccountDeletion: vi.fn(),
+  endLocalSessionAfterDeletion: vi.fn(),
+}));
 
 import { PrivacyPanel } from "./privacy-panel";
 
@@ -70,8 +74,8 @@ describe("PrivacyPanel", () => {
     const del = screen.getByTestId(
       "delete-account-trigger",
     ) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.textContent).toContain("Deletion unavailable");
+    expect(del.disabled).toBe(false);
+    expect(del.textContent).toContain("Delete account");
     expect(screen.getByText("Export unavailable")).toBeTruthy();
   });
 });

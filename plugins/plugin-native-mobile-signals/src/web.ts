@@ -6,6 +6,7 @@ import type {
   MobileSignalsPermissionStatus,
   MobileSignalsPlatform,
   MobileSignalsPlugin,
+  MobileSignalsPresentScreenTimeReportResult,
   MobileSignalsScreenTimeStatus,
   MobileSignalsSettingsTarget,
   MobileSignalsSetupAction,
@@ -70,12 +71,15 @@ function getPlatform(): MobileSignalsPlatform {
 function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
   return {
     supported: false,
+    hostEnvironment: "web",
+    availability: "platform-unavailable",
     requirements: SCREEN_TIME_REQUIREMENTS,
     entitlements: {
       familyControls: false,
     },
     provisioning: {
       satisfied: false,
+      status: "missing",
       inspected: "not-inspectable",
       reason,
     },
@@ -233,6 +237,11 @@ function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
 
 export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   private monitoring = false;
+  // Monotonic session token. A new monitoring session (start after a stop)
+  // bumps this so an in-flight emit captured under the previous session cannot
+  // revalidate against the shared `monitoring` boolean and deliver a stale
+  // snapshot under the new session (stop->restart interleave).
+  private generation = 0;
   private cleanup: Cleanup[] = [];
 
   async checkPermissions(): Promise<MobileSignalsPermissionStatus> {
@@ -278,9 +287,25 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     };
   }
 
+  async presentScreenTimeReport(): Promise<MobileSignalsPresentScreenTimeReportResult> {
+    return {
+      presented: false,
+      reason: "Web fallback cannot present a native DeviceActivity report.",
+    };
+  }
+
   private emitSignal = async (reason: string): Promise<void> => {
     if (!this.monitoring) return;
+    const generation = this.generation;
     const snapshot = await buildSnapshot(reason);
+    // Re-check after the async battery read: stopMonitoring() may have resolved
+    // and torn down listeners while getBattery() was pending, and delivering a
+    // stale snapshot would violate the stop-means-stop contract consumers rely
+    // on (a resolved stopMonitoring must not re-trigger quiesced downstream
+    // state). The generation guard additionally rejects a stop->restart
+    // interleave, where `monitoring` is true again under a newer session but
+    // this emit belongs to the torn-down one.
+    if (!this.monitoring || this.generation !== generation) return;
     this.notifyListeners("signal", snapshot);
     this.notifyListeners("signal", buildHealthSnapshot(reason));
   };
@@ -333,17 +358,25 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   ): Promise<MobileSignalsStartResult> {
     if (!this.monitoring) {
       this.monitoring = true;
+      this.generation += 1;
       this.attachListeners();
     }
 
+    const generation = this.generation;
     const snapshot = await buildSnapshot("start");
     const healthSnapshot = buildHealthSnapshot("start");
-    if (options.emitInitial ?? true) {
+    // Re-check after the awaited initial battery read: stopMonitoring() (or a
+    // stop->restart) may have resolved while getBattery() was pending. Gate the
+    // initial emit on the same session token so the initial pair cannot leak
+    // after a resolved stop, and report `enabled` from that same active state
+    // so the return value never contradicts what was delivered.
+    const active = this.monitoring && this.generation === generation;
+    if (active && (options.emitInitial ?? true)) {
       this.notifyListeners("signal", snapshot);
       this.notifyListeners("signal", healthSnapshot);
     }
     return {
-      enabled: this.monitoring,
+      enabled: active,
       supported: true,
       platform: snapshot.platform,
       snapshot,

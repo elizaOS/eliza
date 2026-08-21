@@ -13,7 +13,12 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
-import { DatabaseAdapter } from "../database";
+import {
+	compareMemoryIds,
+	DatabaseAdapter,
+	validateQueryEntitiesPagination,
+} from "../database";
+import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -36,13 +41,13 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
 	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
-	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
 	ListConnectorAccountsParams,
 	Log,
@@ -77,12 +82,17 @@ import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
 import {
+	cloneConnectorJsonObject,
+	redactConnectorJsonAudit,
+} from "./connector-json";
+import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
+	validateDocumentRevisionReplacement,
 } from "./document-list-query";
 
 function asUuid(id: string): UUID {
@@ -90,11 +100,13 @@ function asUuid(id: string): UUID {
 }
 
 function randomUuid(): UUID {
-	const gen =
-		typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-			? crypto.randomUUID()
-			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	return asUuid(gen);
+	if (typeof globalThis.crypto?.randomUUID !== "function") {
+		throw new ElizaError(
+			"In-memory record creation requires a cryptographically secure UUID source",
+			{ code: "IN_MEMORY_ADAPTER_CSPRNG_UNAVAILABLE" },
+		);
+	}
+	return asUuid(globalThis.crypto.randomUUID());
 }
 
 function roomTableKey(tableName: string, roomId: UUID): string {
@@ -145,48 +157,15 @@ function connectorDateToMillis(
 	return value instanceof Date ? value.getTime() : value;
 }
 
-function cloneConnectorJsonObject(
-	value: ConnectorAccountJsonObject | undefined,
-): ConnectorAccountJsonObject {
-	return value
-		? (JSON.parse(JSON.stringify(value)) as ConnectorAccountJsonObject)
-		: {};
-}
-
-const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
 	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
-
-function redactConnectorAuditValue(value: unknown): JsonValue {
-	if (value === null || value === undefined) return null;
-	if (Array.isArray(value)) return value.map(redactConnectorAuditValue);
-	if (typeof value === "object") {
-		const redacted: ConnectorAccountJsonObject = {};
-		for (const [key, item] of Object.entries(
-			value as Record<string, unknown>,
-		)) {
-			redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
-				? CONNECTOR_AUDIT_REDACTED
-				: redactConnectorAuditValue(item);
-		}
-		return redacted;
-	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value;
-	}
-	return String(value);
-}
 
 function redactConnectorAuditMetadata(
 	metadata: Record<string, unknown> | undefined,
 ): ConnectorAccountJsonObject {
-	return redactConnectorAuditValue(
-		metadata ?? {},
-	) as ConnectorAccountJsonObject;
+	return redactConnectorJsonAudit(metadata, (key) =>
+		CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key),
+	);
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -531,6 +510,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
+		validateQueryEntitiesPagination(_params);
 		const matchedComponentsByEntity = new Map<string, Component[]>();
 		const hasComponentQuery =
 			_params.componentType !== undefined ||
@@ -897,6 +877,70 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			: { status: "conflict" };
 	}
 
+	async replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
+	): Promise<DocumentMutationResult> {
+		validateDocumentRevisionReplacement(params);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		const oldFragmentIds = new Set(
+			Array.from(this.memoriesById.values())
+				.filter(
+					(memory) =>
+						memory.agentId === params.agentId &&
+						memory.metadata?.type === MemoryType.FRAGMENT &&
+						memory.metadata.documentId === params.documentId,
+				)
+				.map((memory) => String(memory.id)),
+		);
+		for (const fragment of params.fragments) {
+			if (this.memoriesById.has(String(fragment.id))) {
+				throw new ElizaError("Atomic document fragment id already exists", {
+					code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+					context: { documentId: params.documentId, fragmentId: fragment.id },
+				});
+			}
+		}
+		for (const id of oldFragmentIds) this.memoriesById.delete(id);
+		for (const [key, list] of this.memoriesByRoom) {
+			this.memoriesByRoom.set(
+				key,
+				list.filter((memory) => !oldFragmentIds.has(String(memory.id))),
+			);
+		}
+		const replacement = { ...params.replacement, id: params.documentId };
+		this.memoriesById.set(String(params.documentId), replacement);
+		for (const [key, list] of this.memoriesByRoom) {
+			const index = list.findIndex((memory) => memory.id === params.documentId);
+			// Copy-on-write so a concurrent reader holding the old array still sees a
+			// coherent generation. Built by hand rather than with Array#with: core is
+			// consumed by packages that target ES2022, where that method's lib
+			// declaration is absent and the workspace typecheck fails.
+			if (index >= 0) {
+				const next = list.slice();
+				next[index] = replacement;
+				this.memoriesByRoom.set(key, next);
+			}
+		}
+		for (const fragment of params.fragments) {
+			this.memoriesById.set(String(fragment.id), fragment);
+			const key = roomTableKey("document_fragments", fragment.roomId);
+			this.memoriesByRoom.set(key, [
+				...(this.memoriesByRoom.get(key) ?? []),
+				fragment,
+			]);
+		}
+		return { status: "updated", document: replacement };
+	}
+
 	async deleteDocumentWithSnapshot(
 		params: DocumentDeleteParams,
 	): Promise<DocumentMutationResult> {
@@ -929,6 +973,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -942,6 +987,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
+		if (params.cursor && params.offset !== undefined) {
+			throw new Error("getMemories cursor and offset are mutually exclusive");
+		}
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const tableName = params.tableName;
 		let all =
@@ -1012,9 +1060,25 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const aId = typeof a.id === "string" ? a.id : "";
 			const bId = typeof b.id === "string" ? b.id : "";
 			return direction === "asc"
-				? aId.localeCompare(bId)
-				: bId.localeCompare(aId);
+				? compareMemoryIds(aId, bId)
+				: compareMemoryIds(bId, aId);
 		});
+
+		if (params.cursor) {
+			const cursor = params.cursor;
+			all = all.filter((memory) => {
+				const createdAt =
+					typeof memory.createdAt === "number" ? memory.createdAt : 0;
+				const id = typeof memory.id === "string" ? memory.id : "";
+				if (createdAt !== cursor.createdAt) {
+					return direction === "asc"
+						? createdAt > cursor.createdAt
+						: createdAt < cursor.createdAt;
+				}
+				const idOrder = compareMemoryIds(id, cursor.id);
+				return direction === "asc" ? idOrder > 0 : idOrder < 0;
+			});
+		}
 
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		return all.slice(
@@ -1167,12 +1231,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}>,
 	): Promise<void> {
 		for (const param of params) {
-			const id =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const id = randomUuid();
 			this.logs.push({
-				id: asUuid(id),
+				id,
 				createdAt: new Date(),
 				entityId: param.entityId,
 				roomId: param.roomId,
@@ -1220,11 +1281,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const { memory, tableName, unique } of memories) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = memory.id ? String(memory.id) : gen;
+			const id = memory.id ? String(memory.id) : randomUuid();
 			const stored: Memory = {
 				...memory,
 				id: asUuid(id),
@@ -1790,11 +1847,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const task of tasks) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = task.id ? String(task.id) : gen;
+			const id = task.id ? String(task.id) : randomUuid();
 			const taskId = asUuid(id);
 			const stored: Task = { ...task, id: taskId };
 			this.tasks.set(id, stored);
@@ -1956,11 +2009,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const request of requests) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = request.id ? String(request.id) : gen;
+			const id = request.id ? String(request.id) : randomUuid();
 			const stored: PairingRequest = { ...request, id: asUuid(id) };
 			this.pairingRequests.set(id, stored);
 			ids.push(asUuid(id));
@@ -2048,11 +2097,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const entry of entries) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = entry.id ? String(entry.id) : gen;
+			const id = entry.id ? String(entry.id) : randomUuid();
 			const stored: PairingAllowlistEntry = { ...entry, id: asUuid(id) };
 			this.pairingAllowlist.set(id, stored);
 			ids.push(asUuid(id));
@@ -2154,6 +2199,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			: undefined;
 		const now = Date.now();
 		const id = params.id ?? existing?.id ?? randomUuid();
+		const profile = cloneConnectorJsonObject(
+			params.profile !== undefined ? params.profile : existing?.profile,
+		);
+		const metadata = cloneConnectorJsonObject(
+			params.metadata !== undefined ? params.metadata : existing?.metadata,
+		);
 		if (existing) {
 			this.connectorAccountIdsByKey.delete(
 				connectorAccountKey({
@@ -2203,14 +2254,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			capabilities: params.capabilities
 				? [...params.capabilities]
 				: [...(existing?.capabilities ?? [])],
-			profile:
-				params.profile !== undefined
-					? cloneConnectorJsonObject(params.profile)
-					: cloneConnectorJsonObject(existing?.profile),
-			metadata:
-				params.metadata !== undefined
-					? cloneConnectorJsonObject(params.metadata)
-					: cloneConnectorJsonObject(existing?.metadata),
+			profile,
+			metadata,
 			connectedAt: connectedAt ?? existing?.connectedAt ?? now,
 			lastSyncAt: lastSyncAt !== undefined ? lastSyncAt : existing?.lastSyncAt,
 			deletedAt: deletedAt === undefined ? null : deletedAt,
@@ -2345,7 +2390,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.connectorAuditEvents.push(record);
 		return {
 			...record,
-			metadata: cloneConnectorJsonObject(record.metadata),
+			metadata: redactConnectorJsonAudit(record.metadata, () => false),
 		};
 	}
 

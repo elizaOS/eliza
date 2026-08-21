@@ -112,13 +112,15 @@ function createDeterministicEmbedding(text: string, dimension: VectorDimension):
   return vector.map((value) => value / norm);
 }
 
+const TEXT_EMBEDDING_TIMEOUT_MS = 30_000;
+
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingModel = getEmbeddingModel(runtime);
   const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
-  const signal = extractSignal(params);
+  const callerSignal = extractSignal(params);
 
   const text = extractText(params);
   if (text === null) {
@@ -154,6 +156,8 @@ export async function handleTextEmbedding(
 
   const baseURL = getEmbeddingBaseURL(runtime);
   const url = `${baseURL}/embeddings`;
+  const timeoutSignal = AbortSignal.timeout(TEXT_EMBEDDING_TIMEOUT_MS);
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 
   logger.debug(`[OpenAI] Generating embedding with model: ${embeddingModel}`);
 
@@ -169,7 +173,7 @@ export async function handleTextEmbedding(
       input: trimmedText,
       ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
-    ...(signal ? { signal } : {}),
+    signal,
   });
 
   if (!response.ok) {

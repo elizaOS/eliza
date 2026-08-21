@@ -18,7 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { stableStringify } from "@elizaos/core/edge";
+import { ElizaError, stableStringify } from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -39,6 +39,7 @@ import {
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
+import { projectMinuteOffsetMs } from "./time-range.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -48,9 +49,12 @@ import {
   type GateEvaluationContext,
   type GlobalPauseView,
   type OwnerFactsView,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
+  type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
   type ScheduledTaskLogEntry,
+  type ScheduledTaskReceiptVerb,
   type ScheduledTaskRef,
   type ScheduledTaskRunner,
   type ScheduledTaskScheduleResult,
@@ -130,11 +134,38 @@ export interface ScheduledTaskClaimExpectation {
   firedAtIso: string | null;
 }
 
+export type ScheduledTaskApplyCommitResult =
+  | {
+      kind: "applied";
+      task: ScheduledTask;
+      commit: ScheduledTaskLogEntry;
+    }
+  | {
+      kind: "replayed";
+      task: ScheduledTask;
+      commit: ScheduledTaskLogEntry;
+    };
+
 export interface ScheduledTaskStore {
   upsert(
     task: ScheduledTask,
     options?: ScheduledTaskUpsertOptions,
   ): Promise<void>;
+  /**
+   * Persist the full task row only while the stored row still shows
+   * `expectedStatus`. Returns `false` when zero rows matched — a concurrent
+   * writer (a user verb such as `complete` / `dismiss` / `snooze`) moved the
+   * row's lifecycle state while this snapshot was stale, and overwriting it
+   * would silently revert the user's action. The fire path passes the status
+   * observed at claim time (`"fired"`) so post-dispatch persistence can never
+   * clobber a verb that landed while the dispatcher was in flight.
+   */
+  upsertIfStatus(
+    task: ScheduledTask,
+    options: ScheduledTaskUpsertOptions & {
+      expectedStatus: ScheduledTask["state"]["status"];
+    },
+  ): Promise<boolean>;
   /**
    * Atomically transition a row to `"fired"`, returning the resulting row.
    * Returns `{ kind: "raced" }` when zero rows matched — either because the
@@ -156,6 +187,18 @@ export interface ScheduledTaskStore {
     firedAtIso: string;
     expected?: ScheduledTaskClaimExpectation;
   }): Promise<ScheduledTaskClaimResult>;
+  /**
+   * Persist one receipt-anchored mutation only when this task does not already
+   * carry the same receipt key. The store atomically persists both the task
+   * mutation and its state-log receipt so a user acknowledgement can never be
+   * built from task state alone.
+   */
+  commitApply(args: {
+    task: ScheduledTask;
+    receiptKey: string;
+    commit: ScheduledTaskLogEntry;
+    nextFireAtIso: string | null;
+  }): Promise<ScheduledTaskApplyCommitResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
@@ -164,9 +207,18 @@ export interface ScheduledTaskStore {
 
 export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
   const map = new Map<string, ScheduledTask>();
+  const applyCommits = new Map<string, ScheduledTaskLogEntry>();
   return {
     async upsert(task) {
       map.set(task.taskId, structuredClone(task));
+    },
+    async upsertIfStatus(task, options) {
+      const existing = map.get(task.taskId);
+      if (!existing || existing.state.status !== options.expectedStatus) {
+        return false;
+      }
+      map.set(task.taskId, structuredClone(task));
+      return true;
     },
     async claimForFire({ taskId, firedAtIso, expected }) {
       const existing = map.get(taskId);
@@ -192,6 +244,50 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       next.state.firedAt = firedAtIso;
       map.set(taskId, next);
       return { kind: "fired", task: structuredClone(next) };
+    },
+    async commitApply({ task, receiptKey, commit }) {
+      const existing = map.get(task.taskId);
+      if (!existing) {
+        throw new Error(`commitApply: task ${task.taskId} not found`);
+      }
+      const storedReceipts = existing.metadata?.schedulingApplyReceipts;
+      const receiptMarkers =
+        storedReceipts !== null &&
+        typeof storedReceipts === "object" &&
+        !Array.isArray(storedReceipts)
+          ? (storedReceipts as Record<string, unknown>)
+          : {};
+      if (Object.hasOwn(receiptMarkers, receiptKey)) {
+        const replayedCommit = applyCommits.get(commit.logId);
+        if (!replayedCommit) {
+          throw new Error(
+            `commitApply: task ${task.taskId} has receipt ${receiptKey} without commit ${commit.logId}`,
+          );
+        }
+        return {
+          kind: "replayed",
+          task: structuredClone(existing),
+          commit: structuredClone(replayedCommit),
+        };
+      }
+      // The caller proposal may predate another distinct-key commit. Its task
+      // mutation remains authoritative, but receipt identity is monotonic and
+      // must merge from the current stored row just like the SQL adapter does.
+      const committedTask = structuredClone(task);
+      committedTask.metadata = {
+        ...(committedTask.metadata ?? {}),
+        schedulingApplyReceipts: {
+          ...receiptMarkers,
+          [receiptKey]: true,
+        },
+      };
+      map.set(task.taskId, committedTask);
+      applyCommits.set(commit.logId, structuredClone(commit));
+      return {
+        kind: "applied",
+        task: structuredClone(committedTask),
+        commit: structuredClone(commit),
+      };
     },
     async get(taskId) {
       const found = map.get(taskId);
@@ -346,6 +442,8 @@ function defaultTaskIdGenerator(): string {
 }
 
 const CREATION_RECEIPT_METADATA_KEY = "schedulingCreationReceipt";
+const APPLY_RECEIPTS_METADATA_KEY = "schedulingApplyReceipts";
+const APPLY_IDEMPOTENCY_KEY_MAX_LENGTH = 512;
 
 interface SchedulingCreationReceiptAnchor {
   logId: string;
@@ -372,14 +470,65 @@ async function creationReceiptLogId(
   agentId: string,
   taskId: string,
 ): Promise<string> {
+  return `stl_create_${await sha256Hex(`${agentId}\0${taskId}`)}`;
+}
+
+async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`${agentId}\0${taskId}`),
+    new TextEncoder().encode(value),
   );
-  const hex = Array.from(new Uint8Array(digest), (byte) =>
+  return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-  return `stl_create_${hex}`;
+}
+
+function normalizeApplyIdempotencyKey(value: string): string {
+  const key = value.trim();
+  if (key.length === 0 || key.length > APPLY_IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new Error(
+      `applyWithResult: idempotencyKey must contain 1-${APPLY_IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
+    );
+  }
+  return key;
+}
+
+async function applyReceiptKey(
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<string> {
+  return sha256Hex(`${verb}\0${idempotencyKey}`);
+}
+
+async function applyReceiptLogId(args: {
+  agentId: string;
+  taskId: string;
+  verb: ScheduledTaskReceiptVerb;
+  idempotencyKey: string;
+}): Promise<string> {
+  return `stl_apply_${await sha256Hex(
+    `${args.agentId}\0${args.taskId}\0${args.verb}\0${args.idempotencyKey}`,
+  )}`;
+}
+
+function writeApplyReceiptMarker(
+  task: ScheduledTask,
+  receiptKey: string,
+): void {
+  const existing = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  const receipts =
+    existing !== null &&
+    typeof existing === "object" &&
+    !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  task.metadata = {
+    ...(task.metadata ?? {}),
+    [APPLY_RECEIPTS_METADATA_KEY]: {
+      ...receipts,
+      [receiptKey]: true,
+    },
+  };
 }
 
 function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
@@ -535,8 +684,10 @@ export interface EscalationCursorView {
  * - `fired` — the task transitioned to `"fired"` (or was deferred via
  *   `gate.defer`, reopened for a recurrence, etc.) and the dispatcher ran.
  *   `task` is the post-mutation state.
- * - `raced` — another tick atomically claimed this task first. Caller drops
- *   the attempt silently; the winning tick's dispatch is authoritative.
+ * - `raced` — another writer moved the row out from under this attempt: a
+ *   parallel tick claimed it first, or a user verb (`complete` / `dismiss` /
+ *   `snooze`) settled it while this attempt's dispatch was in flight. Caller
+ *   drops the attempt silently; the winning writer is authoritative.
  * - `skipped` — the task was skipped without dispatch: global-pause active,
  *   a gate denied, or the task was already terminal and not eligible for
  *   recurrence refire.
@@ -775,8 +926,25 @@ export function createScheduledTaskRunner(
     };
   }
 
-  async function persist(task: ScheduledTask): Promise<ScheduledTask> {
+  /**
+   * Persist a task snapshot. Pass `expectedStatus` on post-claim writes: the
+   * store then only applies the row while it still shows that status, and
+   * this returns `null` when a concurrent user verb won instead — callers
+   * must treat `null` as "the row moved; reload before acting on it" and
+   * never write derived state-log rows for a persistence that did not happen.
+   */
+  async function persist(
+    task: ScheduledTask,
+    opts?: { expectedStatus?: ScheduledTask["state"]["status"] },
+  ): Promise<ScheduledTask | null> {
     const nextFireAtIso = await resolveNextFireAt(task);
+    if (opts?.expectedStatus) {
+      const applied = await deps.store.upsertIfStatus(task, {
+        nextFireAtIso,
+        expectedStatus: opts.expectedStatus,
+      });
+      return applied ? structuredClone(task) : null;
+    }
     await deps.store.upsert(task, { nextFireAtIso });
     return structuredClone(task);
   }
@@ -942,11 +1110,13 @@ export function createScheduledTaskRunner(
       logId: await creationReceiptLogId(deps.agentId, taskId),
       occurredAtIso: now().toISOString(),
     };
+    const inputMetadata = { ...(withApprovalDefaults.metadata ?? {}) };
+    delete inputMetadata[APPLY_RECEIPTS_METADATA_KEY];
     const task: ScheduledTask = {
       taskId,
       ...withApprovalDefaults,
       metadata: {
-        ...(withApprovalDefaults.metadata ?? {}),
+        ...inputMetadata,
         [CREATION_RECEIPT_METADATA_KEY]: creationReceipt,
       },
       state: initialState,
@@ -1083,34 +1253,93 @@ export function createScheduledTaskRunner(
   // Verb dispatch
   // -------------------------------------------------------------------------
 
-  async function applySnooze(
+  interface LifecycleMutation {
+    task: ScheduledTask;
+    transition: "snoozed" | "completed" | "dismissed";
+    reason?: string;
+    detail?: Record<string, unknown>;
+  }
+
+  function mutateSnooze(
     task: ScheduledTask,
     payload: { minutes?: number; untilIso?: string } | undefined,
-  ): Promise<ScheduledTask> {
+  ): LifecycleMutation {
     const minutes = payload?.minutes;
     const untilIso = payload?.untilIso;
     let newFireAtIso: string;
     if (typeof untilIso === "string") {
       newFireAtIso = new Date(untilIso).toISOString();
-    } else if (typeof minutes === "number" && minutes > 0) {
-      newFireAtIso = new Date(now().getTime() + minutes * 60_000).toISOString();
+    } else if (typeof minutes === "number") {
+      if (minutes <= 0) {
+        throw new Error("snooze: provide minutes or untilIso");
+      }
+      const newFireMs = projectMinuteOffsetMs(now().getTime(), minutes);
+      if (newFireMs === null) {
+        throw new ElizaError(
+          "snooze: minutes must be finite and project to a representable Date",
+          {
+            code: "SCHEDULED_TASK_SNOOZE_PROJECTION_INVALID",
+            context: { minutes },
+          },
+        );
+      }
+      newFireAtIso = new Date(newFireMs).toISOString();
     } else {
       throw new Error("snooze: provide minutes or untilIso");
     }
-    const reopenStatus: ScheduledTask["state"]["status"] = "scheduled";
-    task.state.status = reopenStatus;
+    task.state.status = "scheduled";
     task.state.firedAt = newFireAtIso;
     task.state.lastDecisionLog = `snoozed until ${newFireAtIso} (ladder reset)`;
     setEscalationCursor(task, resetLadderForSnooze(newFireAtIso));
-    // Snooze resets the ladder — any pending dispatch retry/advance
-    // continuation resets with it.
+    // Snooze starts a new occurrence, so no retry from the prior occurrence
+    // may survive into the new ladder.
     clearPendingDispatch(task);
-    await persist(task);
-    await logger.log(task.taskId, "snoozed", {
+    return {
+      task,
+      transition: "snoozed",
       reason: `until ${newFireAtIso}`,
       detail: { newFireAtIso },
+    };
+  }
+
+  function mutateComplete(
+    task: ScheduledTask,
+    payload: { reason?: string } | undefined,
+  ): LifecycleMutation {
+    task.state.status = "completed";
+    task.state.completedAt = now().toISOString();
+    task.state.lastDecisionLog = payload?.reason ?? "completed";
+    return {
+      task,
+      transition: "completed",
+      reason: payload?.reason,
+    };
+  }
+
+  function mutateDismiss(
+    task: ScheduledTask,
+    payload: { reason?: string } | undefined,
+  ): LifecycleMutation {
+    task.state.status = "dismissed";
+    task.state.lastDecisionLog = payload?.reason ?? "dismissed";
+    return {
+      task,
+      transition: "dismissed",
+      reason: payload?.reason,
+    };
+  }
+
+  async function applySnooze(
+    task: ScheduledTask,
+    payload: { minutes?: number; untilIso?: string } | undefined,
+  ): Promise<ScheduledTask> {
+    const mutation = mutateSnooze(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+      detail: mutation.detail,
     });
-    return task;
+    return mutation.task;
   }
 
   async function applySkip(
@@ -1131,27 +1360,26 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
-    task.state.status = "completed";
-    task.state.completedAt = now().toISOString();
-    task.state.lastDecisionLog = payload?.reason ?? "completed";
-    await persist(task);
-    await logger.log(task.taskId, "completed", { reason: payload?.reason });
-    await settleTerminal(task, "completed");
-    return task;
+    const mutation = mutateComplete(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+    });
+    await settleTerminal(mutation.task, "completed");
+    return mutation.task;
   }
 
   async function applyDismiss(
     task: ScheduledTask,
     payload: { reason?: string } | undefined,
   ): Promise<ScheduledTask> {
-    task.state.status = "dismissed";
-    task.state.lastDecisionLog = payload?.reason ?? "dismissed";
-    await persist(task);
-    await logger.log(task.taskId, "dismissed", { reason: payload?.reason });
-    // `pipeline.on*` deliberately does not propagate `dismissed`; `after_task`
-    // children DO cover it (the trigger union records all five outcomes).
-    await fireAfterTaskChildren(task, "dismissed");
-    return task;
+    const mutation = mutateDismiss(task, payload);
+    await persist(mutation.task);
+    await logger.log(mutation.task.taskId, mutation.transition, {
+      reason: mutation.reason,
+    });
+    await settleTerminal(mutation.task, "dismissed");
+    return mutation.task;
   }
 
   async function applyEscalate(
@@ -1187,11 +1415,14 @@ export function createScheduledTaskRunner(
     payload: Partial<Omit<ScheduledTask, "taskId" | "state">> | undefined,
   ): Promise<ScheduledTask> {
     if (!payload) return task;
-    // Cannot edit through state — that's what verbs are for.
-    const banned: Array<keyof ScheduledTask> = ["taskId", "state"];
-    for (const key of banned) {
-      if (key in (payload as Record<string, unknown>)) {
-        throw new Error(`edit: ${String(key)} is read-only`);
+    // Cannot edit through state — that's what verbs are for — and cannot edit
+    // through `__proto__`, which `Object.assign` would route to
+    // `Object.prototype`'s setter (see SCHEDULED_TASK_EDIT_READONLY_KEYS).
+    // `Object.hasOwn`, not `in`: `"__proto__" in payload` is true for every
+    // ordinary object.
+    for (const key of SCHEDULED_TASK_EDIT_READONLY_KEYS) {
+      if (Object.hasOwn(payload as Record<string, unknown>, key)) {
+        throw new Error(`edit: ${key} is read-only`);
       }
     }
     Object.assign(task, payload);
@@ -1235,6 +1466,182 @@ export function createScheduledTaskRunner(
     await persist(task);
     await logger.log(task.taskId, "reopened", { reason: payload?.reason });
     return task;
+  }
+
+  function lifecycleMutation(
+    task: ScheduledTask,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+  ): LifecycleMutation {
+    switch (verb) {
+      case "snooze":
+        return mutateSnooze(
+          task,
+          payload as { minutes?: number; untilIso?: string },
+        );
+      case "complete":
+        return mutateComplete(task, payload as { reason?: string });
+      case "dismiss":
+        return mutateDismiss(task, payload as { reason?: string });
+    }
+  }
+
+  function isApplyReceiptMarkerPresent(
+    task: ScheduledTask,
+    receiptKey: string,
+  ): boolean {
+    const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+    return (
+      receipts !== null &&
+      typeof receipts === "object" &&
+      !Array.isArray(receipts) &&
+      Object.hasOwn(receipts, receiptKey)
+    );
+  }
+
+  function transitionForReceiptVerb(
+    verb: ScheduledTaskReceiptVerb,
+  ): LifecycleMutation["transition"] {
+    switch (verb) {
+      case "snooze":
+        return "snoozed";
+      case "complete":
+        return "completed";
+      case "dismiss":
+        return "dismissed";
+    }
+  }
+
+  function sameApplyCommit(
+    left: ScheduledTaskLogEntry,
+    right: ScheduledTaskLogEntry,
+  ): boolean {
+    return (
+      left.logId === right.logId &&
+      left.agentId === right.agentId &&
+      left.taskId === right.taskId &&
+      left.transition === right.transition &&
+      left.occurredAtIso === right.occurredAtIso &&
+      left.detail?.receiptKey === right.detail?.receiptKey &&
+      left.detail?.verb === right.detail?.verb
+    );
+  }
+
+  async function reconcileApplyCommit(
+    commit: ScheduledTaskLogEntry,
+  ): Promise<ScheduledTaskLogEntry> {
+    const entries = await deps.logStore.list({
+      agentId: deps.agentId,
+      taskId: commit.taskId,
+      excludeRollups: true,
+    });
+    const existing = entries.find((entry) => entry.logId === commit.logId);
+    if (existing) {
+      if (!sameApplyCommit(existing, commit)) {
+        throw new Error(
+          `Scheduled task apply receipt ${commit.logId} does not match its committed row`,
+        );
+      }
+      return existing;
+    }
+
+    try {
+      await deps.logStore.append(commit);
+      return commit;
+    } catch (error) {
+      // error-policy:J1 The durable-store boundary resolves a concurrent
+      // append by reading the receipt row back before surfacing it.
+      const raced = (
+        await deps.logStore.list({
+          agentId: deps.agentId,
+          taskId: commit.taskId,
+          excludeRollups: true,
+        })
+      ).find((entry) => entry.logId === commit.logId);
+      if (raced && sameApplyCommit(raced, commit)) return raced;
+      throw error;
+    }
+  }
+
+  async function applyWithResult(
+    taskId: string,
+    verb: ScheduledTaskReceiptVerb,
+    payload: unknown,
+    options: { idempotencyKey: string },
+  ): Promise<ScheduledTaskApplyResult> {
+    const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
+    const receiptKey = await applyReceiptKey(verb, idempotencyKey);
+    const existingTask = await deps.store.get(taskId);
+    if (!existingTask) {
+      throw new Error(`applyWithResult: task ${taskId} not found`);
+    }
+
+    const replayCandidate = isApplyReceiptMarkerPresent(
+      existingTask,
+      receiptKey,
+    );
+    const mutation: LifecycleMutation = replayCandidate
+      ? {
+          task: structuredClone(existingTask),
+          transition: transitionForReceiptVerb(verb),
+        }
+      : lifecycleMutation(structuredClone(existingTask), verb, payload);
+    if (!replayCandidate) {
+      writeApplyReceiptMarker(mutation.task, receiptKey);
+    }
+    const proposedCommit: ScheduledTaskLogEntry = {
+      logId: await applyReceiptLogId({
+        agentId: deps.agentId,
+        taskId,
+        verb,
+        idempotencyKey,
+      }),
+      taskId,
+      agentId: deps.agentId,
+      occurredAtIso: now().toISOString(),
+      transition: mutation.transition,
+      reason: mutation.reason,
+      rolledUp: false,
+      detail: {
+        ...(mutation.detail ?? {}),
+        receiptKey,
+        verb,
+      },
+    };
+    const committed = await deps.store.commitApply({
+      task: mutation.task,
+      receiptKey,
+      commit: proposedCommit,
+      nextFireAtIso: await resolveNextFireAt(mutation.task),
+    });
+    if (
+      committed.commit.logId !== proposedCommit.logId ||
+      committed.commit.agentId !== deps.agentId ||
+      committed.commit.taskId !== taskId ||
+      committed.commit.transition !== transitionForReceiptVerb(verb) ||
+      committed.commit.detail?.receiptKey !== receiptKey ||
+      committed.commit.detail?.verb !== verb
+    ) {
+      throw new Error(
+        `applyWithResult: store returned an invalid receipt for ${verb} ${taskId}`,
+      );
+    }
+    const commit = await reconcileApplyCommit(committed.commit);
+    if (commit.transition === "completed") {
+      await settleTerminal(committed.task, "completed", commit.logId);
+    } else if (commit.transition === "dismissed") {
+      await settleTerminal(committed.task, "dismissed", commit.logId);
+    } else if (commit.transition !== "snoozed") {
+      throw new Error(
+        `applyWithResult: receipt ${commit.logId} has unsupported transition ${commit.transition}`,
+      );
+    }
+    return {
+      task: committed.task,
+      commit,
+      idempotencyKey,
+      replayed: committed.kind === "replayed",
+    };
   }
 
   async function apply(
@@ -1317,8 +1724,9 @@ export function createScheduledTaskRunner(
   async function settleTerminal(
     parent: ScheduledTask,
     outcome: TerminalState,
+    settlementKey?: string,
   ): Promise<ScheduledTask[]> {
-    const created = await runPipeline(parent, outcome);
+    const created = await runPipeline(parent, outcome, settlementKey);
     await fireAfterTaskChildren(parent, outcome);
     return created;
   }
@@ -1326,6 +1734,7 @@ export function createScheduledTaskRunner(
   async function runPipeline(
     parent: ScheduledTask,
     outcome: TerminalState,
+    settlementKey?: string,
   ): Promise<ScheduledTask[]> {
     const refs: ScheduledTaskRef[] | undefined = (() => {
       switch (outcome) {
@@ -1343,10 +1752,10 @@ export function createScheduledTaskRunner(
     })();
     if (!refs || refs.length === 0) return [];
     const created: ScheduledTask[] = [];
-    for (const ref of refs) {
+    for (const [index, ref] of refs.entries()) {
       if (typeof ref === "string") {
         const child = await deps.store.get(ref);
-        if (child) {
+        if (child && child.state.pipelineParentId !== parent.taskId) {
           // Mark the parent linkage on the child for observability.
           child.state.pipelineParentId = parent.taskId;
           await persist(child);
@@ -1361,6 +1770,15 @@ export function createScheduledTaskRunner(
       // Strip server-managed fields if the caller passed a fully-shaped
       // `ScheduledTask`. `schedule()` regenerates them.
       const childInput = stripServerManaged(cloned);
+      if (settlementKey && !childInput.idempotencyKey) {
+        childInput.idempotencyKey = [
+          "scheduled-pipeline",
+          parent.taskId,
+          outcome,
+          settlementKey,
+          index,
+        ].join(":");
+      }
       const fresh = await schedule(childInput);
       fresh.state.pipelineParentId = parent.taskId;
       await persist(fresh);
@@ -1471,7 +1889,13 @@ export function createScheduledTaskRunner(
         ? { lastDispatchResult: failure.dispatchResult }
         : {}),
     };
-    await persist(claimed);
+    // A verb that landed while the dispatcher was in flight owns the row's
+    // lifecycle now: skip the failed write, its state-log row, and the
+    // onFail pipeline so history records only the user's settlement.
+    const persisted = await persist(claimed, { expectedStatus: "fired" });
+    if (!persisted) {
+      return { kind: "raced", taskId: claimed.taskId };
+    }
     await logger.log(claimed.taskId, "failed", {
       reason,
       detail: {
@@ -1590,19 +2014,31 @@ export function createScheduledTaskRunner(
       };
     }
     if (gateOutcome.decision.kind === "defer") {
+      const nowMs = now().getTime();
       const offset =
         "offsetMinutes" in gateOutcome.decision.until
           ? gateOutcome.decision.until.offsetMinutes
           : Math.max(
               1,
               Math.round(
-                (new Date(gateOutcome.decision.until.atIso).getTime() -
-                  now().getTime()) /
+                (new Date(gateOutcome.decision.until.atIso).getTime() - nowMs) /
                   60_000,
               ),
             );
+      const newFireMs = projectMinuteOffsetMs(nowMs, offset);
+      if (newFireMs === null) {
+        throw new ElizaError(
+          "gate defer: offset must be non-negative and project to a representable Date",
+          {
+            code: "SCHEDULED_TASK_GATE_DEFER_PROJECTION_INVALID",
+            context: {
+              gateKind: gateOutcome.gateKind ?? "gate",
+              offsetMinutes: offset,
+            },
+          },
+        );
+      }
       task.state.lastDecisionLog = `${gateOutcome.gateKind ?? "gate"}: deferred ${offset}m (${gateOutcome.decision.reason})`;
-      const newFireMs = now().getTime() + offset * 60_000;
       if (refireClaim) {
         // Park the deferred occurrence as a plain scheduled-override so it
         // fires AT the defer time (`scheduledOverrideDue`), not at the
@@ -1708,8 +2144,16 @@ export function createScheduledTaskRunner(
       lastDispatchedAt: fireAtIso,
     });
     // Persist the post-claim metadata (escalationCursor, lastDecisionLog).
-    // `persist` recomputes `next_fire_at` from the now-`fired` row.
-    await persist(claimed);
+    // `persist` recomputes `next_fire_at` from the now-`fired` row. The
+    // status guard keeps a verb that landed between the claim and this write
+    // authoritative: if the row moved off `fired`, the user already settled
+    // the task and this fire must not dispatch (or log) at all.
+    const claimedPersisted = await persist(claimed, {
+      expectedStatus: "fired",
+    });
+    if (!claimedPersisted) {
+      return { kind: "raced", taskId: claimed.taskId };
+    }
     await logger.log(claimed.taskId, "fired");
 
     // Host-capability gate. If the host can't satisfy the task's profile,
@@ -1792,7 +2236,14 @@ export function createScheduledTaskRunner(
         claimed.metadata.pendingPromptRoomId = pendingPromptRoomId;
       }
       clearPendingDispatch(claimed);
-      await persist(claimed);
+      // The dispatch already reached the user, so the fire itself stands;
+      // the guard only stops this stale snapshot from reverting a verb that
+      // landed mid-flight. Surface the authoritative row either way.
+      const persisted = await persist(claimed, { expectedStatus: "fired" });
+      if (!persisted) {
+        const current = await deps.store.get(claimed.taskId);
+        return { kind: "fired", task: current ?? claimed };
+      }
     } else {
       // Void dispatchers (e.g. notify-only event emitters) report no typed
       // result; a completed call is success, so drop the continuation.
@@ -1809,7 +2260,13 @@ export function createScheduledTaskRunner(
         };
       }
       if (pending) clearPendingDispatch(claimed);
-      if (pending || pendingPromptRoomId) await persist(claimed);
+      if (pending || pendingPromptRoomId) {
+        const persisted = await persist(claimed, { expectedStatus: "fired" });
+        if (!persisted) {
+          const current = await deps.store.get(claimed.taskId);
+          return { kind: "fired", task: current ?? claimed };
+        }
+      }
     }
     return { kind: "fired", task: claimed };
   }
@@ -1865,12 +2322,27 @@ export function createScheduledTaskRunner(
       case "complete":
         // decideDispatchPolicy only returns `complete` for ok:true input.
         clearPendingDispatch(task);
-        await persist(task);
+        {
+          const persisted = await persist(task, { expectedStatus: "fired" });
+          if (!persisted) {
+            const current = await deps.store.get(task.taskId);
+            return { kind: "fired", task: current ?? task };
+          }
+        }
         return { kind: "fired", task };
       case "retry": {
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000,
-        ).toISOString();
+        // `retryAfterMinutes` is connector-supplied and schema-unbounded; a
+        // huge value would push the park-back instant past the JS Date range
+        // and make `toISOString()` throw AFTER the row was atomically claimed
+        // to `"fired"`, stranding it. Settle terminally instead of stranding.
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          decision.retryAfterMinutes,
+        );
+        if (nextAttemptMs === null) {
+          return failTerminal(task, decision.reason, failure.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch retry ${attempt + 1}/${MAX_DISPATCH_RETRIES_PER_STEP} in ${decision.retryAfterMinutes}m (${decision.reason})`;
@@ -1879,7 +2351,13 @@ export function createScheduledTaskRunner(
           attempt: attempt + 1,
           ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
         });
-        await persist(task);
+        // A verb that landed mid-flight owns the row: do not park it back
+        // into `scheduled` (that would resurrect a settled task) and do not
+        // write the retry log row for a persistence that never happened.
+        const persisted = await persist(task, { expectedStatus: "fired" });
+        if (!persisted) {
+          return { kind: "raced", taskId: task.taskId };
+        }
         await logger.log(task.taskId, "dispatch_retried", {
           reason: decision.reason,
           detail: {
@@ -1906,9 +2384,21 @@ export function createScheduledTaskRunner(
           return failTerminal(task, decision.reason, decision.message);
         }
         const { nextLadderIndex, nextStep } = next;
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000,
-        ).toISOString();
+        // `delayMinutes` is schema-valid but unbounded (schema.ts had no
+        // upper limit); guard the park-back instant against the Date range so
+        // a claimed row settles terminally instead of throwing while stranded
+        // in `"fired"`.
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          nextStep.delayMinutes,
+        );
+        if (nextAttemptMs === null) {
+          if (decision.kind === "surface_degraded") {
+            recordConnectorDegradation(task, decision, fireAtIso);
+          }
+          return failTerminal(task, decision.reason, decision.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
@@ -1920,7 +2410,12 @@ export function createScheduledTaskRunner(
         if (decision.kind === "surface_degraded") {
           recordConnectorDegradation(task, decision, fireAtIso);
         }
-        await persist(task);
+        // Same mid-flight guard as the retry path: a settled row must not be
+        // parked back into `scheduled` for a ladder step it will never take.
+        const persisted = await persist(task, { expectedStatus: "fired" });
+        if (!persisted) {
+          return { kind: "raced", taskId: task.taskId };
+        }
         await logger.log(task.taskId, "escalated", {
           reason: `dispatch_failed:${decision.reason}`,
           detail: {
@@ -1997,7 +2492,13 @@ export function createScheduledTaskRunner(
         message: detailMessage,
       },
     };
-    await persist(task);
+    // Same post-claim guard as the success path: a verb that landed while
+    // the failed dispatch was in flight owns the row, so neither the failed
+    // write, its state-log row, nor the onFail pipeline may run.
+    const persisted = await persist(task, { expectedStatus: "fired" });
+    if (!persisted) {
+      return { kind: "raced", taskId: task.taskId };
+    }
     await logger.log(task.taskId, "failed", {
       reason: `dispatch_failed:${reason}`,
       detail: { message: detailMessage },
@@ -2114,6 +2615,7 @@ export function createScheduledTaskRunner(
     activateImportedTask,
     list,
     apply,
+    applyWithResult,
     pipeline,
     fire,
     fireWithResult,

@@ -34,6 +34,10 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
+import {
+  createApiHealthWatchdog,
+  createParentExitGuard,
+} from "./lib/dev-process-lifecycle.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
@@ -262,6 +266,16 @@ const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_X_BASE",
   "ELIZA_MOCK_CALENDLY_BASE",
 ];
+// These values configure only the Capacitor renderer bundle. Letting them
+// reach the host API child makes a remote-mac iOS UI misclassify that host as
+// a remote runtime too, which suppresses its direct model-provider plugins.
+const VITE_RENDERER_ONLY_MOBILE_ENV_KEYS = [
+  "VITE_ELIZA_IOS_RUNTIME_MODE",
+  "VITE_ELIZA_MOBILE_RUNTIME_MODE",
+  "VITE_ELIZA_IOS_API_BASE",
+  "VITE_ELIZA_MOBILE_API_BASE",
+  "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
+];
 let warnedAboutStrippedDevMocks = false;
 
 function createDevChildEnv(baseEnv) {
@@ -284,6 +298,14 @@ function createDevChildEnv(baseEnv) {
     console.warn(
       `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.${cleanupHint}`,
     );
+  }
+  return nextEnv;
+}
+
+function createApiChildEnv(baseEnv) {
+  const nextEnv = createDevChildEnv(baseEnv);
+  for (const key of VITE_RENDERER_ONLY_MOBILE_ENV_KEYS) {
+    delete nextEnv[key];
   }
   return nextEnv;
 }
@@ -859,6 +881,8 @@ let vitePluginBuildAttempted = false;
 let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
+let apiHealthWatchdog = null;
+let parentExitGuard = null;
 let viteStartedAt = 0;
 let viteReady = false;
 
@@ -888,6 +912,9 @@ function cleanup(exitCode = 0) {
     return;
   }
   shuttingDown = true;
+
+  parentExitGuard?.stop();
+  apiHealthWatchdog?.stop();
 
   if (sourceWatcher) {
     sourceWatcher.close();
@@ -929,6 +956,20 @@ process.on("SIGTERM", () => cleanup(0));
 if (process.platform !== "win32") {
   process.on("SIGHUP", () => cleanup(0));
 }
+
+parentExitGuard = createParentExitGuard({
+  initialPpid: process.ppid,
+  getPpid: () => process.ppid,
+  disabled:
+    process.platform === "win32" || process.env.ELIZA_DEV_ALLOW_ORPHAN === "1",
+  onParentExit: ({ initialPpid, currentPpid }) => {
+    console.error(
+      `[dev-ui] Parent process changed (${initialPpid} -> ${currentPpid}); shutting down orphaned dev stack. Set ELIZA_DEV_ALLOW_ORPHAN=1 only for an intentional daemon.`,
+    );
+    cleanup(0);
+  },
+});
+parentExitGuard.start();
 
 function buildCapacitorPluginsIfNeeded(childEnv) {
   const pkgPath = path.join(cwd, appDir, "package.json");
@@ -1177,7 +1218,7 @@ if (uiOnly) {
     ? elizaSubmoduleRoot
     : cwd;
 
-  const childEnv = createDevChildEnv(process.env);
+  const childEnv = createApiChildEnv(process.env);
   // V8 bytecode cache when the API runtime resolves to Node. Node 22.8+
   // honors it; older Node versions and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
@@ -1297,6 +1338,16 @@ if (uiOnly) {
   });
 
   apiSupervisor.start();
+  apiHealthWatchdog = createApiHealthWatchdog({
+    check: () => isAgentReadyNow(API_PORT),
+    restart: () => {
+      console.error(
+        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting wedged child…`,
+      );
+      apiSupervisor.restart();
+    },
+    isShuttingDown: () => shuttingDown,
+  });
 
   // Start Vite before the source-watcher directory scan. The proxy has no
   // boot-time dependency on the API, and both children can warm their module
@@ -1383,6 +1434,7 @@ if (uiOnly) {
       console.log(
         `\r  ${green(logPrefix)} ${green(`Agent ready`)} ${dim(`(${elapsed}s)`)}          `,
       );
+      apiHealthWatchdog?.start();
     })
     .catch((err) => {
       clearInterval(dots);

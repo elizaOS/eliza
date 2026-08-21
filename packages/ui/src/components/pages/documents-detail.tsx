@@ -392,6 +392,11 @@ export function DocumentViewer({
           data-testid="reader-pdf"
           src={mediaUrl}
           title={doc.filename}
+          // Sandbox the embedded document: allow it to be treated as same-origin
+          // so the native viewer's resources load, but grant no script/forms/etc.
+          // Matches the chat PdfTile (MessageAttachments.tsx) — served bytes are
+          // not guaranteed to be a real PDF.
+          sandbox="allow-same-origin"
           className="h-[32rem] w-full rounded-sm border border-border/40 bg-white"
         />
       );

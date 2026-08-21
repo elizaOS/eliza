@@ -203,9 +203,12 @@ export async function handleAuthRoutes(
 
     const provided = parsed.data.code.trim();
 
-    // Accept the raw API token itself as a valid "pairing code" — lets operators
-    // share the token as a static secret without needing loopback access to read
-    // a generated code.
+    // Accept the raw API token itself as a valid "pairing code" — but only
+    // from a trusted loopback operator. Remote callers must use the rotating
+    // pairing code (real entropy, 10-minute expiry): accepting the static
+    // token from any reachable address made pairing an online guessing oracle
+    // for weak human-chosen `ELIZA_API_TOKEN` values, bounded only by the
+    // per-IP rate limit (W1-038).
     //
     // This path deliberately bypasses the pairing code's expiry window: the
     // token does not rotate, so a holder can pair at any time. It is still
@@ -217,7 +220,9 @@ export async function handleAuthRoutes(
     const tokenA = Buffer.from(token, "utf8");
     const tokenB = Buffer.from(provided, "utf8");
     const tokenMatch =
-      tokenA.length === tokenB.length && crypto.timingSafeEqual(tokenA, tokenB);
+      isTrustedLocalRequest(req) &&
+      tokenA.length === tokenB.length &&
+      crypto.timingSafeEqual(tokenA, tokenB);
 
     if (tokenMatch) {
       const response: PostAuthPairResponse = { token };

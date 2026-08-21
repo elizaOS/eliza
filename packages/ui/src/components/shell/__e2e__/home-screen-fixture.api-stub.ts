@@ -1,10 +1,9 @@
-// Stub for `../../api` (and `../../api/client`) in the home-screen e2e.
-//
-// The REAL WidgetHost + home widgets bundle and render; only their data sources
-// are stubbed. Widgets that fetch lifeops routes call `client.getBaseUrl()` then
-// raw `window.fetch` (mocked in the fixture); the notification store calls typed
-// `client.*` methods, delegated here to the shared home-widget mock data so the
-// dashboard center renders with injected data.
+/**
+ * Stubs `../../api` and `../../api/client` for the home-screen E2E while the
+ * real WidgetHost and home widgets render. Widgets that fetch lifeops routes
+ * use the fixture's raw `window.fetch`; typed client methods delegate to shared
+ * home-widget mock data so the dashboard renders with injected data.
+ */
 
 import {
   homeWidgetApprovalsResponse,
@@ -27,6 +26,16 @@ export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
+  // Typed widget requests still pass through the fixture's window.fetch mock;
+  // mirror the production client's JSON boundary so constructor-based imports
+  // and the shared singleton observe the same seeded responses.
+  fetch: async <T>(path: string, init?: RequestInit): Promise<T> => {
+    const response = await window.fetch(path, init);
+    if (!response.ok) {
+      throw new Error(`Fixture request failed with status ${response.status}`);
+    }
+    return (await response.json()) as T;
+  },
   // This fixture represents a local runtime whose text route is Cerebras. The
   // model-download widget must therefore skip the unrelated local text slot.
   getModelsConfig: async () => ({
@@ -81,3 +90,8 @@ export const client = {
   listConversations: async () => ({ conversations: [] }),
   getConversationMessages: async () => ({ messages: [] }),
 };
+
+/** Supplies constructor imports while preserving the fixture's shared client. */
+export function ElizaClient() {
+  return client;
+}

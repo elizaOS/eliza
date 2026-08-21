@@ -33,6 +33,7 @@ import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -622,6 +623,18 @@ export function InstallSheet({
   const start = useCallback(
     async (method: InstallMethod) => {
       if (method.kind === "manual") {
+        // method.url is a wire value from the install/methods endpoint — only
+        // absolute http(s) may open; anything else surfaces the sheet's
+        // visible error state instead of navigating.
+        if (!isSafeNavigationUrl(method.url)) {
+          setError(
+            t("vault.install.invalidMethodUrl", {
+              defaultValue:
+                "The install link returned by the server is not a valid URL.",
+            }),
+          );
+          return;
+        }
         window.open(method.url, "_blank", "noopener,noreferrer");
         return;
       }
@@ -630,22 +643,14 @@ export function InstallSheet({
       setError(null);
       setDone(false);
       try {
-        const res = await client.rawRequest(
+        const { jobId } = await client.fetch<{ jobId: string }>(
           "/api/secrets/manager/install",
           {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ backendId, method }),
           },
-          { allowNonOk: true },
         );
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(body.error ?? `HTTP ${res.status}`);
-        }
-        const { jobId } = (await res.json()) as { jobId: string };
 
         // EventSource cannot carry the client's Authorization header (browser
         // limitation), but it must at least target the configured apiBase —

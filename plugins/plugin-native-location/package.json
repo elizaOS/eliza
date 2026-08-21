@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-location",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Reads current location, watches movement, and manages geolocation permissions.",
   "keywords": [
     "location",
@@ -64,10 +64,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
-    "rollup": "^4.60.2",
+    "rollup": "^4.62.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

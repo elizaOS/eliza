@@ -2,7 +2,7 @@
  * Unit coverage for per-request timeout selection on the base client (including
  * local-inference budgets). Transport stubbed, no live model.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import "./client-chat";
@@ -33,6 +33,10 @@ function makeDeferredResponse() {
 describe("ElizaClient request timeout policy", () => {
   beforeEach(() => {
     setBootConfig({ branding: {} });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("allows chat message requests to wait for slower agent responses", async () => {
@@ -74,6 +78,57 @@ describe("ElizaClient request timeout policy", () => {
       expect.any(Object),
       { timeoutMs: 10_000 },
     );
+  });
+
+  it("keeps the ordinary REST budget active while decoding JSON", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn<AgentRequestTransport["request"]>(async () => {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start() {},
+        }),
+        { status: 200 },
+      );
+    });
+    const client = new ElizaClient("http://agent.example:2138", "token");
+    client.setRequestTransport({ request });
+    let settled = false;
+
+    const pending = client.fetch("/api/status").finally(() => {
+      settled = true;
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      kind: "timeout",
+      message: "Response body timed out after 10000ms",
+    });
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await rejection;
+  });
+
+  it("settles a stalled response body when the caller aborts after headers", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+    });
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async () => new Response(body, { status: 200 }),
+    );
+    const client = new ElizaClient("http://agent.example:2138", "token");
+    client.setRequestTransport({ request });
+    const controller = new AbortController();
+
+    const pending = client.fetch("/api/status", {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      kind: "network",
+      message: "Request aborted",
+    });
   });
 
   it("coalesces concurrent local inference hub reads with a longer timeout", async () => {

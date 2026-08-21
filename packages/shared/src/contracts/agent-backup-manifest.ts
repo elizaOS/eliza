@@ -1481,26 +1481,45 @@ function assertOperationActive(
 async function awaitWithOperationControl<T>(
   value: T | PromiseLike<T>,
   control: Readonly<AgentBackupManifestV2OperationControl>,
+  onLateFulfilled?: (value: T) => void,
 ): Promise<T> {
-  assertOperationActive(control);
+  let interruptedOperation = false;
+  const observedValue = Promise.resolve(value).then((resolved) => {
+    if (interruptedOperation) onLateFulfilled?.(resolved);
+    return resolved;
+  });
+  try {
+    assertOperationActive(control);
+  } catch (cause) {
+    interruptedOperation = true;
+    // error-policy:J5 cancellation is already returned to the caller; this
+    // observer still handles a provider promise that rejects after the check.
+    void observedValue.catch((_lateFailure: unknown) => undefined);
+    throw cause;
+  }
   const remainingMs = control.deadlineEpochMs - Date.now();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortListener: (() => void) | undefined;
   const interrupted = new Promise<never>((_resolve, reject) => {
     timeout = setTimeout(
-      () => reject(operationControlError("Backup operation deadline exceeded")),
+      () => {
+        interruptedOperation = true;
+        reject(operationControlError("Backup operation deadline exceeded"));
+      },
       Math.min(remainingMs, 2_147_483_647),
     );
     if (control.signal) {
-      abortListener = () =>
+      abortListener = () => {
+        interruptedOperation = true;
         reject(operationControlError("Backup operation was cancelled"));
+      };
       control.signal.addEventListener("abort", abortListener, { once: true });
     }
   });
   try {
     // error-policy:J3 interruption is raced with the external operation and the
     // finally block only releases timer/listener resources before propagation.
-    return await Promise.race([Promise.resolve(value), interrupted]);
+    return await Promise.race([observedValue, interrupted]);
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
     if (control.signal && abortListener) {
@@ -1516,18 +1535,20 @@ function isOperationControlError(error: unknown): error is Error {
 async function callWithOperationControl<T>(
   callback: () => T | PromiseLike<T>,
   control: Readonly<AgentBackupManifestV2OperationControl>,
+  onLateFulfilled?: (value: T) => void,
 ): Promise<T> {
   assertOperationActive(control);
-  return awaitWithOperationControl(callback(), control);
+  return awaitWithOperationControl(callback(), control, onLateFulfilled);
 }
 
 async function callProviderWithOperationControl<T>(
   label: string,
   callback: () => T | PromiseLike<T>,
   control: Readonly<AgentBackupManifestV2OperationControl>,
+  onLateFulfilled?: (value: T) => void,
 ): Promise<T> {
   try {
-    return await callWithOperationControl(callback, control);
+    return await callWithOperationControl(callback, control, onLateFulfilled);
   } catch (cause) {
     if (isOperationControlError(cause)) throw cause;
     // Provider errors are deliberately not attached as `cause`: callbacks can
@@ -2914,6 +2935,31 @@ async function prepareManifestPayload(
         keyVersion: manifest.encryption.kms.keyVersion,
       }),
     control,
+    (lateDataKey) => {
+      if (lateDataKey === null || lateDataKey === undefined) return;
+      const releaseControl = Object.freeze({
+        deadlineEpochMs: Date.now() + 5_000,
+      });
+      // error-policy:J5 the restore already reports its cancellation/deadline;
+      // this observer still releases a KMS handle returned after that outcome.
+      void callProviderWithOperationControl(
+        "Late operation data key release",
+        () =>
+          providers.releaseDek(
+            lateDataKey,
+            Object.freeze({ control: releaseControl, manifest }),
+          ),
+        releaseControl,
+      )
+        .then((released) => {
+          if (released !== true) {
+            throw new Error(
+              "Late operation data key release was not acknowledged",
+            );
+          }
+        })
+        .catch((_lateReleaseFailure: unknown) => undefined);
+    },
   );
   if (dataKey === null || dataKey === undefined) {
     throw new Error("KMS did not return an operation data key");

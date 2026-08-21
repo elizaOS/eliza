@@ -87,14 +87,32 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/api-keys/[id]/route.ts",
   },
-  "DELETE /api/v1/apis/storage/objects/{key}": {
+  "DELETE /api/v1/api-keys/current": {
     method: "DELETE",
-    path: "/api/v1/apis/storage/objects/{key}",
-    methodName: "deleteApiV1ApisStorageObjectsByKey",
+    path: "/api/v1/api-keys/current",
+    methodName: "deleteApiV1ApiKeysCurrent",
     responseMode: "json",
-    pathParams: ["key"],
-    catchAllPathParams: ["key"],
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/api-keys/current/route.ts",
+  },
+  "DELETE /api/v1/apis/storage/objects/_": {
+    method: "DELETE",
+    path: "/api/v1/apis/storage/objects/_",
+    methodName: "deleteApiV1ApisStorageObjects",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+  },
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": {
+    method: "DELETE",
+    path: "/api/v1/app-auth/mobile/credentials/{id}",
+    methodName: "deleteApiV1AppAuthMobileCredentialsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/[id]/route.ts",
   },
   "DELETE /api/v1/apps/{id}": {
     method: "DELETE",
@@ -727,14 +745,32 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/list/route.ts",
   },
-  "GET /api/v1/apis/storage/objects/{key}": {
+  "GET /api/v1/apis/storage/objects/_": {
     method: "GET",
-    path: "/api/v1/apis/storage/objects/{key}",
-    methodName: "getApiV1ApisStorageObjectsByKey",
-    responseMode: "json",
-    pathParams: ["key"],
-    catchAllPathParams: ["key"],
+    path: "/api/v1/apis/storage/objects/_",
+    methodName: "getApiV1ApisStorageObjects",
+    responseMode: "binary",
+    pathParams: [],
+    catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+  },
+  "GET /api/v1/app-auth/mobile/config": {
+    method: "GET",
+    path: "/api/v1/app-auth/mobile/config",
+    methodName: "getApiV1AppAuthMobileConfig",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/config/route.ts",
+  },
+  "GET /api/v1/app-auth/mobile/credentials": {
+    method: "GET",
+    path: "/api/v1/app-auth/mobile/credentials",
+    methodName: "getApiV1AppAuthMobileCredentials",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/route.ts",
   },
   "GET /api/v1/app-auth/session": {
     method: "GET",
@@ -1176,6 +1212,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["platform"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/connections/[platform]/route.ts",
+  },
+  "GET /api/v1/connections/accounts": {
+    method: "GET",
+    path: "/api/v1/connections/accounts",
+    methodName: "getApiV1ConnectionsAccounts",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/accounts/route.ts",
+  },
+  "GET /api/v1/connections/accounts/{accountId}": {
+    method: "GET",
+    path: "/api/v1/connections/accounts/{accountId}",
+    methodName: "getApiV1ConnectionsAccountsByAccountId",
+    responseMode: "json",
+    pathParams: ["accountId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/accounts/[accountId]/route.ts",
   },
   "GET /api/v1/containers": {
     method: "GET",
@@ -2223,6 +2277,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/steward/tenants/credentials/route.ts",
   },
+  "GET /api/v1/subscriptions/plans": {
+    method: "GET",
+    path: "/api/v1/subscriptions/plans",
+    methodName: "getApiV1SubscriptionsPlans",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/plans/route.ts",
+  },
   "GET /api/v1/telegram/chats": {
     method: "GET",
     path: "/api/v1/telegram/chats",
@@ -2438,6 +2501,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/x402/requests/[id]/route.ts",
+  },
+  "HEAD /api/v1/apis/storage/objects/_": {
+    method: "HEAD",
+    path: "/api/v1/apis/storage/objects/_",
+    methodName: "headApiV1ApisStorageObjects",
+    responseMode: "binary",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
   "PATCH /api/elevenlabs/voices/{id}": {
     method: "PATCH",
@@ -2916,6 +2988,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/app-auth/connect/route.ts",
+  },
+  "POST /api/v1/app-auth/mobile/ack": {
+    method: "POST",
+    path: "/api/v1/app-auth/mobile/ack",
+    methodName: "postApiV1AppAuthMobileAck",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/ack/route.ts",
+  },
+  "POST /api/v1/app-auth/mobile/token": {
+    method: "POST",
+    path: "/api/v1/app-auth/mobile/token",
+    methodName: "postApiV1AppAuthMobileToken",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/token/route.ts",
   },
   "POST /api/v1/app-credits/checkout": {
     method: "POST",
@@ -4721,13 +4811,13 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/agents/[agentId]/workflows/[workflowId]/route.ts",
   },
-  "PUT /api/v1/apis/storage/objects/{key}": {
+  "PUT /api/v1/apis/storage/objects/_": {
     method: "PUT",
-    path: "/api/v1/apis/storage/objects/{key}",
-    methodName: "putApiV1ApisStorageObjectsByKey",
+    path: "/api/v1/apis/storage/objects/_",
+    methodName: "putApiV1ApisStorageObjects",
     responseMode: "json",
-    pathParams: ["key"],
-    catchAllPathParams: ["key"],
+    pathParams: [],
+    catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
   "PUT /api/v1/apps/{id}": {
@@ -4868,9 +4958,9 @@ export interface PublicRoutePathParams {
     workflowId: string | number;
   };
   "DELETE /api/v1/api-keys/{id}": { id: string | number };
-  "DELETE /api/v1/apis/storage/objects/{key}": {
-    key: string | number | readonly (string | number)[];
-  };
+  "DELETE /api/v1/api-keys/current": Record<never, never>;
+  "DELETE /api/v1/apis/storage/objects/_": Record<never, never>;
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}/discord-automation": { id: string | number };
   "DELETE /api/v1/apps/{id}/domains": { id: string | number };
@@ -4970,9 +5060,9 @@ export interface PublicRoutePathParams {
     path: string | number | readonly (string | number)[];
   };
   "GET /api/v1/apis/storage/list": Record<never, never>;
-  "GET /api/v1/apis/storage/objects/{key}": {
-    key: string | number | readonly (string | number)[];
-  };
+  "GET /api/v1/apis/storage/objects/_": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/config": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
   "GET /api/v1/app-credits/verify": Record<never, never>;
@@ -5047,6 +5137,10 @@ export interface PublicRoutePathParams {
   };
   "GET /api/v1/cli-auth/{session}/token": { session: string | number };
   "GET /api/v1/connections/{platform}": { platform: string | number };
+  "GET /api/v1/connections/accounts": Record<never, never>;
+  "GET /api/v1/connections/accounts/{accountId}": {
+    accountId: string | number;
+  };
   "GET /api/v1/containers": Record<never, never>;
   "GET /api/v1/credits/balance": Record<never, never>;
   "GET /api/v1/credits/summary": Record<never, never>;
@@ -5226,6 +5320,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
   "GET /api/v1/solana/transactions/{address}": { address: string | number };
   "GET /api/v1/steward/tenants/credentials": Record<never, never>;
+  "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
   "GET /api/v1/telegram/status": Record<never, never>;
@@ -5250,6 +5345,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/x402": Record<never, never>;
   "GET /api/v1/x402/requests": Record<never, never>;
   "GET /api/v1/x402/requests/{id}": { id: string | number };
+  "HEAD /api/v1/apis/storage/objects/_": Record<never, never>;
   "PATCH /api/elevenlabs/voices/{id}": { id: string | number };
   "PATCH /api/v1/advertising/accounts/{id}": { id: string | number };
   "PATCH /api/v1/advertising/audience-segments/{id}": { id: string | number };
@@ -5325,6 +5421,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/apis/storage/presign": Record<never, never>;
   "POST /api/v1/apis/tunnels/tailscale/auth-key": Record<never, never>;
   "POST /api/v1/app-auth/connect": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/ack": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/token": Record<never, never>;
   "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
   "POST /api/v1/approval-requests": Record<never, never>;
@@ -5592,9 +5690,7 @@ export interface PublicRoutePathParams {
     agentId: string | number;
     workflowId: string | number;
   };
-  "PUT /api/v1/apis/storage/objects/{key}": {
-    key: string | number | readonly (string | number)[];
-  };
+  "PUT /api/v1/apis/storage/objects/_": Record<never, never>;
   "PUT /api/v1/apps/{id}": { id: string | number };
   "PUT /api/v1/apps/{id}/characters": { id: string | number };
   "PUT /api/v1/apps/{id}/database": { id: string | number };
@@ -5618,13 +5714,589 @@ export interface PublicRoutePathParams {
   };
 }
 
+export interface PublicRouteHeaders {
+  "DELETE /api/elevenlabs/voices/{id}": never;
+  "DELETE /api/v1/advertising/accounts/{id}": never;
+  "DELETE /api/v1/advertising/audience-segments/{id}": never;
+  "DELETE /api/v1/advertising/campaigns/{id}": never;
+  "DELETE /api/v1/advertising/campaigns/{id}/report/share/{shareId}": never;
+  "DELETE /api/v1/advertising/creatives/{id}": never;
+  "DELETE /api/v1/agents/{agentId}/publish": never;
+  "DELETE /api/v1/agents/{agentId}/workflows/{workflowId}": never;
+  "DELETE /api/v1/api-keys/{id}": never;
+  "DELETE /api/v1/api-keys/current": never;
+  "DELETE /api/v1/apis/storage/objects/_": {
+    "X-Storage-Object-Key": string;
+    "Idempotency-Key": string;
+    "Content-Type"?: string;
+  };
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": never;
+  "DELETE /api/v1/apps/{id}": never;
+  "DELETE /api/v1/apps/{id}/discord-automation": never;
+  "DELETE /api/v1/apps/{id}/domains": never;
+  "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": never;
+  "DELETE /api/v1/apps/{id}/frontend/{deploymentId}": never;
+  "DELETE /api/v1/apps/{id}/telegram-automation": never;
+  "DELETE /api/v1/apps/{id}/twitter-automation": never;
+  "DELETE /api/v1/blooio/disconnect": never;
+  "DELETE /api/v1/browser/sessions/{id}": never;
+  "DELETE /api/v1/connections/{platform}": never;
+  "DELETE /api/v1/containers/{id}": never;
+  "DELETE /api/v1/discord/connections/{id}": never;
+  "DELETE /api/v1/documents/{id}": never;
+  "DELETE /api/v1/documents/pre-upload": never;
+  "DELETE /api/v1/eliza/agents/{agentId}": never;
+  "DELETE /api/v1/eliza/agents/{agentId}/api/{path}": never;
+  "DELETE /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": never;
+  "DELETE /api/v1/eliza/agents/{agentId}/discord": never;
+  "DELETE /api/v1/eliza/agents/{agentId}/github": never;
+  "DELETE /api/v1/eliza/gateway-relay/sessions/{sessionId}": never;
+  "DELETE /api/v1/eliza/google/calendar/events/{eventId}": never;
+  "DELETE /api/v1/files/{id}": never;
+  "DELETE /api/v1/gallery/{id}": never;
+  "DELETE /api/v1/marketing/inventory/{slotId}": never;
+  "DELETE /api/v1/mcps/{mcpId}": never;
+  "DELETE /api/v1/mcps/{mcpId}/publish": never;
+  "DELETE /api/v1/oauth/connections/{id}": never;
+  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": never;
+  "DELETE /api/v1/proxy/birdeye/{path}": never;
+  "DELETE /api/v1/sessions/{id}": never;
+  "DELETE /api/v1/telegram/disconnect": never;
+  "DELETE /api/v1/twilio/disconnect": never;
+  "DELETE /api/v1/twitter/disconnect": never;
+  "DELETE /api/v1/voice/{id}": never;
+  "DELETE /api/v1/web-push/subscriptions": never;
+  "DELETE /api/v1/whatsapp/disconnect": never;
+  "GET /api/elevenlabs/voices": never;
+  "GET /api/elevenlabs/voices/{id}": never;
+  "GET /api/elevenlabs/voices/jobs": never;
+  "GET /api/elevenlabs/voices/user": never;
+  "GET /api/elevenlabs/voices/verify/{id}": never;
+  "GET /api/v1/advertising/accounts": never;
+  "GET /api/v1/advertising/accounts/{id}": never;
+  "GET /api/v1/advertising/accounts/{id}/media": never;
+  "GET /api/v1/advertising/audience-segments": never;
+  "GET /api/v1/advertising/audience-segments/{id}": never;
+  "GET /api/v1/advertising/campaigns": never;
+  "GET /api/v1/advertising/campaigns/{id}": never;
+  "GET /api/v1/advertising/campaigns/{id}/analytics": never;
+  "GET /api/v1/advertising/campaigns/{id}/attribution": never;
+  "GET /api/v1/advertising/campaigns/{id}/creatives": never;
+  "GET /api/v1/advertising/campaigns/{id}/dayparting": never;
+  "GET /api/v1/advertising/campaigns/{id}/report": never;
+  "GET /api/v1/advertising/conversions/track": never;
+  "GET /api/v1/advertising/creatives/{id}": never;
+  "GET /api/v1/advertising/reports/{token}": never;
+  "GET /api/v1/affiliates": never;
+  "GET /api/v1/agents/{agentId}": never;
+  "GET /api/v1/agents/{agentId}/logs": never;
+  "GET /api/v1/agents/{agentId}/monetization": never;
+  "GET /api/v1/agents/{agentId}/status": never;
+  "GET /api/v1/agents/{agentId}/usage": never;
+  "GET /api/v1/agents/{agentId}/workflows": never;
+  "GET /api/v1/agents/{agentId}/workflows/{workflowId}": never;
+  "GET /api/v1/agents/{agentId}/workflows/executions/{executionId}": never;
+  "GET /api/v1/agents/by-token": never;
+  "GET /api/v1/api-keys": never;
+  "GET /api/v1/apis/birdeye/{path}": never;
+  "GET /api/v1/apis/dexscreener/{path}": never;
+  "GET /api/v1/apis/storage/list": {
+    "X-Storage-Prefix": string;
+    "X-Storage-Recursive": "true" | "false";
+    "Idempotency-Key": string;
+  };
+  "GET /api/v1/apis/storage/objects/_": {
+    "X-Storage-Object-Key": string;
+    "Idempotency-Key": string;
+    "Content-Type"?: string;
+  };
+  "GET /api/v1/app-auth/mobile/config": never;
+  "GET /api/v1/app-auth/mobile/credentials": never;
+  "GET /api/v1/app-auth/session": never;
+  "GET /api/v1/app-credits/balance": never;
+  "GET /api/v1/app-credits/verify": never;
+  "GET /api/v1/approval-requests": never;
+  "GET /api/v1/approval-requests/{id}": never;
+  "GET /api/v1/apps": never;
+  "GET /api/v1/apps-ingress/ask": never;
+  "GET /api/v1/apps/{id}": never;
+  "GET /api/v1/apps/{id}/analytics": never;
+  "GET /api/v1/apps/{id}/analytics/requests": never;
+  "GET /api/v1/apps/{id}/backup": never;
+  "GET /api/v1/apps/{id}/characters": never;
+  "GET /api/v1/apps/{id}/charges": never;
+  "GET /api/v1/apps/{id}/charges/{chargeId}": never;
+  "GET /api/v1/apps/{id}/database": never;
+  "GET /api/v1/apps/{id}/deploy/status": never;
+  "GET /api/v1/apps/{id}/discord-automation": never;
+  "GET /api/v1/apps/{id}/domains": never;
+  "GET /api/v1/apps/{id}/domains/{domain}/dns": never;
+  "GET /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": never;
+  "GET /api/v1/apps/{id}/earnings": never;
+  "GET /api/v1/apps/{id}/earnings/history": never;
+  "GET /api/v1/apps/{id}/frontend": never;
+  "GET /api/v1/apps/{id}/frontend/{deploymentId}": never;
+  "GET /api/v1/apps/{id}/frontend/preview/{[...path]}": never;
+  "GET /api/v1/apps/{id}/monetization": never;
+  "GET /api/v1/apps/{id}/promote": never;
+  "GET /api/v1/apps/{id}/promote/analytics": never;
+  "GET /api/v1/apps/{id}/promote/assets": never;
+  "GET /api/v1/apps/{id}/public": never;
+  "GET /api/v1/apps/{id}/review": never;
+  "GET /api/v1/apps/{id}/telegram-automation": never;
+  "GET /api/v1/apps/{id}/twitter-automation": never;
+  "GET /api/v1/apps/{id}/users": never;
+  "GET /api/v1/ballots": never;
+  "GET /api/v1/ballots/{id}": never;
+  "GET /api/v1/billing/active": never;
+  "GET /api/v1/billing/ledger": never;
+  "GET /api/v1/billing/limits": never;
+  "GET /api/v1/billing/settings": never;
+  "GET /api/v1/blooio/status": never;
+  "GET /api/v1/browser/sessions": never;
+  "GET /api/v1/browser/sessions/{id}": never;
+  "GET /api/v1/browser/sessions/{id}/snapshot": never;
+  "GET /api/v1/chain/nfts/{chain}/{address}": never;
+  "GET /api/v1/chain/tokens/{chain}/{address}": never;
+  "GET /api/v1/chain/transfers/{chain}/{address}": never;
+  "GET /api/v1/cli-auth/{session}/token": never;
+  "GET /api/v1/connections/{platform}": never;
+  "GET /api/v1/connections/accounts": never;
+  "GET /api/v1/connections/accounts/{accountId}": never;
+  "GET /api/v1/containers": never;
+  "GET /api/v1/credits/balance": never;
+  "GET /api/v1/credits/summary": never;
+  "GET /api/v1/credits/verify": never;
+  "GET /api/v1/device-bus/devices/{deviceId}/intents": never;
+  "GET /api/v1/discord/callback": never;
+  "GET /api/v1/discord/channels": never;
+  "GET /api/v1/discord/connections": never;
+  "GET /api/v1/discord/connections/{id}": never;
+  "GET /api/v1/discord/guilds": never;
+  "GET /api/v1/discord/oauth": never;
+  "GET /api/v1/discord/status": never;
+  "GET /api/v1/discovery": never;
+  "GET /api/v1/documents": never;
+  "GET /api/v1/documents/{id}": never;
+  "GET /api/v1/documents/check": never;
+  "GET /api/v1/domains": never;
+  "GET /api/v1/domains/resolve": never;
+  "GET /api/v1/eliza/agents": never;
+  "GET /api/v1/eliza/agents/{agentId}": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/{path}": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/health": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/identity": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": never;
+  "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
+  "GET /api/v1/eliza/agents/{agentId}/backups": never;
+  "GET /api/v1/eliza/agents/{agentId}/discord": never;
+  "GET /api/v1/eliza/agents/{agentId}/github": never;
+  "GET /api/v1/eliza/agents/{agentId}/github/token": never;
+  "GET /api/v1/eliza/agents/{agentId}/lifeops/schedule/merged-state": never;
+  "GET /api/v1/eliza/agents/{agentId}/upgrade-tier": never;
+  "GET /api/v1/eliza/agents/{agentId}/wallet": never;
+  "GET /api/v1/eliza/gateway-relay/sessions/{sessionId}/next": never;
+  "GET /api/v1/eliza/github-oauth-complete": never;
+  "GET /api/v1/eliza/google/accounts": never;
+  "GET /api/v1/eliza/google/calendar/calendars": never;
+  "GET /api/v1/eliza/google/calendar/feed": never;
+  "GET /api/v1/eliza/google/gmail/read": never;
+  "GET /api/v1/eliza/google/gmail/search": never;
+  "GET /api/v1/eliza/google/gmail/subscription-headers": never;
+  "GET /api/v1/eliza/google/gmail/triage": never;
+  "GET /api/v1/eliza/google/status": never;
+  "GET /api/v1/eliza/launch-sessions/{sessionId}": never;
+  "GET /api/v1/eliza/lifeops/github-complete": never;
+  "GET /api/v1/eliza/paypal/popup-callback": never;
+  "GET /api/v1/eliza/paypal/status": never;
+  "GET /api/v1/eliza/personal": never;
+  "GET /api/v1/eliza/plaid/status": never;
+  "GET /api/v1/files": never;
+  "GET /api/v1/files/{id}": never;
+  "GET /api/v1/gallery": never;
+  "GET /api/v1/gallery/explore": never;
+  "GET /api/v1/gallery/stats": never;
+  "GET /api/v1/hf-proxy/{path}": never;
+  "GET /api/v1/hosted-frontend/serve/{[...path]}": never;
+  "GET /api/v1/jobs/{jobId}": never;
+  "GET /api/v1/market/candles/{chain}/{address}": never;
+  "GET /api/v1/market/portfolio/{chain}/{address}": never;
+  "GET /api/v1/market/preview/portfolio/{chain}/{address}": never;
+  "GET /api/v1/market/preview/predictions": never;
+  "GET /api/v1/market/preview/price/{chain}/{address}": never;
+  "GET /api/v1/market/preview/token/{chain}/{address}": never;
+  "GET /api/v1/market/preview/wallet-overview": never;
+  "GET /api/v1/market/price/{chain}/{address}": never;
+  "GET /api/v1/market/token/{chain}/{address}": never;
+  "GET /api/v1/market/trades/{chain}/{address}": never;
+  "GET /api/v1/marketing/influencers": never;
+  "GET /api/v1/marketing/influencers/bookings": never;
+  "GET /api/v1/marketing/inventory": never;
+  "GET /api/v1/marketing/inventory/{slotId}": never;
+  "GET /api/v1/marketing/inventory/{slotId}/analytics": never;
+  "GET /api/v1/marketing/inventory/serve": never;
+  "GET /api/v1/marketing/pr": never;
+  "GET /api/v1/marketing/pr/{releaseId}": never;
+  "GET /api/v1/marketing/pr/{releaseId}/coverage": never;
+  "GET /api/v1/mcps": never;
+  "GET /api/v1/mcps/{mcpId}": never;
+  "GET /api/v1/me/mfa": never;
+  "GET /api/v1/models": never;
+  "GET /api/v1/models/{model}": never;
+  "GET /api/v1/models/status": never;
+  "GET /api/v1/oauth-intents": never;
+  "GET /api/v1/oauth-intents/{id}": never;
+  "GET /api/v1/oauth/{platform}/callback": never;
+  "GET /api/v1/oauth/callback": never;
+  "GET /api/v1/oauth/callback/{provider}": never;
+  "GET /api/v1/oauth/connections": never;
+  "GET /api/v1/oauth/connections/{id}": never;
+  "GET /api/v1/oauth/connections/{id}/token": never;
+  "GET /api/v1/oauth/initiate": never;
+  "GET /api/v1/oauth/providers": never;
+  "GET /api/v1/oauth/status": never;
+  "GET /api/v1/oauth/success-proof/verify": never;
+  "GET /api/v1/oauth/token/{platform}": never;
+  "GET /api/v1/payment-requests": never;
+  "GET /api/v1/payment-requests/{id}": never;
+  "GET /api/v1/phone-gateways/bluebubbles": never;
+  "GET /api/v1/pii-scrub/jobs/{id}": never;
+  "GET /api/v1/pricing/summary": never;
+  "GET /api/v1/proxy/birdeye/{path}": never;
+  "GET /api/v1/redemptions": never;
+  "GET /api/v1/redemptions/{id}": never;
+  "GET /api/v1/redemptions/balance": never;
+  "GET /api/v1/redemptions/quote": never;
+  "GET /api/v1/redemptions/status": never;
+  "GET /api/v1/referrals": never;
+  "GET /api/v1/remote/sessions": never;
+  "GET /api/v1/sensitive-requests/{id}": never;
+  "GET /api/v1/sessions": never;
+  "GET /api/v1/solana/assets/{address}": never;
+  "GET /api/v1/solana/methods": never;
+  "GET /api/v1/solana/token-accounts/{address}": never;
+  "GET /api/v1/solana/transactions/{address}": never;
+  "GET /api/v1/steward/tenants/credentials": never;
+  "GET /api/v1/subscriptions/plans": never;
+  "GET /api/v1/telegram/chats": never;
+  "GET /api/v1/telegram/scan-chats": never;
+  "GET /api/v1/telegram/status": never;
+  "GET /api/v1/twilio/status": never;
+  "GET /api/v1/twilio/voice/media": never;
+  "GET /api/v1/twitter/callback": never;
+  "GET /api/v1/twitter/status": never;
+  "GET /api/v1/twitter/token": never;
+  "GET /api/v1/user": never;
+  "GET /api/v1/user/wallets": never;
+  "GET /api/v1/video/featured": never;
+  "GET /api/v1/video/usage": never;
+  "GET /api/v1/voice-models/catalog": never;
+  "GET /api/v1/voice/{id}": never;
+  "GET /api/v1/voice/jobs": never;
+  "GET /api/v1/voice/list": never;
+  "GET /api/v1/voice/session/ws": never;
+  "GET /api/v1/whatsapp/status": never;
+  "GET /api/v1/x/dms/digest": never;
+  "GET /api/v1/x/feed": never;
+  "GET /api/v1/x/status": never;
+  "GET /api/v1/x402": never;
+  "GET /api/v1/x402/requests": never;
+  "GET /api/v1/x402/requests/{id}": never;
+  "HEAD /api/v1/apis/storage/objects/_": {
+    "X-Storage-Object-Key": string;
+    "Idempotency-Key": string;
+    "Content-Type"?: string;
+  };
+  "PATCH /api/elevenlabs/voices/{id}": never;
+  "PATCH /api/v1/advertising/accounts/{id}": never;
+  "PATCH /api/v1/advertising/audience-segments/{id}": never;
+  "PATCH /api/v1/advertising/campaigns/{id}": never;
+  "PATCH /api/v1/advertising/creatives/{id}": never;
+  "PATCH /api/v1/api-keys/{id}": never;
+  "PATCH /api/v1/apps/{id}": never;
+  "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": never;
+  "PATCH /api/v1/connections/{platform}": never;
+  "PATCH /api/v1/containers/{id}": never;
+  "PATCH /api/v1/discord/connections/{id}": never;
+  "PATCH /api/v1/eliza/agents/{agentId}": never;
+  "PATCH /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}": never;
+  "PATCH /api/v1/eliza/agents/{agentId}/environment": never;
+  "PATCH /api/v1/eliza/google/calendar/events/{eventId}": never;
+  "PATCH /api/v1/marketing/inventory/{slotId}": never;
+  "PATCH /api/v1/marketing/pr/{releaseId}": never;
+  "PATCH /api/v1/proxy/birdeye/{path}": never;
+  "PATCH /api/v1/user": never;
+  "PATCH /api/v1/user/email": never;
+  "PATCH /api/v1/voice/{id}": never;
+  "POST /api/elevenlabs/stt": never;
+  "POST /api/elevenlabs/tts": never;
+  "POST /api/v1/advertising/accounts": never;
+  "POST /api/v1/advertising/accounts/{id}": never;
+  "POST /api/v1/advertising/accounts/{id}/media": never;
+  "POST /api/v1/advertising/accounts/discover": never;
+  "POST /api/v1/advertising/audience-segments": never;
+  "POST /api/v1/advertising/audience-segments/{id}/apply": never;
+  "POST /api/v1/advertising/campaigns": never;
+  "POST /api/v1/advertising/campaigns/{id}/attribution": never;
+  "POST /api/v1/advertising/campaigns/{id}/creatives": never;
+  "POST /api/v1/advertising/campaigns/{id}/duplicate": never;
+  "POST /api/v1/advertising/campaigns/{id}/pause": never;
+  "POST /api/v1/advertising/campaigns/{id}/report/share": never;
+  "POST /api/v1/advertising/campaigns/{id}/start": never;
+  "POST /api/v1/advertising/conversions/track": never;
+  "POST /api/v1/affiliates": never;
+  "POST /api/v1/affiliates/link": never;
+  "POST /api/v1/agent-tokens": never;
+  "POST /api/v1/agents": never;
+  "POST /api/v1/agents/{agentId}/message": never;
+  "POST /api/v1/agents/{agentId}/publish": never;
+  "POST /api/v1/agents/{agentId}/restart": never;
+  "POST /api/v1/agents/{agentId}/resume": never;
+  "POST /api/v1/agents/{agentId}/suspend": never;
+  "POST /api/v1/agents/{agentId}/workflows": never;
+  "POST /api/v1/agents/{agentId}/workflows/{workflowId}/run": never;
+  "POST /api/v1/api-keys": never;
+  "POST /api/v1/api-keys/{id}/regenerate": never;
+  "POST /api/v1/apis/storage/presign": {
+    "X-Storage-Object-Key": string;
+    "Idempotency-Key": string;
+    "Content-Type"?: string;
+  };
+  "POST /api/v1/apis/tunnels/tailscale/auth-key": never;
+  "POST /api/v1/app-auth/connect": never;
+  "POST /api/v1/app-auth/mobile/ack": never;
+  "POST /api/v1/app-auth/mobile/token": never;
+  "POST /api/v1/app-credits/checkout": never;
+  "POST /api/v1/app/agents": never;
+  "POST /api/v1/approval-requests": never;
+  "POST /api/v1/approval-requests/{id}/approve": never;
+  "POST /api/v1/approval-requests/{id}/cancel": never;
+  "POST /api/v1/approval-requests/{id}/deny": never;
+  "POST /api/v1/apps": never;
+  "POST /api/v1/apps/{id}/charges": never;
+  "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": never;
+  "POST /api/v1/apps/{id}/chat": never;
+  "POST /api/v1/apps/{id}/deploy": never;
+  "POST /api/v1/apps/{id}/discord-automation": never;
+  "POST /api/v1/apps/{id}/discord-automation/post": never;
+  "POST /api/v1/apps/{id}/domains": never;
+  "POST /api/v1/apps/{id}/domains/{domain}/dns": never;
+  "POST /api/v1/apps/{id}/domains/buy": never;
+  "POST /api/v1/apps/{id}/domains/check": never;
+  "POST /api/v1/apps/{id}/domains/status": never;
+  "POST /api/v1/apps/{id}/domains/sync": never;
+  "POST /api/v1/apps/{id}/domains/verify": never;
+  "POST /api/v1/apps/{id}/earnings/withdraw": never;
+  "POST /api/v1/apps/{id}/frontend": never;
+  "POST /api/v1/apps/{id}/frontend/{deploymentId}/activate": never;
+  "POST /api/v1/apps/{id}/generate-image": never;
+  "POST /api/v1/apps/{id}/promote": never;
+  "POST /api/v1/apps/{id}/promote/assets": never;
+  "POST /api/v1/apps/{id}/promote/preview": never;
+  "POST /api/v1/apps/{id}/regenerate-api-key": never;
+  "POST /api/v1/apps/{id}/review": never;
+  "POST /api/v1/apps/{id}/telegram-automation": never;
+  "POST /api/v1/apps/{id}/telegram-automation/post": never;
+  "POST /api/v1/apps/{id}/twitter-automation": never;
+  "POST /api/v1/apps/{id}/twitter-automation/post": never;
+  "POST /api/v1/apps/backup/restore": never;
+  "POST /api/v1/apps/check-name": never;
+  "POST /api/v1/ballots": never;
+  "POST /api/v1/ballots/{id}/cancel": never;
+  "POST /api/v1/ballots/{id}/distribute": never;
+  "POST /api/v1/ballots/{id}/tally": never;
+  "POST /api/v1/ballots/{id}/vote": never;
+  "POST /api/v1/billing/resources/{id}/cancel": never;
+  "POST /api/v1/blooio/connect": never;
+  "POST /api/v1/blooio/disconnect": never;
+  "POST /api/v1/browser/sessions": never;
+  "POST /api/v1/browser/sessions/{id}/command": never;
+  "POST /api/v1/browser/sessions/{id}/navigate": never;
+  "POST /api/v1/chat": never;
+  "POST /api/v1/chat/completions": never;
+  "POST /api/v1/coding-containers": never;
+  "POST /api/v1/coding-containers/{containerId}/sync": never;
+  "POST /api/v1/coding-containers/promotions": never;
+  "POST /api/v1/connections/{platform}": never;
+  "POST /api/v1/containers": never;
+  "POST /api/v1/credits/checkout": never;
+  "POST /api/v1/device-bus/devices": never;
+  "POST /api/v1/device-bus/intents": never;
+  "POST /api/v1/discord/channels/refresh": never;
+  "POST /api/v1/discord/connections": never;
+  "POST /api/v1/discord/disconnect": never;
+  "POST /api/v1/documents": never;
+  "POST /api/v1/documents/pre-upload": never;
+  "POST /api/v1/documents/query": never;
+  "POST /api/v1/documents/submit": never;
+  "POST /api/v1/documents/upload-file": never;
+  "POST /api/v1/domains/search": never;
+  "POST /api/v1/earnings/payout/stripe-connect/onboard": never;
+  "POST /api/v1/earnings/payout/stripe-connect/transfer": never;
+  "POST /api/v1/eliza/agents": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/{path}": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/identity/register": never;
+  "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
+  "POST /api/v1/eliza/agents/{agentId}/bridge": never;
+  "POST /api/v1/eliza/agents/{agentId}/discord/oauth": never;
+  "POST /api/v1/eliza/agents/{agentId}/downgrade": never;
+  "POST /api/v1/eliza/agents/{agentId}/github/device-code": never;
+  "POST /api/v1/eliza/agents/{agentId}/github/link": never;
+  "POST /api/v1/eliza/agents/{agentId}/github/oauth": never;
+  "POST /api/v1/eliza/agents/{agentId}/lifeops/schedule/observations": never;
+  "POST /api/v1/eliza/agents/{agentId}/pairing-token": never;
+  "POST /api/v1/eliza/agents/{agentId}/provision": never;
+  "POST /api/v1/eliza/agents/{agentId}/restore": never;
+  "POST /api/v1/eliza/agents/{agentId}/resume": never;
+  "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver": never;
+  "POST /api/v1/eliza/agents/{agentId}/sleep": never;
+  "POST /api/v1/eliza/agents/{agentId}/snapshot": never;
+  "POST /api/v1/eliza/agents/{agentId}/stream": never;
+  "POST /api/v1/eliza/agents/{agentId}/suspend": never;
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier": never;
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover": never;
+  "POST /api/v1/eliza/agents/{agentId}/wake": never;
+  "POST /api/v1/eliza/agents/{agentId}/write": never;
+  "POST /api/v1/eliza/discord/gateway-agent": never;
+  "POST /api/v1/eliza/gateway-relay/sessions": never;
+  "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses": never;
+  "POST /api/v1/eliza/google/calendar/events": never;
+  "POST /api/v1/eliza/google/connect/initiate": never;
+  "POST /api/v1/eliza/google/disconnect": never;
+  "POST /api/v1/eliza/google/gmail/message-send": never;
+  "POST /api/v1/eliza/google/gmail/reply-send": never;
+  "POST /api/v1/eliza/paypal/authorize": never;
+  "POST /api/v1/eliza/paypal/callback": never;
+  "POST /api/v1/eliza/paypal/refresh": never;
+  "POST /api/v1/eliza/paypal/transactions": never;
+  "POST /api/v1/eliza/plaid/exchange": never;
+  "POST /api/v1/eliza/plaid/link-token": never;
+  "POST /api/v1/eliza/plaid/sync": never;
+  "POST /api/v1/embeddings": never;
+  "POST /api/v1/extract": never;
+  "POST /api/v1/files": never;
+  "POST /api/v1/generate-image": never;
+  "POST /api/v1/generate-music": never;
+  "POST /api/v1/generate-prompts": never;
+  "POST /api/v1/generate-sfx": never;
+  "POST /api/v1/generate-video": never;
+  "POST /api/v1/marketing/influencers": never;
+  "POST /api/v1/marketing/influencers/bookings": never;
+  "POST /api/v1/marketing/influencers/bookings/{bookingId}/accept": never;
+  "POST /api/v1/marketing/influencers/bookings/{bookingId}/approve": never;
+  "POST /api/v1/marketing/influencers/bookings/{bookingId}/cancel": never;
+  "POST /api/v1/marketing/influencers/bookings/{bookingId}/deliver": never;
+  "POST /api/v1/marketing/influencers/bookings/{bookingId}/reject": never;
+  "POST /api/v1/marketing/inventory": never;
+  "POST /api/v1/marketing/inventory/click": never;
+  "POST /api/v1/marketing/pr": never;
+  "POST /api/v1/marketing/pr/{releaseId}/cancel": never;
+  "POST /api/v1/marketing/pr/{releaseId}/submit": never;
+  "POST /api/v1/mcps": never;
+  "POST /api/v1/mcps/{mcpId}/publish": never;
+  "POST /api/v1/messages": never;
+  "POST /api/v1/models/status": never;
+  "POST /api/v1/oauth-intents": never;
+  "POST /api/v1/oauth-intents/{id}/cancel": never;
+  "POST /api/v1/oauth/{platform}/initiate": never;
+  "POST /api/v1/oauth/callback/{provider}": never;
+  "POST /api/v1/oauth/connect": never;
+  "POST /api/v1/oauth/initiate": never;
+  "POST /api/v1/payment-requests": never;
+  "POST /api/v1/payment-requests/{id}/cancel": never;
+  "POST /api/v1/payment-requests/{id}/expire": never;
+  "POST /api/v1/phone-gateways/bluebubbles": never;
+  "POST /api/v1/pii-scrub/jobs": never;
+  "POST /api/v1/proxy/birdeye/{path}": never;
+  "POST /api/v1/proxy/evm-rpc/{chain}": never;
+  "POST /api/v1/proxy/solana-rpc": never;
+  "POST /api/v1/redemptions": never;
+  "POST /api/v1/referrals/apply": never;
+  "POST /api/v1/remote/pair": never;
+  "POST /api/v1/remote/sessions/{id}/revoke": never;
+  "POST /api/v1/reports/bug": never;
+  "POST /api/v1/responses": never;
+  "POST /api/v1/rpc/{chain}": never;
+  "POST /api/v1/search": never;
+  "POST /api/v1/security/audit": never;
+  "POST /api/v1/sensitive-requests": never;
+  "POST /api/v1/sensitive-requests/{id}/cancel": never;
+  "POST /api/v1/sensitive-requests/{id}/expire": never;
+  "POST /api/v1/sensitive-requests/{id}/submit": never;
+  "POST /api/v1/solana/rpc": never;
+  "POST /api/v1/steward/tenants": never;
+  "POST /api/v1/stripe/checkout": never;
+  "POST /api/v1/telegram/connect": never;
+  "POST /api/v1/telegram/scan-chats": never;
+  "POST /api/v1/topup/10": never;
+  "POST /api/v1/topup/100": never;
+  "POST /api/v1/topup/50": never;
+  "POST /api/v1/track/pageview": never;
+  "POST /api/v1/twilio/connect": never;
+  "POST /api/v1/twilio/disconnect": never;
+  "POST /api/v1/twilio/voice/calls": never;
+  "POST /api/v1/twilio/voice/inbound": never;
+  "POST /api/v1/twitter/connect": never;
+  "POST /api/v1/twitter/personal-message": never;
+  "POST /api/v1/user/avatar": never;
+  "POST /api/v1/user/wallets/provision": never;
+  "POST /api/v1/user/wallets/rpc": never;
+  "POST /api/v1/voice/clone": never;
+  "POST /api/v1/voice/session": never;
+  "POST /api/v1/voice/session/{id}/revoke": never;
+  "POST /api/v1/voice/session/consent": never;
+  "POST /api/v1/voice/stt": never;
+  "POST /api/v1/voice/tts": never;
+  "POST /api/v1/web-push/subscriptions": never;
+  "POST /api/v1/whatsapp/connect": never;
+  "POST /api/v1/whatsapp/disconnect": never;
+  "POST /api/v1/x/dms/conversations/send": never;
+  "POST /api/v1/x/dms/curate": never;
+  "POST /api/v1/x/dms/groups": never;
+  "POST /api/v1/x/dms/send": never;
+  "POST /api/v1/x/posts": never;
+  "POST /api/v1/x402/requests": never;
+  "POST /api/v1/x402/requests/{id}/settle": never;
+  "POST /api/v1/x402/settle": never;
+  "POST /api/v1/x402/verify": never;
+  "PUT /api/v1/advertising/campaigns/{id}/dayparting": never;
+  "PUT /api/v1/affiliates": never;
+  "PUT /api/v1/agents/{agentId}/monetization": never;
+  "PUT /api/v1/agents/{agentId}/workflows/{workflowId}": never;
+  "PUT /api/v1/apis/storage/objects/_": {
+    "X-Storage-Object-Key": string;
+    "Idempotency-Key": string;
+    "Content-Type"?: string;
+  };
+  "PUT /api/v1/apps/{id}": never;
+  "PUT /api/v1/apps/{id}/characters": never;
+  "PUT /api/v1/apps/{id}/database": never;
+  "PUT /api/v1/apps/{id}/monetization": never;
+  "PUT /api/v1/billing/settings": never;
+  "PUT /api/v1/connections/{platform}": never;
+  "PUT /api/v1/eliza/agents/{agentId}/api/{path}": never;
+  "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": never;
+  "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
+  "PUT /api/v1/mcps/{mcpId}": never;
+  "PUT /api/v1/proxy/birdeye/{path}": never;
+}
+
 export interface PublicRouteBaseCallOptions
   extends Omit<CloudRequestOptions, "json"> {
   json?: unknown;
 }
 
 export type PublicRouteCallOptions<TKey extends PublicRouteKey> =
-  PublicRouteBaseCallOptions &
+  (PublicRouteHeaders[TKey] extends never
+    ? PublicRouteBaseCallOptions
+    : Omit<PublicRouteBaseCallOptions, "headers"> & {
+        headers: PublicRouteHeaders[TKey];
+      }) &
     (keyof PublicRoutePathParams[TKey] extends never
       ? { pathParams?: never }
       : { pathParams: PublicRoutePathParams[TKey] });
@@ -5708,7 +6380,7 @@ function toRequestOptions<TKey extends PublicRouteKey>(
   options: PublicRouteCallOptions<TKey> | undefined,
 ): CloudRequestOptions {
   const { pathParams: _pathParams, ...requestOptions } = options ?? {};
-  return requestOptions;
+  return requestOptions as CloudRequestOptions;
 }
 
 export class ElizaCloudPublicRoutesClient {
@@ -5838,13 +6510,31 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  deleteApiV1ApisStorageObjectsByKey<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/{key}">,
+  deleteApiV1ApiKeysCurrent<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/current"> = {},
   ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/apis/storage/objects/{key}", TResponse>(
-      "DELETE /api/v1/apis/storage/objects/{key}",
+    return this.call<"DELETE /api/v1/api-keys/current", TResponse>(
+      "DELETE /api/v1/api-keys/current",
       options,
     );
+  }
+
+  deleteApiV1ApisStorageObjects<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/_">,
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/apis/storage/objects/_", TResponse>(
+      "DELETE /api/v1/apis/storage/objects/_",
+      options,
+    );
+  }
+
+  deleteApiV1AppAuthMobileCredentialsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      TResponse
+    >("DELETE /api/v1/app-auth/mobile/credentials/{id}", options);
   }
 
   deleteApiV1AppsById<TResponse = unknown>(
@@ -6477,7 +7167,7 @@ export class ElizaCloudPublicRoutesClient {
   }
 
   getApiV1ApisStorageList<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list"> = {},
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list">,
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apis/storage/list", TResponse>(
       "GET /api/v1/apis/storage/list",
@@ -6485,11 +7175,26 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1ApisStorageObjectsByKey<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/{key}">,
+  getApiV1ApisStorageObjects(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/_">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
+  }
+
+  getApiV1AppAuthMobileConfig<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
   ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apis/storage/objects/{key}", TResponse>(
-      "GET /api/v1/apis/storage/objects/{key}",
+    return this.call<"GET /api/v1/app-auth/mobile/config", TResponse>(
+      "GET /api/v1/app-auth/mobile/config",
+      options,
+    );
+  }
+
+  getApiV1AppAuthMobileCredentials<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/app-auth/mobile/credentials", TResponse>(
+      "GET /api/v1/app-auth/mobile/credentials",
       options,
     );
   }
@@ -6931,6 +7636,24 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/connections/{platform}", TResponse>(
       "GET /api/v1/connections/{platform}",
+      options,
+    );
+  }
+
+  getApiV1ConnectionsAccounts<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/connections/accounts", TResponse>(
+      "GET /api/v1/connections/accounts",
+      options,
+    );
+  }
+
+  getApiV1ConnectionsAccountsByAccountId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts/{accountId}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/connections/accounts/{accountId}", TResponse>(
+      "GET /api/v1/connections/accounts/{accountId}",
       options,
     );
   }
@@ -7984,6 +8707,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1SubscriptionsPlans<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/plans", TResponse>(
+      "GET /api/v1/subscriptions/plans",
+      options,
+    );
+  }
+
   getApiV1TelegramChats<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/telegram/chats"> = {},
   ): Promise<TResponse> {
@@ -8198,6 +8930,12 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/x402/requests/{id}",
       options,
     );
+  }
+
+  headApiV1ApisStorageObjects(
+    options: PublicRouteCallOptions<"HEAD /api/v1/apis/storage/objects/_">,
+  ): Promise<Response> {
+    return this.callRaw("HEAD /api/v1/apis/storage/objects/_", options);
   }
 
   patchApiElevenlabsVoicesById<TResponse = unknown>(
@@ -8653,7 +9391,7 @@ export class ElizaCloudPublicRoutesClient {
   }
 
   postApiV1ApisStoragePresign<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign"> = {},
+    options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign">,
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/apis/storage/presign", TResponse>(
       "POST /api/v1/apis/storage/presign",
@@ -8675,6 +9413,24 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/app-auth/connect", TResponse>(
       "POST /api/v1/app-auth/connect",
+      options,
+    );
+  }
+
+  postApiV1AppAuthMobileAck<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/mobile/ack", TResponse>(
+      "POST /api/v1/app-auth/mobile/ack",
+      options,
+    );
+  }
+
+  postApiV1AppAuthMobileToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/token"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/mobile/token", TResponse>(
+      "POST /api/v1/app-auth/mobile/token",
       options,
     );
   }
@@ -10504,11 +11260,11 @@ export class ElizaCloudPublicRoutesClient {
     >("PUT /api/v1/agents/{agentId}/workflows/{workflowId}", options);
   }
 
-  putApiV1ApisStorageObjectsByKey<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">,
+  putApiV1ApisStorageObjects<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/_">,
   ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/apis/storage/objects/{key}", TResponse>(
-      "PUT /api/v1/apis/storage/objects/{key}",
+    return this.call<"PUT /api/v1/apis/storage/objects/_", TResponse>(
+      "PUT /api/v1/apis/storage/objects/_",
       options,
     );
   }
@@ -10675,10 +11431,25 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/api-keys/{id}", options);
   }
 
-  deleteApiV1ApisStorageObjectsByKeyRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/{key}">,
+  deleteApiV1ApiKeysCurrentRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/current"> = {},
   ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/apis/storage/objects/{key}", options);
+    return this.callRaw("DELETE /api/v1/api-keys/current", options);
+  }
+
+  deleteApiV1ApisStorageObjectsRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/_">,
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apis/storage/objects/_", options);
+  }
+
+  deleteApiV1AppAuthMobileCredentialsByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      options,
+    );
   }
 
   deleteApiV1AppsByIdRaw(
@@ -11150,15 +11921,27 @@ export class ElizaCloudPublicRoutesClient {
   }
 
   getApiV1ApisStorageListRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list"> = {},
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apis/storage/list", options);
   }
 
-  getApiV1ApisStorageObjectsByKeyRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/{key}">,
+  getApiV1ApisStorageObjectsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/_">,
   ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apis/storage/objects/{key}", options);
+    return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
+  }
+
+  getApiV1AppAuthMobileConfigRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/mobile/config", options);
+  }
+
+  getApiV1AppAuthMobileCredentialsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/mobile/credentials", options);
   }
 
   getApiV1AppAuthSessionRaw(
@@ -11465,6 +12248,21 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/connections/{platform}", options);
+  }
+
+  getApiV1ConnectionsAccountsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/connections/accounts", options);
+  }
+
+  getApiV1ConnectionsAccountsByAccountIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts/{accountId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/connections/accounts/{accountId}",
+      options,
+    );
   }
 
   getApiV1ContainersRaw(
@@ -12229,6 +13027,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/steward/tenants/credentials", options);
   }
 
+  getApiV1SubscriptionsPlansRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/plans", options);
+  }
+
   getApiV1TelegramChatsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/telegram/chats"> = {},
   ): Promise<Response> {
@@ -12371,6 +13175,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/x402/requests/{id}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/x402/requests/{id}", options);
+  }
+
+  headApiV1ApisStorageObjectsRaw(
+    options: PublicRouteCallOptions<"HEAD /api/v1/apis/storage/objects/_">,
+  ): Promise<Response> {
+    return this.callRaw("HEAD /api/v1/apis/storage/objects/_", options);
   }
 
   patchApiElevenlabsVoicesByIdRaw(
@@ -12716,7 +13526,7 @@ export class ElizaCloudPublicRoutesClient {
   }
 
   postApiV1ApisStoragePresignRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign"> = {},
+    options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apis/storage/presign", options);
   }
@@ -12734,6 +13544,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/connect"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/app-auth/connect", options);
+  }
+
+  postApiV1AppAuthMobileAckRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/mobile/ack", options);
+  }
+
+  postApiV1AppAuthMobileTokenRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/token"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/mobile/token", options);
   }
 
   postApiV1AppCreditsCheckoutRaw(
@@ -14047,10 +14869,10 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  putApiV1ApisStorageObjectsByKeyRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">,
+  putApiV1ApisStorageObjectsRaw(
+    options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/_">,
   ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/apis/storage/objects/{key}", options);
+    return this.callRaw("PUT /api/v1/apis/storage/objects/_", options);
   }
 
   putApiV1AppsByIdRaw(

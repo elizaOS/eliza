@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-app-manager",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "App lifecycle plugin for elizaOS: hosted-app launch / list / close, run-state store, and the /api/apps/* route surface. Extracted from @elizaos/agent (Phase 4G).",
   "main": "dist/index.js",
   "type": "module",
@@ -47,7 +47,7 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "build": "bun run build.ts",

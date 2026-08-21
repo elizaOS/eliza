@@ -93,7 +93,7 @@ describe("brief editorial judgment", () => {
           actedOnCount: 0,
           lastEventAt: "2026-07-05T12:00:00.000Z",
           lastDemotedAt: null,
-          lastKeptAt: null,
+          lastRestoredAt: null,
         },
       ],
     });
@@ -109,7 +109,7 @@ describe("brief editorial judgment", () => {
     );
   });
 
-  it("tracks explicit demoted/kept markers and gives them precedence over ignore counts", () => {
+  it("tracks explicit demoted/restored markers and gives them precedence over ignore counts", () => {
     const rows = [
       {
         itemClass: "inbox:newsletter-digest",
@@ -133,7 +133,7 @@ describe("brief editorial judgment", () => {
     );
     expect(newsletter).toMatchObject({
       lastDemotedAt: "2026-07-02T12:00:00.000Z",
-      lastKeptAt: null,
+      lastRestoredAt: null,
     });
 
     // Explicit demoted marker demotes even though ignoredCount is below the
@@ -142,20 +142,20 @@ describe("brief editorial judgment", () => {
       "inbox:newsletter-digest",
     ]);
 
-    // A later kept marker reverses the demotion regardless of counts —
+    // A later restored marker reverses the demotion regardless of counts —
     // including a same-instant reset, which must win.
     const reset = summarizeBriefEngagementRows([
       ...rows,
       {
         itemClass: "inbox:newsletter-digest",
-        eventType: "kept" as const,
+        eventType: "restored" as const,
         eventAt: "2026-07-02T12:00:00.000Z",
       },
     ]);
     expect(recalibrateBriefItemClasses(reset)).toEqual([]);
 
-    // A kept marker also overrides the automatic ignore rule.
-    const keptDespiteIgnores = summarizeBriefEngagementRows(
+    // A restored marker also overrides the automatic ignore rule.
+    const restoredDespiteIgnores = summarizeBriefEngagementRows(
       Array.from({ length: 5 }, (_, index) => ({
         itemClass: "inbox:newsletter-digest",
         eventType: "ignored" as const,
@@ -163,12 +163,12 @@ describe("brief editorial judgment", () => {
       })).concat([
         {
           itemClass: "inbox:newsletter-digest",
-          eventType: "kept" as const,
+          eventType: "restored" as const,
           eventAt: "2026-07-06T12:00:00.000Z",
         },
       ]),
     );
-    expect(recalibrateBriefItemClasses(keptDespiteIgnores)).toEqual([]);
+    expect(recalibrateBriefItemClasses(restoredDespiteIgnores)).toEqual([]);
   });
 
   it("selects recalibration candidates by revealed preference and exact targeted class", () => {
@@ -196,6 +196,20 @@ describe("brief editorial judgment", () => {
         eventType: "rendered" as const,
         eventAt: "2026-07-05T15:00:00.000Z",
       },
+      // Ignore markers close rendered delivery windows; they are not extra
+      // impressions and cannot lift a class above the surfaced threshold.
+      ...Array.from({ length: 3 }, (_, index) => [
+        {
+          itemClass: "inbox:three-deliveries",
+          eventType: "rendered" as const,
+          eventAt: `2026-07-0${index + 1}T16:00:00.000Z`,
+        },
+        {
+          itemClass: "inbox:three-deliveries",
+          eventType: "ignored" as const,
+          eventAt: `2026-07-0${index + 2}T16:00:00.000Z`,
+        },
+      ]).flat(),
     ]);
 
     expect(
@@ -268,7 +282,7 @@ describe("brief editorial judgment", () => {
         actedOnCount: 0,
         lastEventAt: "2026-07-05T12:00:00.000Z",
         lastDemotedAt: null,
-        lastKeptAt: null,
+        lastRestoredAt: null,
       },
     ]);
     expect(

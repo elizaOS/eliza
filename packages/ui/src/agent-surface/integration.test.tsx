@@ -208,14 +208,12 @@ describe("agent-surface render integration", () => {
     expect(getViewRegistry("overlap", "gui")).toBeUndefined();
   });
 
-  // #20728 regression: navigating away from an instrumented view unmounts the
-  // whole provider subtree. React runs that deleted tree's passive cleanups
-  // parent-first, so the provider seals its registry before the descendant
-  // `useAgentElement` disposer mutates the store. The `AgentElementOverlay`
-  // subscribes through `useSyncExternalStore`; before the fix its listener was
-  // invoked during teardown, forcing a re-render on a fiber committed for
-  // deletion (React #185 / max-update-depth). This mirrors the real
-  // DynamicViewLoader tree: <Provider>{view w/ useAgentElement}{overlay}</>.
+  // #20728/#20974 regression: navigating away from an instrumented view
+  // unmounts the whole provider subtree. Descendant and provider passive
+  // cleanups may occur in either order, so element removal defers subscriber
+  // delivery until the provider can seal the registry. The overlay subscribes
+  // through `useSyncExternalStore`; notifying it during teardown forces a
+  // re-render on a fiber committed for deletion (React #185).
   it("does not notify the overlay subscriber while the view subtree tears down", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
@@ -233,9 +231,8 @@ describe("agent-surface render integration", () => {
       act(() => registry.setHighlight(true));
       expect(registry.isNotifying()).toBe(true);
 
-      // Count listener notifications after teardown begins. React seals the
-      // registry (provider cleanup) before the button's `useAgentElement`
-      // disposer runs, so the delete/bump must reach zero subscribers.
+      // Count listener notifications after teardown begins. Cleanup order is
+      // deliberately not assumed; the delete/bump must reach zero subscribers.
       const teardownListener = vi.fn();
       registry.subscribe(teardownListener);
 

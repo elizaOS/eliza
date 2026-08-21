@@ -6,10 +6,11 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { toCompatAgent } from "@/lib/api/compat-envelope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { managedAgentDiscordService } from "@/lib/services/agent-managed-discord";
+import { AgentQuotaExceededError } from "@/lib/services/eliza-sandbox";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -30,6 +31,15 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    if (error instanceof AgentQuotaExceededError) {
+      return failureResponse(
+        c,
+        new ApiError(429, "agent_quota_exceeded", error.message, {
+          currentAgents: error.count,
+          maxAgents: error.max,
+        }),
+      );
+    }
     return failureResponse(c, error);
   }
 });

@@ -21,6 +21,8 @@
  */
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
+import { logger } from "../utils/logger";
 
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
 /** Scope headers so the configured endpoint routes the turn to the right agent. */
@@ -29,6 +31,79 @@ export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
 export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
+
+const MAX_SERVER_TIMING_HEADER_CHARS = 2_048;
+const MAX_SERVER_TIMING_ENTRIES = 16;
+const MAX_SERVER_TIMING_DURATION_MS = 10 * 60 * 1_000;
+const CANONICAL_SERVER_TIMING_DURATION = /^(?:0|[1-9]\d{0,5})(?:\.\d)?$/;
+const SERVER_TIMING_METRICS = [
+  "parse",
+  "bridge",
+  "turn_claim",
+  "turn_hydrate",
+  "turn_admission",
+  "turn_provider_setup",
+] as const;
+const SERVER_TIMING_PROVIDERS = [
+  "cerebras",
+  "openrouter",
+  "bitrouter",
+  "openai",
+  "anthropic",
+  "google",
+  "xai",
+  "groq",
+  "other",
+  "unknown",
+] as const;
+
+export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
+export type ElizaServerTimingProvider = (typeof SERVER_TIMING_PROVIDERS)[number];
+export interface ElizaServerTimingReceipt {
+  metrics: Partial<Record<ElizaServerTimingMetric, number>>;
+  provider?: ElizaServerTimingProvider;
+}
+
+/** Parse only canonical bounded metrics; descriptions and unknown names are discarded. */
+export function parseElizaServerTiming(raw: string | null): ElizaServerTimingReceipt | null {
+  if (!raw || raw.length > MAX_SERVER_TIMING_HEADER_CHARS) return null;
+  const metrics: Partial<Record<ElizaServerTimingMetric, number>> = {};
+  let provider: ElizaServerTimingProvider | undefined;
+  for (const entry of raw.split(",").slice(0, MAX_SERVER_TIMING_ENTRIES)) {
+    const [rawName, ...rawParams] = entry.split(";");
+    const name = rawName?.trim().toLowerCase();
+    if (name === "provider") {
+      const description = rawParams
+        .map((param) => param.trim())
+        .find((param) => param.toLowerCase().startsWith("desc="))
+        ?.slice(5)
+        .trim()
+        .replace(/^"|"$/g, "")
+        .toLowerCase();
+      if (
+        description &&
+        SERVER_TIMING_PROVIDERS.includes(description as ElizaServerTimingProvider)
+      ) {
+        provider = description as ElizaServerTimingProvider;
+      }
+      continue;
+    }
+    if (!SERVER_TIMING_METRICS.includes(name as ElizaServerTimingMetric)) continue;
+    const durationText = rawParams
+      .map((param) => param.trim())
+      .find((param) => param.toLowerCase().startsWith("dur="))
+      ?.slice(4);
+    if (!durationText) continue;
+    if (!CANONICAL_SERVER_TIMING_DURATION.test(durationText)) continue;
+    const duration = Number(durationText);
+    if (!Number.isFinite(duration) || duration < 0 || duration > MAX_SERVER_TIMING_DURATION_MS) {
+      continue;
+    }
+    metrics[name as ElizaServerTimingMetric] = Math.round(duration * 10) / 10;
+  }
+  if (Object.keys(metrics).length === 0 && provider === undefined) return null;
+  return { metrics, ...(provider ? { provider } : {}) };
+}
 
 export interface ElizaSseBridgeRequest {
   /** API origin hosting the canonical agent conversation routes. */
@@ -43,6 +118,10 @@ export interface ElizaSseBridgeRequest {
   messageRole?: "system";
   /** Stable provider lifecycle id used by the room's durable replay ledger. */
   clientMessageId?: string;
+  /** Server-attested epoch-ms history ceiling for a lifecycle opener. */
+  historyCutoffAt?: number;
+  /** Trusted control input may be modeled without entering durable history. */
+  transientInput?: true;
   /** Agent this session is scoped to (from the verified token claims). */
   agentId: string;
   /** Conversation this session writes into (from the verified token claims). */
@@ -56,8 +135,19 @@ export interface ElizaSseBridgeRequest {
   traceId: string;
   /** Abort → cancels the fetch → cancels the upstream provider stream. */
   signal: AbortSignal;
+  /** Reports canonical-route ingress timing as soon as response headers land. */
+  onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void | Promise<void>;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
+}
+
+export interface ElizaSseBridgeResponseHeaders {
+  /** HTTP result for this attempt, including retryable non-2xx responses. */
+  status: number;
+  /** Time from dispatch until the canonical route returned streaming headers. */
+  elapsedMs: number;
+  /** Sanitized phase timings emitted by the canonical Shared route. */
+  serverTiming: ElizaServerTimingReceipt | null;
 }
 
 export interface ElizaSseBridgeResult {
@@ -104,6 +194,7 @@ export async function streamElizaConversation(
   onDelta: (text: string) => void,
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
+  const fetchStartedAt = performance.now();
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -121,6 +212,7 @@ export async function streamElizaConversation(
         "X-Service-Key": request.authorization,
         Accept: "text/event-stream",
         [VOICE_TRACE_HEADER]: request.traceId,
+        [ELIZA_TRACE_ID_HEADER]: request.traceId,
         [VOICE_AGENT_HEADER]: request.agentId,
         [VOICE_CONVERSATION_HEADER]: request.conversationId,
         ...(request.organizationId ? { [VOICE_ORGANIZATION_HEADER]: request.organizationId } : {}),
@@ -133,6 +225,10 @@ export async function streamElizaConversation(
         text: request.transcript,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
+        ...(request.historyCutoffAt !== undefined
+          ? { historyCutoffAt: request.historyCutoffAt }
+          : {}),
+        ...(request.transientInput ? { transientInput: true } : {}),
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },
@@ -153,6 +249,31 @@ export async function streamElizaConversation(
       `Eliza SSE request failed: ${error instanceof Error ? error.message : String(error)}`,
       "upstream_error",
     );
+  }
+
+  try {
+    const observation = request.onResponseHeaders?.({
+      status: response.status,
+      elapsedMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
+      serverTiming: parseElizaServerTiming(response.headers.get("Server-Timing")),
+    });
+    if (observation) {
+      void Promise.resolve(observation).catch((error) => {
+        // error-policy:J7 this transport has no runtime collaborator; the
+        // boundary logger is the equivalent nonfatal diagnostics sink.
+        logger.warn("[eliza-sse-bridge] response header observer failed", {
+          traceId: request.traceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+  } catch (error) {
+    // error-policy:J7 diagnostics must not kill the loop — response decoding is
+    // authoritative and an optional header observer cannot reject healthy SSE.
+    logger.warn("[eliza-sse-bridge] response header observer failed", {
+      traceId: request.traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   if (!response.ok) {

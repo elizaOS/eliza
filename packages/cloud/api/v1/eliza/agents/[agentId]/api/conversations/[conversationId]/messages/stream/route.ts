@@ -9,6 +9,7 @@ import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   type CachedAgentSandbox,
@@ -18,11 +19,17 @@ import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
 } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  classifySharedTurnOutcome,
+  recordSharedTurnAttempt,
+  type SharedTurnRuntimeKind,
+} from "@/lib/services/shared-runtime/shared-turn-observability";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -193,89 +200,127 @@ app.options("/", (c) =>
 );
 
 app.post("/", async (c) => {
+  const startedAt = nowMs();
   const origin = c.req.header("origin");
-  const worker = resolveSharedRuntimeWorkerRequestContext(c);
-  if ("error" in worker) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          success: false,
-          error: worker.error,
-          code: worker.code,
-          retryable: worker.retryable,
-        },
-        { status: worker.status },
-      ),
-      CORS_METHODS,
-      origin,
+  const headers = c.req.raw.headers;
+  const traceId = c.get("traceId") ?? resolveElizaTraceId(headers);
+  const unresolvedRuntimeKind: SharedTurnRuntimeKind = isPersonalSharedAgentId(
+    c.req.param("agentId") ?? "",
+  )
+    ? "personal"
+    : "unresolved";
+  const dispatch = async (): Promise<{
+    response: Response;
+    runtimeKind: SharedTurnRuntimeKind;
+  }> => {
+    const worker = resolveSharedRuntimeWorkerRequestContext(c);
+    if ("error" in worker) {
+      return {
+        response: applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: worker.error,
+              code: worker.code,
+              retryable: worker.retryable,
+            },
+            { status: worker.status },
+          ),
+          CORS_METHODS,
+          origin,
+        ),
+        runtimeKind: unresolvedRuntimeKind,
+      };
+    }
+    const scopeStartedAt = nowMs();
+    const scopePromise = resolveAgentScope(c, worker.executionCtx).then(
+      (result) => ({
+        result,
+        durationMs: elapsedMs(scopeStartedAt),
+      }),
     );
-  }
-  const scopeStartedAt = nowMs();
-  const scopePromise = resolveAgentScope(c, worker.executionCtx).then(
-    (result) => ({
-      result,
-      durationMs: elapsedMs(scopeStartedAt),
-    }),
-  );
-  const bodyStartedAt = nowMs();
-  const bodyPromise = c.req
-    .json()
-    .catch(() => {
-      // error-policy:J3 untrusted-input sanitizing. Match the canonical stream
-      // contract: malformed JSON is an invalid request body, not a fabricated
-      // successful turn.
-      return {};
-    })
-    .then((body: unknown) => ({
-      body,
-      durationMs: elapsedMs(bodyStartedAt),
-    }));
+    const bodyStartedAt = nowMs();
+    const bodyPromise = c.req
+      .json()
+      .catch(() => {
+        // error-policy:J3 untrusted-input sanitizing. Match the canonical stream
+        // contract: malformed JSON is an invalid request body, not a fabricated
+        // successful turn.
+        return {};
+      })
+      .then((body: unknown) => ({
+        body,
+        durationMs: elapsedMs(bodyStartedAt),
+      }));
 
-  const [
-    { result: r, durationMs: scopeMs },
-    { body: raw, durationMs: bodyMs },
-  ] = await Promise.all([scopePromise, bodyPromise]);
-  if ("error" in r) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          success: false,
-          error: r.error,
-          ...("code" in r ? { code: r.code } : {}),
-          ...(r.status === 503 ? { retryable: true } : {}),
-        },
-        {
-          status: r.status,
-          ...("retryAfterSeconds" in r && r.retryAfterSeconds
-            ? { headers: { "Retry-After": String(r.retryAfterSeconds) } }
-            : {}),
-        },
-      ),
-      CORS_METHODS,
-      origin,
-    );
-  }
+    const [
+      { result: r, durationMs: scopeMs },
+      { body: raw, durationMs: bodyMs },
+    ] = await Promise.all([scopePromise, bodyPromise]);
+    if ("error" in r) {
+      return {
+        response: applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: r.error,
+              ...("code" in r ? { code: r.code } : {}),
+              ...(r.status === 503 ? { retryable: true } : {}),
+            },
+            {
+              status: r.status,
+              ...("retryAfterSeconds" in r && r.retryAfterSeconds
+                ? { headers: { "Retry-After": String(r.retryAfterSeconds) } }
+                : {}),
+            },
+          ),
+          CORS_METHODS,
+          origin,
+        ),
+        runtimeKind: unresolvedRuntimeKind,
+      };
+    }
 
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
-  return handleCanonicalScopedAgentStream({
-    abortSignal: c.req.raw.signal,
-    agent: r.agent,
-    agentId: r.agentId,
-    orgId: r.orgId,
-    conversationId,
-    ...("userId" in r ? { userId: r.userId } : {}),
-    body: raw,
-    origin,
-    namespace: worker.namespace,
-    agentKind: "agentKind" in r ? r.agentKind : "sandbox",
-    // The Worker context carries both cold hydration and the shared turn's
-    // deferred billing tail without putting either on the response path.
-    executionCtx: worker.executionCtx,
-    timings: {
-      scope: scopeMs,
-      body: bodyMs,
-    },
-  } satisfies CanonicalScopedStreamRequest);
+    const conversationId = c.req.param("conversationId") ?? r.agentId;
+    return {
+      response: await handleCanonicalScopedAgentStream({
+        traceId: c.get("traceId"),
+        abortSignal: c.req.raw.signal,
+        agent: r.agent,
+        agentId: r.agentId,
+        orgId: r.orgId,
+        conversationId,
+        ...("userId" in r ? { userId: r.userId } : {}),
+        body: raw,
+        origin,
+        namespace: worker.namespace,
+        agentKind: "agentKind" in r ? r.agentKind : "sandbox",
+        // The Worker context carries both cold hydration and the shared turn's
+        // deferred billing tail without putting either on the response path.
+        executionCtx: worker.executionCtx,
+        timings: {
+          scope: scopeMs,
+          body: bodyMs,
+        },
+      } satisfies CanonicalScopedStreamRequest),
+      runtimeKind:
+        "agentKind" in r && r.agentKind === "personal" ? "personal" : "sandbox",
+    };
+  };
+
+  const { response, runtimeKind } = await dispatch();
+  const outcome = await classifySharedTurnOutcome(response);
+  recordSharedTurnAttempt({
+    headers,
+    traceId,
+    durationMs: elapsedMs(startedAt),
+    surface: "stream",
+    rpcMethod: "message.send",
+    runtimeKind,
+    status: response.status,
+    outcome,
+  });
+  return response;
 });
 
 export default app;

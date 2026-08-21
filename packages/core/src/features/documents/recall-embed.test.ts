@@ -63,6 +63,25 @@ function makeRuntime(opts: RuntimeMockOpts): {
 }
 
 describe("embedRecallQuery — resolve / fail-open", () => {
+	test("canonical keyword-only runtime does not request or report a missing embedding handler", async () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "KeywordOnlyRecallAgent",
+				bio: "Exercises recall without a registered embedding capability.",
+				settings: { ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false },
+			},
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		const useModel = vi.spyOn(runtime, "useModel");
+		const reportError = vi.spyOn(runtime, "reportError");
+
+		await expect(embedRecallQuery(runtime, "recall me")).resolves.toBeNull();
+
+		expect(useModel).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
+	});
+
 	test("returns the vector when the embed resolves", async () => {
 		const { runtime } = makeRuntime({
 			embed: async () => [0.1, 0.2, 0.3],

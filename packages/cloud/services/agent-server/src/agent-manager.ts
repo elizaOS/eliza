@@ -7,6 +7,8 @@ import {
   mergeCharacterDefaults,
   type Plugin,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import workflowPlugin from "@elizaos/plugin-workflow";
@@ -84,11 +86,18 @@ const MAX_ACCOUNT_ID_LENGTH = 128;
 const MAX_PLATFORM_RECORD_ID_LENGTH = 256;
 const MAX_CHAT_TYPE_LENGTH = 32;
 
+function truncateMetadata(value: string, max: number): string {
+  const wellFormed = toWellFormedUnicode(value);
+  return wellFormed.length > max
+    ? truncateWellFormed(wellFormed, max)
+    : wellFormed;
+}
+
 function bounded(value: string | undefined, max: number): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+  return truncateMetadata(trimmed, max);
 }
 
 /** Returns the display name for the connection, falling back to the raw userId. Caps length to prevent oversized values from reaching the database. */
@@ -97,9 +106,7 @@ export function resolveUserName(
   metadata?: MessageMetadata,
 ): string {
   const name = metadata?.senderName || userId;
-  return name.length > MAX_USER_NAME_LENGTH
-    ? name.slice(0, MAX_USER_NAME_LENGTH)
-    : name;
+  return truncateMetadata(name, MAX_USER_NAME_LENGTH);
 }
 
 /**

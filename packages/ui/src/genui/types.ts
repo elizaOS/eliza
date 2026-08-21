@@ -96,7 +96,8 @@ export type ElizaGenUiValidationIssue = {
     | "unsafe_url"
     | "unsafe_field"
     | "too_large"
-    | "too_many_components";
+    | "too_many_components"
+    | "unbounded_nest";
   message: string;
   componentId?: string;
   path?: string;

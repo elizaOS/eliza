@@ -26,11 +26,18 @@ import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 } from "../../runtime/trajectory-provider-attribution";
+import type { RecordedStage } from "../../runtime/trajectory-recorder";
 import {
 	composeToolDiagnosticRedactor,
 	projectModelCallDiagnosticValue,
 	projectToolDiagnosticValue,
 } from "../../security/tool-diagnostics";
+import {
+	parseTrajectorySemanticStages,
+	recordedStageToSemanticStage,
+	TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+	type TrajectorySemanticStageRecord,
+} from "../../services/trajectory-semantic-stage";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
@@ -581,6 +588,16 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 		if (!access) return null;
 		providerAccesses.push(access);
 	}
+	let semanticStages: TrajectorySemanticStageRecord[] | undefined;
+	if (Object.hasOwn(value, "semanticStages")) {
+		try {
+			semanticStages = parseTrajectorySemanticStages(value.semanticStages);
+		} catch {
+			// error-policy:J3 a present-but-invalid stage envelope rejects the
+			// step (returning null) instead of decoding to a fake-valid default.
+			return null;
+		}
+	}
 	const step: TrajectoryStep = {
 		stepId,
 		stepNumber,
@@ -590,6 +607,7 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 		llmCalls,
 		providerAccesses,
 		...(action ? { action } : {}),
+		...(semanticStages !== undefined ? { semanticStages } : {}),
 		reward,
 		done,
 	};
@@ -802,6 +820,12 @@ function boundStepsForPersistence(steps: TrajectoryStep[]): JsonValue[] {
 			llmCalls,
 			providerAccesses,
 			...(action !== undefined ? { action } : {}),
+			// Pre-bounded by the shared semantic-stage validator on write; they
+			// bypass the sanitizer budget so an oversized llmCall cannot evict a
+			// decision envelope (and vice versa).
+			...(step.semanticStages !== undefined
+				? { semanticStages: step.semanticStages as unknown as JsonValue }
+				: {}),
 			reward: step.reward,
 			done: step.done,
 			...(typeof reasoningCandidate === "string"
@@ -1091,7 +1115,7 @@ export class TrajectoriesService extends Service {
 
 	private reportLateCapture(
 		stepId: string,
-		captureType: "llm" | "provider",
+		captureType: "llm" | "provider" | "semanticStage",
 		ageMs?: number,
 	): void {
 		// Context inline in the message: the pretty transport drops structured
@@ -1159,6 +1183,7 @@ export class TrajectoriesService extends Service {
 			getCurrentStepId: TrajectoriesService["getCurrentStepId"];
 			completeStep: TrajectoriesService["completeStep"];
 			logLLMCall: TrajectoriesService["logLLMCall"];
+			logSemanticStage: TrajectoriesService["logSemanticStage"];
 			logProviderAccess: TrajectoriesService["logProviderAccess"];
 			logProviderAccessByTrajectoryId: TrajectoriesService["logProviderAccessByTrajectoryId"];
 			isEnabled: TrajectoriesService["isEnabled"];
@@ -1173,6 +1198,7 @@ export class TrajectoriesService extends Service {
 		service.getCurrentStepId = this.getCurrentStepId.bind(this);
 		service.completeStep = this.completeStep.bind(this);
 		service.logLLMCall = this.logLLMCall.bind(this);
+		service.logSemanticStage = this.logSemanticStage.bind(this);
 		service.logProviderAccess = this.logProviderAccess.bind(this);
 		service.logProviderAccessByTrajectoryId =
 			this.logProviderAccessByTrajectoryId.bind(this);
@@ -1708,11 +1734,12 @@ export class TrajectoriesService extends Service {
 	private async getTrajectoryById(
 		trajectoryId: string,
 		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+		forUpdate = false,
 	): Promise<Trajectory | null> {
 		const result = await execute(
 			`SELECT * FROM trajectories
 			 WHERE id = ${sqlLiteral(trajectoryId)}
-			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1`,
+			   AND agent_id = ${sqlLiteral(this.runtime.agentId)} LIMIT 1${forUpdate ? " FOR UPDATE" : ""}`,
 		);
 		if (result.rows.length === 0) return null;
 		return this.rowToTrajectory(result.rows[0]);
@@ -2122,6 +2149,192 @@ export class TrajectoriesService extends Service {
 					total_completion_tokens = ${totals.totalCompletionTokens},
 					total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
 					total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
+					updated_at = ${sqlLiteral(updatedAtIso)}
+				WHERE id = ${sqlLiteral(trajectoryId)}
+			`);
+		});
+	}
+
+	/**
+	 * Mirror one runtime recorder decision stage (Stage-1 message handling,
+	 * planner iteration, tool call/result, toolSearch, evaluation, ...) into the
+	 * step's `semanticStages` envelope so app-chat database trajectories carry
+	 * the same diagnostic semantics as the per-turn file recorder (#17030).
+	 * Fire-and-forget like {@link logLlmCall}; failures are J7 diagnostics.
+	 */
+	logSemanticStage(params: { stepId: string; stage: RecordedStage }): void {
+		if (!this.acceptsNewCapture()) return;
+		if (this.closedStepIds.has(params.stepId)) {
+			this.reportLateCapture(params.stepId, "semanticStage");
+			return;
+		}
+		let semantic: TrajectorySemanticStageRecord;
+		try {
+			semantic = recordedStageToSemanticStage(params.stage);
+		} catch (err) {
+			// error-policy:J7 an unconvertible stage payload is a diagnostics
+			// defect, not a turn failure; report it instead of persisting garbage.
+			this.reportDetachedWriteFailure(
+				"[trajectory-logger] Rejected invalid semantic stage",
+				{ stepId: params.stepId, stageKind: params.stage?.kind },
+				err,
+			);
+			return;
+		}
+
+		const trajectoryId = this.stepToTrajectory.get(params.stepId);
+		if (!trajectoryId) {
+			const operation = this.trackInflightOperation(
+				(async () => {
+					const resolved = await this.resolveTrajectoryId(params.stepId);
+					if (!resolved) return;
+					await this._persistSemanticStage(resolved, params.stepId, semantic);
+				})(),
+			);
+			void operation.catch((err) => {
+				// error-policy:J7 Detached legacy step resolution reports persistence
+				// failure without producing an unhandled rejection.
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Failed to persist semantic stage (async step resolution)",
+					{ stepId: params.stepId, stageId: semantic.stageId },
+					err,
+				);
+			});
+			return;
+		}
+
+		const operation = this.trackInflightOperation(
+			this._persistSemanticStage(trajectoryId, params.stepId, semantic),
+		);
+		void operation.catch((err) => {
+			// error-policy:J7 The public logging hook is synchronous; its detached
+			// persistence failure is reported through the service diagnostic boundary.
+			this.reportDetachedWriteFailure(
+				"[trajectory-logger] Failed to persist semantic stage",
+				{ stepId: params.stepId, stageId: semantic.stageId },
+				err,
+			);
+		});
+	}
+
+	private async _persistSemanticStage(
+		trajectoryId: string,
+		stepId: string,
+		semantic: TrajectorySemanticStageRecord,
+	): Promise<void> {
+		await this.withTrajectoryWriteLock(trajectoryId, async () => {
+			const trajectory = await this.getTrajectoryById(trajectoryId);
+			if (!trajectory) return;
+			if (trajectory.metrics.finalStatus !== "active") {
+				this.rememberClosedStep(stepId);
+				this.releaseTrajectoryRouting(trajectoryId);
+				this.reportLateCapture(stepId, "semanticStage");
+				return;
+			}
+
+			const step = await this.ensureStepExists(trajectory, stepId);
+			const stages = step.semanticStages ?? [];
+			// Idempotent across retries: the stageId is minted once per emit, so a
+			// retry re-presents the identical envelope and is dropped. stageIds are
+			// timestamp-derived (`stage-tool-${name}-${startedAt}`), though, so two
+			// genuinely distinct stages starting in the same millisecond — routine
+			// under parallel tool execution — collide here. The file recorder
+			// appends unconditionally and keeps both, so a silent drop would break
+			// file/DB parity exactly in the concurrent case #17030 exists to
+			// diagnose. Warn when the payload differs so the loss is visible.
+			const existing = stages.find(
+				(entry) => entry.stageId === semantic.stageId,
+			);
+			if (existing) {
+				if (JSON.stringify(existing) !== JSON.stringify(semantic)) {
+					logger.warn(
+						{
+							trajectoryId,
+							stepId,
+							stageId: semantic.stageId,
+							kind: semantic.kind,
+						},
+						"[trajectory-logger] Dropped a distinct semantic stage that collided on stageId; file/DB stage parity is broken for this step",
+					);
+				}
+				return;
+			}
+			// Bounds are expected diagnostics, not write faults, and must be
+			// reported *inside* the lock task rather than thrown out of it. The
+			// task's promise is what `withTrajectoryWriteLock` stores in
+			// `writeQueues`, and `flushWriteQueue` deliberately rethrows that
+			// promise as an awaited persistence barrier (J2). Throwing here would
+			// therefore let a stage bound — reachable on any turn that emits more
+			// stages than the cap — reject the turn's own flush, which is exactly
+			// what a diagnostics mirror must never do.
+			if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Dropped a semantic stage: step is at the stage cap",
+					{
+						trajectoryId,
+						stepId,
+						stageId: semantic.stageId,
+						limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+					},
+					new ElizaError("Trajectory step semantic stages are full", {
+						code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
+						context: {
+							trajectoryId,
+							stepId,
+							limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+						},
+					}),
+				);
+				return;
+			}
+			const nextStages = [...stages, semantic];
+			// Write ⊆ read by construction. `parseTrajectorySemanticStage` gives
+			// each stage a fresh validation budget on the way in, but the read
+			// path (`normalizeTrajectoryStep`) shares one budget across the whole
+			// array — so a run of individually-valid stages can decode to an
+			// invalid array. That is not recoverable on read: the step
+			// normalizes to null and `getTrajectoryById` throws
+			// TRAJECTORY_ROW_INVALID for the *entire* trajectory, taking every
+			// other step, llmCall, and providerAccess with it, and making the row
+			// unwritable too. Validating the candidate array with the read-path
+			// decoder before persisting keeps that state unreachable: the stage
+			// that would exceed the aggregate budget is rejected as a J7
+			// diagnostic instead, exactly like a cap overflow.
+			try {
+				parseTrajectorySemanticStages(nextStages);
+			} catch (cause) {
+				// error-policy:J7 an exceeded decode budget is a diagnostics bound:
+				// report and drop the stage, never poison the row or the flush.
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Dropped a semantic stage: step would exceed the stage decode budget",
+					{
+						trajectoryId,
+						stepId,
+						stageId: semantic.stageId,
+						stageCount: nextStages.length,
+					},
+					new ElizaError(
+						"Trajectory step semantic stages exceed the decode budget",
+						{
+							code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
+							context: {
+								trajectoryId,
+								stepId,
+								stageId: semantic.stageId,
+								stageCount: nextStages.length,
+							},
+							cause,
+						},
+					),
+				);
+				return;
+			}
+			step.semanticStages = nextStages;
+
+			const updatedAtIso = new Date().toISOString();
+			await this.executeRawSql(`
+				UPDATE trajectories SET
+					steps_json = ${stepsSqlLiteral(trajectory.steps)},
 					updated_at = ${sqlLiteral(updatedAtIso)}
 				WHERE id = ${sqlLiteral(trajectoryId)}
 			`);
@@ -2768,6 +2981,67 @@ export class TrajectoriesService extends Service {
 				err,
 			);
 		});
+	}
+
+	/**
+	 * Add delayed outcome reward without reopening or rewriting a completed
+	 * trajectory step. The persisted idempotency key makes repeated domain-event
+	 * delivery safe across processes.
+	 */
+	async applyReward(params: {
+		trajectoryId: string;
+		idempotencyKey: string;
+		reward: number;
+		component: string;
+	}): Promise<boolean> {
+		if (!Number.isFinite(params.reward)) {
+			throw new ElizaError("Trajectory reward is invalid", {
+				code: "TRAJECTORY_REWARD_INVALID",
+				context: { trajectoryId: params.trajectoryId },
+			});
+		}
+		let rewardApplied = false;
+		await this.withTrajectoryWriteLock(params.trajectoryId, async () =>
+			this.executeRawSqlTransaction(async (execute) => {
+				const trajectory = await this.getTrajectoryById(
+					params.trajectoryId,
+					execute,
+					true,
+				);
+				if (!trajectory) return;
+				const applied = Array.isArray(trajectory.metadata.appliedRewardKeys)
+					? trajectory.metadata.appliedRewardKeys.filter(
+							(value): value is string => typeof value === "string",
+						)
+					: [];
+				if (applied.includes(params.idempotencyKey)) {
+					rewardApplied = true;
+					return;
+				}
+				trajectory.metadata.appliedRewardKeys = [
+					...applied,
+					params.idempotencyKey,
+				];
+				trajectory.totalReward += params.reward;
+				trajectory.rewardComponents = {
+					...trajectory.rewardComponents,
+					components: {
+						...(trajectory.rewardComponents.components ?? {}),
+						[params.component]:
+							(trajectory.rewardComponents.components?.[params.component] ??
+								0) + params.reward,
+					},
+				};
+				await execute(`UPDATE trajectories SET
+				  total_reward = ${trajectory.totalReward},
+				  reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
+				  metadata_json = ${sqlLiteral(trajectory.metadata)},
+				  updated_at = ${sqlLiteral(new Date().toISOString())}
+				WHERE id = ${sqlLiteral(params.trajectoryId)}`);
+				rewardApplied = true;
+			}),
+		);
+		return rewardApplied;
 	}
 
 	/**

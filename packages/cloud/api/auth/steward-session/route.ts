@@ -7,12 +7,16 @@ import {
   type StewardSessionErrorCode,
   type StewardSessionRequest,
   type StewardSessionResponse,
+  type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
+import {
+  checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
+} from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
@@ -22,6 +26,7 @@ import {
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
+  getRequestIp,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -59,6 +64,20 @@ function checkOrigin(
   isProduction: boolean,
 ): { ok: true } | { ok: false; reason: string } {
   return checkElizaMutatingRequestOrigin(c.req, isProduction);
+}
+
+/**
+ * Second CSRF layer after the Origin policy: a cross-origin "simple request"
+ * (the only kind that carries cookies without a preflight) cannot produce a
+ * custom header or a JSON content type. Hono parses `text/plain` bodies as
+ * JSON, so without this check an attacker page on a user-content subdomain
+ * could plant a session with a preflight-less POST. Requiring the marker
+ * forces the preflight that the first-party-only CORS layer fails for them.
+ */
+function checkNonSimpleMarker(c: {
+  req: { header: (name: string) => string | undefined };
+}): boolean {
+  return hasElizaNonSimpleRequestMarker(c.req);
 }
 
 let stewardAuthMetricCounter = 0;
@@ -109,12 +128,19 @@ app.post("/", async (c) => {
         403,
       );
     }
+    if (!checkNonSimpleMarker(c)) {
+      logStewardAuth("csrf-marker-missing", null);
+      return c.json(
+        { error: "Forbidden", code: "csrf_marker_required" as const },
+        403,
+      );
+    }
 
     const body = (await c.req
       .json()
-      .catch(
-        () => ({}) as Partial<StewardSessionRequest>,
-      )) as Partial<StewardSessionRequest>;
+      .catch(() => ({}) as Partial<StewardSessionRequest>)) as Partial<
+      StewardSessionRequest & StewardTelegramClaimConfirmationRequest
+    >;
     const token = body.token;
     const refreshToken = body.refreshToken;
     const verifiedPhoneHint = body.verifiedPhone;
@@ -145,6 +171,29 @@ app.post("/", async (c) => {
         409,
       );
     }
+    if (telegramContinuation && body.telegramClaimConfirmation !== "explicit") {
+      logStewardAuth("telegram-claim-confirmation-missing", null);
+      return c.json(
+        errorBody(
+          "Telegram account confirmation required",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
+    if (
+      body.telegramClaimConfirmation !== undefined &&
+      (!telegramContinuation || body.telegramClaimConfirmation !== "explicit")
+    ) {
+      logStewardAuth("telegram-claim-confirmation-invalid", null);
+      return c.json(
+        errorBody(
+          "Invalid Telegram account confirmation",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
 
     if (!stewardSecretConfigured(c.env)) {
       // Worker can't verify any token — the deployment is missing
@@ -169,8 +218,7 @@ app.post("/", async (c) => {
           action: "auth.login.failed",
           result: "failure",
           resource: null,
-          ip:
-            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          ip: getRequestIp(c),
           user_agent: c.req.header("user-agent") ?? undefined,
           request_id: c.get("requestId"),
           metadata: { provider: "steward", reason: "invalid_token" },
@@ -393,7 +441,7 @@ app.post("/", async (c) => {
         result: "success",
         resource: null,
         org_id: cloudUser.organization_id ?? undefined,
-        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: getRequestIp(c),
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: { provider: "steward", method: "session_exchange" },
@@ -431,6 +479,10 @@ app.delete("/", (c) => {
   if (!originCheck.ok) {
     logStewardAuth("forbidden-origin-delete", null);
     return c.json({ error: "Forbidden" }, 403);
+  }
+  if (!checkNonSimpleMarker(c)) {
+    logStewardAuth("csrf-marker-missing-delete", null);
+    return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };

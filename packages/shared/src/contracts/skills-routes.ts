@@ -56,14 +56,16 @@ export const PostSkillAcknowledgeRequestSchema = z
 export const PostSkillCreateRequestSchema = z
   .object({
     name: z.string().regex(/\S/, "name is required"),
-    description: z.string().optional(),
+    description: z
+      .string()
+      .trim()
+      .max(1024, "description must be 1024 characters or less")
+      .optional(),
   })
   .strict()
   .transform((value) => ({
     name: value.name.trim(),
-    ...(value.description?.trim()
-      ? { description: value.description.trim() }
-      : {}),
+    ...(value.description ? { description: value.description } : {}),
   }));
 
 export const PutSkillSourceRequestSchema = z
@@ -78,7 +80,7 @@ const MarketplaceInstallSourceSchema = z.enum(["clawhub", "manual"]);
  * Marketplace install accepts three mutually-exclusive identifying
  * inputs: slug (ClawHub-native install), githubUrl, or repository.
  * The route handler picks a path based on which is present, so the
- * schema only enforces the "at least one" invariant. Optional
+ * schema enforces that exactly one identifier is supplied. Optional
  * descriptive fields are absorbed when whitespace-only.
  */
 export const PostMarketplaceInstallRequestSchema = z
@@ -110,10 +112,12 @@ export const PostMarketplaceInstallRequestSchema = z
     };
   })
   .refine(
-    (value) => Boolean(value.slug || value.githubUrl || value.repository),
+    (value) =>
+      [value.slug, value.githubUrl, value.repository].filter(Boolean).length ===
+      1,
     {
       message:
-        "Install requires at least one of: slug, githubUrl, or repository",
+        "Install requires exactly one of: slug, githubUrl, or repository",
     },
   );
 

@@ -68,10 +68,28 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
+const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120_000;
+
+const AUDIO_TTS_TIMEOUT_MS = 60_000;
+
+function extractAbortSignal(input: unknown): AbortSignal | undefined {
+  if (typeof input !== "object" || input === null || !("signal" in input)) {
+    return undefined;
+  }
+  const signal = (input as { signal?: unknown }).signal;
+  return signal instanceof AbortSignal ? signal : undefined;
+}
+
+function requestSignal(callerSignal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+}
+
 export async function handleTranscription(
   runtime: IAgentRuntime,
   input: TranscriptionInput
 ): Promise<string> {
+  const callerSignal = extractAbortSignal(input);
   let modelName = getTranscriptionModel(runtime);
   let blob: Blob;
   let extraParams: Partial<LocalTranscriptionParams> = {};
@@ -162,6 +180,7 @@ export async function handleTranscription(
       method: "POST",
       headers: getAuthHeader(runtime),
       body: formData,
+      signal: requestSignal(callerSignal, AUDIO_TRANSCRIPTION_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -182,6 +201,7 @@ export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: TTSInput
 ): Promise<ArrayBuffer> {
+  const callerSignal = extractAbortSignal(input);
   let text: string;
   let voice: string | undefined;
   let format: TTSOutputFormat = "mp3";
@@ -255,6 +275,7 @@ export async function handleTextToSpeech(
         ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
       },
       body: JSON.stringify(requestBody),
+      signal: requestSignal(callerSignal, AUDIO_TTS_TIMEOUT_MS),
     });
 
     if (!response.ok) {

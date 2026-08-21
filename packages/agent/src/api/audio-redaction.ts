@@ -28,16 +28,20 @@
  * error (WAV keeps working via the pure-TS lane), and any post-redaction
  * duration drift beyond the per-container tolerance throws
  * `AUDIO_REDACTION_DURATION_DRIFT` instead of storing a variant whose anchors
- * would lie.
+ * would lie. The ffmpeg/ffprobe child is timed and stdio-capped so a hung
+ * binary cannot pin the agent process.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import type { AudioRedactionSpan } from "@elizaos/shared/audio-redaction";
+import {
+  AudioRedactionChildError,
+  runAudioRedactionChild,
+} from "./audio-redaction-child.ts";
 
 /** How a window is made inaudible. */
 export type AudioRedactionMode = "mute" | "bleep";
@@ -344,46 +348,20 @@ interface SpawnResult {
   stderr: string;
 }
 
-function run(bin: string, args: readonly string[]): Promise<SpawnResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { windowsHide: true });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const rejectOnce = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-    const stdoutEnded = new Promise<void>((streamResolve, streamReject) => {
-      child.stdout.once("end", streamResolve);
-      child.stdout.once("error", streamReject);
+async function run(bin: string, args: readonly string[]): Promise<SpawnResult> {
+  try {
+    return await runAudioRedactionChild(bin, args);
+  } catch (error) {
+    // error-policy:J2 wrap the isolated child failure as the typed domain error
+    // the redaction lanes already surface to callers.
+    if (error instanceof AudioRedactionChildError) {
+      throw new ElizaError(error.message, { code: error.code, cause: error });
+    }
+    throw new ElizaError("audio redaction child process failed", {
+      code: "AUDIO_REDACTION_FFMPEG_FAILED",
+      cause: error,
     });
-    const stderrEnded = new Promise<void>((streamResolve, streamReject) => {
-      child.stderr.once("end", streamResolve);
-      child.stderr.once("error", streamReject);
-    });
-    const closed = new Promise<number | null>((closeResolve) => {
-      child.once("close", closeResolve);
-    });
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.once("error", rejectOnce);
-    Promise.all([closed, stdoutEnded, stderrEnded])
-      .then(([code]) => {
-        if (settled) return;
-        settled = true;
-        resolve({ code, stdout, stderr });
-      })
-      .catch((error: unknown) => {
-        // error-policy:J2 Preserve subprocess stream failures for the caller.
-        rejectOnce(error instanceof Error ? error : new Error(String(error)));
-      });
-  });
+  }
 }
 
 /** Probed stream geometry of an audio file. */

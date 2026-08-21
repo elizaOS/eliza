@@ -8,6 +8,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@elizaos/shared/host-execution-env": fileURLToPath(
+        new URL(
+          "../../packages/shared/src/host-execution-env.ts",
+          import.meta.url,
+        ),
+      ),
       "@elizaos/auth/token-expiry": fileURLToPath(
         new URL("../../packages/auth/src/token-expiry.ts", import.meta.url),
       ),
@@ -15,6 +21,11 @@ export default defineConfig({
         "../../packages/auth/src/index.ts",
         import.meta.url,
       ).pathname,
+      // The auth source alias pulls in @elizaos/vault, which resolves only
+      // through its built dist; pin it to source for clean-checkout runs.
+      "@elizaos/vault": fileURLToPath(
+        new URL("../../packages/vault/src/index.ts", import.meta.url),
+      ),
       "@elizaos/shared": fileURLToPath(
         new URL("./__tests__/shared-runtime-env.ts", import.meta.url),
       ),

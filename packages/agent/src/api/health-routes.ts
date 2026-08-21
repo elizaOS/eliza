@@ -22,13 +22,17 @@ import {
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).
-import { isCloudProvisionedContainer } from "@elizaos/shared";
+import {
+  isCloudProvisionedContainer,
+  parseCanonicalInteger,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
+import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
 type CloudApiKeyResolver = {
   resolveCloudApiKey: (
@@ -160,19 +164,15 @@ interface RuntimeServiceOrderItem {
   instances: RuntimeOrderItem[];
 }
 
-function parseDebugPositiveInt(
+export function parseDebugPositiveInt(
   raw: string | null,
   fallback: number,
   min: number,
   max: number,
-): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  const intValue = Math.floor(parsed);
-  if (intValue < min) return min;
-  if (intValue > max) return max;
-  return intValue;
+): number | "invalid" {
+  if (raw === null || raw === "") return fallback;
+  const parsed = parseCanonicalInteger(raw, { min, max, clamp: true });
+  return parsed === undefined ? fallback : parsed;
 }
 
 function classNameFor(value: object): string {
@@ -482,7 +482,7 @@ export function computeCanRespond(
 export async function handleHealthRoutes(
   ctx: HealthRouteContext,
 ): Promise<boolean> {
-  const { res, method, pathname, url, state, json, error } = ctx;
+  const { req, res, method, pathname, url, state, json, error } = ctx;
 
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
@@ -595,6 +595,17 @@ export async function handleHealthRoutes(
       state.agentState !== "restarting" &&
       !databaseLiveness.terminal;
 
+    // The endpoint stays unauthenticated for readiness probes, so callers
+    // that fail the trusted-local check receive only the liveness bit: the
+    // detailed shape discloses deployment topology (connector names, plugin
+    // and service counts, database internals, boot phase) to anyone who can
+    // reach the port (W1-039). The status code keeps its terminal/ready
+    // semantics for orchestrators.
+    if (!isTrustedLocalRequest(req)) {
+      json(res, { ready }, databaseLiveness.terminal ? 503 : 200);
+      return true;
+    }
+
     // Service registration truth (#16309): a service whose start() threw is
     // recorded as "failed" by the runtime but previously never reached this
     // surface, so supervisors saw a settled healthy boot over dead services.
@@ -671,6 +682,19 @@ export async function handleHealthRoutes(
       64,
       100_000,
     );
+    if (
+      maxDepth === "invalid" ||
+      maxArrayLength === "invalid" ||
+      maxObjectEntries === "invalid" ||
+      maxStringLength === "invalid"
+    ) {
+      error(
+        res,
+        "depth, maxArrayLength, maxObjectEntries, and maxStringLength must be canonical positive integers",
+        400,
+      );
+      return true;
+    }
 
     const serializeOptions: RuntimeDebugSerializeOptions = {
       maxDepth,

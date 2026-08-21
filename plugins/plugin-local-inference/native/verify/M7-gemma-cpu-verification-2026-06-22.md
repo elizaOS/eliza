@@ -1,6 +1,6 @@
 # M7 — Gemma 4 verification on Linux x64 (CPU + Vulkan GPU)
 
-> Milestone **M7** of the [Gemma 4 cutover](../docs/gemma4-cutover-plan.md).
+> Milestone **M7** of the [Gemma 4 cutover](../../docs/gemma4-cutover-plan.md).
 > Host: linux-x64, AMD CPU + **RTX 5080 Laptop GPU via Vulkan** (CUDA runtime is
 > blocked — see "Blocked platforms" — but Vulkan drives the GPU; see the GPU
 > section). Fork build: `c849143c9` (`b10028`, M3-seam branch) for CPU; the

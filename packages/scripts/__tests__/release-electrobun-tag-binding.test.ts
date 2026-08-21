@@ -46,6 +46,8 @@ interface WorkflowStep {
 interface WorkflowJob {
   if?: string;
   name?: string;
+  needs?: string | string[];
+  environment?: string;
   outputs?: Record<string, string>;
   steps?: WorkflowStep[];
 }
@@ -563,5 +565,71 @@ describe("release-electrobun workflow binding", () => {
       .filter((candidate) => candidate.includes("source_sha="))) {
       expect(line).not.toContain("$GITHUB_SHA");
     }
+  });
+
+  test("every signing and publishing job is gated on the production-release approval", () => {
+    const needsList = (job: WorkflowJob): string[] =>
+      typeof job.needs === "string" ? [job.needs] : (job.needs ?? []);
+
+    const authorize = requireJob("authorize-release");
+    expect(authorize.environment).toBe("production-release");
+    expect(needsList(authorize)).toEqual(["prepare"]);
+    // Approval marker only: no checkout, so the gate itself can never run
+    // pipeline code or touch signing secrets.
+    expect(authorize.steps ?? []).toHaveLength(1);
+    for (const step of authorize.steps ?? []) {
+      expect(step.uses ?? "").not.toContain("checkout");
+    }
+
+    const build = requireJob("build");
+    expect(needsList(build)).toEqual(
+      expect.arrayContaining([
+        "prepare",
+        "validate-release",
+        "authorize-release",
+      ]),
+    );
+    expect(build.if).toContain("needs.authorize-release.result == 'success'");
+
+    // Downstream jobs inherit the gate only if they fail closed when build is
+    // skipped: no `always()` without an explicit build-result check.
+    const releaseJob = requireJob("release");
+    expect(needsList(releaseJob)).toEqual(
+      expect.arrayContaining(["prepare", "build"]),
+    );
+    expect(releaseJob.if ?? "").not.toContain("always()");
+
+    const ota = requireJob("ota-publish");
+    expect(needsList(ota)).toEqual(
+      expect.arrayContaining(["prepare", "release"]),
+    );
+    expect(ota.if ?? "").toContain("needs.release.result == 'success'");
+  });
+
+  test("prepare refuses a tagged commit that never landed on a protected branch", () => {
+    const prepare = requireJob("prepare");
+    const checkout = requireStep(prepare, "Checkout");
+    expect(checkout.with?.["fetch-depth"]).toBe(0);
+
+    const resolve = requireStep(prepare, "Resolve tag to peeled commit");
+    const ancestry = requireStep(
+      prepare,
+      "Require tagged commit on a protected branch",
+    );
+    // The checked commit is exactly the identity-validated source_sha that
+    // downstream jobs build and publish, and the step runs after resolution.
+    expect(ancestry.env?.SOURCE_SHA).toBe(
+      `\${{ steps.version.outputs.source_sha }}`,
+    );
+    const steps = prepare.steps ?? [];
+    expect(steps.indexOf(ancestry)).toBeGreaterThan(steps.indexOf(resolve));
+
+    expect(ancestry.run).toContain(
+      'git merge-base --is-ancestor "$SOURCE_SHA" origin/main',
+    );
+    expect(ancestry.run).toContain(
+      'git merge-base --is-ancestor "$SOURCE_SHA" origin/develop',
+    );
+    expect(ancestry.run).toContain("exit 1");
   });
 });

@@ -295,6 +295,11 @@ export function subscribeAuthStatus(
   };
 }
 
+/** Force the shared auth probe to run now and publish its resolved state. */
+export function revalidateAuthStatus(): Promise<void> {
+  return fetchAuthStatus();
+}
+
 /**
  * Test/story seam for the #11084 auth gate: publish a synthetic status into the
  * shared snapshot (and to subscribers) so `useIsAuthenticated`-gated loaders

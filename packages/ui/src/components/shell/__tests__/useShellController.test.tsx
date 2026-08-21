@@ -314,8 +314,16 @@ vi.mock("../../../voice/useWakeListenWindow", () => ({
 const authGateMock = vi.hoisted(() => ({
   value: {
     gated: false,
-    phase: "clear" as "checking" | "needs-auth" | "clear",
+    phase: "clear" as "checking" | "unavailable" | "needs-auth" | "clear",
   },
+}));
+
+const authStatusMock = vi.hoisted(() => ({
+  revalidate: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../hooks/useAuthStatus", () => ({
+  revalidateAuthStatus: authStatusMock.revalidate,
 }));
 
 vi.mock("../useShellAuthGate", () => ({
@@ -338,6 +346,7 @@ afterEach(() => {
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.setActionNotice.mockClear();
+  authStatusMock.revalidate.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
   appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
   appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
@@ -2505,6 +2514,45 @@ describe("useShellController cloud-only auth gate", () => {
     const { result } = renderHook(() => useShellController());
     expect(result.current.phase).toBe("booting");
     expect(result.current.authGate.gated).toBe(true);
+  });
+
+  it("opens chat while checking but keeps PTT closed and retries auth visibly", () => {
+    authGateMock.value = { gated: true, phase: "checking" };
+    const login = appMock.value.handleInteractiveCloudLogin;
+    login.mockClear();
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.open());
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.phase).toBe("summoned");
+
+    act(() => result.current.startRecording("ptt"));
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(login).not.toHaveBeenCalled();
+    expect(authStatusMock.revalidate).toHaveBeenCalledTimes(1);
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Checking your Eliza Cloud session. Try push-to-talk again in a moment.",
+      "info",
+      4000,
+    );
+  });
+
+  it("opens chat while Cloud is unavailable and retries PTT with an error", () => {
+    authGateMock.value = { gated: true, phase: "unavailable" };
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.open());
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.phase).toBe("summoned");
+
+    act(() => result.current.startRecording("ptt"));
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(authStatusMock.revalidate).toHaveBeenCalledTimes(1);
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Unable to reach Eliza Cloud. Retrying the connection.",
+      "error",
+      4000,
+    );
   });
 
   it("surfaces needs-auth and routes open + startRecording to sign-in", () => {

@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { db } from "@/db/client";
 import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -29,14 +30,13 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Invalid session" }, 401);
     }
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
       // error-policy:J3 untrusted CLI-auth complete body; syntax errors are
       // caller garbage, not a server fault that completes CLI login.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }

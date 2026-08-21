@@ -1,6 +1,7 @@
 /**
  * Verifies runParentAgentBroker.
- * Deterministic unit test with a stubbed runtime; no live model.
+ * Deterministic unit test with a stubbed runtime; no live model. Includes hung
+ * Cloud-command HTTP fail-closed.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -179,6 +180,47 @@ describe("runParentAgentBroker", () => {
     expect((init.headers as Record<string, string>).Authorization).toMatch(
       /^Bearer /,
     );
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("fails closed on a hung Cloud command hop instead of waiting forever", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) return;
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            signal.addEventListener("abort", () => reject(signal.reason));
+          }),
+      ),
+    );
+    const started = Date.now();
+    const result = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: { mode: "cloud-command", command: "apps.list" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("apps.list failed");
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it("forwards Cloud command query parameters", async () => {

@@ -12,6 +12,7 @@
  * accountKey = GitHub username (login).
  */
 
+import { createHash, randomBytes } from "node:crypto";
 import {
   type ConnectorAccount,
   type ConnectorAccountManager,
@@ -38,6 +39,33 @@ const GITHUB_AUTHORIZATION_ENDPOINT =
   "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_ENDPOINT = "https://api.github.com/user";
+
+/** Provider endpoints accepted only by the loopback-only contract factory. */
+interface GitHubOAuthEndpoints {
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  userEndpoint: string;
+  requestTimeoutMs: number;
+}
+
+const DEFAULT_GITHUB_OAUTH_ENDPOINTS: GitHubOAuthEndpoints = {
+  authorizationEndpoint: GITHUB_AUTHORIZATION_ENDPOINT,
+  tokenEndpoint: GITHUB_TOKEN_ENDPOINT,
+  userEndpoint: GITHUB_USER_ENDPOINT,
+  requestTimeoutMs: 15_000,
+};
+
+/** Structured OAuth transport failure retained at the connector boundary. */
+export class GitHubOAuthHttpError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(message);
+    this.name = "GitHubOAuthHttpError";
+  }
+}
 
 const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
   "posting" as ConnectorAccountPurpose,
@@ -66,6 +94,7 @@ interface GitHubUserPayload {
 interface GitHubFetchResponse {
   ok: boolean;
   status: number;
+  headers: Headers;
   text(): Promise<string>;
   json(): Promise<unknown>;
 }
@@ -96,12 +125,47 @@ function readClientConfig(runtime: IAgentRuntime): {
   return { clientId, clientSecret, redirectUri };
 }
 
+function registeredRedirectUri(
+  requestedRedirectUri: string | undefined,
+  configuredRedirectUri: string,
+): string {
+  const requested = nonEmptyString(requestedRedirectUri);
+  if (requested && requested !== configuredRedirectUri) {
+    throw new Error(
+      "GitHub OAuth redirect URI must match the provider registration.",
+    );
+  }
+  return configuredRedirectUri;
+}
+
 function parseScopes(value: string | undefined): string[] {
   if (!value) return [];
   return value
     .split(/[,\s]+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+}
+
+function createCodeVerifier(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function createCodeChallenge(codeVerifier: string): string {
+  return createHash("sha256").update(codeVerifier).digest("base64url");
+}
+
+function opaqueAccountId(externalId: string): string {
+  return `conn_${createHash("sha256").update(`github:${externalId}`).digest("base64url").slice(0, 24)}`;
+}
+
+function retryAfterSeconds(headers: Headers): number | undefined {
+  const value = headers.get("retry-after")?.trim();
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds;
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }
 
 function defaultRoleFromAccountId(
@@ -137,24 +201,32 @@ async function exchangeCodeForToken(args: {
   clientSecret: string;
   redirectUri: string;
   code: string;
+  codeVerifier: string;
+  tokenEndpoint: string;
+  requestTimeoutMs: number;
 }): Promise<GitHubTokenResponse> {
-  const response = (await fetch(GITHUB_TOKEN_ENDPOINT, {
+  const response = (await fetch(args.tokenEndpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(args.requestTimeoutMs),
     body: new URLSearchParams({
+      grant_type: "authorization_code",
       client_id: args.clientId,
       client_secret: args.clientSecret,
       code: args.code,
       redirect_uri: args.redirectUri,
+      code_verifier: args.codeVerifier,
     }).toString(),
   })) as GitHubFetchResponse;
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
+    throw new GitHubOAuthHttpError(
       `GitHub token exchange failed with ${response.status}: ${body}`,
+      response.status,
+      retryAfterSeconds(response.headers),
     );
   }
   const parsed = (await response.json()) as GitHubTokenResponse;
@@ -171,16 +243,23 @@ async function exchangeCodeForToken(args: {
 
 async function fetchGitHubUser(
   accessToken: string,
+  userEndpoint: string,
+  requestTimeoutMs: number,
 ): Promise<GitHubUserPayload> {
-  const response = (await fetch(GITHUB_USER_ENDPOINT, {
+  const response = (await fetch(userEndpoint, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
+    signal: AbortSignal.timeout(requestTimeoutMs),
   })) as GitHubFetchResponse;
   if (!response.ok) {
-    throw new Error(`GitHub /user request failed with ${response.status}`);
+    throw new GitHubOAuthHttpError(
+      `GitHub /user request failed with ${response.status}`,
+      response.status,
+      retryAfterSeconds(response.headers),
+    );
   }
   const parsed = (await response.json()) as GitHubUserPayload;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -212,8 +291,9 @@ function synthesizeEnvAccounts(runtime: IAgentRuntime): ConnectorAccount[] {
 /**
  * Build the GitHub ConnectorAccountManager provider.
  */
-export function createGitHubConnectorAccountProvider(
+function createGitHubConnectorAccountProviderWithEndpoints(
   runtime: IAgentRuntime,
+  endpoints: GitHubOAuthEndpoints,
 ): ConnectorAccountProvider {
   return {
     provider: GITHUB_SERVICE_TYPE,
@@ -266,11 +346,16 @@ export function createGitHubConnectorAccountProvider(
       _manager: ConnectorAccountManager,
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
-      const redirectUri = request.redirectUri ?? config.redirectUri;
+      const redirectUri = registeredRedirectUri(
+        request.redirectUri,
+        config.redirectUri,
+      );
       const scopes =
         request.scopes && request.scopes.length > 0
           ? request.scopes
           : ["repo", "read:user", "user:email", "notifications"];
+      const codeVerifier = createCodeVerifier();
+      const codeChallenge = createCodeChallenge(codeVerifier);
 
       const params = new URLSearchParams({
         client_id: config.clientId,
@@ -278,10 +363,15 @@ export function createGitHubConnectorAccountProvider(
         state: request.flow.state,
         scope: scopes.join(" "),
         allow_signup: "false",
+        response_type: "code",
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
       });
 
       return {
-        authUrl: `${GITHUB_AUTHORIZATION_ENDPOINT}?${params.toString()}`,
+        authUrl: `${endpoints.authorizationEndpoint}?${params.toString()}`,
+        redirectUri,
+        codeVerifier,
         metadata: {
           ...request.metadata,
           requestedScopes: scopes,
@@ -302,21 +392,36 @@ export function createGitHubConnectorAccountProvider(
       }
 
       const config = readClientConfig(runtime);
-      const redirectUri =
-        nonEmptyString(request.flow.redirectUri) ?? config.redirectUri;
+      const redirectUri = registeredRedirectUri(
+        request.flow.redirectUri,
+        config.redirectUri,
+      );
+      const codeVerifier = nonEmptyString(request.flow.codeVerifier);
+      if (!codeVerifier) {
+        throw new Error(
+          "GitHub OAuth flow is missing its one-time PKCE verifier; start the flow again.",
+        );
+      }
 
       const tokens = await exchangeCodeForToken({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
         redirectUri,
         code,
+        codeVerifier,
+        tokenEndpoint: endpoints.tokenEndpoint,
+        requestTimeoutMs: endpoints.requestTimeoutMs,
       });
 
       if (!tokens.access_token) {
         throw new Error("GitHub token exchange returned no access_token.");
       }
 
-      const user = await fetchGitHubUser(tokens.access_token);
+      const user = await fetchGitHubUser(
+        tokens.access_token,
+        endpoints.userEndpoint,
+        endpoints.requestTimeoutMs,
+      );
       const externalId = nonEmptyString(user.id ? String(user.id) : undefined);
       const login = nonEmptyString(user.login);
       if (!login) {
@@ -352,7 +457,7 @@ export function createGitHubConnectorAccountProvider(
           label: nonEmptyString(user.name) ?? login,
           metadata: accountMetadata,
         },
-        request.flow.accountId,
+        request.flow.accountId ?? opaqueAccountId(externalId ?? login),
       );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,
@@ -414,4 +519,57 @@ export function createGitHubConnectorAccountProvider(
       };
     },
   };
+}
+
+/** Build the production GitHub provider pinned to GitHub-owned origins. */
+export function createGitHubConnectorAccountProvider(
+  runtime: IAgentRuntime,
+): ConnectorAccountProvider {
+  return createGitHubConnectorAccountProviderWithEndpoints(
+    runtime,
+    DEFAULT_GITHUB_OAUTH_ENDPOINTS,
+  );
+}
+
+/**
+ * Build a provider for loopback protocol tests without exposing credentials to
+ * arbitrary origins. This seam is unavailable outside a test process.
+ */
+export function createGitHubConnectorAccountProviderForTest(
+  runtime: IAgentRuntime,
+  endpoints: GitHubOAuthEndpoints,
+): ConnectorAccountProvider {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "GitHub OAuth endpoint overrides are available only when NODE_ENV=test.",
+    );
+  }
+  for (const endpoint of Object.values(endpoints)) {
+    if (typeof endpoint === "number") continue;
+    const url = new URL(endpoint);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      (url.hostname !== "127.0.0.1" &&
+        url.hostname !== "localhost" &&
+        url.hostname !== "[::1]") ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== ""
+    ) {
+      throw new Error(
+        "GitHub OAuth test endpoints must use an explicit credential-free loopback URL without query or fragment data.",
+      );
+    }
+  }
+  if (
+    !Number.isSafeInteger(endpoints.requestTimeoutMs) ||
+    endpoints.requestTimeoutMs <= 0 ||
+    endpoints.requestTimeoutMs > 60_000
+  ) {
+    throw new Error(
+      "GitHub OAuth test request timeout must be finite and between 1 and 60000 milliseconds.",
+    );
+  }
+  return createGitHubConnectorAccountProviderWithEndpoints(runtime, endpoints);
 }

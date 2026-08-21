@@ -27,6 +27,12 @@ const finalUserWithOrg = {
 };
 
 mock.module("./services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: {
     addCredits: (params: unknown) => addCreditsImpl(params),
   },
@@ -84,7 +90,7 @@ mock.module("./services/api-keys", () => ({
 
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    existsForOrganization: async () => false,
+    hasHealthyCloudCharacterMirror: async () => false,
     create: async () => ({ id: "char-1" }),
   },
 }));

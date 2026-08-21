@@ -22,6 +22,7 @@ import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { validateJwtLifetime } from "./jwt-lifetime";
 import {
   readStagingSessionSigningConfig,
   STAGING_SESSION_EXCHANGE_VERSION,
@@ -77,6 +78,8 @@ export interface StewardTokenClaims {
   expiration: number;
   /** Token issued-at (unix timestamp) */
   issuedAt: number;
+  /** Token not-before time, when the issuer supplied one. */
+  notBefore?: number;
 }
 
 /**
@@ -93,7 +96,10 @@ interface CachedStewardClaims {
   stagingSessionBinding?: StagingSessionBinding;
   expiration: number;
   issuedAt: number;
+  notBefore?: number;
   cachedAt: number;
+  /** Binds a memo to the signing key so rotation invalidates old verification results. */
+  signingKeyFingerprint: string;
 }
 
 /**
@@ -123,6 +129,21 @@ export interface StewardVerifyOptions {
 }
 
 export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+
+/**
+ * Clock-skew allowance between the Steward issuer and this verifier. Steward
+ * mints access tokens at exactly STEWARD_ACCESS_TOKEN_TTL_SECONDS, so the
+ * acceptance ceiling below adds a small margin — a freshly minted token read
+ * against a slightly-ahead issuer clock must not be rejected, while a token
+ * claiming a materially longer lifetime still fails closed.
+ */
+const STEWARD_VERIFY_CLOCK_SKEW_SECONDS = 5 * 60;
+
+/**
+ * Maximum issued lifetime a presented Steward token may claim. Clock skew is
+ * handled separately and cannot lengthen this interval.
+ */
+const MAX_STEWARD_TOKEN_TTL_SECONDS = STEWARD_ACCESS_TOKEN_TTL_SECONDS;
 
 // Cache the encoded secret keyed by raw value, so repeated requests with the
 // same secret skip the TextEncoder allocation. Bounded at one entry — secrets
@@ -276,12 +297,16 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex").substring(0, 32);
 }
 
+function fingerprintSigningKey(secret: Uint8Array): string {
+  return createHash("sha256").update(secret).digest("hex").substring(0, 16);
+}
+
 /**
  * In-memory LRU cache for Steward token verification (30s TTL, max 200).
  * Eliminates Redis round-trip for repeated requests within the same
  * serverless function instance.
  */
-const IN_MEMORY_STEWARD_CACHE = new InMemoryLRUCache<StewardTokenClaims>(200, 30_000);
+const IN_MEMORY_STEWARD_CACHE = new InMemoryLRUCache<CachedStewardClaims>(200, 30_000);
 
 /**
  * Extract StewardTokenClaims from a raw jose JWTPayload.
@@ -336,6 +361,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     ...(stagingSessionBinding ? { stagingSessionBinding } : {}),
     expiration: payload.exp ?? 0,
     issuedAt: payload.iat ?? 0,
+    ...(payload.nbf !== undefined ? { notBefore: payload.nbf } : {}),
   };
 }
 
@@ -358,6 +384,49 @@ function claimsMatchTokenClass(header: StagingTokenHeader, claims: StewardTokenC
   return header.isCandidate === Boolean(claims.stagingSessionBinding);
 }
 
+function claimsMatchTenant(env: StewardVerifyEnv, claims: StewardTokenClaims): boolean {
+  if (claims.tenantId !== undefined && typeof claims.tenantId !== "string") return false;
+  const expectedTenant = env.STEWARD_TENANT_ID;
+  return !(
+    expectedTenant &&
+    claims.tenantId &&
+    claims.tenantId !== expectedTenant &&
+    claims.tenantId !== `personal-${claims.userId}`
+  );
+}
+
+function validateStewardLifetime(claims: StewardTokenClaims): boolean {
+  const result = validateJwtLifetime(
+    { exp: claims.expiration, iat: claims.issuedAt, nbf: claims.notBefore },
+    {
+      maxTtlSeconds: MAX_STEWARD_TOKEN_TTL_SECONDS,
+      clockToleranceSeconds: STEWARD_VERIFY_CLOCK_SKEW_SECONDS,
+    },
+  );
+  if (!result.valid) {
+    logger.warn(`[StewardClient] Rejected token: ${result.reason}`);
+  }
+  return result.valid;
+}
+
+async function validateStewardClaims(
+  env: StewardVerifyEnv,
+  header: StagingTokenHeader,
+  claims: StewardTokenClaims,
+  tokenHash: string,
+): Promise<boolean> {
+  if (!validateStewardLifetime(claims)) return false;
+  if (!claims.userId || !claimsMatchTokenClass(header, claims)) return false;
+  if (!(await validateOptionalStagingBinding(env, claims))) return false;
+  if (!claimsMatchTenant(env, claims)) {
+    logger.debug("[StewardClient] Token tenant not permitted for this deployment", {
+      tokenHash: tokenHash.substring(0, 8),
+    });
+    return false;
+  }
+  return true;
+}
+
 async function verifyStewardTokenWithoutCaches(input: {
   env: StewardVerifyEnv;
   token: string;
@@ -365,13 +434,28 @@ async function verifyStewardTokenWithoutCaches(input: {
   stagingHeader: StagingTokenHeader;
   tokenHash: string;
 }): Promise<StewardTokenClaims | null> {
-  const { payload } = await jwtVerify(input.token, input.secret, {
+  const { payload, protectedHeader } = await jwtVerify(input.token, input.secret, {
     algorithms: ["HS256"],
+    clockTolerance: STEWARD_VERIFY_CLOCK_SKEW_SECONDS,
   });
+
+  // @stwd/auth's canonical HS256 session signer omits `typ`; older Eliza
+  // signers included `typ: "JWT"`. Both are ordinary JWT representations.
+  // Keep every other explicit type fail-closed so a token minted for another
+  // protocol cannot be confused with a Steward browser session.
+  const ordinaryTypeIsValid = protectedHeader.typ === undefined || protectedHeader.typ === "JWT";
+  if (
+    (input.stagingHeader.isCandidate && protectedHeader.typ !== STAGING_SESSION_TOKEN_TYP) ||
+    (!input.stagingHeader.isCandidate && !ordinaryTypeIsValid)
+  ) {
+    logger.warn("[StewardClient] Rejected token with an invalid typ header");
+    return null;
+  }
+
   const claims = extractClaims(payload);
 
-  if (!claims.userId) {
-    logger.warn("[StewardClient] JWT valid but missing userId/sub claim");
+  if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+    logger.warn("[StewardClient] JWT valid but missing sub claim");
     return null;
   }
 
@@ -379,32 +463,9 @@ async function verifyStewardTokenWithoutCaches(input: {
   // a token selecting that path must carry the binding. This prevents a
   // normal Steward signer from manufacturing an un-revalidated QA claim or
   // a dedicated token from degrading into an ordinary session.
-  if (!claimsMatchTokenClass(input.stagingHeader, claims)) {
-    logger.debug("[StewardClient] Token class and claims do not match");
-    return null;
-  }
-
-  if (!(await validateOptionalStagingBinding(input.env, claims))) {
-    logger.debug("[StewardClient] Staging session source binding is no longer valid");
-    return null;
-  }
-
-  // Steward issues per-user personal tenants scoped inside the org tenant.
-  // Apply tenant scope before any caller can use or cache the claims.
-  const expectedTenant = input.env.STEWARD_TENANT_ID;
-  if (
-    expectedTenant &&
-    claims.tenantId &&
-    claims.tenantId !== expectedTenant &&
-    claims.tenantId !== `personal-${claims.userId}`
-  ) {
-    logger.debug("[StewardClient] Token tenant not permitted for this deployment", {
-      tokenHash: input.tokenHash.substring(0, 8),
-    });
-    return null;
-  }
-
-  return claims;
+  return (await validateStewardClaims(input.env, input.stagingHeader, claims, input.tokenHash))
+    ? claims
+    : null;
 }
 
 /**
@@ -431,6 +492,7 @@ export async function verifyStewardTokenCached(
   if (!secret) return null;
 
   const tokenHash = hashToken(token);
+  const signingKeyFingerprint = fingerprintSigningKey(secret);
   const now = Math.floor(Date.now() / 1000);
   const startTime = Date.now();
 
@@ -456,13 +518,23 @@ export async function verifyStewardTokenCached(
 
     // 0. Check in-memory cache first
     const inMemoryCached = IN_MEMORY_STEWARD_CACHE.get(tokenHash);
-    if (inMemoryCached && inMemoryCached.expiration > now) {
+    if (inMemoryCached) {
       logger.debug("[StewardClient] ✓ In-memory cache hit", {
         tokenHash: tokenHash.substring(0, 8),
         durationMs: Date.now() - startTime,
       });
-      if (!claimsMatchTokenClass(stagingHeader, inMemoryCached)) return null;
-      return (await validateOptionalStagingBinding(env, inMemoryCached)) ? inMemoryCached : null;
+      if (inMemoryCached.signingKeyFingerprint !== signingKeyFingerprint) {
+        IN_MEMORY_STEWARD_CACHE.delete(tokenHash);
+      } else {
+        const {
+          cachedAt: _cachedAt,
+          signingKeyFingerprint: _fingerprint,
+          ...claims
+        } = inMemoryCached;
+        if (await validateStewardClaims(env, stagingHeader, claims, tokenHash)) return claims;
+        IN_MEMORY_STEWARD_CACHE.delete(tokenHash);
+        return null;
+      }
     }
 
     // 1. Check the distributed memo unless the caller deliberately prefers
@@ -470,38 +542,48 @@ export async function verifyStewardTokenCached(
     const cached = options.skipDistributedCache
       ? null
       : await cache.get<CachedStewardClaims>(cacheKey);
-    if (cached && cached.expiration > now) {
+    if (cached) {
+      if (
+        typeof cached.userId !== "string" ||
+        typeof cached.expiration !== "number" ||
+        typeof cached.issuedAt !== "number" ||
+        typeof cached.signingKeyFingerprint !== "string"
+      ) {
+        await cache.del(cacheKey);
+        return null;
+      }
       logger.debug("[StewardClient] ✓ Redis cache hit", {
         tokenHash: tokenHash.substring(0, 8),
         userId: cached.userId.substring(0, 20),
         durationMs: Date.now() - startTime,
       });
 
-      const claims: StewardTokenClaims = {
-        userId: cached.userId,
-        email: cached.email,
-        address: cached.address,
-        walletAddress: cached.walletAddress,
-        walletChain: cached.walletChain,
-        tenantId: cached.tenantId,
-        ...(cached.bridged === true ? { bridged: true } : {}),
-        ...(cached.stagingSessionBinding
-          ? { stagingSessionBinding: cached.stagingSessionBinding }
-          : {}),
-        expiration: cached.expiration,
-        issuedAt: cached.issuedAt,
-      };
+      if (cached.signingKeyFingerprint !== signingKeyFingerprint) {
+        await cache.del(cacheKey);
+      } else {
+        const claims: StewardTokenClaims = {
+          userId: cached.userId,
+          email: cached.email,
+          address: cached.address,
+          walletAddress: cached.walletAddress,
+          walletChain: cached.walletChain,
+          tenantId: cached.tenantId,
+          ...(cached.bridged === true ? { bridged: true } : {}),
+          ...(cached.stagingSessionBinding
+            ? { stagingSessionBinding: cached.stagingSessionBinding }
+            : {}),
+          expiration: cached.expiration,
+          issuedAt: cached.issuedAt,
+          ...(cached.notBefore !== undefined ? { notBefore: cached.notBefore } : {}),
+        };
 
-      // Populate in-memory cache from Redis hit
-      if (!claimsMatchTokenClass(stagingHeader, claims)) return null;
-      if (!(await validateOptionalStagingBinding(env, claims))) return null;
-      IN_MEMORY_STEWARD_CACHE.set(tokenHash, claims);
-      return claims;
-    }
-
-    if (cached) {
-      // Removes expired cache entries
-      await cache.del(cacheKey);
+        if (!(await validateStewardClaims(env, stagingHeader, claims, tokenHash))) {
+          await cache.del(cacheKey);
+          return null;
+        }
+        IN_MEMORY_STEWARD_CACHE.set(tokenHash, cached);
+        return claims;
+      }
     }
 
     // 2. Cache miss: verify JWT with jose
@@ -526,6 +608,7 @@ export async function verifyStewardTokenCached(
       const cachedClaims: CachedStewardClaims = {
         ...claims,
         cachedAt: Date.now(),
+        signingKeyFingerprint,
       };
 
       const cacheWrite = cache.set(cacheKey, cachedClaims, effectiveTtl).catch((error) => {
@@ -551,7 +634,11 @@ export async function verifyStewardTokenCached(
     }
 
     // Also cache in-memory
-    IN_MEMORY_STEWARD_CACHE.set(tokenHash, claims);
+    IN_MEMORY_STEWARD_CACHE.set(tokenHash, {
+      ...claims,
+      cachedAt: Date.now(),
+      signingKeyFingerprint,
+    });
 
     return claims;
   } catch (error) {

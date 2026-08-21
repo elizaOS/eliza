@@ -3,9 +3,10 @@
  *
  * T9a — Remote-control control plane.
  *
- * Authenticated user requests a pairing token for one of their agents. The
- * returned token is a 6-digit pairing code intended for out-of-band entry
- * into the agent (e.g. the companion app enters it to authorize a session).
+ * An authenticated owner requests a pairing token for one of their agents.
+ * The returned token is a short-lived 6-digit pairing code intended for
+ * out-of-band entry into the local agent. Cloud persists only a session-bound
+ * keyed verifier and the authoritative expiry.
  *
  * Body: { agentId: string }
  * Returns: { code, expiresAt, sessionId, status }
@@ -16,7 +17,10 @@
  */
 
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import {
+  deriveRemotePairingCodeVerifier,
+  isRemotePairingUuid,
+} from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -25,26 +29,21 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const PAIRING_CODE_TTL_SECONDS = 5 * 60;
 
 function generatePairingCode(): string {
-  // WebCrypto: getRandomValues fills a Uint32; modulo 1e6 gives a uniform
-  // 6-digit code. The bias from 2^32 mod 1e6 is negligible for a 6-digit
-  // pairing token (skew per digit < 0.024%).
+  // Rejection sampling avoids modulo bias in the human-entered code space.
+  const codeSpace = 1_000_000;
+  const acceptedRange = Math.floor(2 ** 32 / codeSpace) * codeSpace;
   const buf = new Uint32Array(1);
-  crypto.getRandomValues(buf);
-  const n = (buf[0] ?? 0) % 1_000_000;
+  let sample: number;
+  do {
+    crypto.getRandomValues(buf);
+    sample = buf[0] ?? acceptedRange;
+  } while (sample >= acceptedRange);
+  const n = sample % codeSpace;
   return n.toString().padStart(6, "0");
-}
-
-async function hashCode(code: string): Promise<string> {
-  const data = new TextEncoder().encode(code);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 interface PairRequestBody {
   agentId?: unknown;
-  requesterIdentity?: unknown;
 }
 
 const app = new Hono<AppEnv>();
@@ -53,38 +52,78 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const body = (await c.req.json().catch(() => ({}))) as PairRequestBody;
+    const pairingSecret = c.env.REMOTE_PAIRING_HMAC_SECRET?.trim();
+    if (
+      !pairingSecret ||
+      new TextEncoder().encode(pairingSecret).byteLength < 32
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Remote pairing is unavailable",
+          code: "REMOTE_PAIRING_NOT_CONFIGURED",
+        },
+        503,
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = await c.req.json();
+    } catch {
+      // error-policy:J3 malformed request JSON is an explicit client error.
+      return c.json(
+        { success: false, error: "Request body must be valid JSON" },
+        400,
+      );
+    }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return c.json(
+        { success: false, error: "Request body must be a JSON object" },
+        400,
+      );
+    }
+    const body = parsed as PairRequestBody;
     const agentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
     if (!agentId) {
       return c.json({ success: false, error: "agentId is required" }, 400);
     }
-
-    const requesterIdentity =
-      typeof body.requesterIdentity === "string" &&
-      body.requesterIdentity.trim().length > 0
-        ? body.requesterIdentity.trim()
-        : user.id;
-
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      agentId,
-      user.organization_id,
-    );
-    if (!sandbox) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
+    if (!isRemotePairingUuid(agentId)) {
+      return c.json({ success: false, error: "agentId must be a UUID" }, 400);
     }
 
     const code = generatePairingCode();
-    const tokenHash = await hashCode(code);
+    const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_SECONDS * 1000);
+    const tokenHash = await deriveRemotePairingCodeVerifier(
+      pairingSecret,
+      {
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentId,
+        sessionId,
+      },
+      code,
+      expiresAt,
+    );
 
-    const session = await remoteSessionsRepository.create({
+    const session = await remoteSessionsRepository.createPendingForOwnedAgent({
+      id: sessionId,
       organization_id: user.organization_id,
       user_id: user.id,
       agent_id: agentId,
       status: "pending",
-      requester_identity: requesterIdentity,
+      requester_identity: user.id,
       pairing_token_hash: tokenHash,
+      expires_at: expiresAt,
     });
+    if (!session) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     c.header(
       "Cache-Control",
@@ -103,6 +142,7 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 the HTTP boundary translates typed/internal failures.
     return failureResponse(c, error);
   }
 });

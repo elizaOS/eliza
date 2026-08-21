@@ -1,4 +1,4 @@
-// Coordinates cloud service slack behavior behind route handlers.
+/** Implements Slack publishing, file upload, and reactions for cloud social-media callers. */
 import type {
   MediaAttachment,
   PlatformPostOptions,
@@ -9,9 +9,35 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const SLACK_API_BASE = "https://slack.com/api";
+
+const SLACK_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Slack hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely.
+ * A caller-provided signal is composed with the deadline rather than
+ * replacing it — a caller that cancels still aborts early, and a caller
+ * whose signal never fires still cannot outlive the bound.
+ */
+export function slackFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = SLACK_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface SlackResponse<_T = unknown> {
   ok: boolean;
@@ -59,7 +85,7 @@ async function slackApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<SlackResponse<T>>(
     () =>
-      fetch(`${SLACK_API_BASE}/${method}`, {
+      slackFetch(`${SLACK_API_BASE}/${method}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${botToken}`,
@@ -81,7 +107,7 @@ async function slackApiRequest<T>(
 }
 
 async function sendWebhook(webhookUrl: string, payload: Record<string, unknown>): Promise<void> {
-  const response = await fetch(webhookUrl, {
+  const response = await slackFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -339,15 +365,14 @@ export const slackProvider: SocialMediaProvider = {
     let filename = "upload";
 
     if (media.data) {
+      assertSocialMediaBytesWithinBudget(media.data.length, { platform: "slack" });
       fileData = media.data;
     } else if (media.base64) {
-      fileData = Buffer.from(media.base64, "base64");
+      fileData = decodeSocialMediaBase64(media.base64, { platform: "slack" });
     } else if (media.url) {
-      const response = await fetch(media.url);
-      if (!response.ok) {
-        throw new Error(`Failed to download media from ${media.url}: ${response.status}`);
-      }
-      fileData = Buffer.from(await response.arrayBuffer());
+      fileData = await downloadSocialMediaBytes(media.url, {
+        httpErrorMessage: (status) => `Failed to download media from ${media.url}: ${status}`,
+      });
       const urlParts = media.url.split("/");
       filename = urlParts[urlParts.length - 1].split("?")[0] || filename;
     } else {
@@ -359,7 +384,7 @@ export const slackProvider: SocialMediaProvider = {
     formData.append("file", new Blob([fileBytes], { type: media.mimeType }), filename);
     formData.append("filename", filename);
 
-    const response = await fetch(`${SLACK_API_BASE}/files.upload`, {
+    const response = await slackFetch(`${SLACK_API_BASE}/files.upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${credentials.botToken}`,

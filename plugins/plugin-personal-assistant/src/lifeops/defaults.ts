@@ -103,6 +103,8 @@ const ADAPTIVE_EVENING_END_CAP_MINUTES = 28 * 60;
 const ADAPTIVE_LEAD_HOURS = 0.5;
 /** Standard span of the morning and afternoon windows. */
 const ADAPTIVE_WINDOW_SPAN_HOURS = 5;
+/** Minimum positive span retained when a rhythm falls beyond a daypart cap. */
+const ADAPTIVE_MIN_WINDOW_MINUTES = 60;
 /** How long after typical last active to end the evening window. */
 const ADAPTIVE_LAST_ACTIVE_LAG_HOURS = 1;
 
@@ -140,15 +142,21 @@ export function computeAdaptiveWindowPolicy(
     ADAPTIVE_MORNING_FLOOR_MINUTES,
   );
 
-  const morningEndMinute = Math.min(
-    morningStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
-    ADAPTIVE_MORNING_END_CAP_MINUTES,
+  const morningEndMinute = Math.max(
+    morningStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    Math.min(
+      morningStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
+      ADAPTIVE_MORNING_END_CAP_MINUTES,
+    ),
   );
 
   const afternoonStartMinute = morningEndMinute;
-  const afternoonEndMinute = Math.min(
-    afternoonStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
-    ADAPTIVE_AFTERNOON_END_CAP_MINUTES,
+  const afternoonEndMinute = Math.max(
+    afternoonStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    Math.min(
+      afternoonStartMinute + ADAPTIVE_WINDOW_SPAN_HOURS * 60,
+      ADAPTIVE_AFTERNOON_END_CAP_MINUTES,
+    ),
   );
 
   const eveningStartMinute = afternoonEndMinute;
@@ -181,14 +189,18 @@ export function computeAdaptiveWindowPolicy(
     eveningEndMinute = defaultEveningWindow.endMinute;
   }
 
-  // Guard: evening end must be strictly after evening start.
-  if (eveningEndMinute <= eveningStartMinute) {
-    eveningEndMinute = eveningStartMinute + 60;
-  }
+  const nightEndMinute = morningStartMinute + 24 * 60;
+  // Preserve at least one hour for both evening and the following night.
+  eveningEndMinute = Math.min(
+    Math.max(
+      eveningEndMinute,
+      eveningStartMinute + ADAPTIVE_MIN_WINDOW_MINUTES,
+    ),
+    nightEndMinute - ADAPTIVE_MIN_WINDOW_MINUTES,
+  );
 
   // Night wraps from evening end to morning start + 24.
   const nightStartMinute = eveningEndMinute;
-  const nightEndMinute = morningStartMinute + 24 * 60;
 
   return {
     timezone: tz,

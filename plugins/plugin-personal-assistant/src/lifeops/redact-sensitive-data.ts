@@ -63,14 +63,47 @@ function isFullRedactKey(normalizedKey: string): boolean {
   return false;
 }
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+function safePrefix(value: string, maxCodeUnits: number): string {
+  let end = 0;
+  for (const segment of graphemeSegmenter.segment(value)) {
+    const nextEnd = segment.index + segment.segment.length;
+    if (nextEnd > maxCodeUnits) break;
+    end = nextEnd;
+  }
+  return value.slice(0, end);
+}
+
 function shortenSubject(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}…`;
+  const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0;
+  if (value.length <= limit) return value;
+  if (limit === 0) return "";
+  if (limit === 1) return "…";
+  return `${safePrefix(value, limit - 1).trimEnd()}…`;
 }
 
 function shortenBody(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max).trimEnd()}… [+${value.length - max} chars]`;
+  const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0;
+  if (value.length <= limit) return value;
+  if (limit === 0) return "";
+
+  // The omitted count is the actual number of omitted UTF-16 code units, which
+  // matches JavaScript's length/cap contract. Its digit width changes the space
+  // available, so choose the longest complete grapheme prefix that still fits.
+  for (let prefixLimit = limit - 1; prefixLimit >= 0; prefixLimit -= 1) {
+    const prefix = safePrefix(value, prefixLimit).trimEnd();
+    const suffix = `… [+${value.length - prefix.length} chars]`;
+    if (prefix.length + suffix.length <= limit) {
+      return `${prefix}${suffix}`;
+    }
+  }
+
+  // A chopped diagnostic is misleading. For very small caps, retain only the
+  // truthful truncation marker.
+  return "…";
 }
 
 function redactEmailAddresses(value: string): string {

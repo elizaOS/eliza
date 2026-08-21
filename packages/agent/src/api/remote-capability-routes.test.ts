@@ -35,6 +35,14 @@ const originalEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
 const originalUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
 const originalAllowedModules =
   process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+const MALFORMED_COMPONENTS = [
+  "%",
+  "%2",
+  "%ZZ",
+  "%E0%A4",
+  "%ED%A0%80",
+  "%C0%80",
+] as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -203,6 +211,122 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
   });
+
+  it("decodes each valid remote-asset path component exactly once", async () => {
+    const getAsset = vi.fn().mockResolvedValue({
+      path: "/assets/remote-view.js",
+      contentType: "text/javascript",
+      bodyBase64: Buffer.from("export {};").toString("base64"),
+    });
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const { ctx, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/%64evice/%72emote-demo/%61ssets/remote-view.js",
+        runtime,
+        res: {
+          writeHead: vi.fn(),
+          end: vi.fn(),
+        } as unknown as http.ServerResponse,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(getAsset).toHaveBeenCalledWith({
+      endpointId: "device",
+      moduleId: "remote-demo",
+      path: "/assets/remote-view.js",
+    });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("decodes an encoded slash only after remote-asset route matching", async () => {
+    const getAsset = vi.fn().mockResolvedValue({
+      path: "/assets/remote-view.js",
+      contentType: "text/javascript",
+      bodyBase64: Buffer.from("export {};").toString("base64"),
+    });
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const { ctx, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/%2F/%72emote-demo/%61ssets/remote-view.js",
+        runtime,
+        res: {
+          writeHead: vi.fn(),
+          end: vi.fn(),
+        } as unknown as http.ServerResponse,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(getAsset).toHaveBeenCalledWith({
+      endpointId: "/",
+      moduleId: "remote-demo",
+      path: "/assets/remote-view.js",
+    });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  for (const malformed of MALFORMED_COMPONENTS) {
+    for (const route of [
+      {
+        field: "endpoint id",
+        pathname: `/api/capability-router/assets/${malformed}/module/assets/view.js`,
+      },
+      {
+        field: "module id",
+        pathname: `/api/capability-router/assets/device/${malformed}/assets/view.js`,
+      },
+      {
+        field: "asset path",
+        pathname: `/api/capability-router/assets/device/module/assets/${malformed}`,
+      },
+    ]) {
+      it(`rejects malformed ${route.field} ${malformed} before asset lookup`, async () => {
+        const getAsset = vi.fn();
+        const router = {
+          plugin: { getAsset },
+        } as unknown as ElizaCapabilityRouter;
+        const runtime = {
+          getService: () => router,
+        } as Partial<IAgentRuntime> as IAgentRuntime;
+        const { ctx, error } = makeCtx(
+          {},
+          {
+            method: "GET",
+            pathname: route.pathname,
+            runtime,
+          },
+        );
+
+        await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+        expect(error).toHaveBeenCalledWith(
+          ctx.res,
+          `Invalid ${route.field}: malformed URL encoding`,
+          400,
+        );
+        expect(getAsset).not.toHaveBeenCalled();
+      });
+    }
+  }
 
   it("serves remote asset HEAD requests with the decoded content length", async () => {
     const getAsset = vi.fn().mockResolvedValue({

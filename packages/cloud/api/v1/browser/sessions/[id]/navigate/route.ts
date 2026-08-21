@@ -1,4 +1,5 @@
-// Handles v1 cloud API v1 browser sessions id navigate route traffic with route-local auth expectations.
+/** Navigates an authenticated hosted-browser session. */
+
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -16,6 +17,7 @@ import {
   logHostedBrowserFailure,
   navigateHostedBrowserSession,
 } from "@/lib/services/browser-tools";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const navigateSchema = z.object({
@@ -29,7 +31,13 @@ async function handlePOST(
   try {
     const authResult = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
-    const bodyResult = navigateSchema.safeParse(await request.json());
+    const decodedRawBody = await decodeRequestJson(request);
+    if (!decodedRawBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const rawBody = decodedRawBody.value;
+    const bodyResult = navigateSchema.safeParse(rawBody);
     if (!bodyResult.success) {
       return Response.json(
         {

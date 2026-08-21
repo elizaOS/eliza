@@ -18,6 +18,9 @@ import sharp from "sharp";
 import { brandColorFractions } from "./analyzers/brand.ts";
 import { dominantPalette as analyzeDominantPalette } from "./analyzers/color.ts";
 import { changeMetric as analyzeChangeMetric } from "./analyzers/diff.ts";
+import { parseRgb } from "./visual-color-parser.mjs";
+
+export { parseRgb };
 
 export const DEFAULT_PIXEL_THRESHOLD = 30;
 export const DEFAULT_BLUE_COVERAGE_LIMIT = 0.05;
@@ -41,25 +44,6 @@ let systemTesseractProbe = null;
 let packagedTesseractProbe = null;
 /** @type {Map<string, Promise<any>>} */
 let packagedWorkers = new Map();
-
-/**
- * Parse a CSS `rgb()` / `rgba()` string into `[r, g, b, a]`, or null.
- *
- * @param {string} input
- * @returns {[number, number, number, number] | null}
- */
-export function parseRgb(input) {
-  const m = String(input).match(
-    /^rgba?\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)(?:\s*,\s*(\d+\.?\d*))?\s*\)$/,
-  );
-  if (!m) return null;
-  return [
-    Number(m[1]),
-    Number(m[2]),
-    Number(m[3]),
-    m[4] === undefined ? 1 : Number(m[4]),
-  ];
-}
 
 /**
  * Bucket an RGB triple into the app audit's coarse brand categories.

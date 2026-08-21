@@ -15,7 +15,7 @@
  *   - empty/adversarial input and fail-closed snapshot validation.
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
 	CorpusPseudonymMap,
 	PseudonymMapIntegrityError,
@@ -563,5 +563,18 @@ describe("snapshot validation is fail-closed", () => {
 				clusters: [{ ...cluster, rulesetVersion: "" }],
 			}),
 		).toThrow(PseudonymMapIntegrityError);
+	});
+
+	test("fails closed when no cryptographically secure random source exists (W5-032)", () => {
+		// The map salt seeds deterministic corpus-wide minting; a Math.random()
+		// fallback would let an observer reproduce corpus surrogates.
+		vi.stubGlobal("crypto", undefined);
+		try {
+			expect(() => new CorpusPseudonymMap()).toThrow(
+				/cryptographically secure random source/,
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

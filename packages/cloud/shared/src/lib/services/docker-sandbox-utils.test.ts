@@ -1,21 +1,26 @@
-// Exercises docker sandbox utils behavior with deterministic cloud-shared lib fixtures.
-// bun:test, not vitest: this package runs unit lanes under bun
-// (scripts/run-bun-tests.mjs); its vitest config includes ONLY the
-// direct-wallet integration test.
+/**
+ * Exercises Docker sandbox utilities with deterministic cloud-shared fixtures.
+ * This is a bun:test lane because the package Vitest config owns only the
+ * direct-wallet integration surface.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
   buildAgentContainerLabelFlags,
+  buildDockerContainerEnvTransport,
+  buildDockerCreateWithSecretEnvCommand,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
   ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
+  getContainerSecretEnvPath,
   getVolumePath,
   getVolumeVaultPassphrasePath,
   inferArchitectureFromHetznerServerType,
   isArchitectureCompatibleWithPlatform,
+  isSecretContainerEnvKey,
   normalizeDockerArchitecture,
   readDockerHostPortFromMetadata,
   requiredArchitectureForPlatform,
@@ -73,6 +78,185 @@ describe("validateEnvKey / validateEnvValue", () => {
   test("values reject control chars (newline-injected payloads)", () => {
     expect(() => validateEnvValue("K", "a normal value")).not.toThrow();
     expect(() => validateEnvValue("K", "line1\nline2")).toThrow(/contains control characters/);
+  });
+});
+
+describe("secret container environment transport (#22060)", () => {
+  test("fails unknown and credential-like names closed to stdin", () => {
+    for (const key of [
+      "AGENT_SERVER_SHARED_SECRET",
+      "AWS_ACCESS_ID",
+      "CUSTOM_CREDENTIALS",
+      "DATABASE_URL",
+      "DISCORD_API_TOKEN",
+      "ELIZAOS_CLOUD_API_KEY",
+      "ELIZA_API_TOKEN",
+      "ELIZA_LOCAL_ROOT_KEY",
+      "ELIZA_VAULT_PASSPHRASE",
+      "JWT_SECRET",
+      "OPENAI_API_KEY",
+      "SANDBOX_REGISTRY_REDIS_TOKEN",
+      "STEWARD_AGENT_TOKEN",
+      "STEWARD_JWT",
+      "STEWARD_REFRESH_SERVICE_TOKEN",
+      "TELEGRAM_BOT_TOKEN",
+      "TS_AUTHKEY",
+    ]) {
+      expect(isSecretContainerEnvKey(key)).toBe(true);
+    }
+    for (const key of [
+      "AGENT_DISABLE_AUTO_API_TOKEN",
+      "ELIZA_ALLOW_WS_QUERY_TOKEN",
+      "ELIZA_DISABLE_AUTO_API_TOKEN",
+    ]) {
+      expect(isSecretContainerEnvKey(key)).toBe(false);
+    }
+  });
+
+  test("serializes Docker env-file-safe bytes losslessly and rejects record splitting", () => {
+    const safeValues = {
+      API_KEY: "equals= spaces 'quotes' \\slashes\\ and trailing ",
+      PRIVATE_SETTING: " leading whitespace",
+    };
+    const transport = buildDockerContainerEnvTransport(safeValues);
+    for (const [key, value] of Object.entries(safeValues)) {
+      expect(transport.secretInput).toContain(`${key}=${value}\n`);
+    }
+    for (const invalidValue of ["line\nfeed", "carriage\rreturn", "nul\0byte"]) {
+      expect(() => buildDockerContainerEnvTransport({ API_KEY: invalidValue })).toThrow(
+        /contains control characters/,
+      );
+      try {
+        buildDockerContainerEnvTransport({ API_KEY: invalidValue });
+      } catch (error) {
+        expect(String(error)).not.toContain(invalidValue);
+      }
+    }
+  });
+
+  test("keeps secret keys and values out of the assembled Docker command", () => {
+    const secretValues = {
+      OPENAI_API_KEY: "openai-secret-value",
+      STEWARD_AGENT_TOKEN: "steward-secret-value",
+      DATABASE_URL: "postgres://user:password@example.invalid/db",
+      SANDBOX_REGISTRY_REDIS_TOKEN: "redis-secret-value",
+    };
+    const transport = buildDockerContainerEnvTransport({
+      PORT: "3000",
+      AGENT_DISABLE_AUTO_API_TOKEN: "1",
+      ...secretValues,
+    });
+    const secretEnvPath = getContainerSecretEnvPath(
+      "/data/agents/agent-a",
+      "12345678-1234-1234-1234-123456789abc",
+    );
+    const dockerCreate = [
+      "docker create",
+      ...transport.commandFlags,
+      `--env-file ${shellQuote(secretEnvPath)}`,
+      "image:latest",
+    ].join(" ");
+    const command = buildDockerCreateWithSecretEnvCommand({
+      dockerCreateCommand: dockerCreate,
+      secretEnvPath,
+      vaultPassphrasePath: "/data/agents/agent-a/.vault-passphrase",
+    });
+
+    expect(command).toContain("-e 'AGENT_DISABLE_AUTO_API_TOKEN=1'");
+    expect(command).toContain("--env-file");
+    expect(command).toContain("umask 077");
+    expect(command).toContain("chmod 600");
+    expect(command).toContain("trap");
+    expect(command).not.toContain("ELIZA_VAULT_PASSPHRASE");
+    expect(command).not.toContain("PORT=3000");
+    expect(transport.secretInput).toContain("PORT=3000");
+    for (const [key, value] of Object.entries(secretValues)) {
+      expect(command).not.toContain(key);
+      expect(command).not.toContain(value);
+      expect(transport.secretInput).toContain(`${key}=${value}`);
+    }
+  });
+
+  test("removes the restrictive env file after Docker success and failure", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const volume = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-secret-env-"));
+    const vaultPath = getVolumeVaultPassphrasePath(volume);
+    fs.writeFileSync(vaultPath, "persisted-vault-value", { mode: 0o600 });
+
+    for (const dockerCreateCommand of ["true", "false"]) {
+      const secretEnvPath = `${volume}/container.env`;
+      const command = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand,
+        secretEnvPath,
+        vaultPassphrasePath: vaultPath,
+      });
+      const secretInput = buildDockerContainerEnvTransport({ API_KEY: "stdin-only" }).secretInput;
+      await new Promise<void>((resolve) => {
+        const child = spawn("/bin/sh", ["-c", command]);
+        child.on("close", () => resolve());
+        child.stdin.end(secretInput);
+      });
+      expect(fs.existsSync(secretEnvPath)).toBe(false);
+    }
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed and cleans up a truncated stdin stream without echoing secrets", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const volume = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-short-stdin-"));
+    const vaultPath = getVolumeVaultPassphrasePath(volume);
+    const secretEnvPath = `${volume}/container.env`;
+    fs.writeFileSync(vaultPath, "persisted-vault-value", { mode: 0o600 });
+    const command = buildDockerCreateWithSecretEnvCommand({
+      dockerCreateCommand: "true",
+      secretEnvPath,
+      vaultPassphrasePath: vaultPath,
+    });
+    const result = await new Promise<{ code: number | null; output: string }>((resolve) => {
+      const child = spawn("/bin/sh", ["-c", command]);
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += chunk.toString()));
+      child.stderr.on("data", (chunk) => (output += chunk.toString()));
+      child.on("close", (code) => resolve({ code, output }));
+      child.stdin.end("API_KEY=must-not-echo\n");
+    });
+    expect(result.code).not.toBe(0);
+    expect(result.output).toBe("");
+    expect(result.output).not.toContain("must-not-echo");
+    expect(fs.existsSync(secretEnvPath)).toBe(false);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("signal interruption runs the env-file cleanup trap", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const volume = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-signal-cleanup-"));
+    const vaultPath = getVolumeVaultPassphrasePath(volume);
+    const secretEnvPath = `${volume}/container.env`;
+    fs.writeFileSync(vaultPath, "persisted-vault-value", { mode: 0o600 });
+    const command = buildDockerCreateWithSecretEnvCommand({
+      dockerCreateCommand: "sleep 30",
+      secretEnvPath,
+      vaultPassphrasePath: vaultPath,
+    });
+    const child = spawn("/bin/sh", ["-c", command], { detached: true });
+    child.stdin.end(buildDockerContainerEnvTransport({ API_KEY: "stdin-only" }).secretInput);
+    for (let attempt = 0; attempt < 100 && !fs.existsSync(secretEnvPath); attempt++) {
+      await Bun.sleep(10);
+    }
+    expect(fs.existsSync(secretEnvPath)).toBe(true);
+    process.kill(-child.pid!, "SIGTERM");
+    await new Promise<void>((resolve) => child.on("close", () => resolve()));
+    expect(fs.existsSync(secretEnvPath)).toBe(false);
+    fs.rmSync(volume, { recursive: true, force: true });
   });
 });
 
@@ -252,14 +436,24 @@ describe("resolveVpnTeardown (#16565)", () => {
   });
 });
 
-describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
-  // Runs the EXACT shell command the provider sends over SSH, against a real
-  // local /bin/sh and a real temp "agent volume" directory — the same
-  // read-or-create the deployed node executes.
-  const shExec = async (cmd: string, _timeoutMs: number): Promise<string> => {
-    const { execFile } = await import("node:child_process");
+describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
+  // The real-process cases run the exact shell program sent over SSH against
+  // local /bin/sh and a temp agent volume. They cover shell mutation and trap
+  // behavior, but not SSH channel or supported-node behavior.
+  const shExecStdin = async (cmd: string, input: string, _timeoutMs: number): Promise<string> => {
+    const { spawn } = await import("node:child_process");
     return await new Promise<string>((resolve, reject) => {
-      execFile("/bin/sh", ["-c", cmd], (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      const child = spawn("/bin/sh", ["-c", cmd]);
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
+      child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) resolve(stdout);
+        else reject(Object.assign(new Error(stderr || `shell exited ${code}`), { code }));
+      });
+      child.stdin.end(input);
     });
   };
 
@@ -270,15 +464,204 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     return fs.mkdtempSync(path.join(os.tmpdir(), "eliza-agent-volume-"));
   }
 
+  test("SSH setup failure preserves the transport error without exposing the override", async () => {
+    const volume = await makeVolume();
+    const override = "operator-secret-value";
+    let command = "";
+    let input = "";
+    const failedExec = async (cmd: string, stdin: string): Promise<string> => {
+      command = cmd;
+      input = stdin;
+      throw new Error("ssh transport unavailable");
+    };
+    await expect(ensureVolumeVaultPassphrase(failedExec, volume, 5_000, override)).rejects.toThrow(
+      "ssh transport unavailable",
+    );
+    expect(command).not.toContain(override);
+    expect(command).not.toContain("ELIZA_VAULT_PASSPHRASE");
+    expect(input).toContain(override);
+    expect(input).toMatch(/^ELIZA_VAULT_STDIN_V1 \d+\n/);
+    expect(input).toEndWith("\nELIZA_VAULT_STDIN_V1_END\n");
+    expect("ssh transport unavailable").not.toContain(override);
+    const fs = await import("node:fs");
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
   test("container A creates a 64-hex key file with 0600 on the volume", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
-    const key = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000);
+    const key = fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8");
     expect(key).toMatch(/^[0-9a-f]{64}$/);
     const keyPath = getVolumeVaultPassphrasePath(volume);
     expect(fs.readFileSync(keyPath, "utf-8")).toBe(key);
     expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
     fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("rejects malformed framed stdin before first-provision mutation", async () => {
+    const fs = await import("node:fs");
+    for (const override of [undefined, "operator-secret-value"] as const) {
+      const volume = await makeVolume();
+      let command = "";
+      let validFrame = "";
+      await ensureVolumeVaultPassphrase(
+        async (cmd, input) => {
+          command = cmd;
+          validFrame = input;
+          return "";
+        },
+        volume,
+        5_000,
+        override,
+      );
+      const terminator = validFrame.split("\n").at(-2);
+      expect(terminator).toBe("ELIZA_VAULT_STDIN_V1_END");
+      const malformedFrames = [
+        validFrame.slice(0, -1),
+        `${validFrame}x`,
+        `${validFrame}${terminator}\n`,
+      ];
+
+      for (const malformedFrame of malformedFrames) {
+        await expect(shExecStdin(command, malformedFrame, 5_000)).rejects.toMatchObject({
+          code: 44,
+        });
+        expect(fs.readdirSync(volume)).toEqual([]);
+      }
+      expect(command).not.toContain(override ?? "operator-secret-value");
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
+
+  test("signal interruption during frame upload removes staged secret bytes", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "interrupted-operator-secret";
+    let command = "";
+    let validFrame = "";
+    await ensureVolumeVaultPassphrase(
+      async (cmd, input) => {
+        command = cmd;
+        validFrame = input;
+        return "";
+      },
+      volume,
+      5_000,
+      override,
+    );
+
+    const child = spawn("/bin/sh", ["-c", command], { detached: true });
+    const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk.toString()));
+    child.stderr.on("data", (chunk) => (output += chunk.toString()));
+    child.stdin.write(validFrame.slice(0, -8));
+    for (
+      let attempt = 0;
+      attempt < 100 && !fs.readdirSync(volume).some((entry) => entry.includes(".stdin."));
+      attempt++
+    ) {
+      await Bun.sleep(10);
+    }
+    expect(fs.readdirSync(volume).some((entry) => entry.includes(".stdin."))).toBe(true);
+
+    process.kill(-child.pid!, "SIGTERM");
+    await closed;
+    expect(output).not.toContain(override);
+    expect(fs.readdirSync(volume)).toEqual([]);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("maps an invalid frame to a non-secret typed boundary error", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "operator-secret-value";
+    let failure: unknown;
+    try {
+      await ensureVolumeVaultPassphrase(
+        async () => {
+          throw Object.assign(new Error("shell exited 44"), { code: 44 });
+        },
+        volume,
+        5_000,
+        override,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "SANDBOX_VAULT_PASSPHRASE_STDIN_INCOMPLETE",
+      context: { volumePath: volume },
+    });
+    expect(String(failure)).not.toContain(override);
+    expect(JSON.stringify((failure as { context?: unknown }).context)).not.toContain(override);
+    expect(fs.readdirSync(volume)).toEqual([]);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("frames a multibyte override by byte length and rejects truncation", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "operator-🔐-密钥-value";
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override);
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(override);
+
+    await expect(
+      ensureVolumeVaultPassphrase(
+        async (command, input, timeoutMs) => shExecStdin(command, input.slice(0, -1), timeoutMs),
+        volume,
+        5_000,
+        override,
+      ),
+    ).rejects.toMatchObject({ code: "SANDBOX_VAULT_PASSPHRASE_STDIN_INCOMPLETE" });
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(override);
+    expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("rejects malformed framed stdin before inspecting an existing volume", async () => {
+    const fs = await import("node:fs");
+    for (const override of [undefined, "operator-secret-value"] as const) {
+      const volume = await makeVolume();
+      await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override);
+      const keyPath = getVolumeVaultPassphrasePath(volume);
+      const persisted = fs.readFileSync(keyPath);
+      const mode = fs.statSync(keyPath).mode & 0o777;
+      let command = "";
+      let validFrame = "";
+      await ensureVolumeVaultPassphrase(
+        async (cmd, input) => {
+          command = cmd;
+          validFrame = input;
+          return "";
+        },
+        volume,
+        5_000,
+        override,
+      );
+      const terminator = validFrame.split("\n").at(-2);
+      expect(terminator).toBe("ELIZA_VAULT_STDIN_V1_END");
+      const malformedFrames = [
+        validFrame.slice(0, -1),
+        `${validFrame}x`,
+        `${validFrame}${terminator}\n`,
+      ];
+
+      for (const malformedFrame of malformedFrames) {
+        await expect(shExecStdin(command, malformedFrame, 5_000)).rejects.toMatchObject({
+          code: 44,
+        });
+        expect(fs.readFileSync(keyPath)).toEqual(persisted);
+        expect(fs.statSync(keyPath).mode & 0o777).toBe(mode);
+        expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      }
+      expect(command).not.toContain(override ?? "operator-secret-value");
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
   });
 
   test("replacement container B over the same volume derives the SAME key from a newly constructed env", async () => {
@@ -287,8 +670,10 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     // Two independent provisions (A then its replacement B): each runs the
     // read-or-create against the shared agent volume, nothing is copied from
     // A's environment.
-    const keyA = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
-    const keyB = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000);
+    const keyA = fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8");
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000);
+    const keyB = fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8");
     expect(keyB).toBe(keyA);
     fs.rmSync(volume, { recursive: true, force: true });
   });
@@ -297,8 +682,10 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     const fs = await import("node:fs");
     const volumeA = await makeVolume();
     const volumeB = await makeVolume();
-    const keyA = await ensureVolumeVaultPassphrase(shExec, volumeA, 5_000);
-    const keyB = await ensureVolumeVaultPassphrase(shExec, volumeB, 5_000);
+    await ensureVolumeVaultPassphrase(shExecStdin, volumeA, 5_000);
+    await ensureVolumeVaultPassphrase(shExecStdin, volumeB, 5_000);
+    const keyA = fs.readFileSync(getVolumeVaultPassphrasePath(volumeA), "utf-8");
+    const keyB = fs.readFileSync(getVolumeVaultPassphrasePath(volumeB), "utf-8");
     expect(keyA).not.toBe(keyB);
     fs.rmSync(volumeA, { recursive: true, force: true });
     fs.rmSync(volumeB, { recursive: true, force: true });
@@ -308,7 +695,8 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
     fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "operator-supplied-passphrase\n");
-    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).resolves.toBe(
+    await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).resolves.toBeUndefined();
+    expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8")).toBe(
       "operator-supplied-passphrase",
     );
     fs.rmSync(volume, { recursive: true, force: true });
@@ -319,25 +707,24 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     const volume = await makeVolume();
     // Launch A injects ELIZA_VAULT_PASSPHRASE; the override must seed the
     // persisted key file instead of bypassing the volume lifecycle.
-    const keyA = await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A");
-    expect(keyA).toBe("dummy-operator-key-A");
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "dummy-operator-key-A");
     const keyPath = getVolumeVaultPassphrasePath(volume);
     expect(fs.readFileSync(keyPath, "utf-8")).toBe("dummy-operator-key-A");
     expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
     // Replacement B is launched over the same volume with NO override — the
     // regression: it must read A's key, not mint a fresh local fallback.
-    const keyB = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
-    expect(keyB).toBe(keyA);
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe("dummy-operator-key-A");
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
   test("relaunching with the same override over the seeded volume is idempotent", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
-    await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A");
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "dummy-operator-key-A");
     await expect(
-      ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-operator-key-A"),
-    ).resolves.toBe("dummy-operator-key-A");
+      ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "dummy-operator-key-A"),
+    ).resolves.toBeUndefined();
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
@@ -347,19 +734,40 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     // The volume already has a durable key (e.g. generated by a prior
     // no-override launch); a different injected override must not silently
     // win OR silently lose — either guess can orphan ciphertext.
-    const persisted = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000);
+    const persisted = fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8");
     await expect(
-      ensureVolumeVaultPassphrase(shExec, volume, 5_000, "dummy-other-override"),
+      ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "dummy-other-override"),
     ).rejects.toThrow(/durable source of truth/);
     // The persisted key survives the refusal untouched.
     expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8")).toBe(persisted);
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
+  test("concurrent first provisions establish exactly one durable override", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const overrides = ["concurrent-operator-key-A", "concurrent-operator-key-B"];
+    const results = await Promise.allSettled(
+      overrides.map((override) =>
+        ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override),
+      ),
+    );
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    if (rejected?.status === "rejected") {
+      expect(String(rejected.reason)).toMatch(/durable source of truth/);
+    }
+    expect(overrides).toContain(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8"));
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
   test("fails closed on an unusable override BEFORE seeding the key file", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
-    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000, "short")).rejects.toThrow(
+    await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "short")).rejects.toThrow(
       /refusing to seed/,
     );
     // Nothing was written — the next launch can still establish a good key.
@@ -367,10 +775,46 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
+  test("rejects raw control bytes before remote mutation and permits later recovery", async () => {
+    const fs = await import("node:fs");
+    const invalidOverrides = [
+      "operator-key\0suffix",
+      "operator-key\x7fsuffix",
+      "operator-key\nsuffix",
+      "operator-key\rsuffix",
+      "operator-key\tsuffix",
+      "operator-key\x01suffix",
+    ];
+
+    for (const invalidOverride of invalidOverrides) {
+      const volume = await makeVolume();
+      let remoteCalls = 0;
+      const trackedExec: typeof shExecStdin = async (...args) => {
+        remoteCalls += 1;
+        return shExecStdin(...args);
+      };
+
+      await expect(
+        ensureVolumeVaultPassphrase(trackedExec, volume, 5_000, invalidOverride),
+      ).rejects.toThrow(/refusing to seed/);
+      expect(remoteCalls).toBe(0);
+      expect(fs.readdirSync(volume)).toEqual([]);
+
+      await expect(
+        ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "valid-operator-key"),
+      ).resolves.toBeUndefined();
+      expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8")).toBe(
+        "valid-operator-key",
+      );
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
+
   test("an empty or whitespace-only override falls through to the volume lifecycle", async () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
-    const key = await ensureVolumeVaultPassphrase(shExec, volume, 5_000, "  ");
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, "  ");
+    const key = fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf-8");
     expect(key).toMatch(/^[0-9a-f]{64}$/);
     fs.rmSync(volume, { recursive: true, force: true });
   });
@@ -379,10 +823,31 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     const fs = await import("node:fs");
     const volume = await makeVolume();
     fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "short\n");
-    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).rejects.toThrow(
+    await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
       /refusing to mint a fresh per-launch key/,
     );
     fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed without rewriting persisted keys containing control bytes", async () => {
+    const fs = await import("node:fs");
+    for (const controlByte of [0x00, 0x7f, 0x0a, 0x0d, 0x09, 0x01]) {
+      const volume = await makeVolume();
+      const keyPath = getVolumeVaultPassphrasePath(volume);
+      const corruptKey = Buffer.concat([
+        Buffer.from("operator-key"),
+        Buffer.from([controlByte]),
+        Buffer.from("suffix"),
+      ]);
+      fs.writeFileSync(keyPath, corruptKey);
+
+      await expect(ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000)).rejects.toThrow(
+        /persisted vault passphrase.*unusable/,
+      );
+      expect(fs.readFileSync(keyPath)).toEqual(corruptKey);
+      expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
   });
 
   test("the durable state root lands on the /root/.eliza mount", () => {

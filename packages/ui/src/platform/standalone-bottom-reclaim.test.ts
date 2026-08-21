@@ -33,6 +33,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   applyStandaloneBottomReclaim,
   clearStandaloneBottomReclaim,
+  getPhysicalScreenVerticalExtent,
   installStandaloneBottomReclaim,
   measureStandaloneBottomGap,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
@@ -60,6 +61,8 @@ function stubViewport(opts: {
   visualHeight?: number;
   visualOffsetTop?: number;
   orientation?: "portrait" | "landscape";
+  screenOrientation?: "portrait" | "landscape";
+  legacyOrientation?: number;
 }): void {
   Object.defineProperty(document.documentElement, "clientHeight", {
     configurable: true,
@@ -83,7 +86,15 @@ function stubViewport(opts: {
     value: {
       height: opts.screenHeight ?? opts.layoutHeight,
       width: opts.screenWidth ?? opts.layoutHeight,
+      ...(opts.screenOrientation
+        ? { orientation: { type: `${opts.screenOrientation}-primary` } }
+        : {}),
     },
+  });
+  Object.defineProperty(window, "orientation", {
+    configurable: true,
+    writable: true,
+    value: opts.legacyOrientation,
   });
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -134,6 +145,11 @@ afterEach(() => {
     configurable: true,
     writable: true,
     value: { height: 0, width: 0 },
+  });
+  Object.defineProperty(window, "orientation", {
+    configurable: true,
+    writable: true,
+    value: undefined,
   });
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -215,6 +231,56 @@ describe("measureStandaloneBottomGap: the screen.height cure for the collapsed-I
       orientation: "landscape",
     });
     expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("uses the short physical axis when screen dimensions rotate in landscape", () => {
+    // Current Capacitor Simulator swaps Screen.width/height with orientation.
+    // The landscape vertical extent is still the 430px short axis; blindly
+    // reading screen.width would see 932px, clamp a false 502px reclaim to
+    // 160px, and translate the bottom composer completely off-screen.
+    stubViewport({
+      layoutHeight: 430,
+      innerHeight: 430,
+      innerWidth: 932,
+      visualHeight: 430,
+      screenHeight: 430,
+      screenWidth: 932,
+      orientation: "landscape",
+    });
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("uses physical screen orientation when an iPad split viewport is portrait-shaped", () => {
+    // CSS `(orientation)` describes the viewport. In iPad Split View that
+    // viewport can be tall while the output screen remains landscape. The
+    // Screen Orientation signal owns the physical axis selection, so the
+    // 1366px screen width is never mistaken for its vertical extent.
+    stubViewport({
+      layoutHeight: 1024,
+      innerHeight: 1024,
+      innerWidth: 700,
+      visualHeight: 1024,
+      screenHeight: 1024,
+      screenWidth: 1366,
+      orientation: "portrait",
+      screenOrientation: "landscape",
+    });
+    expect(getPhysicalScreenVerticalExtent()).toBe(1024);
+    expect(measureStandaloneBottomGap()).toBe(0);
+  });
+
+  it("falls back to legacy physical rotation before viewport orientation", () => {
+    stubViewport({
+      layoutHeight: 1024,
+      innerHeight: 1024,
+      innerWidth: 700,
+      visualHeight: 1024,
+      screenHeight: 1024,
+      screenWidth: 1366,
+      orientation: "portrait",
+      legacyOrientation: 90,
+    });
+    expect(getPhysicalScreenVerticalExtent()).toBe(1024);
   });
 
   it("is 0 (never negative) when the layout box exceeds screen.height (defensive)", () => {

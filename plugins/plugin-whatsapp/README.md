@@ -127,6 +127,10 @@ The plugin automatically registers these HTTP routes on the agent:
 
 Point your Meta App webhook URL to `https://<your-agent-host>/api/whatsapp/webhook`.
 
+The promoted `whatsapp-cloud-webhook` contract drives this production route
+over loopback and verifies signature parsing plus fail-closed `phone_number_id`
+account binding without live Meta credentials.
+
 ### QR Pairing (Baileys)
 
 Start a pairing session via the agent's HTTP API:

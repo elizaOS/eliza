@@ -8,9 +8,12 @@
  */
 import {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
+  type ConnectorAccount,
+  ConnectorAccountManager,
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
+  InMemoryConnectorAccountStorage,
   type MessageConnectorRegistration,
   type SendHandlerOutcome,
   type TargetInfo,
@@ -22,6 +25,7 @@ import {
   GMAIL_MESSAGE_SOURCE,
   isEmailAddress,
 } from "./gmail-message-connector.js";
+import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const SHADOW_ID = "00000000-0000-0000-0000-0000000000e7";
 
@@ -45,8 +49,23 @@ function runtimeStub(options: {
     vi.fn(async () => ({ messageId: "sent_1", threadId: "thread_1", labelIds: ["SENT"] }));
   const accountManager = {
     registerProvider: vi.fn(),
-    evaluatePolicy: vi.fn(),
+    evaluatePolicy: vi.fn(async (policy, context: { accountId?: string }) => {
+      const account = (options.accounts ?? []).find(
+        (candidate) => candidate.id === context.accountId
+      );
+      const allowed = account?.status === "connected";
+      return {
+        allowed,
+        provider: "google",
+        account: allowed ? (account as unknown as ConnectorAccount) : undefined,
+        policy,
+      };
+    }),
     listAccounts: vi.fn(async () => options.accounts ?? []),
+    getAccount: vi.fn(
+      async (_provider: string, accountId: string) =>
+        (options.accounts ?? []).find((account) => account.id === accountId) ?? null
+    ),
   };
   const runtime = {
     agentId: "00000000-0000-0000-0000-000000000001",
@@ -58,6 +77,55 @@ function runtimeStub(options: {
     getEntityById: vi.fn(async (id: string) =>
       options.entity && id === options.entity.id ? options.entity : null
     ),
+  } as unknown as IAgentRuntime;
+  return { runtime, sendGmailMessage };
+}
+
+async function runtimeWithRealAccountPolicy(options: {
+  accessGate: ConnectorAccount["accessGate"];
+  verifiedOwner?: boolean;
+}): Promise<{
+  runtime: IAgentRuntime;
+  sendGmailMessage: ReturnType<typeof vi.fn>;
+}> {
+  const storage = new InMemoryConnectorAccountStorage();
+  const account: ConnectorAccount = {
+    id: "acct_policy",
+    provider: "google",
+    role: options.accessGate === "owner_binding" ? "OWNER" : "AGENT",
+    purpose: ["messaging"],
+    accessGate: options.accessGate,
+    status: "connected",
+    externalId: "google/user@example.com",
+    displayHandle: "user@example.com",
+    createdAt: 1,
+    updatedAt: 1,
+    metadata: { grantedCapabilities: ["gmail.send"] },
+  };
+  await storage.upsertAccount(account);
+  if (options.verifiedOwner) {
+    storage.upsertOwnerBindingForTest({
+      id: "binding-1",
+      identityId: "00000000-0000-0000-0000-0000000000cc",
+      connector: "google",
+      externalId: account.externalId as string,
+      displayHandle: account.displayHandle as string,
+      instanceId: "",
+      verifiedAt: 2,
+    });
+  }
+  const manager = new ConnectorAccountManager(undefined, storage);
+  const sendGmailMessage = vi.fn(async () => ({
+    messageId: "sent_policy",
+    threadId: "thread_policy",
+  }));
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001",
+    getService: vi.fn((serviceType: string) => {
+      if (serviceType === GOOGLE_SERVICE_NAME) return { sendGmailMessage };
+      if (serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE) return manager;
+      return null;
+    }),
   } as unknown as IAgentRuntime;
   return { runtime, sendGmailMessage };
 }
@@ -183,6 +251,110 @@ describe("gmail send handler", () => {
     );
   });
 
+  it("normalizes lone surrogates in explicit and short derived subjects", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: "body", metadata: { subject: "Explicit\ud800subject" } }
+    );
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: "Derived\udc00subject\nbody" }
+    );
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual(["Explicit�subject", "Derived�subject"]);
+    expect(subjects.every((subject) => subject.isWellFormed())).toBe(true);
+  });
+
+  it("truncates long derived subjects without tearing UTF-16 surrogate pairs", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const text = `${"a".repeat(74)}\u{1F98A}bbbb\nBody line 2`;
+    await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+
+    expect(sendGmailMessage).toHaveBeenCalledTimes(1);
+    const sentSubject = (sendGmailMessage.mock.calls[0][0] as { subject: string }).subject;
+    expect(sentSubject.length).toBeLessThanOrEqual(78);
+    expect(sentSubject.isWellFormed()).toBe(true);
+    expect(sentSubject.endsWith("...")).toBe(true);
+    expect(sentSubject).toBe(`${"a".repeat(74)}...`);
+  });
+
+  it("preserves derived subjects at and below the 78-code-unit limit", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+    const subjects = ["Status 🦊", "s".repeat(78)];
+
+    for (const text of subjects) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    expect(
+      sendGmailMessage.mock.calls.map((call) => (call[0] as { subject: string }).subject)
+    ).toEqual(subjects);
+  });
+
+  it("normalizes either lone-surrogate half before a derived subject is retained or clipped", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+    const inputs = [
+      "short\ud800subject",
+      "short\udc00subject",
+      `${"h".repeat(74)}\ud800tail`,
+      `${"l".repeat(74)}\udc00tail`,
+    ];
+
+    for (const text of inputs) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual([
+      "short�subject",
+      "short�subject",
+      `${"h".repeat(74)}�...`,
+      `${"l".repeat(74)}�...`,
+    ]);
+    expect(subjects.every((subject) => subject.isWellFormed())).toBe(true);
+    expect(subjects.every((subject) => subject.length <= 78)).toBe(true);
+  });
+
+  it("reserves the suffix only after the 78-code-unit boundary", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    for (const text of ["m".repeat(78), "n".repeat(79)]) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual(["m".repeat(78), `${"n".repeat(75)}...`]);
+  });
+
   it("resolves an entity-store recipient through stored email handles", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
@@ -210,8 +382,10 @@ describe("gmail send handler", () => {
     );
   });
 
-  it("honors an explicit target accountId over account discovery", async () => {
-    const { runtime, sendGmailMessage } = runtimeStub({ accounts: [] });
+  it("honors an explicit target accountId when it is connected and send-capable", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [{ ...CONNECTED_ACCOUNT, id: "acct_explicit" }],
+    });
     const registration = createGmailMessageConnector(runtime);
 
     const outcome = await invokeSend(
@@ -225,6 +399,111 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acct_explicit" })
     );
+  });
+
+  it.each<[string, AccountStub[]]>([
+    ["missing", []],
+    [
+      "disconnected",
+      [
+        {
+          id: "acct_explicit",
+          status: "disabled",
+          metadata: { grantedCapabilities: ["gmail.send"] },
+        },
+      ],
+    ],
+    [
+      "read-only",
+      [
+        {
+          id: "acct_explicit",
+          status: "connected",
+          metadata: { grantedCapabilities: ["gmail.read"] },
+        },
+      ],
+    ],
+  ])("rejects an explicit accountId when it is %s", async (_case, accounts) => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts,
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com", accountId: "acct_explicit" },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_ACCOUNT_UNAVAILABLE",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner_binding", "manual_approval", "disabled"] as const)(
+    "rejects a send-capable explicit account behind an unauthorized %s gate",
+    async (accessGate) => {
+      const { runtime, sendGmailMessage } = await runtimeWithRealAccountPolicy({
+        accessGate,
+      });
+      const registration = createGmailMessageConnector(runtime);
+
+      const outcome = await invokeSend(
+        registration,
+        runtime,
+        { channelId: "shadow@example.com", accountId: "acct_policy" },
+        { text: "hello" }
+      );
+
+      expect(outcome).toMatchObject({
+        kind: "not_delivered",
+        code: "GMAIL_ACCOUNT_UNAVAILABLE",
+      });
+      expect(sendGmailMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  it("allows a send-capable owner account after its binding is verified", async () => {
+    const { runtime, sendGmailMessage } = await runtimeWithRealAccountPolicy({
+      accessGate: "owner_binding",
+      verifiedOwner: true,
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com", accountId: "acct_policy" },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acct_policy" })
+    );
+  });
+
+  it("excludes an unverified owner account from implicit account discovery", async () => {
+    const { runtime, sendGmailMessage } = await runtimeWithRealAccountPolicy({
+      accessGate: "owner_binding",
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_ACCOUNT_UNAVAILABLE",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
   it("refuses structurally when no connected account can send", async () => {

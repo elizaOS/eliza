@@ -305,6 +305,13 @@ describe("ChoiceWidget — pick an option", () => {
     expect(signIn.parentElement?.className.split(/\s+/)).toContain(
       "max-w-[13.5rem]",
     );
+    const label = screen.getByText("Sign in to Eliza Cloud");
+    expect(label.parentElement?.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["flex", "w-full", "min-w-0"]),
+    );
+    expect(label.parentElement?.className.split(/\s+/)).not.toContain(
+      "inline-flex",
+    );
 
     // After the tap: locked but NOT washed out, with no redundant status line.
     fireEvent.click(signIn);

@@ -43,3 +43,8 @@ export const client = new Proxy(base, {
     return async () => undefined;
   },
 });
+
+/** Supplies constructor imports while preserving the fixture's one shared no-op client. */
+export function ElizaClient() {
+  return client;
+}

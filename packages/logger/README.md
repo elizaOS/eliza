@@ -32,9 +32,9 @@ const child = createLogger({ name: "worker" });
 
 ## Dependencies
 
-Only `adze` (logging backend) and `fast-redact` (secret redaction). Environment
-access is a tiny inlined reader (`src/env.ts`) so the package stays a leaf with
-no `@elizaos/*` dependency.
+Only `adze` (logging backend). Secret redaction is the built-in deep-walk
+redactor in `src/logger.ts`. Environment access is a tiny inlined reader
+(`src/env.ts`) so the package stays a leaf with no `@elizaos/*` dependency.
 
 ## Commands
 

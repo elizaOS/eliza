@@ -20,6 +20,7 @@ const createInvoice = mock(async () => undefined);
 const webhookFetch = mock(async () => Response.json({ ok: true }));
 const retrieveSession = mock(async () => ({
   id: "cs_agent_paid",
+  client_reference_id: "30000000-0000-4000-8000-000000000001",
   payment_status: "paid",
   amount_total: 500,
   currency: "usd",
@@ -30,6 +31,7 @@ const retrieveSession = mock(async () => ({
     credits: "5.00",
     type: "custom_amount",
     agent_id: "123e4567-e89b-12d3-a456-426614174000",
+    checkout_order_id: "30000000-0000-4000-8000-000000000001",
   },
 }));
 
@@ -50,6 +52,12 @@ mock.module("@/lib/services/users", () => ({
   usersService: { getWithOrganization: mock(async () => null) },
 }));
 mock.module("@/lib/services/credits", () => ({
+  assertCreditRefundWithinReservation: () => {
+    throw new Error("credit refund assertion is outside this test path");
+  },
+  assertValidCreditSettlementCosts: () => {
+    throw new Error("credit settlement assertion is outside this test path");
+  },
   creditsService: {
     addCredits,
     getTransactionByStripePaymentIntent: mock(async () => null),
@@ -66,6 +74,16 @@ mock.module("@/lib/services/organizations", () => ({
     getById: mock(async () => ({ credit_balance: "0" })),
   },
 }));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  StripeCheckoutAuthorityError: class extends Error {
+    code = "test";
+  },
+  stripeCheckoutOrdersService: {
+    settle: mock(async () => {
+      throw new Error("settlement must not run on denied auth");
+    }),
+  },
+}));
 mock.module("@/lib/security/safe-fetch", () => ({ safeFetch: webhookFetch }));
 mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({
@@ -75,6 +93,9 @@ mock.module("@/lib/stripe", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
     await next();
   },
 }));

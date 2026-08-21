@@ -312,7 +312,13 @@ describe("canonical deploy source CLI", () => {
         {
           cwd: clone,
           encoding: "utf8",
-          env: { ...process.env, GITHUB_OUTPUT: outputFile },
+          env: {
+            ...process.env,
+            GITHUB_OUTPUT: outputFile,
+            GITHUB_REPOSITORY: "",
+            GITHUB_RUN_ID: "",
+            GITHUB_TOKEN: "",
+          },
         },
       );
       expect(neutral.status).toBe(1);

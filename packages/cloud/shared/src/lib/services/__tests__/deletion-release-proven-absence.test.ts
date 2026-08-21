@@ -94,11 +94,22 @@ beforeAll(async () => {
       "last_health_check" timestamptz,
       "ssh_user" text NOT NULL DEFAULT 'root'::text,
       "host_key_fingerprint" text,
+      "fleet_kind" text,
+      "infrastructure_provider" text,
+      "provider_server_id" text,
+      "node_incarnation" uuid,
       "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY ("id"),
       UNIQUE ("node_id")
+    )`);
+    await dbWrite.execute(`CREATE TABLE IF NOT EXISTS "shared_runtime_history" (
+      "agent_id" text NOT NULL,
+      "channel_id" text NOT NULL,
+      "messages" jsonb NOT NULL,
+      "updated_at" timestamp NOT NULL DEFAULT now(),
+      PRIMARY KEY ("agent_id", "channel_id")
     )`);
   } catch (error) {
     pgliteReady = false;

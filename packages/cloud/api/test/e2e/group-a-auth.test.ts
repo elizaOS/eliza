@@ -178,8 +178,13 @@ describeE2E("Group A: auth + sessions", () => {
     // 403s (forbidden_origin) BEFORE body/token validation against staging.
     // Send a host that is UNCONDITIONALLY in PERMITTED_ORIGIN_HOSTS (works in
     // local dev AND deployed staging/prod) so the CSRF gate passes and the
-    // handler's real validation is what the test observes.
-    const stewardSessionHeaders = { Origin: "https://staging.elizacloud.ai" };
+    // handler's real validation is what the test observes. The X-Eliza-CSRF
+    // custom header is the route's non-simple-request marker; JSON bodies
+    // satisfy it implicitly, but a bodyless DELETE must send it explicitly.
+    const stewardSessionHeaders = {
+      Origin: "https://staging.elizacloud.ai",
+      "X-Eliza-CSRF": "1",
+    };
 
     test("POST validation: missing token returns 400", async () => {
       const res = await api.post(
@@ -241,7 +246,10 @@ describeE2E("Group A: auth + sessions", () => {
   describe("POST /api/auth/steward-nonce-exchange", () => {
     // Same CSRF-origin reasoning as stewardSessionHeaders above: a permitted
     // host unconditionally (localhost is dev-only, staging runs production).
-    const nonceHeaders = { Origin: "https://staging.elizacloud.ai" };
+    const nonceHeaders = {
+      Origin: "https://staging.elizacloud.ai",
+      "X-Eliza-CSRF": "1",
+    };
 
     test("validation: missing code returns 400 missing_code", async () => {
       const res = await api.post(
@@ -265,6 +273,17 @@ describeE2E("Group A: auth + sessions", () => {
       expect(body.code).toBe("missing_code");
     });
 
+    test("validation: missing codeVerifier returns 400 missing_code_verifier", async () => {
+      const res = await api.post(
+        "/api/auth/steward-nonce-exchange",
+        { code: "abc", redirectUri: "https://elizaos.ai/checkout" },
+        { headers: nonceHeaders },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("missing_code_verifier");
+    });
+
     test("CSRF: POST without Origin returns 403 forbidden_origin", async () => {
       const res = await api.post("/api/auth/steward-nonce-exchange", {
         code: "abc",
@@ -282,6 +301,7 @@ describeE2E("Group A: auth + sessions", () => {
           code: "not-a-real-steward-code",
           redirectUri: "https://elizaos.ai/checkout",
           tenantId: "elizacloud",
+          codeVerifier: "e2e-pkce-verifier",
         },
         { headers: nonceHeaders },
       );
@@ -348,13 +368,34 @@ describeE2E("Group A: auth + sessions", () => {
   });
 
   // --------------------------------------------------------------------
-  // /api/set-anonymous-session — POST, public.
+  // /api/set-anonymous-session — POST, public. Since the W5-010 fix the route
+  // enforces the browser-origin gate (exact-host Origin policy + non-simple
+  // request marker) before touching the body, so the contract probes below
+  // send a first-party Origin that matches the request host — the leg of
+  // isPermittedElizaBrowserOrigin that holds in every environment.
   // --------------------------------------------------------------------
   describe("POST /api/set-anonymous-session", () => {
+    const firstPartyOrigin = () => ({
+      Origin: new URL(getBaseUrl()).origin,
+    });
+
+    test("CSRF gate: POST without Origin/Referer returns 403 forbidden_origin", async () => {
+      // Bun's fetch sends no Origin — the gate must reject before body
+      // validation, otherwise a cross-site form POST could plant a session
+      // cookie the attacker knows into a victim's browser.
+      const res = await api.post("/api/set-anonymous-session", {});
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("forbidden_origin");
+    });
+
     test("validation: invalid JSON body returns 400", async () => {
       const res = await fetch(`${getBaseUrl()}/api/set-anonymous-session`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...firstPartyOrigin(),
+        },
         body: "{ this is not json",
       });
       expect(res.status).toBe(400);
@@ -363,16 +404,24 @@ describeE2E("Group A: auth + sessions", () => {
     });
 
     test("validation: missing sessionToken returns 400", async () => {
-      const res = await api.post("/api/set-anonymous-session", {});
+      const res = await api.post(
+        "/api/set-anonymous-session",
+        {},
+        { headers: firstPartyOrigin() },
+      );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("Session token is required");
     });
 
     test("auth gate: unknown sessionToken returns 404", async () => {
-      const res = await api.post("/api/set-anonymous-session", {
-        sessionToken: "z".repeat(32),
-      });
+      const res = await api.post(
+        "/api/set-anonymous-session",
+        {
+          sessionToken: "z".repeat(32),
+        },
+        { headers: firstPartyOrigin() },
+      );
       // Unknown token → 404 SESSION_NOT_FOUND (410 is reserved for expired).
       expect(res.status).toBe(404);
       const body = (await res.json()) as { error?: string; code?: string };

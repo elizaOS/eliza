@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {
+	toolMessageContent,
 	trajectoryStepsToMessages,
 	truncateToolResultText,
 } from "../planner-rendering";
@@ -268,5 +269,70 @@ describe("trajectoryStepsToMessages — maxToolResultChars option", () => {
 		trajectoryStepsToMessages(steps, { maxToolResultChars: 200 });
 		// Trajectory must remain pristine — only the rendered message is truncated.
 		expect(steps[0]?.result?.text).toBe(original);
+	});
+});
+
+describe("toolMessageContent — action-owned data projection", () => {
+	it("renders promptData instead of a duplicated machine payload", () => {
+		const memories = Array.from({ length: 17 }, (_, i) => ({
+			id: `id-${i}`,
+			type: "facts",
+			text: `stored fact ${i}: ${"detail ".repeat(400)}`,
+		}));
+		const rendered = toolMessageContent({
+			success: true,
+			text: "Showing all 17 match(es) found in the scanned window.",
+			data: { actionName: "MEMORY", op: "search", memories },
+			promptData: {
+				actionName: "MEMORY",
+				op: "search",
+				matchedInWindow: 17,
+			},
+		});
+		expect(rendered.startsWith("text: Showing all 17")).toBe(true);
+		expect(rendered).toContain('"matchedInWindow": 17');
+		expect(rendered).not.toContain("stored fact 0");
+	});
+
+	it("keeps arbitrary large chaining data complete when no projection is supplied", () => {
+		const chainingMarker = `CHAINING_FIELD_${"x".repeat(5000)}`;
+		const rendered = toolMessageContent({
+			success: true,
+			text: "Created workspace.",
+			data: { agentId: "a1", chainingMarker, workspaceId: "w1" },
+		});
+		expect(rendered).toContain("text: Created workspace.");
+		expect(rendered).toContain('"agentId": "a1"');
+		expect(rendered).toContain('"workspaceId": "w1"');
+		expect(rendered).toContain(chainingMarker);
+	});
+
+	it("renders data in full when there is no text projection", () => {
+		const bigPayload = {
+			rows: Array.from(
+				{ length: 200 },
+				(_, i) => `row ${i} ${"y".repeat(100)}`,
+			),
+		};
+		const rendered = toolMessageContent({
+			success: true,
+			data: bigPayload,
+		});
+		expect(rendered.length).toBeGreaterThan(4_000);
+		expect(rendered).not.toMatch(/chars truncated/);
+		expect(rendered).toContain("row 199");
+	});
+
+	it("keeps error rendering alongside projected data", () => {
+		const rendered = toolMessageContent({
+			success: false,
+			text: "search failed",
+			data: { dump: "z".repeat(50_000) },
+			promptData: { actionName: "MEMORY", op: "search" },
+			error: "backend exploded",
+		});
+		expect(rendered).toContain("text: search failed");
+		expect(rendered).not.toContain("z".repeat(100));
+		expect(rendered).toContain("error: backend exploded");
 	});
 });

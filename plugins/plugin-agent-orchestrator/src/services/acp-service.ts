@@ -19,12 +19,13 @@ import {
   spawn,
   spawnSync,
 } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   chmod,
   copyFile,
   mkdir,
+  mkdtemp,
   readdir,
   rm,
   stat,
@@ -39,8 +40,11 @@ import {
   type IAgentRuntime,
   Service,
   TRACE_ENV,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
+import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import {
   augmentTaskWithDeployGuidance,
@@ -105,6 +109,7 @@ import {
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
   isDeniedSubAgentEnvKey,
+  SUB_AGENT_SYSTEM_ENV_KEYS,
 } from "./sub-agent-env-policy.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
@@ -357,10 +362,34 @@ function findExecutableOnPath(name: string): string | undefined {
 export function normalizeClaudeAcpModelId(
   model: string | undefined,
 ): string | undefined {
-  const normalized = model
-    ?.trim()
-    .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
-    .trim();
+  const value = model?.trim();
+  if (!value) return undefined;
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "]") {
+    const tokenStart = value.lastIndexOf("[", end - 1);
+    if (tokenStart < 0) break;
+    const token = value.slice(tokenStart + 1, end - 1);
+    let cursor = 0;
+    while (
+      cursor < token.length &&
+      (token[cursor] ?? "") >= "0" &&
+      (token[cursor] ?? "") <= "9"
+    ) {
+      cursor += 1;
+    }
+    const digitEnd = cursor;
+    while (
+      cursor < token.length &&
+      (((token[cursor] ?? "") >= "A" && (token[cursor] ?? "") <= "Z") ||
+        ((token[cursor] ?? "") >= "a" && (token[cursor] ?? "") <= "z"))
+    ) {
+      cursor += 1;
+    }
+    if (digitEnd === 0 || cursor === digitEnd || cursor !== token.length) break;
+    end = tokenStart;
+    while (end > 0 && value[end - 1]?.trim() === "") end -= 1;
+  }
+  const normalized = value.slice(0, end).trim();
   return normalized || undefined;
 }
 
@@ -723,6 +752,15 @@ function sessionGitWrapper(): string {
   return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
 }
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
+const ACP_WARM_CLIENT_MAX_AGE_MS = 120_000;
+
+type WarmNativeClientSlot = {
+  client: NativeAcpClient;
+  command: string;
+  claimToken: string;
+  createdAt: number;
+  bootstrapHome: string;
+};
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
 // store and the per-session maps don't grow without bound on a long-lived bot.
@@ -859,6 +897,9 @@ export class AcpService extends Service {
   private readonly nativePromptSessionIds = new Set<string>();
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
+  private warmNativeClient?: WarmNativeClientSlot;
+  private warmNativeClientStarting?: Promise<void>;
+  private readonly warmSpawnEnabled: boolean;
   private readonly outputBuffers = new Map<string, string[]>();
   // Full session output remains available for history, while custom validators
   // need the exact latest prompt turn so a retry cannot re-consume an older
@@ -939,6 +980,11 @@ export class AcpService extends Service {
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
     );
+    this.warmSpawnEnabled =
+      boolSetting(this.setting("ELIZA_ACP_WARM_SPAWN")) === true &&
+      this.transportMode === "native" &&
+      (normalizeTaskAgentAdapter(this.defaultAgent) ?? this.defaultAgent) ===
+        "elizaos";
   }
 
   static async start(runtime: IAgentRuntime): Promise<AcpService> {
@@ -987,6 +1033,106 @@ export class AcpService extends Service {
       process.once("SIGINT", AcpService.sharedShutdownHandler);
       AcpService.shutdownHookInstalled = true;
     }
+    this.scheduleWarmNativeClient();
+  }
+
+  private scheduleWarmNativeClient(): void {
+    if (
+      !this.started ||
+      !this.warmSpawnEnabled ||
+      this.warmNativeClient ||
+      this.warmNativeClientStarting
+    ) {
+      return;
+    }
+    this.warmNativeClientStarting = this.createWarmNativeClient()
+      .catch((err) => {
+        this.log("warn", "warm ACP child pre-initialization failed", {
+          error: errorMessage(err),
+        });
+      })
+      .finally(() => {
+        this.warmNativeClientStarting = undefined;
+      });
+  }
+
+  private async createWarmNativeClient(): Promise<void> {
+    const bootstrapHome = await mkdtemp(join(tmpdir(), "eliza-acp-warm-"));
+    const claimToken = randomBytes(32).toString("hex");
+    const projected = applySubAgentEnvPolicy(process.env);
+    const allowedBootstrapKeys = new Set<string>(SUB_AGENT_SYSTEM_ENV_KEYS);
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+      Object.entries(projected).filter(([key]) =>
+        allowedBootstrapKeys.has(key),
+      ),
+    );
+    env.HOME = bootstrapHome;
+    if (env.USERPROFILE) env.USERPROFILE = bootstrapHome;
+    env.ELIZA_ACP_WARM_CLAIM_TOKEN = claimToken;
+    const command = this.nativeAgentCommand("elizaos");
+    const client = new NativeAcpClient({
+      command,
+      cwd: process.cwd(),
+      env,
+      approvalPreset: this.defaultApprovalPreset,
+      timeoutMs: this.sessionTimeoutMs,
+      terminal: !this.shouldDisableTerminalCapability(),
+      mcpServers: readConfigMcpServers(),
+    });
+    try {
+      await client.start();
+      if (!this.started || this.warmNativeClient) {
+        await client.close();
+        await rm(bootstrapHome, { recursive: true, force: true });
+        return;
+      }
+      this.warmNativeClient = {
+        client,
+        command,
+        claimToken,
+        createdAt: Date.now(),
+        bootstrapHome,
+      };
+      this.log("debug", "warm ACP child ready", { agentType: "elizaos" });
+    } catch (err) {
+      await client.close().catch(() => undefined);
+      await rm(bootstrapHome, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+      throw err;
+    }
+  }
+
+  private async disposeWarmNativeClient(
+    slot: WarmNativeClientSlot,
+  ): Promise<void> {
+    await slot.client.close().catch(() => undefined);
+    await rm(slot.bootstrapHome, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+  }
+
+  private takeWarmNativeClient(
+    agentType: AgentType,
+  ): WarmNativeClientSlot | undefined {
+    if (
+      !this.warmSpawnEnabled ||
+      (normalizeTaskAgentAdapter(agentType) ?? agentType) !== "elizaos"
+    ) {
+      return undefined;
+    }
+    const slot = this.warmNativeClient;
+    this.warmNativeClient = undefined;
+    this.scheduleWarmNativeClient();
+    if (!slot) return undefined;
+    if (
+      slot.command !== this.nativeAgentCommand(agentType) ||
+      Date.now() - slot.createdAt > ACP_WARM_CLIENT_MAX_AGE_MS
+    ) {
+      void this.disposeWarmNativeClient(slot);
+      return undefined;
+    }
+    return slot;
   }
 
   private async reconcileOrphanedSessions(): Promise<void> {
@@ -1061,6 +1207,7 @@ export class AcpService extends Service {
   }
 
   async stop(): Promise<void> {
+    this.started = false;
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = undefined;
@@ -1079,6 +1226,8 @@ export class AcpService extends Service {
       process.off("SIGINT", AcpService.sharedShutdownHandler);
       AcpService.shutdownHookInstalled = false;
     }
+    const warm = this.warmNativeClient;
+    this.warmNativeClient = undefined;
     const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
       this.stopTrackedProcess(sessionId),
     );
@@ -1090,8 +1239,13 @@ export class AcpService extends Service {
     const leaseRevokes = Array.from(this.modelLeases.keys()).map((sessionId) =>
       this.revokeModelLease(sessionId, "service_stop"),
     );
-    await Promise.allSettled([...stops, ...nativeStops, ...leaseRevokes]);
-    this.started = false;
+    await Promise.allSettled([
+      ...stops,
+      ...nativeStops,
+      ...leaseRevokes,
+      ...(warm ? [this.disposeWarmNativeClient(warm)] : []),
+      ...(this.warmNativeClientStarting ? [this.warmNativeClientStarting] : []),
+    ]);
   }
 
   private acpxStateRoot(): string {
@@ -1577,6 +1731,12 @@ export class AcpService extends Service {
 
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
+    const warm = this.warmNativeClient;
+    if (warm && Date.now() - warm.createdAt > ACP_WARM_CLIENT_MAX_AGE_MS) {
+      this.warmNativeClient = undefined;
+      await this.disposeWarmNativeClient(warm);
+      this.scheduleWarmNativeClient();
+    }
     let sessions: SessionInfo[];
     try {
       sessions = await this.store.list();
@@ -3054,58 +3214,88 @@ export class AcpService extends Service {
     },
   ): { client: NativeAcpClient; command: string } {
     const command = this.nativeAgentCommand(session.agentType);
+    const client = new NativeAcpClient({
+      command,
+      cwd: session.workdir,
+      approvalPreset: session.approvalPreset,
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      terminal: !this.shouldDisableTerminalCapability(),
+      env: this.buildEnv(
+        opts.env,
+        opts.customCredentials,
+        opts.model,
+        session.agentType,
+        session.id,
+        opts.codexInitialAgentModeOverride,
+      ),
+      mcpServers: readConfigMcpServers(),
+      onEvent: (event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          session.id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== session.id) {
+          void this.store
+            .update(session.id, { acpxSessionId: protocolSessionId })
+            // error-policy:J7 mapping persistence runs inside an ACP event
+            // callback and must report without throwing into the transport.
+            .catch((err) =>
+              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
+                sessionId: session.id,
+              }),
+            );
+        }
+      },
+      onStderr: (chunk) => {
+        opts.stderr.push(chunk);
+      },
+    });
     return {
       command,
-      client: new NativeAcpClient({
-        command,
-        cwd: session.workdir,
-        approvalPreset: session.approvalPreset,
-        timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-        terminal: !this.shouldDisableTerminalCapability(),
-        env: this.buildEnv(
-          opts.env,
-          opts.customCredentials,
-          opts.model,
-          session.agentType,
-          session.id,
-          opts.codexInitialAgentModeOverride,
-        ),
-        // Auto-inherit the parent runtime's configured MCP servers (config
-        // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
-        // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
-        mcpServers: readConfigMcpServers(),
-        onEvent: (event, protocolSessionId) => {
-          this.handleAcpEvent(
-            event,
-            session.id,
-            "",
-            Date.now(),
-            false,
-            new Set<string>(),
-          );
-          if (protocolSessionId && protocolSessionId !== session.id) {
-            void this.store
-              .update(session.id, { acpxSessionId: protocolSessionId })
-              // error-policy:J7 mapping write runs inside the ACP event
-              // callback and must not throw into the transport, but a swallowed
-              // failure leaves the acpxSessionId unpersisted so later protocol
-              // lookups silently miss the session — report it.
-              .catch((err) =>
-                this.runtime.reportError(
-                  "AcpService.persistAcpxSessionId",
-                  err,
-                  {
-                    sessionId: session.id,
-                  },
-                ),
-              );
-          }
-        },
-        onStderr: (chunk) => {
-          opts.stderr.push(chunk);
-        },
-      }),
+      client,
     };
+  }
+
+  private configureNativeClientForSession(
+    client: NativeAcpClient,
+    session: SessionInfo,
+    opts: { env: NodeJS.ProcessEnv; timeoutMs?: number; stderr: string[] },
+  ): void {
+    client.configureClaimedSession({
+      cwd: session.workdir,
+      approvalPreset: session.approvalPreset,
+      env: opts.env,
+      mcpServers: readConfigMcpServers(),
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      onEvent: (event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          session.id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== session.id) {
+          void this.store
+            .update(session.id, { acpxSessionId: protocolSessionId })
+            // error-policy:J7 mapping persistence runs inside an ACP event
+            // callback and must report without throwing into the transport.
+            .catch((err) =>
+              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
+                sessionId: session.id,
+              }),
+            );
+        }
+      },
+      onStderr: (chunk) => {
+        opts.stderr.push(chunk);
+      },
+    });
   }
 
   private async attachNativeClientWithManagedCodexFallback(opts: {
@@ -3121,6 +3311,57 @@ export class AcpService extends Service {
     stderr: string[];
   }> {
     let stderr: string[] = [];
+    const warm = this.takeWarmNativeClient(opts.session.agentType);
+    if (warm) {
+      try {
+        const builtEnv = this.buildEnv(
+          opts.env,
+          opts.customCredentials,
+          opts.model,
+          opts.session.agentType,
+          opts.session.id,
+        );
+        const trustedExecutionPath = this.trustedSessionExecutionPath(
+          opts.session,
+        );
+        builtEnv.PATH = trustedExecutionPath;
+        delete builtEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        this.configureNativeClientForSession(warm.client, opts.session, {
+          env: builtEnv,
+          timeoutMs: opts.timeoutMs,
+          stderr,
+        });
+        const claimEnv: Record<string, string> = {};
+        for (const [key, value] of Object.entries(builtEnv)) {
+          if (typeof value === "string") claimEnv[key] = value;
+        }
+        // PATH is separate claim authority: the child never accepts an
+        // arbitrary environment entry as executable-search authority.
+        delete claimEnv.PATH;
+        delete claimEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        const nativeSession = await warm.client.createSession(
+          opts.session.workdir,
+          {
+            token: warm.claimToken,
+            env: claimEnv,
+            executionPath: trustedExecutionPath,
+          },
+        );
+        await rm(warm.bootstrapHome, { recursive: true, force: true });
+        this.log("debug", "claimed warm ACP child", {
+          sessionId: opts.session.id,
+          agentType: opts.session.agentType,
+        });
+        return { client: warm.client, nativeSession, stderr };
+      } catch (err) {
+        await this.disposeWarmNativeClient(warm);
+        this.log("warn", "warm ACP child claim failed; falling back cold", {
+          sessionId: opts.session.id,
+          error: errorMessage(err),
+        });
+        stderr = [];
+      }
+    }
     let { client, command } = this.createNativeClient(opts.session, {
       env: opts.env,
       customCredentials: opts.customCredentials,
@@ -3195,6 +3436,29 @@ export class AcpService extends Service {
         throw new Error(message);
       }
     }
+  }
+
+  private trustedSessionExecutionPath(session: SessionInfo): string {
+    const wrapperDir = session.metadata?.[ACP_METADATA_GIT_WRAPPER_DIR];
+    const basePath = getHostExecutionBaseline().path;
+    if (!basePath) {
+      throw new ElizaError("Host executable-search authority is unavailable", {
+        code: "ACP_HOST_EXECUTION_PATH_UNAVAILABLE",
+        context: { sessionId: session.id },
+        severity: "fatal",
+      });
+    }
+    if (typeof wrapperDir !== "string" || !wrapperDir.trim()) return basePath;
+
+    const expectedWrapperDir = resolve(this.acpGitIndexRoot(session.id), "bin");
+    if (resolve(wrapperDir) !== expectedWrapperDir) {
+      throw new ElizaError("Session git wrapper is outside its owned root", {
+        code: "ACP_GIT_WRAPPER_AUTHORITY_INVALID",
+        context: { sessionId: session.id },
+        severity: "fatal",
+      });
+    }
+    return [expectedWrapperDir, basePath].join(delimiter);
   }
 
   private async sendNativePrompt(
@@ -3730,7 +3994,7 @@ export class AcpService extends Service {
       // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
-        line: line.slice(0, 200),
+        line: truncateWellFormed(toWellFormedUnicode(line), 200),
       });
       return null;
     }
@@ -4361,7 +4625,14 @@ export class AcpService extends Service {
       env[canonicalForwardedEnvKey(key)] = value;
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
-      if (typeof value === "string") env[canonicalForwardedEnvKey(key)] = value;
+      if (typeof value !== "string") continue;
+      if (isDeniedSubAgentEnvKey(key)) {
+        this.log("warn", "rejecting spawn env matching env deny-list", {
+          key,
+        });
+        continue;
+      }
+      env[canonicalForwardedEnvKey(key)] = value;
     }
     if (model) {
       const normalizedModel =
@@ -4643,10 +4914,11 @@ export class AcpService extends Service {
     // that dies with only expiry text would otherwise emit no failureKind at
     // all, defeating the typed signal. Recognize either.
     const expired = isTokenExpiryText(text);
-    // Refresh-token expiry is excluded from isTokenExpiryText by design (it is
-    // a dead credential, not a recoverable access-token lapse) but it is still
-    // auth-shaped: without this it fell through both checks and emitted no
-    // failureKind at all, leaving the account unmarked.
+    // Refresh-token expiry is excluded from isTokenExpiryText on purpose (it
+    // is a genuinely dead credential, never the benign injected-token case),
+    // but it is still AUTH-shaped: without recognizing it here a Codex
+    // "refresh token has expired" run would emit no failureKind at all and
+    // the dead account would be respawned instead of marked needs-reauth.
     const refreshExpired = isRefreshTokenExpiryText(text);
     if (!isAuthText(text) && !expired && !refreshExpired) return {};
     // The `token_expired` reason drives a downstream recovery that keeps the
@@ -4669,7 +4941,12 @@ export class AcpService extends Service {
       return "acpx session was not found. This is likely an internal session bookkeeping error.";
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
-    if (stderr.trim()) return stderr.trim().slice(0, 500);
+    if (stderr.trim()) {
+      const wellFormed = toWellFormedUnicode(stderr.trim());
+      return wellFormed.length > 500
+        ? truncateWellFormed(wellFormed, 500)
+        : wellFormed;
+    }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
@@ -5210,10 +5487,11 @@ function captureTerminalToolOutput(
   const key = `${toolCall.id}\0${output}`;
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
+  const wellFormed = toWellFormedUnicode(output);
   const truncated =
-    output.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
-      ? `${output.slice(0, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
-      : output;
+    wellFormed.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
+      ? `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
+      : wellFormed;
   const title = toolCall.title?.trim() || "tool output";
   return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
 }
@@ -5277,7 +5555,10 @@ function execRecordOutputTail(record: Record<string, unknown>): string {
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
   const joined = candidates.join("\n").trim();
-  return joined.length > 200 ? `${joined.slice(0, 200)}…` : joined;
+  const wellFormed = toWellFormedUnicode(joined);
+  return wellFormed.length > 200
+    ? `${truncateWellFormed(wellFormed, 200)}…`
+    : wellFormed;
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
@@ -5350,7 +5631,7 @@ function capStderr(text: string): string {
 }
 
 function preview(text: string): string {
-  return text.replace(/\s+/g, " ").slice(0, 80);
+  return truncateWellFormed(toWellFormedUnicode(text.replace(/\s+/g, " ")), 80);
 }
 
 function errorMessage(err: unknown): string {

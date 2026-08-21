@@ -14,6 +14,7 @@ import {
 } from "./web-entry-policy";
 
 const PUBLIC_PATHS = [
+  "/account-deletion",
   "/login",
   "/login/",
   "/auth/success",
@@ -134,6 +135,7 @@ describe("hosted public renderer entry policy", () => {
       chatHarnessEnabled: false,
       desktopShell: false,
       forceApexConsole: false,
+      forceMarketingHome: false,
     };
     expect(shouldUsePublicWebEntry({ ...common, hostname: "eliza.app" })).toBe(
       true,
@@ -156,6 +158,7 @@ describe("hosted public renderer entry policy", () => {
       chatHarnessEnabled: false,
       desktopShell: false,
       forceApexConsole: false,
+      forceMarketingHome: false,
     };
     expect(shouldUseMarketingHomeEntry({ ...common, pathname: "/login" })).toBe(
       false,
@@ -168,6 +171,20 @@ describe("hosted public renderer entry policy", () => {
         forceApexConsole: true,
       }),
     ).toBe(false);
+  });
+
+  it("allows an explicit dev preview to use the marketing-only root locally", () => {
+    expect(
+      shouldUseMarketingHomeEntry({
+        pathname: "/",
+        hostname: "127.0.0.1",
+        webShellEnabled: false,
+        chatHarnessEnabled: false,
+        desktopShell: false,
+        forceApexConsole: false,
+        forceMarketingHome: true,
+      }),
+    ).toBe(true);
   });
 
   it("keeps the marketing entry free of auth-router and service-worker startup", () => {
@@ -191,6 +208,7 @@ describe("hosted public renderer entry policy", () => {
       chatHarnessEnabled: false,
       desktopShell: false,
       forceApexConsole: false,
+      forceMarketingHome: false,
     };
     expect(shouldUsePublicWebEntry({ ...common, desktopShell: true })).toBe(
       false,

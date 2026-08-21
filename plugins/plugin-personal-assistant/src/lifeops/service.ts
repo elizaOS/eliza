@@ -7,7 +7,10 @@
  * still exported from the `service-mixin-*.ts` files that consumers import.
  */
 
-export { LifeOpsServiceError } from "./service-types.js";
+export {
+  LifeOpsServiceError,
+  LifeOpsWorkflowRunFailedUncompensatedError,
+} from "./service-types.js";
 
 import type {
   BrowserBridgeCompanionAutoPairResponse,
@@ -156,6 +159,8 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -1584,7 +1589,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   runWorkflow(
     workflowId: string,
-    request: { now?: string; confirmBrowserActions?: boolean } = {},
+    request: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<LifeOpsWorkflowRun> {
     return this.workflowsDomain.runWorkflow(workflowId, request);
   }
@@ -1661,6 +1670,18 @@ export class LifeOpsService extends LifeOpsServiceBase {
     now?: Date,
   ): Promise<LifeOpsOccurrenceView> {
     return this.definitionsDomain.completeOccurrence(
+      occurrenceId,
+      request,
+      now,
+    );
+  }
+
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult> {
+    return this.definitionsDomain.recordOccurrenceProgress(
       occurrenceId,
       request,
       now,
@@ -1791,7 +1812,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
-      { subjectType: "owner", limit: 200 },
+      {
+        subjectType: "owner",
+        definitionScopes: [
+          {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityId(),
+          },
+        ],
+        limit: 200,
+      },
     );
     return views
       .filter(

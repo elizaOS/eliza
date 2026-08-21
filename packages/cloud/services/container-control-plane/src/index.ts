@@ -33,6 +33,7 @@ import {
   HetznerClientError,
 } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client";
 import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { resolveImageDigest } from "@elizaos/cloud-shared/lib/services/containers/registry-probe";
 import { dockerNodeManager } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
 import { reusesExistingElizaCharacter } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
 import {
@@ -67,43 +68,107 @@ interface ForwardedAuth {
 export const app = new Hono();
 const client = getHetznerContainersClient();
 
-function errorStatus(error: unknown): number {
-  // Typed API errors (e.g. the 402 insufficient-credits throw from
-  // bridgeStream's shared branch) carry their own status — pass it through
-  // instead of flattening to 500.
-  if (error instanceof ApiError) {
-    return error.status;
-  }
-  if (error instanceof HetznerClientError) {
-    switch (error.code) {
-      case "container_not_found":
-        return 404;
-      case "invalid_input":
-        return 400;
-      case "no_capacity":
-        return 503;
-      case "image_pull_failed":
-      case "container_create_failed":
-      case "container_stop_failed":
-      case "ssh_unreachable":
-        return 502;
-    }
-  }
-  return 500;
-}
+type ContainerControlPlaneErrorResponse = {
+  status: number;
+  body: { success: false; code: string; error: string };
+};
 
-function errorBody(error: unknown) {
-  if (error instanceof ApiError) {
-    return error.toJSON();
+export function containerControlPlaneErrorResponse(
+  error: unknown,
+): ContainerControlPlaneErrorResponse {
+  try {
+    if (error instanceof ApiError) {
+      const projected = (() => {
+        switch (error.code) {
+          case "authentication_required":
+          case "session_auth_required":
+          case "invalid_credentials":
+            return { status: 401, error: "Authentication required" };
+          case "insufficient_credits":
+            return { status: 402, error: "Insufficient credits" };
+          case "access_denied":
+            return { status: 403, error: "Access denied" };
+          case "resource_not_found":
+            return { status: 404, error: "Resource not found" };
+          case "rate_limit_exceeded":
+            return { status: 429, error: "Rate limit exceeded" };
+          case "session_not_ready":
+            return { status: 409, error: "Session is not ready" };
+          case "identity_conflict":
+          case "agent_quota_exceeded":
+          case "billing_state_conflict":
+            return {
+              status: 409,
+              error: "Request conflicts with current state",
+            };
+          case "validation_error":
+          case "agent_image_not_allowed":
+          case "agent_image_not_digest_pinned":
+            return { status: 400, error: "Invalid request" };
+          case "service_unavailable":
+            return { status: 503, error: "Service unavailable" };
+          default:
+            return { status: 500, error: "Request failed" };
+        }
+      })();
+      return {
+        status: projected.status,
+        body: {
+          success: false,
+          code: error.code,
+          error: projected.error,
+        },
+      };
+    }
+    if (error instanceof HetznerClientError) {
+      const projected = (() => {
+        switch (error.code) {
+          case "container_not_found":
+            return { status: 404, error: "Container not found" };
+          case "invalid_input":
+            return { status: 400, error: "Invalid container request" };
+          case "no_capacity":
+            return { status: 503, error: "Container capacity unavailable" };
+          case "image_pull_failed":
+          case "container_create_failed":
+          case "container_stop_failed":
+          case "ssh_unreachable":
+            return { status: 502, error: "Container operation failed" };
+        }
+      })();
+      return {
+        status: projected.status,
+        body: { success: false, code: error.code, error: projected.error },
+      };
+    }
+  } catch {
+    // error-policy:J1 hostile thrown values fail closed to the generic envelope.
   }
   return {
-    success: false,
-    code:
-      error instanceof HetznerClientError
-        ? error.code
-        : "container_control_plane_error",
-    error: error instanceof Error ? error.message : String(error),
+    status: 500,
+    body: {
+      success: false,
+      code: "container_control_plane_error",
+      error: "Container control-plane request failed",
+    },
   };
+}
+
+export function containerControlPlaneErrorBody(error: unknown) {
+  return containerControlPlaneErrorResponse(error).body;
+}
+
+function logBoundaryError(error: unknown): void {
+  logger.error("[container-control-plane] request failed", { error });
+}
+
+function thrownResponse(error: unknown): Response | null {
+  try {
+    return error instanceof Response ? error : null;
+  } catch {
+    // error-policy:J1 hostile thrown values are handled by the generic boundary.
+    return null;
+  }
 }
 
 function requireForwardedAuth(c: Context): ForwardedAuth {
@@ -578,9 +643,14 @@ async function handle(
     }
     return await fn(auth);
   } catch (error) {
-    if (error instanceof Response) return error;
-    return new Response(JSON.stringify(errorBody(error)), {
-      status: errorStatus(error),
+    const directResponse = thrownResponse(error);
+    if (directResponse) return directResponse;
+    // error-policy:J1 privileged transport boundary logs diagnostics internally
+    // and returns only the typed, stable public error envelope.
+    logBoundaryError(error);
+    const projected = containerControlPlaneErrorResponse(error);
+    return new Response(JSON.stringify(projected.body), {
+      status: projected.status,
       headers: { "content-type": "application/json" },
     });
   }
@@ -602,9 +672,14 @@ async function handleInternal(c: Context, fn: () => Promise<Response>) {
     }
     return await fn();
   } catch (error) {
-    if (error instanceof Response) return error;
-    return new Response(JSON.stringify(errorBody(error)), {
-      status: errorStatus(error),
+    const directResponse = thrownResponse(error);
+    if (directResponse) return directResponse;
+    // error-policy:J1 privileged transport boundary logs diagnostics internally
+    // and returns only the typed, stable public error envelope.
+    logBoundaryError(error);
+    const projected = containerControlPlaneErrorResponse(error);
+    return new Response(JSON.stringify(projected.body), {
+      status: projected.status,
       headers: { "content-type": "application/json" },
     });
   }
@@ -757,9 +832,12 @@ function nodeAutoscaleResponse(c: Context) {
             hcloudServerId: provisioned.hcloudServerId,
           });
         } catch (error) {
+          logger.error("[container-control-plane] node scale-up failed", {
+            error,
+          });
           (result.actions as Array<Record<string, unknown>>).push({
             type: "scale_up_failed",
-            error: error instanceof Error ? error.message : String(error),
+            error: "Node provisioning failed",
           });
         }
       }
@@ -780,10 +858,14 @@ function nodeAutoscaleResponse(c: Context) {
             nodeId: target,
           });
         } catch (error) {
+          logger.error("[container-control-plane] node drain failed", {
+            error,
+            nodeId: target,
+          });
           (result.actions as Array<Record<string, unknown>>).push({
             type: "drain_failed",
             nodeId: target,
-            error: error instanceof Error ? error.message : String(error),
+            error: "Node drain failed",
           });
         }
     }
@@ -826,7 +908,11 @@ app.post(
 function poolReplenishResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const result = await getWarmPoolManager().replenish(image);
+    const targetDigest = await resolveImageDigest(image);
+    const result = await getWarmPoolManager().replenish(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {
@@ -868,7 +954,23 @@ app.post("/api/v1/cron/pool-health-check", poolHealthCheckResponse);
 function poolImageRolloutResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const before = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const before = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
+    if (!targetDigest) {
+      return c.json({
+        success: true,
+        data: {
+          image,
+          skipped: true,
+          reason: "Registry probe did not resolve an immutable target digest",
+          rollout: before,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
     if (before.safeNextAction === "configure_pinned_desired_image") {
       return c.json({
         success: true,
@@ -881,8 +983,8 @@ function poolImageRolloutResponse(c: Context) {
         },
       });
     }
-    const result = await getWarmPoolManager().rollout(image);
-    const after = await getWarmPoolManager().rolloutStatus(image);
+    const result = await getWarmPoolManager().rollout(image, targetDigest);
+    const after = await getWarmPoolManager().rolloutStatus(image, targetDigest);
     return c.json({
       success: true,
       data: {
@@ -900,7 +1002,11 @@ app.post("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
 function poolImageRolloutStatusResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {
@@ -946,7 +1052,11 @@ function poolImageRollbackResponse(c: Context) {
     }
 
     const image = containersEnv.defaultAgentImage();
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     const currentDigest = rollout.desired.digest;
     if (!currentDigest) {
       return c.json({
@@ -983,11 +1093,13 @@ function poolImageRollbackResponse(c: Context) {
         });
         if (result.created) enqueued += 1;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        failures.push({ agentId: candidate.id, error: message });
+        failures.push({
+          agentId: candidate.id,
+          error: "Rollback enqueue failed",
+        });
         logger.warn("[container-control-plane] rollback enqueue failed", {
           agentId: candidate.id,
-          error: message,
+          error,
         });
       }
     }
@@ -1011,8 +1123,15 @@ app.post("/api/v1/admin/warm-pool/rollback", poolImageRollbackResponse);
 function poolStateResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
-    const state = await getWarmPoolManager().snapshot(image);
-    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    const targetDigest = await resolveImageDigest(image);
+    const state = await getWarmPoolManager().snapshot(
+      image,
+      targetDigest ?? undefined,
+    );
+    const rollout = await getWarmPoolManager().rolloutStatus(
+      image,
+      targetDigest ?? undefined,
+    );
     return c.json({
       success: true,
       data: {
@@ -1088,7 +1207,7 @@ app.delete("/api/compat/agents/:id", (c) =>
           {
             agentId,
             characterId,
-            error: charErr instanceof Error ? charErr.message : String(charErr),
+            error: charErr,
           },
         );
       }
@@ -1206,7 +1325,7 @@ app.post("/api/v1/containers", (c) =>
     await client.monitorInflight().catch((error) => {
       logger.warn(
         "[container-control-plane] immediate deployment monitor failed",
-        error instanceof Error ? error.message : String(error),
+        { error },
       );
     });
 

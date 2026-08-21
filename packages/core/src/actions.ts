@@ -12,8 +12,13 @@
  * Sits between the action catalog and the message loop's model call, and also
  * acts as the barrel re-exporting the action sub-modules (extractor pipeline,
  * JSON model output, subaction promotion/dispatch, recent-context,
- * resolve-action-args).
+ * resolve-action-args). Nested model `params` graphs are bounded in
+ * `action-parameter-value.ts`.
  */
+import {
+	parseActionParams,
+	toActionParameterValue,
+} from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
@@ -32,6 +37,10 @@ import {
 	getDeterministicNames,
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "./utils/well-formed.ts";
 
 export {
 	type ExtractorPipelineResult,
@@ -401,92 +410,7 @@ function formatParameterType(schema: ActionParameterSchema): string {
 	}
 }
 
-export function parseActionParams(
-	paramsInput: unknown,
-): Map<string, ActionParameters> {
-	const parsed =
-		typeof paramsInput === "string"
-			? parseActionParamsJson(paramsInput)
-			: (paramsInput ?? null);
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return new Map();
-	}
-
-	const record = parsed as Record<string, unknown>;
-	const candidate =
-		record.params &&
-		typeof record.params === "object" &&
-		!Array.isArray(record.params)
-			? (record.params as Record<string, unknown>)
-			: record;
-	const result = new Map<string, ActionParameters>();
-
-	for (const [actionName, paramsValue] of Object.entries(candidate)) {
-		if (
-			!paramsValue ||
-			typeof paramsValue !== "object" ||
-			Array.isArray(paramsValue)
-		) {
-			continue;
-		}
-
-		const params: ActionParameters = {};
-		for (const [paramName, paramValue] of Object.entries(paramsValue)) {
-			params[paramName] = toActionParameterValue(paramValue);
-		}
-
-		if (Object.keys(params).length > 0) {
-			result.set(actionName.trim().toUpperCase(), params);
-		}
-	}
-
-	return result;
-}
-
-function parseActionParamsJson(input: string): Record<string, unknown> | null {
-	const trimmed = input.trim();
-	if (!trimmed) {
-		return null;
-	}
-
-	try {
-		const parsed = JSON.parse(trimmed);
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: null;
-	} catch {
-		// error-policy:J3 action parameters cross an untrusted model boundary;
-		// malformed JSON is an explicit invalid result.
-		return null;
-	}
-}
-
-function toActionParameterValue(value: unknown): ActionParameters[string] {
-	if (value === null || value === undefined) {
-		return null;
-	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value as ActionParameterValue;
-	}
-
-	if (Array.isArray(value)) {
-		return value.map((entry) => toActionParameterValue(entry));
-	}
-
-	if (value && typeof value === "object") {
-		const normalized: ActionParameters = {};
-		for (const [key, entry] of Object.entries(value)) {
-			normalized[key] = toActionParameterValue(entry);
-		}
-		return normalized;
-	}
-
-	return value === undefined ? null : String(value);
-}
+export { parseActionParams };
 
 export function validateActionParams(
 	action: Action,
@@ -559,14 +483,15 @@ function coerceActionParamValue(
 	}
 
 	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+		let parsed: unknown;
 		try {
-			const parsed = JSON.parse(trimmed);
-			if (Array.isArray(parsed)) {
-				return parsed.map((entry) => toActionParameterValue(entry));
-			}
+			parsed = JSON.parse(trimmed) as unknown;
 		} catch {
 			// error-policy:J3 This field accepts either a JSON array or its documented
 			// delimited-string form; malformed JSON remains untrusted string input.
+		}
+		if (Array.isArray(parsed)) {
+			return toActionParameterValue(parsed);
 		}
 	}
 
@@ -575,10 +500,11 @@ function coerceActionParamValue(
 	}
 
 	const SAFE_SPLIT_LIMIT = 10_000;
+	const wellFormedTrimmed = toWellFormedUnicode(trimmed);
 	const safeTrimmed =
-		trimmed.length > SAFE_SPLIT_LIMIT
-			? trimmed.slice(0, SAFE_SPLIT_LIMIT)
-			: trimmed;
+		wellFormedTrimmed.length > SAFE_SPLIT_LIMIT
+			? truncateWellFormed(wellFormedTrimmed, SAFE_SPLIT_LIMIT)
+			: wellFormedTrimmed;
 	const splitValues = safeTrimmed
 		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())

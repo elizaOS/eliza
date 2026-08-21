@@ -8,6 +8,7 @@ import {
 	type IAgentRuntime,
 	isInAllowlist,
 } from "@elizaos/core";
+import { resolveDiscordDmPolicy } from "./environment";
 import type { DiscordSettings } from "./types";
 
 export interface DiscordDmIdentity {
@@ -27,7 +28,11 @@ export async function checkDiscordDmAccess(
 	settings: DiscordSettings,
 	user: DiscordDmIdentity,
 ): Promise<DiscordDmAccessResult> {
-	const policy = settings.dmPolicy ?? "pairing";
+	// Normalize at the gate: config sources (env var, character settings,
+	// per-account overrides) are all plain strings at runtime, and an
+	// unrecognized value must behave as `pairing`, never fall through to an
+	// implicit allow.
+	const policy = resolveDiscordDmPolicy(settings.dmPolicy);
 	if (policy === "disabled") {
 		runtime.logger.debug(
 			{ src: "plugin:discord", agentId: runtime.agentId, userId: user.id },
@@ -80,5 +85,7 @@ export async function checkDiscordDmAccess(
 		};
 	}
 
-	return { allowed: true };
+	// Unreachable for the normalized policy union; a security gate denies by
+	// construction when no branch claims the sender.
+	return { allowed: false };
 }

@@ -8,6 +8,7 @@
  * from the account and credential records so token rotation invalidates the
  * cache. The many accepted credential-type spellings exist to interoperate with
  * however the OAuth store or cloud flow labeled the persisted tokens.
+ * Nested `tokens`/`oauthTokens` JSON is bounded in `oauth-credential-merge.ts`.
  */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
@@ -31,6 +32,7 @@ import {
   CORE_SECRETS_SERVICE_TYPE,
   credentialRefRecordsFromMetadata,
 } from "./connector-credential-refs.js";
+import { mergeCredentialObject } from "./oauth-credential-merge.js";
 import type {
   GoogleAuthClient,
   GoogleAuthResolutionRequest,
@@ -662,38 +664,6 @@ function mergeCredentialValue(
   }
 
   applyRecordExpiry(credentials, record);
-}
-
-function mergeCredentialObject(credentials: Credentials, value: unknown): void {
-  const record = asRecord(value);
-  if (!record) return;
-
-  const nested = asRecord(record.tokens) ?? asRecord(record.oauthTokens);
-  if (nested) {
-    mergeCredentialObject(credentials, nested);
-  }
-
-  const accessToken = readStringFromRecord(record, "access_token", "accessToken");
-  const refreshToken = readStringFromRecord(record, "refresh_token", "refreshToken");
-  const idToken = readStringFromRecord(record, "id_token", "idToken");
-  const tokenType = readStringFromRecord(record, "token_type", "tokenType");
-  const scope = readStringFromRecord(record, "scope");
-  const expiry = record.expiry_date ?? record.expiryDate ?? record.expires_at ?? record.expiresAt;
-
-  if (accessToken) credentials.access_token = accessToken;
-  if (refreshToken) credentials.refresh_token = refreshToken;
-  if (idToken) credentials.id_token = idToken;
-  if (tokenType) credentials.token_type = tokenType;
-  if (Array.isArray(record.scopes)) {
-    credentials.scope = record.scopes
-      .filter((item): item is string => typeof item === "string")
-      .join(" ");
-  } else if (scope) {
-    credentials.scope = scope;
-  }
-
-  const expiryDate = parseExpiry(expiry);
-  if (expiryDate) credentials.expiry_date = expiryDate;
 }
 
 function parseMaybeJson(value: string): unknown | undefined {

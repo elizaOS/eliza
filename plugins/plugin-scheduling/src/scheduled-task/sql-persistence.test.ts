@@ -115,13 +115,13 @@ async function startSqlRunner(
   };
 }
 
-function receiptReminderInput(idempotencyKey: string) {
+function receiptReminderInput(idempotencyKey?: string) {
   return {
     kind: "reminder" as const,
     promptInstructions: "Stretch",
     trigger: { kind: "once" as const, atIso: "2026-08-16T03:05:00.000Z" },
     priority: "medium" as const,
-    idempotencyKey,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
     respectsGlobalPause: true,
     source: "user_chat" as const,
     createdBy: "test",
@@ -223,29 +223,355 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
-    "retains the original receipt identity beyond the log rollup window",
+    "replays one lifecycle receipt after the atomic commit outlives an observation failure",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const durableLogStore = createSchedulingSqlScheduledTaskLogStore({
+        runtime: harness.runtime,
+        agentId: harness.runtime.agentId,
+      });
+      let failNextList = false;
+      const flakyLogStore: ScheduledTaskLogStore = {
+        ...durableLogStore,
+        async list(args) {
+          if (failNextList) {
+            failNextList = false;
+            throw new Error("injected lifecycle receipt observation failure");
+          }
+          return durableLogStore.list(args);
+        },
+      };
+      const { runner } = await startSqlRunner(harness, flakyLogStore);
+      const created = await runner.scheduleWithResult(
+        receiptReminderInput("lifecycle-log-recovery-task"),
+      );
+      const request = {
+        taskId: created.task.taskId,
+        verb: "snooze" as const,
+        payload: { minutes: 7 },
+        options: { idempotencyKey: "message-1:snooze" },
+      };
+      failNextList = true;
+
+      await expect(
+        runner.applyWithResult(
+          request.taskId,
+          request.verb,
+          request.payload,
+          request.options,
+        ),
+      ).rejects.toThrow("injected lifecycle receipt observation failure");
+      const replay = await runner.applyWithResult(
+        request.taskId,
+        request.verb,
+        request.payload,
+        request.options,
+      );
+
+      expect(replay.replayed).toBe(true);
+      expect(replay.commit.logId).toMatch(/^stl_apply_[a-f0-9]{64}$/);
+      expect(replay.task.state.firedAt).toBe("2026-08-16T03:07:00.000Z");
+      const counts = await harness.pg.query<{
+        logs: number;
+        metadata_json: string;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND transition = 'snoozed') AS logs,
+          (SELECT metadata_json
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist'
+              AND id = '${created.task.taskId}') AS metadata_json
+      `);
+      expect(counts.rows[0]?.logs).toBe(1);
+      const metadata = JSON.parse(counts.rows[0]?.metadata_json ?? "{}") as {
+        schedulingApplyReceipts?: Record<string, unknown>;
+      };
+      expect(Object.keys(metadata.schedulingApplyReceipts ?? {})).toHaveLength(
+        1,
+      );
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "converges concurrent lifecycle retries before settling the terminal pipeline",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const child = receiptReminderInput();
+      const created = await runner.scheduleWithResult({
+        ...receiptReminderInput("lifecycle-complete-task"),
+        pipeline: { onComplete: [child as never] },
+      });
+
+      const results = await Promise.all([
+        runner.applyWithResult(created.task.taskId, "complete", undefined, {
+          idempotencyKey: "message-2:complete",
+        }),
+        runner.applyWithResult(created.task.taskId, "complete", undefined, {
+          idempotencyKey: "message-2:complete",
+        }),
+      ]);
+
+      expect(results.map((result) => result.replayed).sort()).toEqual([
+        false,
+        true,
+      ]);
+      expect(new Set(results.map((result) => result.commit.logId)).size).toBe(
+        1,
+      );
+      const counts = await harness.pg.query<{
+        completed_logs: number;
+        tasks: number;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND transition = 'completed') AS completed_logs,
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist') AS tasks
+      `);
+      expect(counts.rows[0]).toEqual({ completed_logs: 1, tasks: 2 });
+      const tasks = await runner.list();
+      expect(
+        tasks.find((task) => task.taskId !== created.task.taskId)?.state
+          .pipelineParentId,
+      ).toBe(created.task.taskId);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "retains distinct concurrent lifecycle receipts and settles each terminal pipeline once",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const child = receiptReminderInput();
+      const created = await runner.scheduleWithResult({
+        ...receiptReminderInput("distinct-lifecycle-complete-task"),
+        pipeline: { onComplete: [child as never] },
+      });
+      const requests = [
+        { idempotencyKey: "message-distinct-a:complete" },
+        { idempotencyKey: "message-distinct-b:complete" },
+      ] as const;
+
+      const applied = await Promise.all(
+        requests.map((options) =>
+          runner.applyWithResult(
+            created.task.taskId,
+            "complete",
+            undefined,
+            options,
+          ),
+        ),
+      );
+
+      expect(applied.map((result) => result.replayed)).toEqual([false, false]);
+      expect(new Set(applied.map((result) => result.commit.logId)).size).toBe(
+        2,
+      );
+
+      const persisted = await harness.pg.query<{
+        completed_logs: number;
+        metadata_json: string;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}'
+              AND transition = 'completed') AS completed_logs,
+          (SELECT metadata_json
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist'
+              AND id = '${created.task.taskId}') AS metadata_json
+      `);
+      const persistedRow = persisted.rows[0];
+      if (!persistedRow) throw new Error("expected persisted lifecycle row");
+      expect(persistedRow.completed_logs).toBe(2);
+      const metadata = JSON.parse(persistedRow.metadata_json) as {
+        schedulingApplyReceipts?: Record<string, unknown>;
+      };
+      const receiptMarkers = metadata.schedulingApplyReceipts;
+      if (!receiptMarkers)
+        throw new Error("expected lifecycle receipt markers");
+      expect(Object.keys(receiptMarkers)).toHaveLength(2);
+
+      const replayed = await Promise.all(
+        requests.map((options) =>
+          runner.applyWithResult(
+            created.task.taskId,
+            "complete",
+            { reason: "must not replace the committed receipt" },
+            options,
+          ),
+        ),
+      );
+      expect(replayed.map((result) => result.replayed)).toEqual([true, true]);
+      expect(replayed.map((result) => result.commit.logId).sort()).toEqual(
+        applied.map((result) => result.commit.logId).sort(),
+      );
+
+      const tasks = await runner.list();
+      expect(
+        tasks.filter(
+          (task) =>
+            task.taskId !== created.task.taskId &&
+            task.state.pipelineParentId === created.task.taskId,
+        ),
+      ).toHaveLength(2);
+      const finalCounts = await harness.pg.query<{
+        completed_logs: number;
+        tasks: number;
+      }>(`
+        SELECT
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}'
+              AND transition = 'completed') AS completed_logs,
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_tasks
+            WHERE agent_id = 'agent-sql-persist') AS tasks
+      `);
+      expect(finalCounts.rows[0]).toEqual({ completed_logs: 2, tasks: 3 });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rolls back task state when the atomic lifecycle receipt insert fails",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const created = await runner.scheduleWithResult(
+        receiptReminderInput("lifecycle-atomic-failure-task"),
+      );
+      await harness.pg.query(`
+        ALTER TABLE app_scheduling.life_scheduled_task_log
+          ADD CONSTRAINT reject_injected_snooze_receipt
+          CHECK (transition <> 'snoozed')
+      `);
+
+      const apply = () =>
+        runner.applyWithResult(
+          created.task.taskId,
+          "snooze",
+          { minutes: 7 },
+          { idempotencyKey: "message-atomic-failure:snooze" },
+        );
+      await expect(apply()).rejects.toThrow("reject_injected_snooze_receipt");
+
+      const afterFailure = await runner.list();
+      expect(afterFailure[0]?.state).toEqual(created.task.state);
+      expect(
+        afterFailure[0]?.metadata?.schedulingApplyReceipts,
+      ).toBeUndefined();
+      const failedLogs = await harness.pg.query<{ apply_logs: number }>(`
+        SELECT COUNT(*)::int AS apply_logs
+          FROM app_scheduling.life_scheduled_task_log
+         WHERE agent_id = 'agent-sql-persist'
+           AND transition = 'snoozed'
+      `);
+      expect(failedLogs.rows[0]).toEqual({ apply_logs: 0 });
+
+      await harness.pg.query(`
+        ALTER TABLE app_scheduling.life_scheduled_task_log
+          DROP CONSTRAINT reject_injected_snooze_receipt
+      `);
+      const applied = await apply();
+      expect(applied.replayed).toBe(false);
+      expect(applied.task.state.firedAt).toBe("2026-08-16T03:07:00.000Z");
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "writes neither task state nor a receipt when lifecycle input is invalid",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const created = await runner.scheduleWithResult(
+        receiptReminderInput("lifecycle-invalid-task"),
+      );
+
+      await expect(
+        runner.applyWithResult(
+          created.task.taskId,
+          "snooze",
+          { minutes: 0 },
+          { idempotencyKey: "message-3:snooze" },
+        ),
+      ).rejects.toThrow("snooze: provide minutes or untilIso");
+
+      const persisted = await runner.list();
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0]?.state).toEqual(created.task.state);
+      expect(persisted[0]?.metadata?.schedulingApplyReceipts).toBeUndefined();
+      const logs = await harness.pg.query<{ apply_logs: number }>(`
+        SELECT COUNT(*)::int AS apply_logs
+          FROM app_scheduling.life_scheduled_task_log
+         WHERE agent_id = 'agent-sql-persist'
+           AND transition IN ('snoozed', 'completed', 'dismissed')
+      `);
+      expect(logs.rows[0]).toEqual({ apply_logs: 0 });
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "retains creation and lifecycle receipt identities beyond the log rollup window",
     async () => {
       const harness = await createRuntimeHarness();
       harnesses.push(harness);
       const { runner, logStore } = await startSqlRunner(harness);
       const input = receiptReminderInput("receipt-after-rollup");
       const created = await runner.scheduleWithResult(input);
+      const applied = await runner.applyWithResult(
+        created.task.taskId,
+        "snooze",
+        { minutes: 5 },
+        { idempotencyKey: "message-after-rollup:snooze" },
+      );
 
       const rollup = await logStore.rollupOlderThan({
         agentId: harness.runtime.agentId,
         olderThanIso: "2026-08-17T00:00:00.000Z",
       });
       const replay = await runner.scheduleWithResult(input);
+      const applyReplay = await runner.applyWithResult(
+        created.task.taskId,
+        "snooze",
+        { minutes: 999 },
+        { idempotencyKey: "message-after-rollup:snooze" },
+      );
 
       expect(rollup).toEqual({ rolledUp: 0, deletedRaw: 0 });
       expect(replay.replayed).toBe(true);
       expect(replay.commit.logId).toBe(created.commit.logId);
+      expect(applyReplay.replayed).toBe(true);
+      expect(applyReplay.commit.logId).toBe(applied.commit.logId);
+      expect(applyReplay.task.state.firedAt).toBe("2026-08-16T03:05:00.000Z");
       const raw = await logStore.list({
         agentId: harness.runtime.agentId,
         taskId: created.task.taskId,
         excludeRollups: true,
       });
-      expect(raw.map((entry) => entry.logId)).toEqual([created.commit.logId]);
+      expect(raw.map((entry) => entry.logId)).toEqual([
+        created.commit.logId,
+        applied.commit.logId,
+      ]);
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );

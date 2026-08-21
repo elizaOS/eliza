@@ -25,6 +25,8 @@ import {
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -672,16 +674,85 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // memory rewriting lands upstream, intercept user-facing text and replace
 // the teardown-retry phrases with the canonical self-heal recovery line so
 // the user never sees instructions to do something the runtime already does.
-const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
-  /[^.!?\n]*\b(restart|kick(?:[\s-]?off)?|bounce)[^.!?\n]*\bacpx[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bacpx[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\b(clear|clean|wipe)[^.!?\n]*\bstale\s+sessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bmanually\s+clear[^.!?\n]*\bsessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bdaemon\b[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-];
-
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
+
+function containsWord(value: string, word: string): boolean {
+  let cursor = 0;
+  while (cursor < value.length) {
+    const index = value.indexOf(word, cursor);
+    if (index < 0) return false;
+    const before = value[index - 1] ?? " ";
+    const after = value[index + word.length] ?? " ";
+    const isWord = (character: string): boolean => /[a-z0-9_]/.test(character);
+    if (!isWord(before) && !isWord(after)) return true;
+    cursor = index + 1;
+  }
+  return false;
+}
+
+function isForbiddenCleanupSentence(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  const hasRecoveryVerb =
+    containsWord(lower, "restart") ||
+    containsWord(lower, "reboot") ||
+    containsWord(lower, "bounce") ||
+    containsWord(lower, "kick") ||
+    containsWord(lower, "kickoff") ||
+    containsWord(lower, "kick-off") ||
+    lower.includes("not accepting") ||
+    lower.includes("isn't accepting") ||
+    lower.includes("isnt accepting");
+  if (containsWord(lower, "acpx") && hasRecoveryVerb) return true;
+  if (containsWord(lower, "daemon") && hasRecoveryVerb) return true;
+  const clears =
+    containsWord(lower, "clear") ||
+    containsWord(lower, "clean") ||
+    containsWord(lower, "wipe");
+  if (clears && lower.includes("stale session")) return true;
+  return (
+    lower.includes("manually clear") &&
+    (containsWord(lower, "session") || containsWord(lower, "sessions"))
+  );
+}
+
+function stripForbiddenCleanupSentences(text: string): string {
+  const out: string[] = [];
+  let segmentStart = 0;
+  for (let index = 0; index <= text.length; index += 1) {
+    const character = text[index];
+    const boundary =
+      index === text.length ||
+      character === "." ||
+      character === "!" ||
+      character === "?" ||
+      character === "\n";
+    if (!boundary) continue;
+    const includePunctuation = character !== "\n" && index < text.length;
+    const segmentEnd = index + (includePunctuation ? 1 : 0);
+    const segment = text.slice(segmentStart, segmentEnd);
+    if (!isForbiddenCleanupSentence(segment)) out.push(segment);
+    if (character === "\n") out.push("\n");
+    segmentStart = index + 1;
+  }
+  return out.join("");
+}
+
+function collapseWhitespaceRuns(text: string): string {
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (text[cursor]?.trim() !== "") {
+      out.push(text[cursor] ?? "");
+      cursor += 1;
+      continue;
+    }
+    const start = cursor;
+    while (cursor < text.length && text[cursor]?.trim() === "") cursor += 1;
+    out.push(cursor - start >= 2 ? " " : (text[start] ?? ""));
+  }
+  return out.join("");
+}
 
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
@@ -814,12 +885,9 @@ export function plannerAlreadyAckedSpawn(
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
-  let cleaned = text;
-  for (const pattern of FORBIDDEN_CLEANUP_PATTERNS) {
-    cleaned = cleaned.replace(pattern, "");
-  }
+  let cleaned = stripForbiddenCleanupSentences(text);
   if (cleaned === text) return text;
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  cleaned = collapseWhitespaceRuns(cleaned).trim();
   return cleaned.length > 0
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;
@@ -843,6 +911,115 @@ export const SPAWN_ACK_FALLBACK = "On it.";
 // model over-answering, so it falls back.
 const SPAWN_ACK_MAX_CHARS = 120;
 const SPAWN_ACK_TIMEOUT_MS = 750;
+
+function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), SPAWN_ACK_TIMEOUT_MS);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  // error-policy:J4 spawn-ack model rejection/timeout degrades to the neutral
+  // literal ack; a cosmetic UX line, never fabricated data.
+  return Promise.race([promise.catch(() => fallback), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+/**
+ * System prompt for spawn-ack generation. Carries the character's own voice —
+ * derived from the configured character, never hardcoded — plus the hard
+ * constraints that keep the output to a single short in-language line. Pure +
+ * deterministic so it is unit-tested directly.
+ */
+export function buildSpawnAckSystemPrompt(character: Character): string {
+  const name = (character.name ?? "").trim() || "the assistant";
+  const voiceParts: string[] = [];
+  const bio = (character.bio ?? []).map((b) => b.trim()).filter(Boolean);
+  if (bio.length > 0) voiceParts.push(bio.slice(0, 3).join(" "));
+  const traits = [
+    ...(character.adjectives ?? []),
+    ...(character.style?.chat ?? []),
+    ...(character.style?.all ?? []),
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (traits.length > 0) {
+    voiceParts.push(`Voice: ${[...new Set(traits)].slice(0, 8).join(", ")}.`);
+  }
+  return [
+    `You are ${name}.`,
+    voiceParts.join(" ").trim(),
+    "You have just kicked off a background task the user asked for.",
+    "Reply with exactly ONE short, natural line, in your own voice, confirming you're on it.",
+    "Write it in the same language the user used.",
+    "No quotes, no emoji, no markdown, no preamble — just the line. Keep it under 12 words.",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+}
+
+/**
+ * User-turn prompt for spawn-ack generation: the task being started. The task
+ * text doubles as the language signal — the model replies in whatever language
+ * it is written in (same mechanism as the heartbeat summarizer). Pure.
+ */
+export function buildSpawnAckUserPrompt(task: string): string {
+  const trimmed = task.trim();
+  const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
+  const wellFormed = toWellFormedUnicode(what);
+  const clipped =
+    wellFormed.length > 400
+      ? `${truncateWellFormed(wellFormed, 397)}…`
+      : wellFormed;
+  return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
+}
+
+/**
+ * Clean a model-produced ack into a single plain line: first non-empty line,
+ * surrounding quotes / emoji / list markers stripped, whitespace collapsed,
+ * length capped. Returns "" when nothing usable remains (the caller then falls
+ * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
+ */
+export function sanitizeSpawnAck(raw: string): string {
+  if (!raw) return "";
+  const firstLine =
+    raw
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  if (!firstLine) return "";
+  let cleaned = firstLine
+    .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
+    .replace(/^[>*\-•\s]+/, "")
+    .trim();
+  // Strip a single pair of surrounding quotes (straight, smart, or backtick).
+  const quotePairs: ReadonlyArray<readonly [string, string]> = [
+    ['"', '"'],
+    ["'", "'"],
+    ["“", "”"],
+    ["‘", "’"],
+    ["`", "`"],
+  ];
+  for (const [open, close] of quotePairs) {
+    if (
+      cleaned.length >= open.length + close.length &&
+      cleaned.startsWith(open) &&
+      cleaned.endsWith(close)
+    ) {
+      cleaned = cleaned
+        .slice(open.length, cleaned.length - close.length)
+        .trim();
+      break;
+    }
+  }
+  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  if (!cleaned) return "";
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed.length > SPAWN_ACK_MAX_CHARS
+    ? `${truncateWellFormed(wellFormed, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
+    : wellFormed;
+}
 
 function stripToolTranscripts(raw: string): string {
   if (!raw) return "";
@@ -881,7 +1058,10 @@ export function extractCompletionSummary(raw: string): string {
     .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
   const last = lines[lines.length - 1] ?? "";
   if (!last) return "done";
-  return last.length > 300 ? `${last.slice(0, 297).trimEnd()}…` : last;
+  const wellFormed = toWellFormedUnicode(last);
+  return wellFormed.length > 300
+    ? `${truncateWellFormed(wellFormed, 297).trimEnd()}…`
+    : wellFormed;
 }
 
 /**
@@ -962,8 +1142,12 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
     const parts = p.split("/").filter(Boolean);
     return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
   };
-  const trimCmd = (c: string): string =>
-    c.length > 80 ? `${c.slice(0, 77)}...` : c;
+  const trimCmd = (c: string): string => {
+    const wellFormed = toWellFormedUnicode(c);
+    return wellFormed.length > 80
+      ? `${truncateWellFormed(wellFormed, 77)}...`
+      : wellFormed;
+  };
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1390,7 +1574,8 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
         const prevSummary = lastHeartbeatSummary.get(sessionId);
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
-        const text = `⏳ [${label}] ${trimmedSummary.length > 200 ? `${trimmedSummary.slice(0, 197)}...` : trimmedSummary}`;
+        const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
+        const text = `⏳ [${label}] ${wellFormedSummary.length > 200 ? `${truncateWellFormed(wellFormedSummary, 197)}...` : wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -2158,7 +2343,8 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
     // duplicates the final summary the response evaluator builds. A 800-char
     // window fits short tables and a few bullet points; longer dumps get
     // truncated and the canonical version lands via the summary.
-    const text = `💬 [${label}] ${trimmed.length > 800 ? `${trimmed.slice(0, 793)}…[+]` : trimmed}`;
+    const wellFormed = toWellFormedUnicode(trimmed);
+    const text = `💬 [${label}] ${wellFormed.length > 800 ? `${truncateWellFormed(wellFormed, 793)}…[+]` : wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());

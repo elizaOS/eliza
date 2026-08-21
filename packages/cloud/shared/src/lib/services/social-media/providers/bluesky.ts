@@ -14,9 +14,35 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
+
+const BLUESKY_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Bluesky / AT Protocol hop so a hung or rate-limited API cannot
+ * pin the publishing worker indefinitely.
+ * A caller-provided signal is composed with the deadline rather than
+ * replacing it — a caller that cancels still aborts early, and a caller
+ * whose signal never fires still cannot outlive the bound.
+ */
+export function blueskyFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLUESKY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface BskySession {
   did: string;
@@ -43,7 +69,7 @@ interface BskyFacet {
 async function createSession(handle: string, appPassword: string): Promise<BskySession> {
   const { data } = await withRetry<BskySession>(
     () =>
-      fetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.server.createSession`, {
+      blueskyFetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.server.createSession`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: handle, password: appPassword }),
@@ -65,7 +91,7 @@ async function bskyApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
-      fetch(`${BLUESKY_SERVICE}/xrpc/${endpoint}`, {
+      blueskyFetch(`${BLUESKY_SERVICE}/xrpc/${endpoint}`, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessJwt}`,
@@ -95,7 +121,7 @@ async function uploadBlob(
     size: number;
   };
 }> {
-  const response = await fetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.repo.uploadBlob`, {
+  const response = await blueskyFetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.repo.uploadBlob`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessJwt}`,
@@ -233,12 +259,12 @@ export const blueskyProvider: SocialMediaProvider = {
 
           let imageData: Buffer;
           if (media.data) {
+            assertSocialMediaBytesWithinBudget(media.data.length, { platform: "bluesky" });
             imageData = media.data;
           } else if (media.base64) {
-            imageData = Buffer.from(media.base64, "base64");
+            imageData = decodeSocialMediaBase64(media.base64, { platform: "bluesky" });
           } else if (media.url) {
-            const response = await fetch(media.url);
-            imageData = Buffer.from(await response.arrayBuffer());
+            imageData = await downloadSocialMediaBytes(media.url);
           } else {
             continue;
           }
@@ -410,12 +436,12 @@ export const blueskyProvider: SocialMediaProvider = {
 
     let imageData: Buffer;
     if (media.data) {
+      assertSocialMediaBytesWithinBudget(media.data.length, { platform: "bluesky" });
       imageData = media.data;
     } else if (media.base64) {
-      imageData = Buffer.from(media.base64, "base64");
+      imageData = decodeSocialMediaBase64(media.base64, { platform: "bluesky" });
     } else if (media.url) {
-      const response = await fetch(media.url);
-      imageData = Buffer.from(await response.arrayBuffer());
+      imageData = await downloadSocialMediaBytes(media.url);
     } else {
       throw new Error("No media data provided");
     }

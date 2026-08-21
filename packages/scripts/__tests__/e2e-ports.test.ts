@@ -7,7 +7,15 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +30,32 @@ describe("advertisePort / waitForAdvertisedPort", () => {
     const portFile = path.join(dir, "round-trip.port");
     advertisePort(portFile, 43210);
     expect(readFileSync(portFile, "utf8")).toBe("43210\n");
+    if (process.platform !== "win32") {
+      expect(statSync(portFile).mode & 0o777).toBe(0o600);
+    }
     await expect(waitForAdvertisedPort(portFile)).resolves.toBe(43210);
+  });
+
+  it("cleans its temporary file when atomic publication fails", () => {
+    const portFile = path.join(dir, "blocked.port");
+    mkdirSync(portFile);
+
+    expect(() => advertisePort(portFile, 43210)).toThrow();
+    expect(
+      readdirSync(dir).filter((entry) => entry.startsWith("blocked.port.")),
+    ).toEqual([]);
+  });
+
+  it("surfaces port-file I/O failures without waiting for timeout", async () => {
+    const portFile = path.join(dir, "unreadable.port");
+    mkdirSync(portFile);
+
+    await expect(
+      waitForAdvertisedPort(portFile, {
+        timeoutMs: 10_000,
+        pollIntervalMs: 1_000,
+      }),
+    ).rejects.toThrow(/failed to read/);
   });
 
   it("polls until a slow child advertises", async () => {
@@ -49,6 +82,14 @@ describe("advertisePort / waitForAdvertisedPort", () => {
   it("rejects non-port file content instead of fabricating a port", async () => {
     const portFile = path.join(dir, "garbage.port");
     writeFileSync(portFile, "not-a-port\n", "utf8");
+    await expect(waitForAdvertisedPort(portFile)).rejects.toThrow(
+      /does not contain a port/,
+    );
+  });
+
+  it("rejects partial numeric content instead of truncating it", async () => {
+    const portFile = path.join(dir, "partial.port");
+    writeFileSync(portFile, "31338junk\n", "utf8");
     await expect(waitForAdvertisedPort(portFile)).rejects.toThrow(
       /does not contain a port/,
     );

@@ -23,11 +23,65 @@ import type {
 
 const DEFAULT_API_VERSION = "v24.0";
 
+const WHATSAPP_REQUEST_TIMEOUT_MS = 15_000;
+
 interface WhatsAppApiResponse<T> {
   data: T;
   status: number;
   statusText: string;
   headers: Headers;
+}
+
+interface WhatsAppFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  text(): Promise<string>;
+}
+
+function parseWhatsAppResponseBody(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // error-policy:J3 Meta error bodies may be plain text rather than JSON.
+    return text;
+  }
+}
+
+async function whatsAppRequest<T>(
+  url: string,
+  headers: HeadersInit,
+  init: RequestInit
+): Promise<WhatsAppApiResponse<T>> {
+  const timeoutSignal = AbortSignal.timeout(WHATSAPP_REQUEST_TIMEOUT_MS);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+  const response = (await fetch(url, {
+    ...init,
+    headers: {
+      ...headers,
+      ...init.headers,
+    },
+    signal,
+  })) as WhatsAppFetchResponse;
+
+  const text = await response.text();
+  const data = text ? parseWhatsAppResponseBody(text) : undefined;
+
+  if (!response.ok) {
+    const detail =
+      typeof data === "string" ? data : data ? JSON.stringify(data) : response.statusText;
+    throw new Error(
+      `WhatsApp Cloud API request failed (${response.status} ${response.statusText}): ${detail}`
+    );
+  }
+
+  return {
+    data: data as T,
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  };
 }
 
 export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
@@ -356,39 +410,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
 
   private async request<T>(endpoint: string, init: RequestInit): Promise<WhatsAppApiResponse<T>> {
     const normalizedEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
-    const response = await fetch(`${this.baseUrl}/${normalizedEndpoint}`, {
-      ...init,
-      headers: {
-        ...this.headers,
-        ...init.headers,
-      },
-    });
-
-    const text = await response.text();
-    const data = text ? this.parseResponseBody(text) : undefined;
-
-    if (!response.ok) {
-      const detail =
-        typeof data === "string" ? data : data ? JSON.stringify(data) : response.statusText;
-      throw new Error(
-        `WhatsApp Cloud API request failed (${response.status} ${response.statusText}): ${detail}`
-      );
-    }
-
-    return {
-      data: data as T,
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    };
-  }
-
-  private parseResponseBody(text: string): unknown {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
+    return whatsAppRequest<T>(`${this.baseUrl}/${normalizedEndpoint}`, this.headers, init);
   }
 
   /**

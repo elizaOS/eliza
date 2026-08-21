@@ -33,6 +33,7 @@ interface WorkflowJob {
 interface LiveSmokeWorkflow {
   jobs: {
     dedicated: WorkflowJob;
+    "shared-staging-onboarding": WorkflowJob;
     smoke: WorkflowJob;
   };
   on: {
@@ -40,6 +41,11 @@ interface LiveSmokeWorkflow {
       inputs: {
         stale_canary_suffix: {
           default: string;
+          required: boolean;
+          type: string;
+        };
+        cleanup_only: {
+          default: boolean;
           required: boolean;
           type: string;
         };
@@ -83,6 +89,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "all",
       "app",
       "scenarios",
+      "live-information",
       "cloud",
       "voice",
       "dedicated",
@@ -90,9 +97,21 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(
       workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
     ).toMatchObject({ default: "", required: false, type: "string" });
-    expect(workflow.jobs.smoke.if).toBe("inputs.suite != 'dedicated'");
+    expect(workflow.on.workflow_dispatch.inputs.cleanup_only).toMatchObject({
+      default: false,
+      required: false,
+      type: "boolean",
+    });
+    expect(workflow.jobs.smoke.if).toBe(
+      githubExpression("!inputs.cleanup_only && inputs.suite != 'dedicated'"),
+    );
     expect(dedicated.if).toBe(
-      "inputs.suite == 'all' || inputs.suite == 'dedicated'",
+      "inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'",
+    );
+    expect(workflow.jobs["shared-staging-onboarding"].if).toBe(
+      githubExpression(
+        "always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud')",
+      ),
     );
     expect(existsSync(retiredWorkflowPath)).toBe(false);
   });
@@ -116,6 +135,12 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(dedicated.env?.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX).toBe(
       githubExpression("inputs.stale_canary_suffix || ''"),
+    );
+    expect(dedicated.env?.CLOUD_DEDICATED_CANARY_CLEANUP_ONLY).toBe(
+      githubExpression("inputs.cleanup_only && 'true' || 'false'"),
+    );
+    expect(dedicated.env?.CLOUD_DEDICATED_CANARY_MINIMUM_CLEANUP_API_SHA).toBe(
+      "aada8198bc10045c8c841ea4d6dab974ac2a3319",
     );
     expect(dedicated.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       githubExpression(
@@ -142,6 +167,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(recovery.id).toBe("recovery_intent");
     expect(recovery.run).toContain("/^r[1-9]\\d{7,19}a[1-9]\\d{0,3}$/");
     expect(recovery.run).toContain("requested=$" + "{requested");
+    expect(recovery.run).toContain("cleanupOnly && !requested");
   });
 
   test("checks out full history and validates deterministic contracts", () => {
@@ -158,18 +184,62 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(setup.with?.["bun-version"]).toBe("1.3.14");
 
+    const install = namedStep("Install contract dependencies");
+    expect(install.run).toBe("bun install --frozen-lockfile --ignore-scripts");
+    expect(install.uses).toBeUndefined();
+
     const validation = namedStep("Validate canary and workflow contracts").run;
     expect(validation).toContain("bridge-reply-verdict.test.ts");
     expect(validation).toContain("managed-dedicated-canary.test.ts");
     expect(validation).toContain("managed-dedicated-canary-workflow.test.ts");
+
+    const setupIndex = dedicated.steps.indexOf(setup);
+    const installIndex = dedicated.steps.indexOf(install);
+    const validationIndex = dedicated.steps.findIndex(
+      (step) => step.name === "Validate canary and workflow contracts",
+    );
+    expect(installIndex).toBe(setupIndex + 1);
+    expect(validationIndex).toBe(installIndex + 1);
+    expect(
+      dedicated.steps.some(
+        (step) => step.uses === "./.github/actions/setup-bun-workspace",
+      ),
+    ).toBe(false);
   });
 
   test("uploads only canonical privacy-validated evidence", () => {
+    const preflight = namedStep("Preflight cleanup API ancestry");
     const live = namedStep("Run bounded managed dedicated canary");
+    expect(preflight.id).toBe("cleanup_api_preflight");
+    expect(preflight.if).toBe("inputs.cleanup_only");
+    expect(preflight.run).toContain("/api/health");
+    expect(preflight.run).toContain(
+      'git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"',
+    );
+    expect(preflight.run).not.toContain("managed-dedicated-canary.ts");
     expect(live.id).toBe("live");
+    expect(live.if).toBe(
+      githubExpression(
+        "success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success')",
+      ),
+    );
+    expect(live.env?.CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT).toBe(
+      githubExpression(
+        "steps.cleanup_api_preflight.outputs.deployed_commit || ''",
+      ),
+    );
     expect(live.run).toContain("managed-dedicated-canary.ts");
     expect(live.run).toContain("status=$?");
     expect(live.run).toContain('echo "status=$status" >> "$GITHUB_OUTPUT"');
+    expect(dedicated.steps.indexOf(preflight)).toBeLessThan(
+      dedicated.steps.indexOf(live),
+    );
+    const deleteCapableSteps = dedicated.steps.filter((step) =>
+      step.run?.includes(
+        "bun run packages/cloud/scripts/admin/managed-dedicated-canary.ts",
+      ),
+    );
+    expect(deleteCapableSteps).toEqual([live]);
 
     const privacy = namedStep("Validate privacy-safe evidence artifact");
     expect(privacy.id).toBe("privacy");
@@ -202,6 +272,9 @@ describe("managed dedicated live-smoke workflow contract", () => {
       PRIVACY_VALIDATED: githubExpression("steps.privacy.outputs.validated"),
     });
     expect(enforce.run).toContain("validateManagedDedicatedCanaryEvidence");
+    expect(enforce.run).toContain(
+      "validateManagedDedicatedCanaryCleanupEvidence",
+    );
     expect(enforce.run).toContain("workflow_recovery_intent_mismatch");
     expect(enforce.run).toContain(
       `"${bracedExpansion("LIVE_PROCESS_STATUS:-missing")}" != "0"`,
@@ -212,7 +285,14 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(enforce.run).toContain(
       'git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"',
     );
+    expect(enforce.run).toContain(
+      'git merge-base --is-ancestor "$minimum_cleanup_api_sha" "$deployed_commit"',
+    );
+    expect(enforce.run).toContain(
+      "Staging deploy predates the conditional cleanup API contract.",
+    );
     expect(enforce.run).toContain("evidence.cleanup.status");
+    expect(enforce.run).toContain("evidence.operation");
     expect(enforce.run).toContain(
       "Managed dedicated canary passed with exact cleanup.",
     );

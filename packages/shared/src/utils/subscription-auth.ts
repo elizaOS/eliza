@@ -10,7 +10,7 @@ export function formatSubscriptionRequestError(err: unknown): string {
   return String(err);
 }
 
-export function normalizeOpenAICallbackInput(input: string):
+export function normalizeOpenAICallbackInput(input: string | null | undefined):
   | {
       ok: true;
       code: string;
@@ -19,6 +19,13 @@ export function normalizeOpenAICallbackInput(input: string):
       ok: false;
       error: string;
     } {
+  if (typeof input !== "string") {
+    return {
+      ok: false,
+      error: "subscriptionstatus.PasteCallbackUrlFromLocalhost",
+    };
+  }
+
   const trimmed = input.trim();
   if (!trimmed) {
     return {

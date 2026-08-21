@@ -23,9 +23,24 @@ exits.
   returns `{ url, port, store, stop, tick, processDbBackedJobs, cleanupStuck }`.
   Also exports `buildControlPlaneApp`, `ControlPlaneStore`, and the
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
+- `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
+  Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
+- `src/provider-contract/` (export `./provider-contract`) — deterministic
+  OAuth 2.0 Authorization Code + PKCE and refresh-rotation upstream, fixture
+  HTTP/fault server, signed webhook sender, secret redaction, atomic
+  policy/effect receipts aligned with core `EffectReceipt`, and
+  capability-aware adapter conformance runner. OAuth clients, redirect URIs,
+  accounts, tenant grants, and API credentials are provider-owned seeds;
+  callers cannot select a tenant or mint a receipt after an effect.
+- `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
+- `provider-contract-inventory.json` — promoted managed-integration ratchet;
+  audited by `bun run audit:provider-contracts` and the cloud CI workflow.
+- `provider-contract-protected-integrations.json` — append-only integration ID
+  ledger; it must exactly match the inventory and may never remove an ID that
+  appears in reachable repository history.
 - `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts` — standalone runnable
   entrypoints (bin names `hetzner-mock`, `control-plane-mock`).
 - `mockoon/*.json` — **stateless** Mockoon environments for read-only endpoints
@@ -74,6 +89,44 @@ teardown.
   (default 8791), `HOST`, `CONTROL_PLANE_TICK_MS`, `HCLOUD_API_BASE_URL`.
 - **Mockoon files are stateless** read-only fixtures — they do not share state
   with the Hono mocks; use the Hono mocks when behavior depends on prior writes.
+
+## Managed provider contract suites
+
+Import `startFakeProvider` and `runProviderAdapterConformance` from
+`@elizaos/cloud-test-mocks/provider-contract`. Exercise the real adapter over
+the fake's loopback URL; never replace the client, OAuth callback parser, or
+webhook handler under test. Declare only capabilities the adapter owns and
+implement every always-required and capability-derived scenario; an explicit
+`requiredScenarios` list may add coverage but cannot narrow the contract. The
+reusable harness itself covers the full
+scenario catalog, including OAuth state/PKCE and credential rotation, response
+and transport faults, webhook ordering/idempotency, tenant denial, redaction,
+and policy receipts.
+
+Choose `outbound-http` for adapters that initiate provider requests and
+`inbound-webhook` for provider-authenticated delivery routes. Profiles are
+additive mandatory scenario sets, are bound into the nonce report, and cannot
+be narrowed by a suite. OAuth callback/state/PKCE and refresh-token lifecycle
+are separate capabilities so an adapter never claims a credential consumer it
+does not implement.
+
+To promote another managed integration:
+
+1. Add deterministic synthetic fixture data under
+   `fixtures/provider-contract/` when shared data is useful.
+2. Add a contract suite that starts the fake upstream and invokes the real
+   adapter through HTTP/OAuth/webhook boundaries.
+3. Add the package declaration
+   `elizaos.managedIntegration = { promoted: true, contractId: "..." }`.
+4. Add the matching inventory entry with the exact adapter name and capabilities.
+5. Append its ID to `provider-contract-protected-integrations.json`; never
+   remove or rename an existing ledger ID.
+6. Run the suite and `bun run audit:provider-contracts`; the audit executes the
+   suite and verifies its nonce-bound observation report.
+
+Do not put provider credentials or production captures in fixtures. Sandbox
+and live lanes are opt-in evidence only and may not be required for fork pull
+requests.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../CLAUDE.md).
 

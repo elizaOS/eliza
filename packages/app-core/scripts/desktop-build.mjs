@@ -13,6 +13,10 @@ import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { artifactStaleness, maxMtimeUnder } from "./lib/artifact-staleness.mjs";
 import {
+  applyDesktopCloudTarget,
+  resolveDesktopCloudTarget,
+} from "./lib/desktop-cloud-target.mjs";
+import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
   findElectrobunManifestPath,
@@ -226,6 +230,12 @@ const buildVariant = resolveBuildVariant(
   getArgValue(args, "build-variant") ?? process.env.ELIZA_BUILD_VARIANT,
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
+let desktopCloudTarget;
+try {
+  desktopCloudTarget = resolveDesktopCloudTarget(args, process.env);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 // Cloud-only consumer lane: package without the embedded agent runtime and
 // bake the cloud-only brand flag into the bundle. The flag is exported into
 // this process's env so every downstream consumer — the renderer build, the
@@ -945,7 +955,7 @@ function ensureWorkspaceRuntimePackagesBuilt() {
 }
 
 function desktopRendererBuildEnv() {
-  const env = {
+  let env = {
     ...process.env,
     VITE_APP_VARIANT: variant,
     ELIZA_BUILD_VARIANT: buildVariant,
@@ -956,6 +966,7 @@ function desktopRendererBuildEnv() {
     // window global, but Vite-served index.html never runs that inject).
     env.VITE_ELIZA_DESKTOP_RUNTIME_MODE = "cloud";
   }
+  env = applyDesktopCloudTarget(env, desktopCloudTarget);
   if (env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1") {
     env.ELIZA_FORCE_LOCAL_UPSTREAMS = "1";
   }
@@ -1793,6 +1804,12 @@ Options:
                                    bake cloudOnly into brand-config.json so the
                                    packaged shell runs against Eliza Cloud.
                                    (env: ELIZA_DESKTOP_CLOUD_ONLY=1)
+  --cloud-target <production|staging>
+                                   Bake the selected Eliza Cloud environment
+                                   into the desktop renderer. Staging uses
+                                   https://staging.eliza.app and derives the
+                                   matching API and Cloud app hosts.
+                                   (env: ELIZA_DESKTOP_CLOUD_TARGET)
   --env <channel>                  Electrobun build env (e.g. canary, stable)
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
@@ -1803,6 +1820,7 @@ Options:
 
 Environment:
   ELIZA_DESKTOP_COMMAND_PREFIX    Prefix every spawned command, e.g. "arch -x86_64"
+  ELIZA_DESKTOP_CLOUD_TARGET      Desktop Cloud target: production or staging.
   ELIZA_VERIFY_MAS=1              Enable mas-smoke entitlement verification on store builds.
 `);
 }

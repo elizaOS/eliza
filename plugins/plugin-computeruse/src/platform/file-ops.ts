@@ -2,11 +2,113 @@
  * Internal file primitives (read/write/list) behind path-security checks. Not
  * exposed as an agent action — the FILE action owns user-facing file access;
  * these back internal computer-use flows only.
+ *
+ * Byte-bearing reads and writes fail closed before allocating more than
+ * {@link MAX_FILE_OP_BYTES}. `readFile` still returns at most
+ * {@link READ_FILE_CHAR_LIMIT} characters, but it no longer slurp-then-slices
+ * the whole guest file first. Mutating read-modify-write operations keep one
+ * file handle so a path replacement cannot redirect the eventual write.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FileActionResult, FileEntry } from "../types.js";
 import { resolveSafeFileTarget } from "./security.js";
+
+/** Same working-set ceiling as the clipboard path (`CLIPBOARD_MAX_BYTES`). */
+export const MAX_FILE_OP_BYTES = 10 * 1024 * 1024;
+export const READ_FILE_CHAR_LIMIT = 10_000;
+
+function budgetExceeded(op: string): FileActionResult {
+  return {
+    success: false,
+    error: `${op} exceeds the ${MAX_FILE_OP_BYTES}-byte file-op budget.`,
+  };
+}
+
+function invalidByteCount(name: string): FileActionResult {
+  return {
+    success: false,
+    error: `${name} must be a non-negative safe integer.`,
+  };
+}
+
+function parseByteCount(
+  value: unknown,
+  name: string,
+): { ok: true; value?: number } | { ok: false; result: FileActionResult } {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    return { ok: false, result: invalidByteCount(name) };
+  }
+  return { ok: true, value };
+}
+
+type WindowReadResult =
+  | { ok: true; buffer: Buffer }
+  | { ok: false; result: FileActionResult };
+
+async function readBoundedWindowFromHandle(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  start: number,
+  requestedLength: number | undefined,
+  op: string,
+): Promise<WindowReadResult> {
+  const stat = await handle.stat();
+  if (!stat.isFile()) {
+    return {
+      ok: false,
+      result: { success: false, error: "Path is not a regular file." },
+    };
+  }
+  if (!Number.isSafeInteger(stat.size) || stat.size < 0) {
+    return { ok: false, result: budgetExceeded(op) };
+  }
+
+  const remaining = Math.max(0, stat.size - start);
+  const take =
+    requestedLength === undefined
+      ? remaining
+      : Math.min(requestedLength, remaining);
+  if (take > MAX_FILE_OP_BYTES) {
+    return { ok: false, result: budgetExceeded(op) };
+  }
+
+  const buffer = Buffer.allocUnsafe(take);
+  let total = 0;
+  while (total < take) {
+    const { bytesRead } = await handle.read(
+      buffer,
+      total,
+      take - total,
+      start + total,
+    );
+    if (bytesRead === 0) break;
+    total += bytesRead;
+  }
+  return {
+    ok: true,
+    buffer: total === buffer.length ? buffer : buffer.subarray(0, total),
+  };
+}
+
+async function readBoundedWindow(
+  resolvedPath: string,
+  start: number,
+  requestedLength: number | undefined,
+  op: string,
+): Promise<WindowReadResult> {
+  const handle = await fs.open(resolvedPath, "r");
+  try {
+    return await readBoundedWindowFromHandle(
+      handle,
+      start,
+      requestedLength,
+      op,
+    );
+  } finally {
+    await handle.close();
+  }
+}
 
 export async function readFile(
   targetPath: string,
@@ -18,11 +120,18 @@ export async function readFile(
   }
 
   try {
-    const content = await fs.readFile(check.resolvedPath, { encoding });
+    const maxBytes = READ_FILE_CHAR_LIMIT * 4;
+    const read = await readBoundedWindow(
+      check.resolvedPath,
+      0,
+      maxBytes,
+      "read",
+    );
+    if (!read.ok) return read.result;
     return {
       success: true,
       path: check.resolvedPath,
-      content: String(content).slice(0, 10000),
+      content: read.buffer.toString(encoding).slice(0, READ_FILE_CHAR_LIMIT),
     };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
@@ -44,6 +153,9 @@ export async function writeFile(
   }
 
   try {
+    if (Buffer.byteLength(content, "utf8") > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
     await fs.writeFile(check.resolvedPath, content, "utf8");
     return {
@@ -72,23 +184,46 @@ export async function editFile(
   }
 
   try {
-    const content = await fs.readFile(check.resolvedPath, "utf8");
-    if (!content.includes(oldText)) {
+    const handle = await fs.open(check.resolvedPath, "r+");
+    try {
+      const read = await readBoundedWindowFromHandle(
+        handle,
+        0,
+        undefined,
+        "edit",
+      );
+      if (!read.ok) return read.result;
+      const content = read.buffer.toString("utf8");
+      if (!content.includes(oldText)) {
+        return {
+          success: false,
+          error: "Old text not found in file.",
+        };
+      }
+      const matchIndex = content.indexOf(oldText);
+      const prefix = content.slice(0, matchIndex);
+      const suffix = content.slice(matchIndex + oldText.length);
+      const nextBytes =
+        Buffer.byteLength(prefix, "utf8") +
+        Buffer.byteLength(newText, "utf8") +
+        Buffer.byteLength(suffix, "utf8");
+      if (nextBytes > MAX_FILE_OP_BYTES) {
+        return budgetExceeded("edit");
+      }
+      // Assemble a literal replacement only after its encoded size is known.
+      // String.replace interprets replacement tokens that can amplify a
+      // bounded input into an enormous allocation.
+      const next = `${prefix}${newText}${suffix}`;
+      await handle.truncate(0);
+      await handle.writeFile(next, "utf8");
       return {
-        success: false,
-        error: "Old text not found in file.",
+        success: true,
+        path: check.resolvedPath,
+        message: "File edited.",
       };
+    } finally {
+      await handle.close();
     }
-    await fs.writeFile(
-      check.resolvedPath,
-      content.replace(oldText, newText),
-      "utf8",
-    );
-    return {
-      success: true,
-      path: check.resolvedPath,
-      message: "File edited.",
-    };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
     // {success:false,error} the action surfaces to the model.
@@ -109,8 +244,28 @@ export async function appendFile(
   }
 
   try {
+    const incoming = Buffer.byteLength(content, "utf8");
+    if (incoming > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("append");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
-    await fs.appendFile(check.resolvedPath, content, "utf8");
+    const handle = await fs.open(check.resolvedPath, "a");
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile()) {
+        return { success: false, error: "Path is not a regular file." };
+      }
+      if (
+        !Number.isSafeInteger(stat.size) ||
+        stat.size < 0 ||
+        stat.size + incoming > MAX_FILE_OP_BYTES
+      ) {
+        return budgetExceeded("append");
+      }
+      await handle.writeFile(content, "utf8");
+    } finally {
+      await handle.close();
+    }
     return {
       success: true,
       path: check.resolvedPath,
@@ -272,21 +427,24 @@ export async function readBytes(
   if (!check.allowed || !check.resolvedPath) {
     return { success: false, error: check.reason ?? "Path not allowed." };
   }
+  const parsedOffset = parseByteCount(offset, "offset");
+  if (!parsedOffset.ok) return parsedOffset.result;
+  const parsedLength = parseByteCount(length, "length");
+  if (!parsedLength.ok) return parsedLength.result;
   try {
-    let buf = await fs.readFile(check.resolvedPath);
-    if (typeof offset === "number" || typeof length === "number") {
-      const start = Math.max(0, Math.floor(offset ?? 0));
-      const end =
-        typeof length === "number"
-          ? start + Math.max(0, Math.floor(length))
-          : undefined;
-      buf = buf.subarray(start, end);
-    }
+    const start = parsedOffset.value ?? 0;
+    const read = await readBoundedWindow(
+      check.resolvedPath,
+      start,
+      parsedLength.value,
+      "read_bytes",
+    );
+    if (!read.ok) return read.result;
     return {
       success: true,
       path: check.resolvedPath,
-      bytes: buf.toString("base64"),
-      size: buf.length,
+      bytes: read.buffer.toString("base64"),
+      size: read.buffer.length,
     };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
@@ -308,7 +466,14 @@ export async function writeBytes(
     return { success: false, error: check.reason ?? "Path not allowed." };
   }
   try {
-    const buf = Buffer.from(base64 ?? "", "base64");
+    const encoded = base64 ?? "";
+    if (Buffer.byteLength(encoded, "base64") > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write_bytes");
+    }
+    const buf = Buffer.from(encoded, "base64");
+    if (buf.length > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write_bytes");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
     await fs.writeFile(check.resolvedPath, buf);
     return {

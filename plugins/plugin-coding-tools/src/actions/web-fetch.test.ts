@@ -18,7 +18,7 @@ import {
   __setWebHttpLookupFnForTests,
   __setWebHttpPinnedFetchImplForTests,
 } from "../lib/web-http.js";
-import { webFetchAction } from "./web-fetch.js";
+import { htmlToReadableText, webFetchAction } from "./web-fetch.js";
 
 vi.mock("@elizaos/logger", () => {
   const logger = {
@@ -192,6 +192,56 @@ describe("coding-tools WEB_FETCH", () => {
     });
   });
 
+  it("keeps surrogate pairs intact when truncating large responses", async () => {
+    const text = `${"a".repeat(7_999)}🦊${"b".repeat(100)}`;
+    usePinnedRoutes({
+      "https://public.example.test/emoji.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/emoji.txt",
+    });
+    expect(result.success).toBe(true);
+    const truncated = (result.text ?? "").split("\n")[0];
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(8_000);
+    expect(truncated).toBe("a".repeat(7_999));
+  });
+
+  it("preserves a fitting emoji under the truncation cap", async () => {
+    const text = `${"a".repeat(100)}🦊`;
+    usePinnedRoutes({
+      "https://public.example.test/fitting.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/fitting.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe(text);
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes lone surrogates in fetched text", async () => {
+    const text = "a\ud800bc";
+    usePinnedRoutes({
+      "https://public.example.test/lone.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/lone.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("a\ufffdbc");
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
   it("surfaces timeout-style fetch errors honestly", async () => {
     __setWebHttpLookupFnForTests(async () => [
       { address: PUBLIC_IP, family: 4 },
@@ -275,6 +325,65 @@ describe("coding-tools WEB_FETCH", () => {
       kind: "json",
       truncated: false,
     });
+  });
+
+  it("decodes valid numeric and named HTML entities in readable text", () => {
+    expect(htmlToReadableText("<p>&#65; &#x41; &amp; &lt; &gt;</p>")).toBe(
+      "A A & < >",
+    );
+    expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
+  });
+
+  it("removes browser-tokenized and unclosed script/style blocks", () => {
+    expect(
+      htmlToReadableText(
+        "<p>visible</p><script>steal()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>after</p><script>unclosed",
+      ),
+    ).toBe("visible\n\nafter");
+  });
+
+  it("degrades invalid numeric entities without throwing and keeps surrounding text", () => {
+    // Invalid scalar values must remain literal instead of hard-failing the
+    // fetch or introducing an unpaired UTF-16 surrogate into readable text.
+    const hex = htmlToReadableText("<p>hello &#x110000; world</p>");
+    expect(hex).toContain("hello");
+    expect(hex).toContain("world");
+    expect(hex).toContain("&#x110000;");
+
+    const dec = htmlToReadableText("<p>hi &#1114112; there</p>");
+    expect(dec).toContain("hi");
+    expect(dec).toContain("there");
+    expect(dec).toContain("&#1114112;");
+
+    expect(htmlToReadableText("<p>&#xD800; &#55296;</p>")).toBe(
+      "&#xD800; &#55296;",
+    );
+    expect(htmlToReadableText("<p>&#xDFFF; &#57343;</p>")).toBe(
+      "&#xDFFF; &#57343;",
+    );
+  });
+
+  it("degrades a malformed numeric entity to readable text through the handler instead of io_error", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bad-entity": new Response(
+        "<html><body><p>alpha &#x110000; omega</p></body></html>",
+        {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      ),
+    });
+
+    const result = await runFetch({
+      url: "https://public.example.test/bad-entity",
+    });
+
+    // On unpatched develop htmlToReadableText throws RangeError, which the
+    // handler surfaces as an io_error failure. The fix keeps the fetch success.
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("alpha");
+    expect(result.text).toContain("omega");
+    expect(result.data).toMatchObject({ kind: "html" });
   });
 
   it("falls back to the full JSON when the extract path is missing", async () => {

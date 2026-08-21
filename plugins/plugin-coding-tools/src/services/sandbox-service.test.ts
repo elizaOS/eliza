@@ -1,5 +1,15 @@
 /** Tests for the SandboxService path policy: blocklist defaults and allow-root enforcement. */
-import { homedir } from "node:os";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -181,6 +191,121 @@ describe("SandboxService default blocklist", () => {
     if (!v.ok) expect(v.reason).toBe("not_absolute");
   });
 
+  const itPosix = process.platform === "win32" ? it.skip : it;
+
+  itPosix("rejects device files directly and through a symlink", async () => {
+    const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-device-"));
+    try {
+      const root = realpathSync(rawRoot);
+      const alias = path.join(root, "random-device");
+      symlinkSync("/dev/urandom", alias, "file");
+      const svc = await SandboxService.start(
+        mockRuntime({ CODING_TOOLS_BLOCKED_PATHS: path.join(root, "unused") }),
+      );
+
+      const stdinAlias = path.join(root, "stdin-device");
+      symlinkSync("/dev/stdin", stdinAlias, "file");
+      const chainedAlias = path.join(root, "chained-stdin-device");
+      symlinkSync(stdinAlias, chainedAlias, "file");
+
+      for (const candidate of [
+        "/dev/urandom",
+        alias,
+        "/dev/stdin",
+        "/dev/fd/0",
+        stdinAlias,
+        chainedAlias,
+      ]) {
+        const result = await svc.validatePath(undefined, candidate);
+        expect(result.ok, candidate).toBe(false);
+        if (!result.ok) expect(result.reason).toBe("blocked");
+      }
+    } finally {
+      rmSync(rawRoot, { recursive: true, force: true });
+    }
+  });
+
+  itPosix("does not throw while canonicalizing a cyclic symlink", async () => {
+    const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-loop-"));
+    try {
+      const root = realpathSync(rawRoot);
+      const loop = path.join(root, "loop");
+      symlinkSync("loop", loop, "file");
+      const svc = await SandboxService.start(
+        mockRuntime({ CODING_TOOLS_BLOCKED_PATHS: path.join(root, "unused") }),
+      );
+
+      await expect(svc.validatePath(undefined, loop)).resolves.toEqual({
+        ok: true,
+        resolved: loop,
+      });
+    } finally {
+      rmSync(rawRoot, { recursive: true, force: true });
+    }
+  });
+
+  const itLinux = process.platform === "linux" ? it : it.skip;
+
+  itLinux(
+    "rejects process file descriptors directly and through a directory symlink",
+    async () => {
+      const rawRoot = mkdtempSync(
+        path.join(tmpdir(), "eliza-sandbox-proc-fd-"),
+      );
+      try {
+        const root = realpathSync(rawRoot);
+        const fdDirectory = `/proc/${process.pid}/fd`;
+        const alias = path.join(root, "process-fds");
+        symlinkSync(fdDirectory, alias, "dir");
+        const entryAlias = path.join(root, "stdin-fd");
+        symlinkSync(path.join(fdDirectory, "0"), entryAlias, "file");
+        const directoryTarget = path.join(root, "directory-target");
+        mkdirSync(directoryTarget);
+        writeFileSync(
+          path.join(directoryTarget, "child.txt"),
+          "blocked through fd identity",
+        );
+        const directoryFd = openSync(directoryTarget, "r");
+        const directoryEntryAlias = path.join(root, "directory-fd");
+        symlinkSync(
+          path.join(fdDirectory, String(directoryFd)),
+          directoryEntryAlias,
+          "dir",
+        );
+        const svc = await SandboxService.start(
+          mockRuntime({
+            CODING_TOOLS_BLOCKED_PATHS: path.join(root, "unused"),
+          }),
+        );
+
+        try {
+          for (const candidate of [
+            path.join(fdDirectory, "0"),
+            `/proc/self/fd/0`,
+            `/proc/${process.pid}/task/${process.pid}/fd/0`,
+            `/proc/self/task/${process.pid}/fd/0`,
+            "/proc/thread-self/fd/0",
+            "/proc/self/cwd",
+            `/proc/${process.pid}/root/etc/hostname`,
+            "/proc/self/exe",
+            path.join(alias, "0"),
+            entryAlias,
+            directoryEntryAlias,
+            path.join(directoryEntryAlias, "child.txt"),
+          ]) {
+            const result = await svc.validatePath(undefined, candidate);
+            expect(result.ok, candidate).toBe(false);
+            if (!result.ok) expect(result.reason).toBe("blocked");
+          }
+        } finally {
+          closeSync(directoryFd);
+        }
+      } finally {
+        rmSync(rawRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("limits access to configured CODING_TOOLS_WORKSPACE_ROOTS", async () => {
     const root = path.join(homedir(), "coding-tools-root");
     const svc = await SandboxService.start(
@@ -201,6 +326,34 @@ describe("SandboxService default blocklist", () => {
     expect(outside.ok).toBe(false);
     if (!outside.ok) expect(outside.reason).toBe("outside_allowed_roots");
   });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+  itSymlink(
+    "rejects a write through a workspace directory symlink to a missing leaf",
+    async () => {
+      const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-root-"));
+      const rawVictim = mkdtempSync(
+        path.join(tmpdir(), "eliza-sandbox-victim-"),
+      );
+      try {
+        const root = realpathSync(rawRoot);
+        const victim = realpathSync(rawVictim);
+        symlinkSync(victim, path.join(root, "escape"), "dir");
+        const svc = await SandboxService.start(
+          mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+        );
+        const result = await svc.validatePath(
+          undefined,
+          path.join(root, "escape", "planted.txt"),
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.reason).toBe("outside_allowed_roots");
+      } finally {
+        rmSync(rawRoot, { recursive: true, force: true });
+        rmSync(rawVictim, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("supports conversation-scoped allow roots", async () => {
     const root = path.join(homedir(), "conversation-root");

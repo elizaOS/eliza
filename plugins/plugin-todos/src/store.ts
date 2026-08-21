@@ -144,6 +144,7 @@ export interface TodoStore {
     patch: UpdateTodoInput,
   ): Promise<Todo | null>;
   delete(scope: TodoScope, id: string): Promise<boolean>;
+  /** Replace the complete `(agentId, entityId)` list; room identifies new rows. */
   writeList(
     input: WriteTodoListInput,
   ): Promise<{ before: Todo[]; after: Todo[] }>;

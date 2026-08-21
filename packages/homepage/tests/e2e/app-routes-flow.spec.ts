@@ -333,25 +333,59 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /Four hours of your time back/ }),
+    page.getByRole("heading", {
+      name: /four hours of your time back every week/i,
+    }),
   ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.getByText(
+      "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
+    ),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Friends · Co-parenting · Households · Trips · Communities"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Tonight is split evenly", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
+  await expect(page.locator(".landing-iphone")).toHaveAttribute(
+    "data-demo-scenarios",
+    "5",
+  );
 
   const textCta = page.getByRole("button", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();
   await textCta.click();
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(page.locator('.landing-copy-notice [role="status"]')).toHaveText(
+    "Copied!",
+  );
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("+18087881821");
-  await page.waitForTimeout(2_250);
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(page.locator(".landing-copy-notice")).toHaveCount(0, {
+    timeout: 3_000,
+  });
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
-    "href",
-    "tel:+18087881821",
+  const callCta = page.getByRole("button", { name: "Call" });
+  await expect(callCta).toBeVisible();
+  await callCta.click();
+  await expect(page.locator('.landing-copy-notice [role="status"]')).toHaveText(
+    "Copied!",
   );
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("+18087881821");
   const channels = page.locator(".landing-secondary-channels");
   await expect(channels.locator(".landing-channel")).toHaveCount(2);
+  await expect(channels.getByText("Telegram", { exact: true })).toHaveCSS(
+    "clip-path",
+    "inset(50%)",
+  );
+  await expect(channels.getByText("Discord", { exact: true })).toHaveCSS(
+    "clip-path",
+    "inset(50%)",
+  );
   await expect(
     channels.getByRole("link", { name: /Telegram/ }),
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);
@@ -359,6 +393,10 @@ test("landing leads with iMessage and keeps secondary channels available", async
     "href",
     /^https:\/\/discord\.com\//,
   );
+  for (const channel of await channels.locator(".landing-channel").all()) {
+    await expect(channel).toHaveCSS("width", "44px");
+    await expect(channel).toHaveCSS("height", "44px");
+  }
   await expect(channels.getByRole("link", { name: /WhatsApp/ })).toHaveCount(0);
 
   const keyboard = page.locator(".landing-keyboard");
@@ -427,8 +465,8 @@ test("landing keeps content reachable on a small viewport", async ({
   });
   await expect(textAction).toBeVisible();
   await expect(
-    contactSheet.getByRole("link", { name: "Call Eliza" }),
-  ).toHaveAttribute("href", "tel:+18087881821");
+    contactSheet.getByRole("button", { name: "Call Eliza" }),
+  ).toBeVisible();
   await expect(
     contactSheet.getByRole("link", { name: "Message Eliza on Discord" }),
   ).toHaveAttribute("href", /^https:\/\/discord\.com\//);
@@ -448,9 +486,11 @@ test("landing keeps content reachable on a small viewport", async ({
 
   await textAction.click();
   await expect(contactSheet).toBeHidden();
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(page.locator('.landing-copy-notice [role="status"]')).toHaveText(
+    "Copied!",
+  );
   await page.waitForTimeout(2_250);
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(page.locator(".landing-copy-notice")).toHaveCount(0);
 
   // Leave the real sheet open as the terminal state so recorded evidence
   // proves the mobile entrypoint and its complete option list, not just the
@@ -496,18 +536,38 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   await waitForLandingIntro(page);
 
   await page.getByRole("button", { name: "Text" }).click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Opening Messages. If nothing happens, copy the number.",
+  const landingContactStatus = page.locator(
+    '.landing-copy-notice [role="status"]',
   );
+  await expect(landingContactStatus).toHaveText("Messages didn't open?");
 
   const copyButton = page.getByRole("button", { name: "Copy phone number" });
   await expect(copyButton).toBeVisible();
+  const desktopRecoverySpacing = await page.evaluate(() => {
+    const notice = document.querySelector(".landing-copy-notice--handoff");
+    const action = notice?.querySelector("button");
+    if (!notice || !action) throw new Error("Desktop recovery UI is missing");
+    const noticeRect = notice.getBoundingClientRect();
+    const actionRect = action.getBoundingClientRect();
+    return {
+      top: actionRect.top - noticeRect.top,
+      bottom: noticeRect.bottom - actionRect.bottom,
+    };
+  });
+  expect(desktopRecoverySpacing.top).toBeGreaterThanOrEqual(5);
+  expect(desktopRecoverySpacing.bottom).toBeGreaterThanOrEqual(5);
   await copyButton.click();
-  await expect(page.getByRole("status")).toHaveText("Copied!");
+  await expect(landingContactStatus).toHaveText("Copied!");
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("+18087881821");
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Call" }).click();
+  await expect(landingContactStatus).toHaveText("Phone didn't open?");
+  await expect(
+    page.getByRole("button", { name: "Copy phone number" }),
+  ).toBeVisible();
 
   await page.goto("/get-started");
   await page.getByRole("button", { name: /^iMessage$/ }).click();
@@ -540,6 +600,58 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   );
   await page.getByRole("button", { name: "Copy phone number" }).click();
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
+});
+
+test("mobile handoff recovery stays compact, clear, and temporary", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForLandingIntro(page);
+
+  await page
+    .getByRole("button", { name: "All the ways to reach Eliza" })
+    .click();
+  await page.getByRole("button", { name: "Text Eliza on iMessage" }).click();
+
+  const notice = page.locator(".landing-copy-notice--handoff");
+  await expect(notice).toContainText("Messages didn't open?");
+  await expect(
+    notice.getByRole("button", { name: "Copy phone number" }),
+  ).toHaveText("Copy number");
+
+  const geometry = await page.evaluate(() => {
+    const notice = document.querySelector(".landing-copy-notice--handoff");
+    const status = notice?.querySelector('[role="status"]');
+    const action = notice?.querySelector("button");
+    const composer = document.querySelector(".landing-composer-row");
+    if (!notice || !status || !action || !composer) {
+      throw new Error("Mobile call recovery UI is incomplete");
+    }
+    return {
+      notice: notice.getBoundingClientRect().toJSON(),
+      status: status.getBoundingClientRect().toJSON(),
+      action: action.getBoundingClientRect().toJSON(),
+      composer: composer.getBoundingClientRect().toJSON(),
+    };
+  });
+  expect(geometry.notice.width).toBeLessThanOrEqual(366);
+  expect(geometry.status.height).toBeLessThan(28);
+  expect(geometry.action.height).toBeGreaterThanOrEqual(40);
+  expect(geometry.notice.bottom).toBeLessThanOrEqual(geometry.composer.top);
+  await expect(notice).toHaveCount(0, { timeout: 6_000 });
 });
 
 test("the latest manual-copy attempt owns the visible result", async ({

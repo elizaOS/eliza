@@ -15,6 +15,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const runtimeMocks = vi.hoisted(() => ({ electrobun: false }));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => false,
@@ -26,6 +28,10 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
+vi.mock("../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => runtimeMocks.electrobun,
+}));
+
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";
 import "./client-cloud";
@@ -33,6 +39,10 @@ import {
   STAGING_DIRECT_CLOUD_API_BASE_URL,
   STAGING_DIRECT_CLOUD_BASE_URL,
 } from "./direct-cloud-endpoints";
+
+const SERVER_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -85,7 +95,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
   it("creates CLI sessions through the same-origin proxy and opens staging auth", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ sessionId: SERVER_SESSION_ID }, 201));
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginDirect(
@@ -97,14 +107,18 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: expect.stringContaining("sessionId"),
+        body: expect.any(String),
       }),
     );
+    const requestBody = JSON.parse(
+      String(fetchSpy.mock.calls[0]?.[1]?.body),
+    ) as { sessionId?: unknown };
+    expect(requestBody.sessionId).toEqual(expect.stringMatching(UUID_V4_RE));
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
         apiBase: STAGING_DIRECT_CLOUD_API_BASE_URL,
-        sessionId: expect.any(String),
+        sessionId: SERVER_SESSION_ID,
         browserUrl: expect.stringMatching(
           new RegExp(
             `^${STAGING_DIRECT_CLOUD_BASE_URL}/auth/cli-login\\?session=`,
@@ -113,6 +127,23 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       }),
     );
   });
+
+  it.each([{}, { sessionId: "not-a-uuid" }])(
+    "rejects a successful web response without a server-issued UUID",
+    async (body) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(body, 201));
+
+      const client = new ElizaClient("http://localhost:31337");
+      const result = await client.cloudLoginDirect(
+        "https://staging.elizacloud.ai",
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      });
+    },
+  );
 
   it("polls CLI sessions through the same-origin proxy", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -173,6 +204,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
 
 describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)", () => {
   beforeEach(() => {
+    runtimeMocks.electrobun = false;
     setBootConfig({
       branding: {},
       cloudApiBase: "https://staging.elizacloud.ai",
@@ -190,7 +222,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
   it("creates CLI sessions against the absolute cloud URL, not the local agent", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ sessionId: SERVER_SESSION_ID }, 201));
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginDirect(
@@ -276,5 +308,40 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
       token: "fresh-session-token",
       userId: "user-snake",
     });
+  });
+});
+
+describe("ElizaClient direct Cloud auth served from Electrobun", () => {
+  beforeEach(() => {
+    runtimeMocks.electrobun = true;
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    stubPageHostname("127.0.0.1", "5174");
+  });
+
+  afterEach(() => {
+    runtimeMocks.electrobun = false;
+    vi.restoreAllMocks();
+    restorePageLocation();
+  });
+
+  it("keeps the browser callback out of the loopback renderer", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ sessionId: SERVER_SESSION_ID }, 201),
+    );
+
+    const client = new ElizaClient("http://127.0.0.1:31337");
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    const browserUrl = new URL(result.browserUrl ?? "");
+    expect(browserUrl.origin).toBe(STAGING_DIRECT_CLOUD_BASE_URL);
+    expect(browserUrl.pathname).toBe("/auth/cli-login");
+    expect(result.sessionId).toBe(SERVER_SESSION_ID);
+    expect(browserUrl.searchParams.get("session")).toBe(SERVER_SESSION_ID);
+    expect(browserUrl.searchParams.has("returnTo")).toBe(false);
   });
 });

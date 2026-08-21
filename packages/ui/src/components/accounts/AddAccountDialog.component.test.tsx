@@ -56,7 +56,9 @@ vi.mock("../../state/app-store", () => ({
   ) => selector({ t: (_key, vars) => String(vars?.defaultValue ?? _key) }),
 }));
 vi.mock("../../utils", () => ({
-  navigatePreOpenedWindow: vi.fn(),
+  // The helper reports whether the navigation was accepted; the dialog drops
+  // to its error step on `false`.
+  navigatePreOpenedWindow: vi.fn(() => true),
   preOpenWindow: vi.fn(() => ({ close: vi.fn() })),
 }));
 vi.mock("../../utils/clipboard", () => ({ copyTextToClipboard: vi.fn() }));
@@ -216,6 +218,36 @@ describe("AddAccountDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("cancels an OAuth flow with an unsafe auth URL before persisting or subscribing", async () => {
+    api.startAccountOAuth.mockResolvedValue({
+      sessionId: "unsafe-session",
+      authUrl: "javascript:alert(document.cookie)",
+      needsCodeSubmission: false,
+    });
+    render(
+      <AddAccountDialog
+        open
+        providerId="openai-codex"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Log in/ }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "not a valid URL",
+    );
+    expect(api.cancelAccountOAuth).toHaveBeenCalledWith("openai-codex", {
+      sessionId: "unsafe-session",
+    });
+    expect(oauthState.clearSubscriptionOAuth).toHaveBeenCalledWith(
+      "openai-codex",
+    );
+    expect(oauthState.writeSubscriptionOAuth).not.toHaveBeenCalled();
+    expect(eventSource.onmessage).toBeNull();
+  });
+
   it("restores a persisted paste-code flow without resetting its step", async () => {
     oauthState.readSubscriptionOAuth.mockReturnValue({
       providerId: "anthropic-subscription",
@@ -244,6 +276,43 @@ describe("AddAccountDialog", () => {
         .getAttribute("href"),
     ).toBe("https://login.test/restored");
     expect(screen.queryByRole("button", { name: /Log in/ })).toBeNull();
+  });
+
+  it("rejects and cancels a persisted flow with an unsafe auth URL", async () => {
+    oauthState.readSubscriptionOAuth.mockReturnValue({
+      providerId: "anthropic-subscription",
+      sessionId: "unsafe-restored-session",
+      mode: "device",
+      phase: "need-code",
+      oauthUrl: "data:text/html,<script>alert(1)</script>",
+      startedAt: Date.now(),
+    });
+
+    render(
+      <AddAccountDialog
+        open
+        providerId="anthropic-subscription"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "not a valid URL",
+    );
+    expect(oauthState.clearSubscriptionOAuth).toHaveBeenCalledWith(
+      "anthropic-subscription",
+    );
+    expect(api.cancelAccountOAuth).toHaveBeenCalledWith(
+      "anthropic-subscription",
+      { sessionId: "unsafe-restored-session" },
+    );
+    expect(
+      screen.queryByRole("link", {
+        name: "data:text/html,<script>alert(1)</script>",
+      }),
+    ).toBeNull();
+    expect(eventSource.onmessage).toBeNull();
   });
 
   it("starts an explicit in-place OAuth replacement without an editable duplicate label", async () => {

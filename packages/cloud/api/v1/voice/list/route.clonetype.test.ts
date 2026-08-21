@@ -1,9 +1,6 @@
 /**
- * GET /api/v1/voice/list `cloneType` is Voice Studio clone-kind
- * identity, not leftover tax on models catalogOnly/refresh, Life Ops
- * inbox bools, or prefix-coerced limit. Stock develop cast unknown
- * tokens to undefined, so `cloneType=INSTANT` / `PROFESSIONAL`
- * silently listed every clone instead of that kind (or a 400).
+ * Exercises Voice Studio clone-type validation through the HTTP route with
+ * mocked authentication and repository boundaries.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";

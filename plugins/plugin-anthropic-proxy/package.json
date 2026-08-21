@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-anthropic-proxy",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -61,7 +61,7 @@
     "bun-types": "^1.3.14",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

@@ -46,7 +46,6 @@ export {
   killSession,
   pad,
   readEnvInt,
-  resolveWorkdir,
   sanitizeBinaryOutput,
   sliceLogLines,
   sliceUtf16Safe,

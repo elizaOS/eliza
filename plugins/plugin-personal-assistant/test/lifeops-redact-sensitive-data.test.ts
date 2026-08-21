@@ -71,8 +71,10 @@ describe("redactSensitiveData", () => {
       { subject: "abcdefghij", body: "0123456789" },
       { subjectPreview: 3, bodyPreview: 4 },
     );
-    expect(out.subject).toBe("abc…");
-    expect(out.body).toBe("0123… [+6 chars]");
+    expect(out.subject).toBe("ab…");
+    expect(out.subject).toHaveLength(3);
+    expect(out.body).toBe("…");
+    expect(out.body).toHaveLength(1);
   });
 
   it("recurses into nested objects and arrays", () => {

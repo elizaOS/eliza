@@ -1,4 +1,5 @@
-// Persists users records for cloud services through the shared DB boundary.
+/** Persists user records and identity transitions through the shared database boundary. */
+
 import { ElizaError } from "@elizaos/core";
 import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
@@ -563,6 +564,16 @@ export class UsersRepository {
   }
 
   /**
+   * Finds a user by ID from primary storage.
+   *
+   * Lifecycle mutations use this reader when the current organization and
+   * identity binding determine which durable authorization fences must move.
+   */
+  async findByIdForWrite(id: string): Promise<User | undefined> {
+    return await this.findUserByPredicate(dbWrite, eq(users.id, id));
+  }
+
+  /**
    * Finds a user by email address.
    */
   async findByEmail(email: string): Promise<User | undefined> {
@@ -815,6 +826,14 @@ export class UsersRepository {
    */
   async listByOrganization(organizationId: string): Promise<User[]> {
     return await this.listUsersByPredicate(dbRead, eq(users.organization_id, organizationId));
+  }
+
+  /**
+   * Lists organization membership from the primary database for decisions that
+   * immediately gate an identity or authority mutation.
+   */
+  async listByOrganizationForWrite(organizationId: string): Promise<User[]> {
+    return await this.listUsersByPredicate(dbWrite, eq(users.organization_id, organizationId));
   }
 
   async resolveIdentity(
@@ -2958,6 +2977,39 @@ export class UsersRepository {
    */
   async delete(id: string): Promise<void> {
     await dbWrite.delete(users).where(eq(users.id, id));
+  }
+
+  /**
+   * Removes a sole-user personal organization as one database transaction.
+   * Deleting the organization first lets its declared cascades erase the user
+   * and associated content. Any restrictive retention FK aborts the entire
+   * transaction, so a retry can never observe a half-deleted account.
+   */
+  async deletePersonalOrganizationAtomically(
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      const members = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId))
+        .for("update");
+      if (!members.some((member) => member.id === userId)) {
+        throw new Error("Account deletion user is not a member of its personal organization");
+      }
+      if (members.length !== 1) {
+        throw new Error("Account deletion requires a sole-user personal organization");
+      }
+
+      const deleted = await tx
+        .delete(organizations)
+        .where(eq(organizations.id, organizationId))
+        .returning({ id: organizations.id });
+      if (deleted.length !== 1) {
+        throw new Error("Personal organization disappeared during account deletion");
+      }
+    });
   }
 }
 

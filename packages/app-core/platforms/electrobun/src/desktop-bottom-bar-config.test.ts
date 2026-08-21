@@ -5,10 +5,14 @@ import {
   AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
+  computeBottomBarSurfaceFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
   DEFAULT_BOTTOM_BAR_WIDTH,
   EXPANDED_BOTTOM_BAR_HEIGHT,
   EXPANDED_BOTTOM_BAR_WIDTH,
+  HOVER_BOTTOM_BAR_HEIGHT,
+  HOVER_BOTTOM_BAR_WIDTH,
+  isBottomBarSurfaceState,
   resolveBottomBarFrameSize,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
@@ -60,6 +64,14 @@ describe("desktop bottom-bar config", () => {
         "not a url?x=1&shellMode=chat-overlay",
       );
     });
+
+    it("tags elizaOS appliance sessions for always-on voice", () => {
+      expect(
+        appendChatOverlayShellModeParam("http://localhost:2138/", {
+          ELIZAOS_ALWAYS_ON_VOICE: "1",
+        }),
+      ).toContain("elizaOSAlwaysOnVoice=1");
+    });
   });
 
   describe("computeBottomBarFrame", () => {
@@ -107,10 +119,16 @@ describe("desktop bottom-bar config", () => {
       expect(frame.height).toBe(48);
     });
 
-    it("resolves rest, sign-in chip, and expanded sizes", () => {
+    it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {
       expect(resolveBottomBarFrameSize({ expanded: false })).toEqual({
         width: DEFAULT_BOTTOM_BAR_WIDTH,
         height: DEFAULT_BOTTOM_BAR_HEIGHT,
+      });
+      expect(
+        resolveBottomBarFrameSize({ expanded: false, hovered: true }),
+      ).toEqual({
+        width: HOVER_BOTTOM_BAR_WIDTH,
+        height: HOVER_BOTTOM_BAR_HEIGHT,
       });
       expect(
         resolveBottomBarFrameSize({ expanded: false, chip: true }),
@@ -124,6 +142,16 @@ describe("desktop bottom-bar config", () => {
           height: EXPANDED_BOTTOM_BAR_HEIGHT,
         },
       );
+      expect(
+        resolveBottomBarFrameSize({
+          expanded: false,
+          chip: true,
+          hovered: true,
+        }),
+      ).toEqual({
+        width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+        height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+      });
     });
 
     it("constrains the expanded chat hit area instead of spanning the display", () => {
@@ -139,15 +167,71 @@ describe("desktop bottom-bar config", () => {
     });
   });
 
+  describe("computeBottomBarSurfaceFrame", () => {
+    const workArea = { x: 100, y: 24, width: 1920, height: 1000 };
+
+    it("keeps closed state in the resting taskbar strip", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "CLOSED")).toEqual(
+        computeBottomBarFrame(workArea),
+      );
+    });
+
+    it("gives input mode a composer-width taskbar strip", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "INPUT")).toEqual(
+        computeBottomBarFrame(workArea, {
+          width: HOVER_BOTTOM_BAR_WIDTH,
+          height: HOVER_BOTTOM_BAR_HEIGHT,
+        }),
+      );
+    });
+
+    it("keeps the composer width and bottom anchor while making room above for its menu", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "INPUT_MENU")).toEqual({
+        x: 760,
+        y: 704,
+        width: 600,
+        height: 320,
+      });
+    });
+
+    it("opens centered phone-width sheets at under-half and half-or-over heights", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "OPEN_UNDER_HALF")).toEqual(
+        { x: 740, y: 604, width: 640, height: 420 },
+      );
+      expect(
+        computeBottomBarSurfaceFrame(workArea, "OPEN_HALF_OR_OVER"),
+      ).toEqual({ x: 740, y: 404, width: 640, height: 620 });
+    });
+
+    it("gives MAXIMIZED the complete usable work area", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "MAXIMIZED")).toEqual(
+        workArea,
+      );
+    });
+  });
+
+  it("rejects forged native surface states", () => {
+    expect(isBottomBarSurfaceState("INPUT_MENU")).toBe(true);
+    expect(isBottomBarSurfaceState("MAXIMIZED")).toBe(true);
+    expect(isBottomBarSurfaceState("fullscreen")).toBe(false);
+    expect(isBottomBarSurfaceState({ state: "CLOSED" })).toBe(false);
+  });
+
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("reports the bottom-bar presentation by default (#10350)", () => {
+    it("keeps the bottom-bar host transparent on every desktop platform", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
-        transparent: false,
+        transparent: true,
         nativeShadow: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
+      });
+      expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,

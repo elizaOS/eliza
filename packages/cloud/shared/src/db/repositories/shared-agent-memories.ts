@@ -1,14 +1,15 @@
 /**
  * Tenant-scoped CQRS access to `shared_agent_memories`, the durable core-shape
  * memory rows written by container-free Shared runtimes. The writer owns
- * idempotent inserts and monotonic message convergence; the reader owns room-recency listing and embedding
- * search. Every SQL predicate pins `organization_id` AND `user_id` — a row is
- * never reachable through this module from outside its owning tenant.
+ * idempotent inserts and monotonic message convergence; the reader owns
+ * room-recency listing and embedding search. Every SQL predicate pins
+ * `organization_id` AND `user_id` — no row is reachable through this module
+ * from outside its owning tenant.
  *
  * Embedding search tradeoff: the column is `real[]` (mirroring the core
  * memories row), so there is no ANN index; `searchByEmbedding` runs exact
  * pgvector cosine distance (`::vector <=> ::vector`, extension created in
- * migration 0000) over a bounded most-recent window of the tenant's rows.
+ * migration 0000) over a bounded most-recent window of one trusted room's rows.
  * Cost is therefore O(window) per query regardless of table size, and rows
  * older than the window are invisible to semantic recall by design.
  */
@@ -273,17 +274,50 @@ export class SharedAgentMemoriesReader {
   }
 
   /**
-   * Exact cosine-distance search over the tenant's most recent embedded rows
-   * (bounded window; see module header). Only rows whose stored vector has the
-   * query's dimensionality participate, so mixed-model histories cannot fail
-   * the whole query.
+   * Most recent rows of one core table-name discriminator (e.g. "facts")
+   * within the tenant scope, newest first. Serves the Shared facts provider
+   * (parity P4) without scanning message rows.
+   */
+  async listRecentByType(
+    scope: SharedAgentMemoryScope,
+    type: string,
+    limit: number,
+  ): Promise<SharedAgentMemoryRow[]> {
+    requiredScope(scope);
+    assertLimit(limit);
+    if (typeof type !== "string" || type.trim().length === 0) {
+      throw new ElizaError("Shared agent memory type is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "type" },
+      });
+    }
+    return await dbRead
+      .select()
+      .from(sharedAgentMemories)
+      .where(and(...tenantPins(scope), eq(sharedAgentMemories.type, type)))
+      .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))
+      .limit(limit);
+  }
+
+  /**
+   * Exact cosine-distance search over one trusted room's most recent embedded
+   * rows within the tenant scope (bounded window; see module header). Only rows
+   * whose stored vector has the query's dimensionality participate, so
+   * mixed-model histories cannot fail the whole query.
    */
   async searchByEmbedding(
     scope: SharedAgentMemoryScope,
+    roomId: string,
     embedding: number[],
     limit: number,
   ): Promise<SharedAgentMemorySearchHit[]> {
     requiredScope(scope);
+    if (typeof roomId !== "string" || roomId.trim().length === 0) {
+      throw new ElizaError("Shared agent memory roomId is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "roomId" },
+      });
+    }
     assertLimit(limit);
     assertEmbedding(embedding);
     const distance = sql<number>`(${sharedAgentMemories.embedding}::vector <=> ${vectorParam(
@@ -309,6 +343,7 @@ export class SharedAgentMemoriesReader {
       .where(
         and(
           ...tenantPins(scope),
+          eq(sharedAgentMemories.room_id, roomId),
           isNotNull(sharedAgentMemories.embedding),
           sql`cardinality(${sharedAgentMemories.embedding}) = ${embedding.length}`,
         ),

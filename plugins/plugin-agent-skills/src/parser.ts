@@ -15,6 +15,7 @@ import type {
 } from "./types";
 
 import {
+	SKILL_BIN_NAME_PATTERN,
 	SKILL_COMPATIBILITY_MAX_LENGTH,
 	SKILL_DESCRIPTION_MAX_LENGTH,
 	SKILL_NAME_MAX_LENGTH,
@@ -37,8 +38,8 @@ export function parseFrontmatter(content: string): {
 	body: string;
 	raw: string;
 } {
-	// Match frontmatter block
-	const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
+	// Match frontmatter block regardless of line-ending style.
+	const match = content.match(/^---(?:\r?\n)([\s\S]*?)(?:\r?\n)---(?:\r?\n)?/);
 
 	if (!match) {
 		return { frontmatter: null, body: content, raw: "" };
@@ -276,6 +277,38 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 }
 
 /**
+ * Decode a single-line YAML frontmatter scalar into its exact string value.
+ *
+ * A double-quoted scalar is decoded as a strict JSON string literal so the
+ * standard escapes (`\"`, `\\`, `\n`, `\uXXXX`, ...) round-trip back to the
+ * precise source string; this is what lets a generated `description` survive
+ * embedded quotes, backslashes, Unicode, and control characters without
+ * corruption or YAML type coercion. When the quoted text is not a valid JSON
+ * string literal the function falls back to the historical delimiter strip so
+ * hand-authored frontmatter that only used quotes as plain delimiters keeps its
+ * prior behavior. Single-quoted scalars have their delimiters stripped; a bare
+ * scalar is returned trimmed. Shared by the frontmatter parser and the
+ * filesystem discovery scan so both read a written scalar identically.
+ */
+export function decodeFrontmatterScalarString(raw: string): string {
+	const trimmed = raw.trim();
+	if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+		try {
+			const decoded = JSON.parse(trimmed);
+			if (typeof decoded === "string") return decoded;
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — not a valid JSON string
+			// literal, fall back to the legacy delimiter strip below.
+		}
+		return trimmed.slice(1, -1);
+	}
+	if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+		return trimmed.slice(1, -1);
+	}
+	return trimmed;
+}
+
+/**
  * Parse a YAML scalar value.
  */
 function parseYamlValue(value: string): string | number | boolean | null {
@@ -283,10 +316,10 @@ function parseYamlValue(value: string): string | number | boolean | null {
 
 	// Handle quoted strings
 	if (
-		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+		(trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'"))
 	) {
-		return trimmed.slice(1, -1);
+		return decodeFrontmatterScalarString(trimmed);
 	}
 
 	// Handle booleans
@@ -307,6 +340,41 @@ function parseYamlValue(value: string): string | number | boolean | null {
 // ============================================================
 // VALIDATION
 // ============================================================
+
+/**
+ * Collect invalid binary names declared in Otto metadata.
+ *
+ * `requires.bins` and `install[].bins` entries are passed to `which`/`where`
+ * probes at eligibility-check and dependency-install time, so they must be
+ * bare executable names matching SKILL_BIN_NAME_PATTERN. Anything else
+ * (shell metacharacters, whitespace, path separators, leading dashes,
+ * non-strings) is reported so callers can reject the skill. Shared by
+ * validateFrontmatter and the security scanner.
+ */
+export function findInvalidSkillBinNames(
+	frontmatter: SkillFrontmatter,
+): Array<{ field: string; bin: unknown }> {
+	const invalid: Array<{ field: string; bin: unknown }> = [];
+	const otto = frontmatter.metadata?.otto;
+
+	const check = (field: string, bins: unknown): void => {
+		if (!Array.isArray(bins)) return;
+		for (const bin of bins) {
+			if (typeof bin !== "string" || !SKILL_BIN_NAME_PATTERN.test(bin)) {
+				invalid.push({ field, bin });
+			}
+		}
+	};
+
+	check("metadata.otto.requires.bins", otto?.requires?.bins);
+	if (Array.isArray(otto?.install)) {
+		for (let i = 0; i < otto.install.length; i++) {
+			check(`metadata.otto.install[${i}].bins`, otto.install[i]?.bins);
+		}
+	}
+
+	return invalid;
+}
 
 /**
  * Validate a skill's frontmatter according to the Agent Skills specification.
@@ -406,6 +474,16 @@ export function validateFrontmatter(
 				code: "COMPATIBILITY_TOO_LONG",
 			});
 		}
+	}
+
+	// Optional: otto bin names reach `which`/`where` probes, so they must be
+	// bare executable names — registry-controlled frontmatter is untrusted.
+	for (const { field, bin } of findInvalidSkillBinNames(frontmatter)) {
+		errors.push({
+			field,
+			message: `invalid binary name ${JSON.stringify(bin)} in ${field}: must contain only letters, digits, and . _ + -, starting with a letter or digit`,
+			code: "INVALID_BIN_NAME",
+		});
 	}
 
 	return {

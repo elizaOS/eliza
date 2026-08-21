@@ -317,9 +317,14 @@ describe("chat attachment upload -> store -> processing lifecycle (#10714)", () 
       );
       expect(head.headers["X-Content-Type-Options"], mimeType).toBe("nosniff");
       const disposition = String(head.headers["Content-Disposition"]);
-      // Only image/audio/video/pdf render inline; text/* and application/json
-      // are forced to download (attachment) by the serve-path security policy.
-      if (mimeType.startsWith("text/") || mimeType === "application/json") {
+      // Only image/audio/video render inline; application/pdf, text/* and
+      // application/json are forced to download (attachment) by the serve-path
+      // security policy.
+      if (
+        mimeType.startsWith("text/") ||
+        mimeType === "application/json" ||
+        mimeType === "application/pdf"
+      ) {
         expect(disposition, mimeType).toContain("attachment");
       } else {
         expect(disposition, mimeType).toBe("inline");

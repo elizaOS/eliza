@@ -3,23 +3,22 @@
  * authenticated user. Enforces organization agent quotas and role.
  */
 
-import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { organizations } from "@/db/schemas/organizations";
-import { userCharacters } from "@/db/schemas/user-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getMaxCloudCharactersForOrg } from "@/lib/constants/cloud-character-quota";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { charactersService } from "@/lib/services/characters/characters";
+import {
+  charactersService,
+  type MeteredCharacterCreationReceipt,
+} from "@/lib/services/characters/characters";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -82,7 +81,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validationResult = CreateAgentSchema.safeParse(body);
     if (!validationResult.success) {
       return c.json(
@@ -101,52 +105,6 @@ app.post("/", async (c) => {
       ? normalizeTokenAddress(validationResult.data.tokenAddress, tokenChain)
       : undefined;
 
-    // Org lookup and agent count are independent — run in parallel.
-    const [org, [{ count }]] = await Promise.all([
-      dbRead.query.organizations.findFirst({
-        where: eq(organizations.id, user.organization_id),
-        columns: {
-          id: true,
-          credit_balance: true,
-          settings: true,
-        },
-      }),
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(userCharacters)
-        .where(
-          and(
-            eq(userCharacters.organization_id, user.organization_id),
-            eq(userCharacters.source, "cloud"),
-          ),
-        ),
-    ]);
-
-    if (!org) {
-      return c.json({ success: false, error: "Organization not found" }, 404);
-    }
-
-    const maxAgents = getMaxCloudCharactersForOrg(
-      Number(org.credit_balance),
-      org.settings as Record<string, unknown> | undefined,
-    );
-
-    if (count >= maxAgents) {
-      return c.json(
-        {
-          success: false,
-          error: `Agent quota exceeded. Your organization has reached the maximum of ${maxAgents} agents.`,
-          details: {
-            current: count,
-            max: maxAgents,
-            upgrade_hint:
-              "Add credits to your account to increase your agent limit.",
-          },
-        },
-        403,
-      );
-    }
-
     if (tokenAddress) {
       const existing = await userCharactersRepository.findByTokenAddress(
         tokenAddress,
@@ -160,20 +118,23 @@ app.post("/", async (c) => {
       }
     }
 
-    let character: Awaited<ReturnType<typeof charactersService.create>>;
+    let creation: MeteredCharacterCreationReceipt;
     try {
-      character = await charactersService.create({
-        name,
-        bio: bio ? [bio] : [DEFAULT_AGENT_BIO],
-        user_id: user.id,
-        organization_id: user.organization_id,
-        source: "cloud",
-        character_data: {},
-        ...(tokenAddress && { token_address: tokenAddress }),
-        ...(tokenChain && { token_chain: tokenChain }),
-        ...(tokenName && { token_name: tokenName }),
-        ...(tokenTicker && { token_ticker: tokenTicker }),
-      });
+      creation = await charactersService.createWithReceipt(
+        {
+          name,
+          bio: bio ? [bio] : [DEFAULT_AGENT_BIO],
+          user_id: user.id,
+          organization_id: user.organization_id,
+          source: "cloud",
+          character_data: {},
+          ...(tokenAddress && { token_address: tokenAddress }),
+          ...(tokenChain && { token_chain: tokenChain }),
+          ...(tokenName && { token_name: tokenName }),
+          ...(tokenTicker && { token_ticker: tokenTicker }),
+        },
+        { policy: { mode: "metered" } },
+      );
     } catch (error) {
       if (tokenAddress && isUniqueConstraintError(error)) {
         const existing = await userCharactersRepository.findByTokenAddress(
@@ -188,13 +149,15 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const { character, quota } = creation;
+
     logger.info(`[Agents API] Created agent: ${character.id}`, {
       agentId: character.id,
       name: character.name,
       userId: user.id,
       organizationId: user.organization_id,
-      agentCount: count + 1,
-      maxAgents,
+      agentCount: quota.currentAfter,
+      maxAgents: quota.limit,
     });
 
     return c.json(

@@ -35,10 +35,17 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
+import {
+  type CanonicalJsonOptions,
+  canonicalJsonString,
+  isCanonicalJsonArray,
+  readCanonicalArrayLength,
+} from "@elizaos/shared/canonical-json";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,
+  MEDIA_URL_IN_TEXT_RE,
   mediaFileNameFromUrl,
   readStoredMediaBytes,
   storedMediaContentMatchesName,
@@ -59,7 +66,7 @@ const SALT_LEN = 32;
 const IV_LEN = 12; // AES-256-GCM standard nonce
 const TAG_LEN = 16; // AES-GCM authentication tag
 const KEY_LEN = 32; // AES-256
-const MIN_PASSWORD_LENGTH = 4;
+const MIN_PASSWORD_LENGTH = 12;
 const HEADER_SIZE = MAGIC_BYTES.length + 4 + SALT_LEN + IV_LEN + TAG_LEN; // 15 + 4 + 32 + 12 + 16 = 79
 const EXPORT_VERSION = 1;
 const MAX_IMPORT_DECOMPRESSED_BYTES = 16 * 1024 * 1024; // 16 MiB safety cap
@@ -195,21 +202,84 @@ export interface ExportSizeEstimate {
  * collection's digest reproducible across the export → gzip → encrypt → decrypt
  * → gunzip → `JSON.parse` round-trip, regardless of in-memory key ordering, so
  * the digest computed at export equals the one recomputed at import.
+ *
+ * Honest export collections are a handful of objects deep. A decrypted import
+ * can still be legal JSON that `JSON.parse` accepts (depth 20k in ~120 KiB,
+ * well under the 16 MiB gunzip cap) and then stack-overflow the digest walk.
  */
+export const MAX_AGENT_EXPORT_CANONICALIZE_DEPTH = 64;
+/**
+ * Node ceiling across the whole canonicalize walk, including array slots.
+ * Bounds cyclic or accessor-bearing graphs that would otherwise RangeError
+ * `exportAgent` / `verifyExportManifest` on import.
+ */
+export const MAX_AGENT_EXPORT_CANONICALIZE_NODES = 100_000;
+export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
+  "AGENT_EXPORT_CANONICALIZE_UNBOUNDED";
+
+/** Default classification for export/import failures without a finer code. */
+export const AGENT_EXPORT_FAILED = "AGENT_EXPORT_FAILED";
+
+/**
+ * Export/import domain failure. Extends {@link ElizaError} so every throw site
+ * carries a machine-classifiable `code`, structured `context`, and a preserved
+ * `cause` chain (error policy #12263) instead of casting fields onto a bare
+ * `Error`. `instanceof AgentExportError` keeps working for existing callers.
+ */
+export class AgentExportError extends ElizaError {
+  override readonly name: string = "AgentExportError";
+  constructor(
+    message: string,
+    options: Omit<ElizaErrorOptions, "code"> & { code?: string } = {},
+  ) {
+    super(message, { ...options, code: options.code ?? AGENT_EXPORT_FAILED });
+  }
+}
+
+/**
+ * Rejection hook for the shared walk, so `AgentExportError` (and its
+ * `AGENT_EXPORT_CANONICALIZE_UNBOUNDED` code) stays what export/import callers
+ * catch. Context is deliberately structural only (never a reflected property
+ * name): the walk runs on attacker-supplied import payloads and the error
+ * surfaces in API responses and logs.
+ */
+function failCanonicalizeUnbounded(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  throw new AgentExportError(
+    "Export payload exceeds the canonicalize walk budget",
+    {
+      code: AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+      cause,
+      context,
+      severity: "fatal",
+    },
+  );
+}
+
+/**
+ * `sparseArrayHoles: "omit"` keeps the empty-slot rendering
+ * `array.map(canonicalize).join(",")` published before the walk was bounded —
+ * export manifests already carry digests taken over those bytes.
+ *
+ * No `maxOutputChars`: an import payload is already capped upstream by
+ * {@link MAX_IMPORT_DECOMPRESSED_BYTES}, and an export payload is this
+ * process's own rows.
+ */
+const EXPORT_CANONICAL_JSON: CanonicalJsonOptions = {
+  maxDepth: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
+  maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+  sparseArrayHoles: "omit",
+  onUnbounded: failCanonicalizeUnbounded,
+};
+
+function canonicalizeRoot(value: unknown, knownArrayLength?: number): string {
+  return canonicalJsonString(value, EXPORT_CANONICAL_JSON, knownArrayLength);
+}
+
 export function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value ?? null);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => canonicalize(v)).join(",")}]`;
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj)
-    .filter((k) => obj[k] !== undefined)
-    .sort();
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`)
-    .join(",")}}`;
+  return canonicalizeRoot(value);
 }
 
 function sha256Hex(input: string): string {
@@ -217,12 +287,28 @@ function sha256Hex(input: string): string {
 }
 
 /** sha256 of a collection's canonical JSON, plus its length. */
-export function digestCollection(items: unknown[]): AgentExportComponentDigest {
-  const list = Array.isArray(items) ? items : [];
-  return { sha256: sha256Hex(canonicalize(list)), count: list.length };
-}
-
 const EMPTY_MANIFEST_COLLECTION: unknown[] = [];
+
+export function digestCollection(items: unknown[]): AgentExportComponentDigest {
+  if (
+    items != null &&
+    typeof items === "object" &&
+    isCanonicalJsonArray(items, EXPORT_CANONICAL_JSON)
+  ) {
+    // One `length` descriptor read feeds BOTH the canonical bytes and `count`.
+    // Reading it twice let a legal Array Proxy drift (or throw) between the two
+    // reads and publish a digest and a count taken from different snapshots.
+    const length = readCanonicalArrayLength(items, EXPORT_CANONICAL_JSON);
+    return {
+      sha256: sha256Hex(canonicalizeRoot(items, length)),
+      count: length,
+    };
+  }
+  return {
+    sha256: sha256Hex(canonicalize(EMPTY_MANIFEST_COLLECTION)),
+    count: 0,
+  };
+}
 
 /** The collection arrays the manifest covers, read off a payload-like object. */
 function manifestCollectionsOf(
@@ -401,8 +487,6 @@ function toAgentExportPayload(
 // ---------------------------------------------------------------------------
 // Media (content-addressed store) capture / restore
 // ---------------------------------------------------------------------------
-
-const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
 
 /**
  * The set of `<sha256>.<ext>` media file names referenced by the exported
@@ -607,17 +691,6 @@ function unpackFile(fileBuffer: Buffer): {
   }
 
   return { salt, iv, tag, ciphertext, iterations };
-}
-
-// ---------------------------------------------------------------------------
-// Custom error class
-// ---------------------------------------------------------------------------
-
-export class AgentExportError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentExportError";
-  }
 }
 
 async function gunzipWithSizeLimit(

@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
  * Local evidence reviewer for screenshots, videos, logs, trajectories, and
- * reports produced by the repo's existing verification lanes. It scans the
- * evidence silos, computes deterministic image heuristics, runs packaged OCR,
- * writes `evidence/manifest.json`, and generates a single browser dashboard for
- * the manual "capturing is not reviewing" pass.
+ * reports produced by the repo's verification lanes. The normal path verifies
+ * and reads one `@elizaos/evidence` bundle; `--source` is a deliberate legacy or
+ * ad-hoc compatibility mode. It computes deterministic image heuristics, runs
+ * packaged OCR, and generates one browser dashboard for the manual "capturing
+ * is not reviewing" pass.
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,22 +36,9 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, "evidence");
+const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, "evidence", "review");
+const DEFAULT_BUNDLE_ROOT = path.join(REPO_ROOT, "evidence", "runs");
 const MAX_TEXT_BYTES = 256 * 1024;
-const DEFAULT_SCAN_DIRS = [
-  "evidence",
-  "e2e-recordings",
-  "device-e2e-output",
-  "packages/app/aesthetic-audit-output",
-  "packages/app/device-e2e-output",
-  "packages/app/ios/build/boot-capture",
-  "packages/app/ios/build/device-logs",
-  "packages/app/test-results",
-  "packages/app/reports/walkthrough",
-  "packages/scenario-runner/reports",
-  "reports/live-test-runs",
-  "reports/walkthrough",
-];
 const SKIP_DIR_NAMES = new Set([
   ".git",
   "node_modules",
@@ -140,11 +129,12 @@ function printHelp() {
 Options:
   --open                  Open the generated dashboard in the browser.
   --no-open               Do not open the dashboard.
-  --out=<dir>             Output directory. Default: evidence/
-  --source=<dir>          Scan a specific directory. Repeatable.
+  --out=<dir>             Dashboard directory. Default: evidence/review/
+  --source=<dir>          Explicit compatibility scan. Repeatable; never implicit.
   --bundle=<dir>          Read an evidence bundle's manifest.json (the @elizaos/evidence
-                          BundleManifest inventory) and review its artifacts. Used alone
-                          it reviews only that bundle; add --source to also scan silos.
+                          BundleManifest inventory) and review its artifacts. Without
+                          --bundle or --source, the newest evidence/runs/* bundle is used.
+                          Add --source only to compare deliberate external artifacts.
   --ocr=on|auto|off       Run OCR with the packaged tesseract.js engine. Default: on.
   --max-artifacts=<n>     Limit total artifacts in the dashboard. Default: 900.
   --max-images=<n>        Limit image heuristic work. Default: 240.
@@ -160,11 +150,139 @@ function dirExists(dirPath) {
 }
 
 function resolveScanDirs(options) {
-  const dirs =
-    options.scanDirs.length > 0 ? options.scanDirs : DEFAULT_SCAN_DIRS;
-  return dirs
+  return options.scanDirs
     .map((dir) => path.resolve(REPO_ROOT, dir))
     .filter((dir) => dirExists(dir));
+}
+
+/** Resolve the newest finalized bundle for the zero-argument reviewer path. */
+export function resolveDefaultBundleDir(bundleRoot = DEFAULT_BUNDLE_ROOT) {
+  if (!dirExists(bundleRoot)) return null;
+  const candidates = fs
+    .readdirSync(bundleRoot, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        fs.existsSync(path.join(bundleRoot, entry.name, "manifest.json")) &&
+        fs.existsSync(path.join(bundleRoot, entry.name, "meta.json")),
+    )
+    .map((entry) => ({
+      dir: path.join(bundleRoot, entry.name),
+      mtimeMs: fs.statSync(path.join(bundleRoot, entry.name, "manifest.json"))
+        .mtimeMs,
+    }))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || b.dir.localeCompare(a.dir));
+  return candidates[0]?.dir ?? null;
+}
+
+function resolveBundleDirForOptions(options) {
+  return (
+    options.bundleDir ??
+    (options.scanDirs.length === 0 ? resolveDefaultBundleDir() : null)
+  );
+}
+
+function pathsOverlap(left, right) {
+  const relative = path.relative(left, right);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== "..")
+  );
+}
+
+function physicalPath(filePath) {
+  let cursor = path.resolve(filePath);
+  const missing = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(existing, ...missing.reverse());
+}
+
+/** Refuse to mutate reviewed inputs while writing reviewer-owned output. */
+export function assertSafeOutputDir(outputDir, bundleDir, sourceDirs = []) {
+  if (fs.existsSync(outputDir) && fs.lstatSync(outputDir).isSymbolicLink()) {
+    throw new Error("review output directory must not be a symlink");
+  }
+  const physicalOutput = physicalPath(outputDir);
+  const protectedDirs = [
+    ...(bundleDir ? [{ label: "evidence bundle", dir: bundleDir }] : []),
+    ...sourceDirs.map((dir) => ({ label: "evidence source", dir })),
+  ];
+  for (const protectedDir of protectedDirs) {
+    const physicalInput = physicalPath(protectedDir.dir);
+    if (
+      pathsOverlap(physicalInput, physicalOutput) ||
+      pathsOverlap(physicalOutput, physicalInput)
+    ) {
+      throw new Error(
+        `review output and ${protectedDir.label} directories must not overlap`,
+      );
+    }
+  }
+}
+
+/** Replace one reviewer-owned leaf without following a stale filesystem alias. */
+export function writeReviewerFile(filePath, contents) {
+  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    fs.writeFileSync(descriptor, contents);
+    fs.fsyncSync(descriptor);
+    const written = fs.fstatSync(descriptor, { bigint: true });
+    if (!written.isFile() || written.nlink !== 1n) {
+      throw new Error("review output temporary leaf is not a private file");
+    }
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, filePath);
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      published.dev !== written.dev ||
+      published.ino !== written.ino
+    ) {
+      throw new Error("review output leaf changed during publication");
+    }
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+/**
+ * Verify bytes, hashes, provenance binding, and the unlisted-file sweep before
+ * rendering. The reviewer is a process boundary, so it invokes the canonical
+ * package verifier rather than duplicating its certification-sensitive rules.
+ */
+function verifyBundleIntegrity(bundleDir) {
+  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const result = spawnSync("bun", [cli, "verify", bundleDir], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: { ...process.env },
+  });
+  if (result.error) {
+    throw new Error(
+      `--bundle: canonical verifier could not start: ${result.error.message}`,
+    );
+  }
+  if (result.status !== 0) {
+    const detail = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+    throw new Error(
+      `--bundle: integrity verification failed for ${toPosixPath(path.relative(REPO_ROOT, bundleDir))}${detail ? `\n${detail}` : ""}`,
+    );
+  }
 }
 
 async function runOcr(filePath, options) {
@@ -243,7 +361,7 @@ async function buildArtifactRecord(full, meta, options, counters) {
     id: `${counters.nextId++}`,
     type: meta.type,
     source: meta.source,
-    path: toPosixPath(path.relative(REPO_ROOT, full)),
+    path: meta.displayPath ?? toPosixPath(path.relative(REPO_ROOT, full)),
     href: toPosixPath(path.relative(options.outputDir, full)),
     bytes: stat.size,
     mtime: stat.mtime.toISOString(),
@@ -292,6 +410,7 @@ const BUNDLE_KIND_TO_TYPE = {
   analysis: "report",
   qa: "report",
   "html-tree": "viewer",
+  other: "artifact",
 };
 
 /**
@@ -300,7 +419,7 @@ const BUNDLE_KIND_TO_TYPE = {
  * untrusted disk input (error-policy:J3): a missing or malformed manifest throws
  * an explicit error rather than silently reviewing a partial/forged inventory.
  */
-function readBundleManifest(bundleDir) {
+function readBundleManifest(bundleDir, bytes = null) {
   const manifestPath = path.join(bundleDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(
@@ -309,7 +428,11 @@ function readBundleManifest(bundleDir) {
   }
   let manifest;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifest = JSON.parse(
+      bytes === null
+        ? fs.readFileSync(manifestPath, "utf8")
+        : bytes.toString("utf8"),
+    );
   } catch (error) {
     throw new Error(
       `--bundle: ${manifestPath} is not valid JSON: ${error?.message || error}`,
@@ -323,6 +446,115 @@ function readBundleManifest(bundleDir) {
   return manifest;
 }
 
+function sameFileIdentity(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.nlink === right.nlink
+  );
+}
+
+/** Copy one stable input descriptor into a private reviewer-owned leaf. */
+export function copyReviewerArtifact(source, destination, entry = null) {
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  const temporary = `${destination}.tmp-${process.pid}-${randomUUID()}`;
+  const sourceLstat = fs.lstatSync(source, { bigint: true });
+  if (sourceLstat.isSymbolicLink() || !sourceLstat.isFile()) {
+    throw new Error(
+      `review input is not a regular non-symlink file: ${source}`,
+    );
+  }
+  let sourceDescriptor;
+  let destinationDescriptor;
+  try {
+    sourceDescriptor = fs.openSync(
+      source,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+    );
+    const before = fs.fstatSync(sourceDescriptor, { bigint: true });
+    if (!before.isFile() || !sameFileIdentity(sourceLstat, before)) {
+      throw new Error(`review input changed before snapshot: ${source}`);
+    }
+    destinationDescriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0;
+    for (;;) {
+      const bytesRead = fs.readSync(
+        sourceDescriptor,
+        chunk,
+        0,
+        chunk.length,
+        null,
+      );
+      if (bytesRead === 0) break;
+      const bytes = chunk.subarray(0, bytesRead);
+      hash.update(bytes);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const written = fs.writeSync(
+          destinationDescriptor,
+          bytes,
+          offset,
+          bytes.length - offset,
+        );
+        if (written === 0) {
+          throw new Error(`review snapshot stopped accepting bytes: ${source}`);
+        }
+        offset += written;
+      }
+      total += bytesRead;
+    }
+    fs.fsyncSync(destinationDescriptor);
+    const after = fs.fstatSync(sourceDescriptor, { bigint: true });
+    const staged = fs.fstatSync(destinationDescriptor, { bigint: true });
+    const sha256 = hash.digest("hex");
+    if (
+      !sameFileIdentity(before, after) ||
+      BigInt(total) !== after.size ||
+      !staged.isFile() ||
+      staged.nlink !== 1n ||
+      staged.size !== BigInt(total)
+    ) {
+      throw new Error(`review input changed while snapshotting: ${source}`);
+    }
+    if (entry && (total !== entry.bytes || sha256 !== entry.sha256)) {
+      throw new Error(
+        `--bundle: artifact changed while copying reviewer snapshot: ${entry.path}`,
+      );
+    }
+    fs.closeSync(destinationDescriptor);
+    destinationDescriptor = undefined;
+    fs.closeSync(sourceDescriptor);
+    sourceDescriptor = undefined;
+    fs.renameSync(temporary, destination);
+    const published = fs.lstatSync(destination, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      published.dev !== staged.dev ||
+      published.ino !== staged.ino
+    ) {
+      throw new Error(
+        `review snapshot leaf changed during publication: ${source}`,
+      );
+    }
+    return { bytes: total, sha256 };
+  } finally {
+    if (destinationDescriptor !== undefined)
+      fs.closeSync(destinationDescriptor);
+    if (sourceDescriptor !== undefined) fs.closeSync(sourceDescriptor);
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
 /**
  * Append reviewer artifacts read from a bundle manifest. Each listed file's
  * absolute path is recorded in `seen` so the subsequent silo scan does not
@@ -331,10 +563,16 @@ function readBundleManifest(bundleDir) {
  * — a bundle's signed inventory must match its contents.
  */
 async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
-  const manifest = readBundleManifest(bundleDir);
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  const manifestBefore = fs.readFileSync(manifestPath);
+  verifyBundleIntegrity(bundleDir);
+  const manifestAfter = fs.readFileSync(manifestPath);
+  if (!manifestBefore.equals(manifestAfter)) {
+    throw new Error("--bundle: manifest changed during integrity verification");
+  }
+  const manifest = readBundleManifest(bundleDir, manifestAfter);
   const runId = typeof manifest.runId === "string" ? manifest.runId : null;
   for (const entry of manifest.artifacts) {
-    if (out.length >= options.maxArtifacts) break;
     const rel = typeof entry?.path === "string" ? entry.path : "";
     const full = path.resolve(bundleDir, rel);
     if (full !== bundleDir && !full.startsWith(bundleDir + path.sep)) {
@@ -348,6 +586,13 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
       );
     }
     seen.add(full);
+    const owned = path.join(
+      options.outputDir,
+      "artifacts",
+      "bundle",
+      ...rel.split("/"),
+    );
+    copyReviewerArtifact(full, owned, entry);
     const type = BUNDLE_KIND_TO_TYPE[entry.kind] ?? classifyArtifactPath(full);
     if (!type) continue;
     const source =
@@ -356,8 +601,8 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
         : inferSource(REPO_ROOT, full);
     out.push(
       await buildArtifactRecord(
-        full,
-        { type, source, bundleRunId: runId },
+        owned,
+        { type, source, bundleRunId: runId, displayPath: rel },
         options,
         counters,
       ),
@@ -366,12 +611,13 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
 }
 
 async function collectArtifacts(options) {
-  // A bare --bundle reviews just that bundle; the default silos are scanned only
-  // when no bundle is given, or alongside a bundle when --source is explicit.
-  const scanDirs =
-    options.bundleDir && options.scanDirs.length === 0
-      ? []
-      : resolveScanDirs(options);
+  const scanDirs = resolveScanDirs(options);
+  const bundleDir = resolveBundleDirForOptions(options);
+  if (bundleDir === null && options.scanDirs.length === 0) {
+    throw new Error(
+      "no finalized evidence bundle found under evidence/runs; run `bun run --cwd packages/evidence bundle:create -- --tier cpu` or pass --bundle/--source explicitly",
+    );
+  }
   const ocrEngine =
     options.ocr === "off"
       ? { available: false, kind: "disabled", label: null, reason: null }
@@ -387,27 +633,34 @@ async function collectArtifacts(options) {
   // twice: the bundle read wins, the silo scan skips those files.
   const seen = new Set();
 
-  if (options.bundleDir) {
-    await collectBundleArtifacts(
-      options.bundleDir,
-      options,
-      counters,
-      seen,
-      artifacts,
-    );
+  if (bundleDir) {
+    await collectBundleArtifacts(bundleDir, options, counters, seen, artifacts);
   }
 
-  for (const scanRoot of scanDirs) {
+  for (const [scanIndex, scanRoot] of scanDirs.entries()) {
     if (artifacts.length >= options.maxArtifacts) break;
     const files = walkFiles(scanRoot, options.maxFilesPerDir);
     for (const { full, type } of files) {
       if (artifacts.length >= options.maxArtifacts) break;
       if (seen.has(full)) continue;
       seen.add(full);
+      const relative = path.relative(scanRoot, full);
+      const owned = path.join(
+        options.outputDir,
+        "artifacts",
+        "compatibility",
+        String(scanIndex),
+        ...relative.split(path.sep),
+      );
+      copyReviewerArtifact(full, owned);
       artifacts.push(
         await buildArtifactRecord(
-          full,
-          { type, source: inferSource(REPO_ROOT, full) },
+          owned,
+          {
+            type,
+            source: inferSource(REPO_ROOT, full),
+            displayPath: toPosixPath(path.relative(REPO_ROOT, full)),
+          },
           options,
           counters,
         ),
@@ -420,8 +673,8 @@ async function collectArtifacts(options) {
     repoRoot: REPO_ROOT,
     outputDir: options.outputDir,
     scanDirs: scanDirs.map((dir) => toPosixPath(path.relative(REPO_ROOT, dir))),
-    bundleDir: options.bundleDir
-      ? toPosixPath(path.relative(REPO_ROOT, options.bundleDir))
+    bundleDir: bundleDir
+      ? toPosixPath(path.relative(REPO_ROOT, bundleDir))
       : null,
     ocr: {
       mode: options.ocr,
@@ -658,27 +911,39 @@ function buildHtml(manifest) {
 </html>`;
 }
 
-function openFile(filePath) {
+export function openFile(filePath) {
   const opener =
     process.platform === "darwin"
       ? "open"
       : process.platform === "win32"
-        ? "cmd"
+        ? "explorer.exe"
         : "xdg-open";
-  const args =
-    process.platform === "win32" ? ["/c", "start", "", filePath] : [filePath];
-  spawnSync(opener, args, { stdio: "ignore", detached: true });
+  spawnSync(opener, [filePath], {
+    shell: false,
+    stdio: "ignore",
+    detached: true,
+  });
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const bundleDir = resolveBundleDirForOptions(options);
+  const sourceDirs = options.scanDirs.map((dir) =>
+    path.resolve(REPO_ROOT, dir),
+  );
+  assertSafeOutputDir(options.outputDir, bundleDir, sourceDirs);
   fs.mkdirSync(options.outputDir, { recursive: true });
+  assertSafeOutputDir(options.outputDir, bundleDir, sourceDirs);
+  fs.rmSync(path.join(options.outputDir, "artifacts"), {
+    recursive: true,
+    force: true,
+  });
 
   const manifest = await collectArtifacts(options);
   const manifestPath = path.join(options.outputDir, "manifest.json");
   const indexPath = path.join(options.outputDir, "index.html");
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-  fs.writeFileSync(indexPath, buildHtml(manifest), "utf8");
+  writeReviewerFile(manifestPath, JSON.stringify(manifest, null, 2));
+  writeReviewerFile(indexPath, buildHtml(manifest));
 
   const counts = manifest.artifacts.reduce(
     (acc, artifact) => {

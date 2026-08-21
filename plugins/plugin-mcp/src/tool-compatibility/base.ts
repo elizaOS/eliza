@@ -5,9 +5,14 @@
  * dropped constraints into the description so the model still sees them.
  * detectModelProvider infers the provider (openai/anthropic/google/openrouter)
  * and capability flags from the runtime's model id.
+ *
+ * MCP tool `inputSchema` is attacker-controlled. The walk is gated on the
+ * same byte/depth/node budget as Ajv compile so a cyclic or deeply nested
+ * schema cannot RangeError the event loop.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
+import { assertMcpJsonSchemaBudget } from "../utils/schema-budget";
 
 export interface StringConstraints {
   minLength?: number;
@@ -63,11 +68,16 @@ export abstract class McpToolCompatibility {
   abstract shouldApply(): boolean;
 
   public transformToolSchema(toolSchema: JSONSchema7): JSONSchema7 {
+    assertMcpJsonSchemaBudget(toolSchema);
     if (!this.shouldApply()) {
       return toolSchema;
     }
 
-    return this.processSchema(toolSchema);
+    const processed = this.processSchema(toolSchema);
+    // Rewrites can expand removed constraints into prose, so the retained
+    // schema needs the same bound as the untrusted input.
+    assertMcpJsonSchemaBudget(processed);
+    return processed;
   }
 
   protected processSchema(schema: JSONSchema7): JSONSchema7 {

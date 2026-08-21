@@ -138,8 +138,97 @@ function formatProviderPayload(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    // error-policy:J4 a cyclic or non-serializable recorded payload is an
+    // expected trajectory shape; degrade to its printable form rather than
+    // blanking the inspector.
     return String(value);
   }
+}
+
+/**
+ * Recorded trajectory payloads arrive as parsed JSON, so an object candidate is
+ * either an array or a plain record. Anything else (a Date, a class instance a
+ * caller passed directly) keeps its own printable form and is never treated as
+ * an empty record.
+ */
+function isPlainRecord(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * A candidate carries content only when it would render something a reader can
+ * inspect. Whitespace-only strings and empty collections are blank in the UI,
+ * so they must not shadow a later populated candidate. Falsy scalars such as
+ * `0` and `false` are real recorded values and stay renderable.
+ */
+function hasRenderableContent(candidate: unknown): boolean {
+  if (candidate == null) return false;
+  if (typeof candidate === "string") return candidate.trim().length > 0;
+  if (Array.isArray(candidate)) return candidate.length > 0;
+  if (typeof candidate === "object" && isPlainRecord(candidate)) {
+    // A serialized-but-empty payload renders as the literal `{}`; that is the
+    // same untruthful blank as `""` and must not shadow a populated fallback.
+    return Object.keys(candidate).length > 0;
+  }
+  return true;
+}
+
+/**
+ * Trajectory records are intentionally append-only and may omit prompt fields
+ * for provider failures, embeddings, or legacy rows. Normalize those sparse
+ * records at the rendering boundary so one missing prompt cannot crash the
+ * complete trajectory viewer. Structured fallbacks remain inspectable JSON.
+ */
+export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
+  for (const candidate of candidates) {
+    if (!hasRenderableContent(candidate)) continue;
+    return formatProviderPayload(candidate);
+  }
+  return "";
+}
+
+/**
+ * Line count for a normalized trajectory field. Absent text has zero lines;
+ * `"".split("\n").length` would otherwise report a fabricated single line in
+ * the badge next to an empty panel.
+ */
+export function countTrajectoryTextLines(text: string): number {
+  if (text.length === 0) return 0;
+  return text.split("\n").length;
+}
+
+export interface TrajectoryCallText {
+  systemPromptText: string;
+  inputText: string;
+  outputText: string;
+}
+
+/**
+ * The single place a recorded call becomes the three panels the card renders.
+ * The line badges are derived from exactly these strings, so a panel can never
+ * disagree with the count printed beside it.
+ */
+export function buildTrajectoryCallText(
+  call: Pick<
+    TrajectoryLlmCall,
+    | "systemPrompt"
+    | "userPrompt"
+    | "prompt"
+    | "messages"
+    | "response"
+    | "output"
+  >,
+): TrajectoryCallText {
+  return {
+    systemPromptText: normalizeTrajectoryCallText(call.systemPrompt),
+    inputText: normalizeTrajectoryCallText(
+      call.userPrompt,
+      call.prompt,
+      call.messages,
+    ),
+    outputText: normalizeTrajectoryCallText(call.response, call.output),
+  };
 }
 
 function isNativeToolCallEvent(
@@ -715,64 +804,78 @@ export function TrajectoryDetailView({
               description={t("trajectorydetailview.NoLLMCallsRecorde")}
             />
           ) : (
-            filteredCalls.map((call) => (
-              <TrajectoryLlmCallCard
-                key={call.id}
-                callLabel={`#${(callIndexMap.get(call.id) ?? 0) + 1}`}
-                model={call.model}
-                purposeLabel={formatTrajectoryStepLabel(
-                  call.stepType || call.purpose || call.actionType,
-                  t("trajectorydetailview.Response"),
-                )}
-                latencyLabel={t("trajectorydetailview.Latency", {
-                  defaultValue: "Latency",
-                })}
-                latencyValue={formatTrajectoryDuration(call.latencyMs)}
-                tokensLabel={t("common.tokens")}
-                totalTokensValue={formatTrajectoryTokenCount(
-                  (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
-                  { emptyLabel: "—" },
-                )}
-                tokenBreakdownMeta={`${formatTrajectoryTokenCount(
-                  call.promptTokens ?? 0,
-                  { emptyLabel: "—" },
-                )}↑ • ${formatTrajectoryTokenCount(call.completionTokens ?? 0, {
-                  emptyLabel: "—",
-                })} ↓`}
-                temperatureLabel={t("trajectorydetailview.Temp")}
-                temperatureValue={call.temperature}
-                maxLabel={t("trajectorydetailview.Max")}
-                maxValue={call.maxTokens > 0 ? call.maxTokens : "—"}
-                systemPrompt={call.systemPrompt}
-                systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
-                systemLabel={t("trajectorydetailview.System")}
-                systemLinesLabel={`${call.systemPrompt?.split("\n").length ?? 0} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
-                systemCollapseLabel={t("common.collapse", {
-                  defaultValue: "Collapse",
-                })}
-                systemExpandLabel={t("common.expand", {
-                  defaultValue: "Expand",
-                })}
-                inputLabel={t("trajectorydetailview.InputUser")}
-                outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${call.userPrompt.split("\n").length} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
-                outputLinesLabel={`${call.response.split("\n").length} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
-                tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
-                userPrompt={call.userPrompt}
-                response={call.response}
-                copyLabel={t("trajectorydetailview.Copy")}
-                copyToClipboardLabel={t("trajectorydetailview.CopyToClipboard")}
-                onCopy={(content) => {
-                  void copyToClipboard(content);
-                }}
-              />
-            ))
+            filteredCalls.map((call) => {
+              const { systemPromptText, inputText, outputText } =
+                buildTrajectoryCallText(call);
+              const linesLabel = t("trajectorydetailview.lines");
+              return (
+                <TrajectoryLlmCallCard
+                  key={call.id}
+                  callLabel={`#${(callIndexMap.get(call.id) ?? 0) + 1}`}
+                  model={call.model}
+                  purposeLabel={formatTrajectoryStepLabel(
+                    call.stepType || call.purpose || call.actionType,
+                    t("trajectorydetailview.Response"),
+                  )}
+                  latencyLabel={t("trajectorydetailview.Latency", {
+                    defaultValue: "Latency",
+                  })}
+                  latencyValue={formatTrajectoryDuration(call.latencyMs)}
+                  tokensLabel={t("common.tokens")}
+                  totalTokensValue={formatTrajectoryTokenCount(
+                    (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
+                    { emptyLabel: "—" },
+                  )}
+                  tokenBreakdownMeta={`${formatTrajectoryTokenCount(
+                    call.promptTokens ?? 0,
+                    { emptyLabel: "—" },
+                  )}↑ • ${formatTrajectoryTokenCount(
+                    call.completionTokens ?? 0,
+                    {
+                      emptyLabel: "—",
+                    },
+                  )} ↓`}
+                  temperatureLabel={t("trajectorydetailview.Temp")}
+                  temperatureValue={call.temperature}
+                  maxLabel={t("trajectorydetailview.Max")}
+                  maxValue={call.maxTokens > 0 ? call.maxTokens : "—"}
+                  systemPrompt={
+                    systemPromptText.length > 0 ? systemPromptText : null
+                  }
+                  systemPromptButtonLabel={t(
+                    "trajectorydetailview.SystemPrompt",
+                  )}
+                  systemLabel={t("trajectorydetailview.System")}
+                  systemLinesLabel={`${countTrajectoryTextLines(
+                    systemPromptText,
+                  )} ${linesLabel}`}
+                  systemCollapseLabel={t("common.collapse", {
+                    defaultValue: "Collapse",
+                  })}
+                  systemExpandLabel={t("common.expand", {
+                    defaultValue: "Expand",
+                  })}
+                  inputLabel={t("trajectorydetailview.InputUser")}
+                  outputLabel={t("trajectorydetailview.OutputResponse")}
+                  inputLinesLabel={`${countTrajectoryTextLines(
+                    inputText,
+                  )} ${linesLabel}`}
+                  outputLinesLabel={`${countTrajectoryTextLines(
+                    outputText,
+                  )} ${linesLabel}`}
+                  tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
+                  userPrompt={inputText}
+                  response={outputText}
+                  copyLabel={t("trajectorydetailview.Copy")}
+                  copyToClipboardLabel={t(
+                    "trajectorydetailview.CopyToClipboard",
+                  )}
+                  onCopy={(content) => {
+                    void copyToClipboard(content);
+                  }}
+                />
+              );
+            })
           )}
         </div>
       </div>

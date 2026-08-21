@@ -7,6 +7,7 @@
  * 3. User is added to the allowlist and can now send DMs
  */
 
+import { ElizaError } from "../errors";
 import {
 	type ApprovePairingParams,
 	type ApprovePairingResult,
@@ -28,6 +29,23 @@ import { Service, ServiceType } from "../types/service";
 import { stringToUuid } from "../utils";
 
 /**
+ * Fill `bytes` from the platform CSPRNG, failing closed when none exists.
+ * Pairing codes gate owner approval of DM senders, so a predictable fallback
+ * such as `Math.random()` is never acceptable here. `globalThis.crypto`
+ * keeps this portable across the Node, browser, and edge build targets.
+ */
+function secureRandomFill(bytes: Uint8Array<ArrayBuffer>): void {
+	const cryptoObj = (globalThis as { crypto?: Crypto }).crypto;
+	if (typeof cryptoObj?.getRandomValues !== "function") {
+		throw new ElizaError(
+			"Pairing code generation requires a cryptographically secure random source",
+			{ code: "PAIRING_CSPRNG_UNAVAILABLE" },
+		);
+	}
+	cryptoObj.getRandomValues(bytes);
+}
+
+/**
  * PairingService handles secure DM pairing for messaging channels.
  *
  * When a user sends a DM to a bot with dmPolicy="pairing":
@@ -42,6 +60,25 @@ export class PairingService extends Service {
 		"Manages secure DM access via pairing codes for messaging channels";
 
 	private pairingConfig: Required<PairingConfig>;
+
+	/**
+	 * Last-issued pairing-reply timestamps keyed `${channel}:${senderId}`.
+	 * Reply suppression is deliberately decoupled from request-row existence:
+	 * eviction, expiry cleanup, or manual deletion of the requests table must
+	 * not re-arm an unsolicited pairing reply for a sender who was already
+	 * answered within the TTL.
+	 */
+	private readonly pairingReplyClaims = new Map<string, number>();
+
+	/**
+	 * Serializes the read-check-create portion of request admission in this
+	 * runtime. Without this queue, concurrent first messages can all observe a
+	 * free slot and overrun `maxPendingRequests` before any create is visible.
+	 */
+	private pairingRequestAdmissionTail: Promise<void> = Promise.resolve();
+
+	/** Bound on retained reply claims before expired entries are swept. */
+	private static readonly MAX_PAIRING_REPLY_CLAIMS = 4096;
 
 	constructor(runtime: IAgentRuntime, config?: PairingConfig) {
 		super(runtime);
@@ -76,14 +113,25 @@ export class PairingService extends Service {
 	/**
 	 * Generate a random pairing code.
 	 * Uses a human-friendly alphabet that excludes ambiguous characters.
+	 *
+	 * Entropy comes from the platform CSPRNG, never `Math.random()`: a
+	 * predictable code would let an attacker forecast a victim's pending
+	 * pairing code and socially engineer the owner into approving the wrong
+	 * sender. Bytes are rejection-sampled so every alphabet index is equally
+	 * likely (no modulo bias).
 	 */
 	private generateCode(): string {
+		const alphabetLength = PAIRING_CODE_ALPHABET.length;
+		// Largest byte range evenly divisible by the alphabet size; bytes at or
+		// above it are redrawn so no index is favored.
+		const maxUnbiasedByte = 256 - (256 % alphabetLength);
+		const bytes = new Uint8Array(1);
 		let code = "";
-		for (let i = 0; i < this.pairingConfig.codeLength; i++) {
-			const randomIndex = Math.floor(
-				Math.random() * PAIRING_CODE_ALPHABET.length,
-			);
-			code += PAIRING_CODE_ALPHABET[randomIndex];
+		while (code.length < this.pairingConfig.codeLength) {
+			secureRandomFill(bytes);
+			const value = bytes[0] ?? maxUnbiasedByte;
+			if (value >= maxUnbiasedByte) continue;
+			code += PAIRING_CODE_ALPHABET[value % alphabetLength];
 		}
 		return code;
 	}
@@ -251,11 +299,70 @@ export class PairingService extends Service {
 	}
 
 	/**
+	 * Claim the one pairing reply available to a sender per request TTL.
+	 *
+	 * Returns true at most once per `requestTtlMs` window per
+	 * (channel, senderId), no matter how often the sender's request row is
+	 * deleted and recreated in between. This keeps an attacker cycling
+	 * identities on one channel from turning request churn into a sustained
+	 * stream of unsolicited pairing replies from the operator's account.
+	 */
+	claimPairingReply(channel: PairingChannel, senderId: string): boolean {
+		const now = Date.now();
+		const key = `${channel}:${senderId}`;
+		const claimedAt = this.pairingReplyClaims.get(key);
+		if (
+			claimedAt !== undefined &&
+			now - claimedAt < this.pairingConfig.requestTtlMs
+		) {
+			return false;
+		}
+
+		if (
+			this.pairingReplyClaims.size >= PairingService.MAX_PAIRING_REPLY_CLAIMS
+		) {
+			// Lazy bound: drop expired claims first, then the oldest survivors
+			// (Map iteration is insertion-ordered). A claim evicted here simply
+			// re-arms one reply for that sender after a flood — never more.
+			for (const [claimKey, claimedAtMs] of this.pairingReplyClaims) {
+				if (now - claimedAtMs >= this.pairingConfig.requestTtlMs) {
+					this.pairingReplyClaims.delete(claimKey);
+				}
+			}
+			while (
+				this.pairingReplyClaims.size >= PairingService.MAX_PAIRING_REPLY_CLAIMS
+			) {
+				const oldest = this.pairingReplyClaims.keys().next().value;
+				if (oldest === undefined) break;
+				this.pairingReplyClaims.delete(oldest);
+			}
+		}
+
+		this.pairingReplyClaims.set(key, now);
+		return true;
+	}
+
+	/**
 	 * Create or update a pairing request for a sender.
 	 * If the sender already has a pending request, returns the existing code.
 	 * If too many pending requests exist, returns empty code.
 	 */
 	async upsertRequest(
+		params: UpsertPairingRequestParams,
+	): Promise<UpsertPairingRequestResult> {
+		const admitted = this.pairingRequestAdmissionTail.then(() =>
+			this.upsertRequestSerial(params),
+		);
+		// Keep the queue usable after a persistence or CSPRNG failure; the caller
+		// still observes the original rejection through `admitted`.
+		this.pairingRequestAdmissionTail = admitted.then(
+			() => undefined,
+			() => undefined,
+		);
+		return admitted;
+	}
+
+	private async upsertRequestSerial(
 		params: UpsertPairingRequestParams,
 	): Promise<UpsertPairingRequestResult> {
 		const { channel, senderId, metadata } = params;
@@ -285,13 +392,22 @@ export class PairingService extends Service {
 			};
 		}
 
-		// Check if we've hit the max pending requests limit
+		// Reject new senders once the pending queue is full. Pruning the oldest
+		// request to make room let an attacker cycling a handful of identities
+		// continuously evict legitimate senders' pending requests and re-arm a
+		// fresh pairing reply on every repeat message; reject-at-cap keeps the
+		// queue stable until requests expire or are approved.
 		if (existingRequests.length >= this.pairingConfig.maxPendingRequests) {
-			// Prune oldest request to make room
-			const oldest = existingRequests[0];
-			if (oldest) {
-				await this.runtime.deletePairingRequest(oldest.id);
-			}
+			this.runtime.logger.warn(
+				{
+					src: "service:pairing",
+					channel,
+					senderId,
+					maxPendingRequests: this.pairingConfig.maxPendingRequests,
+				},
+				"Rejecting pairing request: pending queue is full",
+			);
+			return { code: "", created: false, request: undefined };
 		}
 
 		// Generate a new unique code

@@ -110,4 +110,27 @@ describe("checkDiscordDmAccess", () => {
 			allowed: true,
 		});
 	});
+
+	it("fails closed to the pairing handshake for an unrecognized policy value", async () => {
+		// A typo'd policy (e.g. DISCORD_DM_POLICY=pariing, or a bad per-account
+		// override) previously fell through every branch to an implicit allow.
+		vi.mocked(checkPairingAllowed).mockResolvedValue({ allowed: false });
+		await expect(
+			check({ dmPolicy: "pariing" as DiscordSettings["dmPolicy"] }),
+		).resolves.toEqual({ allowed: false });
+		expect(checkPairingAllowed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ channel: "discord", senderId: user.id }),
+		);
+	});
+
+	it("fails closed for an unrecognized policy even when pairing is unavailable", async () => {
+		vi.mocked(checkPairingAllowed).mockResolvedValue({
+			allowed: false,
+			replyMessage: undefined,
+		});
+		await expect(
+			check({ dmPolicy: "oppen" as DiscordSettings["dmPolicy"] }),
+		).resolves.toEqual({ allowed: false });
+	});
 });

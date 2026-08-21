@@ -10,6 +10,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -17,38 +18,72 @@ import { payoutStatusService } from "@/lib/services/payout-status";
 import { normalizeRedemptionClientIp } from "@/lib/services/redemption-client-ip";
 import {
   REDEMPTION_ORIGIN_VERIFICATION_ERROR,
+  type SecureRedemptionResult,
   secureTokenRedemptionService,
 } from "@/lib/services/token-redemption-secure";
 import { parseClampedLimit } from "@/lib/utils/clamp-limit";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  type CreateRedemptionSuccessResponse,
+  canonicalizeRedemptionNetwork,
+  type ExplicitCreateRedemptionRequest,
+  type ListRedemptionsResponse,
+  REDEMPTION_MAX_POINTS,
+  REDEMPTION_MIN_POINTS,
+  REDEMPTION_NETWORKS,
+} from "@/types/redemption-contract";
+import { usdFromPoints } from "@/lib/services/earnings-units";
 
 const CreateRedemptionSchema = z.object({
   appId: z.string().uuid().optional(),
   pointsAmount: z
     .number()
     .int()
-    .min(100, "Minimum redemption is 100 points ($1.00)")
-    .max(100000, "Maximum redemption is 100,000 points ($1,000.00)"),
-  network: z.enum(["ethereum", "base", "bnb", "bsc", "solana"]),
-  // Payout asset (#10732). Defaults to USDC (Solana/Base); `eliza` keeps the
-  // compatibility elizaOS-token payout on its multi-chain set.
+    .min(REDEMPTION_MIN_POINTS, "Minimum redemption is 100 points ($1.00)")
+    .max(
+      REDEMPTION_MAX_POINTS,
+      "Maximum redemption is 100,000 points ($1,000.00)",
+    ),
+  network: z.enum(REDEMPTION_NETWORKS),
+  // Preserve the historical raw-wire USDC default (#10732). Quote-coupled
+  // clients send the quote's explicit asset and never rely on this fallback.
   asset: z.enum(["eliza", "usdc"]).optional().default("usdc"),
   payoutAddress: z.string().min(20).max(100),
   signature: z.string().optional(),
   idempotencyKey: z.string().uuid().optional(),
 });
 
-function normalizeRedemptionNetwork(
-  network: z.infer<typeof CreateRedemptionSchema>["network"],
-) {
-  return network === "bsc" ? "bnb" : network;
-}
-
 export function resolveRedemptionClientIp(
   headers: Headers,
 ): string | undefined {
   return normalizeRedemptionClientIp(headers.get("cf-connecting-ip"));
+}
+
+function serializeSuccessfulRedemption(
+  result: SecureRedemptionResult,
+): CreateRedemptionSuccessResponse {
+  if (!result.success || !result.redemptionId) {
+    throw new Error(
+      "Redemption service returned success without a redemption receipt",
+    );
+  }
+
+  return {
+    success: true,
+    redemptionId: result.redemptionId,
+    quote: result.quote
+      ? {
+          ...result.quote,
+          expiresAt: result.quote.expiresAt.toISOString(),
+        }
+      : undefined,
+    warnings: result.warnings,
+    message: result.quote?.requiresReview
+      ? "Redemption created. An admin will review the payout request before tokens are sent."
+      : "Redemption created and will be processed shortly.",
+  };
 }
 
 const app = new Hono<AppEnv>();
@@ -67,31 +102,19 @@ app.options(
     }),
 );
 
-app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
+  let replayCurrentIntent:
+    | (() => Promise<SecureRedemptionResult | null>)
+    | undefined;
   try {
-    if (c.env.REDEMPTION_EMERGENCY_PAUSE === "true") {
-      logger.warn(
-        "[Redemption API] Emergency pause active - rejecting request",
-      );
-      return c.json(
-        {
-          success: false,
-          error:
-            "Redemptions are temporarily paused for maintenance. Please try again later.",
-          paused: true,
-        },
-        503,
-      );
-    }
-
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
       return c.json({ success: false, error: "Invalid JSON body" }, 400);
     }
+    const body = decodedBody.value;
 
     const validation = CreateRedemptionSchema.safeParse(body);
 
@@ -116,8 +139,56 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       signature,
       idempotencyKey,
       asset,
-    } = validation.data;
-    const network = normalizeRedemptionNetwork(validation.data.network);
+    } = validation.data satisfies ExplicitCreateRedemptionRequest;
+    const network = canonicalizeRedemptionNetwork(validation.data.network);
+    replayCurrentIntent = () =>
+      idempotencyKey
+        ? secureTokenRedemptionService.replayRedemption({
+            userId: user.id,
+            appId,
+            pointsAmount,
+            network,
+            asset,
+            payoutAddress,
+            idempotencyKey,
+          })
+        : Promise.resolve(null);
+    const respondToReplay = (replay: SecureRedemptionResult) => {
+      if (!replay.success) {
+        return c.json({ success: false, error: replay.error }, 400);
+      }
+
+      logger.info("[Redemption API] Replayed secure redemption receipt", {
+        redemptionId: replay.redemptionId,
+        userId: `${user.id.slice(0, 8)}...`,
+      });
+      return c.json(serializeSuccessfulRedemption(replay));
+    };
+
+    // Recover a durable receipt before mutable availability/origin gates. This
+    // lets a client whose first response was lost retry the exact request even
+    // if the system was paused, the hot wallet changed state, or the original
+    // trusted IP is no longer available. Authentication and schema validation
+    // still happen first, and user/key/intent matching is enforced by service.
+    const replay = await replayCurrentIntent();
+    if (replay) return respondToReplay(replay);
+
+    if (c.env.REDEMPTION_EMERGENCY_PAUSE === "true") {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return respondToReplay(concurrentReplay);
+      logger.warn(
+        "[Redemption API] Emergency pause active - rejecting request",
+      );
+      return c.json(
+        {
+          success: false,
+          error:
+            "Redemptions are temporarily paused for maintenance. Please try again later.",
+          paused: true,
+        },
+        503,
+      );
+    }
 
     // The network-availability probe reflects the elizaOS hot-wallet status and
     // only applies to elizaOS payouts. USDC payouts (#10732) are guarded by the
@@ -127,6 +198,8 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
         ? { available: true, message: "" }
         : await payoutStatusService.isNetworkAvailable(network);
     if (!networkAvailability.available) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return respondToReplay(concurrentReplay);
       const status = await payoutStatusService.getStatus();
       const availableNetworks = status.networks
         .filter((n) => n.status === "operational" || n.status === "low_balance")
@@ -156,6 +229,8 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const userAgent = c.req.header("user-agent") ?? undefined;
     const ipAddress = resolveRedemptionClientIp(c.req.raw.headers);
     if (!ipAddress) {
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return respondToReplay(concurrentReplay);
       logger.warn("[Redemption API] Missing trusted client IP", {
         userId: `${user.id.slice(0, 8)}...`,
       });
@@ -174,7 +249,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       userId: `${user.id.slice(0, 8)}...`,
       appId,
       pointsAmount,
-      usdValue: (pointsAmount / 100).toFixed(2),
+      usdValue: usdFromPoints(pointsAmount).toFixed(2),
       network,
       payoutAddress: maskedAddress,
       hasSignature: !!signature,
@@ -197,6 +272,12 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     });
 
     if (!result.success) {
+      // A concurrent request can commit while this request is evaluating an
+      // external address/oracle/wallet gate. Prefer the durable writer receipt
+      // before exposing a transient failure for the same exact intent.
+      const concurrentReplay = await replayCurrentIntent();
+      if (concurrentReplay) return respondToReplay(concurrentReplay);
+
       logger.warn("[Redemption API] Secure redemption request failed", {
         userId: `${user.id.slice(0, 8)}...`,
         error: result.error,
@@ -213,16 +294,32 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       requiresReview: result.quote?.requiresReview,
     });
 
-    return c.json({
-      success: true,
-      redemptionId: result.redemptionId,
-      quote: result.quote,
-      warnings: result.warnings,
-      message: result.quote?.requiresReview
-        ? "Redemption created. An admin will review the payout request before tokens are sent."
-        : "Redemption created and will be processed shortly.",
-    });
+    return c.json(serializeSuccessfulRedemption(result));
   } catch (error) {
+    // A thrown provider/DB read can race with the other exact request reaching
+    // a durable commit. Make one final writer read before exposing a 500.
+    if (replayCurrentIntent) {
+      try {
+        const concurrentReplay = await replayCurrentIntent();
+        if (concurrentReplay) {
+          if (!concurrentReplay.success) {
+            return c.json(
+              { success: false, error: concurrentReplay.error },
+              400,
+            );
+          }
+          return c.json(serializeSuccessfulRedemption(concurrentReplay));
+        }
+      } catch (replayError) {
+        logger.error("[Redemption API] Final receipt replay threw", {
+          error:
+            replayError instanceof Error
+              ? replayError.message
+              : String(replayError),
+        });
+      }
+    }
+
     // failureResponse maps unknown throws to a generic 500 and does NOT log; a
     // thrown TWAP-oracle / payout-status / token-availability failure would
     // otherwise leave no trace. Log it so payout failures are diagnosable.
@@ -247,7 +344,7 @@ app.get("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       limit,
     );
 
-    return c.json({
+    const response = {
       success: true,
       redemptions: redemptions.map((r) => ({
         id: r.id,
@@ -255,6 +352,7 @@ app.get("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         usdValue: Number(r.usd_value),
         elizaAmount: Number(r.eliza_amount),
         elizaPriceUsd: Number(r.eliza_price_usd),
+        asset: r.asset,
         network: r.network,
         payoutAddress: `${r.payout_address.slice(0, 6)}...${r.payout_address.slice(-4)}`,
         status: r.status,
@@ -265,7 +363,9 @@ app.get("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         requiresReview: r.requires_review,
       })),
       paused: c.env.REDEMPTION_EMERGENCY_PAUSE === "true",
-    });
+    } satisfies ListRedemptionsResponse;
+
+    return c.json(response);
   } catch (error) {
     return failureResponse(c, error);
   }

@@ -5,6 +5,7 @@
  * client. On the Electrobun desktop it can additionally attach local diagnostics
  * — collected via `../../utils/desktop-bug-report` — and open the logs folder.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -96,6 +97,23 @@ function normalizeHttpsResultUrl(url?: string): string | null {
     // only verifiable https links are shown to the reporter.
     return null;
   }
+}
+
+export function stripBugReportField(s: string, max = 10_000): string {
+  const wellFormed = toWellFormedUnicode(s);
+  const truncated =
+    wellFormed.length > max ? truncateWellFormed(wellFormed, max) : wellFormed;
+  // Iteratively strip `<...>` tags to defeat embedded `<scr<script>ipt>` patterns.
+  let out = truncated;
+  let prev: string;
+  do {
+    prev = out;
+    out = out.replace(/<[^>]*>/g, "");
+  } while (out !== prev);
+  const wellFormedOut = toWellFormedUnicode(out);
+  return wellFormedOut.length > max
+    ? truncateWellFormed(wellFormedOut, max)
+    : wellFormedOut;
 }
 
 export function BugReportModal() {
@@ -239,17 +257,7 @@ export function BugReportModal() {
   }, [buildDiagnosticsBlock, form.logs]);
 
   const formatMarkdown = useCallback((): string => {
-    const strip = (s: string, max = 10_000) => {
-      const truncated = s.length > max ? s.slice(0, max) : s;
-      // Iteratively strip `<...>` tags to defeat embedded `<scr<script>ipt>` patterns.
-      let out = truncated;
-      let prev: string;
-      do {
-        prev = out;
-        out = out.replace(/<[^>]*>/g, "");
-      } while (out !== prev);
-      return out.slice(0, max);
-    };
+    const strip = (s: string, max = 10_000) => stripBugReportField(s, max);
     const lines: string[] = [];
     lines.push(`### Description\n${strip(form.description)}`);
     lines.push(`\n### Steps to Reproduce\n${strip(form.stepsToReproduce)}`);
@@ -325,7 +333,17 @@ export function BugReportModal() {
           ok = false;
         }
         setCopied(ok);
-        await openExternalUrl(result.fallback);
+        // The fallback URL is a wire value — unlike `result.url` above it is
+        // not pre-normalized, so the central guard applies; a rejected target
+        // surfaces the modal's error state (the report stays on the clipboard).
+        if (!(await openExternalUrl(result.fallback))) {
+          setErrorMsg(
+            t("bugreportmodal.invalidFallbackUrl", {
+              defaultValue:
+                "The report link returned by the server is not a valid URL.",
+            }),
+          );
+        }
       }
     } catch (err) {
       setErrorMsg(

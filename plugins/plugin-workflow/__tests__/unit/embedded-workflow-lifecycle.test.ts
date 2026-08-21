@@ -6,6 +6,7 @@ import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import { WORKFLOW_JSON_UNBOUNDED } from '../../src/services/workflow-json';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -104,6 +105,113 @@ afterEach(async () => {
 });
 
 describe('embedded native workflow lifecycle', () => {
+  test('snapshots required fields before reads or persistence', async () => {
+    const { service } = await harness();
+    await expect(
+      service.createWorkflow(null as unknown as WorkflowDefinition)
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    let sourceReads = 0;
+    const unsafe = definition('Unsafe source');
+    Object.defineProperty(unsafe, 'source', {
+      enumerable: true,
+      get() {
+        sourceReads += 1;
+        return 'must not execute';
+      },
+    });
+
+    await expect(service.createWorkflow(unsafe)).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect(sourceReads).toBe(0);
+
+    const oversized = definition('Oversized dependencies');
+    const dependsOn: string[] = [];
+    dependsOn.length = 10_001;
+    const baseStep = oversized.steps?.[0];
+    if (!baseStep) throw new Error('fixture step is required');
+    oversized.steps = [{ ...baseStep, dependsOn }];
+    await expect(service.createWorkflow(oversized)).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect((await service.listWorkflows()).data).toHaveLength(0);
+  });
+
+  test('validates an update before capturing its current revision', async () => {
+    const { service, client } = await harness();
+    const created = await service.createWorkflow({ ...definition('Original'), id: 'ordered' });
+    const cyclic = definition('Invalid');
+    (cyclic as WorkflowDefinition & { cycle?: unknown }).cycle = cyclic;
+
+    await expect(service.updateWorkflow(created.id, cyclic)).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect((await service.getWorkflow(created.id)).name).toBe('Original');
+    expect(
+      (
+        await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM workflow.workflow_revisions WHERE workflow_id = $1',
+          [created.id]
+        )
+      ).rows[0]?.count
+    ).toBe(0);
+
+    const updated = await service.updateWorkflow(created.id, definition('Valid next update'));
+    expect(updated.name).toBe('Valid next update');
+    expect((await service.listWorkflowRevisions(created.id)).data).toHaveLength(1);
+  });
+
+  test('rolls back revision capture when the workflow update fails', async () => {
+    const { service, client } = await harness();
+    const created = await service.createWorkflow({ ...definition('Original'), id: 'atomic' });
+    await client.exec(`
+      ALTER TABLE workflow.embedded_workflows
+      ADD CONSTRAINT reject_failed_update CHECK (name <> 'Rejected update');
+    `);
+
+    await expect(
+      service.updateWorkflow(created.id, definition('Rejected update'))
+    ).rejects.toThrow();
+    expect((await service.getWorkflow(created.id)).name).toBe('Original');
+    expect(
+      (
+        await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM workflow.workflow_revisions WHERE workflow_id = $1',
+          [created.id]
+        )
+      ).rows[0]?.count
+    ).toBe(0);
+
+    const updated = await service.updateWorkflow(created.id, definition('Valid after rollback'));
+    expect(updated.name).toBe('Valid after rollback');
+    expect((await service.listWorkflowRevisions(created.id)).data).toHaveLength(1);
+  });
+
+  test('rejects unsafe workflow JSON before persistence or accessor execution', async () => {
+    const { service } = await harness();
+    let calls = 0;
+    const inputSchema = Object.defineProperty({}, 'secret', {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return 'value';
+      },
+    });
+
+    await expect(
+      service.createWorkflow({ ...definition('Unsafe'), inputSchema, id: 'unsafe' })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect(calls).toBe(0);
+    expect((await service.listWorkflows()).data).toHaveLength(0);
+  });
+
   test('creates, schedules, revises, restores, and deletes a Smithers workflow', async () => {
     const { service, tasks } = await harness();
     const created = await service.createWorkflow({ ...definition('Original'), id: 'review' });

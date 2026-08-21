@@ -143,9 +143,10 @@ describe("useUnifiedTasks", () => {
 
     renderHook(() => useUnifiedTasks());
     await waitFor(() =>
-      expect(listScheduledTasksMock).toHaveBeenCalledWith({
-        ownerVisibleOnly: true,
-      }),
+      expect(listScheduledTasksMock).toHaveBeenCalledWith(
+        { ownerVisibleOnly: true },
+        { timeoutMs: 6_000, signal: expect.any(AbortSignal) },
+      ),
     );
   });
 
@@ -155,10 +156,26 @@ describe("useUnifiedTasks", () => {
 
     renderHook(() => useUnifiedTasks({ ownerVisibleOnly: false }));
     await waitFor(() =>
-      expect(listScheduledTasksMock).toHaveBeenCalledWith({
-        ownerVisibleOnly: false,
-      }),
+      expect(listScheduledTasksMock).toHaveBeenCalledWith(
+        { ownerVisibleOnly: false },
+        { timeoutMs: 6_000, signal: expect.any(AbortSignal) },
+      ),
     );
+  });
+
+  it("aborts both in-flight reads when the hook unmounts", async () => {
+    listAutomationsMock.mockReturnValue(new Promise(() => {}));
+    listScheduledTasksMock.mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = renderHook(() => useUnifiedTasks());
+    await waitFor(() => expect(listAutomationsMock).toHaveBeenCalledTimes(1));
+    const automationSignal = listAutomationsMock.mock.calls[0]?.[0]?.signal;
+    const scheduledSignal = listScheduledTasksMock.mock.calls[0]?.[1]?.signal;
+
+    unmount();
+
+    expect(automationSignal?.aborted).toBe(true);
+    expect(scheduledSignal?.aborted).toBe(true);
   });
 
   it("refresh() re-fetches both sources", async () => {

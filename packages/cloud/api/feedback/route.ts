@@ -1,5 +1,7 @@
-// Handles cloud API feedback route traffic with route-local auth expectations.
+/** Handles cloud API feedback route traffic with route-local auth expectations. */
+
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 /**
  * POST /api/feedback
  * Sends user feedback to the developer email.
@@ -26,7 +28,12 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  const body = await c.req.json();
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const body = decodedBody.value;
   const { name, email, comment } = feedbackSchema.parse(body);
   const timestamp = new Date().toISOString();
   const displayName = name || "Anonymous";

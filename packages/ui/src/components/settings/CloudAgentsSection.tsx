@@ -17,7 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
+import { client, ElizaClient } from "../../api";
 import {
   getCloudAuthToken,
   resolveCloudAgentApiBase,
@@ -241,6 +241,15 @@ export function CloudAgentsSection() {
       });
       const label = agent.agent_name || "Eliza Cloud";
       const status = (agent.status || "").toLowerCase();
+      if (ERROR_STATES.has(status)) {
+        setActionNotice(
+          agent.error_message ||
+            `${label} failed to start. Resolve the failure before connecting.`,
+          "error",
+          5000,
+        );
+        return;
+      }
       // A non-running agent has no live container to talk to — wake it and
       // wait for readiness before binding, so chat doesn't land on a 404.
       if (NON_RUNNING_STATES.has(status)) {
@@ -251,6 +260,7 @@ export function CloudAgentsSection() {
           const outcome = await wakeUntilRunning(agent);
           if (!outcome.ok) {
             setActionNotice(outcome.error, "error", 4000);
+            setBusyId(null);
             return;
           }
         } catch (err) {
@@ -261,15 +271,30 @@ export function CloudAgentsSection() {
             "error",
             4000,
           );
+          setBusyId(null);
           return;
         } finally {
-          setBusyId(null);
           setWakingId(null);
         }
       } else {
         setBusyId(agent.agent_id);
       }
-      bindAndReload(agent.agent_id, apiBase, label);
+      try {
+        // Probe with an isolated client. Mutating the shared singleton or the
+        // persisted target before this succeeds would strand the whole shell
+        // on a failed/unreachable agent after reload.
+        const targetClient = new ElizaClient(apiBase, currentCloudToken());
+        await targetClient.listConversations();
+        bindAndReload(agent.agent_id, apiBase, label);
+      } catch {
+        setActionNotice(
+          `Could not connect to ${label}. Your current agent is still active.`,
+          "error",
+          5000,
+        );
+      } finally {
+        setBusyId(null);
+      }
     },
     [activeId, cloudApiBase, bindAndReload, setActionNotice, wakeUntilRunning],
   );

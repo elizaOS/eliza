@@ -1,0 +1,71 @@
+name: Android ARM64 Local Runtime E2E
+
+# Physical-device proof for the embedded Bun + GGUF runtime (#13580). This is
+# deliberately separate from the hosted x86_64 emulator: the hosted image can
+# prove remote-host WebView behavior but cannot execute the on-device runtime.
+# The self-hosted runner must carry all four labels below and the pinned tools;
+# preflight fails before build if either the host or attached Android target is
+# not ARM64. No voice probe runs here because ASR/TTS model provisioning is an
+# independent hardware contract.
+
+on:
+  schedule:
+    - cron: "47 10 * * 1"
+
+concurrency:
+  # This persistent physical-device runner is deliberately schedule-only. An
+  # arbitrary-ref workflow_dispatch would let branch-controlled workflow code
+  # execute on the runner, and cancellation could interrupt an APK install or
+  # leave the attached device between test states.
+  group: android-arm64-local-e2e
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
+  ELIZA_WEBVIEW_DEBUG: "1"
+  ELIZA_BUN_RISCV64_OPTIONAL: "1"
+  ELIZA_ANDROID_BACKEND: "local"
+  ELIZA_ANDROID_REQUIRE_AGENT: "1"
+  ELIZA_PAIRING_DISABLED: "1"
+  ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
+
+jobs:
+  android-arm64-local-runtime:
+    name: ARM64 local agent + WebView bundle
+    runs-on: [self-hosted, Linux, ARM64, android-device]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+
+      - name: Fail-closed ARM64 device preflight
+        run: |
+          mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs"
+          bash .github/scripts/device-e2e/arm64-local-preflight.sh 2>&1 \
+            | tee "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local/logs/arm64-preflight.log"
+
+      - name: Install pinned workspace
+        run: bun install --frozen-lockfile
+
+      - name: Local runtime and WebView bundle
+        run: >-
+          node packages/app/scripts/android-e2e.mjs
+          --build
+          --no-emulator-boot
+          --arm64-local-probes
+          --output "$ELIZA_DEVICE_BUNDLE_ROOT/android-arm64-local"
+
+      - name: Upload ARM64 local-runtime bundle
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-arm64-local-runtime-bundle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: device-e2e-artifacts/android-arm64-local/**
+          if-no-files-found: error
+          retention-days: 14

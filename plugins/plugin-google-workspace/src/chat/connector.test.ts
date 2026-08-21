@@ -6,7 +6,12 @@
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
-import { GoogleChatConfigurationError } from "./types.js";
+import {
+  GoogleChatApiError,
+  GoogleChatConfigurationError,
+  MAX_GOOGLE_CHAT_MESSAGE_LENGTH,
+  splitMessageForGoogleChat,
+} from "./types.js";
 
 describe("Google Chat message connector", () => {
   function runtime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
@@ -49,6 +54,17 @@ describe("Google Chat message connector", () => {
     return service;
   }
 
+  function serviceWithFetch(fetchImpl: typeof fetch): GoogleChatService {
+    const service = serviceWithState();
+    Object.assign(service, {
+      fetchImpl,
+      chatTimeoutMs: 1_000,
+      runtime: undefined,
+    });
+    vi.spyOn(service, "getAccessToken").mockResolvedValue("test-token");
+    return service;
+  }
+
   it("stays dormant without configuration so RECENT_ERRORS receives no service-start failure", async () => {
     const reportError = vi.fn();
     const runtimeInstance = runtime({
@@ -85,12 +101,40 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("does not let a named account inherit owner application-default credentials", async () => {
+    const previous = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/owner/application-default.json";
+    try {
+      const runtimeInstance = runtime({
+        getSetting: vi.fn((key: string) =>
+          key === "GOOGLE_CHAT_ACCOUNTS"
+            ? JSON.stringify({
+                workspace: {
+                  enabled: true,
+                  audience: "https://example.com/googlechat",
+                },
+              })
+            : null
+        ),
+        reportError: vi.fn(),
+      });
+
+      await expect(GoogleChatService.start(runtimeInstance)).rejects.toBeInstanceOf(
+        GoogleChatConfigurationError
+      );
+    } finally {
+      if (previous === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    }
+  });
+
   it("registers connector metadata and routes space sends", async () => {
     const runtimeInstance = runtime();
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
     (service as { settings: { accountId: string } }).settings = {
       accountId: "workspace",
     };
+    (service as { auth: object }).auth = {};
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, space: "spaces/AAA" });
@@ -262,6 +306,56 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("sends long text chunks in order with thread metadata and one attachment", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const service = serviceWithFetch(async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ name: `spaces/AAA/messages/${requests.length}` });
+    });
+    const text = "🙂".repeat(2_500);
+
+    const result = await service.sendMessage({
+      accountId: "workspace",
+      space: "spaces/AAA",
+      thread: "spaces/AAA/threads/T1",
+      text,
+      attachments: [{ attachmentUploadToken: "upload-token", contentName: "file.txt" }],
+    });
+
+    expect(requests).toHaveLength(2);
+    const sentText = requests.map((request) => String(request.text));
+    expect(sentText.join("")).toBe(text);
+    expect(sentText.every((chunk) => chunk.length <= 4_000)).toBe(true);
+    expect(sentText.every((chunk) => chunk.isWellFormed())).toBe(true);
+    expect(requests.map((request) => request.thread)).toEqual([
+      { name: "spaces/AAA/threads/T1" },
+      { name: "spaces/AAA/threads/T1" },
+    ]);
+    expect(requests[0].attachment).toHaveLength(1);
+    expect(requests[1]).not.toHaveProperty("attachment");
+    expect(result.messageName).toBe("spaces/AAA/messages/2");
+  });
+
+  it("stops long-message delivery on the first provider failure", async () => {
+    let requestCount = 0;
+    const service = serviceWithFetch(async () => {
+      requestCount += 1;
+      return requestCount === 2
+        ? new Response("quota exceeded", { status: 429 })
+        : Response.json({ name: `spaces/AAA/messages/${requestCount}` });
+    });
+
+    await expect(
+      service.sendMessage({
+        accountId: "workspace",
+        space: "spaces/AAA",
+        text: "🙂".repeat(4_500),
+      })
+    ).rejects.toBeInstanceOf(GoogleChatApiError);
+
+    expect(requestCount).toBe(2);
+  });
+
   it("validates reaction, edit, and delete mutation parameters before API calls", async () => {
     const runtimeInstance = runtime();
     const service = serviceWithState();
@@ -285,5 +379,54 @@ describe("Google Chat message connector", () => {
     expect(sendReaction).not.toHaveBeenCalled();
     expect(updateMessage).not.toHaveBeenCalled();
     expect(deleteMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("splitMessageForGoogleChat surrogate pair safety", () => {
+  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", () => {
+    const text = `a${"🙂".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH)}`;
+
+    const chunks = splitMessageForGoogleChat(text);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(MAX_GOOGLE_CHAT_MESSAGE_LENGTH);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("returns original text when under maxLength", () => {
+    expect(splitMessageForGoogleChat("hello")).toEqual(["hello"]);
+  });
+
+  it("keeps the exact provider boundary and chunks one unit beyond it", () => {
+    const exact = "a".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH);
+    expect(splitMessageForGoogleChat(exact)).toEqual([exact]);
+
+    const over = `${exact}b`;
+    const chunks = splitMessageForGoogleChat(over);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([4_000, 1]);
+    expect(chunks.join("")).toBe(over);
+  });
+
+  it("does not let a whitespace break exceed the provider limit", () => {
+    const chunks = splitMessageForGoogleChat(`${"a".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH)} b`);
+    expect(chunks.every((chunk) => chunk.length <= 4_000)).toBe(true);
+    expect(chunks).toEqual(["a".repeat(4_000), "b"]);
+  });
+
+  it.each([1, 0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid maxLength %s instead of stalling",
+    (maxLength) => {
+      expect(() => splitMessageForGoogleChat("🙂x", maxLength)).toThrow(
+        "maxLength must be an integer of at least 2"
+      );
+    }
+  );
+
+  it("replaces pre-existing lone surrogates before returning wire text", () => {
+    const chunks = splitMessageForGoogleChat(`\uD83Dvalid\uDC00`);
+    expect(chunks).toEqual(["�valid�"]);
+    expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
   });
 });

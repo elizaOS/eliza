@@ -87,6 +87,10 @@ import { RecentAuditEvents } from "./recent-audit-events";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PRIVACY_PANEL_SOURCE = path.join(HERE, "privacy-panel.tsx");
+const ACCOUNT_DELETION_DIALOG_SOURCE = path.join(
+  HERE,
+  "account-deletion-dialog.tsx",
+);
 
 describe("account-security panels", () => {
   beforeEach(() => {
@@ -222,13 +226,16 @@ describe("account-security panels", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("keeps DSR controls disabled without wiring missing export/delete endpoints", () => {
+  it("keeps export unavailable while wiring the real account-deletion endpoint", () => {
     const source = readFileSync(PRIVACY_PANEL_SOURCE, "utf8");
+    const deletionDialog = readFileSync(ACCOUNT_DELETION_DIALOG_SOURCE, "utf8");
 
     expect(source).toContain("Export unavailable");
-    expect(source).toContain("Deletion unavailable");
-    expect(source).toContain('data-testid="delete-account-trigger"');
+    expect(source).toContain("<AccountDeletionDialog />");
+    expect(source).not.toContain("Deletion unavailable");
+    expect(deletionDialog).toContain('data-testid="delete-account-trigger"');
+    expect(deletionDialog).toContain("submitAccountDeletion");
     expect(source).not.toContain("/api/v1/me/export");
-    expect(source).not.toContain("/api/v1/me/delete-request");
+    expect(deletionDialog).not.toContain("/api/v1/me/delete-request");
   });
 });

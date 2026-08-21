@@ -97,7 +97,7 @@ export class GoogleCalendarClient {
 
   async listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]> {
     const calendars: GoogleCalendarListEntry[] = [];
-    const seenPageTokens = new Set<string>();
+    const pagination = createCalendarPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -111,7 +111,7 @@ export class GoogleCalendarClient {
       calendars.push(
         ...page.calendars.filter((entry) => entry.deleted !== true && entry.hidden !== true)
       );
-      pageToken = nextPageToken(page.nextPageToken, seenPageTokens, "calendar list");
+      pageToken = nextPageToken(page.nextPageToken, pagination, "calendar list");
     } while (pageToken);
 
     return calendars;
@@ -180,7 +180,7 @@ export class GoogleCalendarClient {
   ): Promise<GoogleCalendarEvent[]> {
     validatePageSize(params.limit, EVENT_LIST_PAGE_SIZE, "event list");
     const events: GoogleCalendarEvent[] = [];
-    const seenPageTokens = new Set<string>();
+    const pagination = createCalendarPaginationState();
     let pageToken: string | undefined;
 
     do {
@@ -198,7 +198,7 @@ export class GoogleCalendarClient {
         orderBy: "startTime",
       });
       events.push(...page.events);
-      pageToken = nextPageToken(page.nextPageToken, seenPageTokens, "event list");
+      pageToken = nextPageToken(page.nextPageToken, pagination, "event list");
     } while (pageToken);
 
     return events;
@@ -916,22 +916,44 @@ function normalizedToken(value: string | null | undefined): string | null {
   return normalized ? normalized : null;
 }
 
+const MAX_GOOGLE_CALENDAR_PAGES = 1_000;
+
+interface CalendarPaginationState {
+  pageCount: number;
+  seenPageTokens: Set<string>;
+}
+
+function createCalendarPaginationState(): CalendarPaginationState {
+  return { pageCount: 0, seenPageTokens: new Set<string>() };
+}
+
 function nextPageToken(
   value: string | null,
-  seen: Set<string>,
+  state: CalendarPaginationState,
   resource: string
 ): string | undefined {
+  state.pageCount += 1;
   if (!value) {
     return undefined;
   }
-  if (seen.has(value)) {
+  if (state.seenPageTokens.has(value)) {
     throw new ElizaError(`Google Calendar repeated a ${resource} page token.`, {
       code: "GOOGLE_CALENDAR_PAGINATION_LOOP",
       context: { resource },
       severity: "fatal",
     });
   }
-  seen.add(value);
+  if (state.pageCount >= MAX_GOOGLE_CALENDAR_PAGES) {
+    throw new ElizaError(
+      `Google Calendar ${resource} pagination exceeded ${MAX_GOOGLE_CALENDAR_PAGES} pages.`,
+      {
+        code: "GOOGLE_CALENDAR_PAGINATION_LIMIT_EXCEEDED",
+        context: { maxPages: MAX_GOOGLE_CALENDAR_PAGES, resource },
+        severity: "fatal",
+      }
+    );
+  }
+  state.seenPageTokens.add(value);
   return value;
 }
 

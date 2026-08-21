@@ -11,6 +11,7 @@ import type {
   TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
   TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
   TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+  TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
@@ -553,9 +554,9 @@ export interface TrajectoryLlmCall extends CoreTrajectoryLlmCallRecord {
   stepId: string;
   timestamp: number;
   model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  response: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  response?: string;
   temperature: number;
   maxTokens: number;
   purpose: string;
@@ -806,6 +807,7 @@ export interface TrajectoryDetailResult {
   trajectory: TrajectoryRecord;
   llmCalls: TrajectoryLlmCall[];
   providerAccesses: TrajectoryProviderAccess[];
+  semanticStages?: TrajectorySemanticStageRecord[];
   events?: TrajectoryEvent[];
   contextEvents?: ContextEvent[];
   toolEvents?: NativeToolCallEvent[];

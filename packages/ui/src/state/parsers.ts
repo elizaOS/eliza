@@ -423,6 +423,7 @@ export function formatSearchBullet(label: string, items: string[]): string {
 export function asApiLikeError(err: unknown): ApiLikeError | null {
   if (!isRecord(err)) return null;
   const kind = err.kind;
+  const code = err.code;
   const status = err.status;
   const path = err.path;
   const message = err.message;
@@ -433,6 +434,7 @@ export function asApiLikeError(err: unknown): ApiLikeError | null {
   if (!hasApiShape) return null;
   return {
     kind: typeof kind === "string" ? kind : undefined,
+    code: typeof code === "string" ? code : undefined,
     status: typeof status === "number" ? status : undefined,
     path: typeof path === "string" ? path : undefined,
     message: typeof message === "string" ? message : undefined,

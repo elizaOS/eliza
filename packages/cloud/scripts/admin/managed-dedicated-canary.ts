@@ -92,6 +92,8 @@ const PRIVACY_SAFE_FAILURE_PHASES = new Set([
 const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "invalid_run_suffix",
   "invalid_stale_canary_suffix",
+  "invalid_expected_deploy_commit",
+  "deployed_commit_changed",
   "error_event",
   "unexpected_error",
   "request_failed",
@@ -131,7 +133,8 @@ const PRIVACY_SAFE_FAILURE_CODES = new Set([
 ]);
 
 export interface ManagedDedicatedCanaryEvidence {
-  schemaVersion: 2;
+  schemaVersion: 3;
+  operation: "canary" | "cleanup-only";
   verdict: "pass" | "fail";
   deployedCommit: string | null;
   path: {
@@ -182,6 +185,8 @@ export interface ManagedDedicatedCanaryOptions {
   createRecoveryTimeoutMs?: number;
   createRecoveryPollIntervalMs?: number;
   staleCanarySuffix?: string;
+  cleanupOnly?: boolean;
+  expectedDeployCommit?: string;
 }
 
 class CanaryFailure extends Error {
@@ -367,9 +372,12 @@ function sseText(event: string, data: JsonObject | null): string {
   return "";
 }
 
-function freshEvidence(): ManagedDedicatedCanaryEvidence {
+function freshEvidence(
+  operation: ManagedDedicatedCanaryEvidence["operation"],
+): ManagedDedicatedCanaryEvidence {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    operation,
     verdict: "fail",
     deployedCommit: null,
     path: {
@@ -459,6 +467,7 @@ export function validateManagedDedicatedCanaryArtifact(
     "evidence",
     [
       "schemaVersion",
+      "operation",
       "verdict",
       "deployedCommit",
       "path",
@@ -472,7 +481,13 @@ export function validateManagedDedicatedCanaryArtifact(
   );
   if (!evidence) return errors;
 
-  if (evidence.schemaVersion !== 2) errors.push("unsafe_schema_version");
+  if (evidence.schemaVersion !== 3) errors.push("unsafe_schema_version");
+  if (
+    evidence.operation !== "canary" &&
+    evidence.operation !== "cleanup-only"
+  ) {
+    errors.push("unsafe_operation");
+  }
   if (evidence.verdict !== "pass" && evidence.verdict !== "fail") {
     errors.push("unsafe_verdict");
   }
@@ -702,7 +717,8 @@ export function validateManagedDedicatedCanaryEvidence(
   if (!isRecord(value)) return ["evidence_not_an_object"];
   const evidence = value as unknown as ManagedDedicatedCanaryEvidence;
   const errors: string[] = [];
-  if (evidence.schemaVersion !== 2) errors.push("wrong_schema_version");
+  if (evidence.schemaVersion !== 3) errors.push("wrong_schema_version");
+  if (evidence.operation !== "canary") errors.push("wrong_operation");
   if (evidence.verdict !== "pass") errors.push("verdict_not_pass");
   if (!/^[a-f0-9]{40}$/.test(evidence.deployedCommit ?? "")) {
     errors.push("missing_deployed_commit");
@@ -772,6 +788,82 @@ export function validateManagedDedicatedCanaryEvidence(
   return errors;
 }
 
+/**
+ * Independent cleanup-only pass validator. A cleanup artifact is intentionally
+ * distinct from the full live canary proof: it must prove one conditional
+ * deletion and the complete absence of create, readiness, or inference work.
+ */
+export function validateManagedDedicatedCanaryCleanupEvidence(
+  value: unknown,
+): string[] {
+  const errors = validateManagedDedicatedCanaryArtifact(value);
+  if (!isRecord(value)) return [...errors, "evidence_not_an_object"];
+  const evidence = value as unknown as ManagedDedicatedCanaryEvidence;
+  if (evidence.schemaVersion !== 3) errors.push("wrong_schema_version");
+  if (evidence.operation !== "cleanup-only") errors.push("wrong_operation");
+  if (evidence.verdict !== "pass") errors.push("verdict_not_pass");
+  if (!/^[a-f0-9]{40}$/.test(evidence.deployedCommit ?? "")) {
+    errors.push("missing_deployed_commit");
+  }
+  if (
+    evidence.recovery?.requested !== true ||
+    evidence.recovery?.match !== "one" ||
+    evidence.recovery?.performed !== "accepted" ||
+    evidence.recovery?.confirmed !== true
+  ) {
+    errors.push("cleanup_recovery_not_proven");
+  }
+  if (
+    evidence.capacity?.maxCreatedAgents !== MAX_CREATED_AGENTS ||
+    evidence.capacity?.createdAgents !== 0
+  ) {
+    errors.push("cleanup_created_agent");
+  }
+  if (
+    evidence.capacity?.maxChatRequests !== MAX_CHAT_ATTEMPTS_PER_PATH * 2 ||
+    evidence.capacity?.chatRequests !== 0
+  ) {
+    errors.push("cleanup_chat_request");
+  }
+  if (
+    evidence.path?.requestedTier !== EXPECTED_TIER ||
+    evidence.path?.observedTier !== null ||
+    evidence.path?.running !== false ||
+    evidence.path?.databaseReady !== false ||
+    evidence.path?.heartbeatFresh !== false ||
+    evidence.path?.meshAddressPresent !== false ||
+    evidence.path?.bridgeTransport !== null ||
+    evidence.path?.sseCompleted !== false ||
+    evidence.path?.successfulPaths !== 0
+  ) {
+    errors.push("cleanup_live_path_executed");
+  }
+  if (evidence.cleanup?.status !== "passed") {
+    errors.push("cleanup_not_passed");
+  }
+  if (evidence.cleanup?.possibleOrphan !== false) {
+    errors.push("possible_orphan_present");
+  }
+  if (evidence.failure !== null) errors.push("failure_present");
+  for (const phase of [
+    "health",
+    "capacityGuard",
+    "cleanup",
+    "total",
+  ] as const) {
+    const timing = evidence.timingsMs?.[phase];
+    if (typeof timing !== "number" || !Number.isFinite(timing) || timing < 0) {
+      errors.push(`invalid_timing_${phase}`);
+    }
+  }
+  for (const phase of ["create", "ready", "bridge", "sse"] as const) {
+    if (Object.hasOwn(evidence.timingsMs ?? {}, phase)) {
+      errors.push(`unexpected_timing_${phase}`);
+    }
+  }
+  return [...new Set(errors)];
+}
+
 function asFailure(error: unknown): CanaryFailure {
   return error instanceof CanaryFailure
     ? error
@@ -838,7 +930,8 @@ async function inTimedPhase<T>(
 export async function runManagedDedicatedCanary(
   options: ManagedDedicatedCanaryOptions,
 ): Promise<ManagedDedicatedCanaryEvidence> {
-  const evidence = freshEvidence();
+  const cleanupOnly = options.cleanupOnly === true;
+  const evidence = freshEvidence(cleanupOnly ? "cleanup-only" : "canary");
   const totalDone = timedPhase(evidence, "total", options.now ?? Date.now);
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
@@ -857,6 +950,7 @@ export async function runManagedDedicatedCanary(
     options.suffix ??
     `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
   const rawStaleCanarySuffix = options.staleCanarySuffix;
+  const expectedDeployCommit = options.expectedDeployCommit?.trim() ?? "";
   let suffix = "";
   let expectedName = "";
   let staleCanarySuffix: string | null = null;
@@ -968,6 +1062,7 @@ export async function runManagedDedicatedCanary(
             expectedAgentName: expectedStaleName,
             expectedCreatedAt: staleCreatedAt,
             expectedExecutionTier: EXPECTED_TIER,
+            ...(cleanupOnly ? { expectedDeployCommit } : {}),
           }),
         },
         [200, 202, 404],
@@ -1298,7 +1393,10 @@ export async function runManagedDedicatedCanary(
             "possible_orphan_after_ambiguous_create",
           );
         }
-        evidence.cleanup.status = "not-required";
+        evidence.cleanup.status =
+          cleanupOnly && evidence.recovery.confirmed
+            ? "passed"
+            : "not-required";
         evidence.cleanup.possibleOrphan = false;
         return;
       }
@@ -1341,6 +1439,7 @@ export async function runManagedDedicatedCanary(
             expectedAgentName: expectedName,
             expectedCreatedAt: cleanupCreatedAt,
             expectedExecutionTier: cleanupExecutionTier,
+            ...(cleanupOnly ? { expectedDeployCommit } : {}),
           }),
         },
         [200, 202, 404],
@@ -1382,6 +1481,12 @@ export async function runManagedDedicatedCanary(
   try {
     suffix = sanitizeSuffix(rawSuffix);
     staleCanarySuffix = validateStaleCanarySuffix(rawStaleCanarySuffix);
+    if (cleanupOnly && staleCanarySuffix === null) {
+      throw new CanaryFailure("config", "invalid_stale_canary_suffix");
+    }
+    if (cleanupOnly && !/^[a-f0-9]{40}$/.test(expectedDeployCommit)) {
+      throw new CanaryFailure("config", "invalid_expected_deploy_commit");
+    }
     evidence.recovery.requested = staleCanarySuffix !== null;
     expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
     if (!apiKey) {
@@ -1398,6 +1503,9 @@ export async function runManagedDedicatedCanary(
         throw new CanaryFailure("health", "missing_deploy_commit");
       }
       evidence.deployedCommit = deployedCommit;
+      if (cleanupOnly && deployedCommit !== expectedDeployCommit) {
+        throw new CanaryFailure("health", "deployed_commit_changed");
+      }
     });
 
     await inTimedPhase(evidence, "capacityGuard", now, async () => {
@@ -1436,6 +1544,11 @@ export async function runManagedDedicatedCanary(
       }
       evidence.recovery.confirmed = true;
     });
+
+    if (cleanupOnly) {
+      evidence.verdict = "pass";
+      return evidence;
+    }
 
     const createDone = timedPhase(evidence, "create", now);
     let readinessDeadline = now() + readyTimeoutMs;
@@ -1544,6 +1657,10 @@ async function main(): Promise<void> {
     staleCanarySuffix: workflowEnv(
       "CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX",
     ),
+    cleanupOnly: workflowEnv("CLOUD_DEDICATED_CANARY_CLEANUP_ONLY") === "true",
+    expectedDeployCommit: workflowEnv(
+      "CLOUD_DEDICATED_CANARY_EXPECTED_DEPLOY_COMMIT",
+    ),
   });
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, {
     mode: 0o600,
@@ -1552,7 +1669,7 @@ async function main(): Promise<void> {
   // Keep stdout privacy-safe and compact. The artifact contains the exact
   // timing/path fields; no raw request or model data is ever printed.
   console.log(
-    `[dedicated-canary] verdict=${evidence.verdict} paths=${evidence.path.successfulPaths}/2 cleanup=${evidence.cleanup.status} possibleOrphan=${evidence.cleanup.possibleOrphan}`,
+    `[dedicated-canary] operation=${evidence.operation} verdict=${evidence.verdict} paths=${evidence.path.successfulPaths}/2 cleanup=${evidence.cleanup.status} possibleOrphan=${evidence.cleanup.possibleOrphan}`,
   );
   if (evidence.verdict !== "pass") process.exitCode = 1;
 }

@@ -124,6 +124,26 @@ describe("VirtualFilesystemService", () => {
     });
   });
 
+  it("serializes concurrent writes so quota cannot be exceeded", async () => {
+    const first = service({ quotaBytes: 10, maxFileBytes: 10 });
+    const second = service({ quotaBytes: 10, maxFileBytes: 10 });
+    await first.initialize();
+
+    const results = await Promise.allSettled([
+      first.writeFile("a.txt", "12345678"),
+      second.writeFile("b.txt", "12345678"),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected?.reason).toMatchObject({ code: "QUOTA_EXCEEDED" });
+    await expect(first.quota()).resolves.toMatchObject({ usedBytes: 8 });
+  });
+
   it("creates snapshots and diffs current changes", async () => {
     const vfs = service();
     await vfs.initialize();

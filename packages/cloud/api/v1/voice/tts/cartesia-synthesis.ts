@@ -212,6 +212,16 @@ export function makeWorkersCartesiaWebSocketFactory(): CartesiaWebSocketFactory 
             }) => void,
           );
       },
+      removeEventListener(type: string, listener: unknown) {
+        const remove = <T>(listeners: T[], target: unknown): void => {
+          const index = listeners.indexOf(target as T);
+          if (index !== -1) listeners.splice(index, 1);
+        };
+        if (type === "open") remove(openListeners, listener);
+        else if (type === "message") remove(messageListeners, listener);
+        else if (type === "error") remove(errorListeners, listener);
+        else if (type === "close") remove(closeListeners, listener);
+      },
     } as CartesiaWebSocketLike;
     return wrapper;
   };

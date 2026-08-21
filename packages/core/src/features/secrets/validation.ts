@@ -6,6 +6,7 @@
  */
 
 import { logger } from "../../logger.ts";
+import { fetchWithSsrfGuard } from "../../network/fetch-guard.ts";
 import type {
 	CustomValidator,
 	ValidationResult,
@@ -243,20 +244,29 @@ export const ValidationStrategies: Record<string, CustomValidator> = {
 		}
 
 		try {
-			const response = await fetch(value, {
-				method: "HEAD",
-				signal: AbortSignal.timeout(5000),
+			// Reachability probes go through the SSRF guard (DNS-pinned, literal
+			// private/loopback hosts blocked, no redirect hops) so a stored secret
+			// URL can never turn validation into an internal network probe.
+			const { response, release } = await fetchWithSsrfGuard({
+				url: value,
+				init: { method: "HEAD" },
+				maxRedirects: 0,
+				timeoutMs: 5000,
 			});
 
-			if (!response.ok) {
-				return {
-					isValid: false,
-					error: `URL returned status ${response.status}`,
-					validatedAt,
-				};
-			}
+			try {
+				if (!response.ok) {
+					return {
+						isValid: false,
+						error: `URL returned status ${response.status}`,
+						validatedAt,
+					};
+				}
 
-			return { isValid: true, validatedAt };
+				return { isValid: true, validatedAt };
+			} finally {
+				await release();
+			}
 		} catch (error) {
 			// error-policy:J3 reachability is itself the validation probe; transport
 			// failure becomes a structured invalid result carrying the cause text.

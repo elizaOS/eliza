@@ -63,7 +63,9 @@ async function mintToken(
       // The gate only applies to bridge-issued tokens, so gate cases mint with
       // the same `bridged` stamp the sso-bridge exchange re-mint applies.
       { userId, expiration: 0, issuedAt: 0, bridged: opts.bridged === true },
-      3600 - iatOffsetSec,
+      // Keep the signed issued lifetime at the production one-hour contract.
+      // The clock shift exists only to order the token around the logout mark.
+      3600,
     );
     if (!minted) throw new Error("test token mint failed");
     return minted.token;

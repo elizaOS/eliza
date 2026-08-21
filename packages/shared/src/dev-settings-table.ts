@@ -8,6 +8,8 @@
  * observability, not end-user product UI).
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 export type DevSettingsRow = {
   setting: string;
   effective: string;
@@ -35,10 +37,11 @@ export type DevSettingsTableOptions = {
   narrowFrame?: boolean;
 };
 
-function truncateCell(value: string, maxWidth: number): string {
-  if (value.length <= maxWidth) return value;
-  if (maxWidth < 2) return value.slice(0, maxWidth);
-  return `${value.slice(0, maxWidth - 1)}…`;
+export function truncateCell(value: string, maxWidth: number): string {
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= maxWidth) return wellFormed;
+  if (maxWidth < 2) return truncateWellFormed(wellFormed, maxWidth);
+  return `${truncateWellFormed(wellFormed, maxWidth - 1)}…`;
 }
 
 /** Word-wrap to at most `width` columns; breaks on spaces, then hard-breaks long tokens. */
@@ -84,12 +87,14 @@ function emitLabeledLines(
   return out;
 }
 
-function boxTopRule(title: string, outer: number): string {
+export function boxTopRule(title: string, outer: number): string {
   const inner = outer - 2;
-  if (inner < 4) return title.slice(0, Math.max(0, outer));
+  if (inner < 4)
+    return truncateWellFormed(toWellFormedUnicode(title), Math.max(0, outer));
   const maxTitle = Math.max(1, inner - 4);
-  let t = title;
-  if (t.length > maxTitle) t = `${t.slice(0, Math.max(1, maxTitle - 1))}…`;
+  let t = toWellFormedUnicode(title);
+  if (t.length > maxTitle)
+    t = `${truncateWellFormed(t, Math.max(1, maxTitle - 1))}…`;
   const padDash = inner - 2 - t.length;
   const left = Math.max(0, Math.floor(padDash / 2));
   const right = Math.max(0, padDash - left);
@@ -111,11 +116,14 @@ function boxEmptyRow(outer: number): string {
   return `│${" ".repeat(inner)}│`;
 }
 
-function boxRow(line: string, outer: number): string {
+export function boxRow(line: string, outer: number): string {
   const inner = outer - 2;
   const maxMid = Math.max(0, inner - 4);
+  const wellFormed = toWellFormedUnicode(line);
   const vis =
-    line.length > maxMid ? `${line.slice(0, Math.max(0, maxMid - 1))}…` : line;
+    wellFormed.length > maxMid
+      ? `${truncateWellFormed(wellFormed, Math.max(0, maxMid - 1))}…`
+      : wellFormed;
   const pad = maxMid - vis.length;
   return `│ ${vis}${" ".repeat(pad)} │`;
 }

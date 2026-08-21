@@ -1,8 +1,8 @@
 /**
  * Exercises organization storage reservations through the real repository,
- * schema, and quota migration on isolated in-process PGlite. The harness
- * installs only the prerequisite organization shape and quota DDL, so bigint
- * arithmetic and concurrent admission run without repository mocks.
+ * schema, and quota migrations on isolated in-process PGlite. The harness
+ * installs only the prerequisite organization shape and quota-table DDL, so
+ * bigint arithmetic and concurrent admission run without repository mocks.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -19,6 +19,10 @@ const PGLITE_TIMEOUT_MS = 60_000;
 const QUOTA_MIGRATION_PATH = join(
   import.meta.dir,
   "../../migrations/0102_add_org_storage_quota.sql",
+);
+const NATIVE_CATALOG_MIGRATION_PATH = join(
+  import.meta.dir,
+  "../../migrations/0256_org_storage_native_objects.sql",
 );
 
 let closeDatabaseConnectionsForTests:
@@ -58,6 +62,20 @@ beforeAll(async () => {
     }
   }
 
+  const nativeCatalogMigration = readFileSync(NATIVE_CATALOG_MIGRATION_PATH, "utf8");
+  const reconciliationDdl = nativeCatalogMigration
+    .split("--> statement-breakpoint")
+    .map((statement) => statement.trim())
+    .find(
+      (statement) =>
+        statement.startsWith('ALTER TABLE "org_storage_quota"') &&
+        statement.includes('ADD COLUMN "native_catalog_reconciled_at"'),
+    );
+  if (reconciliationDdl === undefined) {
+    throw new Error("Native-catalog migration is missing the quota reconciliation column DDL");
+  }
+  await dbWrite.execute(sql.raw(reconciliationDdl));
+
   ({ orgStorageQuotaRepository: repository } = await import("../org-storage-quota"));
 }, PGLITE_TIMEOUT_MS);
 
@@ -74,6 +92,28 @@ afterAll(async () => {
 });
 
 describe("OrgStorageQuotaRepository", () => {
+  test("matches the nullable native-catalog reconciliation column without installing its catalog", async () => {
+    const column = await dbWrite.execute(sql`
+      SELECT data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'org_storage_quota'
+        AND column_name = 'native_catalog_reconciled_at'
+    `);
+    expect(column.rows).toEqual([
+      {
+        data_type: "timestamp with time zone",
+        is_nullable: "YES",
+        column_default: null,
+      },
+    ]);
+
+    const unrelatedCatalog = await dbWrite.execute(sql`
+      SELECT to_regclass('public.org_storage_objects')::text AS relation
+    `);
+    expect(unrelatedCatalog.rows).toEqual([{ relation: null }]);
+  });
+
   test("reserves and releases bigint byte counts exactly, clamping releases at zero", async () => {
     const exactBytes = 9_007_199_254_740_993n;
     await repository.setBytesLimit(ORGANIZATION_ID, exactBytes + 10n);

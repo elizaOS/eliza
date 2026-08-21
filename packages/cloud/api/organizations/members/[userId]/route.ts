@@ -12,6 +12,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { usersService } from "@/lib/services/users";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -38,7 +39,12 @@ app.patch("/", async (c) => {
     if (!userId)
       return c.json({ success: false, error: "Invalid request" }, 400);
 
-    const body = await c.req.json();
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
     const validated = updateMemberSchema.parse(body);
 
     const targetUser = await usersService.getById(userId);

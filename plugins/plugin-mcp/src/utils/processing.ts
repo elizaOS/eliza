@@ -86,16 +86,27 @@ export function processToolResult(
   let toolOutput = "";
   let hasAttachments = false;
   const attachments: Media[] = [];
+  // Distinguishes each image within one tool result so its `Media.id` is
+  // unique even when several attachments share identical bytes.
+  let imageIndex = 0;
 
   for (const content of result.content) {
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
     } else if (content.type === "image" && content.data && content.mimeType) {
       hasAttachments = true;
+      // Seed the deterministic UUID with values that vary per attachment (the
+      // base64 bytes plus a positional index) rather than the constant
+      // `messageEntityId`. A constant seed gave every image in a batch — and
+      // every tool call by the same user — the same `Media.id`, which the UI
+      // treats as a unique handle for React keys and download filenames
+      // (packages/ui/src/components/chat/MessageAttachments.tsx).
+      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${imageIndex}:${content.data}`;
+      imageIndex += 1;
       attachments.push({
         contentType: getMimeTypeToContentType(content.mimeType),
         url: `data:${content.mimeType};base64,${content.data}`,
-        id: createUniqueUuid(runtime, messageEntityId),
+        id: createUniqueUuid(runtime, attachmentSeed),
         title: "Generated image",
         source: `${serverName}/${toolName}`,
         description: "Tool-generated image",

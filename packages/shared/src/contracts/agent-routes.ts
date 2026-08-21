@@ -16,7 +16,7 @@
 
 import z from "zod";
 
-export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
+export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 
 export const PostAgentAutonomyRequestSchema = z
   .object({

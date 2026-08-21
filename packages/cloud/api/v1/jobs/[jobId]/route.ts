@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
@@ -55,7 +56,9 @@ app.get("/", async (c) => {
         type: job.type,
         status: job.status,
         result: job.result,
-        error: job.error,
+        // Operator diagnostic stays in the row; the owner gets the failure
+        // summary without stack frames (server paths, module layout).
+        error: publicJobErrorSummary(job.error),
         attempts: job.attempts,
         maxAttempts: job.max_attempts,
         estimatedCompletionAt: job.estimated_completion_at,

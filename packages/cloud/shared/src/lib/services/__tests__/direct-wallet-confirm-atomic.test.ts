@@ -80,8 +80,8 @@ mock.module("viem", () => ({
     }),
 }));
 
-// Invoice creation runs after the confirmation tx and is not under test here
-// (it has its own idempotency); stub it to avoid unrelated table DDL.
+// Invoice creation shares the confirmation transaction but has its own
+// idempotency suite; stub it here so this harness can isolate credit atomicity.
 mock.module("../invoices", () => ({
   invoicesService: {
     async getByStripeInvoiceId() {
@@ -231,6 +231,26 @@ beforeAll(async () => {
         confirmed_at timestamp,
         expires_at timestamp NOT NULL,
         metadata jsonb DEFAULT '{}'::jsonb
+      )`,
+      `CREATE TABLE IF NOT EXISTS crypto_sweep_outbox (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        payment_id uuid NOT NULL REFERENCES crypto_payments(id) ON DELETE CASCADE,
+        payload jsonb NOT NULL,
+        payload_digest text NOT NULL,
+        state text NOT NULL DEFAULT 'pending',
+        attempts integer NOT NULL DEFAULT 0,
+        next_attempt_at timestamptz NOT NULL DEFAULT NOW(),
+        claim_token uuid,
+        lease_expires_at timestamptz,
+        last_error text,
+        prepared_transaction text,
+        sweep_transaction_hash text,
+        prepared_metadata jsonb,
+        delivered_at timestamptz,
+        terminal_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW(),
+        UNIQUE (payment_id)
       )`,
     ];
     for (const stmt of ddl) await dbWrite.execute(stmt);

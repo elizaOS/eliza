@@ -8,7 +8,7 @@
  * every request.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 import { setHttpTelemetryHeaders } from "../observability/http-telemetry";
@@ -103,10 +103,62 @@ describe("isFirstPartyOrigin — Eliza app WebView origins", () => {
   });
 });
 
+describe("isFirstPartyOrigin — environment gating of loopback dev origins", () => {
+  let savedEnvironment: string | undefined;
+
+  beforeEach(() => {
+    savedEnvironment = process.env.ENVIRONMENT;
+  });
+
+  afterEach(() => {
+    if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+    else process.env.ENVIRONMENT = savedEnvironment;
+  });
+
+  test("any-port loopback origins stay first-party outside production (local dev)", () => {
+    delete process.env.ENVIRONMENT;
+    expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
+    expect(isFirstPartyOrigin("http://127.0.0.1:3000")).toBe(true);
+    expect(isFirstPartyOrigin("https://localhost:2138")).toBe(true);
+  });
+
+  test("any-port loopback origins are NOT first-party in production", () => {
+    process.env.ENVIRONMENT = "production";
+    expect(isFirstPartyOrigin("http://localhost:5173")).toBe(false);
+    expect(isFirstPartyOrigin("http://127.0.0.1:3000")).toBe(false);
+    expect(isFirstPartyOrigin("http://[::1]:5173")).toBe(false);
+    expect(isFirstPartyOrigin("https://localhost:2138")).toBe(false);
+    expect(isFirstPartyOrigin("https://127.0.0.1")).toBe(false);
+    // The native WebView origins stay first-party in production — a browser
+    // page cannot mint them, so no session-riding risk.
+    expect(isFirstPartyOrigin("https://localhost")).toBe(true);
+    expect(isFirstPartyOrigin("capacitor://localhost")).toBe(true);
+    expect(isFirstPartyOrigin("electrobun://localhost")).toBe(true);
+    // Static first-party origins are unaffected.
+    expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
+  });
+
+  test("the credentialed middleware does not reflect a loopback dev origin in production", async () => {
+    process.env.ENVIRONMENT = "production";
+    const res = await req("GET", "http://localhost:5173", false, "/ping");
+    // The protective invariant: the origin is not reflected, so the browser
+    // blocks the credentialed cross-origin read.
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("the credentialed middleware still reflects the WebView origin in production", async () => {
+    process.env.ENVIRONMENT = "production";
+    const res = await req("GET", "https://localhost", false, "/ping");
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://localhost");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+});
+
 describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
     expect(isPublicTokenApiPath("/api/auth/pair")).toBe(true);
+    expect(isPublicTokenApiPath("/api/v1/subscriptions/plans")).toBe(true);
     // Native pairing carries a user/org Cloud bearer and must remain limited
     // to first-party app origins rather than the wildcard token-API policy.
     expect(isPublicTokenApiPath("/api/auth/pair/native")).toBe(false);
@@ -193,6 +245,29 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
 });
 
 describe("corsMiddleware — third-party app origins (open, NO credentials)", () => {
+  test("allows third-party browser reads of the public subscription catalog", async () => {
+    const res = await req(
+      "GET",
+      "https://thirdparty.example.com",
+      false,
+      "/api/v1/subscriptions/plans",
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  test("allows GET preflight for the public subscription catalog", async () => {
+    const res = await req(
+      "OPTIONS",
+      "https://thirdparty.example.com",
+      true,
+      "/api/v1/subscriptions/plans",
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+  });
+
   test("allows the origin (wildcard) WITHOUT credentials so the browser permits it", async () => {
     const res = await req("GET", "https://supakan.nubs.site", false, "/api/v1/models");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");

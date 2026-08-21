@@ -10,6 +10,8 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as browser from "../platform/browser.js";
+import { MAX_COMPUTER_USE_PLAIN_DATA_CHARS } from "../services/computer-use-plain-data.js";
 
 vi.mock("../platform/browser.js", () => {
   const state = (url = "about:blank") => ({
@@ -129,6 +131,50 @@ describe("ComputerUseService browser command dispatch", () => {
     >[0]);
     expect(result.success).toBe(false);
   });
+
+  it("fails closed before publishing an over-budget browser state", async () => {
+    vi.mocked(browser.getBrowserState).mockResolvedValueOnce({
+      url: "about:blank",
+      title: "x".repeat(MAX_COMPUTER_USE_PLAIN_DATA_CHARS),
+      isOpen: true,
+      is_open: true,
+    });
+
+    const result = await service.executeBrowserAction({ action: "state" });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Computer-use snapshot exceeds the plain-data walk budget",
+    });
+    expect(result).not.toHaveProperty("content");
+  });
+
+  it.each(["file:///etc/passwd", "https://user:password@example.com/private"])(
+    "rejects and redacts an unsafe navigation target before dispatch: %s",
+    async (url) => {
+      vi.mocked(browser.navigateBrowser).mockClear();
+
+      const result = await service.executeBrowserAction({
+        action: "navigate",
+        url,
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        error:
+          "Computer-use browser navigation requires an absolute http(s) URL without embedded credentials.",
+      });
+      expect(browser.navigateBrowser).not.toHaveBeenCalled();
+      expect(service.getRecentActions().at(-1)).toMatchObject({
+        action: "browser_navigate",
+        params: { action: "navigate" },
+        success: false,
+      });
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "url",
+      );
+    },
+  );
 
   it("routes browser command strings through executeCommand", async () => {
     for (const command of [

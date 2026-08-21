@@ -34,6 +34,7 @@ import {
   getApiKey,
   getBaseUrl,
   isServerReachable,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
@@ -1322,7 +1323,7 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
     const res = await api.post(
       "/api/my-agents/claim-affiliate-characters",
       {},
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     const bodyText = await res.text();
     expect(res.status, `body: ${bodyText.slice(0, 500)}`).toBe(200);
@@ -1351,7 +1352,7 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
     const res = await api.post(
       "/api/my-agents/claim-affiliate-characters",
       {},
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     const bodyText = await res.text();
     expect(res.status, `body: ${bodyText.slice(0, 500)}`).toBe(200);

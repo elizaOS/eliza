@@ -14,6 +14,8 @@ import {
   type MessageHandlerResult,
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   completionHasVerificationFailure,
@@ -105,10 +107,9 @@ function isTerminalSubAgentFailure(message: Memory): boolean {
 
 // Trim the router's error narration to a single short, user-readable clause:
 // drop leading label/emoji/quote annotations and skip bare internal codes.
-function shortReason(body: string): string {
-  const firstLine = body
-    .replace(/\r\n/g, "\n")
-    .split("\n")
+export function extractFailureReason(errorOutput: string): string {
+  const lines = errorOutput.replace(/\r\n/g, "\n").split("\n");
+  const firstLine = lines
     .map((line) =>
       line
         .replace(/^[\s>*•-]+/, "")
@@ -131,14 +132,16 @@ function shortReason(body: string): string {
     )
     .find((line) => line.length > 0 && /\s/.test(line));
   if (!firstLine) return "";
-  // First sentence only, with trailing sentence punctuation stripped so the
-  // reply template's own period doesn't double up ("timed out.. Want me…").
   const clause = firstLine
     .split(/(?<=[.!?])\s/)[0]
     .replace(/[.!?]+$/, "")
     .trim();
-  return clause.length > 160 ? `${clause.slice(0, 157)}…` : clause;
+  const wellFormed = toWellFormedUnicode(clause);
+  return wellFormed.length > 160
+    ? `${truncateWellFormed(wellFormed, 157)}…`
+    : wellFormed;
 }
+const shortReason = extractFailureReason;
 
 function buildFailureReply(label: string, reason: string): string {
   const what = label ? `the "${label}" task` : "that task";

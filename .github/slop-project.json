@@ -1,17 +1,1 @@
-{
-  "kind": "slop-project-authority",
-  "policyRevision": "2026-08-16.3",
-  "projectId": "eliza",
-  "proposal": "https://github.com/elizaOS/slopdotcash/issues/115",
-  "repository": {
-    "fullName": "elizaOS/eliza",
-    "id": "826170402",
-    "integrationBranch": "develop"
-  },
-  "schemaVersion": "1",
-  "steward": {
-    "actorId": "186240462",
-    "login": "elizaOS",
-    "nodeId": "O_kgDOCxnNzg"
-  }
-}
+{"kind":"slop-project-authority","policyRevision":"2026-08-18.1","projectId":"eliza","proposal":"https://github.com/elizaOS/slopdotcash/issues/115","repository":{"fullName":"elizaOS/eliza","id":"826170402","integrationBranch":"develop"},"schemaVersion":"1","steward":{"actorId":"186240462","login":"elizaOS","nodeId":"O_kgDOCxnNzg"}}

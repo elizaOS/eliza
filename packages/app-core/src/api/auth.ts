@@ -255,7 +255,14 @@ export function readCookie(
     const k = part.slice(0, eq).trim();
     if (k !== name) continue;
     const v = part.slice(eq + 1).trim();
-    return v.length > 0 ? decodeURIComponent(v) : null;
+    if (v.length === 0) return null;
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      // error-policy:J3 untrusted cookie values — a malformed percent-escape
+      // is an absent session cookie, not a server fault.
+      return null;
+    }
   }
   return null;
 }
@@ -395,6 +402,7 @@ type AuthorizedRouteRoleOptions =
   | {
       state: CompatStateLike;
       store?: never;
+      allowCookieAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: never;
@@ -402,6 +410,7 @@ type AuthorizedRouteRoleOptions =
   | {
       store: AuthStore;
       state?: never;
+      allowCookieAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: (key: string) => unknown;
@@ -474,7 +483,10 @@ export async function resolveAuthorizedRouteRole(
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
-  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  const sessionCookie =
+    options.allowCookieAuth === false
+      ? null
+      : readCookie(req, SESSION_COOKIE_NAME);
   if (sessionCookie) {
     const session = await findActiveSession(
       store,

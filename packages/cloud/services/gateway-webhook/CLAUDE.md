@@ -12,7 +12,8 @@ system) from trusted in-cluster callers and forwards those to agents.
 - `src/index.ts` — entrypoint. Builds a Hono app served via `Bun.serve`, wires
   the platform adapters, and registers routes:
   - `GET /health`, `GET /ready`, `POST /drain` — liveness / readiness /
-    graceful-drain (KEDA / k8s lifecycle).
+    graceful-drain (KEDA / k8s lifecycle). `/drain` is gated on
+    `X-Internal-Secret` like `/internal/deliver`; the probe routes stay open.
   - `GET /ready/forwarder-auth/:project` — read-only forwarder-gate readiness;
     a headerless 401 is reserved for an enforced gate on that project.
   - `POST /internal/event` — internal event delivery (auth via
@@ -115,9 +116,21 @@ The workflow validates the existing Railway variable names and canonical
 non-secret values without printing or rewriting sensitive values. Keep runtime
 secrets in Railway; do not copy their values into workflow YAML or logs. The
 names-only inventory requires `ELIZA_APP_WEBHOOK_GATEWAY_SECRET`, which keeps
-the cloud BFF forwarding trust gate enabled. Staging is branch/configuration
-gated but currently has no required reviewer; production retains reviewer
-approval.
+the cloud BFF forwarding trust gate enabled. Staging additionally requires the
+complete `ELIZA_APP_BLOOIO_API_KEY`, `ELIZA_APP_BLOOIO_PHONE_NUMBER`, and
+`ELIZA_APP_BLOOIO_WEBHOOK_SECRET` set before a deployment can start; production
+keeps its existing contract. Provision staging values out of band through
+`railway variable set --stdin --skip-deploys` so an incomplete update cannot
+trigger a release, then use the protected dispatcher once all three names are
+present. Restore or remove only those staged names before dispatch if setup
+fails. All three staging values must match the Worker protected-environment
+source, so the gateway workflow compares each Railway value against the
+matching GitHub Environment secret through a per-run salted HMAC digest. Only
+the digests are compared and neither side's value is printed, logged, or
+written; a divergent-but-present pair now fails the deploy instead of passing a
+names-only check and then rejecting every live webhook with 401. Staging is
+branch/configuration gated but currently has no required reviewer; production
+retains reviewer approval.
 
 `__tests__/dockerfile-workspace-context.test.ts` guards the workspace build
 context. The repository-level
@@ -160,8 +173,9 @@ is absent or invalid the process rejects startup before binding `/health` or
 
 Other:
 
-- `GATEWAY_INTERNAL_SECRET` — required to accept `POST /internal/event`; when
-  unset, every internal-event request is rejected (logged as a warning at boot).
+- `GATEWAY_INTERNAL_SECRET` — required to accept `POST /internal/event`,
+  `POST /internal/deliver`, and `POST /drain`; when unset, every request to
+  those routes is rejected (logged as a warning at boot).
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` on forwards to
   agent-server pods.
 - `PORT` (default 3000; `dev`/`start` scripts set 3002), `POD_NAME` /

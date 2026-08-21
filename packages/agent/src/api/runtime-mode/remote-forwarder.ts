@@ -13,6 +13,8 @@
  *
  * This module does not catch transport errors — a broken target is a
  * 502 surface to the caller, not a silent log-and-continue.
+ * Device push-token mutations follow the same ownership rule: the selected
+ * remote target owns its token registry and sender, never the controller.
  */
 
 import type http from "node:http";
@@ -26,18 +28,40 @@ const REMOTE_FORWARDED_MUTATION_PREFIXES = [
   "/api/cloud/disconnect",
   "/api/cloud/billing/",
   "/api/cloud/v1/",
+  "/api/notifications/push-tokens",
+  "/api/notifications/push-tokens/",
 ] as const;
 
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+const LEGACY_PUSH_TOKEN_URL = /(\/api\/notifications\/push-tokens\/)[^/?\s]+/g;
+
+/** Removes legacy device identifiers before the agent boundary can log a URL. */
+export function redactPushTokenRequestUrl(value: string): string {
+  return value.replace(LEGACY_PUSH_TOKEN_URL, "$1[redacted]");
+}
 
 export function shouldForwardToRemoteTarget(
   pathname: string,
   method: string,
 ): boolean {
   if (!FORWARDED_METHODS.has(method.toUpperCase())) return false;
-  return REMOTE_FORWARDED_MUTATION_PREFIXES.some((p) =>
-    p.endsWith("/") ? pathname.startsWith(p) : pathname === p,
+  return REMOTE_FORWARDED_MUTATION_PREFIXES.some((prefix) =>
+    prefix.endsWith("/") ? pathname.startsWith(prefix) : pathname === prefix,
   );
+}
+
+/** Build a target URL without allowing request-controlled text to select its origin. */
+export function buildRemoteTargetUrl(
+  requestUrl: string,
+  remoteApiBase: string,
+): URL {
+  const incoming = new URL(requestUrl, "http://controller.invalid");
+  const target = new URL(remoteApiBase);
+  target.pathname = incoming.pathname;
+  target.search = incoming.search;
+  target.hash = "";
+  return target;
 }
 
 // Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
@@ -120,10 +144,13 @@ export async function forwardRemoteCloudMutation(
     return true;
   }
 
-  const targetUrl = new URL(
-    `${url.pathname}${url.search}`,
+  const targetUrl = buildRemoteTargetUrl(
+    req.url ?? "/",
     snapshot.remoteApiBase,
   );
+  // The raw target URL above remains authoritative for compatibility, but any
+  // later boundary diagnostic observing this request must not see the token.
+  req.url = redactPushTokenRequestUrl(req.url ?? "/");
 
   const rawBody = FORWARDED_METHODS.has(method)
     ? await readRequestBody(req)

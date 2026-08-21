@@ -172,6 +172,7 @@ export class ProxyServer {
         this.listening = false;
         resolve();
       });
+      server.closeAllConnections();
     });
     this.server = null;
   }

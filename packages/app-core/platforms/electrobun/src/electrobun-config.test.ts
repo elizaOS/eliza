@@ -9,6 +9,15 @@ import {
 } from "../electrobun.config";
 
 describe("Electrobun Store packaging", () => {
+  it("bundles CEF as the default Linux renderer", () => {
+    const config = createElectrobunConfig();
+
+    expect(config.build?.linux).toMatchObject({
+      bundleCEF: true,
+      defaultRenderer: "cef",
+    });
+  });
+
   it("omits the embedded local agent runtime tree for Mac App Store builds", () => {
     const copy = resolveElectrobunCopyMap({
       buildVariant: "store",

@@ -54,9 +54,6 @@
     "L443 Date.now()",
     "L515 Date.now()"
   ],
-  "packages/ui/src/cloud/instances/components/docker-logs-viewer.tsx": [
-    "L103 new Date()"
-  ],
   "packages/ui/src/cloud/instances/components/eliza-agent-logs-viewer.tsx": [
     "L257 new Date()"
   ],

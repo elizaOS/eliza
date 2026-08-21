@@ -17,10 +17,12 @@ export interface WebEntryDecisionInput {
   chatHarnessEnabled: boolean;
   desktopShell: boolean;
   forceApexConsole: boolean;
+  forceMarketingHome: boolean;
 }
 
 const EXACT_PUBLIC_PATHS = new Set([
   "/accept-invitation",
+  "/account-deletion",
   "/app-auth/authorize",
   "/auth/bridge",
   "/auth/callback/email",
@@ -65,11 +67,20 @@ export function isHostedPublicPath(pathname: string): boolean {
 export function shouldUseMarketingHomeEntry(
   input: WebEntryDecisionInput,
 ): boolean {
+  const isRootPath = normalizePathname(input.pathname) === "/";
+  if (
+    input.forceMarketingHome &&
+    !input.chatHarnessEnabled &&
+    !input.desktopShell &&
+    isRootPath
+  ) {
+    return true;
+  }
   if (
     !input.webShellEnabled ||
     input.chatHarnessEnabled ||
     input.desktopShell ||
-    normalizePathname(input.pathname) !== "/"
+    !isRootPath
   ) {
     return false;
   }

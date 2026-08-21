@@ -2,18 +2,31 @@
  * Loopback-only `/pair` relay for standalone agent servers.
  * Remote managed pairing terminates at the Cloud edge; explicit local Docker
  * retains this handler so the one-time token resolves before the SPA fallback.
+ *
+ * Peer admission when `ELIZA_CLOUD_PAIR_DIRECT_RELAY=1`: loopback peers only,
+ * plus any ranges in the optional `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS`
+ * comma-separated CIDR allowlist (default empty). The supported local-Docker
+ * deployment publishes the port on the host's loopback, so inside the
+ * container the TCP peer is the bridge gateway rather than 127.0.0.1 — set
+ * e.g. `ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS=172.17.0.0/16` (default bridge)
+ * to admit exactly that gateway range. Every CIDR entry widens token
+ * redemption to that LAN/VPC segment, so keep the list as narrow as the
+ * deployment allows.
  */
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import {
+  isLoopbackRemoteAddress,
+  isRemoteAddressInCidrList,
+} from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
-import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
-import { resolveRequestOrigin } from "./request-origin.js";
+import { resolveDirectRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -58,19 +71,23 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    return isLoopbackBindHost(new URL(origin).hostname);
-  } catch {
-    // error-policy:J3 malformed request origins are never trusted as loopback.
-    return false;
-  }
-}
-
 function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
+  if (process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY !== "1") return false;
+  // The local-only gate must key on the TCP peer, never on request headers:
+  // Host and X-Forwarded-Host are client-controlled, so a remote caller
+  // could previously spoof a loopback origin and redeem a held pairing token
+  // through this relay (W1-037). Non-loopback peers are admitted only through
+  // the explicit ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS allowlist (W5-016) —
+  // a broad private-range admission would let any LAN/VPC host redeem a
+  // leaked token, far beyond the local-Docker bridge gateway the relay
+  // exists for.
+  const peer = req.socket?.remoteAddress;
   return (
-    process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY === "1" &&
-    isLoopbackOrigin(resolveRequestOrigin(req))
+    isLoopbackRemoteAddress(peer) ||
+    isRemoteAddressInCidrList(
+      peer,
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS,
+    )
   );
 }
 
@@ -224,7 +241,10 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
-  const origin = resolveRequestOrigin(req);
+  // The origin forwarded to the Cloud exchange is reconstructed from direct
+  // request metadata only — forwarded headers are client-controlled and must
+  // not be able to rewrite the origin the exchange is bound to (W1-037).
+  const origin = resolveDirectRequestOrigin(req);
   if (!origin) {
     sendHtml(
       res,

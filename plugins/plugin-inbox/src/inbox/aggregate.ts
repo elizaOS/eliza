@@ -61,11 +61,27 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
   "sms",
   "whatsapp",
 ]);
-const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 
 export type InboxChatType = "dm" | "group" | "channel";
+
+function stripSubjectReplyPrefixes(value: string): string {
+  let cursor = 0;
+  while (cursor < value.length) {
+    let prefixStart = cursor;
+    while (prefixStart < value.length && value[prefixStart]?.trim() === "") {
+      prefixStart += 1;
+    }
+    const colon = value.indexOf(":", prefixStart);
+    if (colon < 0) break;
+    const marker = value.slice(prefixStart, colon).trim().toLowerCase();
+    if (marker !== "re" && marker !== "fw" && marker !== "fwd") break;
+    cursor = colon + 1;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+  }
+  return value.slice(cursor);
+}
 
 export function normalizeInboxChannel(
   source: string | null | undefined,
@@ -127,13 +143,11 @@ function deriveThreadId(
     return message.xConversationId;
   }
   if (channel === "gmail") {
-    const subject = message.channelName
-      .replace(/^Email from\s+/i, "")
-      .replace(SUBJECT_REPLY_PREFIX, "")
-      .trim();
+    const subject = message.channelName.replace(/^Email from\s+/i, "").trim();
+    const normalizedSubject = stripSubjectReplyPrefixes(subject).trim();
     const fromKey =
       message.senderEmail?.trim().toLowerCase() ?? message.senderName;
-    return `gmail:${fromKey}:${subject || externalId}`;
+    return `gmail:${fromKey}:${normalizedSubject || externalId}`;
   }
   if (message.roomId) {
     return message.roomId;
@@ -160,17 +174,22 @@ export function toInboxMessage(
         : message.channelName
       : null;
 
-  // Gmail triage exposes `likelyReplyNeeded`/`isImportant` but the shared
-  // `InboundMessage` shape does not carry a per-channel read flag yet. Until
-  // the chat fetcher tracks read state per memory, mark chat messages as
-  // unread so the inbox surfaces them for triage.
+  // Gmail triage exposes `likelyReplyNeeded`/`isImportant`. X DMs carry real
+  // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
+  // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
+  // memories still lack a read flag, so they stay unread for triage.
+  const hasSeenState =
+    (typeof message.lastSeenAt === "string" && message.lastSeenAt.length > 0) ||
+    (typeof message.repliedAt === "string" && message.repliedAt.length > 0);
   const unread =
     channel === "gmail"
       ? Boolean(
           message.gmailLikelyReplyNeeded === true ||
             message.gmailIsImportant === true,
         )
-      : true;
+      : channel === "x_dm"
+        ? !hasSeenState
+        : true;
 
   const threadId = deriveThreadId(message, channel, externalId);
   const chatType: InboxChatType =
@@ -275,6 +294,12 @@ function applyLlmScores(
   }
 }
 
+const PRIORITY_CATEGORY_TIE_ORDER = [
+  "important",
+  "planning",
+  "casual",
+] as const satisfies readonly PriorityCategory[];
+
 function buildThreadGroups(
   messages: LifeOpsInboxMessage[],
   llmScores?: ReadonlyMap<string, PriorityScore>,
@@ -324,23 +349,31 @@ function buildThreadGroups(
     }
     if (llmScores && llmScores.size > 0) {
       const seen = new Map<PriorityCategory, number>();
-      let best: { category: PriorityCategory; score: number } | null = null;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      const bestCategories = new Set<PriorityCategory>();
       for (const member of members) {
         const score = llmScores.get(member.id);
         if (!score) continue;
         seen.set(score.category, (seen.get(score.category) ?? 0) + 1);
-        if (!best || score.score > best.score) {
-          best = { category: score.category, score: score.score };
+        if (score.score > bestScore) {
+          bestScore = score.score;
+          bestCategories.clear();
+          bestCategories.add(score.category);
+        } else if (score.score === bestScore) {
+          bestCategories.add(score.category);
         }
       }
-      // Prefer the category attached to the highest-scoring message; ties
-      // fall back to the most common category.
-      if (best) {
-        priorityCategory = best.category;
-      } else if (seen.size > 0) {
-        let topCategory: PriorityCategory = "casual";
+      // Prefer the category attached to the highest-scoring message. When
+      // multiple categories share that score, frequency breaks the tie only
+      // among those candidates; a frequent low-scoring category cannot win.
+      if (bestCategories.size === 1) {
+        priorityCategory = bestCategories.values().next().value;
+      } else if (bestCategories.size > 1) {
+        let topCategory: PriorityCategory = "important";
         let topCount = -1;
-        for (const [cat, count] of seen) {
+        for (const cat of PRIORITY_CATEGORY_TIE_ORDER) {
+          if (!bestCategories.has(cat)) continue;
+          const count = seen.get(cat) ?? 0;
           if (count > topCount) {
             topCount = count;
             topCategory = cat;

@@ -2,11 +2,11 @@
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
-// the sheet opens pinned at FULL/MAXIMIZED with an OPAQUE backdrop, every
-// collapse path (Escape, outside tap, drag/close) is a no-op, the drag handle is
-// hidden, the composer is sign-in-first/locked, transcript CHOICE widgets stay
-// interactive, and the sheet drops from full to the half detent (with the
-// backdrop fading to the normal scrim) exactly once on the completion edge.
+// the sheet opens pinned at the shared HALF composer detent, every collapse path
+// (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
+// composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
+// external sign-in minimizes to the regular compact composer, and completion
+// opens the conversation at FULL.
 
 import {
   act,
@@ -21,6 +21,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
   client: {
+    getBaseUrl: vi.fn().mockReturnValue("http://localhost:3000"),
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
     createTranscript: vi
       .fn()
@@ -64,7 +65,7 @@ function makeController(
       {
         id: "greeting",
         role: "assistant",
-        content: "Hi, I'm Eliza. Let's get you set up.",
+        content: "Hi, I’m Eliza. Sign in to Eliza Cloud to get started.",
         createdAt: 1,
       },
     ],
@@ -153,6 +154,24 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.toggleHandsFree).not.toHaveBeenCalled();
   });
 
+  it("describes the active Cloud connection instead of asking for sign-in again", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-connecting",
+          role: "assistant",
+          content: "Opening your personal Eliza…",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Connecting to Eliza Cloud…");
+  });
+
   it("ignores prefill/free-text entry during onboarding so setup stays sign-in-first", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
@@ -186,46 +205,150 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
+  it("does not mount a first-run full-screen backdrop", () => {
     const controller = makeController();
-    const { rerender } = render(
-      <ChatOverlay controller={controller} firstRunOpen />,
-    );
-    expect(
-      screen
-        .getByTestId("chat-first-run-backdrop")
-        .getAttribute("data-first-run-opaque"),
-    ).toBe("true");
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
-    // Onboarding completes: the opaque layer fades to the normal scrim (or has
-    // already unmounted under reduced-motion) — either way it is no longer the
-    // full-opacity launcher-hiding layer.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
-    const after = screen.queryByTestId("chat-first-run-backdrop");
-    expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
-      "true",
-    );
+    expect(screen.queryByTestId("chat-first-run-backdrop")).toBeNull();
   });
 
-  it("opens edge-to-edge full-bleed (maximized) during onboarding without drag affordances", () => {
-    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+  it("uses the same visible half-height shell as post-onboarding chat", () => {
+    const onStateChange = vi.fn();
+    const controller = makeController();
+    const { rerender } = render(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen
+        onStateChange={onStateChange}
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
-    // The login/first-run chat is full-screen: full-bleed edge-to-edge.
-    expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
-    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(grabber.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
+    expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
+    // Onboarding owns the first card at the top of the transcript, so the
+    // ordinary-chat dissolve must not obscure its choice controls. Once the
+    // gate clears, the regular transcript owns that decorative fade again.
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        onStateChange={onStateChange}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
-  it("opens pinned at FULL and ignores Escape while onboarding is active", () => {
+  it("keeps first-run onboarding in the overlay's dark color scheme", () => {
+    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(sheet.getAttribute("data-theme")).toBe("dark");
+    expect(sheet.style.colorScheme).toBe("dark");
+    expect(surface.style.backgroundColor).toBe("var(--bg)");
+  });
+
+  it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
+    render(
+      <ChatOverlay controller={makeController()} firstRunOpen fillHostAtHalf />,
+    );
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const thread = screen.getByTestId("chat-thread");
+    expect(sheet.style.maxHeight).toBe("756px");
+    expect(thread.style.flexBasis).toBe("756px");
+  });
+
+  it("does not apply the phone-landscape narrow width to the shallow desktop host", () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 96,
+    });
+    try {
+      render(
+        <ChatOverlay
+          controller={makeController()}
+          fillHostAtHalf
+          initialMode="input"
+        />,
+      );
+      expect(
+        screen.getByTestId("chat-sheet").parentElement?.style.maxWidth,
+      ).toBe("768px");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalHeight,
+      });
+    }
+  });
+
+  it("opens pinned at HALF and ignores Escape while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens a completed desktop session at the shared half-height composer", () => {
+    const controller = makeController();
+    render(<ChatOverlay controller={controller} initialMode="half" />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(document.activeElement).not.toBe(input);
+    input.focus();
+    fireEvent.change(input, { target: { value: "Hello again" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("Hello again");
+  });
+
+  it("never lets the desktop pill host expand into a full-window chat surface", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        fillHostAtHalf
+        initialMode="half"
+        onStateChange={onStateChange}
+      />,
+    );
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 760, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 400, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 40, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 0, pointerId: 17 });
+    fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 17 });
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+    expect(onStateChange).not.toHaveBeenCalledWith("MAXIMIZED");
   });
 
   it("ignores an outside tap while onboarding is active", () => {
@@ -244,21 +367,20 @@ describe("ChatOverlay first-run gating", () => {
       clientY: 4,
     });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("renders a non-interactive composer handle at the full detent", () => {
+  it("keeps the normal sheet handle visible but inert at the half detent", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
-    const composer = screen.getByTestId("chat-composer-row");
-    const decorativeHandle = screen.getByTestId("chat-first-run-grabber");
+    const handle = screen.getByTestId("chat-sheet-grabber");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
-    expect(composer.contains(decorativeHandle)).toBe(true);
-    expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
-    expect(decorativeHandle.tagName).toBe("SPAN");
+    expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
+    expect(handle.getAttribute("aria-disabled")).toBe("true");
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+    expect(handle.getAttribute("tabindex")).toBe("-1");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {
@@ -336,7 +458,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByText("Agent")).toBeNull();
   });
 
-  it("renders one fallback sign-in turn if onboarding opens before the conductor seeds messages", () => {
+  it("renders the established greeting and sign-in bubbles if onboarding opens before the conductor seeds messages", () => {
     vi.useFakeTimers();
     seedAppStoreWithActionSpy();
     try {
@@ -348,8 +470,16 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
+      expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
+        FIRST_RUN_GREETING,
+      );
+      expect(screen.getAllByTestId("thread-line")[1]?.textContent).toContain(
+        FIRST_RUN_SIGN_IN_PROMPT,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+      // Both prompts are ordinary assistant rows in the shared transcript,
+      // never a special setup panel below the composer.
+      expect(screen.getAllByTestId("thread-line")).toHaveLength(2);
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
@@ -396,7 +526,9 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
+      expect(screen.getByTestId("thread-line").textContent).toContain(
+        FIRST_RUN_GREETING,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -430,9 +562,14 @@ describe("ChatOverlay first-run gating", () => {
 
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
-    expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
-    expect(screen.getAllByText(FIRST_RUN_GREETING)).toHaveLength(1);
-    expect(screen.getAllByText(FIRST_RUN_SIGN_IN_PROMPT)).toHaveLength(1);
+    const signIn = screen.getByText("Sign in to Eliza Cloud");
+    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeTruthy();
+    expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
+      FIRST_RUN_GREETING,
+    );
+    expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
+      FIRST_RUN_SIGN_IN_PROMPT,
+    );
   });
 
   it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {
@@ -460,7 +597,115 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
-  it("settles to half exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
+  it("uses the regular compact composer during external sign-in, then opens full on authentication", () => {
+    const waitingController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    const onStateChange = vi.fn();
+    const { rerender } = render(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen
+        onStateChange={onStateChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    expect(
+      (screen.getByTestId("chat-composer-textarea") as HTMLTextAreaElement)
+        .placeholder,
+    ).toBe("Waiting for sign-in…");
+    expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+
+    // The compact composer is an initial state, not a trap: clicking the
+    // read-only waiting field reopens the shared transcript where the immediate
+    // retry action lives. This must not depend on a fresh focus event because a
+    // read-only field can already own focus when the user clicks it again.
+    fireEvent.click(screen.getByTestId("chat-composer-textarea"));
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+
+    rerender(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen={false}
+        releaseFirstRunToFull
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+  });
+
+  it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
+    vi.useFakeTimers();
+    try {
+      const waitingController = makeController({
+        messages: [
+          {
+            id: "first-run:cloud-login-waiting",
+            role: "assistant",
+            content:
+              "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            createdAt: 2,
+          },
+        ],
+      } as unknown as Partial<ShellController>);
+      render(
+        <ChatOverlay
+          controller={waitingController}
+          firstRunOpen
+          fillHostAtHalf
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reopens half when an external sign-in attempt expires with a retry choice", () => {
+    const retryController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "That sign-in window didn't finish. Otherwise, try again: [CHOICE:first-run id=runtime]",
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={retryController} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens full exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
       <ChatOverlay controller={controller} firstRunOpen />,
@@ -470,19 +715,30 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
-    // Onboarding completes: firstRunOpen falls true → false.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    // Onboarding completes with the parent's mounted transcript-epoch proof.
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        releaseFirstRunToFull
+      />,
+    );
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
     // The composer unlocks.
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     expect(input.placeholder).toBe("Message Eliza");
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "What should I do next?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("What should I do next?");
 
     // A later re-render with onboarding still complete must NOT force another
-    // detent change — the half-settle is a one-shot falling edge.
+    // detent change — the full-open is a one-shot falling edge.
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
@@ -491,6 +747,19 @@ describe("ChatOverlay first-run gating", () => {
     // The collapse gate is released: Escape closes the sheet again.
     fireEvent.keyDown(input, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("returns to INPUT when a false probe clears without mounted transcript authority", () => {
+    const controller = makeController();
+    const { rerender } = render(
+      <ChatOverlay controller={controller} firstRunOpen />,
+    );
+
+    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
   it("never auto-collapses a session where onboarding was not active", () => {
@@ -512,13 +781,13 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={makeController()}
         firstRunOpen={false}
-        releaseFirstRunToHalf
+        releaseFirstRunToFull
         onFirstRunReleaseHandled={onHandled}
       />,
     );
 
     const sheet = screen.getByTestId("chat-sheet");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(onHandled).toHaveBeenCalledTimes(1);
   });

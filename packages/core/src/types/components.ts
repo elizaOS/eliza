@@ -14,7 +14,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
-import type { Memory } from "./memory";
+import type { DisclosureSubject, Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
@@ -350,10 +350,20 @@ export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
  * Non-overridable policy for components whose prompt or result can contain
  * owner-private data. Unlike a role gate, this binds access to the attested
  * destination audience as well as the actor.
+ *
+ * Two forms, both fail-closed:
+ *  - `owner_exclusive` (the original, unchanged): the destination must be a
+ *    verified owner-only room — evaluated by `decisionFromAudience`.
+ *  - `audience_admission` (added with the min-over-members policy wiring): the
+ *    gate admits the component only when the ATTESTED delivery audience as a
+ *    whole earns full disclosure for `subject`, computed by
+ *    `resolveAudienceAdmission` over the same attested census. One ungranted
+ *    non-agent member caps the room, exactly like `owner_exclusive` is the
+ *    degenerate two-party-owner-DM case of this policy.
  */
-export interface DisclosureGate {
-	require: "owner_exclusive";
-}
+export type DisclosureGate =
+	| { require: "owner_exclusive" }
+	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
 	/** Action name */
@@ -843,8 +853,16 @@ export interface Provider {
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 
-	/** Non-overridable destination-audience policy for sensitive context. */
-	disclosureGate?: DisclosureGate;
+	/**
+	 * Non-overridable destination-audience policy for sensitive context.
+	 *
+	 * Deliberately narrower than `Action.disclosureGate`: every provider
+	 * enforcement site in `runtime.ts` tests `require === "owner_exclusive"`
+	 * literally, so a provider declaring `audience_admission` would compose
+	 * into the prompt with NO enforcement at all. Widen this only in the same
+	 * change that wires the provider path.
+	 */
+	disclosureGate?: Extract<DisclosureGate, { require: "owner_exclusive" }>;
 
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
@@ -971,6 +989,14 @@ export interface ActionResult {
 	 */
 	data?: ProviderDataRecord;
 
+	/**
+	 * Optional model-bound projection of `data`. When present, prompt renderers
+	 * use this object while runtime state and trajectories retain the complete
+	 * `data` payload. Use it when an action's machine result is substantially
+	 * larger than the fields a model needs to continue or evaluate the turn.
+	 */
+	promptData?: ProviderDataRecord;
+
 	/** Error information if the action failed */
 	error?: string | Error;
 
@@ -984,6 +1010,19 @@ export interface ActionResult {
 	 * no opinion about whether the overall turn is complete.
 	 */
 	turnComplete?: boolean;
+
+	/**
+	 * Requests exactly one model-authored reply after this successful action.
+	 * The planner honors this only when the result is the turn's sole completed
+	 * tool, its queue is empty, and the native call explicitly declared final
+	 * scope. A safe no-tool model reply then completes the turn without a second
+	 * evaluator model call; failures, additional tools, unsafe replies, and
+	 * incomplete planner scope retain the normal evaluator path.
+	 *
+	 * Use for UI effects whose wording must remain model-owned (for example,
+	 * navigation). Do not pair it with canned `userFacingText`.
+	 */
+	modelReplyRequired?: boolean;
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue
@@ -1034,11 +1073,16 @@ export interface ActionContext {
  *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
+ * @param streamRevision - Monotonically allocated structured-extractor attempt
+ *   number. A change means `accumulated` restarted and consumers must discard
+ *   incremental state from the preceding attempt. Undefined for raw-token
+ *   streams.
  */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
 	accumulated?: string,
+	streamRevision?: number,
 ) => void | Promise<void>;
 
 /**

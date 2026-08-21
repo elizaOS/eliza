@@ -47,6 +47,7 @@ const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
+const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
@@ -81,6 +82,9 @@ const agentSourceJsToTsPlugin = {
     }
     if (source === "@elizaos/agent/api/connector-account-routes") {
       return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
+    }
+    if (source === "@elizaos/agent/api/server-helpers") {
+      return path.join(agentSourceRoot, "api", "server-helpers.ts");
     }
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
@@ -171,7 +175,7 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
 const aiEntry = resolveCorePackageEntry("ai");
-const fsExtraEntry = resolveCorePackageEntry("fs-extra");
+const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = resolveCorePackageEntry("handlebars");
 const mammothEntry = resolveCorePackageEntry("mammoth");
 const markdownItRoot = resolveCorePackageRoot("markdown-it");
@@ -273,6 +277,10 @@ export default defineConfig({
           "api",
           "connector-account-routes.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/server-helpers$/,
+        replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
       },
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,

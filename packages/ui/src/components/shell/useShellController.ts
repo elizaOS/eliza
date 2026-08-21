@@ -31,6 +31,7 @@ import {
   VOICE_CONTROL_EVENT,
   type VoiceControlEventDetail,
 } from "../../events";
+import { revalidateAuthStatus } from "../../hooks/useAuthStatus";
 import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import {
   isRealtimeVoiceFlagEnabled,
@@ -509,6 +510,20 @@ export function useShellController(): ShellController {
         setSigningIn(false);
       });
   }, [authGate.phase, handleInteractiveCloudLogin, setActionNotice]);
+  const recoverGatedCapture = React.useCallback(() => {
+    if (authGate.phase === "needs-auth") {
+      requestSignIn();
+      return;
+    }
+    void revalidateAuthStatus();
+    setActionNotice(
+      authGate.phase === "unavailable"
+        ? "Unable to reach Eliza Cloud. Retrying the connection."
+        : "Checking your Eliza Cloud session. Try push-to-talk again in a moment.",
+      authGate.phase === "unavailable" ? "error" : "info",
+      4000,
+    );
+  }, [authGate.phase, requestSignIn, setActionNotice]);
   // The wake phrase for transcript-mode inline replies follows the character
   // name (issue #9880); falls back to the running agent name, then "eliza".
   const wakeCharacterName =
@@ -1634,7 +1649,7 @@ export function useShellController(): ShellController {
 
   const toggleRecording = React.useCallback(() => {
     if (authGate.gated) {
-      requestSignIn();
+      recoverGatedCapture();
       return;
     }
     if (realtimeVoiceEnabled) {
@@ -1648,7 +1663,7 @@ export function useShellController(): ShellController {
     authGate.gated,
     realtimeVoiceEnabled,
     recording,
-    requestSignIn,
+    recoverGatedCapture,
     startCapture,
     stopCapture,
   ]);
@@ -1736,12 +1751,12 @@ export function useShellController(): ShellController {
   }, []);
 
   const open = React.useCallback(() => {
-    if (authGate.gated) {
+    if (authGate.phase === "needs-auth") {
       requestSignIn();
       return;
     }
     setIsOpen(true);
-  }, [authGate.gated, requestSignIn]);
+  }, [authGate.phase, requestSignIn]);
   const close = React.useCallback(() => {
     setIsOpen(false);
     setHandsFree(false);
@@ -2080,7 +2095,7 @@ export function useShellController(): ShellController {
   // both the mic and any in-flight reply.
   const toggleHandsFree = React.useCallback(() => {
     if (authGate.gated) {
-      requestSignIn();
+      recoverGatedCapture();
       return;
     }
     if (realtimeVoiceEnabled) {
@@ -2141,7 +2156,7 @@ export function useShellController(): ShellController {
     }
   }, [
     authGate.gated,
-    requestSignIn,
+    recoverGatedCapture,
     responding,
     startCapture,
     stopCapture,
@@ -2251,7 +2266,7 @@ export function useShellController(): ShellController {
   // as an attachment the user sends with their next message.
   const toggleTranscriptionMode = React.useCallback(async () => {
     if (authGateRef.current.gated) {
-      requestSignIn();
+      recoverGatedCapture();
       return;
     }
     if (transcriptionModeRef.current) {
@@ -2306,7 +2321,7 @@ export function useShellController(): ShellController {
     beginTranscriptSession,
     finalizeTranscriptSession,
     realtimeVoiceEnabled,
-    requestSignIn,
+    recoverGatedCapture,
   ]);
 
   // The mic button while transcribing: turn the mic (and thus transcript) fully
@@ -2612,19 +2627,19 @@ export function useShellController(): ShellController {
     wasCapturingAtSuspendRef.current = false;
     autoEngagedHandsFreeRef.current = true;
     if (captureRef.current) cancelCapture();
-    if (isOpen) setIsOpen(false);
+    if (authGate.phase === "needs-auth" && isOpen) setIsOpen(false);
     stopRealtimeVoiceRef.current();
-  }, [authGate.gated, cancelCapture, isOpen]);
+  }, [authGate.gated, authGate.phase, cancelCapture, isOpen]);
 
   const startRecording = React.useCallback(
     (intent?: CaptureIntent) => {
       if (authGate.gated) {
-        requestSignIn();
+        recoverGatedCapture();
         return;
       }
       startCapture(intent);
     },
-    [authGate.gated, requestSignIn, startCapture],
+    [authGate.gated, recoverGatedCapture, startCapture],
   );
 
   return {

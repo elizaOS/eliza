@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./access-control/provenance-envelope";
 // Export all core modules
@@ -26,6 +28,7 @@ export * from "./app-route-plugin-registry";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";
+export * from "./capability-selection";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -97,6 +100,7 @@ export {
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -200,6 +204,8 @@ export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./identity-clusters";
 export * from "./inference-timing";
+// Export the managed-provider adapter SDK (connection, transport, health)
+export * from "./integrations/managed-provider";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities
@@ -479,6 +485,7 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
 // Export Node-specific utilities

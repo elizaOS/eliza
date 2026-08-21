@@ -31,6 +31,8 @@ import {
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -121,6 +123,7 @@ import {
   shortId,
   waitForSpawnSlot,
 } from "./common.js";
+import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
@@ -352,11 +355,16 @@ function parseAgentPrefix(
  *  `slice(0, 80)` cut labels mid-word in user-visible acks ("Edit file l",
  *  "Commit loca" — live 2026-08-18). */
 function clampLabel(text: string, max = 80): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (cleaned.length <= max) return cleaned;
+  // Well-formed unicode BEFORE truncation (develop's contract): a mid-emoji
+  // cut serializes as a lone surrogate that Cerebras 400s on.
+  const cleaned = toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
+  if (cleaned.length <= max) return truncateWellFormed(cleaned, max);
   const cut = cleaned.slice(0, max - 1);
   const boundary = cut.lastIndexOf(" ");
-  return `${boundary > max - 24 ? cut.slice(0, boundary) : cut}…`;
+  return truncateWellFormed(
+    `${boundary > max - 24 ? cut.slice(0, boundary) : cut}…`,
+    max,
+  );
 }
 
 function labelFrom(task: string, index: number): string {
@@ -4683,6 +4691,28 @@ export function goalSimilarity(a: string, b: string): number {
 
 const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
 
+const SLUG_TOKEN_RE = /\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g;
+
+/**
+ * Distinct hyphenated slugs veto a near-duplicate match. Quick-app requests
+ * share nearly all their phrasing ("build a one-file page in the shared route
+ * workdir called <slug>") so token containment crosses the threshold on
+ * boilerplate alone — live: "tide-glass" matched a parked "ember-tide" on the
+ * shared "tide" token. When BOTH texts name slugs and NEITHER text mentions
+ * any of the other's, they are different deliverables, not a re-ask.
+ */
+export function hasDistinctSlugIdentity(a: string, b: string): boolean {
+  const slugsA = new Set(a.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  const slugsB = new Set(b.toLowerCase().match(SLUG_TOKEN_RE) ?? []);
+  if (slugsA.size === 0 || slugsB.size === 0) return false;
+  // Boilerplate carries shared hyphenated tokens ("one-file"), so the veto
+  // requires each side to name a slug the other lacks — a mutual exclusive
+  // identity, not full disjointness.
+  const aOnly = [...slugsA].some((slug) => !slugsB.has(slug));
+  const bOnly = [...slugsB].some((slug) => !slugsA.has(slug));
+  return aOnly && bOnly;
+}
+
 /**
  * Cross-request near-duplicate guard for create/spawn. The per-origin spawn cap
  * only anchors ONE user request; a status-shaped follow-up ("so is my site
@@ -4754,6 +4784,7 @@ async function findNearDuplicateInFlightWork(args: {
       for (const task of tasks) {
         if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
         const existingText = `${task.title} ${task.originalRequest ?? ""}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
@@ -4782,6 +4813,7 @@ async function findNearDuplicateInFlightWork(args: {
         const initialTask =
           rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
         const existingText = `${label ?? ""} ${initialTask}`;
+        if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
           goalSimilarity(candidateText, existingText) >=
           DUPLICATE_SPAWN_SIMILARITY_THRESHOLD
@@ -4947,11 +4979,8 @@ async function runHistory(
     text,
     textValue(params.metric) ?? textValue(content.metric),
   );
-  const limitRaw = Number(
-    params.limit ?? content.limit ?? (metric === "detail" ? 1 : 10),
-  );
-  const limit =
-    Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
+  const fallbackLimit = metric === "detail" ? 1 : 10;
+  const limit = parseHistoryLimit(params.limit ?? content.limit, fallbackLimit);
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
@@ -5874,17 +5903,46 @@ function formatGitHubAuthPrompt(
   );
 }
 
-function extractBulkItems(
+export function extractBulkItems(
   text: string,
 ): Array<{ title: string; body?: string }> {
   if (!text) return [];
 
-  const numberedPattern =
-    /(?:^|\s)(\d+)[).:-]\s*(.+?)(?=(?:\s+\d+[).:-]\s)|$)/gs;
   const items: Array<{ title: string; body?: string }> = [];
-
-  for (const match of text.matchAll(numberedPattern)) {
-    const raw = match[2].trim();
+  const markers: Array<{ start: number; contentStart: number }> = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (cursor > 0 && text[cursor - 1]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    let digitEnd = cursor;
+    while (
+      digitEnd < text.length &&
+      (text[digitEnd] ?? "") >= "0" &&
+      (text[digitEnd] ?? "") <= "9"
+    ) {
+      digitEnd += 1;
+    }
+    if (digitEnd === cursor || !").:-".includes(text[digitEnd] ?? "")) {
+      cursor += 1;
+      continue;
+    }
+    let contentStart = digitEnd + 1;
+    if (text[contentStart]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    while (contentStart < text.length && text[contentStart]?.trim() === "") {
+      contentStart += 1;
+    }
+    markers.push({ start: cursor, contentStart });
+    cursor = contentStart;
+  }
+  for (const [index, marker] of markers.entries()) {
+    const raw = text
+      .slice(marker.contentStart, markers[index + 1]?.start ?? text.length)
+      .trim();
     if (raw.length > 0) {
       items.push({ title: raw });
     }
@@ -5892,10 +5950,12 @@ function extractBulkItems(
 
   if (items.length >= 2) return items;
 
-  const bulletPattern = /(?:^|\n)\s*[-*•]\s+(.+)/g;
   const bulletItems: Array<{ title: string; body?: string }> = [];
-  for (const match of text.matchAll(bulletPattern)) {
-    const raw = match[1].trim();
+  for (const line of text.split("\n")) {
+    const candidate = line.trimStart();
+    if (!"-*•".includes(candidate[0] ?? "")) continue;
+    if (candidate.length < 2 || candidate[1]?.trim() !== "") continue;
+    const raw = candidate.slice(2).trim();
     if (raw.length > 0) {
       bulletItems.push({ title: raw });
     }
@@ -6142,7 +6202,11 @@ async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
+        const issueBody = truncateWellFormed(
+          toWellFormedUnicode(issue.body),
+          ISSUE_BODY_MAX_CHARS,
+        );
+        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,
           text: issueText,
@@ -6372,7 +6436,10 @@ async function runManageIssues(
   // Unwrapped: bulk-issue extraction and action/repo inference read this as
   // the user's request; a raw envelope read would mint GitHub issues out of
   // security-notice lines (and the slice could truncate the real payload).
-  const text = requestText(message).slice(0, ISSUE_BODY_MAX_CHARS);
+  const text = truncateWellFormed(
+    toWellFormedUnicode(requestText(message)),
+    ISSUE_BODY_MAX_CHARS,
+  );
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction

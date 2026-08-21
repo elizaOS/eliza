@@ -24,6 +24,7 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
+import { decodeUrlPathComponent } from "@elizaos/shared";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -386,9 +387,19 @@ function parseAssetProxyPath(pathname: string): {
       "Capability asset URL must include endpoint id, module id, and path.",
     );
   }
-  const endpointId = decodeURIComponent(encodedEndpointId);
-  const moduleId = decodeURIComponent(encodedModuleId);
-  const assetSegments = assetParts.map((part) => decodeURIComponent(part));
+  const decodeAssetComponent = (raw: string, fieldName: string): string => {
+    const decoded = decodeUrlPathComponent(raw);
+    if (!decoded.ok) {
+      // error-policy:J3 malformed path encoding is explicit invalid input.
+      throw new Error(`Invalid ${fieldName}: malformed URL encoding`);
+    }
+    return decoded.value;
+  };
+  const endpointId = decodeAssetComponent(encodedEndpointId, "endpoint id");
+  const moduleId = decodeAssetComponent(encodedModuleId, "module id");
+  const assetSegments = assetParts.map((part) =>
+    decodeAssetComponent(part, "asset path"),
+  );
   const hasUnsafeSegment = assetSegments.some(
     (part) => !part || part === "." || part === ".." || part.includes("\\"),
   );

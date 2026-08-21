@@ -24,6 +24,8 @@ on:
       - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
       - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
       - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
+      - "packages/scripts/audit-provider-contracts.mjs"
+      - "packages/scripts/__tests__/audit-provider-contracts.test.ts"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -52,6 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Managed provider contract inventory
+        run: bun run audit:provider-contracts
       - name: Lint and typecheck cloud workspaces
         run: bun run verify:cloud
 

@@ -63,10 +63,20 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
+  ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;
+  /**
+   * Diagnostic-only override for running agent-sandbox schema convergence in
+   * workerd. Canonical deploys repair the schema before Worker publication;
+   * leave this unset during normal operation.
+   */
+  AGENT_SANDBOX_ENSURE_IN_WORKER?: string;
 
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
@@ -115,6 +125,7 @@ export interface Bindings {
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
   DASHBOARD_CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -285,6 +296,11 @@ export interface Bindings {
    */
   R2_PUBLIC_HOST?: string;
   /**
+   * Comma-separated HMAC keys for opaque private-storage capabilities. The
+   * first key signs and all keys verify, allowing bounded rotation overlap.
+   */
+  STORAGE_READ_SIGNING_SECRETS?: string;
+  /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
    * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see
@@ -294,6 +310,12 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
+  /**
+   * Hard ceiling, in bytes, on a single field persisted inline in a SQL text or
+   * jsonb column when object storage is unavailable. Defaults to 1 MiB; values
+   * below 1024 are ignored.
+   */
+  SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- Steward (auth provider) ----
@@ -304,12 +326,18 @@ export interface Bindings {
   STEWARD_SESSION_SECRET?: string;
   /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
   OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Dedicated HMAC key for short-lived remote pairing-code verifiers. */
+  REMOTE_PAIRING_HMAC_SECRET?: string;
   /** Required managed Google OAuth application credentials. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
   /** HS256 service-account bridge secret; must never equal the staging QA signer. */
   ELIZA_SERVICE_JWT_SECRET?: string;
+  /** Optional issuer pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_ISSUER?: string;
+  /** Optional audience pin for service-account JWTs (jose enforces it only when set). */
+  ELIZA_SERVICE_JWT_AUDIENCE?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
@@ -393,6 +421,14 @@ export interface Bindings {
    */
   STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
+  /** Server-only recurring Plus plan Stripe Price binding. */
+  STRIPE_PLUS_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Plus plan. */
+  STRIPE_PLUS_PRODUCT_ID?: string;
+  /** Server-only recurring Pro plan Stripe Price binding. */
+  STRIPE_PRO_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Pro plan. */
+  STRIPE_PRO_PRODUCT_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;
@@ -410,6 +446,16 @@ export interface Bindings {
   ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY?: string;
   /** VAPID contact subject sent to push services, e.g. `mailto:ops@example.com`. */
   ELIZA_WEB_PUSH_VAPID_SUBJECT?: string;
+  /** APNs provider key contents; secret and never returned to clients. */
+  ELIZA_APNS_KEY?: string;
+  /** APNs provider key id used as the ES256 JWT kid. */
+  ELIZA_APNS_KEY_ID?: string;
+  /** Apple Developer team id used as the ES256 JWT issuer. */
+  ELIZA_APNS_TEAM_ID?: string;
+  /** Must equal the signed iOS bundle id, ai.elizaos.app. */
+  ELIZA_APNS_TOPIC?: string;
+  /** Explicit APNs host selection: 0 sandbox, 1 production. */
+  ELIZA_APNS_PRODUCTION?: string;
   AGENT_ROUTER_ORIGIN_HOST?: string;
   /**
    * When `"true"`/`"1"`, the agent-router reaches a running sandbox through the
@@ -461,6 +507,7 @@ export interface Bindings {
   REDIS_RATE_LIMITING?: string;
   CACHE_ENABLED?: string;
   CACHE_BACKEND?: string;
+  DIRECT_REDIS_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
   // Inference hot path (#9899). The auth+moderation single-read cache is the
@@ -497,8 +544,6 @@ export interface Bindings {
   INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
-  /** Transition gate for the genuine AgentRuntime-backed Shared turn. */
-  SHARED_ELIZA_AGENT_RUNTIME?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
   PLAYWRIGHT_TEST_AUTH_SECRET?: string;
   TWILIO_SMS_COST_PER_SEGMENT_USD?: string;
@@ -542,6 +587,8 @@ export interface Variables {
   traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
+  /** Registered app that issued a mobile lifecycle credential. */
+  apiKeySourceAppId?: string;
 }
 
 export type AppEnv = {

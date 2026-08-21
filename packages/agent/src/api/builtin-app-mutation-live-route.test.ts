@@ -299,7 +299,14 @@ describe("My Apps semantic route parity (#16944)", () => {
         await runtime.stop({ fast: true });
         await runtime.close();
       }
-      await rm(root, { recursive: true, force: true });
+      // The stopped runtime can still be flushing state files; retry the
+      // teardown instead of failing the suite on a transient ENOTEMPTY.
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
   }, 120_000);
 });

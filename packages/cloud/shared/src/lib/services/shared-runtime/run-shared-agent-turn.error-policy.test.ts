@@ -1,664 +1,255 @@
 /**
- * Error-policy pin (#13415): in runSharedAgentTurn an INTERNAL inference/provider
- * failure must PROPAGATE (throw with `cause`) so the caller refunds the credit
- * hold and the failure surfaces, while the DESIGNED no-model-configured
- * "unavailable" state stays a distinguishable `degraded` result — the two must
- * never collapse into the same signal. Drives the real exported function with the
- * `ai` SDK's `generateText` and the language-model router stubbed via mock.module
- * (deterministic, no live model); global fetch is trapped and restored to prove
- * no accidental network.
+ * Pins the Shared turn boundary after AgentRuntime became its sole inference
+ * engine. The deterministic harness verifies capability gating, runtime
+ * delegation, memory commit ordering, and cause-preserving failures; provider
+ * streaming mechanics are covered by shared-eliza-runtime.test.ts.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-// Per-test controls for the collaborators used by both turn entry points.
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType } from "@elizaos/core/edge";
+
 let providerConfigured = true;
-let generateTextImpl: (options?: {
-  abortSignal?: AbortSignal;
-  messages?: Array<{ role: string; content: string }>;
-  system?: string;
-}) => Promise<{ text: string; usage?: unknown }> = async () => ({
-  text: "ok reply",
-});
-type StreamTextOptions = {
-  abortSignal?: AbortSignal;
-  messages?: Array<{ role: string; content: string }>;
-};
-
-function aiFullStream(iterable: AsyncIterable<unknown>): ReadableStream<unknown> {
-  const iterator = iterable[Symbol.asyncIterator]();
-  return new ReadableStream({
-    async pull(controller) {
-      try {
-        const next = await iterator.next();
-        if (next.done) controller.close();
-        else controller.enqueue(next.value);
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      await iterator.return?.(reason);
-    },
-  });
-}
-
-let lastStreamTextOptions: StreamTextOptions | undefined;
-let streamTextImpl: (options?: StreamTextOptions) => {
-  fullStream: ReadableStream<unknown>;
-  text: Promise<string>;
-  totalUsage: Promise<unknown>;
-} = () => ({
-  fullStream: aiFullStream(
-    (async function* () {
-      yield { type: "text-delta", text: "ok " };
-      yield { type: "text-delta", text: "reply" };
-      yield { type: "finish", totalUsage: { totalTokens: 3 } };
-    })(),
-  ),
-  text: Promise.resolve("ok reply"),
-  totalUsage: Promise.resolve({ totalTokens: 3 }),
-});
+let runtimeFailure: Error | null = null;
+let streamFailure: Error | null = null;
+let runtimeActionResults: Array<Record<string, unknown>> | undefined;
+const runtimeInputs: Array<Record<string, unknown>> = [];
+const streamInputs: Array<Record<string, unknown>> = [];
 
 mock.module("../../providers/language-model", () => ({
-  // The returned handle is opaque here — generateText is stubbed, so it is never
-  // actually invoked against a provider.
-  getLanguageModel: () => ({ __sentinel: "model" }),
-  // COLDPATH-FIX-2026-07-21: the shared turn now resolves its model through the
-  // interactive-Cerebras failover wrapper; stub it the same opaque way.
-  getInteractiveCerebrasLanguageModel: () => ({ __sentinel: "interactive-model" }),
   hasLanguageModelProviderConfigured: () => providerConfigured,
 }));
 
-mock.module("ai", () => ({
-  generateText: async (options?: {
-    messages?: Array<{ role: string; content: string }>;
-    system?: string;
-  }) => generateTextImpl(options),
-  streamText: (options?: StreamTextOptions) => {
-    lastStreamTextOptions = options;
-    return streamTextImpl(options);
-  },
-}));
-
 mock.module("./shared-eliza-runtime", () => ({
-  runSharedElizaRuntimeTurn: async (input: {
-    history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
-    message: string;
-  }) => ({
-    reply: "Todo saved.",
-    history: [...input.history, { role: "user", content: input.message }],
-    model: "runtime-model",
-    degraded: false,
-    actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
-  }),
-  runSharedElizaRuntimeTurnStream: async () => ({
-    model: "runtime-model",
-    degraded: false,
-    parts: (async function* () {
-      yield { type: "text-delta" as const, text: "Todo saved." };
-      yield {
-        type: "finish" as const,
-        text: "Todo saved.",
-        actionResults: [{ actionName: "TODO", success: true, text: "Todo saved." }],
-      };
-    })(),
-  }),
+  runSharedElizaRuntimeTurn: async (input: Record<string, unknown>) => {
+    runtimeInputs.push(input);
+    if (runtimeFailure) throw runtimeFailure;
+    const history = input.history as Array<{ role: string; content: string }>;
+    return {
+      reply: "runtime reply",
+      history: [
+        ...history,
+        { role: "user", content: String(input.message) },
+        { role: "assistant", content: "runtime reply" },
+      ],
+      model: String(input.model),
+      degraded: false,
+      ...(runtimeActionResults ? { actionResults: runtimeActionResults } : {}),
+    };
+  },
+  runSharedElizaRuntimeTurnStream: async (input: Record<string, unknown>) => {
+    streamInputs.push(input);
+    if (streamFailure) throw streamFailure;
+    return {
+      model: String(input.model),
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta" as const, text: "runtime " };
+        yield { type: "finish" as const, text: "runtime reply" };
+      })(),
+    };
+  },
 }));
 
 const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
 
-const originalFetch = globalThis.fetch;
-
 beforeEach(() => {
   providerConfigured = true;
-  lastStreamTextOptions = undefined;
-  generateTextImpl = async () => ({ text: "ok reply" });
-  streamTextImpl = () => ({
-    fullStream: aiFullStream(
-      (async function* () {
-        yield { type: "text-delta", text: "ok " };
-        yield { type: "text-delta", text: "reply" };
-        yield { type: "finish", totalUsage: { totalTokens: 3 } };
-      })(),
-    ),
-    text: Promise.resolve("ok reply"),
-    totalUsage: Promise.resolve({ totalTokens: 3 }),
-  });
-  globalThis.fetch = mock(async () => {
-    throw new Error("no network expected in this unit test");
-  }) as unknown as typeof fetch;
+  runtimeFailure = null;
+  streamFailure = null;
+  runtimeActionResults = undefined;
+  runtimeInputs.length = 0;
+  streamInputs.length = 0;
 });
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
-
-describe("runSharedAgentTurn — internal failure propagates vs designed-empty degrades", () => {
-  test("marks dispatch only at the final model handoff", async () => {
-    let dispatches = 0;
-    generateTextImpl = async () => {
-      expect(dispatches).toBeGreaterThan(0);
-      return { text: "provider reply" };
-    };
-    const onProviderDispatch = async () => {
-      dispatches += 1;
-    };
-
-    const providerTurn = await runSharedAgentTurn({
-      character: {
-        name: "Nova",
-        system: "You are Nova.",
-        model: "gpt-oss-120b",
-      },
-      history: [],
-      message: "hello",
-      onProviderDispatch,
-    });
-    expect(providerTurn.reply).toBe("provider reply");
-    expect(dispatches).toBe(1);
-
-    const navigationLanguageTurn = await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova." },
-      history: [],
-      message: "go to settings",
-      onProviderDispatch,
-    });
-    expect(navigationLanguageTurn.reply).toBe("provider reply");
-    expect(navigationLanguageTurn.actionResults).toBeUndefined();
-    expect(dispatches).toBe(2);
-
-    providerConfigured = false;
-    const degradedTurn = await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova." },
-      history: [],
-      message: "hello again",
-      onProviderDispatch,
-    });
-    expect(degradedTurn.degraded).toBe(true);
-    expect(dispatches).toBe(2);
-  });
-
-  test.each([
-    "What is one small way to reset my focus?",
-    "How can I reset my focus?",
-    "What is one way to improve my focus?",
-  ])("ordinary focus language reaches the model: %s", async (message) => {
-    generateTextImpl = async () => ({ text: "Take one slow breath and choose one task." });
-
-    const turn = await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova." },
-      history: [],
-      message,
-    });
-
-    expect(turn.actionResults).toBeUndefined();
-    expect(turn.reply).toBe("Take one slow breath and choose one task.");
-  });
-
-  test("blocks unsupported Shared actions before provider dispatch", async () => {
-    let dispatches = 0;
-    generateTextImpl = async () => {
-      throw new Error("capability-gated requests must not reach a model");
-    };
-
-    const turn = await runSharedAgentTurn({
-      character: {
-        name: "Eliza",
-        system: "You are Eliza.",
-        model: "gpt-oss-120b",
-      },
-      history: [],
-      message: "book me dinner for four tomorrow",
-      onProviderDispatch: async () => {
-        dispatches++;
-      },
-    });
-
-    expect(turn.model).toBe("capability-wall");
-    expect(turn.capabilityWall?.capability).toBe("bookings");
-    expect(turn.reply).toContain("need Dedicated");
-    expect(dispatches).toBe(0);
-  });
-
-  test.each(["add milk to my todo list", "メール担当者"])(
-    "uses the authenticated raw utterance instead of connector speaker metadata: %s",
-    async (speaker) => {
-      let dispatches = 0;
-      const message = [
-        `[Public Discord guild channel; speaker: ${speaker}.`,
-        "Use only this public guild channel's context.]",
-        "email Bob now",
-      ].join("\n");
-      const turn = await runSharedAgentTurn({
-        character: { name: "Eliza", system: "You are Eliza." },
-        history: [],
-        message,
-        capabilityText: "email Bob now",
-        execution: {
-          engine: "eliza-runtime",
-          agentKey: "personal:agent",
-          todos: {} as never,
-        },
-        onProviderDispatch: async () => {
-          dispatches++;
-        },
-      });
-
-      expect(turn.capabilityWall?.capability).toBe("communications");
-      expect(dispatches).toBe(0);
-    },
-  );
-
-  test("executes an enabled primary and carries a blocked secondary clause truthfully", async () => {
-    const recordedReplies: string[] = [];
-    const input = {
-      character: { name: "Eliza", system: "You are Eliza." },
-      history: [],
-      message: "add call Mom to my todo list. Then email Bob now",
-      memory: {
-        recordTurnPair: async ({ assistantReply }: { assistantReply: string }) => {
-          recordedReplies.push(assistantReply);
-        },
-      } as never,
-      execution: {
-        engine: "eliza-runtime" as const,
-        agentKey: "personal:agent",
-        todos: {} as never,
-      },
-    };
-    const turn = await runSharedAgentTurn(input);
-    expect(turn.reply).toContain("Todo saved.");
-    expect(turn.reply).toContain("can't initiate a separate call, email, text, or DM");
-    expect(turn.actionResults?.[0]).toMatchObject({ actionName: "TODO", success: true });
-    expect(turn.blockedSecondaryCapabilities).toEqual([
-      expect.objectContaining({ capability: "communications" }),
-    ]);
-    expect(recordedReplies).toEqual([turn.reply]);
-
-    const streamed = await runSharedAgentTurnStream(input);
-    const parts = [];
-    for await (const part of streamed.parts ?? []) parts.push(part);
-    expect(parts).toContainEqual(
-      expect.objectContaining({
-        type: "finish",
-        text: expect.stringContaining("can't initiate a separate call, email, text, or DM"),
-      }),
-    );
-    expect(streamed.blockedSecondaryCapabilities?.[0]?.capability).toBe("communications");
-    // Streaming persistence is owned by SharedRuntimeChatService so cancellation
-    // and retries converge on the transport's stable message ids.
-    expect(recordedReplies).toEqual([turn.reply]);
-  });
-
-  test("tells the model the same capability truth for ambiguous follow-ups", async () => {
-    let system = "";
-    generateTextImpl = async (options) => {
-      system = options?.system ?? "";
-      return { text: "I can help draft that here." };
-    };
-
-    await runSharedAgentTurn({
-      character: {
-        name: "Eliza",
-        system: "Be helpful.",
-        model: "gpt-oss-120b",
-      },
-      history: [
-        { role: "user", content: "draft a message to Sam" },
-        { role: "assistant", content: "Here is a draft." },
-      ],
-      message: "yes, do it",
-    });
-
-    expect(system).toContain("Shared runtime boundaries");
-    expect(system).toContain("no connected accounts");
-    expect(system).toContain("Never claim that you performed");
-    expect(system).toContain("needs Dedicated");
-  });
-
-  test("an internal inference/provider failure throws (propagates) instead of degrading", async () => {
-    providerConfigured = true;
-    generateTextImpl = async () => {
-      throw new Error("provider 503 during shared-runtime turn");
-    };
-
-    const error = await runSharedAgentTurn({
+describe("Shared turn AgentRuntime boundary", () => {
+  test("delegates every ordinary turn to AgentRuntime with a fail-closed guest execution", async () => {
+    const result = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
       history: [],
       message: "hello",
-    }).then(
-      () => {
-        throw new Error("expected runSharedAgentTurn to throw on inference failure");
-      },
-      (e: unknown) => e,
-    );
+    });
 
-    expect(error).toBeInstanceOf(Error);
-    // Context is added (agent + model) and the original error is preserved as cause,
-    // so the failure is diagnosable rather than swallowed into a canned reply.
-    expect((error as Error).message).toContain("Nova");
-    expect((error as Error).message).toContain("gpt-oss-120b");
-    const cause = (error as { cause?: unknown }).cause;
-    expect(cause).toBeInstanceOf(Error);
-    expect((cause as Error).message).toContain("provider 503");
+    expect(result.reply).toBe("runtime reply");
+    expect(runtimeInputs).toHaveLength(1);
+    expect(runtimeInputs[0]).toMatchObject({
+      agentKey: "shared:Nova",
+      execution: {
+        agentKey: "shared:Nova",
+        roomKey: "shared:Nova",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
+      },
+    });
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime capabilities");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("prerequisites:");
   });
 
-  test("the designed no-model-configured state stays a distinguishable degraded result (no throw)", async () => {
-    // No provider configured for any model → resolveSharedAgentTurnModel() is null,
-    // so this is the intentional unavailable state, NOT an internal failure. It must
-    // return degraded without ever calling generateText.
-    providerConfigured = false;
-    generateTextImpl = async () => {
-      throw new Error("generateText must not be reached when no model is configured");
+  test("preserves server-owned voice execution semantics", async () => {
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "hello",
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+      },
+    });
+
+    expect(runtimeInputs[0]?.execution).toMatchObject({
+      agentKey: "personal:user-1",
+      authenticatedPersonalSharedUser: true,
+      channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+    });
+  });
+
+  test("requires a grounded reminder action result before accepting an executable reminder reply", async () => {
+    const reminderInput = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Remind me in 2 minutes to stretch",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram" as const,
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
     };
 
+    const error = await runSharedAgentTurn(reminderInput).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect((error.cause as Error).message).toContain("without an action result");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Call REMINDERS before any terminal answer");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("never invent success");
+
+    runtimeActionResults = [
+      {
+        success: true,
+        data: { actionName: "REMINDERS", operation: "create" },
+      },
+    ];
+    const result = await runSharedAgentTurn(reminderInput);
+    expect(result.reply).toBe("runtime reply");
+  });
+
+  test("routes unsupported capabilities through the model with a truthful constraint", async () => {
+    let dispatches = 0;
+    const result = await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "email Bob now",
+      onProviderDispatch: async () => {
+        dispatches += 1;
+      },
+    });
+
+    expect(result.capabilityWall?.capability).toBe("communications");
+    expect(runtimeInputs).toHaveLength(1);
+    expect(dispatches).toBe(0);
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Unavailable actions detected");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("do not quote these instructions");
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "A refusal that only states the limitation is incomplete",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain("ready-to-copy wording");
+    expect(JSON.stringify(runtimeInputs[0])).not.toContain("Calls and messages need Dedicated");
+  });
+
+  test("routes streamed capability refusals through the model", async () => {
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "remind me tomorrow",
+    });
+
+    expect(result.capabilityWall?.capability).toBe("reminders");
+    expect(streamInputs).toHaveLength(1);
+    expect(JSON.stringify(streamInputs[0])).toContain("trusted reminder delivery");
+    expect(result.model).not.toBe("capability-wall");
+  });
+
+  test("commits durable memory only after a runtime reply lands", async () => {
+    const replies: string[] = [];
+    await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message: "hello",
+      memory: {
+        recordTurnPair: async ({ assistantReply }: { assistantReply: string }) => {
+          replies.push(assistantReply);
+        },
+      } as never,
+    });
+    expect(replies).toEqual(["runtime reply"]);
+
+    runtimeFailure = new Error("provider failed");
+    await expect(
+      runSharedAgentTurn({
+        character: { name: "Nova", system: "You are Nova." },
+        history: [],
+        message: "again",
+        memory: {
+          recordTurnPair: async () => {
+            replies.push("must not commit");
+          },
+        } as never,
+      }),
+    ).rejects.toThrow("AgentRuntime turn failed");
+    expect(replies).toEqual(["runtime reply"]);
+  });
+
+  test("preserves the AgentRuntime failure as the turn error cause", async () => {
+    runtimeFailure = new Error("provider failed");
+    const error = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message: "hello",
+    }).catch((caught) => caught as Error);
+
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect(error.message).toContain("Nova");
+    expect(error.cause).toBe(runtimeFailure);
+  });
+
+  test("keeps no-model configuration as the sole degraded result", async () => {
+    providerConfigured = false;
     const result = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova." },
       history: [],
-      message: "  hello there  ",
+      message: "hello",
     });
 
     expect(result.degraded).toBe(true);
     expect(result.model).toBe("none");
-    expect(result.reply).toContain("no shared model configured");
-    expect(result.history).toHaveLength(2);
-    expect(result.history[0]).toMatchObject({
-      role: "user",
-      content: "hello there",
-    });
-    expect(typeof result.history[0]?.createdAt).toBe("number");
-    expect(result.history[1]?.role).toBe("assistant");
-    expect(typeof result.history[1]?.createdAt).toBe("number");
+    expect(runtimeInputs).toHaveLength(0);
   });
 
-  test("a successful turn returns the reply with degraded:false (not a tautology — real SUT runs)", async () => {
-    providerConfigured = true;
-    generateTextImpl = async () => ({ text: "  hi from Nova  ", usage: { totalTokens: 7 } });
-
-    const result = await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
-      history: [
-        { role: "user", content: "prev-q" },
-        { role: "assistant", content: "prev-a" },
-      ],
-      message: "hi",
-    });
-
-    expect(result.degraded).toBe(false);
-    expect(result.reply).toBe("hi from Nova");
-    expect(result.model).toBe("gpt-oss-120b");
-    expect(result.usage).toEqual({ totalTokens: 7 });
-    // history + new user message + assistant reply.
-    expect(result.history).toHaveLength(4);
-    expect(result.history[2]).toMatchObject({ role: "user", content: "hi" });
-    expect(typeof result.history[2]?.createdAt).toBe("number");
-    expect(result.history[3]).toMatchObject({
-      role: "assistant",
-      content: "hi from Nova",
-    });
-    expect(typeof result.history[3]?.createdAt).toBe("number");
-  });
-
-  test("annotates interrupted assistant history before provider input", async () => {
-    let providerMessages: Array<{ role: string; content: string }> = [];
-    generateTextImpl = async (options) => {
-      providerMessages = options?.messages ?? [];
-      return { text: "continued" };
-    };
-
-    await runSharedAgentTurn({
-      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
-      history: [
-        { role: "user", content: "first" },
-        { role: "assistant", content: "partial answer", interrupted: true },
-      ],
-      message: "continue",
-    });
-
-    expect(providerMessages[1]).toEqual({
-      role: "assistant",
-      content: "[interrupted assistant partial]\npartial answer",
-    });
-  });
-});
-
-describe("runSharedAgentTurnStream — incremental provider policy", () => {
-  test.each(["open settings", "What is one small way to reset my focus?"])(
-    "routes navigation-like language through the provider without view actions: %s",
-    async (message) => {
-      let providerStreams = 0;
-      streamTextImpl = () => {
-        providerStreams++;
-        return {
-          fullStream: aiFullStream(
-            (async function* () {
-              yield { type: "text-delta", text: "normal reply" };
-              yield { type: "finish", totalUsage: { totalTokens: 2 } };
-            })(),
-          ),
-          text: Promise.resolve("normal reply"),
-          totalUsage: Promise.resolve({ totalTokens: 2 }),
-        };
-      };
-
-      const turn = await runSharedAgentTurnStream({
-        character: { name: "Nova", system: "You are Nova." },
-        history: [],
-        message,
-      });
-      expect(turn.actionResults).toBeUndefined();
-      expect(providerStreams).toBe(1);
-      if (!turn.parts) throw new Error("expected provider stream");
-      const parts = [];
-      for await (const part of turn.parts) parts.push(part);
-      expect(parts.at(-1)).toMatchObject({ type: "finish", text: "normal reply" });
-    },
-  );
-
-  test("streams text deltas and a final usage-bearing finish part", async () => {
+  test("delegates streaming setup to AgentRuntime and wraps setup failures", async () => {
     const result = await runSharedAgentTurnStream({
-      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+      character: { name: "Nova", system: "You are Nova." },
       history: [],
-      message: " hello ",
+      message: "hello",
     });
-
-    expect(result.degraded).toBe(false);
-    expect(result.model).toBe("gpt-oss-120b");
-    if (!("parts" in result)) throw new Error("expected streaming result");
+    expect(streamInputs).toHaveLength(1);
     const parts = [];
+    if (!result.parts) throw new Error("Expected runtime stream parts");
     for await (const part of result.parts) parts.push(part);
-    expect(parts).toEqual([
-      { type: "text-delta", text: "ok " },
-      { type: "text-delta", text: "reply" },
-      { type: "finish", text: "ok reply", usage: { totalTokens: 3 } },
-    ]);
-  });
+    expect(parts.at(-1)).toEqual({ type: "finish", text: "runtime reply" });
 
-  test("synthesizes finish from the SDK result when a provider closes cleanly after text", async () => {
-    streamTextImpl = () => ({
-      fullStream: aiFullStream(
-        (async function* () {
-          yield { type: "text-delta", text: "clean " };
-          yield { type: "text-delta", text: "eof" };
-        })(),
-      ),
-      text: Promise.resolve("clean eof"),
-      totalUsage: Promise.resolve({ totalTokens: 2 }),
-    });
-
-    const result = await runSharedAgentTurnStream({
-      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+    streamFailure = new Error("stream setup failed");
+    const error = await runSharedAgentTurnStream({
+      character: { name: "Nova", system: "You are Nova." },
       history: [],
-      message: "hello",
-    });
-    if (!("parts" in result)) throw new Error("expected streaming result");
-
-    const parts = [];
-    for await (const part of result.parts) parts.push(part);
-    expect(parts).toEqual([
-      { type: "text-delta", text: "clean " },
-      { type: "text-delta", text: "eof" },
-      { type: "finish", text: "clean eof", usage: { totalTokens: 2 } },
-    ]);
-  });
-
-  test("keeps no-model turns degraded without starting a provider stream", async () => {
-    providerConfigured = false;
-    streamTextImpl = () => {
-      throw new Error("streamText must not be reached when no model is configured");
-    };
-
-    const result = await runSharedAgentTurnStream({
-      character: { name: "Nova" },
-      history: [],
-      message: " hello ",
-    });
-
-    expect(result).toMatchObject({
-      degraded: true,
-      model: "none",
-      reply: "Nova is temporarily unavailable (no shared model configured).",
-    });
-    if (!("history" in result)) throw new Error("expected degraded history result");
-    expect(result.history.map((entry) => entry.content)).toEqual([
-      "hello",
-      "Nova is temporarily unavailable (no shared model configured).",
-    ]);
-  });
-
-  test("wraps failures raised while consuming the provider stream", async () => {
-    streamTextImpl = () => ({
-      fullStream: aiFullStream(
-        (async function* () {
-          yield { type: "text-delta", text: "partial" };
-          throw new Error("provider stream reset");
-        })(),
-      ),
-      text: Promise.resolve("partial"),
-      totalUsage: Promise.resolve({ totalTokens: 0 }),
-    });
-
-    const result = await runSharedAgentTurnStream({
-      character: { name: "Nova", model: "gpt-oss-120b" },
-      history: [],
-      message: "hello",
-    });
-    if (!("parts" in result)) throw new Error("expected streaming result");
-
-    const error = await (async () => {
-      try {
-        for await (const _part of result.parts) {
-          // Consume the stream so the late provider failure is observable.
-        }
-        throw new Error("expected stream consumption to fail");
-      } catch (caught) {
-        return caught;
-      }
-    })();
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("streaming agent turn failed");
-    expect(((error as Error).cause as Error).message).toContain("provider stream reset");
-  });
-
-  test("propagates explicit provider error parts instead of treating them as clean EOF", async () => {
-    streamTextImpl = () => ({
-      fullStream: aiFullStream(
-        (async function* () {
-          yield { type: "text-delta", text: "partial" };
-          yield { type: "error", error: new Error("provider rejected stream") };
-        })(),
-      ),
-      text: Promise.resolve("partial"),
-      totalUsage: Promise.resolve({ totalTokens: 0 }),
-    });
-
-    const result = await runSharedAgentTurnStream({
-      character: { name: "Nova", model: "gpt-oss-120b" },
-      history: [],
-      message: "hello",
-    });
-    if (!("parts" in result)) throw new Error("expected streaming result");
-
-    const error = await (async () => {
-      try {
-        for await (const _part of result.parts) {
-          // Consume through the explicit provider error part.
-        }
-        throw new Error("expected stream consumption to fail");
-      } catch (caught) {
-        return caught;
-      }
-    })();
-    expect(error).toBeInstanceOf(Error);
-    expect(((error as Error).cause as Error).message).toBe("provider rejected stream");
-  });
-
-  test("propagates a clean EOF whose authoritative SDK result rejects", async () => {
-    streamTextImpl = () => {
-      const text = Promise.reject(new Error("provider completion failed"));
-      void text.catch(() => {
-        // The SUT observes the original rejecting promise after consuming fullStream.
-      });
-      return {
-        fullStream: aiFullStream(
-          (async function* () {
-            yield { type: "text-delta", text: "partial" };
-          })(),
-        ),
-        text,
-        totalUsage: Promise.resolve({ totalTokens: 0 }),
-      };
-    };
-
-    const result = await runSharedAgentTurnStream({
-      character: { name: "Nova", model: "gpt-oss-120b" },
-      history: [],
-      message: "hello",
-    });
-    if (!("parts" in result)) throw new Error("expected streaming result");
-
-    await expect(async () => {
-      for await (const _part of result.parts) {
-        // Consume through clean EOF so the SDK completion promise is checked.
-      }
-    }).toThrow("streaming agent turn failed");
-  });
-
-  test("passes cancellation to the AI SDK and cancels its response reader", async () => {
-    const abortController = new AbortController();
-    let providerCancelReason: unknown;
-    streamTextImpl = () => ({
-      fullStream: new ReadableStream({
-        start(controller) {
-          controller.enqueue({ type: "text-delta", text: "partial" });
-        },
-        cancel(reason) {
-          providerCancelReason = reason;
-        },
-      }),
-      text: new Promise(() => {}),
-      totalUsage: new Promise(() => {}),
-    });
-
-    const result = await runSharedAgentTurnStream({
-      abortSignal: abortController.signal,
-      character: { name: "Nova", model: "gpt-oss-120b" },
-      history: [],
-      message: "hello",
-    });
-    if (!result.parts || !result.cancel) {
-      throw new Error("expected cancellable streaming result");
-    }
-    const iterator = result.parts[Symbol.asyncIterator]();
-    await expect(iterator.next()).resolves.toMatchObject({
-      value: { type: "text-delta", text: "partial" },
-    });
-
-    await result.cancel("barge-in");
-
-    expect(lastStreamTextOptions?.abortSignal).toBe(abortController.signal);
-    expect(providerCancelReason).toBe("barge-in");
-    await expect(iterator.next()).resolves.toMatchObject({ done: true });
+      message: "again",
+    }).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime stream setup failed");
+    expect(error.cause).toBe(streamFailure);
   });
 });

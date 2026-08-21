@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-companion",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Opt-in ESP32 companion device bridge: WebSocket client service, SET_COMPANION_MOOD / GET_COMPANION_STATUS actions, and a companionDevice provider for touch events.",
   "main": "./dist/index.js",
@@ -56,6 +56,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
   }
 }

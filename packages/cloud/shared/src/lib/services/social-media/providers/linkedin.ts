@@ -14,9 +14,37 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
+
+const LINKEDIN_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every LinkedIn REST hop so a hung API cannot pin the publishing worker
+ * indefinitely. A caller-provided abort signal wins.
+ *
+ * The two asset-upload hops do not target `LINKEDIN_API_BASE` at all: they PUT
+ * to the `uploadUrl` LinkedIn hands back from `registerUpload`, so their peer is
+ * named by a remote response body. `linkedinApiRequest` additionally runs inside
+ * `withRetry(..., { maxRetries: 3 })`, which replays the hop up to four times.
+ */
+export function linkedinFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = LINKEDIN_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface LinkedInProfile {
   id: string;
@@ -51,7 +79,7 @@ async function linkedinApiRequest<T>(
 
   const { data } = await withRetry<T | { id: string }>(
     () =>
-      fetch(url, {
+      linkedinFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -216,21 +244,18 @@ export const linkedinProvider: SocialMediaProvider = {
             // Download and upload the image. A non-OK download or upload must
             // surface: otherwise the asset below is marked READY and attached to
             // a published post that references bytes LinkedIn never received.
-            const imageResponse = await fetch(media.url);
-            if (!imageResponse.ok) {
-              throw new Error(
-                `LinkedIn image download failed for ${media.url}: ${imageResponse.status}`,
-              );
-            }
-            const imageData = await imageResponse.arrayBuffer();
+            const imageData = await downloadSocialMediaBytes(media.url, {
+              httpErrorMessage: (status) =>
+                `LinkedIn image download failed for ${media.url}: ${status}`,
+            });
 
-            const uploadResponse = await fetch(uploadUrl, {
+            const uploadResponse = await linkedinFetch(uploadUrl, {
               method: "PUT",
               headers: {
                 Authorization: `Bearer ${credentials.accessToken}`,
                 "Content-Type": media.mimeType,
               },
-              body: imageData,
+              body: new Uint8Array(imageData),
             });
             if (!uploadResponse.ok) {
               throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);
@@ -390,28 +415,30 @@ export const linkedinProvider: SocialMediaProvider = {
     // Get image data
     let imageData: Uint8Array;
     if (media.data) {
+      assertSocialMediaBytesWithinBudget(media.data.length, { platform: "linkedin" });
       imageData = Uint8Array.from(media.data);
     } else if (media.base64) {
-      imageData = Uint8Array.from(Buffer.from(media.base64, "base64"));
+      imageData = Uint8Array.from(decodeSocialMediaBase64(media.base64, { platform: "linkedin" }));
     } else if (media.url) {
-      const response = await fetch(media.url);
-      if (!response.ok) {
-        throw new Error(`LinkedIn image download failed for ${media.url}: ${response.status}`);
-      }
-      imageData = new Uint8Array(await response.arrayBuffer());
+      imageData = new Uint8Array(
+        await downloadSocialMediaBytes(media.url, {
+          httpErrorMessage: (status) =>
+            `LinkedIn image download failed for ${media.url}: ${status}`,
+        }),
+      );
     } else {
       throw new Error("No media data provided");
     }
 
     // A non-OK upload must surface: returning the asset URN as if it succeeded
     // would hand callers a media handle LinkedIn never actually stored.
-    const uploadResponse = await fetch(uploadUrl, {
+    const uploadResponse = await linkedinFetch(uploadUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${credentials.accessToken}`,
         "Content-Type": media.mimeType,
       },
-      body: Buffer.from(imageData),
+      body: new Uint8Array(imageData),
     });
     if (!uploadResponse.ok) {
       throw new Error(`LinkedIn asset upload failed: ${uploadResponse.status}`);

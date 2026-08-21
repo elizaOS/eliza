@@ -14,6 +14,10 @@
 import z from "zod";
 import { logger } from "../../../logger.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
+import {
 	FORMALITY_VALUES,
 	MAX_DIRECTIVE_CHARS,
 	type PersonalityTrait,
@@ -47,7 +51,9 @@ const AddDirectiveOpSchema = z.object({
 		.string()
 		.trim()
 		.min(1)
-		.transform((text) => text.slice(0, MAX_DIRECTIVE_CHARS)),
+		.transform((text) =>
+			truncateWellFormed(toWellFormedUnicode(text), MAX_DIRECTIVE_CHARS),
+		),
 	confidence: z.number().min(0).max(1),
 	evidence: z.string().optional(),
 });

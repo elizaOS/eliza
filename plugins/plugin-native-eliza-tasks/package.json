@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-eliza-tasks",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.3-beta.7",
   "description": "Bridges iOS BGTaskScheduler (BGAppRefreshTask + BGProcessingTask) wake events into the Eliza Capacitor runtime.",
   "keywords": [
     "background",
@@ -53,10 +53,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.60.2",
+    "rollup": "^4.62.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

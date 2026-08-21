@@ -112,29 +112,54 @@ bun run --cwd packages/app test:e2e:android:routes
 | `--build` | Build the APK before installing |
 | `--skip-local-chat` | Skip the on-device agent/chat bring-up |
 | `--skip-route-coverage` | Skip the Playwright WebView sweep |
+| `--start-host-agent` | Start and health-check the deterministic app-core host agent, then stop it in runner teardown (host backend only) |
+| `--host-emulator-probes` | Run only onboarding, route rendering, and native-plugin bridge specs; requires host backend + `--skip-local-chat` |
+| `--arm64-local-probes` | Run local chat plus local-runtime and route-rendering WebView specs; requires local backend and an ARM64 device |
 | `--cloud` | Also run the real Cloud runtime probe (shared by default; not dedicated/Hetzner ingress proof) |
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
-## CI onboarding lane
+## CI device lanes
 
-`android-device-e2e.yml` now runs a load-bearing first-run lane before the
-best-effort route sweep:
+The scheduled and `ci:device`-label-gated Android job in
+`.github/workflows/device-e2e.yml` is a load-bearing x86_64 host-emulator lane:
 
-1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on host
-   `127.0.0.1:31337` with pairing disabled and deterministic model handlers.
+1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on a
+   kernel-assigned host port with pairing disabled and deterministic model handlers.
 2. Boot/install the WebView-debuggable APK on the Android emulator.
 3. Run `test/android/onboarding-to-home.android.spec.ts` with
    `ELIZA_ANDROID_BACKEND=host`, so global setup wires `adb reverse
-   tcp:31337 -> host:31337`.
-4. The spec navigates the installed app to `/?reset`, taps through Remote
-   onboarding, posts first-run to the real host agent, and asserts
-   `home-launcher-surface[data-page="home"]` plus the chat composer.
+   device `tcp:31337` to the selected host port.
+4. Hard-gate the explicit host-safe set: remote onboarding, route rendering,
+   and the native `ElizaSystem` plugin bridge. A newly added Android spec does
+   not enter this set implicitly.
+5. Stop the host agent in `android-e2e.mjs` teardown and upload its log inside
+   the device bundle. Missing bundles are upload failures, not warnings, and
+   artifact names include the Actions run ID and attempt to keep reruns
+   distinct.
 
 Artifacts are written under
 `packages/app/test-results/android-onboarding-to-home/`:
-`home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`.
+`home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`; the bundle
+root also includes `inline/`, `logs/`, `summary.json`, and `junit.xml`.
+
+`.github/workflows/android-arm64-local-e2e.yml` is the separate weekly,
+schedule-only local-runtime lane. It targets a self-hosted Linux runner labeled
+`ARM64` and `android-device`, then fails closed unless Node 24.15.0, Bun 1.3.14,
+an authorized booted `arm64-v8a` Android target, Java, and adb are present. It
+runs the real local chat smoke followed by `local-runtime.android.spec.ts` and
+`route-coverage.android.spec.ts`. The repository does not currently provide
+that runner, so a queued job is an infrastructure prerequisite rather than
+device proof. Arbitrary-ref manual dispatch is intentionally unavailable on
+this persistent physical-device runner. Do not cite this workflow as ARM64
+evidence until a completed bundle from the current revision has been inspected.
+Preflight output is retained in the artifact root even when a host, toolchain,
+or target check fails before the bundle runner starts.
+
+Local voice, destructive lifecycle, launcher soak, touch, and sleep/wake are
+not smuggled into either set. Run their focused commands explicitly on hardware
+that satisfies their model, privilege, and lifecycle prerequisites.
 
 ## On-device agent: where it runs
 
@@ -145,7 +170,7 @@ even after SELinux-permissive + 6GB + AVX2 (an emulator/runtime incompatibility
 the branded AOSP build avoids). So the on-device LOCAL route is validated on a
 device runner; the smoke surfaces the emulator failure loudly.
 
-## Known last gate: device pairing
+## Device pairing
 
 With a healthy on-device agent, the WebView still gates the shell behind the
 app's **device-pairing** screen ("Pairing Required — generate a code on the
@@ -155,8 +180,9 @@ server, paste it here"). For unattended e2e the agent should run with
 `GET /api/auth/pair-code` → `POST /api/auth/pair` handshake and seed the
 resulting session. Until then, route coverage needs a backend that's already
 "connected" — a cloud-onboarded agent (`ELIZA_ANDROID_BACKEND` + a cloud token)
-or pairing disabled in the test build. This is the one remaining wiring step to
-fully-green on-device route coverage.
+or pairing disabled in the test build. The local-runtime CI lane uses the
+pairing-disabled test contract while the host-emulator lane adopts a
+deterministic remote host over `adb reverse`.
 
 The repo-wide app test-auth contract lives in
 [`../../docs/TEST_AUTH.md`](../../docs/TEST_AUTH.md). It records which
@@ -225,3 +251,33 @@ fills the host-agent URL, submits first-run, and writes
 `packages/app/test-results/ios-onboarding-to-home/`: `fresh-onboarding.png`,
 `home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and
 `host-agent.log`.
+
+## Cloud-onboarding lane hygiene
+
+The live cloud-onboarding lanes (`test:e2e:android:cloud-onboarding`,
+`test:e2e:ios:cloud-onboarding`) sign in with the shared deterministic e2e
+SIWE wallet against real Eliza Cloud. A red tap-mode run can strand the
+dedicated agent it provisioned on that wallet's org, which drains real
+credits and makes later runs look less like a first run. Before rerunning
+the lanes, reconcile the org with the cleanup lane from the repo root:
+
+```bash
+bun run cloud:e2e:agents:cleanup -- --report /tmp/cloud-agent-dry-run.json
+
+# Review the dry-run identity and candidate rows, then bind mutation to them:
+bun run cloud:e2e:agents:cleanup -- \
+  --apply --wait \
+  --candidate <reviewed-agent-id> \
+  --expected-address <siwe-wallet-address> \
+  --expected-org <organization-id> \
+  --report /tmp/cloud-agent-cleanup-receipt.json
+```
+
+The dry run proposes only dated `dedicated-always` rows older than 30 minutes.
+Age is not mutation authority: `--apply` requires every reviewed candidate ID,
+the expected SIWE wallet and organization, `--wait`, and a receipt path. Each
+request is conditionally bound to the listed name, creation timestamp, and
+execution tier; success also requires a fresh list proving absence. Omit an
+active run's ID or pass `--protect <agentId>`. `--keep <n>` retains the newest
+eligible rows when preparing the candidate set. See
+`scripts/cloud/e2e-agent-cleanup.mjs`.

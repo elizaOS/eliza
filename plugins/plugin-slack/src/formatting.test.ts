@@ -5,6 +5,7 @@
  * must reject malformed boundary values; and markdown→mrkdwn must use Slack's
  * *bold* / _italic_ syntax rather than the markdown originals.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildSlackMessagePermalink,
@@ -32,6 +33,11 @@ describe("escapeSlackMrkdwn", () => {
     expect(escapeSlackMrkdwn("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
     expect(escapeSlackMrkdwn("plain text")).toBe("plain text");
   });
+
+  it("handles a 100k unterminated Slack control run in one pass", () => {
+    const adversarial = `<${"a".repeat(100_000)}`;
+    expect(escapeSlackMrkdwn(adversarial)).toBe(`&lt;${"a".repeat(100_000)}`);
+  });
 });
 
 describe("markdownToSlackMrkdwn", () => {
@@ -40,6 +46,11 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("*italic*")).toBe("_italic_");
     expect(markdownToSlackMrkdwn("~~struck~~")).toBe("~struck~");
     expect(markdownToSlackMrkdwn("")).toBe("");
+  });
+
+  it("handles a 100k unterminated code fence without backtracking", () => {
+    const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
+    expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
   });
 });
 
@@ -84,6 +95,10 @@ describe("stripSlackFormatting", () => {
       "bold and it and  hi",
     );
     expect(stripSlackFormatting("a &amp; b")).toBe("a & b");
+  });
+
+  it("decodes each Slack entity exactly once", () => {
+    expect(stripSlackFormatting("&amp;lt;tag&amp;gt;")).toBe("&lt;tag&gt;");
   });
 
   it("unwraps plain links to their URL instead of deleting them", () => {
@@ -153,6 +168,46 @@ describe("chunkSlackText", () => {
       expect((c.match(/```/g) || []).length % 2).toBe(0);
     }
   });
+
+  it("never splits an emoji surrogate pair across chunks on a break-free run", () => {
+    // "a" (1 unit) + 150 astral emoji (2 units each, no spaces/newlines) puts
+    // the hardLimit=96 break point (maxChars=100) exactly between the high
+    // and low surrogate of the 47th emoji, forcing the raw-slice fallback.
+    const text = `a${"😀".repeat(150)}`;
+    const chunks = chunkSlackText(text, 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
+    expect(chunks.every((c) => c.length > 0 && c.length <= 100)).toBe(true);
+    // lossless: no unit dropped or duplicated at the surrogate-adjusted cut
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("fails closed instead of exceeding maxChars when a surrogate pair can't fit", () => {
+    // Widening past maxChars=1 to fit the pair would silently break the
+    // "never emits more than maxChars" contract every other test here checks.
+    let thrown: unknown;
+    try {
+      chunkSlackText("😀", 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "rejects an invalid maxChars (%s) instead of silently coercing it",
+    (maxChars) => {
+      let thrown: unknown;
+      try {
+        chunkSlackText("hello", maxChars);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_INVALID");
+    },
+  );
 });
 
 describe("splitSlackText", () => {
@@ -167,12 +222,97 @@ describe("splitSlackText", () => {
       expect(chunks.join("")).toBe(text);
     },
   );
+
+  it("never splits an emoji surrogate pair across chunks on a break-free run", () => {
+    // "a" (1 unit) + 150 astral emoji puts the maxChars=100 cut exactly
+    // between the high and low surrogate of the 49th emoji.
+    const text = `a${"😀".repeat(150)}`;
+    const chunks = splitSlackText(text, 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
+    expect(chunks.every((c) => c.length > 0 && c.length <= 100)).toBe(true);
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("fails closed instead of exceeding maxChars when a surrogate pair can't fit", () => {
+    let thrown: unknown;
+    try {
+      splitSlackText("😀", 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "rejects an invalid maxChars (%s) instead of silently coercing it",
+    (maxChars) => {
+      let thrown: unknown;
+      try {
+        splitSlackText("hello", maxChars);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_INVALID");
+    },
+  );
 });
 
 describe("truncateText", () => {
   it("appends ellipsis only when over the limit", () => {
     expect(truncateText("short", 10)).toBe("short");
     expect(truncateText("abcdefghij", 5)).toBe("abcd…");
+  });
+
+  it("keeps UTF-16 surrogate pairs intact across the truncation boundary", () => {
+    // 5 single-unit chars + 2-unit emoji (🦊 \uD83E\uDD8A) + trailing chars
+    // maxLength 7, ellipsis length 1 -> budget 6.
+    // Index 5-6 is 🦊. Slicing at 6 would split the surrogate pair.
+    // truncateWellFormed backs off to 5 ("hello") so the emoji is not split.
+    const text = "hello🦊world";
+    const truncated = truncateText(text, 7);
+
+    expect(truncated).toBe("hello…");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes pre-existing lone surrogates before truncating", () => {
+    const text = "a\ud800bcdef";
+    const truncated = truncateText(text, 4);
+
+    expect(truncated).toBe("a\ufffdb…");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
+
+  it("handles custom ellipsis string and boundaries", () => {
+    expect(truncateText("hello world", 8, "...")).toBe("hello...");
+    expect(truncateText("hello world", 2, "...")).toBe("..");
+  });
+
+  it.each([
+    { maxLength: 0, ellipsis: "...", expected: "" },
+    { maxLength: 1, ellipsis: "😀", expected: "h" },
+    { maxLength: 2, ellipsis: "😀", expected: "😀" },
+    { maxLength: 1, ellipsis: "\ud800", expected: "�" },
+  ])(
+    "bounds and sanitizes ellipsis $ellipsis at maxLength=$maxLength",
+    ({ maxLength, ellipsis, expected }) => {
+      const truncated = truncateText("hello world", maxLength, ellipsis);
+
+      expect(truncated).toBe(expected);
+      expect(truncated.length).toBeLessThanOrEqual(maxLength);
+      expect(truncated.isWellFormed()).toBe(true);
+    },
+  );
+
+  it("never exceeds maxLength for oversized custom ellipses", () => {
+    for (const maxLength of [0, 1, 2]) {
+      const truncated = truncateText("hello world", maxLength, "😀...");
+      expect(truncated.length).toBeLessThanOrEqual(maxLength);
+      expect(truncated.isWellFormed()).toBe(true);
+    }
   });
 });
 

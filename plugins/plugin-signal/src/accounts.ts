@@ -6,8 +6,11 @@
  * The service and the connector-account provider both read accounts through
  * here. Account IDs are lowercased via `normalizeAccountId`, and `"default"`
  * (`DEFAULT_ACCOUNT_ID`) is the sentinel for single-account env-only setups.
+ * Named or unrecognized accountIds fail closed: they cannot inherit the
+ * owner's `SIGNAL_ACCOUNT_NUMBER` / signal-cli transport from env or the
+ * top-level character `settings.signal` identity fields.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
@@ -77,6 +80,10 @@ export interface SignalAccountConfig {
   reactionAllowlist?: Array<string | number>;
   /** DM configuration */
   dm?: SignalDmConfig;
+  /** Compatibility alias from the public SignalConfig surface. */
+  dmPolicy?: SignalDmConfig["policy"];
+  /** Compatibility alias from the public SignalConfig surface. */
+  allowFrom?: Array<string | number>;
   /** Group configuration */
   group?: SignalGroupConfig;
   /** Whether to ignore group messages */
@@ -96,6 +103,12 @@ export interface SignalMultiAccountConfig {
   account?: string;
   httpUrl?: string;
   authDir?: string;
+  /** Base DM access policy, inherited by every account unless overridden */
+  dm?: SignalDmConfig;
+  /** Compatibility alias from the public SignalConfig surface. */
+  dmPolicy?: SignalDmConfig["policy"];
+  /** Compatibility alias from the public SignalConfig surface. */
+  allowFrom?: Array<string | number>;
   /** Per-account configuration overrides */
   accounts?: Record<string, SignalAccountConfig>;
 }
@@ -137,8 +150,39 @@ function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig
     account: characterSignal?.account,
     httpUrl: characterSignal?.httpUrl,
     authDir: characterSignal?.authDir,
+    dm: characterSignal?.dm,
+    dmPolicy: characterSignal?.dmPolicy,
+    allowFrom: characterSignal?.allowFrom,
     accounts: characterSignal?.accounts,
   };
+}
+
+function indexSignalAccountConfigs(
+  accounts: Record<string, SignalAccountConfig>
+): Map<string, SignalAccountConfig> {
+  const normalizedConfigs = new Map<
+    string,
+    { configuredId: string; config: SignalAccountConfig }
+  >();
+  for (const [configuredId, accountConfig] of Object.entries(accounts)) {
+    if (!configuredId) continue;
+    const normalized = normalizeAccountId(configuredId);
+    const existing = normalizedConfigs.get(normalized);
+    if (existing !== undefined && existing.configuredId !== configuredId) {
+      throw new ElizaError("Signal account identifiers collide after normalization", {
+        code: "SIGNAL_ACCOUNT_ID_COLLISION",
+        context: {
+          normalizedAccountId: normalized,
+          configuredIds: [existing.configuredId, configuredId],
+        },
+      });
+    }
+    normalizedConfigs.set(normalized, {
+      configuredId,
+      config: accountConfig,
+    });
+  }
+  return new Map([...normalizedConfigs].map(([accountId, entry]) => [accountId, entry.config]));
 }
 
 /**
@@ -152,12 +196,16 @@ export function listSignalAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Object.keys(accounts).filter(Boolean);
+  // Enumerate under the same normalized (lowercased) identity that
+  // `resolveSignalAccount`/`getAccountConfig` use for lookup, otherwise an
+  // uppercase-keyed account (`"Work"`) is listed raw but resolves under
+  // `"work"`, misses its overrides, and is silently dropped (issue #22680).
+  const ids = Array.from(indexSignalAccountConfigs(accounts).keys());
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  return [...ids].sort((a: string, b: string) => a.localeCompare(b));
+  return ids.slice().sort((a: string, b: string) => a.localeCompare(b));
 }
 
 /**
@@ -185,7 +233,10 @@ function getAccountConfig(
     return undefined;
   }
 
-  return accounts[accountId];
+  // Resolve through the same collision-detecting normalized index used for
+  // enumeration so the public single-account resolver cannot silently choose
+  // one of two ambiguous configured keys.
+  return indexSignalAccountConfigs(accounts).get(accountId);
 }
 
 /**
@@ -203,11 +254,23 @@ function mergeSignalAccountConfig(runtime: IAgentRuntime, accountId: string): Si
   const { accounts: _ignored, ...baseConfig } = multiConfig;
   const accountConfig = getAccountConfig(runtime, accountId) ?? {};
 
-  // Get environment/runtime settings for the base config
-  const envAccount = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string | undefined;
-  const envHttpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string | undefined;
-  const envAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
-  const envCliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined;
+  // Only the implicit default account may inherit owner env / top-level
+  // character identity and signal-cli transport. A ghost or named accountId
+  // must not launch against the owner's phone number or daemon.
+  const allowOwnerBind = accountId === DEFAULT_ACCOUNT_ID;
+
+  const envAccount = allowOwnerBind
+    ? (runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string | undefined)
+    : undefined;
+  const envHttpUrl = allowOwnerBind
+    ? (runtime.getSetting("SIGNAL_HTTP_URL") as string | undefined)
+    : undefined;
+  const envAuthDir = allowOwnerBind
+    ? (runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined)
+    : undefined;
+  const envCliPath = allowOwnerBind
+    ? (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined)
+    : undefined;
   const envIgnoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as
     | string
     | undefined;
@@ -220,12 +283,37 @@ function mergeSignalAccountConfig(runtime: IAgentRuntime, accountId: string): Si
     shouldIgnoreGroupMessages: envIgnoreGroups?.toLowerCase() === "true",
   };
 
-  // Merge order: env defaults < base config < account config
+  const ownerIdentity = allowOwnerBind
+    ? filterDefined({
+        account: baseConfig.account,
+        httpUrl: baseConfig.httpUrl,
+        authDir: baseConfig.authDir,
+      })
+    : {};
+  const {
+    account: _baseAccount,
+    httpUrl: _baseHttpUrl,
+    authDir: _baseAuthDir,
+    ...basePolicy
+  } = baseConfig;
+
+  // Merge order: env defaults < shared policy < default-only identity < account
   // Filter undefined values to prevent them from overwriting defined values
+  const normalizedDm = filterDefined({
+    policy: multiConfig.dmPolicy,
+    allowFrom: multiConfig.allowFrom,
+    ...filterDefined(multiConfig.dm ?? {}),
+    ...(accountConfig.dmPolicy !== undefined ? { policy: accountConfig.dmPolicy } : {}),
+    ...(accountConfig.allowFrom !== undefined ? { allowFrom: accountConfig.allowFrom } : {}),
+    ...filterDefined(accountConfig.dm ?? {}),
+  });
+
   return {
     ...filterDefined(envConfig),
-    ...filterDefined(baseConfig),
+    ...filterDefined(basePolicy),
+    ...ownerIdentity,
     ...filterDefined(accountConfig),
+    ...(Object.keys(normalizedDm).length > 0 ? { dm: normalizedDm } : {}),
   };
 }
 

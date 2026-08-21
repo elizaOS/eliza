@@ -12,6 +12,9 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -93,17 +96,24 @@ export const containers = pgTable(
     deployment_log_key: text("deployment_log_key"),
     error_message: text("error_message"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
-    last_billed_at: timestamp("last_billed_at"),
+    last_billed_at: timestamp("last_billed_at").defaultNow(),
     next_billing_at: timestamp("next_billing_at"),
     billing_status: text("billing_status").default("active").notNull(),
     shutdown_warning_sent_at: timestamp("shutdown_warning_sent_at"),
     scheduled_shutdown_at: timestamp("scheduled_shutdown_at"),
-    total_billed: numeric("total_billed", { precision: 10, scale: 2 }).default("0.00").notNull(),
+    total_billed: numeric("total_billed", { precision: 18, scale: 6 })
+      .default("0.000000")
+      .notNull(),
+    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).default(0).notNull(),
     created_at: timestamp("created_at").defaultNow().notNull(),
     updated_at: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
     organization_idx: index("containers_organization_idx").on(table.organization_id),
+    tenant_identity_unique: uniqueIndex("containers_id_organization_unique").on(
+      table.id,
+      table.organization_id,
+    ),
     user_idx: index("containers_user_idx").on(table.user_id),
     status_idx: index("containers_status_idx").on(table.status),
     character_idx: index("containers_character_idx").on(table.character_id),
@@ -139,28 +149,45 @@ export const containerBillingRecords = pgTable(
   "container_billing_records",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    container_id: uuid("container_id")
-      .notNull()
-      .references(() => containers.id, { onDelete: "cascade" }),
+    container_id: uuid("container_id").notNull(),
     organization_id: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 16, scale: 6 }).notNull(),
+    rate_segments: jsonb("rate_segments")
+      .$type<
+        Array<{
+          state: string;
+          ratePerHour: string;
+          startedAt: string;
+          endedAt: string;
+          amount: string;
+        }>
+      >()
+      .default([])
+      .notNull(),
     billing_period_start: timestamp("billing_period_start").notNull(),
     billing_period_end: timestamp("billing_period_end").notNull(),
     status: text("status").default("success").notNull(), // success, failed, insufficient_credits
-    credit_transaction_id: uuid("credit_transaction_id").references(() => creditTransactions.id, {
-      onDelete: "set null",
-    }),
+    credit_transaction_id: uuid("credit_transaction_id"),
     error_message: text("error_message"),
     created_at: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
+    credit_transaction_tenant_fk: foreignKey({
+      columns: [table.credit_transaction_id, table.organization_id],
+      foreignColumns: [creditTransactions.id, creditTransactions.organization_id],
+      name: "container_billing_records_credit_transaction_tenant_fk",
+    }).onDelete("restrict"),
+    success_ledger_check: check(
+      "container_billing_records_success_ledger_check",
+      sql`${table.status} <> 'success' OR ${table.credit_transaction_id} IS NOT NULL`,
+    ),
     container_idx: index("container_billing_records_container_idx").on(table.container_id),
     org_idx: index("container_billing_records_org_idx").on(table.organization_id),
     created_idx: index("container_billing_records_created_idx").on(table.created_at),
     status_idx: index("container_billing_records_status_idx").on(table.status),
-    // At most one successful charge per container per (day-aligned) period.
+    // At most one successful charge per container per elapsed-period cursor.
     // Partial so retries of a failed/insufficient period are still allowed.
     period_unique: uniqueIndex("container_billing_records_period_unique")
       .on(table.container_id, table.billing_period_start)

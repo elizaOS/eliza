@@ -1,6 +1,7 @@
 /** Verifies that the Discord service wrapper preserves Personal Shared timing. */
 
-import { expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
+import { consumePreverifiedPersonalSharedRequest } from "../../../eliza-app/personal-shared/preverified-auth";
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   failureResponse: () => Response.json({ success: false }, { status: 500 }),
@@ -28,37 +29,51 @@ mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
 mock.module("@/lib/utils/logger", () => ({
   logger: { error: mock(() => undefined) },
 }));
-mock.module("../../../_auth", () => ({
-  requireInternalAuth: mock(async () => ({ service: "discord-gateway" })),
-}));
+const authResult: { podName: string; service: string } | Response = {
+  podName: "gateway-1",
+  service: "discord-gateway",
+};
+const requireInternalAuth = mock(async () => authResult);
+mock.module("../../../_auth", () => ({ requireInternalAuth }));
 
-const personalSharedRequest = mock(
-  async () =>
-    new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          identity: { id: "11111111-1111-4111-8111-111111111111" },
-          account: {
-            userId: "22222222-2222-4222-8222-222222222222",
-            organizationId: "33333333-3333-4333-8333-333333333333",
-          },
-          reply: "ready",
+const personalSharedFetch = mock(async (request: Request) => {
+  expect(consumePreverifiedPersonalSharedRequest(request)).toEqual({
+    podName: "gateway-1",
+    service: "discord-gateway",
+  });
+  expect(request.headers.get("authorization")).toBeNull();
+  await expect(request.json()).resolves.toEqual({
+    platform: "discord",
+    discordUserId: "666666666666666666",
+    discordUsername: "tester",
+    messageId: "discord:555555555555555555",
+    message: "hello",
+  });
+  return new Response(
+    JSON.stringify({
+      success: true,
+      data: {
+        identity: { id: "11111111-1111-4111-8111-111111111111" },
+        account: {
+          userId: "22222222-2222-4222-8222-222222222222",
+          organizationId: "33333333-3333-4333-8333-333333333333",
         },
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Server-Timing":
-            'account;dur=14.2;desc="sender-projection-hit", prewarm;dur=1.1, shared;dur=472.8',
-        },
+        reply: "ready",
       },
-    ),
-);
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Server-Timing":
+          'account;dur=14.2;desc="sender-projection-hit", prewarm;dur=1.1, shared;dur=472.8',
+      },
+    },
+  );
+});
 
 mock.module("../../../eliza-app/personal-shared/messages/route", () => ({
-  default: { request: personalSharedRequest },
+  default: { fetch: personalSharedFetch },
 }));
 
 const { default: app } = await import("./route");
@@ -68,7 +83,12 @@ const executionCtx = {
   props: {},
 };
 
-test("forwards the Personal Shared account, prewarm, and runtime split", async () => {
+beforeEach(() => {
+  requireInternalAuth.mockClear();
+  personalSharedFetch.mockClear();
+});
+
+test("forwards a first Discord DM to Personal Shared account creation", async () => {
   const response = await app.request(
     "http://localhost/",
     {
@@ -89,8 +109,9 @@ test("forwards the Personal Shared account, prewarm, and runtime split", async (
   );
 
   expect(response.status).toBe(200);
-  expect(response.headers.get("Server-Timing")).toBe(
-    'account;dur=14.2;desc="sender-projection-hit", prewarm;dur=1.1, shared;dur=472.8',
+  expect(response.headers.get("Server-Timing")).toMatch(
+    /^discord_auth;dur=\d+\.\d, discord_validation;dur=\d+\.\d, account;dur=14\.2;desc="sender-projection-hit", prewarm;dur=1\.1, shared;dur=472\.8, discord_inner;dur=\d+\.\d, discord_wrapper;dur=\d+\.\d$/,
   );
-  expect(personalSharedRequest).toHaveBeenCalledTimes(1);
+  expect(requireInternalAuth).toHaveBeenCalledTimes(1);
+  expect(personalSharedFetch).toHaveBeenCalledTimes(1);
 });

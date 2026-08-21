@@ -7,10 +7,9 @@ import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
-import {
-  isPlausibleFragmentSource,
-  normalizeUniforms,
-} from "../backgrounds/shader-schema";
+import { getShaderPreset } from "../backgrounds/shader-presets";
+import { normalizeUniforms } from "../backgrounds/shader-schema";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
 
 // Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
@@ -32,6 +31,10 @@ import {
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
+import {
+  type ContinuousChatModeValue,
+  resolveContinuousChatMode,
+} from "./continuous-chat-mode";
 import {
   type BackgroundConfig,
   DEFAULT_ACCENT_ID,
@@ -202,23 +205,23 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
   }
-  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
-  // source (or a hostile persisted value) falls back to the color field so a bad
-  // shader can never wedge the background on load.
+  // Persisted records identify repository-owned presets; raw stored shader text
+  // is never an authority. Resolving the id on every load also upgrades records
+  // to the current canonical source when a preset changes.
   if (record.mode === "glsl") {
     const shaderRecord = asRecord(record.shader);
-    const source = shaderRecord?.source;
-    if (isPlausibleFragmentSource(source)) {
-      const presetId =
-        typeof shaderRecord?.presetId === "string"
-          ? shaderRecord.presetId
-          : undefined;
+    const preset = getShaderPreset(
+      typeof shaderRecord?.presetId === "string"
+        ? shaderRecord.presetId
+        : undefined,
+    );
+    if (preset) {
       return {
         mode: "glsl",
         color,
         shader: {
-          presetId,
-          source,
+          presetId: preset.id,
+          source: preset.source,
           uniforms: normalizeUniforms(shaderRecord?.uniforms),
         },
       };
@@ -492,14 +495,28 @@ const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
 /* ── First-run completion persistence ────────────────────────────────── */
 
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
+const CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY =
+  "eliza:first-run-complete:cloud-only:v1";
 
-export function loadPersistedFirstRunComplete(): boolean {
+/**
+ * Keep completion proof scoped to the onboarding contract that produced it.
+ * Desktop release channels intentionally share a WebKit container when their
+ * bundle id is the same, so an unscoped completion bit from a local-capable
+ * build must never suppress Cloud sign-in in a later cloud-only build.
+ */
+function firstRunCompleteStorageKey(cloudOnly?: boolean): string {
+  return (cloudOnly ?? getBootConfig().branding.cloudOnly) === true
+    ? CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY
+    : FIRST_RUN_COMPLETE_STORAGE_KEY;
+}
+
+export function loadPersistedFirstRunComplete(cloudOnly?: boolean): boolean {
   if (typeof localStorage === "undefined") {
     return false;
   }
 
   try {
-    return localStorage.getItem(FIRST_RUN_COMPLETE_STORAGE_KEY) === "1";
+    return localStorage.getItem(firstRunCompleteStorageKey(cloudOnly)) === "1";
   } catch (err) {
     // error-policy:J3 an unreadable store reads as "first run not complete";
     // the native-store mirror (hydratePersistedFirstRunCompleteFromNativeStore)
@@ -520,6 +537,7 @@ export function loadPersistedFirstRunComplete(): boolean {
  * where Capacitor is unavailable. Mirrors the mobile-runtime-mode dual-write.
  */
 async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
+  const storageKey = firstRunCompleteStorageKey();
   try {
     const [{ Capacitor }, { Preferences }] = await Promise.all([
       import("@capacitor/core"),
@@ -528,11 +546,11 @@ async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
     if (complete) {
       await Preferences.set({
-        key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+        key: storageKey,
         value: "1",
       });
     } else {
-      await Preferences.remove({ key: FIRST_RUN_COMPLETE_STORAGE_KEY });
+      await Preferences.remove({ key: storageKey });
     }
   } catch {
     // error-policy:J4 Capacitor Preferences is unavailable in web / unit-test
@@ -541,6 +559,7 @@ async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
 }
 
 export function savePersistedFirstRunComplete(complete: boolean): void {
+  const storageKey = firstRunCompleteStorageKey();
   void persistNativeFirstRunComplete(complete);
 
   if (typeof localStorage === "undefined") {
@@ -549,9 +568,9 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
 
   try {
     if (complete) {
-      shellLocalStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+      shellLocalStorage.setItem(storageKey, "1");
     } else {
-      shellLocalStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
+      shellLocalStorage.removeItem(storageKey);
     }
   } catch (err) {
     logger.warn(
@@ -564,7 +583,7 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
  * Boot-time durability restore for the onboarding-complete flag (issue #11506).
  *
  * Android/iOS can clear a WebView's localStorage independently of the app's
- * Capacitor Preferences store, which would drop `eliza:first-run-complete` and
+ * Capacitor Preferences store, which would drop the scoped completion key and
  * re-show onboarding on the next launch even though the agent config on disk is
  * intact. Completion is mirrored into Preferences on save; on boot, when the
  * WebView lost the localStorage flag but the durable native store still has it,
@@ -580,6 +599,7 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
 export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise<void> {
   if (typeof localStorage === "undefined") return;
   if (loadPersistedFirstRunComplete()) return;
+  const storageKey = firstRunCompleteStorageKey();
 
   try {
     const [{ Capacitor }, { Preferences }] = await Promise.all([
@@ -588,10 +608,10 @@ export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise
     ]);
     if (!Capacitor.isNativePlatform()) return;
     const { value } = await Preferences.get({
-      key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+      key: storageKey,
     });
     if (value === "1") {
-      shellLocalStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+      shellLocalStorage.setItem(storageKey, "1");
     }
   } catch {
     // error-policy:J4 native store unavailable — localStorage remains
@@ -956,21 +976,13 @@ export function saveWalletEnabled(value: boolean): void {
 
 /* ── Continuous chat mode persistence ───────────────────────────────────── */
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
-type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
-
-function normalizeContinuousChatMode(value: unknown): ContinuousChatModeValue {
-  if (value === "vad-gated" || value === "always-on") return value;
-  return "off";
-}
 
 export function loadContinuousChatMode(): ContinuousChatModeValue {
-  return tryLocalStorage(
-    () =>
-      normalizeContinuousChatMode(
-        localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY),
-      ),
-    "off",
-  );
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
+    const search = typeof window === "undefined" ? "" : window.location.search;
+    return resolveContinuousChatMode(stored, search, isElectrobunRuntime());
+  }, "off");
 }
 
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {

@@ -20,6 +20,12 @@ const DATE_COLUMN_HINTS = ["date", "posted", "posted date", "transaction date"];
 const AMOUNT_COLUMN_HINTS = ["amount", "amount (usd)", "transaction amount"];
 const DEBIT_COLUMN_HINTS = ["debit", "withdrawal", "amount debit"];
 const CREDIT_COLUMN_HINTS = ["credit", "deposit", "amount credit"];
+// Standalone direction words that make a single column one-sided. A header
+// naming exactly one of these families is a one-sided column regardless of any
+// surrounding value/descriptor tokens ("Debit Transaction Amount" is still a
+// pure debit column).
+const DEBIT_DIRECTION_WORDS = ["debit", "withdrawal"];
+const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
 const MERCHANT_COLUMN_HINTS = [
   "merchant",
   "payee",
@@ -95,6 +101,57 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((row) => row.some((value) => value.trim().length > 0));
 }
 
+type DirectionColumnKind = "debit" | "credit" | "signed";
+
+/**
+ * Classifies a single physical column that matched a debit and/or credit hint.
+ * A header naming exactly one direction family is a one-sided column whose every
+ * row is that direction, and descriptive amount tokens do not change that:
+ * "Amount Debit", "Withdrawal Amount", and "Debit Transaction Amount" are all
+ * one-sided debit. Signedness is inferred only from an explicit shared-direction
+ * header naming both families ("Debit/Credit", "Debit/Credit Amount") or from a
+ * narrowly reviewed compound descriptor in which the direction word is part of a
+ * noun ("Credit Card Amount"). Those descriptors are neutralized first, so a
+ * header whose only direction word belonged to such a phrase carries no
+ * surviving direction and is read as a signed amount whose sign chooses the
+ * direction. Arbitrary extra words ("transaction") never imply signedness.
+ */
+function classifyDirectionColumn(headerCell: string): DirectionColumnKind {
+  const rawTokens = headerCell
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0);
+  const tokens = rawTokens.filter((token, index) => {
+    if (token !== "debit" && token !== "credit") return true;
+    if (rawTokens[index + 1] === "card") return false;
+    const peerIndex = rawTokens[index + 1] === "and" ? index + 2 : index + 1;
+    const peer = rawTokens[peerIndex];
+    return !(
+      peer !== token &&
+      (peer === "debit" || peer === "credit") &&
+      rawTokens[peerIndex + 1] === "card"
+    );
+  });
+  let debitWords = 0;
+  let creditWords = 0;
+  for (const token of tokens) {
+    if (DEBIT_DIRECTION_WORDS.includes(token)) {
+      debitWords += 1;
+    } else if (CREDIT_DIRECTION_WORDS.includes(token)) {
+      creditWords += 1;
+    }
+  }
+  // Both families present, or no direction word survived descriptor removal:
+  // the sign of each value chooses the direction.
+  if (debitWords > 0 && creditWords > 0) {
+    return "signed";
+  }
+  if (debitWords === 0 && creditWords === 0) {
+    return "signed";
+  }
+  return debitWords > 0 ? "debit" : "credit";
+}
+
 function findColumn(
   header: readonly string[],
   hints: readonly string[],
@@ -164,35 +221,76 @@ function parseAmount(
   return null;
 }
 
+// Date.UTC silently rolls an out-of-range month/day into a different date
+// (month 13 becomes January of next year, Feb 31 becomes Mar 2/3) instead of
+// signaling an error. Round-tripping the constructed date's calendar fields
+// catches that instead of trusting Date.UTC's return value.
+function utcMidnightIsoOrNull(
+  year: number,
+  month1based: number,
+  day: number,
+): string | null {
+  // Construct from an epoch date and set the full year explicitly: Date.UTC
+  // remaps years 0..99 to 1900..1999, which would reject otherwise-valid
+  // four-digit ISO years such as 0000 and 0099 during the round-trip check.
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month1based - 1, day);
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month1based - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date.toISOString();
+}
+
 function normalizeDate(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) {
     return null;
   }
-  // Try native parse first. Falls back to YYYY-MM-DD and MM/DD/YYYY.
-  const native = Date.parse(trimmed);
-  if (Number.isFinite(native)) {
-    return new Date(native).toISOString();
-  }
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Date-only values must map to the same UTC instant on every machine:
+  // buildTransactionId hashes postedAt, so a timezone-dependent parse would
+  // mint different ids for the same row and double-count re-imports. The
+  // explicit UTC-based branches therefore run BEFORE the native Date.parse
+  // fallback, which is reserved for strings carrying a time component.
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
-    return new Date(
-      Date.UTC(
-        Number(isoMatch[1]),
-        Number(isoMatch[2]) - 1,
-        Number(isoMatch[3]),
-      ),
-    ).toISOString();
+    return utcMidnightIsoOrNull(
+      Number(isoMatch[1]),
+      Number(isoMatch[2]),
+      Number(isoMatch[3]),
+    );
   }
-  const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  const usMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (usMatch) {
     const month = Number(usMatch[1]);
     const day = Number(usMatch[2]);
     const rawYear = Number(usMatch[3]);
     const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+    return utcMidnightIsoOrNull(year, month, day);
   }
-  return null;
+  const native = Date.parse(trimmed);
+  if (!Number.isFinite(native)) {
+    return null;
+  }
+  // Strings with a time-of-day or an explicit timezone keep native semantics.
+  // The timezone guard also covers date-only RFC spellings such as
+  // "02 Jan 2024 GMT": rebasing that already-UTC instant through local calendar
+  // fields would move it to the prior day west of UTC. Remaining date-only
+  // spellings such as "Jan 2, 2024" parse as local midnight, so rebase their
+  // local calendar date onto UTC midnight for cross-machine determinism.
+  const hasExplicitTimezone =
+    /(?:\b(?:UTC|GMT|[ECMP][SD]T)|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  if (/\d:\d/.test(trimmed) || hasExplicitTimezone) {
+    return new Date(native).toISOString();
+  }
+  const local = new Date(native);
+  return new Date(
+    Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()),
+  ).toISOString();
 }
 
 export interface ParsedCsvTransaction
@@ -259,13 +357,76 @@ export function parseTransactionsCsv(
     options.dateColumn,
     DATE_COLUMN_HINTS,
   );
-  const amountIndex = resolveColumnIndex(
+  let amountIndex = resolveColumnIndex(
     header,
     options.amountColumn,
     AMOUNT_COLUMN_HINTS,
   );
-  const debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
-  const creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
+  let debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
+  let creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
+  const amountExplicit =
+    options.amountColumn !== undefined &&
+    amountIndex >= 0 &&
+    header[amountIndex]?.trim().toLowerCase() ===
+      options.amountColumn.trim().toLowerCase();
+  // Two DISTINCT physical columns are a genuine separate debit/credit layout.
+  // Anything else is at most one matched direction column, resolved below.
+  const hasSeparateDebitCredit =
+    debitIndex >= 0 && creditIndex >= 0 && debitIndex !== creditIndex;
+  if (hasSeparateDebitCredit) {
+    // The AMOUNT substring fallback in findColumn also matches a separate
+    // "Amount Debit"/"Amount Credit" bank header (both contain "amount"). Left
+    // alone, the single-amount branch reads the debit column as a signed amount
+    // — flipping debit rows to credit and dropping credit-only rows. Drop an
+    // inferred amount index pointing at either directional column so the
+    // separate-column path runs. An explicit options.amountColumn match is
+    // honored and never collapsed.
+    if (
+      !amountExplicit &&
+      amountIndex >= 0 &&
+      (amountIndex === debitIndex || amountIndex === creditIndex)
+    ) {
+      amountIndex = -1;
+    }
+  } else {
+    // At most one physical column matched a direction hint. It is either a
+    // one-sided directional column (every row is that direction) or a signed
+    // amount column whose sign chooses direction. classifyDirectionColumn tells
+    // them apart: "Amount Debit"/"Withdrawal Amount" are one-sided debit while
+    // "Debit/Credit"/"Credit Card Amount" are signed. An explicit amountColumn
+    // pointed at that column keeps the signed reading the user asked for.
+    const directionIndex = debitIndex >= 0 ? debitIndex : creditIndex;
+    if (directionIndex >= 0) {
+      const kind =
+        amountExplicit && amountIndex === directionIndex
+          ? "signed"
+          : classifyDirectionColumn(header[directionIndex]);
+      if (kind === "signed") {
+        // Promote the shared column to the signed amount path and clear the
+        // direction indices so parseAmount reads the sign instead of treating
+        // every row as one direction.
+        if (amountIndex < 0) {
+          amountIndex = directionIndex;
+        }
+        debitIndex = -1;
+        creditIndex = -1;
+      } else if (kind === "debit") {
+        debitIndex = directionIndex;
+        creditIndex = -1;
+        // Drop a coincident amount index so the debit-first branch runs and a
+        // positive value stays a debit instead of flipping to credit.
+        if (amountIndex === directionIndex) {
+          amountIndex = -1;
+        }
+      } else {
+        creditIndex = directionIndex;
+        debitIndex = -1;
+        if (amountIndex === directionIndex) {
+          amountIndex = -1;
+        }
+      }
+    }
+  }
   const merchantIndex = resolveColumnIndex(
     header,
     options.merchantColumn,
@@ -296,7 +457,9 @@ export function parseTransactionsCsv(
   }
 
   const transactions: ParsedCsvTransaction[] = [];
-  if (dateIndex < 0 || merchantIndex < 0) {
+  const hasAmountColumn =
+    amountIndex >= 0 || debitIndex >= 0 || creditIndex >= 0;
+  if (dateIndex < 0 || merchantIndex < 0 || !hasAmountColumn) {
     return { transactions, rowsRead: rows.length - 1, errors };
   }
 

@@ -2,18 +2,44 @@
  * Exercises standalone Telegram identity and redelivery behavior with a
  * deterministic runtime double and no network transport.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveTelegramRuntimeEntityId } from "../identity";
-import { handleTelegramStandaloneMessage } from "./handler";
+import {
+  handleTelegramStandaloneMessage,
+  splitTelegramText,
+  TELEGRAM_MESSAGE_MAX_LENGTH,
+} from "./handler";
 
-function makeRuntime() {
+function makeRuntime(
+  options: {
+    settings?: Record<string, unknown>;
+    pairingAllowed?: boolean;
+    pairingService?: boolean;
+  } = {},
+) {
   const cache = new Map<string, unknown>();
   const createMemory = vi.fn(async () => undefined);
   const handleMessage = vi.fn(async () => undefined);
+  const pairingService = {
+    isAllowed: vi.fn(async () => options.pairingAllowed ?? false),
+    upsertRequest: vi.fn(async () => ({ code: "PAIRCODE1", created: true })),
+    claimPairingReply: vi.fn(() => true),
+  };
   const runtime = {
     agentId: "agent-1",
-    getSetting: vi.fn(() => undefined),
+    // These tests exercise identity and redelivery, not the DM gate, so the
+    // policy defaults to the explicit open opt-in unless a case overrides it
+    // (a key present with an undefined value simulates an unset setting).
+    getSetting: vi.fn((key: string) => {
+      if (options.settings && key in options.settings) {
+        return options.settings[key];
+      }
+      return key === "TELEGRAM_DM_POLICY" ? "open" : undefined;
+    }),
+    getService: vi.fn(() =>
+      options.pairingService === false ? null : pairingService,
+    ),
     getCache: vi.fn(async (key: string) => cache.get(key)),
     setCache: vi.fn(async (key: string, value: unknown) => {
       cache.set(key, value);
@@ -24,7 +50,7 @@ function makeRuntime() {
     messageService: { handleMessage },
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
-  return { runtime, cache, createMemory, handleMessage };
+  return { runtime, cache, createMemory, handleMessage, pairingService };
 }
 
 function context(chatId: number, messageId = 7) {
@@ -117,5 +143,139 @@ describe("standalone Telegram durable identity", () => {
       expect.any(Error),
       { accountId: "default", chatId: "111" },
     );
+  });
+
+  it("keeps inbound message content out of production logs", async () => {
+    const { runtime } = makeRuntime();
+    const infoSpy = vi.spyOn(logger, "info");
+    const update = context(111, 9);
+    (update as { message: { text: string } }).message.text =
+      "secret hunter2 passphrase";
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    // The receipt is still logged at info — just without the content.
+    expect(infoSpy).toHaveBeenCalled();
+    const logged = infoSpy.mock.calls.flat().join(" ");
+    expect(logged).not.toContain("hunter2");
+    expect(logged).not.toContain("passphrase");
+    infoSpy.mockRestore();
+  });
+});
+
+describe("standalone Telegram DM policy gate", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("holds an unconfigured private chat by default and replies with the pairing code", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    const update = context(111);
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(update.reply).toHaveBeenCalledTimes(1);
+    expect(update.reply.mock.calls[0][0]).toContain("Pairing code: PAIRCODE1");
+  });
+
+  it("fails closed when the PairingService is unavailable", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+      pairingService: false,
+    });
+    const update = context(111);
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "pairing-integration",
+      expect.any(Error),
+      expect.objectContaining({ channel: "telegram", senderId: "42" }),
+    );
+  });
+
+  it("admits a pairing-approved sender", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+      pairingAllowed: true,
+    });
+
+    await handleTelegramStandaloneMessage(runtime, context(111) as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps group chats open when nothing is configured", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    const update = context(111) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    update.chat.type = "supergroup";
+    update.message.chat.type = "supergroup";
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("still honors the allowlist before the DM policy", async () => {
+    const { runtime, handleMessage, pairingService } = makeRuntime({
+      settings: {
+        TELEGRAM_DM_POLICY: undefined,
+        TELEGRAM_ALLOWED_CHATS: '["111"]',
+      },
+    });
+
+    await handleTelegramStandaloneMessage(runtime, context(111) as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(pairingService.isAllowed).not.toHaveBeenCalled();
+  });
+});
+
+describe("splitTelegramText", () => {
+  it("keeps short text intact without chunking", () => {
+    expect(splitTelegramText("hello world")).toEqual(["hello world"]);
+  });
+
+  it("splits text longer than 4096 characters", () => {
+    const longText = "a".repeat(4096 * 2 + 100);
+    const chunks = splitTelegramText(longText);
+
+    expect(chunks.length).toBe(3);
+    expect(chunks[0].length).toBe(TELEGRAM_MESSAGE_MAX_LENGTH);
+    expect(chunks[1].length).toBe(TELEGRAM_MESSAGE_MAX_LENGTH);
+    expect(chunks[2].length).toBe(100);
+    expect(chunks.join("")).toBe(longText);
+  });
+
+  it("keeps UTF-16 surrogate pairs intact across the 4096 boundary", () => {
+    // 4095 single-unit chars + 2-unit emoji (🦊 \uD83E\uDD8A) + 100 chars
+    // Naive split at 4096 would split the emoji between \uD83E and \uDD8A.
+    const text = `${"x".repeat(4095)}🦊${"y".repeat(100)}`;
+    const chunks = splitTelegramText(text);
+
+    expect(chunks.length).toBe(2);
+    expect(chunks[0].length).toBe(4095); // backed off by 1 so emoji moves to chunk 2
+    expect(chunks[0]).toBe("x".repeat(4095));
+    expect(chunks[1]).toBe(`🦊${"y".repeat(100)}`);
+
+    for (const chunk of chunks) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(TELEGRAM_MESSAGE_MAX_LENGTH);
+    }
+  });
+
+  it("sanitizes pre-existing lone surrogates before chunking", () => {
+    const text = "a\ud800bc";
+    const chunks = splitTelegramText(text);
+
+    expect(chunks).toEqual(["a\ufffdbc"]);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
   });
 });

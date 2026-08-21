@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { ApiError, api } from "../../../lib/api-client";
+import { isSafeNavigationUrl } from "../../../lib/navigation-url";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 
@@ -125,6 +126,7 @@ function isPayableStatus(status: PaymentRequestStatus): boolean {
 type PageError =
   | { kind: "request-failed"; cause: unknown }
   | { kind: "no-checkout-url" }
+  | { kind: "invalid-checkout-url" }
   | { kind: "invalid-deadline" };
 
 function errorMessage(error: PageError, t: TFn): string {
@@ -137,6 +139,11 @@ function errorMessage(error: PageError, t: TFn): string {
   if (error.kind === "no-checkout-url") {
     return t("cloud.paymentRequest.noCheckoutUrl", {
       defaultValue: "This payment request has no hosted checkout URL yet.",
+    });
+  }
+  if (error.kind === "invalid-checkout-url") {
+    return t("cloud.paymentRequest.invalidCheckoutUrl", {
+      defaultValue: "This payment request's checkout URL is not valid.",
     });
   }
   const { cause } = error;
@@ -281,6 +288,14 @@ export default function PaymentRequestPage() {
       if (!fresh.hostedUrl) {
         setIsPaying(false);
         setError({ kind: "no-checkout-url" });
+        return;
+      }
+      if (!isSafeNavigationUrl(fresh.hostedUrl)) {
+        // The hosted checkout URL is a wire value assigned to the top window
+        // on a public, unauthenticated page — only absolute http(s) may
+        // navigate; anything else is the visible error state.
+        setIsPaying(false);
+        setError({ kind: "invalid-checkout-url" });
         return;
       }
       window.location.assign(fresh.hostedUrl);

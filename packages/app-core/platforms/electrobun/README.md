@@ -37,10 +37,9 @@ Produces `src/libMacWindowEffects.dylib` (consumed via Bun FFI at runtime).
 
 ## WebGPU status log and macOS version (Darwin)
 
-Startup logs **`[WebGPU Browser] …`** use **`os.release()`**, which reports the **Darwin** kernel major (e.g. **25.x** on **macOS 26** Tahoe)—not the macOS marketing major in About This Mac. **Why it matters:** a single **`Darwin − 9`** rule matched macOS 11–15 but labeled Tahoe as “macOS 16” and wrong-feature-gated WKWebView WebGPU. **`getMacOSMajorVersion()`** in **`src/native/webgpu-browser-support.ts`** implements the two-part mapping; full **WHYs** and the reference table: **[Darwin vs macOS version (Electrobun WebGPU)](../../docs/apps/electrobun-darwin-macos-webgpu-version.md)**.
+Startup logs **`[WebGPU Browser] …`** use **`os.release()`**, which reports the **Darwin** kernel major (e.g. **25.x** on **macOS 26** Tahoe)—not the macOS marketing major in About This Mac. **Why it matters:** a single **`Darwin − 9`** rule matched macOS 11–15 but labeled Tahoe as “macOS 16” and wrong-feature-gated WKWebView WebGPU. **`getMacOSMajorVersion()`** in **`src/native/webgpu-browser-support.ts`** implements the two-part mapping; full **WHYs** and the mapping table live beside `getMacOSMajorVersion()` in that module (the separate design note was never committed to this repository).
 
 ## Related repo docs
 
 - [Desktop app](https://docs.eliza.ai/apps/desktop) — install, runtime modes, native modules.
-- [Electrobun startup](../../docs/electrobun-startup.md) — agent/bootstrap guards in `src/native/agent.ts`.
-- [Darwin vs macOS version (WebGPU)](../../docs/apps/electrobun-darwin-macos-webgpu-version.md) — `uname -r` vs macOS 26+, WebGPU gating rationale.
+- Agent/bootstrap guards — `src/native/agent.ts` (the separate startup note was never committed).

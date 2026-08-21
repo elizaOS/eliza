@@ -78,6 +78,7 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
   "running",
   "success",
   "failed",
+  "failed_uncompensated",
   "cancelled",
 ] as const;
 export type LifeOpsWorkflowRunStatus =
@@ -323,6 +324,11 @@ export const LIFEOPS_MICROSOFT_CAPABILITIES = [
   "microsoft.calendar.read",
   "microsoft.calendar.freebusy",
   "microsoft.calendar.write",
+  "microsoft.mail.triage",
+  "microsoft.mail.send",
+  "microsoft.mail.manage",
+  "microsoft.contacts.read",
+  "microsoft.files.read",
 ] as const;
 export type LifeOpsMicrosoftCapability =
   (typeof LIFEOPS_MICROSOFT_CAPABILITIES)[number];
@@ -528,6 +534,7 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "definition_deleted",
   "occurrence_generated",
   "occurrence_completed",
+  "occurrence_progress_recorded",
   "occurrence_skipped",
   "occurrence_snoozed",
   "goal_created",
@@ -640,6 +647,52 @@ export interface LifeOpsWebsiteAccessPolicy {
   reason: string;
 }
 
+/**
+ * When during the day a count-quota routine may be worked on. `anytime` is
+ * structurally distinct from fixed slots/windows: it means the owner never
+ * named clock times, so nothing may fabricate them. `windows` constrains the
+ * quota to the named time windows without inventing per-rep slot times.
+ */
+export type LifeOpsQuotaTiming =
+  | { kind: "anytime" }
+  | { kind: "windows"; windows: LifeOpsTimeWindowName[] };
+
+/**
+ * Daily count quota ("25 pushups, 3 sets a day, whenever"): a fixed
+ * within-day target completed through per-increment progress events, not
+ * per-slot occurrences. Deliberately has NO slots — a count-only request must
+ * never be rewritten into fabricated wall-clock times.
+ */
+export interface LifeOpsCountPerDayCadence {
+  kind: "count_per_day";
+  /** Number of increments that complete one day (e.g. 3 sets). */
+  targetCount: number;
+  /** What one increment is called ("set", "glass", "time"). */
+  unit: string;
+  /** Work one increment represents ("25 pushups"), or null when unstated. */
+  perOccurrenceWork: string | null;
+  timing: LifeOpsQuotaTiming;
+  visibilityLeadMinutes?: number;
+  visibilityLagMinutes?: number;
+}
+
+/** Adaptive, scheduler-backed check-ins for one flexible daily quota. */
+export interface LifeOpsQuotaCheckInPolicy {
+  kind: "quota_progress";
+  /** Named owner-local windows in which a progress check-in may fire. */
+  windows: LifeOpsTimeWindowName[];
+  /** Minutes after a fire before the no-reply policy is evaluated. */
+  followupAfterMinutes: number;
+  noReplyPolicy: {
+    maxRetries: number;
+    retryCadenceMinutes: number[];
+    terminalStatus: "expired";
+    terminalReason: string;
+  };
+  /** Frozen true: reaching the quota structurally suppresses later nudges. */
+  stopWhenComplete: true;
+}
+
 export type LifeOpsCadence =
   // An explicitly undated item ("no due date", "just a plain todo"): the
   // definition exists and is reviewable but materializes no occurrences and
@@ -668,6 +721,7 @@ export type LifeOpsCadence =
       visibilityLeadMinutes?: number;
       visibilityLagMinutes?: number;
     }
+  | LifeOpsCountPerDayCadence
   | LifeOpsIntervalCadence
   | {
       kind: "weekly";
@@ -745,6 +799,7 @@ export interface LifeOpsTaskDefinition {
   cadence: LifeOpsCadence;
   windowPolicy: LifeOpsWindowPolicy;
   progressionRule: LifeOpsProgressionRule;
+  checkInPolicy: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess: LifeOpsWebsiteAccessPolicy | null;
   reminderPlanId: string | null;
   goalId: string | null;
@@ -788,6 +843,55 @@ export interface LifeOpsOccurrenceView extends LifeOpsOccurrence {
   timezone: string;
   source: string;
   goalId: string | null;
+  /** Required server projection; null for cadences without incremental progress. */
+  progress: LifeOpsOccurrenceProgress | null;
+}
+
+/**
+ * Append-only per-increment progress record for a count-quota occurrence.
+ * The idempotency key is owner/occurrence-scoped so a replayed "I did one set"
+ * message never double-counts; the day's completed count is always derived by
+ * summing these rows, never cached on the occurrence.
+ */
+export interface LifeOpsProgressEvent {
+  id: string;
+  agentId: string;
+  definitionId: string;
+  occurrenceId: string;
+  localDateKey: string;
+  idempotencyKey: string;
+  quantity: number;
+  unit: string;
+  note: string | null;
+  actor: string;
+  createdAt: string;
+}
+
+/** Server-projected quota progress; clients render these fields verbatim. */
+export interface LifeOpsOccurrenceProgress {
+  completedCount: number;
+  targetCount: number;
+  remainingCount: number;
+  unit: string;
+  perOccurrenceWork: string | null;
+}
+
+export interface RecordLifeOpsProgressRequest {
+  /** Caller-supplied replay guard (e.g. derived from the chat message id). */
+  idempotencyKey: string;
+  quantity?: number;
+  note?: string | null;
+}
+
+export interface RecordLifeOpsProgressResult {
+  occurrence: LifeOpsOccurrenceView;
+  progress: LifeOpsOccurrenceProgress;
+  /** False when the idempotency key had already been applied (replay). */
+  applied: boolean;
+  /** True when this call (or an earlier one) reached the daily target. */
+  completed: boolean;
+  /** Persisted progress-event id, or null on a deduplicated replay. */
+  progressEventId: string | null;
 }
 
 export interface LifeOpsGoalDefinition {
@@ -843,6 +947,7 @@ export interface LifeOpsWorkflowRun {
   id: string;
   agentId: string;
   workflowId: string;
+  idempotencyKey: string | null;
   startedAt: string;
   finishedAt: string | null;
   status: LifeOpsWorkflowRunStatus;
@@ -3240,6 +3345,7 @@ export interface CreateLifeOpsDefinitionRequest {
   cadence: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   reminderPlan?: {
     steps: LifeOpsReminderStep[];
@@ -3261,6 +3367,7 @@ export interface UpdateLifeOpsDefinitionRequest {
   cadence?: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   status?: LifeOpsDefinitionStatus;
   reminderPlan?: {
@@ -3573,6 +3680,7 @@ export interface UpdateLifeOpsWorkflowRequest {
 }
 
 export interface RunLifeOpsWorkflowRequest {
+  idempotencyKey?: string;
   now?: string;
   confirmBrowserActions?: boolean;
 }

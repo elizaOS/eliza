@@ -766,12 +766,21 @@ export function trustedDeliveryAudienceCacheKey(message: Memory): string {
 		: "unattested";
 }
 
-/** Apply a component's non-overridable disclosure policy. */
+/**
+ * Apply a component's owner-exclusive disclosure policy.
+ *
+ * Scoped to the `owner_exclusive` gate variant only: the min-over-members
+ * `audience_admission` variant is evaluated in the access-control layer
+ * (`audienceAdmissionGateFailure`), which owns the value dependency on the
+ * policy core, so this security-layer function stays free of an access-control
+ * import cycle. A non-owner-exclusive gate is a no-op here (the action-gate
+ * routes it to the admission evaluator instead), never a mis-evaluation.
+ */
 export function disclosureGateFailure(
 	gate: DisclosureGate | undefined,
 	message: Memory | undefined,
 ): string | undefined {
-	if (!gate) return undefined;
+	if (gate?.require !== "owner_exclusive") return undefined;
 	const decision = evaluateOwnerExclusiveDisclosure(message);
 	if (decision.allowed) return undefined;
 	// A non-undefined return here IS a suppressed surface (the action-gate

@@ -1882,12 +1882,29 @@ describe("SubAgentRouter", () => {
   describe("verify-retry on incomplete builds", () => {
     const origMax = process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
     const origSettle = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
+    const origDeployEnv: Record<string, string | undefined> = {};
 
     beforeEach(() => {
       // Disable the settle-retry so the dead-URL probe is a single fast
       // connection-refused rather than a 2.5s wait.
       process.env.ELIZA_URL_VERIFY_SETTLE_MS = "0";
       delete process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES;
+      // W1-048: loopback URLs are only probed on supervisor-configured ports.
+      // Sanction the DEAD_URL discard port via the operator custom static
+      // host (hermetic: no config file) so it is probed and refused.
+      for (const key of [
+        "ELIZA_CONFIG_PATH",
+        "ELIZA_APP_DEPLOY_TARGET",
+        "ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR",
+        "ELIZA_APP_DEPLOY_CUSTOM_BASE_URL",
+      ]) {
+        origDeployEnv[key] = process.env[key];
+      }
+      process.env.ELIZA_CONFIG_PATH =
+        "/nonexistent/sub-agent-router-verify-retry.json";
+      process.env.ELIZA_APP_DEPLOY_TARGET = "custom";
+      process.env.ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR = "/srv/apps";
+      process.env.ELIZA_APP_DEPLOY_CUSTOM_BASE_URL = "http://127.0.0.1:1";
     });
     afterEach(() => {
       if (origMax === undefined)
@@ -1896,6 +1913,10 @@ describe("SubAgentRouter", () => {
       if (origSettle === undefined)
         delete process.env.ELIZA_URL_VERIFY_SETTLE_MS;
       else process.env.ELIZA_URL_VERIFY_SETTLE_MS = origSettle;
+      for (const [key, value] of Object.entries(origDeployEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
       restoreStubbedGlobals();
     });
 
@@ -2720,31 +2741,53 @@ describe("SubAgentRouter", () => {
         return new Response("not found", { status: 404 });
       });
       stubFetch(fetchMock);
-      session = sessionWithTask(
-        "build and verify https://example.test/apps/asset-check/",
-      );
-      acp = makeAcpService(session);
-      const { runtime, handleMessage, spawnSession } = makeRuntime({
-        acp: acp.service,
-      });
-      await SubAgentRouter.start(runtime);
+      // W1-048: the local alias is only probed when its loopback port is
+      // supervisor-configured — sanction 6900 via the operator custom host.
+      const savedDeployEnv: Record<string, string | undefined> = {};
+      for (const key of [
+        "ELIZA_CONFIG_PATH",
+        "ELIZA_APP_DEPLOY_TARGET",
+        "ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR",
+        "ELIZA_APP_DEPLOY_CUSTOM_BASE_URL",
+      ]) {
+        savedDeployEnv[key] = process.env[key];
+      }
+      process.env.ELIZA_CONFIG_PATH = "/nonexistent/url-alias-test.json";
+      process.env.ELIZA_APP_DEPLOY_TARGET = "custom";
+      process.env.ELIZA_APP_DEPLOY_CUSTOM_APPS_DIR = "/srv/apps";
+      process.env.ELIZA_APP_DEPLOY_CUSTOM_BASE_URL = "http://127.0.0.1:6900";
+      try {
+        session = sessionWithTask(
+          "build and verify https://example.test/apps/asset-check/",
+        );
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
 
-      acp.emit(SESSION_ID, "task_complete", {
-        response:
-          "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://wrong.example.test/apps/asset-check/, public: https://example.test/apps/asset-check/",
-      });
-      await new Promise((r) => setTimeout(r, 200));
+        acp.emit(SESSION_ID, "task_complete", {
+          response:
+            "Done — local: http://127.0.0.1:6900/apps/asset-check/, mirror: https://wrong.example.test/apps/asset-check/, public: https://example.test/apps/asset-check/",
+        });
+        await new Promise((r) => setTimeout(r, 200));
 
-      const fetched = fetchMock.mock.calls.map(([url]) => String(url));
-      expect(fetched).toContain("http://127.0.0.1:6900/apps/asset-check/");
-      expect(fetched).toContain("https://example.test/apps/asset-check/");
-      expect(fetched).not.toContain(
-        "https://wrong.example.test/apps/asset-check/",
-      );
-      expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
-      const posted = handleMessage.mock.calls[0]?.[1];
-      expect(posted?.content?.text).not.toContain("[verification:");
+        const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+        expect(fetched).toContain("http://127.0.0.1:6900/apps/asset-check/");
+        expect(fetched).toContain("https://example.test/apps/asset-check/");
+        expect(fetched).not.toContain(
+          "https://wrong.example.test/apps/asset-check/",
+        );
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.text).not.toContain("[verification:");
+      } finally {
+        for (const [key, value] of Object.entries(savedDeployEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
     });
 
     it("adds verified public route aliases when a completion only mentions loopback", async () => {

@@ -27,6 +27,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
  * the two cannot drift.
  */
 const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+const BACKUP_BODY_TOO_LARGE = "Agent backup request body is too large";
 
 import path from "node:path";
 import {
@@ -52,7 +53,7 @@ import type {
   AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import { readAliasedEnv } from "@elizaos/shared";
+import { formatError, readAliasedEnv } from "@elizaos/shared";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   getStylePresets,
@@ -419,6 +420,7 @@ import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
+  hasBlockedObjectKeyDeep,
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
@@ -745,6 +747,7 @@ async function readBackupJsonBody(
   try {
     const raw = await readRequestBody(req, {
       maxBytes: MAX_BACKUP_BODY_BYTES,
+      tooLargeMessage: BACKUP_BODY_TOO_LARGE,
     });
     if (!raw) {
       error(res, "Request body is required", 400);
@@ -752,16 +755,22 @@ async function readBackupJsonBody(
     }
     return JSON.parse(raw);
   } catch (err) {
+    const tooLarge = formatError(err) === BACKUP_BODY_TOO_LARGE;
     error(
       res,
-      err instanceof Error ? err.message : "Invalid backup request body",
-      400,
+      tooLarge ? BACKUP_BODY_TOO_LARGE : "Invalid backup request body",
+      tooLarge ? 413 : 400,
     );
     return null;
   }
 }
 
 let activeTerminalRunCount = 0;
+const terminalRunIdReservations = new Map<string, number>();
+const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
+const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60_000;
+let lastTerminalRunIdSweepAt = 0;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
@@ -776,11 +785,10 @@ function parseBrowserBridgeKind(
   value: string | undefined,
 ): BrowserBridgeKind | null {
   if (!value) return null;
-  const decoded = decodeURIComponent(value);
   return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
-    decoded,
+    value,
   )
-    ? (decoded as BrowserBridgeKind)
+    ? (value as BrowserBridgeKind)
     : null;
 }
 
@@ -879,12 +887,18 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
+    const decodedBrowser = decodePathComponent(
+      packageBuildMatch[1],
+      res,
+      "browser bridge package browser",
+    );
+    if (decodedBrowser === null) return true;
     const browserPlugin = await getBrowserBridgePlugin();
     if (!browserPlugin) {
       error(res, "Browser bridge is not available on this platform", 503);
       return true;
     }
-    const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
+    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
@@ -899,15 +913,18 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
+    const decodedBrowser = decodePathComponent(
+      packageManagerMatch[1],
+      res,
+      "browser bridge package browser",
+    );
+    if (decodedBrowser === null) return true;
     const browserPlugin = await getBrowserBridgePlugin();
     if (!browserPlugin) {
       error(res, "Browser bridge is not available on this platform", 503);
       return true;
     }
-    const browser = parseBrowserBridgeKind(
-      browserPlugin,
-      packageManagerMatch[1],
-    );
+    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
@@ -977,7 +994,17 @@ async function handleBuiltinOptionalRoutes(
     return false;
   }
 
-  const tabId = decodeURIComponent(tabMatch[1]).trim();
+  const decodedTabId = decodePathComponent(
+    tabMatch[1],
+    res,
+    "browser workspace tab id",
+  );
+  if (decodedTabId === null) return true;
+  const tabId = decodedTabId.trim();
+  if (!tabId) {
+    error(res, "Browser workspace tab id is required", 400);
+    return true;
+  }
   const action = tabMatch[2] ?? null;
 
   const browserPlugin = await getBrowserWorkspacePlugin();
@@ -1293,6 +1320,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
@@ -1302,10 +1330,13 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
+  releasePendingWebSocket as _releasePendingWebSocket,
   resolveBoundaryRole as _resolveBoundaryRole,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
+  tryAcquirePendingWebSocket as _tryAcquirePendingWebSocket,
+  WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
 
 // Importing the artifact share-viewer scheme self-registers its resolver with
@@ -1338,6 +1369,7 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
 const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1347,6 +1379,8 @@ const resolveTerminalRunRejection = _resolveTerminalRunRejection;
 const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
 const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
+const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
+const releasePendingWebSocket = _releasePendingWebSocket;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
 
@@ -1531,14 +1565,21 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // app-core authenticates these session-tier dashboard reads before
-  // forwarding into the agent server. Do not require a second token here:
-  // browser sessions are stored by app-core and are intentionally opaque to
-  // the lower agent HTTP boundary.
-  const isAppCoreSessionCloudRead =
-    method === "GET" &&
-    (pathname === "/api/cloud/status" || pathname === "/api/cloud/credits");
+  // app-core authenticates the session-tier dashboard reads
+  // (/api/cloud/status, /api/cloud/credits) before forwarding into the agent
+  // server. They need no dedicated exemption here: app-core's forwarded
+  // requests arrive over trusted loopback and already pass `isAuthorized`,
+  // while exempting the paths let ANY unauthenticated caller who could reach
+  // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
+  // and live credit balance (W1-010).
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  const requestOrigin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  // A same-origin navigation commonly omits Origin. When an Origin is present,
+  // ambient cookie authority is available only to the narrower credentialed
+  // CORS trust set; arbitrary reflected origins remain bearer-only.
+  const allowHostCookieAuth =
+    requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1554,12 +1595,16 @@ async function handleRequest(
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
+          { allowCookieAuth: allowHostCookieAuth },
         );
         return hostSessionAuthorization;
       }
       const authorize = bridge.isHttpRequestAuthorized;
+      // A legacy boolean-only bridge cannot separate cookie from bearer
+      // authority. Do not consult it for an explicitly untrusted origin;
+      // standalone bearer schemes are evaluated by the normal server gates.
       const authorized =
-        typeof authorize === "function"
+        allowHostCookieAuth && typeof authorize === "function"
           ? await authorize(req, state.runtime)
           : false;
       // Legacy boolean-only hosts can still pass the coarse request gate, but
@@ -1758,7 +1803,6 @@ async function handleRequest(
     !isAuthEndpoint &&
     !isHealthEndpoint &&
     !isCloudFirstRunStatusEndpoint &&
-    !isAppCoreSessionCloudRead &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -1799,17 +1843,10 @@ async function handleRequest(
       const backups = await listLocalAgentBackups(state.runtime.agentId);
       json(res, { backups });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup list failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup list failed",
-        500,
-      );
+      // error-policy:J1 backup listing can surface filesystem paths in
+      // exceptions; keep the original diagnostic in the structured log.
+      logger.error({ err }, "[agent-backup] Local backup list failed");
+      error(res, "Backup list failed", 500);
     }
     return;
   }
@@ -1823,13 +1860,10 @@ async function handleRequest(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup failed",
-      );
-      error(res, err instanceof Error ? err.message : "Backup failed", 500);
+      // error-policy:J1 backup adapters can include filesystem and database
+      // diagnostics in exceptions; keep the original in the redacting logger.
+      logger.error({ err }, "[agent-backup] Local backup failed");
+      error(res, "Backup failed", 500);
     }
     return;
   }
@@ -1852,17 +1886,10 @@ async function handleRequest(
       const result = await restoreLocalAgentBackup(state.runtime, fileName);
       json(res, result);
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup restore failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup restore failed",
-        500,
-      );
+      // error-policy:J1 decryption, filesystem, and database diagnostics stay
+      // internal rather than becoming a public backup oracle.
+      logger.error({ err }, "[agent-backup] Local backup restore failed");
+      error(res, "Backup restore failed", 500);
     }
     return;
   }
@@ -1876,7 +1903,7 @@ async function handleRequest(
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatError(err);
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500
@@ -1888,7 +1915,7 @@ async function handleRequest(
         json(
           res,
           {
-            error: message,
+            error: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
             code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
           },
           503,
@@ -1899,10 +1926,12 @@ async function handleRequest(
       if (res.headersSent) {
         // error-policy:J1 Streaming may fail after the response is committed;
         // terminate that transport instead of appending a false JSON error.
-        res.destroy(err instanceof Error ? err : new Error(message));
+        res.destroy(new Error("Snapshot stream failed", { cause: err }));
         return;
       }
-      error(res, message, 500);
+      // error-policy:J1 the snapshot boundary preserves diagnostics in the
+      // server log while exposing only a stable failure to the API caller.
+      error(res, "Snapshot failed", 500);
     }
     return;
   }
@@ -2480,11 +2509,10 @@ async function handleRequest(
       });
       json(res, { ok: result.unloaded, ...result });
     } catch (err) {
-      json(
-        res,
-        { ok: false, error: err instanceof Error ? err.message : String(err) },
-        422,
-      );
+      // error-policy:J1 plugin-loader diagnostics stay in structured logs;
+      // callers receive a stable boundary error rather than exception text.
+      logger.error({ err }, "[eliza-api] Plugin unload failed");
+      json(res, { ok: false, error: "Plugin could not be unloaded" }, 422);
     }
     return;
   }
@@ -2569,7 +2597,6 @@ async function handleRequest(
         error,
         readJsonBody,
         readBody,
-        decodePathComponent,
         discoverSkills,
       })
     ) {
@@ -2809,6 +2836,7 @@ async function handleRequest(
       saveElizaConfig,
       redactConfigSecrets,
       isBlockedObjectKey,
+      hasBlockedObjectKeyDeep,
       cloneWithoutBlockedObjectKeys,
     })
   ) {
@@ -3337,6 +3365,49 @@ async function handleRequest(
       setActiveTerminalRunCount: (delta: number) => {
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
       },
+      tryAcquireTerminalRunSlot: (
+        scopeId: string,
+        runId: string,
+        maxConcurrent: number,
+      ) => {
+        const now = Date.now();
+        if (
+          now - lastTerminalRunIdSweepAt >= TERMINAL_RUN_ID_SWEEP_INTERVAL_MS ||
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          for (const [reservedRunId, expiresAt] of terminalRunIdReservations) {
+            if (expiresAt <= now) {
+              terminalRunIdReservations.delete(reservedRunId);
+            }
+          }
+          lastTerminalRunIdSweepAt = now;
+        }
+        const reservationKey = `${scopeId}\0${runId}`;
+        if (terminalRunIdReservations.has(reservationKey)) {
+          return { rejection: "duplicate" as const };
+        }
+        if (activeTerminalRunCount >= maxConcurrent) {
+          return { rejection: "capacity" as const };
+        }
+        if (
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          return { rejection: "registry-capacity" as const };
+        }
+        terminalRunIdReservations.set(
+          reservationKey,
+          now + TERMINAL_RUN_ID_RESERVATION_TTL_MS,
+        );
+        activeTerminalRunCount += 1;
+        let released = false;
+        return {
+          release: () => {
+            if (released) return;
+            released = true;
+            activeTerminalRunCount = Math.max(0, activeTerminalRunCount - 1);
+          },
+        };
+      },
     })
   ) {
     return;
@@ -3795,9 +3866,27 @@ export async function startApiServer(opts?: {
   });
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
+  // W9-AGENT-01: the WS upgrade handler delegates the device-bridge path to
+  // the capacitor bridge's own upgrade listener, so that delegation is only
+  // safe once such a listener has REALLY attached here. A settled attach
+  // promise is not proof of that: an optional-plugin import rejection resolves
+  // through the no-op fallback API, and the bridge attach itself returns early
+  // when the bridge is disabled for the platform — in both cases nothing is
+  // listening. Use the bridge's explicit attachment result; listener counts
+  // are process-global observations and can be changed by unrelated features.
+  let deviceBridgeUpgradeHandlerAttached = false;
+  let deviceBridgeAttachAllowed = !opts?.skipListen;
+  server.once("close", () => {
+    // The optional plugin import is deliberately deferred beyond bind. If the
+    // server closes before it resolves, do not attach the process-global bridge
+    // to a dead server and prevent a replacement API server from acquiring it.
+    deviceBridgeAttachAllowed = false;
+    deviceBridgeUpgradeHandlerAttached = false;
+  });
   if (
-    isMobilePlatform() ||
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+    deviceBridgeAttachAllowed &&
+    (isMobilePlatform() ||
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")
   ) {
     // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
     // device-bridge attach) measured ~15s of blocking on the mobile bundle and
@@ -3809,11 +3898,17 @@ export async function startApiServer(opts?: {
       void getOptionalPluginApi<{
         attachMobileDeviceBridgeToServer: (
           server: http.Server,
-        ) => Promise<void>;
+        ) => Promise<boolean>;
       }>("capacitor")
-        .then(({ attachMobileDeviceBridgeToServer }) =>
-          attachMobileDeviceBridgeToServer(server),
-        )
+        .then(({ attachMobileDeviceBridgeToServer }) => {
+          if (!deviceBridgeAttachAllowed) return false;
+          return attachMobileDeviceBridgeToServer(server);
+        })
+        .then((attached) => {
+          if (deviceBridgeAttachAllowed) {
+            deviceBridgeUpgradeHandlerAttached = attached === true;
+          }
+        })
         .catch((err: unknown) => {
           logger.warn(
             "[eliza-api] Failed to attach mobile device bridge:",
@@ -4061,6 +4156,33 @@ export async function startApiServer(opts?: {
     });
   }
 
+  // The device-bridge WebSocket endpoint delegates authentication to the
+  // capacitor bridge's own upgrade handler (a pairing-token check that closes
+  // unauthorized sockets with 4001). That delegation is only valid when the
+  // bridge can actually be attached: the plugin refuses to attach without a
+  // pairing token, so with none configured nothing is listening on the path —
+  // fall through to the standard upgrade rejection instead of skipping auth
+  // and leaving the socket unanswered (W1-011). The same fail-closed rule
+  // applies when delegation is EXPECTED but the deferred attach never landed
+  // a listener — an import rejection resolves through the no-op fallback API
+  // and a failed attach only logs, so an unconditional early return would
+  // leave the raw pre-auth socket unanswered indefinitely, outside the
+  // W5-015 pending-socket cap and auth grace period (W9-AGENT-01).
+  const isDeviceBridgeDelegationExpected = (): boolean => {
+    if (
+      !isMobilePlatform() &&
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() !== "1"
+    ) {
+      return false;
+    }
+    // Mirrors the pairing-token env contract enforced by
+    // @elizaos/plugin-capacitor-bridge's attachMobileDeviceBridgeToServer.
+    return Boolean(
+      process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
+        process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim(),
+    );
+  };
+
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
@@ -4082,7 +4204,11 @@ export async function startApiServer(opts?: {
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,
       );
-      if (wsUrl.pathname === "/api/local-inference/device-bridge") {
+      if (
+        wsUrl.pathname === "/api/local-inference/device-bridge" &&
+        isDeviceBridgeDelegationExpected() &&
+        deviceBridgeUpgradeHandlerAttached
+      ) {
         return;
       }
       const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
@@ -4090,18 +4216,45 @@ export async function startApiServer(opts?: {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
         return;
       }
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        // Attach an 'error' listener IMMEDIATELY — before emit('connection')
-        // runs the (long) connection handler that only attaches its own error
-        // listener near the end. A client that RSTs in that window otherwise
-        // emits an unhandled 'error' on the ws and crashes the process.
-        ws.on("error", (err: unknown) => {
-          logger.warn(
-            `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+      // W5-015: an upgrade without handshake credentials is allowed so the
+      // client can authenticate post-open, but concurrent pre-auth sockets
+      // are capped per peer — an unbounded accept was a remote FD-exhaustion
+      // DoS. The slot releases when the socket authenticates or closes (see
+      // the connection handler), or in the catch below if the upgrade fails.
+      let pendingWsPeer: string | null | undefined;
+      if (!isWebSocketAuthorized(request, wsUrl)) {
+        const peer = request.socket.remoteAddress ?? null;
+        if (!tryAcquirePendingWebSocket(peer)) {
+          rejectWebSocketUpgrade(
+            socket,
+            401,
+            "Too many unauthenticated WebSocket connections",
           );
+          return;
+        }
+        pendingWsPeer = peer;
+      }
+      try {
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          // Attach an 'error' listener IMMEDIATELY — before emit('connection')
+          // runs the (long) connection handler that only attaches its own error
+          // listener near the end. A client that RSTs in that window otherwise
+          // emits an unhandled 'error' on the ws and crashes the process.
+          ws.on("error", (err: unknown) => {
+            logger.warn(
+              `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+            );
+          });
+          wss.emit("connection", ws, request);
         });
-        wss.emit("connection", ws, request);
-      });
+      } catch (upgradeErr) {
+        // error-policy:J2 release the reserved pre-auth slot, then rethrow
+        // unchanged into the outer boundary handler.
+        if (pendingWsPeer !== undefined) {
+          releasePendingWebSocket(pendingWsPeer);
+        }
+        throw upgradeErr;
+      }
     } catch (err) {
       logger.error(
         `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
@@ -4130,6 +4283,38 @@ export async function startApiServer(opts?: {
     }
 
     let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+
+    // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
+    // peer. It releases on post-open authentication or on close — whichever
+    // comes first — and a socket that never authenticates is closed when the
+    // grace period expires, so a silent peer can no longer pin a file
+    // descriptor indefinitely. The peer is captured now so the release keys
+    // on the same bucket even if the socket is already torn down.
+    const pendingWsPeer = request.socket?.remoteAddress ?? null;
+    let pendingSlotHeld = !isAuthenticated;
+    const releasePendingSlot = () => {
+      if (!pendingSlotHeld) return;
+      pendingSlotHeld = false;
+      releasePendingWebSocket(pendingWsPeer);
+    };
+    let authGraceTimer: NodeJS.Timeout | null = null;
+    const clearAuthGraceTimer = () => {
+      if (authGraceTimer) {
+        clearTimeout(authGraceTimer);
+        authGraceTimer = null;
+      }
+    };
+    if (!isAuthenticated) {
+      authGraceTimer = setTimeout(() => {
+        authGraceTimer = null;
+        logger.warn(
+          "[eliza-api] closing WebSocket that did not authenticate within the grace period",
+        );
+        ws.close(1008, "Unauthorized");
+      }, WS_AUTH_GRACE_TIMEOUT_MS);
+      // A stuck pre-auth socket must not hold the process open on shutdown.
+      authGraceTimer.unref?.();
+    }
 
     // Optional reconnect cursor: a client that tracks the highest buffered
     // event sequence it has applied can pass it back as `?lastEventId=` so the
@@ -4259,6 +4444,8 @@ export async function startApiServer(opts?: {
             tokenMatches(expected, msg.token.trim())
           ) {
             isAuthenticated = true;
+            clearAuthGraceTimer();
+            releasePendingSlot();
             ws.send(JSON.stringify({ type: "auth-ok" }));
             activateAuthenticatedConnection();
           } else {
@@ -4433,6 +4620,8 @@ export async function startApiServer(opts?: {
     });
 
     ws.on("close", () => {
+      clearAuthGraceTimer();
+      releasePendingSlot();
       wsClients.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
@@ -4452,6 +4641,8 @@ export async function startApiServer(opts?: {
       logger.error(
         `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );
+      clearAuthGraceTimer();
+      releasePendingSlot();
       wsClients.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up PTY subscriptions on error too
@@ -4519,12 +4710,17 @@ export async function startApiServer(opts?: {
   wireModelRegistrationBroadcast(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
+  state.broadcastWsToClientId = (clientId: string, data: object) =>
+    eventHub.sendToClient(clientId, data);
 
   // View interactions originate outside HTTP requests and share the same event
   // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        state.broadcastWsToClientId ?? null,
+      );
     })
     .catch((err) => {
       logger.error(
@@ -4532,8 +4728,6 @@ export async function startApiServer(opts?: {
       );
     });
 
-  state.broadcastWsToClientId = (clientId: string, data: object) =>
-    eventHub.sendToClient(clientId, data);
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins

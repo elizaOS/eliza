@@ -20,6 +20,8 @@ import {
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
+  type DeterministicModelDiagnostics,
+  type DeterministicModelFixtureRegistry,
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
@@ -28,10 +30,11 @@ import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
-  loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
+  registerScenarioRequiredPlugins,
 } from "./required-plugins.ts";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
@@ -363,6 +366,110 @@ export function shouldUseDeterministicModel(
   );
 }
 
+const EXACT_LIVE_PROVIDER_CREDENTIALS: Partial<
+  Record<LiveProviderName, readonly string[]>
+> = {
+  groq: ["GROQ_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  anthropic: ["ANTHROPIC_API_KEY"],
+  google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
+  openrouter: ["OPENROUTER_API_KEY"],
+};
+
+function configuredEnvValue(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): boolean {
+  return names.some((name) => Boolean(env[name]?.trim()));
+}
+
+function resolvedLiveProviderIdentity(
+  providerConfig: LiveProviderConfig,
+): string {
+  if (providerConfig.name !== "openai") return providerConfig.name;
+  try {
+    const hostname = new URL(providerConfig.baseUrl).hostname.toLowerCase();
+    if (hostname === "cerebras.ai" || hostname.endsWith(".cerebras.ai")) {
+      return "cerebras";
+    }
+  } catch {
+    // Provider configuration validates the URL at its own transport boundary.
+  }
+  return providerConfig.env.ELIZA_PROVIDER?.trim().toLowerCase() || "openai";
+}
+
+/**
+ * Rejects credential aliasing and self-judging before a live runtime starts.
+ * An explicit provider is an identity claim: its own credential must exist,
+ * even when the shared core selector supports protocol-compatible fallbacks.
+ */
+export function scenarioLiveProviderPreflightProblems(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig?: LiveProviderConfig | null,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const problems = new Set<string>();
+  const exactCredentials = preferredProvider
+    ? EXACT_LIVE_PROVIDER_CREDENTIALS[preferredProvider]
+    : undefined;
+  if (exactCredentials && !configuredEnvValue(env, exactCredentials)) {
+    problems.add(
+      `--provider ${preferredProvider} requires ${exactCredentials.join(" or ")}; compatible provider credentials cannot satisfy an explicit provider selection`,
+    );
+  }
+
+  const strictJudge = envFlag(env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT);
+  const judgeProvider =
+    env.EVAL_MODEL_PROVIDER?.trim().toLowerCase() ||
+    env.EVAL_PROVIDER?.trim().toLowerCase() ||
+    "cerebras";
+  if (strictJudge) {
+    if (judgeProvider !== "cerebras") {
+      problems.add(
+        `SCENARIO_JUDGE_REQUIRE_INDEPENDENT requires the supported independent judge provider cerebras; resolved ${judgeProvider}`,
+      );
+    } else if (
+      !configuredEnvValue(env, ["EVAL_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"])
+    ) {
+      problems.add(
+        "SCENARIO_JUDGE_REQUIRE_INDEPENDENT requires EVAL_CEREBRAS_API_KEY or CEREBRAS_API_KEY",
+      );
+    }
+  }
+
+  if (providerConfig) {
+    const actingProvider = resolvedLiveProviderIdentity(providerConfig);
+    if (preferredProvider && actingProvider !== preferredProvider) {
+      problems.add(
+        `requested acting provider ${preferredProvider} resolved to ${actingProvider}`,
+      );
+    }
+    if (strictJudge && actingProvider === judgeProvider) {
+      problems.add(
+        `acting provider ${actingProvider} cannot also be the independent judge provider`,
+      );
+    }
+  }
+  return [...problems].sort();
+}
+
+export function assertScenarioLiveProviderPreflight(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig?: LiveProviderConfig | null,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const problems = scenarioLiveProviderPreflightProblems(
+    preferredProvider,
+    providerConfig,
+    env,
+  );
+  if (problems.length > 0) {
+    throw new Error(
+      `[scenario-runner] live provider preflight failed: ${problems.join("; ")}`,
+    );
+  }
+}
+
 function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfig"] {
   return {
     name: DETERMINISTIC_MODEL_PROVIDER_NAME,
@@ -541,6 +648,11 @@ export function resolveScenarioProviderConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeFactoryResult["providerConfig"] | null {
   if (shouldUseDeterministicModel(options, env)) {
+    if (options.preferredProvider) {
+      throw new Error(
+        `[scenario-runner] preferred live provider ${options.preferredProvider} cannot be combined with the deterministic model provider`,
+      );
+    }
     return deterministicModelProviderConfig();
   }
   return selectLiveProvider(options.preferredProvider);
@@ -605,6 +717,12 @@ export async function createScenarioRuntime(
   if (!providerConfig) {
     throw new Error(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
+    );
+  }
+  if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
+    assertScenarioLiveProviderPreflight(
+      options?.preferredProvider,
+      providerConfig,
     );
   }
   if (
@@ -758,14 +876,21 @@ export async function createScenarioRuntime(
         "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
     }
+    // Undeclared scenarios retain the pre-manifest resolver during the staged
+    // corpus migration. Any explicit declaration is strict and fail-closed.
+    let modelFixtureMode: ScenarioModelFixtureMode = "legacy-fallback";
     const deterministicModelPlugin = createDeterministicModelPlugin({
-      resolve: resolveScenarioDeterministicModelCall,
+      resolve: (call) =>
+        modelFixtureMode === "legacy-fallback"
+          ? resolveScenarioDeterministicModelCall(call)
+          : null,
     });
     await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
-      scenarioModelFixtures?: unknown;
+      scenarioModelFixtures?: DeterministicModelFixtureRegistry;
       assertScenarioModelFixturesConsumed?: () => void;
-      getScenarioModelFixtureDiagnostics?: () => unknown;
+      getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
+      setScenarioModelFixtureMode?: (mode: ScenarioModelFixtureMode) => void;
     };
     runtimeWithScenarioFixtures.scenarioModelFixtures =
       deterministicModelPlugin.fixtures;
@@ -773,6 +898,9 @@ export async function createScenarioRuntime(
       deterministicModelPlugin.assertFixturesConsumed;
     runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
       deterministicModelPlugin.getFixtureDiagnostics;
+    runtimeWithScenarioFixtures.setScenarioModelFixtureMode = (mode) => {
+      modelFixtureMode = mode;
+    };
     logger.info(
       "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
     );
@@ -883,22 +1011,15 @@ export async function createScenarioRuntime(
     for (const extra of options?.extraPlugins ?? []) {
       await runtime.registerPlugin(extra);
     }
-  } else {
-    for (const packageName of options?.requiredPlugins ?? []) {
-      if (!pluginPackageIsRegistered(runtime, packageName)) {
-        const plugin = await loadScenarioRequiredPlugin(
-          packageName,
-          executionProfile,
-        );
-        if (!plugin) {
-          throw new Error(
-            `[scenario-runner] provider-qualified required package ${packageName} did not export a production Plugin`,
-          );
-        }
-        await runtime.registerPlugin(plugin);
-      }
-      registeredPluginPackages.add(packageName);
-    }
+  }
+
+  const requiredPluginPackages = await registerScenarioRequiredPlugins(
+    runtime,
+    options?.requiredPlugins ?? [],
+    executionProfile,
+  );
+  for (const packageName of requiredPluginPackages) {
+    registeredPluginPackages.add(packageName);
   }
 
   await runtime.initialize();

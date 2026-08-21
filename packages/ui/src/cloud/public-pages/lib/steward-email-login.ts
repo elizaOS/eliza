@@ -20,6 +20,15 @@ export interface StewardEmailLoginChallenge {
   expiresAt: string | number;
   challengeId?: string;
   pollSecret?: string;
+  /**
+   * Whether the rendered Steward email actually carried a six-digit companion
+   * code. `true`/`false` only when the send response explicitly declares the
+   * delivered factors (`deliveredFactors` or `codeDelivery`); `undefined` when
+   * Steward did not say. `challengeId`/`pollSecret` are status-polling
+   * credentials and must never be treated as proof a code was emailed —
+   * tenant templates may render the magic link only (#19213).
+   */
+  emailCodeDelivered?: boolean;
 }
 
 interface StewardEmailLoginOptions {
@@ -173,7 +182,33 @@ export async function startStewardEmailLogin(
   }
   // challengeId/pollSecret are additive in Steward #242. Their absence keeps
   // the existing magic-link-only UI working during a rolling deployment.
-  return { expiresAt, challengeId, pollSecret };
+  return {
+    expiresAt,
+    challengeId,
+    pollSecret,
+    emailCodeDelivered: parseEmailCodeDelivered(data),
+  };
+}
+
+/**
+ * Reads the explicit delivery declaration from a Steward send response.
+ * Recognizes `deliveredFactors: string[]` (authoritative factor list derived
+ * from the rendered template) and the shorthand `codeDelivery: "email" |
+ * "none"`. Anything else — including today's responses that carry only
+ * `expiresAt`/`challengeId`/`pollSecret` — yields `undefined`: the client
+ * does not know which factors the email carried and must not assert one.
+ */
+function parseEmailCodeDelivered(
+  data: Record<string, unknown>,
+): boolean | undefined {
+  const factors = data.deliveredFactors;
+  if (Array.isArray(factors) && factors.every((f) => typeof f === "string")) {
+    return factors.includes("email_code") || factors.includes("code");
+  }
+  const codeDelivery = string(data.codeDelivery);
+  if (codeDelivery === "email") return true;
+  if (codeDelivery === "none") return false;
+  return undefined;
 }
 
 export async function verifyStewardEmailSignInCode(

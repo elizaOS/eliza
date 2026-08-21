@@ -13,12 +13,14 @@
  * deleted note cannot linger here the way a mirrored memory record would.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
@@ -46,9 +48,13 @@ const UNAVAILABLE: ProviderResult = {
 function noteLine(note: StickyNote): string {
   const body = note.body.trim();
   const full = body.length > 0 ? `${note.title} — ${body}` : note.title;
-  return full.length > MAX_NOTE_LINE_LENGTH
-    ? `${full.slice(0, MAX_NOTE_LINE_LENGTH - "… (truncated)".length)}… (truncated)`
-    : full;
+  const wellFormed = toWellFormedUnicode(full);
+  if (wellFormed.length <= MAX_NOTE_LINE_LENGTH) {
+    return wellFormed;
+  }
+  const suffix = toWellFormedUnicode("… (truncated)");
+  const budget = Math.max(0, MAX_NOTE_LINE_LENGTH - suffix.length);
+  return `${truncateWellFormed(wellFormed, budget)}${suffix}`;
 }
 
 export function renderSavedNotesText(notes: readonly StickyNote[]): string {

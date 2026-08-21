@@ -169,9 +169,20 @@ describe("generateMediaAction availability", () => {
 
 		expect(result).toMatchObject({
 			success: true,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			userFacingText: "here's your video.",
 			values: {
 				mediaGenerated: true,
 				mediaType: "video",
+			},
+			data: {
+				attachments: [
+					expect.objectContaining({
+						url: "https://cdn.example.com/generated/clip.mp4",
+						contentType: "video",
+					}),
+				],
 			},
 		});
 		expect(callback).toHaveBeenCalledWith(

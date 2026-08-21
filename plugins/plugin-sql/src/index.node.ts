@@ -7,7 +7,6 @@
  * Drizzle query-helper subpath, RLS management functions, and the PGlite
  * live-query / Electric Sync status/reset/close accessors used by hosts.
  */
-import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import {
@@ -38,6 +37,7 @@ import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import {
+  ensurePrivateDir,
   type LiveNamespace,
   PGliteClientManager,
   type PgliteSyncStatus,
@@ -54,7 +54,7 @@ import {
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { stringToUuid } from "./utils/string-to-uuid";
-import { resolvePgliteDir } from "./utils.node";
+import { resolvePgliteDir } from "./utils.node.ts";
 
 export type {
   AppendConnectorAccountAuditEventParams,
@@ -165,7 +165,7 @@ export function createDatabaseAdapter(
   // reserved `:` makes mkdirSync throw (on POSIX it silently creates a junk
   // `:memory:` directory), so skip directory creation for it and for URLs.
   if (dataDir && !dataDir.includes("://") && dataDir !== ":memory:") {
-    mkdirSync(dataDir, { recursive: true });
+    ensurePrivateDir(dataDir);
   }
 
   const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {
@@ -179,6 +179,10 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
+  // Identity authority is exported for explicit hosts and integration tests,
+  // but remains cutover-gated until owner claims are backfilled. Registering
+  // it early would make role resolution prefer an empty authority over the
+  // verified owner-pairing compatibility path.
   services: [AdvancedMemoryStorageService],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
@@ -254,6 +258,10 @@ export {
   uninstallRLS,
 } from "./rls";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export {
+  computeIdentityRequestDigest,
+  SqlIdentityResolutionService,
+} from "./services/sql-identity-resolution";
 
 /**
  * Query the live Electric Sync status from the global PGliteClientManager
