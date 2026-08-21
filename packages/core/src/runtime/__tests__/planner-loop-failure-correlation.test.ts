@@ -871,9 +871,7 @@ describe("planner-loop failed-operation correlation", () => {
 			});
 
 			expect(result.status).toBe("finished");
-			expect(result.finalMessage).toContain("The file search could not run.");
-			expect(result.finalMessage).toContain("1 test passed.");
-			expect(result.finalMessage).toContain(proof);
+			expect(result.finalMessage).toBe(proof);
 		});
 	});
 

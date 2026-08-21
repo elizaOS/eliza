@@ -3934,6 +3934,19 @@ function terminalMessageWithFailureAuthority(
 	// So in coding mode the failure text keeps the lead and the tool-owned
 	// success evidence is appended, giving the orchestrator's summary both
 	// truths instead of only the failure.
+	//
+	// Structured app/plugin completion is different: it is not the final user
+	// verdict. The parent validates that proof against disk and owns the only
+	// pass/fail message. Prefixing it with a stale failed probe makes a verified
+	// build look broken in chat even though the parent accepts it. Forward the
+	// exact candidate here; the independent validator will reject any false
+	// files/check counts and turn that into the authoritative failure instead.
+	if (
+		isCodingFullSurfaceMode() &&
+		isStructuredCodingCompletionProof(candidate)
+	) {
+		return candidate;
+	}
 	const failureNote = groundedFailedToolMessage(
 		unresolvedFailure,
 		failureReport,
@@ -3945,15 +3958,6 @@ function terminalMessageWithFailureAuthority(
 	);
 	if (successEvidence.length === 0) return failureNote;
 	const grounded = `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
-	// App/plugin builders are independently verified after the child finishes.
-	// Dropping their machine completion line here makes that verifier report
-	// "missing proof" even when the trajectory contains the exact proof and all
-	// checks pass. Keep failure authority first, but forward a narrowly-recognized
-	// proof line so the verifier can accept or reject its claims against disk.
-	// Ordinary prose (and action-envelope JSON) remains excluded.
-	if (isStructuredCodingCompletionProof(candidate)) {
-		return `${grounded}\n\nCompletion proof submitted for independent verification:\n${candidate}`;
-	}
 	return grounded;
 }
 
