@@ -1,16 +1,7 @@
 /**
- * Fail-closed walk budget for `normalizeSchemaForCerebras`.
- * On origin develop the walker recursed with `Object.entries` and no
- * depth/cycle cap, so JSON.parse-legal 8k-deep `properties` nests and
- * cyclic `not` graphs RangeError'd. Overlay throws typed
- * `CEREBRAS_SCHEMA_UNBOUNDED` instead.
- *
- * Shaw CR on #23159 (live head 695b5444): wrap Array.isArray /
- * getPrototypeOf, path-local visiting so honest DAGs pass, and never
- * fall back to a `.length` get trap. Caller-path regressions go through
- * the same `normalizeSchemaForCerebras(schema, true, { strict })`
- * contract as `plugins/plugin-openai/models/text.ts` cerebrasMode.
- * Owning issue is linked from PR #23159 Relates to.
+ * Deterministic hostile-input coverage for the bounded Cerebras schema walk
+ * and its descriptor-only transport clone. The harness exercises the same
+ * normalization contract used by the OpenAI plugin before provider dispatch.
  */
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../../errors";
@@ -145,7 +136,7 @@ describe("normalizeSchemaForCerebras walk bound", () => {
 	});
 });
 
-describe("normalizeSchemaForCerebras caller-path Shaw CR", () => {
+describe("normalizeSchemaForCerebras hostile caller inputs", () => {
 	it("wraps a revoked Array Proxy as typed unbounded instead of TypeError", () => {
 		const { proxy, revoke } = Proxy.revocable([] as unknown[], {});
 		revoke();
@@ -490,11 +481,9 @@ describe("cloneSchemaForBoundedTransport", () => {
 	});
 
 	it("accepts and rejects exactly what normalizeSchemaForCerebras does", () => {
-		// Shaw's exact-head repro on fb67e329: the pre-pass counted RAW object
-		// nesting, so a legal `default` annotation nested past its budget was
-		// rejected while the normalizer accepted it. The clone now walks the
-		// same schema-bearing keywords with the same depth accounting, so the
-		// two must agree on every case below.
+		// Annotation nesting is not schema nesting. The clone walks the same
+		// schema-bearing keywords with the same depth accounting as the
+		// normalizer, so they must agree on every case below.
 		let annotation: Record<string, unknown> = { leaf: true };
 		for (let i = 0; i < MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2 + 1; i += 1) {
 			annotation = { nested: annotation };

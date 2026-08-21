@@ -1,11 +1,7 @@
 /**
- * Production-boundary regressions for Shaw CR on #23159 (head after the
- * prior walker fix). The live Cerebras path is
- * `normalizeNativeToolsForCall` → `sanitizeJsonSchema` →
- * `normalizeSchemaForCerebras`. Tests call that real pipeline (and the
- * `handleTextSmall` model handler that owns it), not a local core wrapper.
- * A typed `CEREBRAS_SCHEMA_UNBOUNDED` throw is the fail-closed gate before
- * provider `generateText` dispatch.
+ * Production-boundary coverage for bounded Cerebras tool-schema handling.
+ * Tests exercise the real normalization pipeline and model handler, including
+ * fail-closed behavior before provider dispatch.
  */
 import {
   CEREBRAS_SCHEMA_UNBOUNDED,
@@ -346,13 +342,88 @@ describe("handleTextSmall Cerebras path never dispatches on unbounded schema", (
   });
 });
 
-/**
- * Shaw CR at 4854c203: the bounded pre-pass must NOT apply Cerebras closure
- * before `sanitizeJsonSchema` runs, or every declared open map is rewritten to
- * `additionalProperties: false` and the `__eliza_record_entries` reverse
- * transform (#11249) is never built — the model then sees a closed empty
- * object and the argument always arrives empty.
- */
+describe("opaque annotations remain inert until the typed wire boundary", () => {
+  function normalizedDefault(annotation: unknown): unknown {
+    const result = callStrictCerebras({
+      type: "object",
+      properties: { x: { type: "string" } },
+      default: annotation,
+    });
+    const tool = (
+      result.tools as Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>
+    ).probe;
+    return tool.inputSchema.jsonSchema.default;
+  }
+
+  async function expectTypedWireRejection(annotation: unknown): Promise<void> {
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "probe",
+        tools: [
+          {
+            name: "probe",
+            strict: true,
+            parameters: {
+              type: "object",
+              properties: { x: { type: "string" } },
+              default: annotation,
+            },
+          },
+        ],
+      } as never)
+    ).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toMatch(/^WELL_FORMED_/);
+      expect(error).not.toBeInstanceOf(TypeError);
+      expect(error).not.toBeInstanceOf(RangeError);
+      return true;
+    });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+    expect(aiMocks.streamText).not.toHaveBeenCalled();
+  }
+
+  it("never evaluates an enumerable annotation getter", async () => {
+    let getterCalls = 0;
+    const annotation = {};
+    Object.defineProperty(annotation, "hostile", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "observed";
+      },
+    });
+
+    expect(normalizedDefault(annotation)).toBe(annotation);
+    expect(getterCalls).toBe(0);
+    await expectTypedWireRejection(annotation);
+    expect(getterCalls).toBe(0);
+  });
+
+  it("translates a revoked annotation proxy without dispatch", async () => {
+    const { proxy, revoke } = Proxy.revocable({ value: "opaque" }, {});
+    revoke();
+
+    expect(normalizedDefault(proxy)).toBe(proxy);
+    await expectTypedWireRejection(proxy);
+  });
+
+  it("rejects cyclic annotation data without dispatch", async () => {
+    const annotation: Record<string, unknown> = { value: "opaque" };
+    annotation.self = annotation;
+
+    expect(normalizedDefault(annotation)).toBe(annotation);
+    await expectTypedWireRejection(annotation);
+  });
+
+  it("rejects annotation data past the wire depth cap without dispatch", async () => {
+    const annotation = deepProperties(MAX_WELL_FORMED_DEPTH * 4);
+
+    expect(normalizedDefault(annotation)).toBe(annotation);
+    await expectTypedWireRejection(annotation);
+  });
+});
+
+/** Open-map declarations retain their two-sided strict-safe transformation. */
 describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
   it("emits __eliza_record_entries and records the transform for a schema-valued map", () => {
     const result = normalizeNativeToolsForCall(
@@ -480,13 +551,7 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
   });
 });
 
-/**
- * Shaw CR at fb67e329: the pre-pass counted raw object nesting, so a legal
- * `default`/`examples`/extension annotation nested past that raw budget was
- * rejected even though `normalizeSchemaForCerebras` and `sanitizeJsonSchema`
- * never descend into annotation data and accept it. The provider path must
- * keep accepting those schemas.
- */
+/** Legal annotation data is opaque to the schema-specific pre-pass. */
 describe("Cerebras mode accepts deep legal annotation data (real caller)", () => {
   function deepAnnotation(depth: number): Record<string, unknown> {
     let node: Record<string, unknown> = { leaf: true };
