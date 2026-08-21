@@ -1074,20 +1074,28 @@ function discoverEventTriggerTasks(runtime: IAgentRuntime): Promise<Task[]> {
 }
 
 /** Trigger hops between an external event and the run that emitted `runId`. */
-function readChainDepth(runtime: IAgentRuntime, runId?: string): number {
-  if (!runId) return 0;
-  return eventTriggerChainDepths.get(runtime)?.get(runId) ?? 0;
+// Ancestry is keyed on the WORKFLOW id, not the run id. Keying on the run id
+// could never work: WORKFLOW_DISPATCH awaits executeWorkflow, and a run emits
+// every one of its events before that promise resolves — so the child's events
+// were always dispatched before its depth was recorded, and readChainDepth
+// returned 0 forever. The workflow id is known before dispatch, so recording
+// against it actually bounds the chain.
+function readChainDepth(runtime: IAgentRuntime, workflowId?: string): number {
+  if (!workflowId) return 0;
+  return eventTriggerChainDepths.get(runtime)?.get(workflowId) ?? 0;
 }
 
 function recordChainDepth(
   runtime: IAgentRuntime,
-  runId: string,
+  workflowId: string,
   depth: number,
 ): void {
   const depths =
     eventTriggerChainDepths.get(runtime) ?? new Map<string, number>();
   eventTriggerChainDepths.set(runtime, depths);
-  depths.set(runId, depth);
+  // Keep the deepest observed depth for this workflow: a later shallower hop
+  // must not reset a chain that has already gone deep.
+  depths.set(workflowId, Math.max(depths.get(workflowId) ?? 0, depth));
   // Insertion-ordered eviction keeps ancestry bounded for long-lived hosts.
   while (depths.size > MAX_EVENT_TRIGGER_CHAIN_ENTRIES) {
     const oldest = depths.keys().next();
@@ -1148,13 +1156,19 @@ export async function dispatchRuntimeEventTriggers(
   const nestedEvent = readNestedRunEvent(payload);
   const sourceWorkflowId = readNestedString(nestedEvent?.workflowId);
   const sourceRunId = readNestedString(nestedEvent?.runId);
-  const chainDepth = readChainDepth(runtime, sourceRunId);
+  const chainDepth = readChainDepth(runtime, sourceWorkflowId);
   if (chainDepth >= MAX_EVENT_TRIGGER_CHAIN_DEPTH) {
     // The emitting run was itself started by a trigger chain that has already
     // reached its hop limit. Continuing would let a mutually referential
     // configuration (A triggers B, B triggers A) run without ever quiescing.
     runtime.logger.warn(
-      { src: "trigger-runtime", eventKind, runId: sourceRunId, chainDepth },
+      {
+        src: "trigger-runtime",
+        eventKind,
+        workflowId: sourceWorkflowId,
+        runId: sourceRunId,
+        chainDepth,
+      },
       "Event trigger chain depth limit reached; not dispatching further",
     );
     return;
@@ -1210,21 +1224,39 @@ export async function dispatchRuntimeEventTriggers(
           const currentTask = await runtime.getTask(taskId);
           if (!currentTask) return;
           const currentTrigger = readTriggerConfig(currentTask);
+          // Evaluate the filter BEFORE consuming a dispatch slot. A workflow
+          // emitting NodeStarted/NodeFinished for every node would otherwise
+          // burn the whole per-minute ceiling on events that were never going
+          // to fire, and drop the one the trigger actually exists for.
+          if (
+            currentTrigger?.triggerType === "event" &&
+            !eventFilterMatches(currentTrigger.eventFilter, payload)
+          ) {
+            return;
+          }
           if (
             currentTrigger &&
             !admitTriggerDispatch(runtime, currentTrigger.triggerId, eventKind)
           ) {
             return;
           }
-          const result = await executeTriggerTask(runtime, currentTask, {
+          // Recorded BEFORE dispatch: the target workflow emits its events
+          // inside executeTriggerTask, so anything written afterwards arrives
+          // too late to bound the next hop.
+          if (
+            currentTrigger?.kind === "workflow" &&
+            currentTrigger.workflowId
+          ) {
+            recordChainDepth(
+              runtime,
+              currentTrigger.workflowId,
+              chainDepth + 1,
+            );
+          }
+          await executeTriggerTask(runtime, currentTask, {
             source: "event",
             event: { kind: eventKind, payload },
           });
-          if (result.executionId) {
-            // The dispatched run's id is the ancestry key its own emitted
-            // events will carry, so the chain can be bounded at the next hop.
-            recordChainDepth(runtime, result.executionId, chainDepth + 1);
-          }
         } catch (error) {
           // error-policy:J7 one trigger's persistence/dispatch failure must not
           // reject the source runtime event or prevent sibling triggers.

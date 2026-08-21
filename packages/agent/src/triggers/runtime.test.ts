@@ -1413,12 +1413,17 @@ describe("runtime event trigger bridge", () => {
     );
     handle.setTasks([aToB, bToA]);
 
-    const feedback: Array<() => Promise<void>> = [];
+    // Production ordering: WORKFLOW_DISPATCH awaits executeWorkflow, and a run
+    // emits every one of its events BEFORE that promise resolves. Deferring the
+    // emit to a later round (the previous shape here) inverts that, and made
+    // this test pass against a chain guard that never fired in production.
     let runSeq = 0;
     const execute = vi.fn(async (workflowId: string) => {
       runSeq += 1;
       const runId = `run-${runSeq}`;
-      feedback.push(async () => {
+      // Bound the harness itself so a genuinely unbounded chain fails the
+      // assertion below instead of hanging the suite.
+      if (runSeq <= 30) {
         await handle.runtime.emitEvent("workflow_run_event", {
           event: {
             id: `${runId}:1`,
@@ -1427,7 +1432,7 @@ describe("runtime event trigger bridge", () => {
             type: "NodeFinished",
           },
         } as never);
-      });
+      }
       return { ok: true as const, executionId: runId };
     });
     (
@@ -1446,16 +1451,14 @@ describe("runtime event trigger bridge", () => {
       },
     } as never);
 
-    for (let round = 0; round < 20; round += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      if (feedback.length === 0) break;
-      const next = feedback.splice(0, feedback.length);
-      for (const emit of next) await emit();
-    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
-    // Four hops from the seed, then the chain stops on its own.
-    expect(feedback).toHaveLength(0);
-    expect(execute).toHaveBeenCalledTimes(4);
+    // The chain must quiesce on its own, well inside the harness cutoff. If
+    // ancestry is not actually bounding it, runSeq runs away to 30.
+    expect(execute.mock.calls.length).toBeLessThanOrEqual(
+      5, // MAX_EVENT_TRIGGER_CHAIN_DEPTH (4) + the seed hop
+    );
+    expect(execute.mock.calls.length).toBeGreaterThan(0);
   });
 
   it("cuts off a saved trigger that exceeds the sustained dispatch ceiling", async () => {
