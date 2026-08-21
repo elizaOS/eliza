@@ -21,51 +21,24 @@ const ORG_B = "22222222-2222-4222-8222-222222222222";
 const NOW = new Date("2026-08-20T12:00:00.000Z");
 const PAST = new Date("2026-08-01T00:00:00.000Z");
 
+/**
+ * Row factories intentionally construct only the narrowed `Pick<>` shape the
+ * DB loader (`./index.ts`) actually selects — not the full Drizzle row. That
+ * narrowing IS the defect-1 fix: a factory that could still set
+ * `access_token_encrypted` or `platform_user_id_ciphertext` would let a
+ * secret column silently rejoin this contract. The "row shape" test below
+ * additionally asserts what the real loader's query requests, independent of
+ * these fixtures.
+ */
 function platformCredentialRow(overrides: Partial<PlatformCredentialRow>): PlatformCredentialRow {
   return {
     id: "33333333-3333-4333-8333-333333333331",
-    organization_id: ORG_A,
-    user_id: null,
-    app_id: null,
     platform: "gmail",
-    platform_user_id: "user-123",
     platform_username: "alice",
     platform_display_name: "Alice Example",
-    platform_avatar_url: null,
-    platform_email: "secret-alice@example.com",
     status: "active",
-    error_message: null,
-    access_token_secret_id: "44444444-4444-4444-8444-444444444441",
-    refresh_token_secret_id: null,
-    token_expires_at: null,
     scopes: ["gmail.readonly", "gmail.send"],
-    api_key_secret_id: null,
-    granted_permissions: [],
-    source_type: null,
-    source_context: null,
-    profile_data: null,
-    platform_user_id_ciphertext: "SECRET_CIPHERTEXT",
-    platform_user_id_nonce: null,
-    platform_user_id_auth_tag: null,
-    platform_user_id_kms_key_id: null,
-    platform_user_id_kms_key_version: null,
-    platform_email_ciphertext: null,
-    platform_email_nonce: null,
-    platform_email_auth_tag: null,
-    platform_email_kms_key_id: null,
-    platform_email_kms_key_version: null,
-    platform_display_name_ciphertext: null,
-    platform_display_name_nonce: null,
-    platform_display_name_auth_tag: null,
-    platform_display_name_kms_key_id: null,
-    platform_display_name_kms_key_version: null,
-    created_at: PAST,
-    linked_at: PAST,
     last_used_at: new Date("2026-08-19T09:30:00.000Z"),
-    last_refreshed_at: null,
-    expires_at: null,
-    revoked_at: null,
-    updated_at: PAST,
     deleted_at: null,
     ...overrides,
   };
@@ -74,20 +47,11 @@ function platformCredentialRow(overrides: Partial<PlatformCredentialRow>): Platf
 function vendorConnectionRow(overrides: Partial<VendorConnectionRow>): VendorConnectionRow {
   return {
     id: "33333333-3333-4333-8333-333333333332",
-    organization_id: ORG_A,
     vendor: "linear",
     label: "workspace",
-    access_token_encrypted: "SECRET_TOKEN",
-    refresh_token_encrypted: null,
-    encrypted_dek: "SECRET_DEK",
-    token_nonce: "SECRET_NONCE",
-    token_auth_tag: "SECRET_TAG",
-    encryption_key_id: "key-1",
+    hasRefreshToken: false,
     expires_at: null,
     scopes: ["read", "issues:create"],
-    connection_metadata: {},
-    created_at: PAST,
-    updated_at: PAST,
     deleted_at: null,
     ...overrides,
   };
@@ -96,28 +60,9 @@ function vendorConnectionRow(overrides: Partial<VendorConnectionRow>): VendorCon
 function discordConnectionRow(overrides: Partial<DiscordConnectionRow>): DiscordConnectionRow {
   return {
     id: "33333333-3333-4333-8333-333333333333",
-    organization_id: ORG_A,
-    character_id: null,
-    application_id: "app-1",
-    bot_user_id: "bot-1",
-    bot_token_encrypted: "SECRET_BOT_TOKEN",
-    encrypted_dek: "SECRET_DEK",
-    token_nonce: "SECRET_NONCE",
-    token_auth_tag: "SECRET_TAG",
-    encryption_key_id: "key-1",
-    assigned_pod: null,
     status: "connected",
-    error_message: null,
-    guild_count: 2,
-    events_received: 0,
-    events_routed: 0,
     last_heartbeat: new Date("2026-08-20T11:59:00.000Z"),
-    connected_at: PAST,
-    intents: 0,
     is_active: true,
-    metadata: null,
-    created_at: PAST,
-    updated_at: PAST,
     ...overrides,
   };
 }
@@ -125,24 +70,13 @@ function discordConnectionRow(overrides: Partial<DiscordConnectionRow>): Discord
 function phoneGatewayDeviceRow(overrides: Partial<PhoneGatewayDeviceRow>): PhoneGatewayDeviceRow {
   return {
     id: "33333333-3333-4333-8333-333333333334",
-    organization_id: ORG_A,
-    provider: "imessage",
-    phone_number: "+15555550100",
-    bridge_id: "default",
-    phone_account_id: null,
     phone_account_label: "Personal iPhone",
     friendly_name: null,
-    send_method: null,
-    cloud_webhook_url: null,
-    local_webhook_url: null,
     is_active: true,
     can_send_sms: true,
     can_receive_sms: true,
     can_send_imessage: false,
     can_receive_imessage: true,
-    metadata: "{}",
-    created_at: PAST,
-    updated_at: PAST,
     last_seen_at: new Date("2026-08-20T11:00:00.000Z"),
     ...overrides,
   };
@@ -201,9 +135,11 @@ describe("projectConnectedAccounts", () => {
     expect(byProvider.linear.mode).toBe("cloud");
     expect(byProvider.linear.capabilities).toEqual([
       { capabilityId: "linear/read", riskLevel: "R1", status: "available" },
+      // "issues:create" is a mutating scope that the old write-verb allowlist
+      // missed (defect 3); it must fail closed to R2, not default to R1.
       {
         capabilityId: "linear/issues:create",
-        riskLevel: "R1",
+        riskLevel: "R2",
         status: "available",
       },
     ]);
@@ -239,12 +175,14 @@ describe("projectConnectedAccounts", () => {
     ]);
   });
 
-  test("never leaks secret or identifying storage columns", async () => {
+  test("never leaks raw storage row IDs", async () => {
+    // Secret columns (tokens/ciphertext/DEKs/nonces) cannot appear here even
+    // in principle: the `Pick<>` row types these fixtures build don't carry
+    // those fields at all. This test covers the remaining identifying value —
+    // the raw row ID — is never serialized verbatim; the DB-loader test suite
+    // covers the query-shape half of the secret-column fix (defect 1).
     const accounts = await projectConnectedAccounts(fullRows(), NOW);
     const serialized = JSON.stringify(accounts);
-    expect(serialized).not.toContain("SECRET");
-    expect(serialized).not.toContain("secret-alice@example.com");
-    expect(serialized).not.toContain("+15555550100");
     expect(serialized).not.toContain("33333333-3333-4333-8333");
     for (const account of accounts) {
       expect(account.accountId).toMatch(/^ca_[0-9a-f]{32}$/);
@@ -294,7 +232,7 @@ describe("projectConnectedAccounts", () => {
     const rows = {
       ...emptyRows(),
       platformCredentials: [platformCredentialRow({ status: "revoked" })],
-      discordConnections: [discordConnectionRow({ status: "error", error_message: "boom" })],
+      discordConnections: [discordConnectionRow({ status: "error" })],
     };
     const accounts = await projectConnectedAccounts(rows, NOW);
     const revoked = accounts.find((a) => a.providerId === "gmail");
@@ -315,7 +253,7 @@ describe("projectConnectedAccounts", () => {
         vendorConnectionRow({
           id: "53333333-3333-4333-8333-333333333332",
           expires_at: PAST,
-          refresh_token_encrypted: "SECRET_REFRESH",
+          hasRefreshToken: true,
         }),
         vendorConnectionRow({
           id: "53333333-3333-4333-8333-333333333333",
@@ -358,6 +296,51 @@ describe("projectConnectedAccounts", () => {
     const accounts = await projectConnectedAccounts(rows, NOW);
     expect(accounts[0]?.capabilities).toEqual([
       { capabilityId: "linear/read", riskLevel: "R1", status: "available" },
+    ]);
+  });
+
+  test("unrecognized scope strings fail closed to elevated risk, not the low-risk default", async () => {
+    // "custom_scope" matches neither a known write verb nor a known
+    // read-only verb — an unrecognized scope must never under-classify its
+    // risk (defect 3).
+    const rows = {
+      ...emptyRows(),
+      vendorConnections: [vendorConnectionRow({ scopes: ["custom_scope"] })],
+    };
+    const accounts = await projectConnectedAccounts(rows, NOW);
+    expect(accounts[0]?.capabilities).toEqual([
+      { capabilityId: "linear/custom_scope", riskLevel: "R2", status: "available" },
+    ]);
+  });
+
+  test("a NULL/unrecorded scope set projects unsupported, not a live available grant", async () => {
+    // scopes: null means the grant set was never recorded — distinct from an
+    // explicitly-verified empty array — and must not read as a healthy,
+    // available base capability (defect 2). Mirrors the ungranted ->
+    // "unsupported" handling projectPhoneGatewayDevice already does for
+    // native device permissions.
+    const rows = {
+      ...emptyRows(),
+      platformCredentials: [platformCredentialRow({ scopes: null, status: "active" })],
+    };
+    const accounts = await projectConnectedAccounts(rows, NOW);
+    expect(accounts[0]?.status).toBe("connected");
+    expect(accounts[0]?.capabilities).toEqual([
+      { capabilityId: "gmail/connection", riskLevel: "R1", status: "unsupported" },
+    ]);
+  });
+
+  test("an explicitly empty scope array still projects an available base capability", async () => {
+    // Contrast case for the NULL test above: a verified-empty grant set ([])
+    // is not the same as an unrecorded one (null) and keeps its existing
+    // available-base-capability behavior.
+    const rows = {
+      ...emptyRows(),
+      platformCredentials: [platformCredentialRow({ scopes: [], status: "active" })],
+    };
+    const accounts = await projectConnectedAccounts(rows, NOW);
+    expect(accounts[0]?.capabilities).toEqual([
+      { capabilityId: "gmail/connection", riskLevel: "R1", status: "available" },
     ]);
   });
 });
