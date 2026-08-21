@@ -150,8 +150,14 @@ function writeEncryptedFile(filePath: string, plaintext: string, aad: string) {
       encoding: "utf8",
       mode: 0o600,
     });
+    if (readEncryptedFile(temporaryPath, aad) !== plaintext) {
+      throw new Error("Telegram credential staging verification failed");
+    }
     fs.renameSync(temporaryPath, filePath);
     fs.chmodSync(filePath, 0o600);
+    if (readEncryptedFile(filePath, aad) !== plaintext) {
+      throw new Error("Telegram credential persistence verification failed");
+    }
   } finally {
     fs.rmSync(temporaryPath, { force: true });
   }

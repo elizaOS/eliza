@@ -201,10 +201,12 @@ const BUNDLED_TELEGRAM_APP_HASH = "b18441a1ff607e10a989891a5462e627";
 /**
  * Resolve the MTProto app credentials for the personal-account login, in
  * priority order: (1) per-account configured creds (power users / own app
- * identity), (2) deployment settings `TELEGRAM_APP_ID` / `TELEGRAM_APP_HASH`,
- * (3) the bundled default. Never returns null, so the fragile my.telegram.org
- * provisioning scrape is bypassed entirely. Exported for direct unit coverage
- * of the three-tier precedence.
+ * identity), (2) canonical connector settings `TELEGRAM_ACCOUNT_APP_ID` /
+ * `TELEGRAM_ACCOUNT_APP_HASH`, (3) the legacy deployment-setting aliases, and
+ * (4) the bundled default. Vault-backed connector values are projected only
+ * through the canonical setting names, so reading those names first preserves
+ * a user's app identity after plaintext-to-Vault migration. Never returns null,
+ * so the fragile my.telegram.org provisioning scrape is bypassed entirely.
  */
 export function resolveTelegramAppCredentials(
   runtime: IAgentRuntime,
@@ -226,8 +228,12 @@ export function resolveTelegramAppCredentials(
       apiHash: connConfig.appHash.trim(),
     };
   }
-  const envId = runtime.getSetting("TELEGRAM_APP_ID");
-  const envHash = runtime.getSetting("TELEGRAM_APP_HASH");
+  const envId =
+    runtime.getSetting("TELEGRAM_ACCOUNT_APP_ID") ??
+    runtime.getSetting("TELEGRAM_APP_ID");
+  const envHash =
+    runtime.getSetting("TELEGRAM_ACCOUNT_APP_HASH") ??
+    runtime.getSetting("TELEGRAM_APP_HASH");
   const parsedEnvId =
     typeof envId === "string" || typeof envId === "number"
       ? Number(envId)

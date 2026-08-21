@@ -43,11 +43,11 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
-  it("falls through to TELEGRAM_APP_ID / TELEGRAM_APP_HASH settings when no config", () => {
+  it("falls through to canonical Telegram Account settings when no config", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({
-        TELEGRAM_APP_ID: "555",
-        TELEGRAM_APP_HASH: "envHashenvHashenvHashenvHashenv1",
+        TELEGRAM_ACCOUNT_APP_ID: "555",
+        TELEGRAM_ACCOUNT_APP_HASH: "envHashenvHashenvHashenvHashenv1",
       }),
       {},
     );
@@ -78,8 +78,8 @@ describe("resolveTelegramAppCredentials", () => {
   it("uses the resolved runtime setting when config stores an appHash vault reference", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({
-        TELEGRAM_APP_ID: "12345",
-        TELEGRAM_APP_HASH: "resolvedHashresolvedHashresolved1",
+        TELEGRAM_ACCOUNT_APP_ID: "12345",
+        TELEGRAM_ACCOUNT_APP_HASH: "resolvedHashresolvedHashresolved1",
       }),
       {
         appId: "12345",
@@ -89,6 +89,36 @@ describe("resolveTelegramAppCredentials", () => {
     expect(creds).toEqual({
       apiId: 12345,
       apiHash: "resolvedHashresolvedHashresolved1",
+    });
+  });
+
+  it("retains the legacy Telegram app setting aliases for existing deployments", () => {
+    const creds = resolveTelegramAppCredentials(
+      makeRuntime({
+        TELEGRAM_APP_ID: "65432",
+        TELEGRAM_APP_HASH: "legacyHashlegacyHashlegacyHash12",
+      }),
+      {},
+    );
+    expect(creds).toEqual({
+      apiId: 65432,
+      apiHash: "legacyHashlegacyHashlegacyHash12",
+    });
+  });
+
+  it("prefers canonical connector settings over legacy aliases", () => {
+    const creds = resolveTelegramAppCredentials(
+      makeRuntime({
+        TELEGRAM_ACCOUNT_APP_ID: "12345",
+        TELEGRAM_ACCOUNT_APP_HASH: "canonicalHashcanonicalHashcanon1",
+        TELEGRAM_APP_ID: "65432",
+        TELEGRAM_APP_HASH: "legacyHashlegacyHashlegacyHash12",
+      }),
+      {},
+    );
+    expect(creds).toEqual({
+      apiId: 12345,
+      apiHash: "canonicalHashcanonicalHashcanon1",
     });
   });
 

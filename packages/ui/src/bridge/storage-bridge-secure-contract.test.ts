@@ -192,6 +192,49 @@ describe("native protected-storage bridge contract", () => {
     }
   });
 
+  it("keeps a later Steward token invisible until its own durable write can run", async () => {
+    await import("./storage-bridge");
+    const transitions: string[] = [];
+    const listener = (event: Event) => {
+      transitions.push((event as CustomEvent<{ state: string }>).detail.state);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    let releaseFirst: () => void = () => {};
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    try {
+      const first = writeStoredStewardToken("first-durable-token");
+      await vi.waitFor(() => {
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        );
+      });
+      const second = writeStoredStewardToken("second-durable-token");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(
+        nativeStores.operations.filter((entry) =>
+          entry.startsWith("set:start:"),
+        ),
+      ).toHaveLength(1);
+      expect(transitions).toEqual([]);
+
+      releaseFirst();
+      await first;
+      expect(transitions).toEqual(["present"]);
+      await second;
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "second-durable-token",
+      );
+      expect(transitions).toEqual(["present", "present"]);
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
   it("installs the storage proxy before the native secure store responds, so a concurrent write during migration never touches plaintext", async () => {
     nativeStores.preferences.set("eliza.device.auth", "legacy-device-secret");
     // Seed through the raw prototype: this must be a genuine pre-migration

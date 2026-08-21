@@ -28,12 +28,34 @@ export interface StewardSessionChangeDetail {
 }
 
 let sessionEpoch = 0;
+let stewardTokenMutationTail: Promise<void> = Promise.resolve();
 
 type StewardTokenRemoval = () => Promise<void>;
 type StewardTokenPersistence = (token: string) => Promise<void>;
 
 let stewardTokenRemoval: StewardTokenRemoval | null = null;
 let stewardTokenPersistence: StewardTokenPersistence | null = null;
+
+/**
+ * Orders canonical token writes and removals through their authority event.
+ * The host secure-store adapter also serializes native I/O, but queueing only
+ * at that lower layer lets a later writer update its in-memory cache before an
+ * earlier writer publishes `present`. Consumers handling the earlier event can
+ * then observe a newer token that has not reached durable storage yet. Keeping
+ * the producer and its event in one queue closes that authority race.
+ */
+function serializeStewardTokenMutation<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const result = stewardTokenMutationTail
+    .catch(() => undefined)
+    .then(operation);
+  stewardTokenMutationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 /** Distinguishes a failed durable token write from an ordinary auth failure. */
 export class StewardTokenPersistenceError extends Error {
@@ -301,20 +323,22 @@ export function readStoredStewardToken(): string | null {
  */
 export async function writeStoredStewardToken(token: string): Promise<void> {
   if (typeof window === "undefined") return;
-  const wasCurrent = window.localStorage.getItem(STEWARD_TOKEN_KEY) === token;
-  if (!stewardTokenPersistence && wasCurrent) return;
-  try {
-    if (stewardTokenPersistence) {
-      await stewardTokenPersistence(token);
-    } else {
-      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+  await serializeStewardTokenMutation(async () => {
+    const wasCurrent = window.localStorage.getItem(STEWARD_TOKEN_KEY) === token;
+    if (!stewardTokenPersistence && wasCurrent) return;
+    try {
+      if (stewardTokenPersistence) {
+        await stewardTokenPersistence(token);
+      } else {
+        window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+      }
+    } catch (error) {
+      // error-policy:J2 callers must not publish authenticated state after a
+      // failed durable write on a protected host.
+      throw new StewardTokenPersistenceError(error);
     }
-  } catch (error) {
-    // error-policy:J2 callers must not publish authenticated state after a
-    // failed durable write on a protected host.
-    throw new StewardTokenPersistenceError(error);
-  }
-  if (!wasCurrent) dispatchStewardSessionChange("present");
+    if (!wasCurrent) dispatchStewardSessionChange("present");
+  });
 }
 
 /**
@@ -324,19 +348,21 @@ export async function writeStoredStewardToken(token: string): Promise<void> {
  */
 export async function clearStoredStewardToken(): Promise<void> {
   if (typeof window === "undefined") return;
-  try {
-    if (stewardTokenRemoval) {
-      await stewardTokenRemoval();
-    } else {
-      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+  await serializeStewardTokenMutation(async () => {
+    try {
+      if (stewardTokenRemoval) {
+        await stewardTokenRemoval();
+      } else {
+        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      }
+    } catch (error) {
+      // error-policy:J2 callers must distinguish canonical removal failure from
+      // obsolete refresh-key cleanup so they never publish a false logout.
+      throw new StewardTokenRemovalError(error);
     }
-  } catch (error) {
-    // error-policy:J2 callers must distinguish canonical removal failure from
-    // obsolete refresh-key cleanup so they never publish a false logout.
-    throw new StewardTokenRemovalError(error);
-  }
-  dispatchStewardSessionChange("cleared");
-  window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+    dispatchStewardSessionChange("cleared");
+    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+  });
 }
 
 /**

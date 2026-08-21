@@ -53,6 +53,30 @@ describe("Telegram Personal encrypted session storage", () => {
     expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
   });
 
+  it("verifies the staged and final encrypted records before reporting success", () => {
+    const readSpy = vi.spyOn(fs, "readFileSync");
+    try {
+      saveTelegramAccountSessionString("verified-session");
+
+      const encryptedReads = readSpy.mock.calls.filter(
+        ([filePath]) =>
+          typeof filePath === "string" &&
+          (filePath.includes("session.enc.tmp-") ||
+            filePath.endsWith("session.enc")),
+      );
+      expect(
+        encryptedReads.some(([filePath]) => String(filePath).includes(".tmp-")),
+      ).toBe(true);
+      expect(
+        encryptedReads.some(([filePath]) =>
+          String(filePath).endsWith("session.enc"),
+        ),
+      ).toBe(true);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
   it("write/read verifies a legacy plaintext migration before deletion", () => {
     const encryptedPath = resolveTelegramAccountSessionFile();
     const legacyPath = path.join(path.dirname(encryptedPath), "session.txt");
