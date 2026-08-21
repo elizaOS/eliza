@@ -217,6 +217,32 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
   });
 
+  it("sanitizes array tools before the real AI SDK schema getter is installed", async () => {
+    const result = await handleTextSmall(buildRuntime(), {
+      prompt: "use the native tool",
+      tools: [
+        {
+          name: "native-tool",
+          description: `bad tool ${"\uD83D"}`,
+          parameters: {
+            type: "object",
+            properties: {
+              value: { type: "string", description: `bad schema ${"\uD83D"}` },
+            },
+          },
+        },
+      ],
+    } as never);
+    expect(typeof result === "string" ? result : (result as { text: string }).text).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    const body = assertStrictParseable(captured[0].bytes);
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("bad tool \uFFFD");
+    expect(serialized).toContain("bad schema \uFFFD");
+    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+  });
+
   // #18081 review: structured-output schemas must also be sanitized. The plain
   // schema is sanitized before being wrapped in Output.object, so schema keys
   // AND values carrying lone surrogates never reach the provider wire.

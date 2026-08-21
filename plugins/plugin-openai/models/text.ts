@@ -172,6 +172,8 @@ interface NormalizedNativeToolsResult {
   recordArgTransformsByTool: Record<string, RecordArgTransform[]>;
   /** Original array-tool name to the exact key registered with the AI SDK. */
   toolNameMap?: ReadonlyMap<string, string>;
+  /** Array tools were sanitized as plain data before AI SDK schema wrapping. */
+  toolsAreWireSanitized?: true;
 }
 
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
@@ -790,7 +792,8 @@ function normalizeNativeToolsForCall(
     // surface it to the model under that name. Tool calls come back with the
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
-    const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const providerName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const registeredName = deepToWellFormedUnicode(providerName);
     const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
     if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
       throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
@@ -808,9 +811,11 @@ function normalizeNativeToolsForCall(
       recordArgTransformsByTool[registeredName] = recordArgTransforms;
     }
 
+    const sanitizedDescription = description ? deepToWellFormedUnicode(description) : undefined;
+    const sanitizedInputSchema = deepToWellFormedUnicode(inputSchema) as JSONSchema7;
     toolSet[registeredName] = {
-      ...(description ? { description } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      ...(sanitizedDescription ? { description: sanitizedDescription } : {}),
+      inputSchema: jsonSchema(sanitizedInputSchema),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -823,6 +828,7 @@ function normalizeNativeToolsForCall(
     tools: Object.keys(toolSet).length > 0 ? (toolSet as ToolSet) : undefined,
     recordArgTransformsByTool,
     toolNameMap,
+    toolsAreWireSanitized: true,
   };
 }
 
@@ -2351,7 +2357,15 @@ async function generateTextByModelType(
   // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
   // so EVERY outgoing string — including tool descriptions/schemas, output
   // schemas, and provider options — is forced to well-formed Unicode here.
-  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  // Array-form runtime tools were sanitized while they were still plain data.
+  // Do not walk the trusted AI SDK jsonSchema wrapper afterward: current AI SDK
+  // versions expose its schema through an enumerable getter, and the generic
+  // boundary guard intentionally rejects arbitrary enumerable accessors.
+  const sanitizedTools = normalizedTools
+    ? normalizedToolResult.toolsAreWireSanitized
+      ? normalizedTools
+      : deepToWellFormedUnicode(normalizedTools)
+    : undefined;
   const sanitizedToolChoice = normalizedToolChoice
     ? deepToWellFormedUnicode(normalizedToolChoice)
     : undefined;
