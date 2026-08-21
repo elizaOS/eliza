@@ -79,6 +79,9 @@ const STOP_WORDS = new Set([
 	"or",
 	"app",
 	"application",
+	"site",
+	"website",
+	"webpage",
 	"that",
 	"this",
 	"my",
@@ -122,6 +125,28 @@ function rankMatches(
 	}
 	ranked.sort((a, b) => b.score - a.score);
 	return ranked.slice(0, 5);
+}
+
+function findExplicitEditTarget(
+	target: string,
+	apps: readonly InstalledAppInfo[],
+): InstalledAppInfo | undefined {
+	const exact = apps.find(
+		(app) =>
+			app.name === target ||
+			app.displayName === target ||
+			app.pluginName === target,
+	);
+	if (exact) return exact;
+
+	const targetTokens = tokenize(target).join(" ");
+	if (!targetTokens) return undefined;
+	const normalized = apps.filter((app) =>
+		[app.name, app.displayName, app.pluginName].some(
+			(candidate) => tokenize(candidate).join(" ") === targetTokens,
+		),
+	);
+	return normalized.length === 1 ? normalized[0] : undefined;
 }
 
 /**
@@ -1153,12 +1178,7 @@ export async function runCreate({
 	// Explicit edit hint short-circuits the picker.
 	if (explicitEditTarget) {
 		const installed = await appClient.listInstalledApps();
-		const target = installed.find(
-			(a) =>
-				a.name === explicitEditTarget ||
-				a.displayName === explicitEditTarget ||
-				a.pluginName === explicitEditTarget,
-		);
+		const target = findExplicitEditTarget(explicitEditTarget, installed);
 		if (!target) {
 			const text = `Cannot find an installed app matching ${describeTargetReference(explicitEditTarget, "that app")}.`;
 			await callback?.({ text });

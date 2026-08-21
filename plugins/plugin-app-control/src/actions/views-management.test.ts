@@ -4736,6 +4736,46 @@ describe("view management actions", () => {
 		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
 	});
 
+	it("matches an explicit installed app despite a conversational site suffix", async () => {
+		const repo = createRepoFixture();
+		try {
+			const pluginDir = path.join(repo.pluginsDir, "plugin-nubs-color-pebble");
+			mkdirSync(pluginDir, { recursive: true });
+			const { runtime, codingHandler } = createRuntime();
+			const appClient = {
+				listInstalledApps: vi.fn(async () => [
+					{
+						name: "nubs-color-pebble",
+						displayName: "Nubs Color Pebble",
+						pluginName: "@local/plugin-nubs-color-pebble",
+					},
+				]),
+			};
+
+			const result = await runCreate({
+				runtime: runtime as never,
+				client: appClient as never,
+				message: message("Update my Nubs Color Pebble site") as never,
+				options: {
+					action: "create",
+					editTarget: "Nubs Color Pebble site",
+					intent: "Update the heading",
+				},
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values).toMatchObject({
+				mode: "create",
+				subMode: "edit",
+				name: "nubs-color-pebble",
+			});
+			expect(codingHandler).toHaveBeenCalledTimes(1);
+		} finally {
+			repo.cleanup();
+		}
+	});
+
 	it("keeps an APP edit task in its chat room with bounded verification retries", async () => {
 		const repo = createRepoFixture();
 		try {
