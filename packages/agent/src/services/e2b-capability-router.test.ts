@@ -1049,6 +1049,35 @@ describe("E2BRemoteCapabilityRouterService", () => {
     }
   });
 
+  it("reports the timeout selected before command options are mutated", async () => {
+    const originalFetch = globalThis.fetch;
+    replaceGlobalFetch(healthThenProcessFetch(hungFetch));
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig({
+        provider: "home",
+        remoteHttpBaseUrl: "https://remote-runner.test",
+        remoteHttpToken: "token",
+        timeoutMs: 5_000,
+        requestTimeoutMs: 5_000,
+      }),
+    );
+    const sandbox = await (
+      service as unknown as { getSandbox(): Promise<E2BSandboxClient> }
+    ).getSandbox();
+    const options = { requestTimeoutMs: 50 };
+    try {
+      const command = sandbox.commands.run("sleep 30", options);
+      options.requestTimeoutMs = 5_000;
+      await expect(command).rejects.toMatchObject({
+        name: "TimeoutError",
+        message: expect.stringMatching(/timed out.*50ms/i),
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
   it.each([0, -1, Number.NaN, 2_147_483_648])(
     "rejects an invalid explicit command timeout without dispatching it (%s)",
     async (timeoutMs) => {
