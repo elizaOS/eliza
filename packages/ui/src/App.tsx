@@ -322,6 +322,46 @@ function useShellMode(): AppShellMode {
   return mode;
 }
 
+type DesktopWorkspacePresentation = "standard" | "content";
+
+function readDesktopWorkspacePresentation(): DesktopWorkspacePresentation {
+  if (typeof window === "undefined") return "standard";
+  const params = new URLSearchParams(window.location.search);
+  return params.get("desktopSurface") === "workspace" &&
+    params.get("workspacePresentation") === "content"
+    ? "content"
+    : "standard";
+}
+
+/**
+ * A pill-launched content Workspace deliberately has no embedded assistant:
+ * the detached host remains the one visible canonical ChatOverlay above it.
+ * Native in-place navigation can change this ownership without reloading the
+ * Workspace, so listen for its small presentation event as well as first load.
+ */
+function useDesktopWorkspacePresentation(): DesktopWorkspacePresentation {
+  const [presentation, setPresentation] = useState(
+    readDesktopWorkspacePresentation,
+  );
+  useEffect(() => {
+    const onPresentation = (event: Event) => {
+      const next = (event as CustomEvent<{ presentation?: string }>).detail
+        ?.presentation;
+      setPresentation(next === "content" ? "content" : "standard");
+    };
+    window.addEventListener(
+      "eliza:desktop-workspace-presentation",
+      onPresentation,
+    );
+    return () =>
+      window.removeEventListener(
+        "eliza:desktop-workspace-presentation",
+        onPresentation,
+      );
+  }, []);
+  return presentation;
+}
+
 /**
  * Floating, transparent assistant overlay surface for the OS chat-overlay
  * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
@@ -2385,6 +2425,7 @@ function AppContent() {
   }));
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
+  const desktopWorkspacePresentation = useDesktopWorkspacePresentation();
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
   useEffect(() => {
@@ -3409,10 +3450,12 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ChatOverlayMount
-          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
-          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
-        />
+        {desktopWorkspacePresentation !== "content" ? (
+          <ChatOverlayMount
+            releaseFirstRunToHalf={firstRunReleasePendingRef.current}
+            onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+          />
+        ) : null}
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the

@@ -10,6 +10,7 @@ export type DetachedSurface =
   | "connectors"
   | "cloud";
 export type ManagedSurface = DetachedSurface | "workspace" | "settings" | "app";
+export type WorkspacePresentation = "standard" | "content";
 
 export interface ManagedWindowSnapshot {
   id: string;
@@ -71,6 +72,7 @@ export interface CreateManagedWindowOptions {
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
   window: ManagedWindowLike;
   slug?: string;
+  workspacePresentation?: WorkspacePresentation;
 }
 
 interface SurfaceWindowManagerOptions {
@@ -83,14 +85,17 @@ interface SurfaceWindowManagerOptions {
     window: ManagedWindowLike,
     routePath: string,
     section?: string,
+    presentation?: WorkspacePresentation,
   ) => boolean;
   onWindowFocused?: (
     window: ManagedWindowLike,
     surface: ManagedSurface,
+    workspacePresentation?: WorkspacePresentation,
   ) => void;
   onWindowBlurred?: (
     window: ManagedWindowLike,
     surface: ManagedSurface,
+    workspacePresentation?: WorkspacePresentation,
   ) => void;
   onRegistryChanged?: () => void;
   /**
@@ -219,11 +224,15 @@ export function buildWorkspaceWindowRendererUrl(
   rendererUrl: string,
   routePath = "/",
   section?: string,
+  presentation: WorkspacePresentation = "standard",
 ): string {
   const renderer = new URL(
     buildSurfaceWindowRendererUrl(rendererUrl, "workspace"),
   );
   renderer.pathname = routePath.startsWith("/") ? routePath : `/${routePath}`;
+  if (presentation === "content") {
+    renderer.searchParams.set("workspacePresentation", "content");
+  }
   renderer.hash = section ? `#${encodeURIComponent(section)}` : "";
   return renderer.toString();
 }
@@ -306,20 +315,39 @@ export class SurfaceWindowManager {
     routePath = "/",
     section?: string,
     maximize = false,
+    presentation: WorkspacePresentation = "standard",
   ): Promise<ManagedWindowSnapshot> {
     const existing = Array.from(this.windows.values()).find(
       (entry) => entry.surface === "workspace",
     );
     if (existing) {
-      if ((routePath !== "/" || section) && existing.window.webview.loadURL) {
-        if (this.navigateWindow?.(existing.window, routePath, section)) {
+      const presentationChanged =
+        existing.workspacePresentation !== presentation;
+      existing.workspacePresentation = presentation;
+      if (
+        (routePath !== "/" || section || presentationChanged) &&
+        existing.window.webview.loadURL
+      ) {
+        if (
+          this.navigateWindow?.(
+            existing.window,
+            routePath,
+            section,
+            presentation,
+          )
+        ) {
           if (maximize) existing.window.maximize?.();
           existing.window.focus();
           return this.toSnapshot(existing);
         }
         const rendererUrl = await this.resolveRendererUrlFn();
         existing.window.webview.loadURL(
-          buildWorkspaceWindowRendererUrl(rendererUrl, routePath, section),
+          buildWorkspaceWindowRendererUrl(
+            rendererUrl,
+            routePath,
+            section,
+            presentation,
+          ),
         );
       }
       if (maximize) this.maximizeWorkspaceWhenReady(existing.window);
@@ -336,6 +364,7 @@ export class SurfaceWindowManager {
       false,
       undefined,
       section,
+      presentation,
     );
     if (maximize) {
       const created = Array.from(this.windows.values()).find(
@@ -491,6 +520,7 @@ export class SurfaceWindowManager {
     alwaysOnTop = false,
     slug?: string,
     workspaceSection?: string,
+    workspacePresentation?: WorkspacePresentation,
   ): Promise<ManagedWindowSnapshot> {
     if (!isManagedSurface(surface)) {
       throw new Error(`Unsupported surface: ${surface}`);
@@ -527,6 +557,7 @@ export class SurfaceWindowManager {
             rendererUrl,
             routePath,
             workspaceSection,
+            workspacePresentation,
           )
         : buildAppWindowRendererUrl(rendererUrl, routePath)
       : buildSurfaceWindowRendererUrl(rendererUrl, surface, tabHint, browse);
@@ -565,11 +596,15 @@ export class SurfaceWindowManager {
       alwaysOnTop,
       window,
       slug,
+      workspacePresentation:
+        surface === "workspace"
+          ? (workspacePresentation ?? "standard")
+          : undefined,
     };
 
     this.windows.set(id, record);
     this.wireRpcFn(window);
-    this.onWindowFocused?.(window, surface);
+    this.onWindowFocused?.(window, surface, record.workspacePresentation);
     window.webview.on("dom-ready", () => {
       this.injectApiBaseFn(window);
     });
@@ -581,11 +616,11 @@ export class SurfaceWindowManager {
       this.notifyRegistryChanged();
     });
     window.on("focus", () => {
-      this.onWindowFocused?.(window, surface);
+      this.onWindowFocused?.(window, surface, record.workspacePresentation);
       this.notifyRegistryChanged();
     });
     window.on("blur", () => {
-      this.onWindowBlurred?.(window, surface);
+      this.onWindowBlurred?.(window, surface, record.workspacePresentation);
     });
 
     // Per-slug bounds persistence. WHY: getFrame() polls the OS, so we

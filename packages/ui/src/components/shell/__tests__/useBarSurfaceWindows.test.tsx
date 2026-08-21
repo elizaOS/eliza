@@ -35,7 +35,11 @@ function setup(isDesktop = true) {
     (opts: OpenWindowArg) => Promise<{ id: string } | null>
   >(async () => ({ id: "w1" }));
   const openWorkspace = vi.fn<
-    (options?: { routePath?: string; maximize?: boolean }) => Promise<void>
+    (options?: {
+      routePath?: string;
+      maximize?: boolean;
+      presentation?: "standard" | "content";
+    }) => Promise<void>
   >(async () => undefined);
   renderHook(() =>
     useBarSurfaceWindows({
@@ -73,6 +77,7 @@ describe("useBarSurfaceWindows", () => {
     expect(openWorkspace).toHaveBeenLastCalledWith({
       routePath: "/views",
       maximize: true,
+      presentation: "content",
     });
   });
 
@@ -86,6 +91,7 @@ describe("useBarSurfaceWindows", () => {
     expect(openWorkspace).toHaveBeenCalledWith({
       routePath: "/notes",
       maximize: true,
+      presentation: "content",
     });
     expect(event.defaultPrevented).toBe(true);
   });

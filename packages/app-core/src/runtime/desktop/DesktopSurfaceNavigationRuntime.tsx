@@ -67,10 +67,28 @@ export function DesktopSurfaceNavigationRuntime() {
       ipcChannel: "desktop:workspaceNavigate",
       listener: (payload) => {
         const detail = payload as
-          | { routePath?: string; section?: string }
+          | {
+              routePath?: string;
+              section?: string;
+              presentation?: "standard" | "content";
+            }
           | null
           | undefined;
         if (!detail?.routePath?.startsWith("/")) return;
+        const presentation =
+          detail.presentation === "content" ? "content" : "standard";
+        const currentUrl = new URL(window.location.href);
+        if (presentation === "content") {
+          currentUrl.searchParams.set("workspacePresentation", "content");
+        } else {
+          currentUrl.searchParams.delete("workspacePresentation");
+        }
+        window.history.replaceState(window.history.state, "", currentUrl);
+        window.dispatchEvent(
+          new CustomEvent("eliza:desktop-workspace-presentation", {
+            detail: { presentation },
+          }),
+        );
         navigateBrowserPath(
           detail.section
             ? `${detail.routePath}#${encodeURIComponent(detail.section)}`

@@ -2918,17 +2918,19 @@ async function main(): Promise<void> {
     },
     injectApiBase: (window) =>
       injectApiBase(window as BrowserWindow & ManagedWindowLike),
-    navigateWindow: (window, routePath, section) => {
+    navigateWindow: (window, routePath, section, presentation) => {
       const send = surfaceSenders.get(window);
       if (!send) return false;
-      send("desktopWorkspaceNavigate", { routePath, section });
+      send("desktopWorkspaceNavigate", { routePath, section, presentation });
       return true;
     },
-    onWindowFocused: (window, surface) => {
+    onWindowFocused: (window, surface, workspacePresentation) => {
       lastFocusedWindow = window;
       if (surface === "workspace") {
         void getDesktopManager()
-          .setMainWindowSuppressedByWorkspace(true)
+          .setMainWindowSuppressedByWorkspace(
+            workspacePresentation !== "content",
+          )
           .catch((error: unknown) => {
             logger.warn(
               `[surface-windows] Failed to suppress pill for focused Workspace: ${error instanceof Error ? error.message : String(error)}`,
@@ -2985,6 +2987,7 @@ async function main(): Promise<void> {
       options?.routePath ?? "/",
       undefined,
       options?.maximize === true,
+      options?.presentation ?? "standard",
     );
   });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {

@@ -176,6 +176,7 @@ export async function openDesktopSettingsWindow(
 export async function openDesktopWorkspaceWindow(options?: {
   routePath?: string;
   maximize?: boolean;
+  presentation?: "standard" | "content";
 }): Promise<void> {
   await requestDesktopBridge<void>(
     "desktopOpenWorkspaceWindow",

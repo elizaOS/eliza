@@ -1636,7 +1636,13 @@ export type ElizaDesktopRPCSchema = {
         response: DesktopReleaseNotesWindowInfo;
       };
       desktopOpenWorkspaceWindow: {
-        params: { routePath?: string; maximize?: boolean } | undefined;
+        params:
+          | {
+              routePath?: string;
+              maximize?: boolean;
+              presentation?: "standard" | "content";
+            }
+          | undefined;
         response: undefined;
       };
       desktopOpenSettingsWindow: {
@@ -2305,7 +2311,11 @@ export type ElizaDesktopRPCSchema = {
        * to its resting pill before it can be restored over another app. */
       desktopWorkspaceHandoff: undefined;
       /** Change the route inside the existing singleton Workspace. */
-      desktopWorkspaceNavigate: { routePath: string; section?: string };
+      desktopWorkspaceNavigate: {
+        routePath: string;
+        section?: string;
+        presentation?: "standard" | "content";
+      };
       desktopShutdownStarted: { reason: string };
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];

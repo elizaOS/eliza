@@ -108,6 +108,7 @@ describe("window RPC handlers", () => {
     expect(desktop.openWorkspace).toHaveBeenCalledWith({
       routePath: "/notes",
       maximize: true,
+      presentation: "standard",
     });
   });
 

@@ -27,7 +27,11 @@ type DetachedWindowSurface =
 
 interface WindowRpcDesktop {
   closeWindow(): Promise<void>;
-  openWorkspace(options?: { routePath?: string; maximize?: boolean }): void;
+  openWorkspace(options?: {
+    routePath?: string;
+    maximize?: boolean;
+    presentation?: "standard" | "content";
+  }): void;
   openSettings(tabHint?: string): void;
   openSurfaceWindow(
     surface: DetachedWindowSurface,
@@ -80,13 +84,20 @@ export function buildWindowRpcHandlers({
       await desktop.closeWindow();
     },
     desktopOpenWorkspaceWindow: async (
-      params: { routePath?: string; maximize?: boolean } | undefined,
+      params:
+        | {
+            routePath?: string;
+            maximize?: boolean;
+            presentation?: "standard" | "content";
+          }
+        | undefined,
     ) => {
       desktop.openWorkspace({
         ...(params?.routePath
           ? { routePath: normalizeRendererRoutePath(params.routePath) }
           : {}),
         maximize: params?.maximize === true,
+        presentation: params?.presentation ?? "standard",
       });
     },
     desktopOpenSettingsWindow: async (

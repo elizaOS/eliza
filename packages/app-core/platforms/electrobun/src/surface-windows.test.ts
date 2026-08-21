@@ -204,23 +204,55 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.blurred).toHaveBeenCalledWith(
       fixture.created[0],
       "workspace",
+      "standard",
     );
   });
 
-  it("navigates and reliably maximizes the singleton workspace for pill view intents", async () => {
+  it("keeps pill view intents in a content-only singleton workspace", async () => {
     const fixture = createFixture();
 
     await fixture.manager.openWorkspaceWindow();
     const window = fixture.created[0];
-    await fixture.manager.openWorkspaceWindow("/notes", undefined, true);
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
 
     expect(fixture.navigated).toHaveBeenCalledWith(
       window,
       "/notes",
       undefined,
+      "content",
     );
     expect(window?.maximize).toHaveBeenCalledTimes(1);
     expect(window?.focus).toHaveBeenCalledTimes(1);
+    expect(fixture.focused).toHaveBeenLastCalledWith(
+      window,
+      "workspace",
+      "content",
+    );
+  });
+
+  it("tags a newly created content workspace on first paint", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
+
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/notes?desktopSurface=workspace&workspacePresentation=content",
+    );
+    expect(fixture.focused).toHaveBeenCalledWith(
+      fixture.created[0],
+      "workspace",
+      "content",
+    );
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {
@@ -235,16 +267,22 @@ describe("SurfaceWindowManager app windows", () => {
     await fixture.manager.openSettingsWindow("open-settings-permissions");
 
     expect(fixture.created).toHaveLength(1);
-    expect(window?.webview.loadURL).toHaveBeenCalledWith(
-      "http://127.0.0.1:5173/settings?desktopSurface=workspace#permissions",
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/settings",
+      "permissions",
+      "standard",
     );
     expect(window?.focus).toHaveBeenCalled();
 
     // Plain Settings returns the same workstation to the Settings hub.
-    window?.webview.loadURL.mockClear();
+    fixture.navigated.mockClear();
     await fixture.manager.openSettingsWindow();
-    expect(window?.webview.loadURL).toHaveBeenCalledWith(
-      "http://127.0.0.1:5173/settings?desktopSurface=workspace",
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/settings",
+      undefined,
+      "standard",
     );
     expect(fixture.manager.listWindows("settings")).toEqual([]);
   });
@@ -350,7 +388,11 @@ describe("SurfaceWindowManager app windows", () => {
     });
     expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(fixture.wired).toHaveBeenCalledWith(fixture.created[0]);
-    expect(fixture.focused).toHaveBeenCalledWith(fixture.created[0]);
+    expect(fixture.focused).toHaveBeenCalledWith(
+      fixture.created[0],
+      "app",
+      undefined,
+    );
 
     fixture.created[0]?.emit("dom-ready");
     expect(fixture.injected).toHaveBeenCalledWith(fixture.created[0]);

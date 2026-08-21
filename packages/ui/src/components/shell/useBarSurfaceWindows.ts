@@ -62,6 +62,7 @@ export function useBarSurfaceWindows(options?: {
         void openWorkspaceRef.current({
           routePath: "/views",
           maximize: true,
+          presentation: "content",
         });
         return;
       }
@@ -69,7 +70,11 @@ export function useBarSurfaceWindows(options?: {
       if (!path) return;
       if (detail.action !== "open-window") {
         event.preventDefault();
-        void openWorkspaceRef.current({ routePath: path, maximize: true });
+        void openWorkspaceRef.current({
+          routePath: path,
+          maximize: true,
+          presentation: "content",
+        });
         return;
       }
       void openWindowRef.current({
