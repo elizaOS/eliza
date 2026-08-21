@@ -317,6 +317,7 @@
     "directory": "dist"
   },
   "devDependencies": {
+    "@elizaos/synthetic-world": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
     "@playwright/test": "^1.62.1",
     "@types/react": "^19.0.0",

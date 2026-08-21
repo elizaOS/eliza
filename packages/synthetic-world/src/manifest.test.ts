@@ -62,6 +62,19 @@ describe("synthetic-world manifest", () => {
     );
   });
 
+  it("does not mistake scoped native boundary identifiers for email", () => {
+    const manifest = testManifest();
+    manifest.faults = [
+      {
+        id: "native-timeout",
+        boundary:
+          "native.@elizaos/capacitor-messages:native-bridge:elizamessages.send",
+        steps: [{ onAttempt: 1, effect: { kind: "timeout", durationMs: 100 } }],
+      },
+    ];
+    expect(() => parseWorldManifest(manifest)).not.toThrow();
+  });
+
   it("canonicalizes object keys and reproduces seeded values", () => {
     expect(canonicalJson({ z: 1, a: { y: true, b: false } })).toBe(
       '{"a":{"b":false,"y":true},"z":1}',

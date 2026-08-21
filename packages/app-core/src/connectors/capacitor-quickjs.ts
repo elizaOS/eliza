@@ -127,13 +127,21 @@ class CapacitorQuickJsBridge implements JsRuntimeBridge {
   }
 }
 
+/** Builds the production bridge adapter around a native or simulator host. */
+export function createCapacitorQuickJsBridge(
+  plugin: CapacitorQuickJsPlugin,
+  kind: Extract<JsRuntimeKind, "quickjs-android" | "quickjs-ios-fallback">,
+): JsRuntimeBridge {
+  return new CapacitorQuickJsBridge(plugin, kind);
+}
+
 registerJsRuntimeFactory({
   kind: "quickjs-android",
   async create() {
     if (!isQuickJsPluginAvailable("android")) {
       return null;
     }
-    return new CapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-android");
+    return createCapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-android");
   },
 });
 
@@ -143,6 +151,9 @@ registerJsRuntimeFactory({
     if (!isQuickJsPluginAvailable("ios")) {
       return null;
     }
-    return new CapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-ios-fallback");
+    return createCapacitorQuickJsBridge(
+      CapacitorQuickJs,
+      "quickjs-ios-fallback",
+    );
   },
 });

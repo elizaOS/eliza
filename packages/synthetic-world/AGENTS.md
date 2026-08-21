@@ -27,6 +27,21 @@ fixtures to the versioned schema and keep scenario overlays declarative.
 - Parallel consumers must allocate a worker namespace and never share a
   `SyntheticWorld` instance.
 
+## Native simulator boundary
+
+`SyntheticNativePlatform` is the keyless host-side boundary for production
+JavaScript bridge clients. Definitions seed protocol-shaped state and handlers;
+the adapter owns availability and permission failures, cancellable virtual-time
+work, idempotent receipts, callback queues, restart/reset, ledger evidence, and
+authoritative readback. Its readback always says
+`certification: "synthetic-simulator-only"`.
+
+The exact platform-deferred inventory is pinned in
+`native-platform-ownership.ts`. Update it only from the canonical runtime
+surface scanner and preserve the source commit. Simulator coverage does not
+promote a row that also requires signed iOS, Android, macOS, or Electrobun
+qualification; device evidence remains a separate lane.
+
 ## Commands
 
 ```bash

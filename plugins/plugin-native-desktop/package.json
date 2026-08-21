@@ -46,6 +46,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "devDependencies": {
+    "@elizaos/synthetic-world": "workspace:*",
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rollup": "^4.62.4",

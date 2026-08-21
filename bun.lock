@@ -359,6 +359,7 @@
       },
       "devDependencies": {
         "@elizaos/plugin-app-control": "workspace:*",
+        "@elizaos/synthetic-world": "workspace:*",
         "@playwright/test": "^1.62.1",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -2376,6 +2377,7 @@
       "version": "2.0.3-beta.7",
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
+        "@elizaos/synthetic-world": "workspace:*",
         "@rollup/plugin-node-resolve": "^16.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",

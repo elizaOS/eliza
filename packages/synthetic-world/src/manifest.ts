@@ -395,7 +395,9 @@ function inspectFixtureValue(
   if (typeof value === "string") {
     if (credentialPattern.test(value))
       findings.push(`${path}: resembles a production credential`);
-    const emailMatch = value.match(/^[^@\s]+@([^@\s]+)$/);
+    const emailMatch = value.match(
+      /^[^@\s]+@([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,})$/,
+    );
     if (
       emailMatch &&
       !policy.allowedEmailDomains.includes(emailMatch[1].toLowerCase())

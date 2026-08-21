@@ -39,4 +39,19 @@ domain state.
 virtual clock and ordered timer metadata, random position, fault attempts, and
 the observation ledger. Timer callback source is intentionally excluded.
 
+`SyntheticNativePlatform` adds a versioned native-host simulator around the
+same world. Production TypeScript/JavaScript bridge adapters invoke registered
+surface handlers, while the simulator records request/response/readback
+evidence and controls seeded state, permissions, availability, virtual delay,
+cancellation, idempotency, events, restart, reset, and teardown. Every readback
+is labeled `synthetic-simulator-only`; it is never evidence that a signed app or
+physical device passed.
+
+`NATIVE_PLATFORM_SURFACE_IDS` pins the 37 platform-deferred rows from runtime
+inventory commit `256cdd67bbd2459291e55100046fb909daa47f6d`. The list is an
+ownership ratchet, not a claim that all rows are qualified. Current production
+client integration covers app-core JSC/QuickJS and the Electrobun desktop
+permission bridge; the remaining rows require their own client bindings plus
+the supported-target evidence required by repository policy.
+
 See [`CLAUDE.md`](./CLAUDE.md) for ownership and fixture-safety rules.

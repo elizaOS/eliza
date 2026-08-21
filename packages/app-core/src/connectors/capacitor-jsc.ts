@@ -120,12 +120,19 @@ class CapacitorJscBridge implements JsRuntimeBridge {
   }
 }
 
+/** Builds the production bridge adapter around a native or simulator host. */
+export function createCapacitorJscBridge(
+  plugin: CapacitorJscPlugin,
+): JsRuntimeBridge {
+  return new CapacitorJscBridge(plugin);
+}
+
 registerJsRuntimeFactory({
   kind: "jsc-ios",
   async create() {
     if (!isJscPluginAvailable()) {
       return null;
     }
-    return new CapacitorJscBridge(CapacitorJsc);
+    return createCapacitorJscBridge(CapacitorJsc);
   },
 });
