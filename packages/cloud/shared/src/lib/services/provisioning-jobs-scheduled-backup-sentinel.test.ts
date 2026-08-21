@@ -423,10 +423,17 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue({
       error: new Error("provider unavailable"),
+    });
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
     });
     try {
       await expect(
@@ -479,6 +486,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       expect(confirmed.status).toBe("provider_confirmed");
     } finally {
       providerStop.mockRestore();
+      gateSpy.mockRestore();
     }
   });
 
@@ -523,11 +531,18 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as ManualSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
     try {
       await expect(
         service.executeSuspend(agentId, orgId, billing.job.id, "billing_request"),
@@ -554,6 +569,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       expect(stopped).toMatchObject({ status: "stopped", billing_status: "suspended" });
     } finally {
       providerStop.mockRestore();
+      gateSpy.mockRestore();
     }
   });
 
@@ -668,11 +684,18 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
     try {
       const outcome = await service.executeSuspend(agentId, orgId, legacyJob.id, "billing_request");
       expect(outcome).toMatchObject({ success: true, containerStopped: false });
@@ -693,6 +716,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       ).toHaveLength(1);
     } finally {
       providerStop.mockRestore();
+      gateSpy.mockRestore();
     }
   });
 
@@ -735,11 +759,18 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         authorization: "user_request" | "billing_request",
       ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
     };
     const service = elizaSandboxService as unknown as BillingSuspendService;
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
     try {
       await expect(
         service.executeSuspend(agentId, orgId, enqueued.job.id, "billing_request"),
@@ -758,6 +789,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       expect(org.credit_balance).toBe("0.000001");
     } finally {
       providerStop.mockRestore();
+      gateSpy.mockRestore();
     }
   });
 

@@ -14,6 +14,7 @@ import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
+import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,
@@ -440,7 +441,7 @@ function lowercaseHeaders(headers: HeadersInit | undefined): HeadersInit {
 }
 
 function normalizeCloudApiBase(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
+  const trimmed = trimEndCharacters(value.trim(), "/");
   if (!trimmed) throw new Error("cloudApiBase is required.");
   try {
     const url = new URL(trimmed);
@@ -459,7 +460,7 @@ function normalizeCloudApiBase(value: string): string {
         ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudApiOrigin,
       ).hostname;
     }
-    return url.toString().replace(/\/+$/, "");
+    return trimEndCharacters(url.toString(), "/");
   } catch {
     throw new Error(`Invalid cloudApiBase: ${value}`);
   }
@@ -473,7 +474,7 @@ function firstString(...values: unknown[]): string | null {
 }
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  return trimEndCharacters(value, "/");
 }
 
 function sleep(ms: number): Promise<void> {

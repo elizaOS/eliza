@@ -1,10 +1,29 @@
 /** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
+import { ElizaError } from "../errors.js";
 import {
 	findFenceSpanAt,
 	isSafeFenceBreak,
 	parseFenceSpans,
 } from "./fences.js";
+
+/** Stable classification for invalid public Markdown chunk limits. */
+export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID";
+
+/**
+ * Reject limits that cannot guarantee finite forward progress before any
+ * empty/within-limit fast path can hide the invalid caller input.
+ */
+export function assertValidMarkdownChunkLimit(limit: number): void {
+	if (Number.isSafeInteger(limit) && limit > 0) {
+		return;
+	}
+
+	throw new ElizaError("Markdown chunk limit must be a positive safe integer", {
+		code: MARKDOWN_CHUNK_LIMIT_INVALID,
+		context: { limit: describeInvalidLimit(limit) },
+	});
+}
 
 /**
  * Split text into chunks of maximum length.
@@ -19,11 +38,9 @@ import {
  * @returns Array of text chunks
  */
 export function chunkText(text: string, limit: number): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	if (text.length <= limit) {
 		return [text];
@@ -88,11 +105,9 @@ export function chunkByParagraph(
 	limit: number,
 	opts?: { splitLongParagraphs?: boolean },
 ): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	const splitLongParagraphs = opts?.splitLongParagraphs !== false;
 
@@ -158,11 +173,9 @@ export function chunkByParagraph(
  * @returns Array of text chunks
  */
 export function chunkMarkdownText(text: string, limit: number): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	if (text.length <= limit) {
 		return [text];
@@ -360,4 +373,17 @@ function scanParenAwareBreakpoints(
 	}
 
 	return { lastNewline, lastWhitespace };
+}
+
+function describeInvalidLimit(limit: number): string {
+	if (Number.isNaN(limit)) {
+		return "NaN";
+	}
+	if (limit === Number.POSITIVE_INFINITY) {
+		return "+Infinity";
+	}
+	if (limit === Number.NEGATIVE_INFINITY) {
+		return "-Infinity";
+	}
+	return String(limit).slice(0, 32);
 }

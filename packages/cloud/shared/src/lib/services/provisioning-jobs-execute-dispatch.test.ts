@@ -490,6 +490,42 @@ describe("executeJob dispatch — success path per job type marks the job comple
       throw new Error("pending cutover audit has no cutover timestamp");
     }
     const retryStartedAt = new Date(Date.parse(pendingAudit.cutoverAt) + 1_000);
+    const hostileRetry = harness(
+      makeJob(arm.type, arm.data, {
+        result: pendingAudit,
+        status: "in_progress",
+        started_at: retryStartedAt,
+        updated_at: retryStartedAt,
+      }),
+    );
+    const { proxy: revokedFailure, revoke } = Proxy.revocable(
+      new Error("cleanup transport failed"),
+      {},
+    );
+    revoke();
+    const hostileConvergeSpy = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockImplementation(async () => {
+      throw revokedFailure;
+    });
+    try {
+      const deferred = await run(arm.type);
+      expect(deferred).toMatchObject({ succeeded: 0, retried: 1, failed: 0 });
+      expect(hostileRetry.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(hostileRetry.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "Admin canary cleanup remains pending: [unstringifiable]",
+      );
+    } finally {
+      hostileConvergeSpy.mockRestore();
+      hostileRetry.claimSpy.mockRestore();
+      hostileRetry.recoverSpy.mockRestore();
+      hostileRetry.updateStatusSpy.mockRestore();
+      hostileRetry.updateSpy.mockRestore();
+      hostileRetry.incrementSpy.mockRestore();
+      hostileRetry.retryLaterSpy.mockRestore();
+    }
+
     const retry = harness(
       makeJob(arm.type, arm.data, {
         result: pendingAudit,
@@ -596,6 +632,37 @@ describe("executeJob dispatch — failure path per job type retries (increments 
       }
     });
   }
+
+  test("a hostile thrown Proxy still persists the failed-job transition", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("hostile prototype");
+      },
+      get() {
+        throw new Error("hostile property read");
+      },
+    });
+    const executeDeletionSpy = spyOn(elizaSandboxService, "executeDeletion").mockImplementation(
+      async () => {
+        throw hostile;
+      },
+    );
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.incrementSpy.mock.calls[0]?.[1]).toBe("[unstringifiable]");
+    } finally {
+      executeDeletionSpy.mockRestore();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
 
   test("message: bridge error is stored on the job result and the job fails", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
@@ -858,7 +925,9 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(res.retried).toBe(1);
       expect(res.failed).toBe(0);
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "readiness probe transport_unresolved",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       ctx.claimSpy.mockRestore();
@@ -944,7 +1013,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
           id: ctx.job.id,
           result: expect.objectContaining({ error: "readiness probe transport_unresolved" }),
         }),
-        "readiness probe transport_unresolved",
+        expect.stringContaining("readiness probe transport_unresolved"),
         expect.any(Number),
         expect.any(String),
         expect.objectContaining({ maxRequeues: 5 }),

@@ -70,6 +70,11 @@ import {
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import {
+  parseSharedChatAttachments,
+  type SharedChatAttachment,
+  toSharedInlineMedia,
+} from "./shared-chat-attachments";
+import {
   buildSharedFactsContext,
   extractSharedTurnFacts,
   SHARED_FACTS_CONTEXT_MAX_FACTS,
@@ -691,9 +696,24 @@ function stableUuid(raw: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-/** Content identity for conflict detection: same key + different text is rejected. */
-function sharedTurnPayloadHash(text: string): string {
-  return crypto.createHash("sha256").update(text).digest("hex");
+/** Content identity for conflict detection: text and every attachment byte are bound. */
+function sharedTurnPayloadHash(text: string, attachments: readonly SharedChatAttachment[]): string {
+  const hash = crypto.createHash("sha256");
+  const add = (value: string): void => {
+    hash.update(String(Buffer.byteLength(value)));
+    hash.update(":");
+    hash.update(value);
+    hash.update(";");
+  };
+  add(text);
+  for (const attachment of attachments) {
+    add(attachment.name);
+    add(attachment.mimeType);
+    add(attachment.data);
+    add(attachment.thumbnail?.mimeType ?? "");
+    add(attachment.thumbnail?.data ?? "");
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -706,8 +726,9 @@ async function claimSharedTurn(
   claims: SharedTurnClaimStore,
   claimKey: string,
   text: string,
+  attachments: readonly SharedChatAttachment[],
 ): Promise<SharedTurnTerminalResult | undefined> {
-  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text));
+  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text, attachments));
   if (decision.state === "conflict") throw new SharedTurnConflictError();
   return decision.state === "replay" ? decision.result : undefined;
 }
@@ -1222,7 +1243,17 @@ export class SharedRuntimeChatService {
       };
     }
     const params = record(rpc.params) ?? {};
-    const text = stringValue(params.text);
+    const parsedAttachments = parseSharedChatAttachments(params.images);
+    if (!parsedAttachments.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32602, message: parsedAttachments.error },
+      };
+    }
+    const text =
+      stringValue(params.text) ??
+      (parsedAttachments.attachments.length ? "Please review the attached file." : undefined);
     if (!text) {
       return {
         jsonrpc: "2.0",
@@ -1234,7 +1265,12 @@ export class SharedRuntimeChatService {
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        parsedAttachments.attachments,
+      );
       if (replay) {
         return {
           jsonrpc: "2.0",
@@ -1292,6 +1328,9 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(parsedAttachments.attachments.length
+          ? { attachments: toSharedInlineMedia(parsedAttachments.attachments) }
+          : {}),
         ...(recallContext ? { recallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
@@ -1419,14 +1458,23 @@ export class SharedRuntimeChatService {
   ): Promise<Response> {
     const timings: Record<string, number> = {};
     const params = record(rpc.params) ?? {};
-    const text = stringValue(params.text);
+    const parsedAttachments = parseSharedChatAttachments(params.images);
+    if (!parsedAttachments.ok) return sseError(parsedAttachments.error);
+    const text =
+      stringValue(params.text) ??
+      (parsedAttachments.attachments.length ? "Please review the attached file." : undefined);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        parsedAttachments.attachments,
+      );
       timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
         return withTurnTimingHeaders(
@@ -1514,6 +1562,9 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(parsedAttachments.attachments.length
+          ? { attachments: toSharedInlineMedia(parsedAttachments.attachments) }
+          : {}),
         ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,

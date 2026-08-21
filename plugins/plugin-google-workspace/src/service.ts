@@ -15,6 +15,7 @@ import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
 import { GoogleDriveClient } from "./drive.js";
 import { GoogleGmailClient } from "./gmail.js";
 import { GoogleMeetClient } from "./meet.js";
+import { GooglePeopleClient } from "./people.js";
 import type { GoogleCapability } from "./scopes.js";
 import {
   GOOGLE_SERVICE_NAME,
@@ -66,6 +67,11 @@ import {
   type GoogleOAuthProviderConfig,
   type GoogleOAuthProviderMetadata,
   type GoogleParsedMailto,
+  type GooglePeopleContactPage,
+  type GooglePeopleGetContactInput,
+  type GooglePeopleListContactsInput,
+  type GooglePeopleSearchContactsInput,
+  type GooglePersonContact,
   type GoogleSendEmailInput,
   type GoogleSheetContent,
   type GoogleSheetUpdateResult,
@@ -80,13 +86,14 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
   static serviceType = GOOGLE_SERVICE_NAME;
 
   capabilityDescription =
-    "Google Workspace service for Gmail, Calendar, Drive, and Meet using account-scoped OAuth";
+    "Google Workspace service for Gmail, Calendar, Drive, Meet, and People using account-scoped OAuth";
 
   private readonly clientFactory: GoogleApiClientFactory;
   private readonly gmailClient: GoogleGmailClient;
   private readonly calendarClient: GoogleCalendarClient;
   private readonly driveClient: GoogleDriveClient;
   private readonly meetClient: GoogleMeetClient;
+  private readonly peopleClient: GooglePeopleClient;
 
   constructor(runtime?: IAgentRuntime, options: GoogleWorkspaceServiceOptions = {}) {
     super(runtime);
@@ -97,6 +104,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     this.calendarClient = new GoogleCalendarClient(this.clientFactory);
     this.driveClient = new GoogleDriveClient(this.clientFactory);
     this.meetClient = new GoogleMeetClient(this.clientFactory);
+    this.peopleClient = new GooglePeopleClient(this.clientFactory);
   }
 
   static async start(runtime: IAgentRuntime): Promise<GoogleWorkspaceService> {
@@ -406,5 +414,17 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
 
   generateReport(params: GoogleMeetGenerateReportInput): Promise<GoogleMeetReport> {
     return this.meetClient.generateReport(params);
+  }
+
+  listContacts(params: GooglePeopleListContactsInput): Promise<GooglePeopleContactPage> {
+    return this.peopleClient.listContacts(params);
+  }
+
+  searchContacts(params: GooglePeopleSearchContactsInput): Promise<GooglePersonContact[]> {
+    return this.peopleClient.searchContacts(params);
+  }
+
+  getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> {
+    return this.peopleClient.getContact(params);
   }
 }

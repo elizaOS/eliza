@@ -299,6 +299,15 @@ describe("MapsService and MAPS action", () => {
     expect(() =>
       opaqueService.registerAdapter({ ...adapter, id: " invalid " }),
     ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    expect(() =>
+      opaqueService.registerAdapter({ ...adapter, attribution: " " }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    expect(opaqueService.describeProviders()).toEqual([
+      {
+        id: adapter.id,
+        attribution: null,
+      },
+    ]);
   });
 
   it("validates public store UUIDs before creating persistence namespaces", async () => {

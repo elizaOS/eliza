@@ -99,6 +99,7 @@ import {
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
+import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
 import {
   COLD_BOOT_JOB_TYPES,
   COLD_BOOT_STALE_JOB_THRESHOLD_MS,
@@ -118,6 +119,20 @@ import {
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
+
+/** Match a known failure type without trusting a thrown Proxy's prototype trap. */
+function safeErrorKind<T extends Error>(
+  value: unknown,
+  errorClass: abstract new (...args: never[]) => T,
+): value is T {
+  try {
+    return value instanceof errorClass;
+  } catch {
+    // error-policy:J3 hostile thrown value; treat it as an ordinary failure so
+    // the job still reaches its durable retry/failure transition.
+    return false;
+  }
+}
 
 /**
  * Phase 0 fleet measurement emitted by every scheduled-backup sweep (#15783):
@@ -314,6 +329,8 @@ export interface AgentDeleteJobResult {
 export interface AgentSuspendJobResult {
   cloudAgentId: string;
   containerStopped: boolean;
+  /** Backup proven or captured by the pre-suspend gate before the stop. */
+  backupId?: string;
   error?: string;
 }
 
@@ -1254,7 +1271,7 @@ export class ProvisioningRecoveryDegradedError extends ElizaError {
         failures: summary.failures.map(({ jobId, jobType, cause }) => ({
           jobId,
           jobType,
-          error: cause instanceof Error ? cause.message : String(cause),
+          error: jobErrorText(cause),
         })),
       },
       severity: "ephemeral",
@@ -1291,7 +1308,7 @@ function assertRecoveryHealthy(
     failures: summary.failures.map(({ jobId, jobType, cause }) => ({
       jobId,
       jobType,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: jobErrorText(cause),
     })),
   });
   throw new ProvisioningRecoveryDegradedError(phase, summary);
@@ -2247,7 +2264,7 @@ export class ProvisioningJobService {
         logger.error("[provisioning-jobs] Warm-claim credential cleanup failed", {
           agentId: candidate.id,
           orgId: candidate.organization_id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -2919,7 +2936,7 @@ export class ProvisioningJobService {
       // job; the condition it records is re-observed on the next attempt.
       logger.warn("[provisioning-jobs] failed to record snapshot attempt markers", {
         agentId,
-        error: error instanceof Error ? error.message : String(error),
+        error: jobErrorText(error),
       });
     }
   }
@@ -3050,7 +3067,7 @@ export class ProvisioningJobService {
       } catch (error) {
         logger.warn("[provisioning-jobs] Scheduled backup enqueue failed", {
           agentId: agent.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -3108,7 +3125,7 @@ export class ProvisioningJobService {
         return;
       } catch (err) {
         logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
-          error: err instanceof Error ? err.message : String(err),
+          error: jobErrorText(err),
         });
       }
     }
@@ -3131,7 +3148,7 @@ export class ProvisioningJobService {
       });
     } catch (err) {
       logger.debug("[provisioning-jobs] triggerImmediate fire-and-forget failed", {
-        error: err instanceof Error ? err.message : String(err),
+        error: jobErrorText(err),
       });
     }
   }
@@ -3200,7 +3217,7 @@ export class ProvisioningJobService {
             jobId: job.id,
             executionGeneration: job.execution_generation,
             executionOwnerId: this.executionOwnerId,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         })
         .finally(() => {
@@ -3248,7 +3265,7 @@ export class ProvisioningJobService {
           executionOwnerId: this.executionOwnerId,
           operation,
           attempt,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
         await this.waitForSettlementRetry(attempt);
       }
@@ -3453,7 +3470,7 @@ export class ProvisioningJobService {
         result.succeeded++;
         stopLeaseHeartbeat();
       } catch (err) {
-        if (err instanceof OperationTimeoutError) {
+        if (safeErrorKind(err, OperationTimeoutError)) {
           const errorMsg = err.message;
           result.failed++;
           result.errors.push({ jobId: job.id, error: errorMsg });
@@ -3482,10 +3499,7 @@ export class ProvisioningJobService {
               logger.warn("[provisioning-jobs] Detached settlement supervisor stopped", {
                 jobId: job.id,
                 executionGeneration: job.execution_generation,
-                error:
-                  settlementError instanceof Error
-                    ? settlementError.message
-                    : String(settlementError),
+                error: jobErrorText(settlementError),
               });
             });
           continue;
@@ -3504,19 +3518,21 @@ export class ProvisioningJobService {
     err: unknown,
     result?: ProcessingResult,
   ): Promise<void> {
-    const errorMsg =
-      err instanceof AppCacheInvalidationRetryError
-        ? formatAppCacheInvalidationError(err)
-        : err instanceof Error
-          ? err.message
-          : String(err);
+    const appCacheError = safeErrorKind(err, AppCacheInvalidationRetryError) ? err : undefined;
+    const retryableTransportError = safeErrorKind(err, RetryableProvisionTransportError)
+      ? err
+      : safeErrorKind(err, RetryableReplacementCleanupError)
+        ? err
+        : undefined;
+    // This is the value that reaches the `jobs.error` column, so it is the one
+    // that has to carry a stack — the 16 conversions below it are log lines.
+    const errorMsg = appCacheError
+      ? finalizeJobErrorText(formatAppCacheInvalidationError(appCacheError))
+      : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
-    if (
-      err instanceof RetryableProvisionTransportError ||
-      err instanceof RetryableReplacementCleanupError
-    ) {
-      const retrySnapshot = err.retrySnapshot;
+    if (retryableTransportError) {
+      const retrySnapshot = retryableTransportError.retrySnapshot;
       const onExhaustedInTx = this.buildPermanentFailureWriteback(retrySnapshot, errorMsg);
       const transition = await this.retryOwnedWrite(job, "retry-later", () =>
         jobsRepository.retryLaterWithoutIncrementingAttempts(
@@ -3524,7 +3540,7 @@ export class ProvisioningJobService {
           errorMsg,
           PROVISION_TRANSPORT_RETRY_DELAY_MS,
           this.executionOwnerId,
-          { maxRequeues: err.maxRequeues, onExhaustedInTx },
+          { maxRequeues: retryableTransportError.maxRequeues, onExhaustedInTx },
         ),
       );
       if (transition?.status === "pending") {
@@ -3533,7 +3549,7 @@ export class ProvisioningJobService {
           jobId: job.id,
           delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
           requeues: transition.retryable_requeues,
-          maxRequeues: err.maxRequeues,
+          maxRequeues: retryableTransportError.maxRequeues,
           error: errorMsg,
         });
       } else if (transition?.status === "failed") {
@@ -3541,7 +3557,7 @@ export class ProvisioningJobService {
         logger.error("[provisioning-jobs] Retryable failure exhausted its requeue budget", {
           jobId: job.id,
           requeues: transition.retryable_requeues,
-          maxRequeues: err.maxRequeues,
+          maxRequeues: retryableTransportError.maxRequeues,
           error: errorMsg,
         });
       } else {
@@ -3568,7 +3584,7 @@ export class ProvisioningJobService {
     // Rollback-safe classification only exists for AGENT_UPGRADE failures
     // (thrown as UpgradeFailedError). For every other job type this is
     // undefined and the writeback ignores it.
-    const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
+    const upgradeFailure = safeErrorKind(err, UpgradeFailedError) ? err : undefined;
     const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
     const updated = await this.retryOwnedWrite(job, "increment-attempt", () =>
       jobsRepository.incrementAttempt(
@@ -3580,7 +3596,7 @@ export class ProvisioningJobService {
         this.executionOwnerId,
       ),
     );
-    if (err instanceof AppCacheInvalidationRetryError) {
+    if (appCacheError) {
       const context = {
         jobId: job.id,
         attempts: updated?.attempts ?? job.attempts,
@@ -4216,6 +4232,7 @@ export class ProvisioningJobService {
     const jobResult: AgentSuspendJobResult = {
       cloudAgentId: data.agentId,
       containerStopped: result.containerStopped,
+      backupId: result.backupId,
     };
 
     await this.settleClaimedExecution(job, "completed", {
@@ -4231,6 +4248,7 @@ export class ProvisioningJobService {
       jobId: job.id,
       agentId: data.agentId,
       containerStopped: result.containerStopped,
+      backupId: result.backupId,
     });
   }
 
@@ -4740,17 +4758,19 @@ export class ProvisioningJobService {
         );
       } catch (error) {
         if (
-          error instanceof AdminCanaryCleanupExpectationError ||
-          error instanceof AdminCanaryCleanupCommitError
+          safeErrorKind(error, AdminCanaryCleanupExpectationError) ||
+          safeErrorKind(error, AdminCanaryCleanupCommitError)
         ) {
           throw error;
         }
         // error-policy:J2 context-adding rethrow — the queue needs a typed
         // retryable failure while preserving the cleanup cause.
         throw new RetryableReplacementCleanupError(
-          `Admin canary cleanup remains pending: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          // Summary only: the full error travels as `cause` below, and
+          // interpolating its stack here would fill the 4,000-char job budget
+          // with the inner frames, truncating away both the outer frames and
+          // the cause chain at exactly the site #23117 needs them.
+          `Admin canary cleanup remains pending: ${jobErrorSummary(error)}`,
           job,
           { cause: error },
         );
@@ -4922,9 +4942,7 @@ export class ProvisioningJobService {
       const retrySnapshot = await readDurablePendingCutover();
       if (retrySnapshot) {
         throw new RetryableReplacementCleanupError(
-          `Admin canary post-cutover convergence interrupted: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Admin canary post-cutover convergence interrupted: ${jobErrorText(error)}`,
           retrySnapshot,
           { cause: error },
         );
@@ -5500,7 +5518,7 @@ export class ProvisioningJobService {
           .catch((error: unknown) => {
             logger.warn("[provisioning-jobs] heartbeat threw", {
               agentId: r.id,
-              error: error instanceof Error ? error.message : String(error),
+              error: jobErrorText(error),
             });
             return false;
           });
@@ -5561,7 +5579,7 @@ export class ProvisioningJobService {
           failed += 1;
           logger.warn("[provisioning-jobs] disconnected recovery failed", {
             agentId: r.id,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         }
       }
@@ -5624,7 +5642,7 @@ export class ProvisioningJobService {
           failed += 1;
           logger.warn("[provisioning-jobs] stuck-provisioning reconcile failed", {
             agentId: r.id,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         }
       }
@@ -5749,7 +5767,7 @@ export class ProvisioningJobService {
         failed += 1;
         logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
           agentId: agent.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -5880,7 +5898,7 @@ export class ProvisioningJobService {
     } catch (err) {
       logger.error("[provisioning-jobs] Webhook delivery error", {
         jobId: job.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: jobErrorText(err),
       });
 
       await jobsRepository.update(job.id, {

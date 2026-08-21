@@ -1,6 +1,7 @@
 /** Validates browser responses from the authenticated Maps view broker. */
 
 import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
+import { z } from "zod";
 import {
   type PlacePage,
   type PlaceRef,
@@ -11,6 +12,17 @@ import {
   type TravelMode,
 } from "../types.js";
 
+const mapsProviderDescriptionSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    attribution: z.string().min(1).max(500).nullable(),
+  })
+  .strict();
+
+export type MapsProviderDescription = z.infer<
+  typeof mapsProviderDescriptionSchema
+>;
+
 interface BrokerEnvelope {
   requestId: string;
   success: boolean;
@@ -19,6 +31,8 @@ interface BrokerEnvelope {
 }
 
 export interface MapsViewTransport {
+  /** Optional for host/test transports; absence renders attribution unavailable. */
+  describeProviders?(signal?: AbortSignal): Promise<MapsProviderDescription[]>;
   search(
     query: string,
     signal?: AbortSignal,
@@ -98,6 +112,16 @@ async function invoke(
 }
 
 export const mapsViewTransport: MapsViewTransport = {
+  async describeProviders(signal) {
+    const value = await invoke("maps-describe-providers", {}, signal);
+    if (!isRecord(value)) {
+      throw new Error("Maps returned invalid provider metadata.");
+    }
+    return z
+      .array(mapsProviderDescriptionSchema)
+      .max(32)
+      .parse(value.providers);
+  },
   async search(query, signal, cursor) {
     return placePageSchema.parse(
       await invoke(

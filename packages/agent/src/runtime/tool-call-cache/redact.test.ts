@@ -3,7 +3,11 @@
  * redaction over the tool-call cache write path.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultPrivacyRedactor } from "./redact.ts";
+import {
+  defaultPrivacyRedactor,
+  isRedactionDegraded,
+  REDACT_BUDGET_SENTINEL,
+} from "./redact.ts";
 
 const ORIG_ENV = { ...process.env };
 
@@ -134,6 +138,52 @@ describe("defaultPrivacyRedactor", () => {
     expect(defaultPrivacyRedactor(true)).toBe(true);
     expect(defaultPrivacyRedactor(null)).toBe(null);
     expect(defaultPrivacyRedactor(undefined)).toBe(undefined);
+  });
+
+  it("bounds a flat-wide object instead of redacting every key", () => {
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 150_000; i += 1) wide[`k${i}`] = i;
+    const out = defaultPrivacyRedactor(wide);
+    expect(out).toBe(REDACT_BUDGET_SENTINEL);
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("marks an accessor property degraded without invoking the getter", () => {
+    let getterCalls = 0;
+    const value: Record<string, unknown> = { ok: "plain" };
+    Object.defineProperty(value, "leak", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "secret";
+      },
+    });
+    const out = defaultPrivacyRedactor(value) as Record<string, unknown>;
+    expect(getterCalls).toBe(0);
+    expect(out.ok).toBe("plain");
+    expect(out.leak).toBe(REDACT_BUDGET_SENTINEL);
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("marks a revoked proxy degraded instead of throwing", () => {
+    const revocable = Proxy.revocable({ payload: "value" }, {});
+    revocable.revoke();
+    let out: unknown;
+    expect(() => {
+      out = defaultPrivacyRedactor({ nested: revocable.proxy });
+    }).not.toThrow();
+    expect((out as Record<string, unknown>).nested).toBe(
+      REDACT_BUDGET_SENTINEL,
+    );
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("bounds an oversize string leaf", () => {
+    const huge = "a".repeat(4_000_001);
+    expect(defaultPrivacyRedactor({ blob: huge })).toEqual({
+      blob: REDACT_BUDGET_SENTINEL,
+    });
   });
 
   it("does not treat short strings as env secrets", () => {

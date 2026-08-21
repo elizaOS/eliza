@@ -7,28 +7,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthRouteContext } from "./auth-routes.ts";
 import { handleAuthRoutes } from "./auth-routes.ts";
 
-type JsonFn = (res: unknown, data: unknown, status?: number) => void;
-type ErrorFn = (res: unknown, message: string, status?: number) => void;
+type JsonRecorder = (data: unknown, status?: number) => void;
+type ErrorRecorder = (message: string, status?: number) => void;
 
-function makeCtx(overrides: Partial<AuthRouteContext> = {}): {
-  ctx: AuthRouteContext;
-  json: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
-} {
-  const json = vi.fn() as unknown as JsonFn;
-  const error = vi.fn() as unknown as ErrorFn;
-  const ctx = {
+function makeJsonBody(
+  value: Record<string, unknown>,
+): AuthRouteContext["readJsonBody"] {
+  return async <T extends object>() => value as T;
+}
+
+function makeCtx(overrides: Partial<AuthRouteContext> = {}) {
+  const json = vi.fn<JsonRecorder>();
+  const error = vi.fn<ErrorRecorder>();
+  const ctx: AuthRouteContext = {
     req: { socket: { remoteAddress: "127.0.0.1" } } as AuthRouteContext["req"],
     res: {} as AuthRouteContext["res"],
     method: "GET",
     pathname: "",
-    readJsonBody: vi.fn(),
-    json: ((_res, data, status) =>
-      status === undefined ? json(data) : json(data, status)) as JsonFn,
-    error: ((_res, message, status) =>
-      status === undefined
-        ? error(message)
-        : error(message, status)) as ErrorFn,
+    readJsonBody: async <T extends object>() => null as T | null,
+    json: (_res, data, status) =>
+      status === undefined ? json(data) : json(data, status),
+    error: (_res, message, status) =>
+      status === undefined ? error(message) : error(message, status),
     pairingEnabled: vi.fn(() => true),
     ensurePairingCode: vi.fn(() => "ABCD-EFGH"),
     normalizePairingCode: vi.fn((s: string) => s.replace(/-/g, "")),
@@ -36,7 +36,7 @@ function makeCtx(overrides: Partial<AuthRouteContext> = {}): {
     getPairingExpiresAt: vi.fn(() => Date.now() + 600_000),
     clearPairing: vi.fn(),
     ...overrides,
-  } as unknown as AuthRouteContext;
+  };
   return { ctx, json, error };
 }
 
@@ -48,7 +48,7 @@ vi.mock("./server-helpers-auth.ts", () => ({
 }));
 vi.mock("@elizaos/shared", () => ({
   isCloudProvisionedContainer: vi.fn(() => false),
-  resolveApiToken: vi.fn(() => undefined),
+  resolveApiToken: vi.fn(() => null),
   PostAuthPairRequestSchema: {
     safeParse: vi.fn(() => ({ success: true, data: { code: "ABCDEFGH" } })),
   },
@@ -76,7 +76,7 @@ beforeEach(() => {
   mockIsTrustedLocalRequest.mockReturnValue(true);
   mockResolveBoundaryRole.mockReturnValue("GUEST");
   mockIsCloud.mockReturnValue(false);
-  vi.mocked(resolveApiToken).mockReturnValue(undefined);
+  vi.mocked(resolveApiToken).mockReturnValue(null);
   mockParse.mockReturnValue({
     success: true,
     data: { code: "ABCDEFGH" },
@@ -162,7 +162,7 @@ describe("GET /api/auth/status", () => {
     mockIsCloud.mockReturnValue(false);
     vi.mocked(
       (await import("@elizaos/shared")).resolveApiToken,
-    ).mockReturnValue(undefined);
+    ).mockReturnValue(null);
     const { ctx, json } = makeCtx({
       method: "GET",
       pathname: "/api/auth/status",
@@ -243,7 +243,7 @@ describe("POST /api/auth/pair", () => {
     const { ctx, json } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
-      readJsonBody: vi.fn(async () => ({ code: "correct-token" })),
+      readJsonBody: makeJsonBody({ code: "correct-token" }),
     });
     await handleAuthRoutes(ctx);
     expect(json).toHaveBeenCalledWith({ token: "correct-token" });
@@ -262,7 +262,7 @@ describe("POST /api/auth/pair", () => {
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
-      readJsonBody: vi.fn(async () => ({ code: "wrong-token" })),
+      readJsonBody: makeJsonBody({ code: "wrong-token" }),
       normalizePairingCode: vi.fn((s) => s),
       ensurePairingCode: vi.fn(() => "ABCDEFGH"),
     });
@@ -275,7 +275,7 @@ describe("POST /api/auth/pair", () => {
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
-      readJsonBody: vi.fn(async () => ({ code: "anything" })),
+      readJsonBody: makeJsonBody({ code: "anything" }),
       rateLimitPairing: vi.fn(() => false),
     });
     await handleAuthRoutes(ctx);
@@ -293,7 +293,7 @@ describe("POST /api/auth/pair", () => {
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
-      readJsonBody: vi.fn(async () => ({})),
+      readJsonBody: makeJsonBody({}),
     });
     await handleAuthRoutes(ctx);
     expect(error).toHaveBeenCalledWith(
@@ -315,7 +315,7 @@ describe("POST /api/auth/pair", () => {
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
-      readJsonBody: vi.fn(async () => ({ code: "WRONG" })),
+      readJsonBody: makeJsonBody({ code: "WRONG" }),
       getPairingExpiresAt: vi.fn(() => Date.now() - 1000),
       ensurePairingCode: vi.fn(() => "ABCDEFGH"),
     });

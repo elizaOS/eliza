@@ -110,9 +110,9 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
     expect(result.messages[0]?.subject).toBe("Hello");
   });
 
-  test("body normalization decodes entities once and strips malformed script/style end tags", async () => {
+  test("body normalization strips browser-tokenized script/style end tags", async () => {
     const body =
-      '<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script \t\n bar><style>hidden{}</style data-x="1">';
+      "<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>safe</p><script>unclosed";
     fetchImpl = async () =>
       jsonResponse({
         id: "m1",
@@ -140,7 +140,11 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
     expect(result.bodyText).toContain("&lt;kept&gt;");
     expect(result.bodyText).not.toContain("<kept>");
     expect(result.bodyText).not.toContain("credential-stealer");
+    expect(result.bodyText).not.toContain("still-script");
     expect(result.bodyText).not.toContain("hidden");
+    expect(result.bodyText).not.toContain("still-style");
+    expect(result.bodyText).not.toContain("unclosed");
+    expect(result.bodyText).toContain("safe");
   });
 
   test("internal failure on the LIST call propagates (never fabricates empty)", async () => {

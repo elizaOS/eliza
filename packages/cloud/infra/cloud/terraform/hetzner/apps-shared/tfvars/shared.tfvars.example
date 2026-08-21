@@ -20,3 +20,16 @@ operator_ingress_cidrs = ["<operator-ip>/32"]
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Off-host encrypted backups (#21729). All-or-nothing: set every value below
+# together or leave them all unset to keep the pipeline inert. The bucket must
+# be OUTSIDE the Hetzner apps project and never the terraform state bucket.
+# The passphrase (>= 32 chars) lives in the org password manager; losing it
+# makes every off-host backup unreadable.
+# backup_s3_endpoint           = "https://<account>.r2.cloudflarestorage.com"
+# backup_s3_bucket             = "eliza-tenant-db-backups"
+# backup_s3_prefix             = "tenant-db"
+# backup_s3_access_key         = "<r2-access-key-id>"
+# backup_s3_secret_key         = "<r2-secret-access-key>"
+# backup_encryption_passphrase = "<32+ char passphrase from the ops vault>"
+# backup_retention_days        = 14

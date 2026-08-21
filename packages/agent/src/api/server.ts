@@ -766,6 +766,11 @@ async function readBackupJsonBody(
 }
 
 let activeTerminalRunCount = 0;
+const terminalRunIdReservations = new Map<string, number>();
+const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
+const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60_000;
+let lastTerminalRunIdSweepAt = 0;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
@@ -3346,6 +3351,49 @@ async function handleRequest(
       activeTerminalRunCount,
       setActiveTerminalRunCount: (delta: number) => {
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
+      },
+      tryAcquireTerminalRunSlot: (
+        scopeId: string,
+        runId: string,
+        maxConcurrent: number,
+      ) => {
+        const now = Date.now();
+        if (
+          now - lastTerminalRunIdSweepAt >= TERMINAL_RUN_ID_SWEEP_INTERVAL_MS ||
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          for (const [reservedRunId, expiresAt] of terminalRunIdReservations) {
+            if (expiresAt <= now) {
+              terminalRunIdReservations.delete(reservedRunId);
+            }
+          }
+          lastTerminalRunIdSweepAt = now;
+        }
+        const reservationKey = `${scopeId}\0${runId}`;
+        if (terminalRunIdReservations.has(reservationKey)) {
+          return { rejection: "duplicate" as const };
+        }
+        if (activeTerminalRunCount >= maxConcurrent) {
+          return { rejection: "capacity" as const };
+        }
+        if (
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          return { rejection: "registry-capacity" as const };
+        }
+        terminalRunIdReservations.set(
+          reservationKey,
+          now + TERMINAL_RUN_ID_RESERVATION_TTL_MS,
+        );
+        activeTerminalRunCount += 1;
+        let released = false;
+        return {
+          release: () => {
+            if (released) return;
+            released = true;
+            activeTerminalRunCount = Math.max(0, activeTerminalRunCount - 1);
+          },
+        };
       },
     })
   ) {
