@@ -216,6 +216,87 @@ describe("deterministic account selection", () => {
 		});
 	});
 
+	const RISK_DENYING_POLICY: AccountSelectionPolicy = {
+		...OPEN_POLICY,
+		maxRiskLevel: "R1",
+	};
+	const overRiskIntent = { ...intent, riskLevel: "R3" } as const;
+	const riskDenial = {
+		outcome: "denied",
+		reasonCode: "risk_policy_denied",
+		accountId: null,
+	};
+
+	it("denies a policy-exceeding intent when every account needs reauthorization", () => {
+		const result = selectConnectedAccount(
+			overRiskIntent,
+			[{ ...baseAccount, accountId: "acct-a", status: "reauth_required" }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual(riskDenial);
+	});
+
+	it("denies a policy-exceeding intent when every account is revoked", () => {
+		const result = selectConnectedAccount(
+			overRiskIntent,
+			[{ ...baseAccount, accountId: "acct-a", status: "revoked" }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual(riskDenial);
+	});
+
+	it("denies a policy-exceeding intent when no account grants the capability", () => {
+		const result = selectConnectedAccount(
+			overRiskIntent,
+			[{ ...baseAccount, accountId: "acct-a", capabilities: [] }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual(riskDenial);
+	});
+
+	it("denies a policy-exceeding intent when there are no accounts at all", () => {
+		expect(
+			selectConnectedAccount(overRiskIntent, [], RISK_DENYING_POLICY, []),
+		).toEqual(riskDenial);
+	});
+
+	it("denies a policy-exceeding intent pinned to an unavailable account", () => {
+		const result = selectConnectedAccount(
+			{ ...overRiskIntent, requestedAccountId: "acct-a" },
+			[{ ...baseAccount, accountId: "acct-a", status: "reauth_required" }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual(riskDenial);
+	});
+
+	it("denies a policy-exceeding intent pinned to an account that does not exist", () => {
+		const result = selectConnectedAccount(
+			{ ...overRiskIntent, requestedAccountId: "acct-missing" },
+			[{ ...baseAccount, accountId: "acct-a" }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual(riskDenial);
+	});
+
+	it("still reports account unavailability when the intent is within policy risk", () => {
+		const result = selectConnectedAccount(
+			{ ...intent, riskLevel: "R1" },
+			[{ ...baseAccount, accountId: "acct-a", status: "reauth_required" }],
+			RISK_DENYING_POLICY,
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual({
+			outcome: "unavailable",
+			code: "needs_scope",
+			retryable: false,
+		});
+	});
+
 	it("fails closed on an invalid policy maxRiskLevel instead of skipping the risk check", () => {
 		expect(() =>
 			selectConnectedAccount(
