@@ -1,260 +1,63 @@
-#!/usr/bin/env node
-/**
- * Command-line helper for the Mobile Local Chat Smoke app packaging, mobile,
- * or Playwright automation lane.
- */
-import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import { fileURLToPath } from "node:url";
-import { ANDROID_FULL_TURN_FAILURE_RE } from "./lib/chat-failure-strings.mjs";
-import {
-  assertMarkerSurvivedRelaunch,
-  buildRelaunchMarker,
-} from "./lib/chat-history-persistence.mjs";
-import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
-import {
-  assertIosFullBunSmokeSuccess,
-  iosFullBunSmokeResultTimeMs,
-  parseIosFullBunSmokeResult,
-} from "./lib/ios-full-bun-smoke-contract.mjs";
-import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
-import {
-  clearIosSmokeDefaults,
-  deleteIosDefaultsKey,
-  flushIosPreferencesCache,
-  preferenceNativeKeys,
-  readIosDefaultsString,
-  readIosPreferenceString,
-  writeIosDefaultsString,
-} from "./lib/ios-sim-defaults-hygiene.mjs";
-import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
-import { resolveSmokeCommand } from "./lib/smoke-command-proxy.mjs";
-
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-);
-const appConfigPath = path.join(repoRoot, "packages/app/app.config.ts");
-const iosLocalChatResultDir = path.join(
-  repoRoot,
-  "packages/app/test-results/ios-local-chat",
-);
-const relaunchPersistenceResultDir = path.join(
-  repoRoot,
-  "packages/app/test-results/relaunch-persistence",
-);
-
-function argValue(name) {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : null;
+function adbPath() {
+  return androidTool("platform-tools/adb", "adb");
 }
 
-const platform = argValue("--platform") ?? "ios";
-let apiBase = argValue("--api-base");
-const authTokenArg = argValue("--auth-token");
-const startHostAgent = process.argv.includes("--start-host-agent");
-const hostAgentPort = argValue("--host-agent-port");
-const requireInstalled = process.argv.includes("--require-installed");
-const exerciseAppCoreApi =
-  process.argv.includes("--live") || Boolean(apiBase) || startHostAgent;
-const iosSelectLocal = process.argv.includes("--ios-select-local");
-const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
-const androidSelectLocal = process.argv.includes("--android-select-local");
-const androidBackground = process.argv.includes("--android-background");
-const androidStageSmokeModel = process.argv.includes(
-  "--android-stage-smoke-model",
-);
-const iosBackground = process.argv.includes("--ios-background");
-const relaunchPersistence = process.argv.includes("--relaunch-persistence");
-const iosBackgroundTaskId =
-  argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
-const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
-const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
-const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
-const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
-const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
-const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
-const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
-  "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
-// Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
-// max context; loading it at full width allocates a multi-GB KV cache that is
-// impractically slow (and OOMs) on a phone/simulator, so the first reply never
-// lands. 4096 mirrors the Android smoke and keeps model load + generation fast.
-const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = Number.parseInt(
-  process.env.IOS_FULL_BUN_SMOKE_CONTEXT_SIZE?.trim() || "4096",
-  10,
-);
-const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
-const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
-// ANDROID_FULL_TURN_FAILURE_RE comes from the checked-in failure-string source
-// shared with the on-device XCUITest verifier (issue #13687).
-const ANDROID_HEALTH_ATTEMPTS = 240;
-const ANDROID_FULL_TURN_TIMEOUT_MS = Number.parseInt(
-  process.env.ANDROID_FULL_TURN_TIMEOUT_MS?.trim() || String(10 * 60_000),
-  10,
-);
-// In-process CPU-only decode on a phone is slow (~0.2 tok/s generate, observed
-// ~41s end-to-end for a short reply). A single slow/blip read must not abort
-// the turn, so the per-request HTTP timeout sits well above that envelope.
-const ANDROID_HEALTH_PROBE_TIMEOUT_MS = Number.parseInt(
-  process.env.ANDROID_HEALTH_PROBE_TIMEOUT_MS?.trim() || String(30_000),
-  10,
-);
-// Bounded transient retry for accepted-but-empty / reset / 5xx / timeout reads
-// against the forwarded local-agent API. The boot/restart window briefly
-// accepts the socket and closes it with an empty body; retry rides that out.
-const ANDROID_TRANSIENT_RETRY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_TRANSIENT_RETRY_ATTEMPTS?.trim() || "5",
-  10,
-);
-const ANDROID_TRANSIENT_RETRY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_TRANSIENT_RETRY_DELAY_MS?.trim() || "2000",
-  10,
-);
-// Process-stability gate: require monotonic uptime across N consecutive
-// /api/health samples (agentState==running, startup.attempt not climbing)
-// before exercising, so a turn is never fired mid-restart.
-const ANDROID_STABILITY_SAMPLES = Number.parseInt(
-  process.env.ANDROID_STABILITY_SAMPLES?.trim() || "3",
-  10,
-);
-const ANDROID_STABILITY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_STABILITY_DELAY_MS?.trim() || "2000",
-  10,
-);
-const ANDROID_STABILITY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_STABILITY_ATTEMPTS?.trim() || "60",
-  10,
-);
-const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS?.trim() || "180",
-  10,
-);
-const ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_LOCAL_INFERENCE_READY_DELAY_MS?.trim() || "2000",
-  10,
-);
-const ANDROID_FULL_TURN_PROMPT =
-  "Reply with exactly these four words: android smoke model works.";
-const ANDROID_FULL_TURN_EXPECTED_REPLY = "android smoke model works";
-const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_CONTEXT_SIZE?.trim() || "4096",
-  10,
-);
-const ANDROID_SMOKE_MODEL_ID =
-  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-2b";
-const DEFAULT_ANDROID_SMOKE_MODEL = {
-  relativePath: "bundles/e2b/text/eliza-1-e2b-32k.gguf",
-  file: "eliza-1-e2b-32k.gguf",
-  sizeBytes: 1_270_808_512,
-};
-const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
-  process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
-  DEFAULT_ANDROID_SMOKE_MODEL.relativePath;
-const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() ||
-  DEFAULT_ANDROID_SMOKE_MODEL.file;
-const androidSmokeModelSizeOverride =
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim();
-const ANDROID_SMOKE_MODEL_SIZE_BYTES = androidSmokeModelSizeOverride
-  ? Number.parseInt(androidSmokeModelSizeOverride, 10)
-  : ANDROID_SMOKE_MODEL_RELATIVE_PATH ===
-        DEFAULT_ANDROID_SMOKE_MODEL.relativePath &&
-      ANDROID_SMOKE_MODEL_FILE === DEFAULT_ANDROID_SMOKE_MODEL.file
-    ? DEFAULT_ANDROID_SMOKE_MODEL.sizeBytes
-    : Number.NaN;
-const ANDROID_SMOKE_MODEL_SHA256 =
-  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() || "";
-const ANDROID_SMOKE_MODEL_URL =
-  process.env.ANDROID_SMOKE_MODEL_URL?.trim() ||
-  `https://huggingface.co/elizaos/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH.split(
-    "/",
-  )
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")}?download=true`;
-const IOS_WAKE_POLL_ATTEMPTS = 30;
-const IOS_WAKE_POLL_DELAY_MS = 1000;
-const ANDROID_WAKE_POLL_ATTEMPTS = 30;
-const ANDROID_WAKE_POLL_DELAY_MS = 1000;
-const ANDROID_CONFLICTING_AGENT_PACKAGES = [
-  "ai.eliza.eliza",
-  "ai.elizaos.eliza",
-];
-const IOS_SMOKE_STATE_KEYS = [
-  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
-  IOS_FULL_BUN_SMOKE_RESULT_KEY,
-  IOS_FULL_BUN_PREWARM_RESULT_KEY,
-  "eliza:ios-background:request",
-  "eliza:ios-background:result",
-  "elizaos:active-server",
-  "eliza:first-run-complete",
-  "eliza:mobile-runtime-mode",
-];
-
-function printHelp() {
-  console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
-
-Options:
-  --platform ios|android|both       Simulator platform to launch (default: ios)
-  --require-installed              Fail when the selected app/simulator is unavailable
-  --live                           Exercise the app-core local-agent HTTP API on Android
-  --api-base URL                   Exercise an already-reachable app-core HTTP API
-  --start-host-agent               Start the deterministic host app-core API when --api-base is omitted
-  --host-agent-port PORT           Port for --start-host-agent (default: 31338, or a free port if busy)
-  --auth-token TOKEN               Bearer token for protected app-core API routes
-  --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
-  --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
-  --android-select-local           Tap through Android first-run Local runtime selection
-  --android-stage-smoke-model      Stage the smallest active Eliza-1 GGUF into Android app data
-  --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
-  --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
-  --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
-  --relaunch-persistence           After the turn, send a unique marker through the live stream path, force-stop +
-                                   relaunch the app, and assert server truth plus rendered transcript proof.
-                                   Android only:
-                                   the iOS on-device agent is IPC-only, so its relaunch check needs the Preferences
-                                   handshake / XCUITest path (#13689).
-  --help                           Print this help
-
-Notes:
-  --live validates the running app-core/local-agent API. It is not a remote
-  service test. The chat step requires local-inference readiness and a completed
-  streamed model reply from the local Android agent.
-  ANDROID_SERIAL selects a specific Android device or emulator when set.`);
+function androidBackgroundServicesReady(services, id) {
+  const foregroundCount = services.match(/isForeground=true/g)?.length ?? 0;
+  return (
+    services.includes(`${id}/.ElizaAgentService`) &&
+    services.includes(`${id}/.GatewayConnectionService`) &&
+    foregroundCount >= 2
+  );
 }
 
-if (process.argv.includes("--help")) {
-  printHelp();
-  process.exit(0);
-}
-
-function run(command, args, options = {}) {
-  const invocation = resolveSmokeCommand(command, args);
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: options.cwd ?? repoRoot,
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed`);
+function androidDeviceSerial(adb) {
+  const devices = requireExec(
+    adb,
+    ["devices"],
+    "No Android device or emulator is available.",
+  );
+  const connected = devices
+    .split("\n")
+    .slice(1)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.endsWith("\tdevice"))
+    .map((entry) => entry.split(/\s+/)[0]);
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    if (connected.includes(requested)) return requested;
+    const state = tryExec(adb, ["-s", requested, "get-state"], {
+      allowFailure: true,
+    });
+    if (state === "device") return requested;
+    if (requireInstalled) {
+      throw new Error(
+        `ANDROID_SERIAL=${requested} is not an attached Android device/emulator.`,
+      );
+    }
   }
+  return (
+    connected.find((serial) => serial.startsWith("emulator-")) ??
+    connected[0] ??
+    null
+  );
 }
 
-function executablePath(...candidates) {
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
-}
-
-function appId() {
-  // White-label builds install under a different bundle id than the eliza
-  // package config. Allow targeting the installed app explicitly so the smoke can
-  // validate whichever shell was actually built.
-  if (process.env.ELIZA_SMOKE_APP_ID) return process.env.ELIZA_SMOKE_APP_ID;
-  const config = fs.readFileSync(appConfigPath, "utf8");
-  return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";
+function androidRunAs(context, script, label, options = {}) {
+  const output = tryExec(
+    context.adb,
+    [
+      "-s",
+      context.serial,
+      "shell",
+      `run-as ${shellQuote(appId())} sh -c ${shellQuote(script)}`,
+    ],
+    options.allowFailure ? { allowFailure: true } : undefined,
+  );
+  if (output === null && !options.allowFailure) {
+    throw new Error(label);
+  }
+  return output;
 }
 
 function androidSdkRoot() {
@@ -277,37 +80,59 @@ function androidTool(relativePath, fallbackName) {
   );
 }
 
-function adbPath() {
-  return androidTool("platform-tools/adb", "adb");
+function appId() {
+  // White-label builds install under a different bundle id than the eliza
+  // package config. Allow targeting the installed app explicitly so the smoke can
+  // validate whichever shell was actually built.
+  if (process.env.ELIZA_SMOKE_APP_ID) return process.env.ELIZA_SMOKE_APP_ID;
+  const config = fs.readFileSync(appConfigPath, "utf8");
+  return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";
 }
 
-function tryExec(command, args, options = {}) {
-  try {
-    const invocation = resolveSmokeCommand(command, args);
-    return execFileSync(invocation.command, invocation.args, {
-      cwd: repoRoot,
-      env: process.env,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-  } catch (error) {
-    if (requireInstalled && !options.allowFailure) {
-      throw error;
-    }
-    return null;
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : null;
+}
+
+function assertAndroidRenderedTranscript({ context, marker, expectedReply }) {
+  const dumpPath = dumpAndroidUiHierarchy(context, "relaunch-persistence-post");
+  const uiXml = readTextFileIfPresent(dumpPath);
+  const visibleMarker = uiXml.includes(marker);
+  const visibleReply =
+    typeof expectedReply === "string" &&
+    expectedReply.length > 0 &&
+    uiXml.toLowerCase().includes(expectedReply.toLowerCase());
+  if (!visibleMarker && !visibleReply) {
+    const screenshot = takeAndroidScreenshot(
+      context,
+      "relaunch-persistence-render-missing",
+    );
+    throw new Error(
+      `Relaunch-persistence server thread survived, but the Android UI hierarchy did not expose the marker or expected reply after relaunch. ` +
+        `marker=${marker} expectedReply=${expectedReply} uiDump=${dumpPath ?? "<unavailable>"} screenshot=${screenshot ?? "<unavailable>"}`,
+    );
   }
+  return {
+    uiHierarchyDump: dumpPath,
+    visibleMarker,
+    visibleReply,
+  };
 }
 
-function requireExec(command, args, label) {
-  const output = tryExec(command, args);
-  if (output === null) {
-    throw new Error(label ?? `${command} ${args.join(" ")} failed`);
+function assertInstalledIosRendererIsFresh(udid) {
+  assertInstalledIosAppRendererFresh({
+    udid,
+    bundleId: appId(),
+    repoRoot,
+    log: (message) => console.log(`[local-chat-smoke] ${message}`),
+  });
+}
+
+function assertObjectLike(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} was not an object: ${JSON.stringify(value)}`);
   }
-  return output;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return value;
 }
 
 function bootedIosUdid() {
@@ -316,6 +141,186 @@ function bootedIosUdid() {
   // Lines look like: "    iPhone 17 (5C9F2EAC-4F1D-…) (Booted)"
   const match = listing.match(/\(([0-9A-Fa-f-]{36})\)\s*\(Booted\)/);
   return match ? match[1] : null;
+}
+
+function cleanupAndroidAgentForwards(context, reason) {
+  if (!context?.installed) return;
+  const forwardedPorts = context.localAgentForward
+    ? [context.localAgentForward]
+    : [];
+  for (const localPort of forwardedPorts) {
+    removeAndroidForward(context, localPort);
+  }
+  context.localAgentForward = null;
+  if (forwardedPorts.length > 0) {
+    console.log(
+      `[local-chat-smoke] Removed Android harness adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
+    );
+  }
+}
+
+function copyFileIfChanged(source, destination) {
+  const sourceStats = fs.statSync(source);
+  try {
+    const destinationStats = fs.statSync(destination);
+    if (
+      destinationStats.isFile() &&
+      destinationStats.size === sourceStats.size &&
+      Math.floor(destinationStats.mtimeMs) >= Math.floor(sourceStats.mtimeMs)
+    ) {
+      return false;
+    }
+  } catch {
+    // Copy below.
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+  fs.utimesSync(destination, sourceStats.atime, sourceStats.mtime);
+  return true;
+}
+
+function describeAndroidSmokeModelSize(sizeBytes) {
+  if (!Number.isFinite(sizeBytes)) return "unknown size";
+  return `${sizeBytes} bytes`;
+}
+
+function dumpAndroidUiHierarchy(context, label) {
+  if (!context?.installed) return null;
+  const outDir = path.join(os.tmpdir(), "eliza-android-ui-dumps");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(
+    outDir,
+    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.xml`,
+  );
+  const remote = `/sdcard/${path.basename(outPath)}`;
+  if (
+    tryExec(context.adb, [
+      "-s",
+      context.serial,
+      "shell",
+      "uiautomator",
+      "dump",
+      remote,
+    ]) === null
+  ) {
+    return null;
+  }
+  if (
+    tryExec(context.adb, ["-s", context.serial, "pull", remote, outPath]) ===
+    null
+  ) {
+    return null;
+  }
+  tryExec(context.adb, ["-s", context.serial, "shell", "rm", remote]);
+  return outPath;
+}
+
+function executablePath(...candidates) {
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
+}
+
+function extractDoneEventFromSse(text) {
+  const events = parseSseEvents(text);
+  const errorEvent = events.find(
+    (event) =>
+      event.data &&
+      typeof event.data === "object" &&
+      event.data.type === "error",
+  );
+  if (errorEvent) {
+    throw new Error(`Stream returned error event: ${errorEvent.dataText}`);
+  }
+  const done = events
+    .map((event) => event.data)
+    .find((data) => data && typeof data === "object" && data.type === "done");
+  if (!done) {
+    throw new Error(
+      `Stream did not return a done event: ${text.slice(0, 500)}`,
+    );
+  }
+  return done;
+}
+
+function findAndroidJobIdForPackage(context, id) {
+  const dump = tryExec(context.adb, [
+    "-s",
+    context.serial,
+    "shell",
+    "dumpsys",
+    "jobscheduler",
+  ]);
+  if (!dump) return null;
+  const escapedId = id.replace(/[.+]/g, (c) => `\\${c}`);
+  const re = new RegExp(`#u\\d+/(\\d+).*?${escapedId}`, "g");
+  const ids = new Set();
+  for (const match of dump.matchAll(re)) {
+    ids.add(Number.parseInt(match[1], 10));
+  }
+  // Fall back: look for `JOB #u0/<n>` followed by the package name on a
+  // subsequent line.
+  if (ids.size === 0) {
+    const lines = dump.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = lines[i].match(/JOB\s+#u\d+\/(\d+)/);
+      if (!m) continue;
+      const block = lines.slice(i, i + 8).join("\n");
+      if (block.includes(id)) {
+        ids.add(Number.parseInt(m[1], 10));
+      }
+    }
+  }
+  if (ids.size === 0) return null;
+  // Prefer the smallest known job id (workmanager periodic worker is typically
+  // registered with a stable id; if multiple match we return all separately).
+  return Array.from(ids).sort((a, b) => a - b);
+}
+
+function forceStopConflictingAndroidAgents(context) {
+  const id = appId();
+  for (const packageName of [id, ...ANDROID_CONFLICTING_AGENT_PACKAGES]) {
+    if (!packageName || packageName === id) {
+      tryExec(context.adb, [
+        "-s",
+        context.serial,
+        "shell",
+        "am",
+        "force-stop",
+        id,
+      ]);
+      continue;
+    }
+    tryExec(context.adb, [
+      "-s",
+      context.serial,
+      "shell",
+      "am",
+      "force-stop",
+      packageName,
+    ]);
+  }
+}
+
+function iosAppDataContainer(udid, id) {
+  return requireExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, id, "data"],
+    `Failed to resolve iOS data container for ${id}.`,
+  );
+}
+
+function iosAppSupportContainer(udid, id) {
+  return path.join(
+    iosAppDataContainer(udid, id),
+    "Library",
+    "Application Support",
+    "Eliza",
+  );
+}
+
+function isTransientFailure(error) {
+  const message =
+    error instanceof Error ? `${error.message} ${error.cause ?? ""}` : "";
+  return TRANSIENT_ERROR_RE.test(message);
 }
 
 function launchIosSimulatorApp() {
@@ -366,22 +371,188 @@ function launchIosSimulatorApp() {
   return { udid, installed: true, fullBunSmokeRequestedAtMs };
 }
 
-/**
- * Assert the renderer baked into the INSTALLED app bundle is the freshly built
- * one — the on-device proof that the simulator is running the latest UI, not
- * stale code (issue #9309). Reads the build stamp Capacitor copied into the
- * .app (`<App.app>/public/eliza-renderer-build.json`) and compares its buildId
- * to the freshly built `packages/app/dist` manifest. Skips gracefully when
- * either manifest is absent (e.g. a build without the manifest plugin); throws
- * only on a genuine stale-UI mismatch.
- */
-function assertInstalledIosRendererIsFresh(udid) {
-  assertInstalledIosAppRendererFresh({
-    udid,
-    bundleId: appId(),
-    repoRoot,
-    log: (message) => console.log(`[local-chat-smoke] ${message}`),
+function localInferenceSummary({ hub, device, providers }) {
+  return {
+    hubActive: hub?.active ?? null,
+    hubDownloads: Array.isArray(hub?.downloads) ? hub.downloads : [],
+    device: device ?? null,
+    providers: Array.isArray(providers?.providers) ? providers.providers : [],
+  };
+}
+
+function parseSseEvents(text) {
+  const events = [];
+  const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
+  for (const block of blocks) {
+    const dataLines = [];
+    let event = null;
+    for (const line of block.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      const sep = line.indexOf(":");
+      const field = sep >= 0 ? line.slice(0, sep) : line;
+      let value = sep >= 0 ? line.slice(sep + 1) : "";
+      if (value.startsWith(" ")) value = value.slice(1);
+      if (field === "event") {
+        event = value;
+      } else if (field === "data") {
+        dataLines.push(value);
+      }
+    }
+    if (dataLines.length === 0) continue;
+    const dataText = dataLines.join("\n");
+    let data = dataText;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      // Keep raw SSE payloads for diagnostics.
+    }
+    events.push({ event, data, dataText });
+  }
+  return events;
+}
+
+function preseedAndroidLocalRuntime(context) {
+  const activeServer = JSON.stringify({
+    id: "local:android",
+    kind: "remote",
+    label: "On-device agent",
+    apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
   });
+  writeAndroidCapacitorPreferences(context, {
+    "eliza:mobile-runtime-mode": "local",
+    "eliza:first-run-complete": "1",
+    "elizaos:active-server": activeServer,
+  });
+  console.log(
+    `[local-chat-smoke] Pre-seeded Android Local runtime preferences for ${appId()}.`,
+  );
+}
+
+function preseedIosFullBunSmoke(udid, id) {
+  deleteIosDefaultsKey({
+    udid,
+    bundleId: id,
+    key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  });
+  deleteIosDefaultsKey({
+    udid,
+    bundleId: id,
+    key: IOS_FULL_BUN_PREWARM_RESULT_KEY,
+  });
+  writeIosDefaultsString({
+    udid,
+    bundleId: id,
+    key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
+    value: JSON.stringify({
+      ok: false,
+      phase: "requested",
+      updatedAt: new Date().toISOString(),
+    }),
+  });
+  writeIosDefaultsString({
+    udid,
+    bundleId: id,
+    key: IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+    value: "1",
+  });
+  flushIosPreferencesCache(udid);
+  const diagnostics = readIosFullBunSmokeDiagnostics(udid, id);
+  const requestReadback =
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.defaultsValue ??
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.plistValue;
+  const resultReadback =
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.defaultsValue ??
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.plistValue;
+  if (requestReadback !== "1" || !resultReadback) {
+    throw new Error(
+      `iOS full Bun smoke preseed was not readable from native defaults: ${JSON.stringify(diagnostics)}`,
+    );
+  }
+  console.log(
+    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}; native defaults readback succeeded.`,
+  );
+}
+
+function preseedIosLocalRuntime(udid, id) {
+  const activeServer = JSON.stringify({
+    id: "local:mobile",
+    kind: "remote",
+    label: "On-device agent",
+    apiBase: IOS_LOCAL_AGENT_IPC_BASE,
+  });
+
+  tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
+  writeIosDefaultsString({
+    udid,
+    bundleId: id,
+    key: "eliza:mobile-runtime-mode",
+    value: "local",
+  });
+  writeIosDefaultsString({
+    udid,
+    bundleId: id,
+    key: "eliza:first-run-complete",
+    value: "1",
+  });
+  writeIosDefaultsString({
+    udid,
+    bundleId: id,
+    key: "elizaos:active-server",
+    value: activeServer,
+  });
+  flushIosPreferencesCache(udid);
+  console.log(
+    `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
+  );
+}
+
+function printHelp() {
+  console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
+
+Options:
+  --platform ios|android|both       Simulator platform to launch (default: ios)
+  --require-installed              Fail when the selected app/simulator is unavailable
+  --live                           Exercise the app-core local-agent HTTP API on Android
+  --api-base URL                   Exercise an already-reachable app-core HTTP API
+  --start-host-agent               Start the deterministic host app-core API when --api-base is omitted
+  --host-agent-port PORT           Port for --start-host-agent (default: 31338, or a free port if busy)
+  --auth-token TOKEN               Bearer token for protected app-core API routes
+  --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
+  --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
+  --android-select-local           Tap through Android first-run Local runtime selection
+  --android-stage-smoke-model      Stage the smallest active Eliza-1 GGUF into Android app data
+  --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
+  --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
+  --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
+  --relaunch-persistence           After the turn, send a unique marker through the live stream path, force-stop +
+                                   relaunch the app, and assert server truth plus rendered transcript proof.
+                                   Android only:
+                                   the iOS on-device agent is IPC-only, so its relaunch check needs the Preferences
+                                   handshake / XCUITest path (#13689).
+  --help                           Print this help
+
+Notes:
+  --live validates the running app-core/local-agent API. It is not a remote
+  service test. The chat step requires local-inference readiness and a completed
+  streamed model reply from the local Android agent.
+  ANDROID_SERIAL selects a specific Android device or emulator when set.`);
+}
+
+function readAndroidLocalAgentToken(context) {
+  if (!context?.installed) return null;
+  return tryExec(
+    context.adb,
+    [
+      "-s",
+      context.serial,
+      "shell",
+      "run-as",
+      appId(),
+      "cat",
+      "files/auth/local-agent-token",
+    ],
+    { allowFailure: true },
+  );
 }
 
 function readIosFullBunSmokeDiagnostics(udid, domain) {
@@ -439,41 +610,126 @@ function readIosFullBunSmokeDiagnostics(udid, domain) {
   };
 }
 
-function iosAppDataContainer(udid, id) {
-  return requireExec(
-    "xcrun",
-    ["simctl", "get_app_container", udid, id, "data"],
-    `Failed to resolve iOS data container for ${id}.`,
-  );
-}
-
-function iosAppSupportContainer(udid, id) {
-  return path.join(
-    iosAppDataContainer(udid, id),
-    "Library",
-    "Application Support",
-    "Eliza",
-  );
-}
-
-function copyFileIfChanged(source, destination) {
-  const sourceStats = fs.statSync(source);
-  try {
-    const destinationStats = fs.statSync(destination);
-    if (
-      destinationStats.isFile() &&
-      destinationStats.size === sourceStats.size &&
-      Math.floor(destinationStats.mtimeMs) >= Math.floor(sourceStats.mtimeMs)
-    ) {
-      return false;
-    }
-  } catch {
-    // Copy below.
+function readLastWakeFiredAtMs(health) {
+  if (!health || typeof health !== "object") return null;
+  const raw = health.lastWakeFiredAt;
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : null;
   }
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.copyFileSync(source, destination);
-  fs.utimesSync(destination, sourceStats.atime, sourceStats.mtime);
-  return true;
+  return null;
+}
+
+function readStartupAttempt(health) {
+  const attempt = health?.startup?.attempt;
+  return typeof attempt === "number" && Number.isFinite(attempt)
+    ? attempt
+    : null;
+}
+
+function readTextFileIfPresent(filePath) {
+  if (!filePath) return "";
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function relaunchAndroidApp(context) {
+  const id = appId();
+  requireExec(
+    context.adb,
+    ["-s", context.serial, "shell", "am", "force-stop", id],
+    `Failed to force-stop ${id} on ${context.serial}.`,
+  );
+  requireExec(
+    context.adb,
+    ["-s", context.serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
+    `Failed to relaunch ${id} on ${context.serial}.`,
+  );
+  tryExec(context.adb, [
+    "-s",
+    context.serial,
+    "shell",
+    "am",
+    "start",
+    "-a",
+    "android.intent.action.VIEW",
+    "-d",
+    "elizaos://chat",
+    id,
+  ]);
+}
+
+function removeAndroidForward(context, localPort) {
+  tryExec(
+    context.adb,
+    ["-s", context.serial, "forward", "--remove", localPort],
+    { allowFailure: true },
+  );
+}
+
+function requireExec(command, args, label) {
+  const output = tryExec(command, args);
+  if (output === null) {
+    throw new Error(label ?? `${command} ${args.join(" ")} failed`);
+  }
+  return output;
+}
+
+function requireUsableFullTurnReply(done, rawStreamText) {
+  const doneObject = assertObjectLike(done, "Stream done event");
+  if (doneObject.failureKind) {
+    throw new Error(
+      `Full-turn smoke returned failureKind=${doneObject.failureKind}: ${JSON.stringify(doneObject)}`,
+    );
+  }
+  if (doneObject.noResponseReason) {
+    throw new Error(
+      `Full-turn smoke returned noResponseReason=${doneObject.noResponseReason}`,
+    );
+  }
+  const reply = String(doneObject.fullText ?? doneObject.text ?? "").trim();
+  if (!reply) {
+    throw new Error(`Full-turn smoke returned empty reply: ${rawStreamText}`);
+  }
+  if (ANDROID_FULL_TURN_FAILURE_RE.test(reply)) {
+    throw new Error(`Full-turn smoke returned unusable reply: ${reply}`);
+  }
+  const normalizedReply = reply
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  if (normalizedReply !== ANDROID_FULL_TURN_EXPECTED_REPLY) {
+    throw new Error(
+      `Full-turn smoke returned the wrong reply: ${reply} (expected ${ANDROID_FULL_TURN_EXPECTED_REPLY})`,
+    );
+  }
+  return reply;
+}
+
+function run(command, args, options = {}) {
+  const invocation = resolveSmokeCommand(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd: options.cwd ?? repoRoot,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed`);
+  }
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function stageIosFullBunSmokeModel(udid, id) {
@@ -547,180 +803,67 @@ function stageIosFullBunSmokeModel(udid, id) {
   );
 }
 
-function preseedIosLocalRuntime(udid, id) {
-  const activeServer = JSON.stringify({
-    id: "local:mobile",
-    kind: "remote",
-    label: "On-device agent",
-    apiBase: IOS_LOCAL_AGENT_IPC_BASE,
-  });
-
-  tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
-  writeIosDefaultsString({
-    udid,
-    bundleId: id,
-    key: "eliza:mobile-runtime-mode",
-    value: "local",
-  });
-  writeIosDefaultsString({
-    udid,
-    bundleId: id,
-    key: "eliza:first-run-complete",
-    value: "1",
-  });
-  writeIosDefaultsString({
-    udid,
-    bundleId: id,
-    key: "elizaos:active-server",
-    value: activeServer,
-  });
-  flushIosPreferencesCache(udid);
-  console.log(
-    `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
+function takeAndroidScreenshot(context, label) {
+  if (!context?.installed) return null;
+  const outDir = path.join(os.tmpdir(), "eliza-android-bg-smoke");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(
+    outDir,
+    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`,
   );
-}
-
-function preseedIosFullBunSmoke(udid, id) {
-  deleteIosDefaultsKey({
-    udid,
-    bundleId: id,
-    key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
-  });
-  deleteIosDefaultsKey({
-    udid,
-    bundleId: id,
-    key: IOS_FULL_BUN_PREWARM_RESULT_KEY,
-  });
-  writeIosDefaultsString({
-    udid,
-    bundleId: id,
-    key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
-    value: JSON.stringify({
-      ok: false,
-      phase: "requested",
-      updatedAt: new Date().toISOString(),
-    }),
-  });
-  writeIosDefaultsString({
-    udid,
-    bundleId: id,
-    key: IOS_FULL_BUN_SMOKE_REQUEST_KEY,
-    value: "1",
-  });
-  flushIosPreferencesCache(udid);
-  const diagnostics = readIosFullBunSmokeDiagnostics(udid, id);
-  const requestReadback =
-    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.defaultsValue ??
-    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.plistValue;
-  const resultReadback =
-    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.defaultsValue ??
-    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.plistValue;
-  if (requestReadback !== "1" || !resultReadback) {
-    throw new Error(
-      `iOS full Bun smoke preseed was not readable from native defaults: ${JSON.stringify(diagnostics)}`,
-    );
+  const remote = `/sdcard/${path.basename(outPath)}`;
+  if (
+    tryExec(context.adb, [
+      "-s",
+      context.serial,
+      "shell",
+      "screencap",
+      "-p",
+      remote,
+    ]) === null
+  ) {
+    return null;
   }
-  console.log(
-    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}; native defaults readback succeeded.`,
-  );
-}
-
-function androidDeviceSerial(adb) {
-  const devices = requireExec(
-    adb,
-    ["devices"],
-    "No Android device or emulator is available.",
-  );
-  const connected = devices
-    .split("\n")
-    .slice(1)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.endsWith("\tdevice"))
-    .map((entry) => entry.split(/\s+/)[0]);
-  const requested = process.env.ANDROID_SERIAL?.trim();
-  if (requested) {
-    if (connected.includes(requested)) return requested;
-    const state = tryExec(adb, ["-s", requested, "get-state"], {
-      allowFailure: true,
-    });
-    if (state === "device") return requested;
-    if (requireInstalled) {
-      throw new Error(
-        `ANDROID_SERIAL=${requested} is not an attached Android device/emulator.`,
-      );
-    }
-  }
-  return (
-    connected.find((serial) => serial.startsWith("emulator-")) ??
-    connected[0] ??
+  if (
+    tryExec(context.adb, ["-s", context.serial, "pull", remote, outPath]) ===
     null
-  );
-}
-
-async function launchAndroidEmulatorApp() {
-  const adb = adbPath();
-  if (!adb) {
-    const message =
-      "[local-chat-smoke] Android SDK platform-tools/adb was not found.";
-    if (requireInstalled) throw new Error(message);
-    console.warn(message);
+  ) {
     return null;
   }
-
-  const serial = androidDeviceSerial(adb);
-  if (!serial) {
-    const message = "[local-chat-smoke] No booted Android emulator found.";
-    if (requireInstalled) throw new Error(message);
-    console.warn(message);
-    return null;
-  }
-
-  const id = appId();
-  const packagePath = tryExec(adb, ["-s", serial, "shell", "pm", "path", id]);
-  if (!packagePath) {
-    const message = `[local-chat-smoke] ${id} is not installed on ${serial}.`;
-    if (requireInstalled) throw new Error(message);
-    console.warn(message);
-    return { adb, serial, installed: false };
-  }
-
-  const context = { adb, serial, installed: true };
-  if (androidSelectLocal) {
-    forceStopConflictingAndroidAgents(context);
-    preseedAndroidLocalRuntime(context);
-  }
-  if (androidStageSmokeModel) {
-    await stageAndroidSmokeModel(context);
-  }
-
-  console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
-  requireExec(
-    adb,
-    ["-s", serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
-    `Failed to launch ${id} on ${serial}.`,
-  );
-  tryExec(adb, [
-    "-s",
-    serial,
-    "shell",
-    "am",
-    "start",
-    "-a",
-    "android.intent.action.VIEW",
-    "-d",
-    "elizaos://chat",
-    id,
-  ]);
-  return context;
+  tryExec(context.adb, ["-s", context.serial, "shell", "rm", remote], {
+    allowFailure: true,
+  });
+  return outPath;
 }
 
-function xmlEscape(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+function takeIosScreenshot(udid, label) {
+  if (!udid) return null;
+  const outDir = path.join(os.tmpdir(), "eliza-ios-bg-smoke");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(
+    outDir,
+    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`,
+  );
+  const ok = tryExec("xcrun", ["simctl", "io", udid, "screenshot", outPath]);
+  if (ok === null) return null;
+  return outPath;
+}
+
+function tryExec(command, args, options = {}) {
+  try {
+    const invocation = resolveSmokeCommand(command, args);
+    return execFileSync(invocation.command, invocation.args, {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch (error) {
+    if (requireInstalled && !options.allowFailure) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 function writeAndroidCapacitorPreferences(context, entries) {
@@ -752,159 +895,6 @@ function writeAndroidCapacitorPreferences(context, entries) {
   );
 }
 
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`;
-}
-
-async function sha256File(filePath) {
-  const hash = createHash("sha256");
-  await pipeline(fs.createReadStream(filePath), hash);
-  return hash.digest("hex");
-}
-
-async function verifySmokeModelFile(filePath) {
-  if (!fs.existsSync(filePath)) return false;
-  const stat = fs.statSync(filePath);
-  if (Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES)) {
-    if (stat.size !== ANDROID_SMOKE_MODEL_SIZE_BYTES) return false;
-  }
-  if (ANDROID_SMOKE_MODEL_SHA256) {
-    const actual = await sha256File(filePath);
-    if (actual !== ANDROID_SMOKE_MODEL_SHA256) return false;
-  }
-  return true;
-}
-
-function describeAndroidSmokeModelSize(sizeBytes) {
-  if (!Number.isFinite(sizeBytes)) return "unknown size";
-  return `${sizeBytes} bytes`;
-}
-
-async function ensureAndroidSmokeModelLocalFile() {
-  const explicit = process.env.ANDROID_SMOKE_MODEL_PATH?.trim();
-  if (explicit) {
-    if (!(await verifySmokeModelFile(explicit))) {
-      throw new Error(
-        `ANDROID_SMOKE_MODEL_PATH did not match expected size/hash: ${explicit}`,
-      );
-    }
-    return explicit;
-  }
-
-  const cacheDir =
-    process.env.ANDROID_SMOKE_MODEL_CACHE_DIR?.trim() ||
-    path.join(os.homedir(), ".cache", "eliza", "android-smoke-models");
-  fs.mkdirSync(cacheDir, { recursive: true });
-  const finalPath = path.join(cacheDir, ANDROID_SMOKE_MODEL_FILE);
-  if (await verifySmokeModelFile(finalPath)) return finalPath;
-
-  const stagingPath = `${finalPath}.part`;
-  try {
-    fs.unlinkSync(stagingPath);
-  } catch {
-    // stale partial is fine
-  }
-  console.log(
-    `[local-chat-smoke] Downloading Android smoke model ${ANDROID_SMOKE_MODEL_ID} from ${ANDROID_SMOKE_MODEL_URL}.`,
-  );
-  const response = await fetch(ANDROID_SMOKE_MODEL_URL, { redirect: "follow" });
-  if (!response.ok || !response.body) {
-    throw new Error(
-      `Failed to download ${ANDROID_SMOKE_MODEL_ID}: HTTP ${response.status} ${response.statusText}`,
-    );
-  }
-  await pipeline(
-    Readable.fromWeb(response.body),
-    fs.createWriteStream(stagingPath),
-  );
-  if (!(await verifySmokeModelFile(stagingPath))) {
-    try {
-      fs.unlinkSync(stagingPath);
-    } catch {
-      // best effort
-    }
-    throw new Error(
-      `Downloaded Android smoke model failed size/hash verification: ${stagingPath}`,
-    );
-  }
-  fs.renameSync(stagingPath, finalPath);
-  return finalPath;
-}
-
-function androidRunAs(context, script, label, options = {}) {
-  const output = tryExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      `run-as ${shellQuote(appId())} sh -c ${shellQuote(script)}`,
-    ],
-    options.allowFailure ? { allowFailure: true } : undefined,
-  );
-  if (output === null && !options.allowFailure) {
-    throw new Error(label);
-  }
-  return output;
-}
-
-async function stageAndroidSmokeModel(context) {
-  const localInferenceDir = "files/.eliza/local-inference";
-  const targetDir = `${localInferenceDir}/models`;
-  const targetFile = `${targetDir}/${ANDROID_SMOKE_MODEL_FILE}`;
-  const existingBytes = androidRunAs(
-    context,
-    `test -f ${shellQuote(targetFile)} && wc -c < ${shellQuote(targetFile)}`,
-    "Failed to inspect Android smoke model.",
-    { allowFailure: true },
-  );
-  const expectedSize = Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES)
-    ? String(ANDROID_SMOKE_MODEL_SIZE_BYTES)
-    : null;
-  if (
-    expectedSize
-      ? existingBytes?.trim() === expectedSize
-      : Boolean(existingBytes?.trim())
-  ) {
-    writeAndroidSmokeModelManifest(context, targetDir);
-    writeAndroidLocalInferenceRegistry(context, localInferenceDir);
-    console.log(
-      `[local-chat-smoke] Reused staged Android smoke model ${ANDROID_SMOKE_MODEL_ID} (${existingBytes.trim()} bytes): ${targetFile}`,
-    );
-    return;
-  }
-
-  const source = await ensureAndroidSmokeModelLocalFile();
-  const sourceSize = fs.statSync(source).size;
-  const tmpTarget = `/data/local/tmp/${ANDROID_SMOKE_MODEL_FILE}`;
-  requireExec(
-    context.adb,
-    ["-s", context.serial, "push", source, tmpTarget],
-    "Failed to push Android smoke model.",
-  );
-  tryExec(
-    context.adb,
-    ["-s", context.serial, "shell", "chmod", "0644", tmpTarget],
-    {
-      allowFailure: true,
-    },
-  );
-  const copyScript = [
-    `mkdir -p ${shellQuote(targetDir)}`,
-    `cp ${shellQuote(tmpTarget)} ${shellQuote(targetFile)}`,
-    `chmod 600 ${shellQuote(targetFile)}`,
-  ].join(" && ");
-  androidRunAs(context, copyScript, "Failed to stage Android smoke model.");
-  writeAndroidSmokeModelManifest(context, targetDir);
-  writeAndroidLocalInferenceRegistry(context, localInferenceDir);
-  tryExec(context.adb, ["-s", context.serial, "shell", "rm", "-f", tmpTarget], {
-    allowFailure: true,
-  });
-  console.log(
-    `[local-chat-smoke] Staged Android smoke model ${ANDROID_SMOKE_MODEL_ID} (${describeAndroidSmokeModelSize(sourceSize)}): ${targetFile}`,
-  );
-}
-
 function writeAndroidJsonFile(context, targetDir, fileName, value, label) {
   const encoded = Buffer.from(
     `${JSON.stringify(value, null, 2)}\n`,
@@ -919,38 +909,6 @@ function writeAndroidJsonFile(context, targetDir, fileName, value, label) {
   androidRunAs(context, script, label);
 }
 
-function writeAndroidSmokeModelManifest(context, targetDir) {
-  writeAndroidJsonFile(
-    context,
-    targetDir,
-    "manifest.json",
-    {
-      models: [
-        {
-          id: ANDROID_SMOKE_MODEL_ID,
-          role: "chat",
-          filename: ANDROID_SMOKE_MODEL_FILE,
-          ggufFile: ANDROID_SMOKE_MODEL_FILE,
-          sha256: ANDROID_SMOKE_MODEL_SHA256,
-          sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
-          contextSize: ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
-          useGpu: false,
-          maxThreads: 2,
-        },
-      ],
-    },
-    "Failed to write Android smoke model manifest.",
-  );
-}
-
-/**
- * Stage the eliza-local-inference provider's registry.json + assignments.json
- * into files/.eliza/local-inference/, mirroring the iOS staging block. The
- * registry uses the ABSOLUTE on-device model path so the provider reports the
- * model installed; assignments map the chat/completion slots to the model id so
- * the provider's slots resolve. Today the staging only writes manifest.json,
- * which the eliza-local-inference provider does not read for installed/slots.
- */
 function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
   // `localInferenceDir` already starts with `files/` (it is run-as-home
   // relative), so the on-device absolute path is the app home + that dir — do
@@ -1000,266 +958,28 @@ function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
   );
 }
 
-function forceStopConflictingAndroidAgents(context) {
-  const id = appId();
-  for (const packageName of [id, ...ANDROID_CONFLICTING_AGENT_PACKAGES]) {
-    if (!packageName || packageName === id) {
-      tryExec(context.adb, [
-        "-s",
-        context.serial,
-        "shell",
-        "am",
-        "force-stop",
-        id,
-      ]);
-      continue;
-    }
-    tryExec(context.adb, [
-      "-s",
-      context.serial,
-      "shell",
-      "am",
-      "force-stop",
-      packageName,
-    ]);
-  }
-}
-
-function preseedAndroidLocalRuntime(context) {
-  const activeServer = JSON.stringify({
-    id: "local:android",
-    kind: "remote",
-    label: "On-device agent",
-    apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
-  });
-  writeAndroidCapacitorPreferences(context, {
-    "eliza:mobile-runtime-mode": "local",
-    "eliza:first-run-complete": "1",
-    "elizaos:active-server": activeServer,
-  });
-  console.log(
-    `[local-chat-smoke] Pre-seeded Android Local runtime preferences for ${appId()}.`,
+function writeAndroidSmokeModelManifest(context, targetDir) {
+  writeAndroidJsonFile(
+    context,
+    targetDir,
+    "manifest.json",
+    {
+      models: [
+        {
+          id: ANDROID_SMOKE_MODEL_ID,
+          role: "chat",
+          filename: ANDROID_SMOKE_MODEL_FILE,
+          ggufFile: ANDROID_SMOKE_MODEL_FILE,
+          sha256: ANDROID_SMOKE_MODEL_SHA256,
+          sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
+          contextSize: ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
+          useGpu: false,
+          maxThreads: 2,
+        },
+      ],
+    },
+    "Failed to write Android smoke model manifest.",
   );
-}
-
-function readAndroidLocalAgentToken(context) {
-  if (!context?.installed) return null;
-  return tryExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      "run-as",
-      appId(),
-      "cat",
-      "files/auth/local-agent-token",
-    ],
-    { allowFailure: true },
-  );
-}
-
-function removeAndroidForward(context, localPort) {
-  tryExec(
-    context.adb,
-    ["-s", context.serial, "forward", "--remove", localPort],
-    { allowFailure: true },
-  );
-}
-
-function cleanupAndroidAgentForwards(context, reason) {
-  if (!context?.installed) return;
-  const forwardedPorts = context.localAgentForward
-    ? [context.localAgentForward]
-    : [];
-  for (const localPort of forwardedPorts) {
-    removeAndroidForward(context, localPort);
-  }
-  context.localAgentForward = null;
-  if (forwardedPorts.length > 0) {
-    console.log(
-      `[local-chat-smoke] Removed Android harness adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
-    );
-  }
-}
-
-async function selectAndroidLocalRuntime(context) {
-  if (!context?.installed) return;
-  if (readAndroidLocalAgentToken(context)) return;
-  console.log("[local-chat-smoke] Waiting for Android Local runtime service.");
-  for (let attempt = 1; attempt <= 24; attempt += 1) {
-    await sleep(2500);
-    if (readAndroidLocalAgentToken(context)) return;
-  }
-}
-
-async function waitForAndroidApi(context) {
-  if (!context?.installed) return null;
-
-  let token = authTokenArg;
-  let forwardedApiBase = null;
-  let tokenRejectedAttempts = 0;
-  for (let attempt = 1; attempt <= ANDROID_HEALTH_ATTEMPTS; attempt += 1) {
-    if (!token) {
-      token = readAndroidLocalAgentToken(context);
-    }
-    if (token) {
-      if (!forwardedApiBase) {
-        const forwardedPort = requireExec(
-          context.adb,
-          ["-s", context.serial, "forward", "tcp:0", "tcp:31337"],
-          "Failed to forward Android local-agent port.",
-        );
-        context.localAgentForward = `tcp:${forwardedPort.trim()}`;
-        forwardedApiBase = `http://127.0.0.1:${forwardedPort.trim()}`;
-        console.log(
-          `[local-chat-smoke] Android smoke harness forwarded local-agent diagnostics to ${forwardedApiBase}; the app remains preseeded with ${ANDROID_LOCAL_AGENT_IPC_BASE}.`,
-        );
-      }
-      try {
-        const health = await requestJson(
-          "GET",
-          "/api/health",
-          undefined,
-          forwardedApiBase,
-          token,
-        );
-        const status = await requestJson(
-          "GET",
-          "/api/status",
-          undefined,
-          forwardedApiBase,
-          token,
-        );
-        console.log("[local-chat-smoke] Android health:", health);
-        console.log("[local-chat-smoke] Android status:", status);
-        return { apiBase: forwardedApiBase, token };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.includes("/api/status failed: 401") ||
-          message.includes("Unauthorized")
-        ) {
-          tokenRejectedAttempts += 1;
-          const refreshedToken =
-            authTokenArg ?? readAndroidLocalAgentToken(context);
-          if (refreshedToken && refreshedToken !== token) {
-            token = refreshedToken;
-            tokenRejectedAttempts = 0;
-            if (attempt % 10 === 0) {
-              console.warn(
-                "[local-chat-smoke] Android local-agent token changed during startup; retrying with the refreshed token.",
-              );
-            }
-          }
-          if (tokenRejectedAttempts >= 3) {
-            throw new Error(
-              "Android local-agent token was rejected by the protected /api/status route. " +
-                "This usually means another installed Eliza app already owns device port 31337; " +
-                "force-stop the conflicting package or uninstall it before running the smoke.",
-            );
-          }
-        }
-        if (attempt % 10 === 0) {
-          console.warn(
-            `[local-chat-smoke] Android agent not healthy/authenticated yet (${attempt}/${ANDROID_HEALTH_ATTEMPTS}): ${message}`,
-          );
-        }
-      }
-    } else if (attempt % 10 === 0) {
-      console.warn(
-        `[local-chat-smoke] Android local-agent token not available yet (${attempt}/${ANDROID_HEALTH_ATTEMPTS}).`,
-      );
-    }
-    await sleep(2000);
-  }
-  throw new Error("Android local-agent API did not become healthy in time.");
-}
-
-function readLastWakeFiredAtMs(health) {
-  if (!health || typeof health !== "object") return null;
-  const raw = health.lastWakeFiredAt;
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string") {
-    const ms = Date.parse(raw);
-    return Number.isFinite(ms) ? ms : null;
-  }
-  return null;
-}
-
-async function pollForWakeAdvance(
-  baseUrl,
-  authToken,
-  baselineMs,
-  attempts,
-  delayMs,
-) {
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const health = await requestJson(
-      "GET",
-      "/api/health",
-      undefined,
-      baseUrl,
-      authToken,
-    );
-    const observedMs = readLastWakeFiredAtMs(health);
-    if (
-      observedMs !== null &&
-      (baselineMs === null || observedMs > baselineMs)
-    ) {
-      return { health, observedMs };
-    }
-    await sleep(delayMs);
-  }
-  return null;
-}
-
-function findAndroidJobIdForPackage(context, id) {
-  const dump = tryExec(context.adb, [
-    "-s",
-    context.serial,
-    "shell",
-    "dumpsys",
-    "jobscheduler",
-  ]);
-  if (!dump) return null;
-  const escapedId = id.replace(/[.+]/g, (c) => `\\${c}`);
-  const re = new RegExp(`#u\\d+/(\\d+).*?${escapedId}`, "g");
-  const ids = new Set();
-  for (const match of dump.matchAll(re)) {
-    ids.add(Number.parseInt(match[1], 10));
-  }
-  // Fall back: look for `JOB #u0/<n>` followed by the package name on a
-  // subsequent line.
-  if (ids.size === 0) {
-    const lines = dump.split("\n");
-    for (let i = 0; i < lines.length; i += 1) {
-      const m = lines[i].match(/JOB\s+#u\d+\/(\d+)/);
-      if (!m) continue;
-      const block = lines.slice(i, i + 8).join("\n");
-      if (block.includes(id)) {
-        ids.add(Number.parseInt(m[1], 10));
-      }
-    }
-  }
-  if (ids.size === 0) return null;
-  // Prefer the smallest known job id (workmanager periodic worker is typically
-  // registered with a stable id; if multiple match we return all separately).
-  return Array.from(ids).sort((a, b) => a - b);
-}
-
-function takeIosScreenshot(udid, label) {
-  if (!udid) return null;
-  const outDir = path.join(os.tmpdir(), "eliza-ios-bg-smoke");
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(
-    outDir,
-    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`,
-  );
-  const ok = tryExec("xcrun", ["simctl", "io", udid, "screenshot", outPath]);
-  if (ok === null) return null;
-  return outPath;
 }
 
 function writeIosFullBunSmokeResultEvidence(
@@ -1274,1428 +994,12 @@ function writeIosFullBunSmokeResultEvidence(
   return outPath;
 }
 
-async function verifyIosFullBunSmoke(context) {
-  if (!context?.installed) {
-    const message =
-      "[local-chat-smoke] --ios-full-bun-smoke requested but the iOS app is not installed.";
-    if (requireInstalled) throw new Error(message);
-    console.warn(message);
-    return null;
-  }
-
-  const id = appId();
-  let lastRaw = "";
-  const requestedAtMs = Number.isFinite(context.fullBunSmokeRequestedAtMs)
-    ? context.fullBunSmokeRequestedAtMs
-    : Date.now();
-  for (let attempt = 1; attempt <= IOS_FULL_BUN_SMOKE_ATTEMPTS; attempt += 1) {
-    lastRaw =
-      readIosPreferenceString({
-        udid: context.udid,
-        bundleId: id,
-        key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
-      }) ?? "";
-    const result = parseIosFullBunSmokeResult(lastRaw);
-    const resultTimeMs = iosFullBunSmokeResultTimeMs(result);
-    const isFresh =
-      resultTimeMs !== null && resultTimeMs >= requestedAtMs - 1_000;
-    if (result && !isFresh) {
-      await sleep(IOS_FULL_BUN_SMOKE_DELAY_MS);
-      continue;
-    }
-    if (result?.ok === true) {
-      assertIosFullBunSmokeSuccess(result);
-      const evidencePath = writeIosFullBunSmokeResultEvidence(result);
-      console.log(
-        "[local-chat-smoke] iOS full Bun smoke:",
-        JSON.stringify(result),
-      );
-      if (evidencePath) {
-        console.log(
-          `[local-chat-smoke] iOS full Bun result evidence: ${evidencePath}`,
-        );
-      }
-      return result;
-    }
-    if (result?.phase === "failed" || (result?.ok === false && result?.error)) {
-      const screenshot = takeIosScreenshot(context.udid, "ios-full-bun-failed");
-      throw new Error(
-        `iOS full Bun smoke failed: ${JSON.stringify(result)}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
-      );
-    }
-    if (attempt % 10 === 0) {
-      const phase =
-        typeof result?.phase === "string" ? ` (${result.phase})` : "";
-      console.warn(
-        `[local-chat-smoke] iOS full Bun smoke still running${phase} (${attempt}/${IOS_FULL_BUN_SMOKE_ATTEMPTS}).`,
-      );
-    }
-    await sleep(IOS_FULL_BUN_SMOKE_DELAY_MS);
-  }
-
-  const screenshot = takeIosScreenshot(context.udid, "ios-full-bun-timeout");
-  const diagnostics = readIosFullBunSmokeDiagnostics(context.udid, id);
-  throw new Error(
-    `iOS full Bun smoke did not complete in time. Last result: ${lastRaw || "<none>"} Diagnostics: ${JSON.stringify(diagnostics)}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
-  );
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
-function takeAndroidScreenshot(context, label) {
-  if (!context?.installed) return null;
-  const outDir = path.join(os.tmpdir(), "eliza-android-bg-smoke");
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(
-    outDir,
-    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`,
-  );
-  const remote = `/sdcard/${path.basename(outPath)}`;
-  if (
-    tryExec(context.adb, [
-      "-s",
-      context.serial,
-      "shell",
-      "screencap",
-      "-p",
-      remote,
-    ]) === null
-  ) {
-    return null;
-  }
-  if (
-    tryExec(context.adb, ["-s", context.serial, "pull", remote, outPath]) ===
-    null
-  ) {
-    return null;
-  }
-  tryExec(context.adb, ["-s", context.serial, "shell", "rm", remote], {
-    allowFailure: true,
-  });
-  return outPath;
-}
-
-function dumpAndroidUiHierarchy(context, label) {
-  if (!context?.installed) return null;
-  const outDir = path.join(os.tmpdir(), "eliza-android-ui-dumps");
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(
-    outDir,
-    `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.xml`,
-  );
-  const remote = `/sdcard/${path.basename(outPath)}`;
-  if (
-    tryExec(context.adb, [
-      "-s",
-      context.serial,
-      "shell",
-      "uiautomator",
-      "dump",
-      remote,
-    ]) === null
-  ) {
-    return null;
-  }
-  if (
-    tryExec(context.adb, ["-s", context.serial, "pull", remote, outPath]) ===
-    null
-  ) {
-    return null;
-  }
-  tryExec(context.adb, ["-s", context.serial, "shell", "rm", remote]);
-  return outPath;
-}
-
-function readTextFileIfPresent(filePath) {
-  if (!filePath) return "";
-  try {
-    return fs.readFileSync(filePath, "utf8");
-  } catch {
-    return "";
-  }
-}
-
-function assertAndroidRenderedTranscript({ context, marker, expectedReply }) {
-  const dumpPath = dumpAndroidUiHierarchy(context, "relaunch-persistence-post");
-  const uiXml = readTextFileIfPresent(dumpPath);
-  const visibleMarker = uiXml.includes(marker);
-  const visibleReply =
-    typeof expectedReply === "string" &&
-    expectedReply.length > 0 &&
-    uiXml.toLowerCase().includes(expectedReply.toLowerCase());
-  if (!visibleMarker && !visibleReply) {
-    const screenshot = takeAndroidScreenshot(
-      context,
-      "relaunch-persistence-render-missing",
-    );
-    throw new Error(
-      `Relaunch-persistence server thread survived, but the Android UI hierarchy did not expose the marker or expected reply after relaunch. ` +
-        `marker=${marker} expectedReply=${expectedReply} uiDump=${dumpPath ?? "<unavailable>"} screenshot=${screenshot ?? "<unavailable>"}`,
-    );
-  }
-  return {
-    uiHierarchyDump: dumpPath,
-    visibleMarker,
-    visibleReply,
-  };
-}
-
-function androidBackgroundServicesReady(services, id) {
-  const foregroundCount = services.match(/isForeground=true/g)?.length ?? 0;
-  return (
-    services.includes(`${id}/.ElizaAgentService`) &&
-    services.includes(`${id}/.GatewayConnectionService`) &&
-    foregroundCount >= 2
-  );
-}
-
-async function waitForAndroidBackgroundServices(context, id) {
-  let lastServices = "";
-  for (let attempt = 1; attempt <= 15; attempt += 1) {
-    lastServices = requireExec(
-      context.adb,
-      ["-s", context.serial, "shell", "dumpsys", "activity", "services", id],
-      "Failed to inspect Android foreground services.",
-    );
-    if (androidBackgroundServicesReady(lastServices, id)) {
-      return lastServices;
-    }
-    await sleep(1000);
-  }
-  throw new Error(
-    "Android local background services did not both become foreground services. " +
-      `Last services dump:\n${lastServices.slice(0, 4000)}`,
-  );
-}
-
-async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
-  if (!context?.installed) {
-    return { ok: false, reason: "no-emulator" };
-  }
-  const id = appId();
-  console.log("[local-chat-smoke] Sending Android app to background.");
-  const beforeShot = takeAndroidScreenshot(context, "android-pre-bg");
-  if (beforeShot) {
-    console.log(`[local-chat-smoke] Android pre-bg screenshot: ${beforeShot}`);
-  }
-  requireExec(
-    context.adb,
-    ["-s", context.serial, "shell", "input", "keyevent", "HOME"],
-    "Failed to send Android emulator to home screen.",
-  );
-  await waitForAndroidBackgroundServices(context, id);
-  const baselineHealth = await requestJson(
-    "GET",
-    "/api/health",
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  if (
-    baselineHealth?.ready !== true ||
-    baselineHealth?.agentState !== "running"
-  ) {
-    throw new Error(
-      `Android background health check failed: ${JSON.stringify(baselineHealth)}`,
-    );
-  }
-  const baselineWakeMs = readLastWakeFiredAtMs(baselineHealth);
-  console.log("[local-chat-smoke] Android background health:", baselineHealth);
-
-  // Force-fire the WorkManager periodic worker via JobScheduler. Discover the
-  // job id first; if none is registered, fall back to the legacy
-  // /api/background/run-due-tasks loopback POST to keep the test useful on
-  // older builds.
-  const jobIds = findAndroidJobIdForPackage(context, id);
-  let advanced = null;
-  let forceFireMethod = "";
-  if (jobIds && jobIds.length > 0) {
-    forceFireMethod = `jobscheduler[${jobIds.join(",")}]`;
-    for (const jobId of jobIds) {
-      console.log(
-        `[local-chat-smoke] Android jobscheduler force-fire: ${id} #${jobId}`,
-      );
-      requireExec(
-        context.adb,
-        [
-          "-s",
-          context.serial,
-          "shell",
-          "cmd",
-          "jobscheduler",
-          "run",
-          "-f",
-          id,
-          String(jobId),
-        ],
-        `Failed to force-fire JobScheduler job ${jobId} for ${id}.`,
-      );
-    }
-    advanced = await pollForWakeAdvance(
-      baseUrl,
-      authToken,
-      baselineWakeMs,
-      ANDROID_WAKE_POLL_ATTEMPTS,
-      ANDROID_WAKE_POLL_DELAY_MS,
-    );
-  } else {
-    forceFireMethod = "loopback-route";
-    console.warn(
-      "[local-chat-smoke] No JobScheduler job found for the package; falling back to POST /api/background/run-due-tasks.",
-    );
-    const runDue = await requestJsonResponse(
-      "POST",
-      "/api/background/run-due-tasks",
-      {
-        source: "mobile-local-chat-smoke",
-        platform: "android",
-        firedAt: new Date().toISOString(),
-      },
-      baseUrl,
-      authToken,
-    );
-    if (runDue.response.status === 404) {
-      throw new Error(
-        "Android background run-due-tasks route is not present in the installed app-core build. " +
-          "Rebuild and reinstall the Android app before running --android-background.",
-      );
-    }
-    if (!runDue.response.ok) {
-      throw new Error(
-        `POST /api/background/run-due-tasks failed while Android app was backgrounded: ${runDue.response.status} ${runDue.text}`,
-      );
-    }
-    if (runDue.data?.ok !== true) {
-      throw new Error(
-        `Android background run-due-tasks returned an unexpected body: ${JSON.stringify(runDue.data)}`,
-      );
-    }
-    console.log(
-      "[local-chat-smoke] Android background run-due-tasks:",
-      runDue.data,
-    );
-    advanced = await pollForWakeAdvance(
-      baseUrl,
-      authToken,
-      baselineWakeMs,
-      ANDROID_WAKE_POLL_ATTEMPTS,
-      ANDROID_WAKE_POLL_DELAY_MS,
-    );
-  }
-
-  const afterShot = takeAndroidScreenshot(context, "android-post-bg");
-  if (afterShot) {
-    console.log(`[local-chat-smoke] Android post-bg screenshot: ${afterShot}`);
-  }
-
-  if (!advanced) {
-    // /api/health omits `lastWakeFiredAt` until Wave 3D lands; emit a warning
-    // but don't fail the run when the field is simply absent
-    // (baselineWakeMs === null AND every poll observed null too). Treat that
-    // as a missing wake field so this script is usable before Wave 3D merges.
-    const fieldImplemented = baselineWakeMs !== null;
-    if (fieldImplemented) {
-      throw new Error(
-        `Android wake did not advance after force-fire via ${forceFireMethod}. ` +
-          `baseline=${baselineWakeMs} (no observation > baseline)`,
-      );
-    }
-    console.warn(
-      "[local-chat-smoke] /api/health.lastWakeFiredAt not present yet (Wave 3D pending); " +
-        "skipping wake-advance assertion.",
-    );
-    return {
-      ok: true,
-      reason: "wake-field-absent",
-      forceFireMethod,
-      beforeAt: baselineWakeMs,
-      afterAt: null,
-      durationMs: null,
-    };
-  }
-
-  console.log(
-    `[local-chat-smoke] Android wake fired: ${baselineWakeMs} → ${advanced.observedMs} (${
-      advanced.observedMs - (baselineWakeMs ?? 0)
-    }ms)`,
-  );
-  return {
-    ok: true,
-    forceFireMethod,
-    beforeAt: baselineWakeMs,
-    afterAt: advanced.observedMs,
-    durationMs:
-      baselineWakeMs !== null ? advanced.observedMs - baselineWakeMs : null,
-  };
-}
-
-/**
- * iOS BGTaskScheduler harness for an already-booted simulator.
- *
- * Drives Apple's private LLDB-only `_simulateLaunchForTaskWithIdentifier:`
- * against the running app process, then polls an explicitly supplied agent
- * route surface until `lastWakeFiredAt` advances past the pre-fire baseline.
- * iOS full-Bun/local mode must use the in-app IPC bridge; this harness no
- * longer fabricates a loopback default.
- *
- * Notes:
- *   - The wake field is required for this check. Missing or unreachable route
- *     data fails the run instead of silently passing.
- *   - The LLDB invocation is the documented Apple test path for BG task
- *     simulation. See "Simulating Background Fetch and Refresh Behavior"
- *     in Apple's docs and `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
- */
-async function verifyIosBackgroundApi(udid, opts = {}) {
-  if (!udid) {
-    return { ok: false, reason: "no-simulator" };
-  }
-  const taskIdentifier = opts.taskIdentifier ?? "ai.eliza.tasks.refresh";
-  const baseUrl = opts.baseUrl;
-  if (!baseUrl) {
-    throw new Error(
-      "iOS background verification requires an explicit agent route surface. " +
-        "The loopback default is disabled for iOS local/full-Bun builds; use the WebView IPC smoke instead.",
-    );
-  }
-  const authToken = opts.authToken;
-
-  const id = appId();
-  console.log(
-    `[local-chat-smoke] iOS BG harness: udid=${udid} task=${taskIdentifier}`,
-  );
-
-  const beforeShot = takeIosScreenshot(udid, "ios-pre-bg");
-  if (beforeShot) {
-    console.log(`[local-chat-smoke] iOS pre-bg screenshot: ${beforeShot}`);
-  }
-
-  // Drive the simulator to the home screen first so the app is in the
-  // background-eligible state expected by BGTaskScheduler.
-  tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
-  await sleep(1000);
-
-  // Capture the pre-fire wake baseline from the caller-supplied route surface.
-  let baselineWakeMs = null;
-  let fieldImplemented = false;
-  try {
-    const health = await requestJson(
-      "GET",
-      "/api/health",
-      undefined,
-      baseUrl,
-      authToken,
-    );
-    baselineWakeMs = readLastWakeFiredAtMs(health);
-    fieldImplemented = baselineWakeMs !== null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `[local-chat-smoke] iOS /api/health is not reachable: ${message}`,
-    );
-  }
-
-  // Resolve the simulator's running app PID via launchctl.
-  const pidLine = tryExec("xcrun", [
-    "simctl",
-    "spawn",
-    udid,
-    "launchctl",
-    "print",
-    `system/${id}`,
-  ]);
-  const pidMatch = pidLine?.match(/pid\s*=\s*(\d+)/i);
-  const pid = pidMatch ? Number.parseInt(pidMatch[1], 10) : null;
-  if (!pid) {
-    console.warn(
-      `[local-chat-smoke] Could not resolve iOS app pid for ${id}; the app may not be running. ` +
-        "Run `xcrun simctl launch <udid> <app-id>` and retry.",
-    );
-    return { ok: false, reason: "no-pid" };
-  }
-
-  // Drive BGTaskScheduler simulation via LLDB. We use `xcrun lldb -p <pid>`
-  // and the `expr` command, then detach. Output is captured; non-zero exit
-  // is tolerated because LLDB attach can be slow on first run.
-  const lldbScript = [
-    `process attach -p ${pid}`,
-    `expr (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"${taskIdentifier}"]`,
-    "detach",
-    "quit",
-  ].join("\n");
-  const tmpScript = path.join(
-    os.tmpdir(),
-    `eliza-ios-bg-lldb-${Date.now()}.txt`,
-  );
-  fs.writeFileSync(tmpScript, lldbScript);
-  try {
-    const lldbOutput = tryExec(
-      "xcrun",
-      ["simctl", "spawn", udid, "lldb", "-s", tmpScript, "--batch"],
-      { allowFailure: true },
-    );
-    if (lldbOutput) {
-      const trimmed =
-        lldbOutput.length > 500 ? `${lldbOutput.slice(0, 500)}...` : lldbOutput;
-      console.log(`[local-chat-smoke] iOS LLDB output: ${trimmed}`);
-    }
-  } finally {
-    try {
-      fs.rmSync(tmpScript, { force: true });
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-
-  // Poll for advance.
-  let advanced = null;
-  if (fieldImplemented || baselineWakeMs === null) {
-    try {
-      advanced = await pollForWakeAdvance(
-        baseUrl,
-        authToken,
-        baselineWakeMs,
-        IOS_WAKE_POLL_ATTEMPTS,
-        IOS_WAKE_POLL_DELAY_MS,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[local-chat-smoke] iOS wake poll failed: ${message}`);
-    }
-  }
-
-  const afterShot = takeIosScreenshot(udid, "ios-post-bg");
-  if (afterShot) {
-    console.log(`[local-chat-smoke] iOS post-bg screenshot: ${afterShot}`);
-  }
-
-  if (!advanced) {
-    if (!fieldImplemented) {
-      throw new Error(
-        "iOS /api/health.lastWakeFiredAt is missing; background wake verification cannot pass without it.",
-      );
-    }
-    throw new Error(
-      `iOS wake did not advance after BGTaskScheduler simulate for ${taskIdentifier}. ` +
-        `baseline=${baselineWakeMs}`,
-    );
-  }
-
-  console.log(
-    `[local-chat-smoke] iOS wake fired: ${baselineWakeMs} → ${advanced.observedMs} (${
-      advanced.observedMs - (baselineWakeMs ?? 0)
-    }ms)`,
-  );
-  return {
-    ok: true,
-    taskIdentifier,
-    beforeAt: baselineWakeMs,
-    afterAt: advanced.observedMs,
-    durationMs:
-      baselineWakeMs !== null ? advanced.observedMs - baselineWakeMs : null,
-  };
-}
-
-async function requestJsonResponse(
-  method,
-  pathname,
-  body,
-  baseUrl = apiBase,
-  authToken = authTokenArg,
-  options = {},
-) {
-  const base = baseUrl.replace(/\/$/, "");
-  const headers = {};
-  if (body) headers["Content-Type"] = "application/json";
-  if (authToken) headers.Authorization = `Bearer ${authToken.trim()}`;
-  const timeoutMs = options.timeoutMs;
-  const controller =
-    typeof timeoutMs === "number" && timeoutMs > 0
-      ? new AbortController()
-      : null;
-  const timeout =
-    controller !== null
-      ? setTimeout(() => controller.abort(), timeoutMs)
-      : null;
-  try {
-    const response = await fetch(`${base}${pathname}`, {
-      method,
-      headers: Object.keys(headers).length > 0 ? headers : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-      ...(controller ? { signal: controller.signal } : {}),
-    });
-    const text = await response.text();
-    let data = {};
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
-      }
-    }
-    return { response, data, text };
-  } catch (error) {
-    if (controller?.signal.aborted) {
-      throw new Error(`${method} ${pathname} timed out after ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    if (timeout !== null) clearTimeout(timeout);
-  }
-}
-
-async function requestJson(
-  method,
-  pathname,
-  body,
-  baseUrl = apiBase,
-  authToken = authTokenArg,
-) {
-  const { response, data, text } = await requestJsonResponse(
-    method,
-    pathname,
-    body,
-    baseUrl,
-    authToken,
-  );
-  if (!response.ok) {
-    throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
-  }
-  return data;
-}
-
-async function requestTextResponse(
-  method,
-  pathname,
-  body,
-  baseUrl = apiBase,
-  authToken = authTokenArg,
-  timeoutMs = ANDROID_FULL_TURN_TIMEOUT_MS,
-) {
-  const { response, text } = await requestJsonResponse(
-    method,
-    pathname,
-    body,
-    baseUrl,
-    authToken,
-    { timeoutMs },
-  );
-  if (!response.ok) {
-    throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
-  }
-  return text;
-}
-
-async function requestOptionalJson(method, pathname, baseUrl, authToken) {
-  const { response, data, text } = await requestJsonResponse(
-    method,
-    pathname,
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
-  }
-  return data;
-}
-
-const TRANSIENT_ERROR_RE =
-  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|socket hang up|network|empty body|timed out|aborted|terminated|premature close|other side closed|status 5\d\d/i;
-
-function isTransientFailure(error) {
-  const message =
-    error instanceof Error ? `${error.message} ${error.cause ?? ""}` : "";
-  return TRANSIENT_ERROR_RE.test(message);
-}
-
-/**
- * Run a request closure with bounded retry for transient blips only
- * (fetch failed / ECONNRESET / 5xx / timeout / accepted-but-empty body).
- * Non-transient failures (e.g. a 4xx assertion mismatch) rethrow immediately.
- */
-async function withTransientRetry(label, fn, options = {}) {
-  const attempts = options.attempts ?? ANDROID_TRANSIENT_RETRY_ATTEMPTS;
-  const delayMs = options.delayMs ?? ANDROID_TRANSIENT_RETRY_DELAY_MS;
-  let lastError = null;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt >= attempts || !isTransientFailure(error)) {
-        throw error;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[local-chat-smoke] ${label} hit a transient failure (attempt ${attempt}/${attempts}); retrying in ${delayMs}ms: ${message}`,
-      );
-      await sleep(delayMs);
-    }
-  }
-  throw lastError ?? new Error(`${label} failed after ${attempts} attempts.`);
-}
-
-/**
- * GET /api/health with a bounded HTTP timeout and transient retry. Treats an
- * accepted-but-empty body as a transient failure (the boot/restart window
- * accepts the socket then closes it empty).
- */
-async function probeHealth(baseUrl, authToken) {
-  return withTransientRetry("health probe", async () => {
-    const { response, data, text } = await requestJsonResponse(
-      "GET",
-      "/api/health",
-      undefined,
-      baseUrl,
-      authToken,
-      { timeoutMs: ANDROID_HEALTH_PROBE_TIMEOUT_MS },
-    );
-    if (!response.ok) {
-      throw new Error(`GET /api/health failed: ${response.status} ${text}`);
-    }
-    if (!text || !data || typeof data !== "object") {
-      throw new Error("GET /api/health returned an empty body.");
-    }
-    return data;
-  });
-}
-
-function readStartupAttempt(health) {
-  const attempt = health?.startup?.attempt;
-  return typeof attempt === "number" && Number.isFinite(attempt)
-    ? attempt
-    : null;
-}
-
-/**
- * Process-stability gate. Requires ANDROID_STABILITY_SAMPLES consecutive
- * /api/health reads with: agentState==running, ready==true, monotonically
- * increasing uptime, and a non-climbing startup.attempt. Keyed on PROCESS
- * health only — NOT on device-bridge connected:true, which is legitimately
- * false now that inference is served in-process.
- */
-async function waitForAndroidProcessStability(baseUrl, authToken) {
-  let consecutive = 0;
-  let previousUptime = null;
-  let previousAttempt = null;
-  let lastHealth = null;
-  for (let attempt = 1; attempt <= ANDROID_STABILITY_ATTEMPTS; attempt += 1) {
-    let health;
-    try {
-      health = await probeHealth(baseUrl, authToken);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      consecutive = 0;
-      previousUptime = null;
-      previousAttempt = null;
-      if (attempt % 10 === 0) {
-        console.warn(
-          `[local-chat-smoke] Android process not stable yet (${attempt}/${ANDROID_STABILITY_ATTEMPTS}): ${message}`,
-        );
-      }
-      await sleep(ANDROID_STABILITY_DELAY_MS);
-      continue;
-    }
-    lastHealth = health;
-    const uptime = typeof health.uptime === "number" ? health.uptime : null;
-    const startupAttempt = readStartupAttempt(health);
-    const running = health.agentState === "running" && health.ready === true;
-    const uptimeMonotonic =
-      uptime !== null && (previousUptime === null || uptime >= previousUptime);
-    const attemptStable =
-      previousAttempt === null ||
-      startupAttempt === null ||
-      startupAttempt <= previousAttempt;
-
-    if (running && uptimeMonotonic && attemptStable) {
-      consecutive += 1;
-      if (consecutive >= ANDROID_STABILITY_SAMPLES) {
-        console.log(
-          `[local-chat-smoke] Android process stable: ${consecutive} consecutive healthy samples (uptime=${uptime}, startupAttempt=${startupAttempt}).`,
-        );
-        return health;
-      }
-    } else {
-      // A restart reset the process; uptime dropped or attempt climbed.
-      consecutive = running && uptimeMonotonic ? consecutive : 0;
-    }
-    previousUptime = uptime;
-    previousAttempt = startupAttempt;
-    await sleep(ANDROID_STABILITY_DELAY_MS);
-  }
-  throw new Error(
-    `Android process did not reach ${ANDROID_STABILITY_SAMPLES} consecutive stable health samples in time. ` +
-      `Last health: ${JSON.stringify(lastHealth)}`,
-  );
-}
-
-function parseSseEvents(text) {
-  const events = [];
-  const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
-  for (const block of blocks) {
-    const dataLines = [];
-    let event = null;
-    for (const line of block.split("\n")) {
-      if (!line || line.startsWith(":")) continue;
-      const sep = line.indexOf(":");
-      const field = sep >= 0 ? line.slice(0, sep) : line;
-      let value = sep >= 0 ? line.slice(sep + 1) : "";
-      if (value.startsWith(" ")) value = value.slice(1);
-      if (field === "event") {
-        event = value;
-      } else if (field === "data") {
-        dataLines.push(value);
-      }
-    }
-    if (dataLines.length === 0) continue;
-    const dataText = dataLines.join("\n");
-    let data = dataText;
-    try {
-      data = JSON.parse(dataText);
-    } catch {
-      // Keep raw SSE payloads for diagnostics.
-    }
-    events.push({ event, data, dataText });
-  }
-  return events;
-}
-
-function assertObjectLike(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} was not an object: ${JSON.stringify(value)}`);
-  }
-  return value;
-}
-
-function localInferenceSummary({ hub, device, providers }) {
-  return {
-    hubActive: hub?.active ?? null,
-    hubDownloads: Array.isArray(hub?.downloads) ? hub.downloads : [],
-    device: device ?? null,
-    providers: Array.isArray(providers?.providers) ? providers.providers : [],
-  };
-}
-
-async function requireLocalInferenceReady(baseUrl, authToken) {
-  let lastSnapshot = null;
-  for (
-    let attempt = 1;
-    attempt <= ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS;
-    attempt += 1
-  ) {
-    // The local-inference "hub" route lives in @elizaos/plugin-local-inference,
-    // which the mobile bundle intentionally stubs — on mobile, local inference
-    // is served by the on-device device-bridge (capacitor-llama), surfaced via
-    // /api/local-inference/device below. So treat /hub as OPTIONAL: a 404 here
-    // is expected on device and must not throw, otherwise readiness can never
-    // fall through to the device-bridge path (deviceConnected && modelPath).
-    const hub = await requestOptionalJson(
-      "GET",
-      "/api/local-inference/hub",
-      baseUrl,
-      authToken,
-    );
-    const device = await requestOptionalJson(
-      "GET",
-      "/api/local-inference/device",
-      baseUrl,
-      authToken,
-    );
-    const providers = await requestOptionalJson(
-      "GET",
-      "/api/local-inference/providers",
-      baseUrl,
-      authToken,
-    );
-
-    lastSnapshot = localInferenceSummary({ hub, device, providers });
-
-    // Three accepted serving paths (see local-inference-readiness.mjs):
-    // hub-active (desktop), device-bridge (paired cross-process device), and
-    // bionic-host (Android in-process GPU host, #11498). Anything else keeps
-    // polling and fails loudly after the attempt budget.
-    const readiness = evaluateLocalInferenceReadiness({
-      hub,
-      device,
-      providers,
-    });
-    if (readiness.error) {
-      throw new Error(readiness.error);
-    }
-    if (readiness.ready) {
-      console.log(
-        `[local-chat-smoke] Local inference ready via ${readiness.via}.`,
-      );
-      return { hub, device, providers };
-    }
-
-    if (attempt % 10 === 0) {
-      console.warn(
-        `[local-chat-smoke] Local inference not ready yet (${attempt}/${ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS}): ${JSON.stringify(lastSnapshot)}`,
-      );
-    }
-    await sleep(ANDROID_LOCAL_INFERENCE_READY_DELAY_MS);
-  }
-
-  throw new Error(
-    `Local inference is not ready for a full turn: ${JSON.stringify(
-      lastSnapshot,
-    )}`,
-  );
-}
-
-function extractDoneEventFromSse(text) {
-  const events = parseSseEvents(text);
-  const errorEvent = events.find(
-    (event) =>
-      event.data &&
-      typeof event.data === "object" &&
-      event.data.type === "error",
-  );
-  if (errorEvent) {
-    throw new Error(`Stream returned error event: ${errorEvent.dataText}`);
-  }
-  const done = events
-    .map((event) => event.data)
-    .find((data) => data && typeof data === "object" && data.type === "done");
-  if (!done) {
-    throw new Error(
-      `Stream did not return a done event: ${text.slice(0, 500)}`,
-    );
-  }
-  return done;
-}
-
-function requireUsableFullTurnReply(done, rawStreamText) {
-  const doneObject = assertObjectLike(done, "Stream done event");
-  if (doneObject.failureKind) {
-    throw new Error(
-      `Full-turn smoke returned failureKind=${doneObject.failureKind}: ${JSON.stringify(doneObject)}`,
-    );
-  }
-  if (doneObject.noResponseReason) {
-    throw new Error(
-      `Full-turn smoke returned noResponseReason=${doneObject.noResponseReason}`,
-    );
-  }
-  const reply = String(doneObject.fullText ?? doneObject.text ?? "").trim();
-  if (!reply) {
-    throw new Error(`Full-turn smoke returned empty reply: ${rawStreamText}`);
-  }
-  if (ANDROID_FULL_TURN_FAILURE_RE.test(reply)) {
-    throw new Error(`Full-turn smoke returned unusable reply: ${reply}`);
-  }
-  const normalizedReply = reply
-    .trim()
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/[.!?]+$/g, "")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-  if (normalizedReply !== ANDROID_FULL_TURN_EXPECTED_REPLY) {
-    throw new Error(
-      `Full-turn smoke returned the wrong reply: ${reply} (expected ${ANDROID_FULL_TURN_EXPECTED_REPLY})`,
-    );
-  }
-  return reply;
-}
-
-async function runLocalInferenceApiSmoke(
-  baseUrl = apiBase,
-  authToken = authTokenArg,
-) {
-  console.log(
-    `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference full turn).`,
-  );
-  // Process-stability gate: wait for a settled agent process (monotonic uptime,
-  // agentState==running, startup.attempt not climbing) before exercising, so a
-  // turn is never fired mid-restart. Keyed on process health, NOT device-bridge
-  // connected:true (inference is in-process now, so the bridge stays detached).
-  await waitForAndroidProcessStability(baseUrl, authToken);
-  const readiness = await requireLocalInferenceReady(baseUrl, authToken);
-  const greetingCreated = await requestJson(
-    "POST",
-    "/api/conversations",
-    {
-      title: "Simulator local chat greeting smoke",
-    },
-    baseUrl,
-    authToken,
-  );
-  const greetingConversationId = greetingCreated.conversation?.id;
-  if (!greetingConversationId) {
-    throw new Error(
-      "Greeting smoke conversation creation did not return an id.",
-    );
-  }
-
-  const greeting = await requestJson(
-    "POST",
-    `/api/conversations/${encodeURIComponent(greetingConversationId)}/greeting`,
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  if (String(greeting.text ?? "").includes("I'm running locally")) {
-    throw new Error("Stale local-mode greeting is still present.");
-  }
-
-  const created = await requestJson(
-    "POST",
-    "/api/conversations",
-    {
-      title: "Simulator local chat smoke",
-    },
-    baseUrl,
-    authToken,
-  );
-  const conversationId = created.conversation?.id;
-  if (!conversationId) {
-    throw new Error("Conversation creation did not return an id.");
-  }
-
-  const { done, reply } = await withTransientRetry(
-    "streamed full turn",
-    async () => {
-      const streamText = await requestTextResponse(
-        "POST",
-        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-        {
-          text: ANDROID_FULL_TURN_PROMPT,
-          channelType: "DM",
-        },
-        baseUrl,
-        authToken,
-        ANDROID_FULL_TURN_TIMEOUT_MS,
-      );
-      if (!streamText) {
-        throw new Error("Streamed full turn returned an empty body.");
-      }
-      const doneEvent = extractDoneEventFromSse(streamText);
-      return {
-        done: doneEvent,
-        reply: requireUsableFullTurnReply(doneEvent, streamText),
-      };
-    },
-  );
-  // Evidence that a local model served the turn. In-process inference
-  // (aosp-local-llama / mobile-local-direct-reply) reports the model on the
-  // SSE done event's usage block; the capacitor device bridge is legitimately
-  // detached now, so its loadedPath is corroborating-only, not required.
-  const usageModel =
-    typeof done?.usage?.model === "string" ? done.usage.model : null;
-  const usageProvider =
-    typeof done?.usage?.provider === "string" ? done.usage.provider : null;
-  const postTurnDevice = await requestOptionalJson(
-    "GET",
-    "/api/local-inference/device",
-    baseUrl,
-    authToken,
-  );
-  const loadedPath = postTurnDevice?.devices?.find?.(
-    (device) => typeof device?.loadedPath === "string" && device.loadedPath,
-  )?.loadedPath;
-  if (!usageModel && !loadedPath) {
-    throw new Error(
-      `Full-turn smoke produced no local-model evidence (no usage.model and no device loadedPath): ${JSON.stringify(
-        { usage: done?.usage ?? null, device: postTurnDevice },
-      )}`,
-    );
-  }
-  console.log("[local-chat-smoke] conversation:", conversationId);
-  console.log("[local-chat-smoke] greeting:", greeting.text);
-  console.log("[local-chat-smoke] reply:", reply);
-  console.log(
-    "[local-chat-smoke] served by:",
-    usageModel
-      ? `${usageModel}${usageProvider ? ` (${usageProvider})` : ""}`
-      : `device-bridge ${loadedPath}`,
-  );
-  console.log(
-    "[local-chat-smoke] local inference:",
-    JSON.stringify(localInferenceSummary(readiness)),
-  );
-}
-
-/**
- * Force-stop and relaunch the installed Android app so its ElizaAgentService is
- * torn down and re-booted against the same on-device SQLite database — the real
- * "reopen the app" event whose persistence #13689 asserts. `am force-stop` kills
- * the whole process (not just the activity), so the next `am start` is a cold
- * relaunch, not a resume.
- */
-function relaunchAndroidApp(context) {
-  const id = appId();
-  requireExec(
-    context.adb,
-    ["-s", context.serial, "shell", "am", "force-stop", id],
-    `Failed to force-stop ${id} on ${context.serial}.`,
-  );
-  requireExec(
-    context.adb,
-    ["-s", context.serial, "shell", "am", "start", "-n", `${id}/.MainActivity`],
-    `Failed to relaunch ${id} on ${context.serial}.`,
-  );
-  tryExec(context.adb, [
-    "-s",
-    context.serial,
-    "shell",
-    "am",
-    "start",
-    "-a",
-    "android.intent.action.VIEW",
-    "-d",
-    "elizaos://chat",
-    id,
-  ]);
-}
-
-/**
- * Re-establish the forwarded HTTP surface after a relaunch. The old adb forward
- * points at a dead process, and the app rebinds device port 31337 on restart, so
- * the stale forward is dropped and `waitForAndroidApi` allocates a fresh one and
- * re-reads the (persisted) local-agent token, then the process-stability gate
- * ensures the restart settled before we read the thread back.
- */
-async function reacquireAndroidApiAfterRelaunch(context) {
-  cleanupAndroidAgentForwards(context, "relaunch");
-  const api = await waitForAndroidApi(context);
-  if (!api) {
-    throw new Error(
-      "Android local-agent API did not come back after relaunch; cannot assert chat-history persistence.",
-    );
-  }
-  await waitForAndroidProcessStability(api.apiBase, api.token);
-  return api;
-}
-
-/**
- * Android relaunch-persistence leg (#13689). Sends a unique marker message
- * through the real streamed chat path, captures the thread from server truth,
- * force-stops and cold-relaunches the app, then re-fetches the thread from the
- * restarted agent and asserts the marker survived. It also requires post-relaunch
- * rendered proof from the Android accessibility hierarchy, so the lane cannot
- * pass from a database row that never reappears in the transcript UI.
- */
-async function verifyAndroidChatHistoryPersistence(context, initialApi) {
-  if (!context?.installed) {
-    const message =
-      "[local-chat-smoke] --relaunch-persistence requested but the Android app is not installed.";
-    if (requireInstalled) throw new Error(message);
-    console.warn(message);
-    return null;
-  }
-
-  let { apiBase, token } = initialApi;
-
-  const created = await requestJson(
-    "POST",
-    "/api/conversations",
-    { title: "Relaunch persistence smoke" },
-    apiBase,
-    token,
-  );
-  const conversationId = created.conversation?.id;
-  if (!conversationId) {
-    throw new Error(
-      "Relaunch-persistence conversation creation did not return an id.",
-    );
-  }
-  const marker = buildRelaunchMarker({
-    platform: "android",
-    runId: conversationId,
-  });
-  const messagesPath = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
-  const markerPrompt = `${marker}\nReply with exactly these four words: ${ANDROID_FULL_TURN_EXPECTED_REPLY}.`;
-
-  const { done, reply } = await withTransientRetry(
-    "relaunch-persistence streamed marker turn",
-    async () => {
-      const streamText = await requestTextResponse(
-        "POST",
-        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-        {
-          text: markerPrompt,
-          channelType: "DM",
-          source: "android-local-relaunch-persistence",
-          metadata: {
-            smoke: "android-relaunch-persistence",
-            marker,
-          },
-        },
-        apiBase,
-        token,
-        ANDROID_FULL_TURN_TIMEOUT_MS,
-      );
-      if (!streamText) {
-        throw new Error(
-          "Relaunch-persistence marker turn returned an empty body.",
-        );
-      }
-      const doneEvent = extractDoneEventFromSse(streamText);
-      return {
-        done: doneEvent,
-        reply: requireUsableFullTurnReply(doneEvent, streamText),
-      };
-    },
-  );
-
-  const beforeBody = await requestJson(
-    "GET",
-    messagesPath,
-    undefined,
-    apiBase,
-    token,
-  );
-  const preShot = takeAndroidScreenshot(context, "relaunch-persistence-pre");
-
-  console.log(
-    `[local-chat-smoke] Relaunch persistence: seeded marker ${marker} into ${conversationId}; force-stopping + relaunching ${appId()}.`,
-  );
-  relaunchAndroidApp(context);
-  const reacquired = await reacquireAndroidApiAfterRelaunch(context);
-  apiBase = reacquired.apiBase;
-  token = reacquired.token;
-
-  const afterBody = await requestJson(
-    "GET",
-    messagesPath,
-    undefined,
-    apiBase,
-    token,
-  );
-  const postShot = takeAndroidScreenshot(context, "relaunch-persistence-post");
-
-  const result = assertMarkerSurvivedRelaunch({
-    marker,
-    beforeBody,
-    afterBody,
-  });
-  const renderedTranscript = assertAndroidRenderedTranscript({
-    context,
-    marker,
-    expectedReply: reply,
-  });
-
-  fs.mkdirSync(relaunchPersistenceResultDir, { recursive: true });
-  const evidencePath = path.join(
-    relaunchPersistenceResultDir,
-    `android-${conversationId}.json`,
-  );
-  fs.writeFileSync(
-    evidencePath,
-    `${JSON.stringify(
-      {
-        platform: "android",
-        conversationId,
-        marker,
-        result,
-        liveStream: {
-          reply,
-          usage: done?.usage ?? null,
-        },
-        preRelaunchScreenshot: preShot,
-        postRelaunchScreenshot: postShot,
-        renderedTranscript,
-        afterRelaunchServerThread: afterBody,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-
-  console.log(
-    `[local-chat-smoke] Relaunch persistence PASSED: marker survived (${result.beforeCount} → ${result.afterCount} message(s) from server truth) and rendered proof was visible. Evidence: ${evidencePath}`,
-  );
-  return result;
-}
-
-async function main() {
-  let androidContext = null;
-  let iosContext = null;
-  let hostAgent = null;
-  try {
-    if (startHostAgent) {
-      if (apiBase) {
-        throw new Error(
-          "--start-host-agent cannot be combined with --api-base.",
-        );
-      }
-      hostAgent = await startDeviceE2eHostAgent({
-        repoRoot,
-        artifactDir: iosLocalChatResultDir,
-        requestedPort: hostAgentPort,
-        log: (message) => console.log(`[local-chat-smoke] ${message}`),
-      });
-      apiBase = hostAgent.apiBase;
-    }
-
-    if (platform === "ios" || platform === "both") {
-      iosContext = launchIosSimulatorApp();
-      if (iosContext?.installed) {
-        assertInstalledIosRendererIsFresh(iosContext.udid);
-      }
-    }
-    if (platform === "android" || platform === "both") {
-      androidContext = await launchAndroidEmulatorApp();
-      if (androidSelectLocal) {
-        await selectAndroidLocalRuntime(androidContext);
-      }
-    }
-
-    if (apiBase) {
-      await runLocalInferenceApiSmoke(apiBase, authTokenArg);
-      if (relaunchPersistence) {
-        // The harness does not own the --api-base process, so it cannot force a
-        // real app relaunch; the relaunch-persistence leg is a device-driven
-        // lane (Android below).
-        console.warn(
-          "[local-chat-smoke] --relaunch-persistence is N/A with --api-base: the harness does not own the agent process and cannot relaunch it. Use --platform android against an installed app.",
-        );
-      }
-      return;
-    }
-
-    if (exerciseAppCoreApi && (platform === "android" || platform === "both")) {
-      const androidApi = await waitForAndroidApi(androidContext);
-      if (androidApi) {
-        if (androidBackground) {
-          await verifyAndroidBackgroundApi(
-            androidContext,
-            androidApi.apiBase,
-            androidApi.token,
-          );
-        }
-        await runLocalInferenceApiSmoke(androidApi.apiBase, androidApi.token);
-        if (relaunchPersistence) {
-          await verifyAndroidChatHistoryPersistence(androidContext, androidApi);
-        }
-      }
-    }
-
-    if (
-      relaunchPersistence &&
-      (platform === "ios" || platform === "both") &&
-      !apiBase
-    ) {
-      // The iOS on-device agent runs in-process over the Capacitor IPC bridge
-      // (no HTTP port the harness can reach), so it cannot re-fetch the thread
-      // via GET /messages here. Its relaunch-persistence leg belongs to the
-      // Preferences-handshake / XCUITest path (#13689 item 1) — surface it as an
-      // explicit N/A rather than a silent skip.
-      const message =
-        "[local-chat-smoke] --relaunch-persistence is N/A on iOS from this harness: the on-device agent is IPC-only. Implement the iOS leg via the Preferences handshake or an XCUITest that relaunches and asserts the marker bubble (#13689).";
-      if (requireInstalled && platform === "ios") throw new Error(message);
-      console.warn(message);
-    }
-
-    if (iosBackground && (platform === "ios" || platform === "both")) {
-      if (!iosContext) {
-        const message =
-          "[local-chat-smoke] --ios-background requested but no booted iOS simulator was found.";
-        if (requireInstalled) throw new Error(message);
-        console.warn(message);
-      } else if (!iosContext.installed) {
-        const message = `[local-chat-smoke] --ios-background requested but ${appId()} is not installed in the booted simulator.`;
-        if (requireInstalled) throw new Error(message);
-        console.warn(message);
-      } else {
-        const result = await verifyIosBackgroundApi(iosContext.udid, {
-          taskIdentifier: iosBackgroundTaskId,
-          baseUrl: apiBase,
-          authToken: authTokenArg,
-        });
-        console.log(
-          "[local-chat-smoke] iOS BG verify result:",
-          JSON.stringify(result),
-        );
-      }
-    }
-
-    if (iosFullBunSmoke && (platform === "ios" || platform === "both")) {
-      await verifyIosFullBunSmoke(iosContext);
-    }
-
-    if (platform === "ios" || platform === "both") {
-      run(
-        "bunx",
-        [
-          "vitest",
-          "run",
-          "--config",
-          "vitest.config.ts",
-          "src/api/ios-local-agent-kernel.local-inference.test.ts",
-          "src/first-run/auto-download-recommended.test.ts",
-        ],
-        { cwd: path.join(repoRoot, "packages/ui") },
-      );
-    }
-  } finally {
-    await hostAgent?.stop();
-    if (iosContext?.udid) {
-      clearIosSmokeDefaults({
-        udid: iosContext.udid,
-        bundleId: appId(),
-        extraKeys: IOS_SMOKE_STATE_KEYS,
-        log: (message) => console.log(`[local-chat-smoke] ${message}`),
-      });
-    }
-    cleanupAndroidAgentForwards(androidContext, "shutdown");
-  }
-}
-
-export {
-  androidBackgroundServicesReady,
-  androidDeviceSerial,
-  androidRunAs,
-  appId,
-  cleanupAndroidAgentForwards,
-  copyFileIfChanged,
-  describeAndroidSmokeModelSize,
-  dumpAndroidUiHierarchy,
-  extractDoneEventFromSse,
-  forceStopConflictingAndroidAgents,
-  iosAppSupportContainer,
-  isTransientFailure,
-  launchAndroidEmulatorApp,
-  launchIosSimulatorApp,
-  localInferenceSummary,
-  main,
-  parseSseEvents,
-  preseedAndroidLocalRuntime,
-  preseedIosFullBunSmoke,
-  preseedIosLocalRuntime,
-  probeHealth,
-  readAndroidLocalAgentToken,
-  readIosFullBunSmokeDiagnostics,
-  readLastWakeFiredAtMs,
-  readStartupAttempt,
-  readTextFileIfPresent,
-  requestJson,
-  requestJsonResponse,
-  requestOptionalJson,
-  requestTextResponse,
-  requireLocalInferenceReady,
-  requireUsableFullTurnReply,
-  runLocalInferenceApiSmoke,
-  shellQuote,
-  stageAndroidSmokeModel,
-  stageIosFullBunSmokeModel,
-  takeIosScreenshot,
-  verifyIosFullBunSmoke,
-  verifySmokeModelFile,
-  waitForAndroidProcessStability,
-  withTransientRetry,
-  writeAndroidCapacitorPreferences,
-  writeAndroidLocalInferenceRegistry,
-  writeAndroidSmokeModelManifest,
-  writeIosFullBunSmokeResultEvidence,
-  xmlEscape,
-};
-
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
-if (invokedPath === fileURLToPath(import.meta.url)) {
-  main().catch((error) => {
-    // error-policy:J1 the CLI boundary translates failures into a non-zero exit.
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  });
-}
