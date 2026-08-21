@@ -179,26 +179,42 @@ describe("usage-quotas migration release barrier", () => {
     expect(harness.ended()).toBe(true);
   });
 
-  test("fails closed when another migration follows the guarded suffix", async () => {
+  // A later migration is none of this barrier's business. Requiring the pair to
+  // be the journal TAIL meant the next migration anyone appended made
+  // db:migrate throw for every target, including fully-migrated ones — a
+  // repo-wide stop-the-world. What must hold is that nothing interleaves
+  // BETWEEN the drop and the restore.
+  test("allows an unrelated migration appended after the guarded pair", async () => {
     const migrations = [
       ...barrierMigrations(),
-      migration(284, "0284_uncoordinated_suffix", "SELECT unexpected"),
+      migration(284, "0284_some_future_feature", "SELECT future"),
     ];
-    const harness = migrationClient(appliedRows(barrierMigrations(), 1));
+    const harness = migrationClient(appliedRows(barrierMigrations(), 3));
     const outputLog = spyOn(console, "log").mockImplementation(() => {});
 
     try {
-      await expect(
-        runMigrations(harness.client, migrations, OPTIONS),
-      ).rejects.toThrow("expected journal suffix");
+      await runMigrations(harness.client, migrations, OPTIONS);
     } finally {
       outputLog.mockRestore();
     }
 
-    expect(harness.queries).not.toContain("BEGIN");
-    expect(harness.queries).not.toContain("DROP TABLE usage_quotas");
-    expect(harness.queries).not.toContain("SELECT unexpected");
+    expect(harness.queries).toContain("SELECT future");
     expect(harness.ended()).toBe(true);
+  });
+
+  test("fails closed when a migration interleaves between the drop and the restore", () => {
+    const [checkpoint, before, drop, restore] = barrierMigrations();
+    const migrations = [
+      checkpoint,
+      before,
+      drop,
+      migration(2825, "0282b_interleaved", "SELECT interleaved"),
+      restore,
+    ];
+
+    expect(() => evaluateMigrationReleaseBarrier(migrations, 0)).toThrow(
+      "adjacent journal entries",
+    );
   });
 
   test("plans a pause at 0282 for any older validated ledger", () => {

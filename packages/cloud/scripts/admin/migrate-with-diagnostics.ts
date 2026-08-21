@@ -421,17 +421,21 @@ export function evaluateMigrationReleaseBarrier(
 
   const dropIndex = barrierIndexes[0]?.[0];
   const restoreIndex = barrierIndexes[1]?.[0];
-  const expectedDropIndex = migrations.length - 2;
-  const expectedRestoreIndex = migrations.length - 1;
+  // Anchor on ADJACENCY, not on the journal tail. Requiring the pair to be the
+  // last two entries means the next migration anyone appends makes this throw
+  // for every target, including fully-migrated ones — a repo-wide stop-the-
+  // world. What the barrier actually needs is that the restore immediately
+  // follows the drop, so no other migration can interleave between them.
   if (
-    dropIndex !== expectedDropIndex ||
-    restoreIndex !== expectedRestoreIndex
+    dropIndex === undefined ||
+    restoreIndex === undefined ||
+    restoreIndex !== dropIndex + 1
   ) {
     const actualSuffix = journalTags
       .slice(Math.max(0, Math.min(dropIndex ?? 0, restoreIndex ?? 0)))
       .join(", ");
     throw new Error(
-      `Migration release barrier expected journal suffix (${expectedSuffix}); found (${actualSuffix || "empty"})`,
+      `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
     );
   }
 
@@ -440,13 +444,13 @@ export function evaluateMigrationReleaseBarrier(
   }
 
   if (lastAppliedJournalIndex === dropIndex) {
-    const pendingTags = journalTags.slice(lastAppliedJournalIndex + 1);
-    if (
-      pendingTags.length !== 1 ||
-      pendingTags[0] !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]
-    ) {
+    // Only the NEXT entry has to be the restore — later migrations are none of
+    // this barrier's business, and demanding it be the only pending one is the
+    // same tail-pinning mistake one layer down.
+    const nextTag = journalTags[lastAppliedJournalIndex + 1];
+    if (nextTag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]) {
       throw new Error(
-        `Migration release barrier expected only ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]} after ledgered 0282; found (${pendingTags.join(", ") || "empty"})`,
+        `Migration release barrier expected ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]} immediately after ledgered 0282; found (${nextTag ?? "empty"})`,
       );
     }
   }
