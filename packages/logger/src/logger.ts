@@ -467,6 +467,10 @@ const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
   String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
   // JSON fields.
   String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+  // Quoted credential keys with arbitrary naming — a closing quote sits where
+  // the ENV-style row expects `=`/`:`, so `{"api_key": "…"}` matched nothing.
+  // See core for the full rationale.
+  String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
   // CLI flags (space-separated and --flag=value forms).
   String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
   // Authorization headers (see core for the full grammar rationale: Basic
@@ -500,6 +504,10 @@ const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
   String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
   String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
   String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+  // Google OAuth refresh (`1//0…`) and access (`ya29.…`) tokens; neither shape
+  // survives a `\b`-anchored alphanumeric pattern.
+  String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
+  String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
 ];
 
 function parseSensitiveTextPattern(raw: string): RegExp | null {
