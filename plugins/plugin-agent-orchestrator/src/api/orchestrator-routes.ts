@@ -216,10 +216,10 @@ async function dispatchOrchestratorRoutes(
   const url = new URL(req.url ?? "/", "http://localhost");
   const query = url.searchParams;
 
-  // GET /api/orchestrator/built-apps — apps the agent built + deployed from
-  // chat (verified live URL at task completion). Reads the durable registry
-  // written by the sub-agent router; independent of the task service, so it
-  // is dispatched before the service gate.
+  // GET /api/orchestrator/built-apps — apps the agent published to an explicit
+  // custom operator host (verified live URL at task completion). Eliza Cloud
+  // apps live only in the canonical Cloud apps API. Reads the custom-host
+  // registry before the service gate.
   if (method === "GET" && pathname === `${PREFIX}/built-apps`) {
     sendJson(res, { apps: await listBuiltApps(ctx.runtime) });
     return true;
@@ -245,8 +245,12 @@ async function dispatchOrchestratorRoutes(
       sendError(res, "target and slug are required", 400);
       return true;
     }
-    if (target !== "custom" && target !== "eliza-cloud") {
-      sendError(res, "target must be custom or eliza-cloud", 400);
+    if (target !== "custom") {
+      sendError(
+        res,
+        "target must be custom; Eliza Cloud apps are managed by the Cloud apps API",
+        400,
+      );
       return true;
     }
     const deleted = await deleteBuiltApp(ctx.runtime, target, slug);

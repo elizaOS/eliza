@@ -1,5 +1,5 @@
 /**
- * Durable registry of apps the agent built and deployed from chat.
+ * Durable registry of apps published to an explicit custom operator host.
  *
  * Without this, a built app is fire-and-forget: the router verifies the live
  * URL at `task_complete` and then persists only narration/screenshot/trajectory
@@ -10,18 +10,17 @@
  * management consumers (`GET /api/orchestrator/built-apps`,
  * `DELETE /api/orchestrator/built-apps/:target/:slug`).
  *
- * Derivation is structural, matching the two deploy targets the spawn-time
- * contract injects (see app-deploy-guidance):
+ * Derivation is structural and intentionally limited to the custom deploy
+ * target injected by app-deploy-guidance:
  *  - **custom** static host: a verified URL under the operator-configured
  *    `<customBaseUrl>/apps/<slug>/` shape IS a built app — the URL shape is
  *    definitive, no task-text inspection needed (loopback/LAN bases included:
  *    the operator configured them, so they are the canonical app location).
- *  - **eliza-cloud**: gated on the SAME app-build predicate that injected the
- *    deploy contract (`isAppBuildTask` on the session's initial task), then
- *    the first public verified URL that is not a code-host link. Monetized
- *    cloud apps additionally self-register with the Cloud apps API per the
- *    contract; this local record complements that with the orchestrator-side
- *    view.
+ *  - **eliza-cloud is NOT copied here**. Cloud's `apps` row is the canonical
+ *    identity and management source, including frontend versions, database,
+ *    container, review, and monetization state. Mirroring it into this cache
+ *    created duplicate identities with no stable `appId` and stale lifecycle
+ *    data. Existing legacy Cloud cache entries are filtered on read.
  *
  * @module services/built-apps-registry
  */
@@ -29,7 +28,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   type AppDeployConfig,
-  isAppBuildTask,
   resolveAppDeployConfig,
 } from "./app-deploy-guidance.js";
 import type { SessionInfo } from "./types.js";
@@ -42,7 +40,7 @@ export interface BuiltAppRecord {
   /** The verified live URL reported to the user. */
   url: string;
   /** Which deploy target hosted the app. */
-  target: "eliza-cloud" | "custom";
+  target: "custom";
   /** The sub-agent session that produced this deploy. */
   sessionId: string;
   /** The task label the deploy ran under, when known. */
@@ -55,15 +53,6 @@ export const BUILT_APPS_CACHE_KEY = "orchestrator:built-apps";
 /** Cap the registry so a long-lived agent can't grow the cache row unbounded. */
 export const MAX_BUILT_APPS = 200;
 
-/** Code-host / VCS links routinely appear alongside a deploy report ("PR
- *  opened at …"); they are never the hosted app itself. */
-const CODE_HOST_RE =
-  /(^|\.)(github\.com|gist\.github\.com|raw\.githubusercontent\.com|gitlab\.com|bitbucket\.org)$/i;
-
-function isLoopbackHost(host: string): boolean {
-  return host === "localhost" || host === "::1" || host.startsWith("127.");
-}
-
 function slugToDisplayName(slug: string): string {
   return slug
     .split(/[^a-zA-Z0-9]+/)
@@ -74,13 +63,13 @@ function slugToDisplayName(slug: string): string {
 
 /**
  * Pure: derive the built-app identity from a completion's verified URLs and
- * the configured deploy target. Returns null when the completion is not an
- * app deploy (no matching URL shape / the task was not an app build).
+ * the configured custom deploy target. Returns null for Eliza Cloud because
+ * Cloud's apps API is the canonical registry and must not be mirrored here.
  */
 export function deriveBuiltApp(
   verifiedUrls: readonly string[],
   config: AppDeployConfig,
-  initialTask?: string,
+  _initialTask?: string,
 ): Pick<BuiltAppRecord, "slug" | "name" | "url" | "target"> | null {
   if (config.target === "custom" && config.customBaseUrl) {
     const appsPrefix = `${config.customBaseUrl.replace(/\/+$/, "")}/apps/`;
@@ -96,32 +85,6 @@ export function deriveBuiltApp(
       };
     }
     return null;
-  }
-  // eliza-cloud: the URL shape is not operator-known, so gate on the same
-  // predicate that injected the deploy contract at spawn. No initial task
-  // recorded (or not an app build) → not an app deploy.
-  if (!isAppBuildTask(initialTask)) return null;
-  for (const url of verifiedUrls) {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      // error-policy:J3 untrusted URL string — an unparseable candidate is
-      // skipped, exactly the "not this URL" signal the scan wants.
-      continue;
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
-    const host = parsed.hostname.toLowerCase();
-    // A loopback URL is a local build probe, not a hosted cloud app; a
-    // code-host URL is the change, not the deployment.
-    if (isLoopbackHost(host) || CODE_HOST_RE.test(host)) continue;
-    const slug = host.split(".", 1)[0] || host;
-    return {
-      slug,
-      name: slugToDisplayName(slug),
-      url,
-      target: "eliza-cloud",
-    };
   }
   return null;
 }
@@ -141,7 +104,7 @@ function asRecordList(value: unknown): BuiltAppRecord[] {
       entry !== null &&
       typeof (entry as BuiltAppRecord).slug === "string" &&
       typeof (entry as BuiltAppRecord).url === "string" &&
-      typeof (entry as BuiltAppRecord).target === "string",
+      (entry as BuiltAppRecord).target === "custom",
   );
 }
 
@@ -238,23 +201,7 @@ export async function registerBuiltAppsForCompletion(
 ): Promise<BuiltAppRecord | null> {
   try {
     const meta = session.metadata;
-    // The task text's metadata carrier differs by spawn path: TASKS
-    // op=spawn_agent stamps the full `initialTask`, while the durable-task
-    // route (`spawnAgentForTask`) and the direct API spawn persist the bare
-    // `goal`. Accept either so the eliza-cloud app-build gate sees the task
-    // on every spawn path — an app built via a durable task must register
-    // the same way a chat-spawned one does.
-    const initialTask =
-      typeof meta?.initialTask === "string"
-        ? meta.initialTask
-        : typeof meta?.goal === "string"
-          ? meta.goal
-          : undefined;
-    const derived = deriveBuiltApp(
-      verifiedUrls,
-      resolveAppDeployConfig(),
-      initialTask,
-    );
+    const derived = deriveBuiltApp(verifiedUrls, resolveAppDeployConfig());
     if (!derived) return null;
     const label = typeof meta?.label === "string" ? meta.label : undefined;
     const record: BuiltAppRecord = {

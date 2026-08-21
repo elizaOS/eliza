@@ -1639,10 +1639,9 @@ export class SubAgentRouter extends Service {
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
-      // A built app was fire-and-forget before this: the verified live URL
-      // survived only in narration/trajectory artifacts, so the app never
-      // appeared in any management list. Persist the durable registry record
-      // (never throws; a registry failure must not break delivery).
+      // A custom-hosted app was fire-and-forget before this: persist its
+      // verified URL in the operator-host registry. Eliza Cloud apps are
+      // intentionally ignored here because the Cloud apps API is canonical.
       await registerBuiltAppsForCompletion(
         this.runtime,
         session,
@@ -2111,7 +2110,7 @@ export class SubAgentRouter extends Service {
   }
 
   /**
-   * Built-app registration for a completion whose session has NO origin room
+   * Custom-host built-app registration for a completion with NO origin room
    * (a durable task created without a chat room: cockpit "new session", bare
    * POST /api/orchestrator/tasks). The normal registration sits after the
    * readOrigin gate on the narration path, so these sessions never reached it
