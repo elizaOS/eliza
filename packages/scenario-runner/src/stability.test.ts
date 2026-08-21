@@ -4,6 +4,7 @@
  */
 
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -498,6 +499,37 @@ describe("scenario stability report plumbing", () => {
     ).rejects.toMatchObject({ exitCode: 2 });
   });
 
+  it("returns usage exit code 2 for an undeclared skipped attempt", async () => {
+    const root = tempRoot();
+    const plan = createScenarioStabilityPlan({
+      runId: "undeclared-skip",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(plan);
+    for (const attempt of plan.attempts) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify({
+          runId: attempt.attemptId,
+          scenarios: [{ id: "alpha", status: "skipped", failedAssertions: [] }],
+        })}\n`,
+      );
+    }
+
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...plan.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
   it("translates invalid aggregate report sets into usage errors", async () => {
     const root = tempRoot();
     const plan = createScenarioStabilityPlan({
@@ -666,6 +698,56 @@ describe("scenario stability report plumbing", () => {
       ]),
     ).rejects.toMatchObject({ exitCode: 2 });
     expect(readFileSync(sentinelPath, "utf8")).toBe(sentinel);
+  });
+
+  it("rejects ancestor-directory symlinks for reads and plan writes", async () => {
+    const root = tempRoot();
+    const externalRoot = tempRoot();
+    const plan = createScenarioStabilityPlan({
+      runId: "ancestor-symlink",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(plan);
+    for (const attempt of plan.attempts) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify(
+          aggregate(attempt.attemptId, [scenario("alpha", "passed")]),
+        )}\n`,
+      );
+    }
+    const firstAttemptBytes = readFileSync(plan.attempts[0].reportPath);
+    rmSync(plan.attempts[0].outputDir, { recursive: true });
+    const externalAttempt = path.join(externalRoot, "attempt-01");
+    mkdirSync(externalAttempt);
+    const externalReport = path.join(externalAttempt, "matrix.json");
+    writeFileSync(externalReport, firstAttemptBytes);
+    symlinkSync(externalAttempt, plan.attempts[0].outputDir);
+
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...plan.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+    expect(readFileSync(externalReport)).toEqual(firstAttemptBytes);
+
+    const symlinkRoot = path.join(root, "symlink-output");
+    const externalOutput = path.join(externalRoot, "output");
+    mkdirSync(externalOutput);
+    symlinkSync(externalOutput, symlinkRoot);
+    await expect(
+      runCli(["stability", symlinkRoot, "--runId", "symlink-root"]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+    expect(() =>
+      readFileSync(path.join(externalOutput, "stability-plan.json")),
+    ).toThrow();
   });
 
   it("translates invalid stability run IDs into usage exit code 2", async () => {
