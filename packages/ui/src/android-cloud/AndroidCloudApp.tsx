@@ -79,46 +79,67 @@ export function AndroidCloudApp({
   const loginAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
 
-  const restore = useCallback(async () => {
-    setError(null);
-    setPhase("loading");
-    try {
-      const restored = await client.restoreSession();
-      setSession(restored);
-      if (restored) {
-        const storedConversationId = localStorage
-          .getItem(ANDROID_CLOUD_CONVERSATION_ID_KEY)
-          ?.trim();
-        if (storedConversationId) {
-          setConversationId(storedConversationId);
-          try {
-            const restoredMessages = await client.getConversationMessages(
-              restored,
-              storedConversationId,
-            );
-            setMessages(restoredMessages.slice(-100));
-          } catch (historyError) {
-            // error-policy:J4 conversation restore failure remains visible
-            // while the authenticated shell stays usable for a new chat.
-            setError(
-              `Your previous conversation could not be restored: ${errorMessage(historyError)}`,
-            );
+  const restore = useCallback(
+    async (loginAttempt?: number) => {
+      const isCurrent = () =>
+        loginAttempt === undefined || loginAttemptRef.current === loginAttempt;
+      const abandonStaleLogin = async () => {
+        if (loginAttempt === undefined || isCurrent()) return false;
+        await client.signOut();
+        return true;
+      };
+      setError(null);
+      if (loginAttempt === undefined) setPhase("loading");
+      try {
+        const restored = await client.restoreSession();
+        if (await abandonStaleLogin()) return false;
+        let restoredConversationId: string | null = null;
+        let restoredMessages: AndroidCloudMessage[] = [];
+        let historyRestoreError: string | null = null;
+        if (restored) {
+          restoredConversationId =
+            localStorage.getItem(ANDROID_CLOUD_CONVERSATION_ID_KEY)?.trim() ??
+            null;
+          if (restoredConversationId) {
+            try {
+              restoredMessages = await client.getConversationMessages(
+                restored,
+                restoredConversationId,
+              );
+              if (await abandonStaleLogin()) return false;
+              restoredMessages = restoredMessages.slice(-100);
+            } catch (historyError) {
+              // error-policy:J4 conversation restore failure remains visible
+              // while the authenticated shell stays usable for a new chat.
+              historyRestoreError = `Your previous conversation could not be restored: ${errorMessage(historyError)}`;
+            }
           }
         }
-      } else {
-        localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
-        setConversationId(null);
-        setMessages([]);
+        if (await abandonStaleLogin()) return false;
+        setSession(restored);
+        if (!restored) {
+          localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
+          setConversationId(null);
+          setMessages([]);
+        } else {
+          setConversationId(restoredConversationId);
+          setMessages(restoredMessages);
+        }
+        setError(historyRestoreError);
+        setPhase(restored ? "ready" : "signed-out");
+        return true;
+      } catch (restoreError) {
+        if (!isCurrent()) return false;
+        // error-policy:J4 session verification failure becomes an explicit
+        // signed-out error state with a retry affordance.
+        setSession(null);
+        setPhase("signed-out");
+        setError(errorMessage(restoreError));
+        return false;
       }
-      setPhase(restored ? "ready" : "signed-out");
-    } catch (restoreError) {
-      // error-policy:J4 session verification failure becomes an explicit
-      // signed-out error state with a retry affordance.
-      setSession(null);
-      setPhase("signed-out");
-      setError(errorMessage(restoreError));
-    }
-  }, [client]);
+    },
+    [client],
+  );
 
   useEffect(() => {
     void restore();
@@ -126,7 +147,11 @@ export function AndroidCloudApp({
       loginAttemptRef.current += 1;
       loginAbortRef.current?.abort();
       abortRef.current?.abort();
-      void voice?.stop();
+      void voice?.stop().catch((cleanupError) => {
+        // error-policy:J6 component unmount has no remaining UI boundary, so
+        // voice teardown is best effort but its failure remains diagnostic.
+        console.warn("[AndroidCloudApp] voice teardown failed", cleanupError);
+      });
     };
   }, [restore, voice]);
 
@@ -173,7 +198,7 @@ export function AndroidCloudApp({
           await client.signOut();
           return;
         }
-        await restore();
+        await restore(attemptNumber);
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");
@@ -194,6 +219,8 @@ export function AndroidCloudApp({
     loginAbortRef.current?.abort();
     loginAbortRef.current = null;
     setBusy(false);
+    setSession(null);
+    setPhase("signed-out");
     void closeExternal?.();
   }, [closeExternal]);
 
@@ -281,8 +308,14 @@ export function AndroidCloudApp({
 
   const toggleDictation = useCallback(async () => {
     if (listening) {
-      await voice?.stop();
-      setListening(false);
+      try {
+        await voice?.stop();
+        setListening(false);
+      } catch (dictationError) {
+        // error-policy:J4 native dictation teardown failure stays visible.
+        setListening(false);
+        setError(errorMessage(dictationError));
+      }
       return;
     }
     if (!voice) {
@@ -290,8 +323,10 @@ export function AndroidCloudApp({
       return;
     }
     try {
+      let completedBeforeStartResolved = false;
       await voice.requestAndStart(
         (value) => {
+          completedBeforeStartResolved = true;
           const transcript = value.trim();
           if (transcript) {
             setDraft(
@@ -301,12 +336,15 @@ export function AndroidCloudApp({
           setListening(false);
         },
         (dictationError) => {
+          completedBeforeStartResolved = true;
           setListening(false);
           setError(errorMessage(dictationError));
         },
       );
-      setError(null);
-      setListening(true);
+      if (!completedBeforeStartResolved) {
+        setError(null);
+        setListening(true);
+      }
     } catch (dictationError) {
       // error-policy:J4 denied or failed dictation is visible at the input.
       setListening(false);

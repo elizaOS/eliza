@@ -22,6 +22,7 @@ const playEntry = vi.hoisted(() => ({
   secureGet: vi.fn(async () => ({ value: null as string | null })),
   secureSet: vi.fn(async (_options: { value: string }) => undefined),
   voiceListeners: new Map<string, (value: unknown) => void>(),
+  voiceListenerRemovers: [] as Array<ReturnType<typeof vi.fn>>,
   voiceStop: vi.fn(async () => undefined),
 }));
 
@@ -47,11 +48,11 @@ vi.mock("@capacitor/core", () => ({
           addListener: vi.fn(
             async (name: string, listener: (value: unknown) => void) => {
               playEntry.voiceListeners.set(name, listener);
-              return {
-                remove: vi.fn(async () => {
-                  playEntry.voiceListeners.delete(name);
-                }),
-              };
+              const remove = vi.fn(async () => {
+                playEntry.voiceListeners.delete(name);
+              });
+              playEntry.voiceListenerRemovers.push(remove);
+              return { remove };
             },
           ),
           requestPermission: vi.fn(async () => ({ granted: true })),
@@ -118,6 +119,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   playEntry.appListeners.clear();
   playEntry.voiceListeners.clear();
+  playEntry.voiceListenerRemovers.length = 0;
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -231,8 +233,8 @@ describe("Android Cloud renderer behavior", () => {
 
   it("observes native-event voice teardown failures", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-    playEntry.voiceStop.mockRejectedValueOnce(new Error("native stop failed"));
     await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    playEntry.voiceStop.mockRejectedValueOnce(new Error("native stop failed"));
 
     playEntry.voiceListeners.get("error")?.({ code: 7 });
 
@@ -243,5 +245,18 @@ describe("Android Cloud renderer behavior", () => {
       ),
     );
     warning.mockRestore();
+  });
+
+  it("stops native recognition even when listener teardown fails", async () => {
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    playEntry.voiceStop.mockClear();
+    playEntry.voiceListenerRemovers[0]?.mockRejectedValueOnce(
+      new Error("listener teardown failed"),
+    );
+
+    await expect(entry.androidCloudVoice.stop()).rejects.toThrow(
+      "listener teardown failed",
+    );
+    expect(playEntry.voiceStop).toHaveBeenCalledOnce();
   });
 });

@@ -300,10 +300,7 @@ function stopVoiceAfterNativeEvent(): void {
 
 export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript, onError) {
-    await Promise.all(
-      activeVoiceListeners.map((listener) => listener.remove()),
-    );
-    activeVoiceListeners = [];
+    await androidCloudVoice.stop();
     const permissions = await PlayVoice.requestPermission();
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
@@ -328,18 +325,27 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
       language: navigator.language || "en-US",
     });
     if (!result.started) {
-      await Promise.all(
-        activeVoiceListeners.map((listener) => listener.remove()),
-      );
-      activeVoiceListeners = [];
+      await androidCloudVoice.stop();
       throw new Error(result.error || "Voice dictation could not start.");
     }
   },
   async stop() {
     const listeners = activeVoiceListeners;
     activeVoiceListeners = [];
-    await Promise.all(listeners.map((listener) => listener.remove()));
-    await PlayVoice.stopDictation();
+    const removalResults = await Promise.allSettled(
+      listeners.map((listener) => listener.remove()),
+    );
+    let nativeStopError: unknown;
+    try {
+      await PlayVoice.stopDictation();
+    } catch (error) {
+      nativeStopError = error;
+    }
+    if (nativeStopError !== undefined) throw nativeStopError;
+    const removalFailure = removalResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (removalFailure) throw removalFailure.reason;
   },
   async speak(text) {
     await PlayVoice.speak({ text, language: navigator.language || "en-US" });

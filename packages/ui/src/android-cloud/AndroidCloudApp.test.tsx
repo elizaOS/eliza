@@ -20,7 +20,10 @@ import {
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "./AndroidCloudApp";
-import { AndroidCloudClient } from "./android-cloud-client";
+import {
+  AndroidCloudClient,
+  type AndroidCloudSession,
+} from "./android-cloud-client";
 
 const session = {
   identity: {
@@ -43,6 +46,18 @@ function createVoice(): AndroidCloudVoiceAdapter {
     stop: vi.fn(async () => undefined),
     speak: vi.fn(async () => undefined),
   };
+}
+
+function accelerateLoginPollTimers(): void {
+  const originalSetTimeout = window.setTimeout.bind(window);
+  vi.spyOn(window, "setTimeout").mockImplementation(
+    (handler, timeout, ...args): ReturnType<typeof setTimeout> =>
+      originalSetTimeout(
+        handler,
+        timeout === 1_500 ? 0 : timeout,
+        ...args,
+      ) as unknown as ReturnType<typeof setTimeout>,
+  );
 }
 
 describe("AndroidCloudApp", () => {
@@ -170,18 +185,7 @@ describe("AndroidCloudApp", () => {
     const signOut = vi.spyOn(client, "signOut").mockResolvedValue(undefined);
     const openExternal = vi.fn(async () => undefined);
     const closeExternal = vi.fn(async () => undefined);
-    const originalSetTimeout = window.setTimeout.bind(window);
-    vi.spyOn(window, "setTimeout").mockImplementation(
-      (handler, timeout, ...args) => {
-        if (timeout === 1_500) {
-          queueMicrotask(() => {
-            if (typeof handler === "function") handler(...args);
-          });
-          return 1;
-        }
-        return originalSetTimeout(handler, timeout, ...args);
-      },
-    );
+    accelerateLoginPollTimers();
     render(
       <AndroidCloudApp
         client={client}
@@ -201,6 +205,50 @@ describe("AndroidCloudApp", () => {
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
     expect(client.restoreSession).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
+  it("cancels while the authenticated session is being restored", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(session);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "cancelled-token",
+    });
+    let finishRestore: (value: AndroidCloudSession | null) => void = () => {};
+    client.restoreSession = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockReturnValueOnce(
+        new Promise<AndroidCloudSession | null>((resolve) => {
+          finishRestore = resolve;
+        }),
+      );
+    const signOut = vi.spyOn(client, "signOut").mockResolvedValue(undefined);
+    accelerateLoginPollTimers();
+
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={vi.fn(async () => undefined)}
+        voice={createVoice()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(client.restoreSession).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    finishRestore(session);
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByText("Ada")).toBeNull();
   });
 
   it("leaves listening state and surfaces an asynchronous voice error", async () => {
@@ -226,6 +274,29 @@ describe("AndroidCloudApp", () => {
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "Voice recognition failed.",
+    );
+  });
+
+  it("does not enter listening state when voice fails during startup", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    const voice: AndroidCloudVoiceAdapter = {
+      requestAndStart: vi.fn(async (_onTranscript, onError) => {
+        onError(new Error("Immediate voice failure."));
+      }),
+      stop: vi.fn(async () => undefined),
+      speak: vi.fn(async () => undefined),
+    };
+    render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Start dictation" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Immediate voice failure.",
     );
   });
 });
