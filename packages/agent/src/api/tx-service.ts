@@ -1,3 +1,21 @@
+/**
+ * Ethereum transaction signing and contract interaction layer.
+ *
+ * Provides the missing transaction capability to Eliza's wallet system,
+ * which currently only handles key generation and balance fetching.
+ * Used by the registry and drop services for on-chain operations.
+ */
+
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import * as ethers from "ethers";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+
+/**
+ * Renders a redacted preview of a rejected private key for the constructor's
+ * error message. The head and tail keep raw characters rather than a hash, so
+ * both cuts must land on whole code points — a malformed key is exactly the
+ * input most likely to carry a stray surrogate.
+ */
 export function formatPrivateKeyPreview(privateKey: string): string {
   const wellFormed = toWellFormedUnicode(privateKey);
   if (wellFormed.length <= 10) return "(empty or too short)";
@@ -15,18 +33,6 @@ export function formatPrivateKeyPreview(privateKey: string): string {
   const tail = wellFormed.slice(tailStart);
   return `${head}...${tail}`;
 }
-
-/**
- * Ethereum transaction signing and contract interaction layer.
- *
- * Provides the missing transaction capability to Eliza's wallet system,
- * which currently only handles key generation and balance fetching.
- * Used by the registry and drop services for on-chain operations.
- */
-
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import * as ethers from "ethers";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 export interface JsonRpcEndpointProbeResult {
   ok: boolean;
