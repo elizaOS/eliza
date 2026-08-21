@@ -1,6 +1,3 @@
-import type { ActionFailureProvenance } from "../types/action-failure";
-import { truncateWellFormed } from "../utils/well-formed";
-
 /**
  * Bounds and guard functions for the planner chaining loop: the
  * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
@@ -8,6 +5,9 @@ import { truncateWellFormed } from "../utils/well-formed";
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
+import type { ActionFailureProvenance } from "../types/action-failure";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
+
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
 	maxToolCalls: number;
@@ -232,8 +232,11 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
+	// Normalize before truncating: toWellFormedUnicode repairs lone surrogates
+	// already present in the raw provider error, and truncateWellFormed keeps
+	// the 240-char cut off a pair boundary. Truncation alone fixes only the cut.
 	const normalizedError = truncateWellFormed(
-		rawError.trim().replace(/\s+/g, " "),
+		toWellFormedUnicode(rawError.trim().replace(/\s+/g, " ")),
 		240,
 	);
 	return `${toolName}:${normalizedError}`;
