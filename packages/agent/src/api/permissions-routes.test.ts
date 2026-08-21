@@ -272,4 +272,93 @@ describe("permission routes", () => {
       },
     });
   });
+
+  it("projects native personal-data capabilities from persisted permission state", async () => {
+    const ctx = makeContext("/api/permissions/native-projection", {
+      state: {
+        permissionStates: {
+          contacts: permissionState("contacts", {
+            status: "granted",
+            canRequest: false,
+          }),
+          messages: permissionState("messages", {
+            status: "denied",
+            canRequest: true,
+          }),
+          health: permissionState("health", {
+            status: "restricted",
+            canRequest: false,
+            restrictedReason: "platform_unsupported",
+          }),
+        },
+      },
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    const projection = ctx.captured.data as {
+      residency: string;
+      account: {
+        mode: string;
+        status: string;
+        capabilities: Array<{ capabilityId: string; status: string }>;
+      };
+      domains: Array<{
+        domain: string;
+        availability: string;
+        capabilities: Array<{ capabilityId: string; status: string }>;
+      }>;
+    };
+    expect(projection.residency).toBe("device");
+    expect(projection.account.mode).toBe("native");
+    expect(projection.account.status).toBe("connected");
+    expect(projection.domains).toHaveLength(8);
+
+    const byDomain = new Map(projection.domains.map((d) => [d.domain, d]));
+    expect(byDomain.get("contacts")?.availability).toBe("available");
+    expect(byDomain.get("messages")?.availability).toBe("denied");
+    expect(
+      byDomain
+        .get("messages")
+        ?.capabilities.every((c) => c.status === "needs_scope"),
+    ).toBe(true);
+    expect(byDomain.get("health")?.availability).toBe("restricted");
+    // Domains with no persisted state fall back to the unavailable stub and
+    // must project as unsupported, never as a fabricated grant.
+    expect(byDomain.get("location")?.availability).toBe("unsupported");
+
+    // Metadata-only invariant: no personal payload fields ride along.
+    const domainKeys = Object.keys(projection.domains[0]).sort();
+    expect(domainKeys).toEqual(
+      [
+        "availability",
+        "canRequest",
+        "capabilities",
+        "domain",
+        "label",
+        "lastCheckedAt",
+        "permissionId",
+        "permissionStatus",
+        "platform",
+        "residency",
+        "restrictedReason",
+        "worksOffline",
+      ].sort(),
+    );
+  });
+
+  it("projects every domain as unsupported when no registry or persisted state exists", async () => {
+    const ctx = makeContext("/api/permissions/native-projection");
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    const projection = ctx.captured.data as {
+      account: { status: string };
+      domains: Array<{ availability: string }>;
+    };
+    expect(projection.account.status).toBe("unavailable");
+    expect(
+      projection.domains.every((d) => d.availability === "unsupported"),
+    ).toBe(true);
+  });
 });

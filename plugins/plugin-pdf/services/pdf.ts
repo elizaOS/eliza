@@ -291,7 +291,8 @@ export class PdfService extends Service {
 
     return filtered
       .replace(/[^\S\r\n]+/g, " ")
-      .replace(/[ \t]+(\r?\n)/g, "$1")
+      .replaceAll(" \r\n", "\r\n")
+      .replaceAll(" \n", "\n")
       .trim();
   }
 }

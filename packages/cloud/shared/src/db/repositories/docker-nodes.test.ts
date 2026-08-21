@@ -102,6 +102,27 @@ describe("DockerNodesRepository environment guard", () => {
     expect(sql).toContain("= ''");
   });
 
+  test("findPlaceable fails closed: an unlabeled node is not a placement target", async () => {
+    const { DockerNodesRepository } = await import("./docker-nodes");
+
+    await new DockerNodesRepository().findPlaceable();
+
+    if (!capturedWhere) throw new Error("findPlaceable did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    // Strict equality against the deployment environment only. The historic
+    // fail-open arm — COALESCE(metadata->>'environment','') = '' — let a
+    // staging host registered in the production DB take production placements
+    // (elizaOS/eliza#22547); its shape must never come back to a placement
+    // query.
+    expect(sql).toContain("->>'environment'");
+    expect(query.params).toContain("staging");
+    expect(sql).not.toMatch(/coalesce\([^)]*->>\s*'environment'/);
+    // Exactly one reference: the strict equality. The fail-open form carried
+    // two (the COALESCE('' ) arm plus the OR match arm).
+    expect(sql.match(/->>'environment'/g)?.length).toBe(1);
+  });
+
   test("setEmbeddingSidecarHealth merges into metadata instead of replacing it", async () => {
     const { DockerNodesRepository } = await import("./docker-nodes");
 
@@ -161,6 +182,11 @@ describe("DockerNodesRepository environment guard", () => {
     expect(sql).toContain("metadata");
     expect(sql).toContain("->>'environment'");
     expect(sql).toContain("capacityprovisional");
+    // Placement predicate: fail closed, no unlabeled-row escape hatch.
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    expect(query.params).toContain("staging");
+    expect(sql).not.toMatch(/coalesce\([^)]*->>\s*'environment'/);
+    expect(sql.match(/->>'environment'/g)?.length).toBe(1);
   });
 
   test("reconcileProvisionalCapacity consumes the provisional marker atomically", async () => {

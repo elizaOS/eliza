@@ -23,6 +23,7 @@ export * from "./apps/index.js";
 export * from "./automation-node-contributors.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
+export * from "./capability-catalog.js";
 export * from "./character-presets.characters.js";
 export * from "./character-presets.js";
 // Chat-upload limits — the single source of truth for the attachment caps and

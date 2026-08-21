@@ -5,7 +5,7 @@
  * one primary-database observation boundary.
  */
 
-import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { type Database, dbRead, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
@@ -136,6 +136,7 @@ class ActiveBillingService {
           and(
             eq(agentSandboxes.organization_id, organizationId),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            isNull(agentSandboxes.pool_status),
             inArray(agentSandboxes.billing_status, ["active", "warning", "shutdown_pending"]),
             or(
               eq(agentSandboxes.status, "running"),
@@ -369,7 +370,9 @@ class ActiveBillingService {
     }
 
     if (!resourceType || resourceType === "agent_sandbox") {
-      const [agent] = await dbRead
+      // pool_status is the server-owned capacity authority. Authorize against
+      // the primary immediately before enqueueing any infrastructure side effect.
+      const [agent] = await dbWrite
         .select()
         .from(agentSandboxes)
         .where(
@@ -377,6 +380,7 @@ class ActiveBillingService {
             eq(agentSandboxes.id, resourceId),
             eq(agentSandboxes.organization_id, organizationId),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            isNull(agentSandboxes.pool_status),
           ),
         )
         .limit(1);
@@ -439,6 +443,7 @@ class ActiveBillingService {
             and(
               eq(agentSandboxes.id, resourceId),
               eq(agentSandboxes.organization_id, organizationId),
+              isNull(agentSandboxes.pool_status),
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             ),
           )
@@ -446,13 +451,14 @@ class ActiveBillingService {
         const effective =
           updated ??
           (
-            await dbRead
+            await dbWrite
               .select()
               .from(agentSandboxes)
               .where(
                 and(
                   eq(agentSandboxes.id, resourceId),
                   eq(agentSandboxes.organization_id, organizationId),
+                  isNull(agentSandboxes.pool_status),
                 ),
               )
               .limit(1)

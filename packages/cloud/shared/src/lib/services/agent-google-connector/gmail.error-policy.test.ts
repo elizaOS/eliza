@@ -28,7 +28,7 @@ mock.module("./shared", () => ({
   getManagedGoogleConnectorStatus: () => statusImpl(),
 }));
 
-const { fetchManagedGoogleGmailTriage } = await import("./gmail");
+const { fetchManagedGoogleGmailTriage, readManagedGoogleGmailMessage } = await import("./gmail");
 
 const ORG = "org-1";
 const USER = "user-1";
@@ -108,6 +108,43 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.subject).toBe("Hello");
+  });
+
+  test("body normalization strips browser-tokenized script/style end tags", async () => {
+    const body =
+      "<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>safe</p><script>unclosed";
+    fetchImpl = async () =>
+      jsonResponse({
+        id: "m1",
+        threadId: "t1",
+        labelIds: ["INBOX"],
+        internalDate: "1700000000000",
+        payload: {
+          mimeType: "text/html",
+          body: { data: Buffer.from(body).toString("base64url") },
+          headers: [
+            { name: "Subject", value: "HTML" },
+            { name: "From", value: "Alice <alice@example.com>" },
+            { name: "To", value: "me@example.com" },
+          ],
+        },
+      });
+
+    const result = await readManagedGoogleGmailMessage({
+      organizationId: ORG,
+      userId: USER,
+      side: SIDE,
+      messageId: "m1",
+    });
+
+    expect(result.bodyText).toContain("&lt;kept&gt;");
+    expect(result.bodyText).not.toContain("<kept>");
+    expect(result.bodyText).not.toContain("credential-stealer");
+    expect(result.bodyText).not.toContain("still-script");
+    expect(result.bodyText).not.toContain("hidden");
+    expect(result.bodyText).not.toContain("still-style");
+    expect(result.bodyText).not.toContain("unclosed");
+    expect(result.bodyText).toContain("safe");
   });
 
   test("internal failure on the LIST call propagates (never fabricates empty)", async () => {

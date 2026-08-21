@@ -137,6 +137,11 @@ describe("parseGroundingDecorations", () => {
       regions: [],
     });
   });
+
+  it("rejects a 100k-character malformed coordinate without backtracking", () => {
+    const raw = `Header [${"0".repeat(100_000)}x,0,1,1]`;
+    expect(parseGroundingDecorations(raw)).toEqual({ text: raw, regions: [] });
+  });
 });
 
 /** Stub llama-server: /health + /v1/chat/completions under an optional path prefix. */

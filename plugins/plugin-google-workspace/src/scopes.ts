@@ -16,11 +16,12 @@ export const GOOGLE_CAPABILITIES = [
   "drive.write",
   "meet.create",
   "meet.read",
+  "people.read",
 ] as const;
 
 export type GoogleCapability = (typeof GOOGLE_CAPABILITIES)[number];
 
-export const GOOGLE_CAPABILITY_GROUPS = ["gmail", "calendar", "drive", "meet"] as const;
+export const GOOGLE_CAPABILITY_GROUPS = ["gmail", "calendar", "drive", "meet", "people"] as const;
 
 export type GoogleCapabilityGroup = (typeof GOOGLE_CAPABILITY_GROUPS)[number];
 
@@ -42,6 +43,10 @@ export const GOOGLE_OAUTH_SCOPES = {
   meet: {
     create: "https://www.googleapis.com/auth/meetings.space.created",
     read: "https://www.googleapis.com/auth/meetings.space.readonly",
+  },
+  people: {
+    read: "https://www.googleapis.com/auth/contacts.readonly",
+    otherRead: "https://www.googleapis.com/auth/contacts.other.readonly",
   },
   profile: {
     email: "https://www.googleapis.com/auth/userinfo.email",
@@ -68,6 +73,7 @@ export const GOOGLE_CAPABILITY_SCOPES = {
   "drive.write": [GOOGLE_OAUTH_SCOPES.drive.write],
   "meet.create": [GOOGLE_OAUTH_SCOPES.meet.create],
   "meet.read": [GOOGLE_OAUTH_SCOPES.meet.read],
+  "people.read": [GOOGLE_OAUTH_SCOPES.people.read, GOOGLE_OAUTH_SCOPES.people.otherRead],
 } as const satisfies Record<GoogleCapability, readonly string[]>;
 
 const GOOGLE_CAPABILITY_DETAILS: Record<
@@ -110,6 +116,11 @@ const GOOGLE_CAPABILITY_DETAILS: Record<
     label: "Read Meet Artifacts",
     description:
       "Read Google Meet spaces, conference records, participants, transcripts, and recordings.",
+  },
+  "people.read": {
+    label: "Read Contacts",
+    description:
+      "Search and read Google Contacts and interaction-derived Other Contacts for the selected account.",
   },
 };
 

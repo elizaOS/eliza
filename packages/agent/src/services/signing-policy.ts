@@ -35,6 +35,18 @@ export type PolicyDecision = {
   matchedRule: string;
 };
 
+function clonePolicy(policy: SigningPolicy): SigningPolicy {
+  // Defensive copies keep allow/deny authority inside the evaluator: callers
+  // must not be able to change decisions by mutating shared arrays.
+  return {
+    ...policy,
+    allowedChainIds: [...policy.allowedChainIds],
+    allowedContracts: [...policy.allowedContracts],
+    deniedContracts: [...policy.deniedContracts],
+    allowedMethodSelectors: [...policy.allowedMethodSelectors],
+  };
+}
+
 export function createDefaultPolicy(): SigningPolicy {
   return {
     allowedChainIds: [],
@@ -55,15 +67,15 @@ export class SigningPolicyEvaluator {
   private processedRequestIds = new Set<string>();
 
   constructor(policy?: SigningPolicy) {
-    this.policy = policy ?? createDefaultPolicy();
+    this.policy = policy ? clonePolicy(policy) : createDefaultPolicy();
   }
 
   updatePolicy(policy: SigningPolicy): void {
-    this.policy = policy;
+    this.policy = clonePolicy(policy);
   }
 
   getPolicy(): SigningPolicy {
-    return { ...this.policy };
+    return clonePolicy(this.policy);
   }
 
   evaluate(request: SigningRequest): PolicyDecision {
@@ -122,6 +134,14 @@ export class SigningPolicyEvaluator {
     try {
       const txValue = BigInt(request.value || "0");
       const maxValue = BigInt(this.policy.maxTransactionValueWei);
+      if (txValue < 0n) {
+        return {
+          allowed: false,
+          reason: "Transaction value must not be negative",
+          requiresHumanConfirmation: false,
+          matchedRule: "value_non_negative",
+        };
+      }
       if (txValue > maxValue) {
         return {
           allowed: false,
@@ -142,9 +162,21 @@ export class SigningPolicyEvaluator {
     // ── Method selector ──────────────────────────────────────────────
     if (
       this.policy.allowedMethodSelectors.length > 0 &&
-      request.data &&
-      request.data.length >= 10
+      request.data.toLowerCase() !== "0x"
     ) {
+      // Whole-payload validation: a 4-byte selector followed by whole hex
+      // bytes. A valid prefix must not smuggle a malformed tail past the
+      // allowlist.
+      if (!/^0x[0-9a-f]{8}(?:[0-9a-f]{2})*$/i.test(request.data)) {
+        return {
+          allowed: false,
+          reason:
+            "Calldata must be a complete 4-byte hex selector followed by whole hex bytes",
+          requiresHumanConfirmation: false,
+          matchedRule: "method_selector_format",
+        };
+      }
+
       const selector = request.data.substring(0, 10).toLowerCase();
       if (
         !this.policy.allowedMethodSelectors.some(

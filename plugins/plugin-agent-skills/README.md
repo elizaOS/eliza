@@ -249,7 +249,8 @@ await service.install('pdf-processing');
 
 // Every catalog, GitHub, and direct-URL install has one deadline spanning its
 // fetches and body reads. It inherits the service fetchTimeoutMs by default;
-// override it, propagate caller cancellation, or explicitly opt out with null.
+// override it with any positive finite duration (long durations are segmented
+// safely), propagate caller cancellation, or explicitly opt out with null.
 const controller = new AbortController();
 const installed = await service.installFromUrl('https://example.com/SKILL.md', {
   signal: controller.signal,

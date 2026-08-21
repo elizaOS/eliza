@@ -13,6 +13,11 @@
  * stored record and the `<audio>.currentTime`-based player highlight.
  */
 
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { SpeakerNameAttribution } from "./speaker-name-inference.js";
 
 /** A single transcribed word with playback-synced timing (ms from audio start). */
@@ -371,13 +376,31 @@ export function transcriptPreview(
   segments: ReadonlyArray<TranscriptSegment>,
   max = TRANSCRIPT_PREVIEW_CHARS,
 ): string {
+  if (!Number.isInteger(max) || max < 0) {
+    throw new ElizaError(
+      `transcriptPreview: max must be a non-negative integer, got ${max}`,
+      {
+        code: "TRANSCRIPT_PREVIEW_LIMIT_INVALID",
+        context: { max },
+      },
+    );
+  }
+  if (max === 0) {
+    return "";
+  }
+
   const flat = segments
     .map((s) => s.text.trim())
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
-  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+  const wellFormed = toWellFormedUnicode(flat);
+  if (wellFormed.length <= max) {
+    return wellFormed;
+  }
+  const budget = Math.max(0, max - 1);
+  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 /**

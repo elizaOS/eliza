@@ -174,7 +174,9 @@ export function EarningsPageClient() {
   const [quote, setQuote] = useState<RedemptionQuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
-  const [quoteClock, setQuoteClock] = useState(() => Date.now());
+  // A quote is absent during the initial render, so wall time is irrelevant
+  // until the quote response arrives and advances this clock.
+  const [quoteClock, setQuoteClock] = useState(0);
   const [redemptionIdempotencyKey, setRedemptionIdempotencyKey] = useState<
     string | null
   >(null);
@@ -372,7 +374,6 @@ export function EarningsPageClient() {
 
   const invalidateQuote = () => {
     setQuote(null);
-    setQuoteClock(Date.now());
   };
 
   const rotateRedemptionIntent = () => {

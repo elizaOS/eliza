@@ -1,34 +1,31 @@
 /**
- * Covers the eliza-app onboarding re-provision path against the real local
- * stack: an organization whose only sandbox has died must be able to get a new
- * container by talking to the onboarding chat, and must not be able to storm
- * the fleet by talking to it repeatedly.
- *
- * Real cloud-shared services and the real jobs table; only the container
- * infrastructure is mock-backed (in-memory sandbox provider).
+ * Proves against the real local repositories that onboarding provisioning is
+ * observation-only and that newer Shared rows do not mask Dedicated lifecycle state.
  */
 import { expect, test } from "../src/helpers/test-fixtures";
 
-const DEAD_ERROR_MESSAGE =
-  "Provisioning permanently failed after 3 attempts: Job timed out 3 times - max attempts reached";
+test.use({ stackOptions: { frontend: false } });
 
 async function repositories() {
-  const { agentSandboxesRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/agent-sandboxes");
-  const { jobsRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/jobs");
-  const { ensureElizaAppProvisioning } =
-    await import("@elizaos/cloud-shared/lib/services/eliza-app/provisioning");
+  const { agentSandboxesRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+  );
+  const { jobsRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/jobs"
+  );
+  const { getElizaAppProvisioningStatus } = await import(
+    "@elizaos/cloud-shared/lib/services/eliza-app/provisioning"
+  );
   return {
     agentSandboxesRepository,
     jobsRepository,
-    ensureElizaAppProvisioning,
+    getElizaAppProvisioningStatus,
   };
 }
 
 async function countProvisionJobs(
   jobsRepository: {
-    findByFilters: (f: Record<string, unknown>) => Promise<unknown[]>;
+    findByFilters: (filters: Record<string, unknown>) => Promise<unknown[]>;
   },
   organizationId: string,
 ): Promise<number> {
@@ -40,115 +37,107 @@ async function countProvisionJobs(
   return rows.length;
 }
 
-test.describe("eliza-app onboarding re-provisions a dead sandbox", () => {
-  test("a terminal row is re-armed once, and repeat turns do not queue more work", async ({
+test.describe("eliza-app onboarding Dedicated status is observation-only", () => {
+  test("repeated reads expose a failed Dedicated row without re-arming it", async ({
     seededUser,
   }) => {
     const {
       agentSandboxesRepository,
       jobsRepository,
-      ensureElizaAppProvisioning,
+      getElizaAppProvisioningStatus,
     } = await repositories();
 
-    // The state the reaper leaves behind after a provision exhausts its retries.
-    // Before the fix this row made the organization permanently unable to get an
-    // agent from the onboarding chat, with no self-service escape.
-    const past = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const dead = await agentSandboxesRepository.create({
+    const failed = await agentSandboxesRepository.create({
       organization_id: seededUser.organizationId,
       user_id: seededUser.userId,
-      sandbox_id: `dead-${Date.now()}`,
+      sandbox_id: `failed-${Date.now()}`,
       status: "error",
-      agent_name: "reprovision-e2e-agent",
-      error_message: DEAD_ERROR_MESSAGE,
+      execution_tier: "dedicated-always",
+      agent_name: "observation-only-failed-agent",
+      error_message: "Provisioning failed",
       database_status: "none",
       environment_vars: {},
-      created_at: past,
-      updated_at: past,
     });
-
-    const before = await countProvisionJobs(
+    const jobsBefore = await countProvisionJobs(
       jobsRepository,
       seededUser.organizationId,
     );
 
-    const first = await ensureElizaAppProvisioning({
-      organizationId: seededUser.organizationId,
-      userId: seededUser.userId,
-    });
-
-    // Same row, not a second agent: minting a new one would orphan the first and
-    // leave the organization holding two.
-    expect(first.agentId).toBe(dead.id);
-    // Still `error` — only the daemon claiming the job moves it to
-    // `provisioning`. Reporting progress here would invent a state the database
-    // does not have, and the stuck-provisioning reaper would never sweep it.
-    expect(first.status).toBe("error");
-
-    const afterFirst = await countProvisionJobs(
-      jobsRepository,
+    const first = await getElizaAppProvisioningStatus(
       seededUser.organizationId,
+      seededUser.userId,
     );
-    expect(afterFirst).toBe(before + 1);
-
-    const second = await ensureElizaAppProvisioning({
-      organizationId: seededUser.organizationId,
-      userId: seededUser.userId,
-    });
-
-    // A user who keeps typing must not keep queueing container builds. The
-    // pending job dedup covers this turn; the cooldown covers the turn after
-    // the job settles.
-    expect(second.agentId).toBe(dead.id);
-    const afterSecond = await countProvisionJobs(
-      jobsRepository,
+    const second = await getElizaAppProvisioningStatus(
       seededUser.organizationId,
+      seededUser.userId,
     );
-    expect(afterSecond).toBe(afterFirst);
+
+    expect(first).toMatchObject({ status: "error", agentId: failed.id });
+    expect(second).toMatchObject({ status: "error", agentId: failed.id });
+    expect(
+      await countProvisionJobs(jobsRepository, seededUser.organizationId),
+    ).toBe(jobsBefore);
 
     const persisted = await agentSandboxesRepository.findByIdAndOrg(
-      dead.id,
+      failed.id,
       seededUser.organizationId,
     );
-    expect(persisted?.status).toBe("error");
+    expect(persisted).toMatchObject({
+      status: "error",
+      execution_tier: "dedicated-always",
+    });
   });
 
-  test("a healthy sandbox is reused, never re-armed", async ({
+  test("a newer Shared row does not mask the Dedicated target or enqueue work", async ({
     seededUser,
   }) => {
     const {
       agentSandboxesRepository,
       jobsRepository,
-      ensureElizaAppProvisioning,
+      getElizaAppProvisioningStatus,
     } = await repositories();
+    const now = Date.now();
 
-    const live = await agentSandboxesRepository.create({
+    const dedicated = await agentSandboxesRepository.create({
       organization_id: seededUser.organizationId,
       user_id: seededUser.userId,
-      sandbox_id: `live-${Date.now()}`,
+      sandbox_id: `dedicated-${now}`,
       status: "running",
-      agent_name: "reuse-e2e-agent",
+      execution_tier: "dedicated-lazy",
+      agent_name: "observation-only-dedicated-agent",
       bridge_url: "http://127.0.0.1:65535",
       health_url: "http://127.0.0.1:65535/health",
       database_status: "ready",
       environment_vars: {},
+      created_at: new Date(now - 60_000),
     });
-
-    const before = await countProvisionJobs(
+    await agentSandboxesRepository.create({
+      organization_id: seededUser.organizationId,
+      user_id: seededUser.userId,
+      status: "running",
+      execution_tier: "shared",
+      agent_name: "newer-shared-agent",
+      database_status: "none",
+      environment_vars: {},
+      created_at: new Date(now),
+    });
+    const jobsBefore = await countProvisionJobs(
       jobsRepository,
       seededUser.organizationId,
     );
 
-    const result = await ensureElizaAppProvisioning({
-      organizationId: seededUser.organizationId,
-      userId: seededUser.userId,
-    });
+    const status = await getElizaAppProvisioningStatus(
+      seededUser.organizationId,
+      seededUser.userId,
+    );
 
-    expect(result.agentId).toBe(live.id);
-    expect(result.status).toBe("running");
-    // The whole point of the guard: a working agent costs no new work.
+    expect(status).toMatchObject({
+      status: "running",
+      agentId: dedicated.id,
+      bridgeUrl: "http://127.0.0.1:65535",
+    });
     expect(
       await countProvisionJobs(jobsRepository, seededUser.organizationId),
-    ).toBe(before);
+    ).toBe(jobsBefore);
   });
 });

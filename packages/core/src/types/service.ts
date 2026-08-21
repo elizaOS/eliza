@@ -53,6 +53,7 @@ export interface ServiceTypeRegistry {
 	SCREEN_CAPTURE: "screen_capture";
 	DOCUMENTS: "documents";
 	RELATIONSHIPS: "relationships";
+	IDENTITY_RESOLUTION: "identity_resolution";
 	FOLLOW_UP: "follow_up";
 	TRAJECTORIES: "trajectories";
 	SWARM_COORDINATOR: "SWARM_COORDINATOR";
@@ -160,6 +161,7 @@ export const ServiceType = {
 	SCREEN_CAPTURE: "screen_capture",
 	DOCUMENTS: "documents",
 	RELATIONSHIPS: "relationships",
+	IDENTITY_RESOLUTION: "identity_resolution",
 	FOLLOW_UP: "follow_up",
 	TRAJECTORIES: "trajectories",
 	SWARM_COORDINATOR: "SWARM_COORDINATOR",

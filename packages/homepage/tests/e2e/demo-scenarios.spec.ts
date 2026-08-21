@@ -1,7 +1,7 @@
 /** Review-board coverage for the development-only full script view. */
 import { expect, test } from "playwright/test";
 
-test("shows all five rooms, 24 beats each, with distinct casts", async ({
+test("shows all five rooms and their native attachment prototypes", async ({
   page,
 }) => {
   await page.goto("/demo-scenarios", { waitUntil: "domcontentloaded" });
@@ -17,11 +17,60 @@ test("shows all five rooms, 24 beats each, with distinct casts", async ({
   const rooms = page.locator("[data-demo-review-room]");
   await expect(rooms).toHaveCount(5);
 
-  for (const room of await rooms.all()) {
-    await expect(room.locator("[data-demo-review-step]")).toHaveCount(24);
+  await expect(
+    page.locator('[data-demo-review-room="friends"] [data-demo-review-step]'),
+  ).toHaveCount(21);
+  await expect(
+    page.locator('[data-demo-review-room="household"] [data-demo-review-step]'),
+  ).toHaveCount(21);
+  await expect(
+    page.locator(
+      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
+    ),
+  ).toHaveCount(3);
+  for (const room of await page
+    .locator(
+      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
+    )
+    .all()) {
+    await expect(room.locator("[data-demo-review-step]")).toHaveCount(21);
   }
-  await expect(page.locator(".landing-demo-card")).toHaveCount(20);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
+  await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-task-list-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-handoff-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-calendar-day-view")).toHaveCount(1);
+  await expect(page.locator(".landing-calendar-head")).toHaveText(
+    "Friday Calendar",
+  );
+  await expect(page.locator(".landing-calendar-icon svg")).toHaveCount(1);
+  await expect(page.locator(".landing-calendar-event")).toContainText(
+    "Ava's soccer",
+  );
+  await expect(page.locator(".landing-itinerary-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-itinerary-app-icon svg")).toHaveCount(1);
+  await expect(page.locator(".landing-itinerary-head")).toHaveText("Plan");
+  await expect(page.locator(".landing-itinerary-head small")).toHaveCount(0);
+  await expect(page.locator(".landing-itinerary-copy small")).toHaveCount(0);
+  await expect(page.locator(".landing-heat-plan-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-heat-plan-head > svg")).toHaveCount(1);
+  await expect(page.locator(".landing-heat-plan-head small")).toHaveCount(0);
+  await expect(page.locator(".landing-place-fit")).toHaveCount(0);
+  await expect(
+    page.locator(".landing-task-list-attachment footer"),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      ".landing-place-attachment footer, .landing-handoff-attachment footer, .landing-itinerary-attachment footer, .landing-heat-plan-attachment footer",
+    ),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      '[data-demo-review-room="friends"] [data-demo-review-step="place"] .demo-review-step-meta',
+    ),
+  ).toHaveCount(0);
   await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
+  await expect(page.locator(".demo-review-step-capability")).toHaveCount(0);
 
   const castSources = await page
     .locator(".demo-review-cast img:not([src*='logo_white_orangebg'])")

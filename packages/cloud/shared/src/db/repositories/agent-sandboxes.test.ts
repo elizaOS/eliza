@@ -34,17 +34,25 @@ const ensureAgentSandboxSchema = mock(async () => {});
 let selectRows: unknown[] = [];
 let selectRowBatches: unknown[][] = [];
 
+let capturedGroupBy: unknown[] = [];
+
 function chainableRows(): unknown[] & {
   limit: () => unknown[];
   orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+  groupBy: (...columns: unknown[]) => unknown[];
 } {
   const sourceRows = selectRowBatches.length > 0 ? selectRowBatches.shift() : selectRows;
   const rows = [...(sourceRows ?? [])] as unknown[] & {
     limit: () => unknown[];
     orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+    groupBy: (...columns: unknown[]) => unknown[];
   };
   rows.limit = () => rows;
   rows.orderBy = () => rows;
+  rows.groupBy = (...columns: unknown[]) => {
+    capturedGroupBy = columns;
+    return rows;
+  };
   return rows;
 }
 
@@ -280,6 +288,58 @@ describe("AgentSandboxesRepository", () => {
     // eq/ne bind their operands, so the values land in `params`, not the SQL.
     expect(query.params).toContain("running");
     expect(query.params).toContain("shared");
+    // #22548: soft-deleted rows and unclaimed warm-pool rows must never be
+    // dialed — both guards are present, matching the sibling predicates.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("dedicated fleet census groups by tier AND status over the container-backed fleet (#22548)", async () => {
+    capturedWhere = undefined;
+    capturedGroupBy = [];
+    select.mockClear();
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().summarizeDedicatedFleet();
+
+    if (!capturedWhere) throw new Error("summarizeDedicatedFleet did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+
+    // The census must NOT filter on status: the caller applies the serving
+    // contract, and it needs the off-state counts (sleeping/stopped) to tell
+    // "no agents exist" from "all are asleep". A fleet whose every row sits in
+    // `error` — invisible to the heartbeat sweep — must still be counted.
+    expect(sql).not.toContain('"status"');
+    expect(query.params).not.toContain("running");
+
+    // The tier filter is an explicit allowlist, not `<> 'shared'`, so a tier
+    // added later cannot silently enroll itself in the paging census.
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain("in (");
+    expect(sql).not.toContain("<>");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).not.toContain("shared");
+
+    // Deleted and warm-pool rows are not tenant-serving fleet.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+
+    // Tier must be both projected and grouped: a status-only census cannot
+    // distinguish a sleeping lazy agent (fine) from a sleeping always-on one.
+    const lastSelectArgs = select.mock.calls.at(-1) as unknown as unknown[] | undefined;
+    const projection = lastSelectArgs?.[0] as Record<string, unknown> | undefined;
+    expect(Object.keys(projection ?? {})).toEqual(
+      expect.arrayContaining(["execution_tier", "status", "count"]),
+    );
+    expect(capturedGroupBy).toHaveLength(2);
+    const groupedNames = capturedGroupBy.map((column) => (column as { name?: string }).name);
+    expect(groupedNames).toEqual(expect.arrayContaining(["execution_tier", "status"]));
   });
 
   test("heartbeat writeback is fenced to the exact running generation and loses to deletion", async () => {

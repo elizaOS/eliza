@@ -51,13 +51,10 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => navigateMock,
 }));
 
-// Sibling settings cards call the billing settings API on mount; stub them so
-// the shared api mock only sees this tab's own requests.
+// The sibling auto-top-up card calls the billing settings API on mount; stub it
+// so the shared api mock only sees this tab's own requests.
 vi.mock("./auto-top-up-card", () => ({
   AutoTopUpCard: () => null,
-}));
-vi.mock("./pay-as-you-go-card", () => ({
-  PayAsYouGoCard: () => null,
 }));
 
 import type { BillingUser, InvoiceDisplay } from "../types";

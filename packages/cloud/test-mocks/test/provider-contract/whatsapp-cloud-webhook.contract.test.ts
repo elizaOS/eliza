@@ -72,7 +72,7 @@ function createWebhookRuntime(): IAgentRuntime {
       return true;
     },
     adapter: {
-      documentListQueryCapability: 2,
+      documentListQueryCapability: 3,
       getDocument: async ({ documentId }: { documentId: UUID }) =>
         memoryStore.get(String(documentId)) ?? null,
       compareAndSwapDocument: async ({

@@ -1,11 +1,14 @@
 /**
  * Factory that selects the MCP tool-compatibility implementation for the
- * runtime's model provider. createMcpToolCompatibilitySync uses require() so it
- * can run inside the synchronous tool-listing path; the async variant uses
- * dynamic import. Returns null for providers needing no schema fixup.
+ * runtime's model provider. Provider implementations are imported statically so
+ * source-based ESM test and development execution has the same resolution
+ * contract as built output. Returns null for providers needing no schema fixup.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { detectModelProvider, type McpToolCompatibility } from "./base";
+import { AnthropicMcpCompatibility } from "./providers/anthropic";
+import { GoogleMcpCompatibility } from "./providers/google";
+import { OpenAIMcpCompatibility } from "./providers/openai";
 
 export {
   type ArrayConstraints,
@@ -27,15 +30,12 @@ export async function createMcpToolCompatibility(
 
   switch (modelInfo.provider) {
     case "openai": {
-      const { OpenAIMcpCompatibility } = await import("./providers/openai.js");
       return new OpenAIMcpCompatibility(modelInfo);
     }
     case "anthropic": {
-      const { AnthropicMcpCompatibility } = await import("./providers/anthropic.js");
       return new AnthropicMcpCompatibility(modelInfo);
     }
     case "google": {
-      const { GoogleMcpCompatibility } = await import("./providers/google.js");
       return new GoogleMcpCompatibility(modelInfo);
     }
     default:
@@ -50,15 +50,12 @@ export function createMcpToolCompatibilitySync(
 
   switch (modelInfo.provider) {
     case "openai": {
-      const { OpenAIMcpCompatibility } = require("./providers/openai");
       return new OpenAIMcpCompatibility(modelInfo);
     }
     case "anthropic": {
-      const { AnthropicMcpCompatibility } = require("./providers/anthropic");
       return new AnthropicMcpCompatibility(modelInfo);
     }
     case "google": {
-      const { GoogleMcpCompatibility } = require("./providers/google");
       return new GoogleMcpCompatibility(modelInfo);
     }
     default:

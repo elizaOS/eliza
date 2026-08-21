@@ -1584,7 +1584,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   runWorkflow(
     workflowId: string,
-    request: { now?: string; confirmBrowserActions?: boolean } = {},
+    request: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<LifeOpsWorkflowRun> {
     return this.workflowsDomain.runWorkflow(workflowId, request);
   }
@@ -1791,7 +1795,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
-      { subjectType: "owner", limit: 200 },
+      {
+        subjectType: "owner",
+        definitionScopes: [
+          {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityId(),
+          },
+        ],
+        limit: 200,
+      },
     );
     return views
       .filter(

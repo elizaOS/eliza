@@ -53,6 +53,11 @@ import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./ac
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
+import {
+	buildTurnEntityAliases,
+	type EntityAliasCapabilityMap,
+	resolveEntityAliasRefs,
+} from "./tool-arg-aliases";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -70,6 +75,14 @@ export interface ExecutePlannedToolCallContext {
 	previousResults?: readonly ActionResult[];
 	callback?: Parameters<Action["handler"]>[4];
 	responses?: Memory[];
+	/**
+	 * Explicit per-turn alias grants for redaction placeholders in tool args
+	 * (#20091). When absent, the executor mints the map itself via
+	 * `buildTurnEntityAliases` from the composed state, resolved roles, and
+	 * canonical owner context; supplying it lets a planner boundary pass a
+	 * pre-authorized capability map. Never sourced from ambient settings.
+	 */
+	entityAliases?: EntityAliasCapabilityMap;
 }
 
 export type ExecutePlannedToolCallOptions = HandlerOptions & {
@@ -570,50 +583,6 @@ function runWithMessageTrajectoryContext<T>(
 	);
 }
 
-/**
- * Resolve prompt-side redaction placeholders the model copied into tool args
- * (matrix F16, tj-b6bf03e81193a2): settings values are redacted in prompts as
- * `[REDACTED:<NAME>]`, the model faithfully reproduces the placeholder in an
- * argument (`entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]"`), and schema/UUID
- * validation rejects it — every tool wanting the admin entity id fails.
- *
- * Deliberately narrow: only full-string placeholders whose setting name ends
- * in `_ENTITY_ID` (non-credential identifiers) resolve, and only when the
- * runtime setting exists and is UUID-shaped. Credential-class placeholders
- * stay unresolved by design — substituting bearer secrets into tool args
- * would hand them to any tool that echoes its inputs. The broader design
- * (resolvable redaction aliases) is a flagged follow-up.
- *
- * The RECORDED tool call keeps the placeholder (this transforms only the
- * executed-args copy), so resolved ids never enter trajectories.
- */
-const REDACTED_ENTITY_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
-const UUID_SHAPE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function resolveRedactedSettingRefs(
-	runtime: Pick<IAgentRuntime, "getSetting" | "logger">,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	let changed = false;
-	const resolved: Record<string, unknown> = { ...args };
-	for (const [key, value] of Object.entries(args)) {
-		if (typeof value !== "string") continue;
-		const match = REDACTED_ENTITY_REF.exec(value);
-		if (!match?.[1]) continue;
-		const settingValue = runtime.getSetting(match[1]);
-		if (typeof settingValue === "string" && UUID_SHAPE.test(settingValue)) {
-			resolved[key] = settingValue;
-			changed = true;
-			runtime.logger?.debug?.(
-				{ src: "runtime:tool-args", argument: key, setting: match[1] },
-				"Resolved redaction placeholder in tool argument",
-			);
-		}
-	}
-	return changed ? resolved : args;
-}
-
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -683,9 +652,23 @@ export async function executePlannedToolCall(
 			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
+	// Prompt-side redaction placeholders (matrix F16) resolve ONLY through the
+	// per-turn alias capability map (#20091): aliases the composed state proves
+	// redaction emitted, on an owner-authorized turn, with values derived from
+	// canonical owner resolution — never an ambient getSetting keyed by
+	// model-authored text. Recorded tool calls keep the placeholder; this
+	// transforms only the executed-args copy.
+	const entityAliases =
+		executorCtx.entityAliases ??
+		(await buildTurnEntityAliases(
+			runtime,
+			executorCtx.message,
+			executorCtx.state,
+			executorCtx.userRoles,
+		));
 	const validation = validateToolArgs(
 		action,
-		resolveRedactedSettingRefs(runtime, argsForValidation),
+		resolveEntityAliasRefs(entityAliases, argsForValidation),
 	);
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by

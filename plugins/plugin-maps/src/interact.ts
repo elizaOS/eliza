@@ -1,10 +1,12 @@
 /** Dispatches Maps view reads through the owning runtime service. */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ZodError, z } from "zod";
+import { ZodError } from "zod";
 import { MapsError } from "./errors.js";
 import { getMapsService } from "./service.js";
 import {
+  mapsProviderGenerationSchema,
+  mapsProviderIdSchema,
   placeRefSchema,
   placeSearchRequestSchema,
   routePlanRequestSchema,
@@ -37,13 +39,6 @@ function requiredText(value: unknown, field: string): string {
   }
   return parsed;
 }
-
-const providerIdSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(64)
-  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/);
 
 function expectedFailure(error: unknown): MapsInteractResult {
   if (error instanceof ZodError) {
@@ -86,7 +81,11 @@ export async function serverInteract(
     const provider =
       values.provider === undefined
         ? undefined
-        : providerIdSchema.parse(values.provider);
+        : mapsProviderIdSchema.parse(requiredText(values.provider, "provider"));
+    const providerGeneration =
+      values.providerGeneration === undefined
+        ? undefined
+        : mapsProviderGenerationSchema.parse(values.providerGeneration);
     const service = getMapsService(context.runtime);
     switch (capability) {
       case "maps-search-places": {
@@ -97,24 +96,31 @@ export async function serverInteract(
             : {}),
           ...(typeof values.limit === "number" ? { limit: values.limit } : {}),
         });
-        const page = await service.searchPlaces(request, provider);
-        return {
-          success: true,
-          text: page.places.length
-            ? `Found ${page.places.length} place${page.places.length === 1 ? "" : "s"}.`
-            : "No matching places were found.",
-          data: page,
-        };
-      }
-      case "maps-get-place": {
-        const place = await service.getPlace(
-          requiredText(values.placeId, "place id"),
+        const result = await service.searchPlacesResult(
+          request,
           provider,
+          providerGeneration,
         );
         return {
           success: true,
-          text: place ? `Found ${place.name}.` : "No matching place was found.",
-          data: { place },
+          text: result.page.places.length
+            ? `Found ${result.page.places.length} place${result.page.places.length === 1 ? "" : "s"}.`
+            : "No matching places were found.",
+          data: result,
+        };
+      }
+      case "maps-get-place": {
+        const result = await service.getPlaceResult(
+          requiredText(values.placeId, "place id"),
+          provider,
+          providerGeneration,
+        );
+        return {
+          success: true,
+          text: result.place
+            ? `Found ${result.place.name}.`
+            : "No matching place was found.",
+          data: result,
         };
       }
       case "maps-plan-route": {
@@ -123,11 +129,15 @@ export async function serverInteract(
           destination: placeRefSchema.parse(values.destination),
           travelMode: values.travelMode,
         });
-        const route = await service.planRoute(request, provider);
+        const result = await service.planRouteResult(
+          request,
+          provider,
+          providerGeneration,
+        );
         return {
           success: true,
-          text: `Planned a ${route.travelMode} route.`,
-          data: { route },
+          text: `Planned a ${result.route.travelMode} route.`,
+          data: result,
         };
       }
       default:

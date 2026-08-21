@@ -14,8 +14,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 async function loadProvider() {
-  const { linkedinAdsProvider } = await import("./linkedin");
-  return linkedinAdsProvider;
+  const { linkedinAdsProvider, linkedinFetch } = await import("./linkedin");
+  return { provider: linkedinAdsProvider, linkedinFetch };
 }
 
 const credentials = { accessToken: "linkedin-token" };
@@ -31,7 +31,7 @@ describe("linkedinAdsProvider.validateCredentials error policy", () => {
       throw new Error("network unreachable");
     }) as typeof fetch;
 
-    const result = await (await loadProvider()).validateCredentials(credentials);
+    const result = await (await loadProvider()).provider.validateCredentials(credentials);
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe("network unreachable");
@@ -44,7 +44,7 @@ describe("linkedinAdsProvider.validateCredentials error policy", () => {
       jsonResponse({ message: "Invalid access token" }, 401),
     ) as typeof fetch;
 
-    const result = await (await loadProvider()).validateCredentials(credentials);
+    const result = await (await loadProvider()).provider.validateCredentials(credentials);
 
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid access token");
@@ -54,7 +54,7 @@ describe("linkedinAdsProvider.validateCredentials error policy", () => {
   test("a successful fetch with zero accounts is the DISTINCT legitimately-empty result", async () => {
     globalThis.fetch = mock(async () => jsonResponse({ elements: [] })) as typeof fetch;
 
-    const result = await (await loadProvider()).validateCredentials(credentials);
+    const result = await (await loadProvider()).provider.validateCredentials(credentials);
 
     expect(result).toEqual({ valid: false, error: EMPTY_ERROR });
   });
@@ -64,12 +64,49 @@ describe("linkedinAdsProvider.validateCredentials error policy", () => {
       jsonResponse({ elements: [{ id: 507404993, name: "Dunder Mifflin Account" }] }),
     ) as typeof fetch;
 
-    const result = await (await loadProvider()).validateCredentials(credentials);
+    const result = await (await loadProvider()).provider.validateCredentials(credentials);
 
     expect(result).toEqual({
       valid: true,
       accountId: "507404993",
       accountName: "Dunder Mifflin Account",
     });
+  });
+});
+
+describe("linkedinFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung LinkedIn API hop at the timeout", async () => {
+    // An API that never settles on its own: the only way out is the caller's
+    // AbortSignal firing (the 30s default bounds every ads / upload hop).
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    const { linkedinFetch } = await loadProvider();
+    await expect(
+      linkedinFetch("https://api.linkedin.com/rest/adAccountsV2", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return jsonResponse({ elements: [] });
+    }) as typeof fetch;
+
+    const { linkedinFetch } = await loadProvider();
+    const controller = new AbortController();
+    await linkedinFetch("https://api.linkedin.com/rest/adAccountsV2", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

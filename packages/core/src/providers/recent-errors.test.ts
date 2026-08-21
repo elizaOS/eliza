@@ -12,7 +12,12 @@ import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
 import type { Character, IAgentRuntime, Memory, State } from "../types";
-import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
+import {
+	MAX_CONTEXT_CHARS,
+	QUIET_ERROR_CODES,
+	recentErrorsProvider,
+	serializeContext,
+} from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
 	return {
@@ -240,7 +245,8 @@ describe("RECENT_ERRORS provider", () => {
 		expect(result.text).not.toContain("hunter2plainpass123");
 		// Masked in both slots (the combined redactor re-masks its own marker,
 		// so assert the mask shape, not the exact marker format).
-		expect(result.text).toContain("[REDAC…ORD]");
+		expect(result.text).toContain('"password":"***"');
+		expect(result.text).toContain("sk-liv…ed99");
 		expect(result.text).toContain("UPLOAD_FAILED");
 	});
 
@@ -268,5 +274,49 @@ describe("RECENT_ERRORS provider", () => {
 			"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl",
 		);
 		expect(result.text).toContain("FETCH_FAILED");
+	});
+});
+
+describe("serializeContext well-formed Unicode boundaries", () => {
+	function isWellFormed(value: string): boolean {
+		for (let index = 0; index < value.length; index += 1) {
+			const codeUnit = value.charCodeAt(index);
+			if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+				const next = value.charCodeAt(index + 1);
+				if (!(next >= 0xdc00 && next <= 0xdfff)) {
+					return false;
+				}
+				index += 1;
+			} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	it("keeps surrogate pairs intact when serializing and truncating context", () => {
+		const prefix = '{"payload":"';
+		const budget = MAX_CONTEXT_CHARS - 1; // 399
+		// Fill string so emoji lands at 398/399 index
+		const needed = budget - prefix.length - 1;
+		const payload = `${"a".repeat(needed)}🦊${"b".repeat(50)}`;
+		const res = serializeContext({ payload }) ?? "";
+		expect(res.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARS);
+		expect(isWellFormed(res)).toBe(true);
+		expect(res.endsWith("…")).toBe(true);
+	});
+
+	it("sanitizes lone surrogates before truncation in context", () => {
+		const payload = `bad \uD800 ${"c".repeat(500)}`;
+		const res = serializeContext({ payload }) ?? "";
+		expect(res).toContain("\uFFFD");
+		expect(isWellFormed(res)).toBe(true);
+	});
+
+	it("sanitizes lone surrogates without truncation when fitting under limit", () => {
+		const payload = "ok \uD800 end";
+		const res = serializeContext({ payload }) ?? "";
+		expect(res).toBe(JSON.stringify({ payload: "ok \uFFFD end" }));
+		expect(isWellFormed(res)).toBe(true);
 	});
 });

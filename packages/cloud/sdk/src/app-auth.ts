@@ -16,7 +16,9 @@ export interface BuildAppAuthorizeUrlOptions {
 }
 
 function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
 }
 
 export function buildAppAuthorizeUrl({

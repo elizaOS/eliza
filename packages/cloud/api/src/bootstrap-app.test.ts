@@ -7,8 +7,13 @@
 import { expect, test } from "bun:test";
 import type { Bindings } from "@/types/cloud-worker-env";
 
-const { createApp, isRedisIndependentInferencePath } = await import(
-  "./bootstrap-app"
+const {
+  createApp,
+  isRedisIndependentInferencePath,
+  resetProcessGlobalWiringForTests,
+} = await import("./bootstrap-app");
+const { getAuditDispatcher, setAuditDispatcher } = await import(
+  "./services/audit-dispatcher-singleton"
 );
 
 function environment(limiter: {
@@ -25,7 +30,7 @@ function environment(limiter: {
 }
 
 test("missing required OAuth credentials are logged once per app isolate", async () => {
-  const app = createApp();
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
   const calls: unknown[][] = [];
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => calls.push(args);
@@ -64,7 +69,7 @@ test("missing required OAuth credentials are logged once per app isolate", async
 
 test("the global native limiter rejects before auth and generated routes", async () => {
   const keys: string[] = [];
-  const app = createApp();
+  const app = await createApp({ requestPath: "/private/generated-route" });
   const response = await app.fetch(
     new Request("https://api.example.test/private/generated-route", {
       headers: { "cf-connecting-ip": "203.0.113.8" },
@@ -88,7 +93,7 @@ test("the global native limiter rejects before auth and generated routes", async
 
 test("an allowed native decision preserves public locale routing", async () => {
   const keys: string[] = [];
-  const app = createApp();
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
   const response = await app.fetch(
     new Request("https://api.example.test/api/i18n/locale", {
       headers: {
@@ -136,7 +141,7 @@ test("only model-dispatch surfaces bypass the legacy Railway Redis guard", () =>
 });
 
 test("production inference remains reachable when Railway Redis is unavailable", async () => {
-  const app = createApp();
+  const app = await createApp({ requestPath: "/api/v1/embeddings" });
   const response = await app.fetch(
     new Request("https://api.example.test/api/v1/embeddings", {
       method: "POST",
@@ -169,4 +174,52 @@ test("production inference remains reachable when Railway Redis is unavailable",
   expect(await response.json()).not.toMatchObject({
     code: "RATE_LIMIT_UNAVAILABLE",
   });
+});
+
+test("a shard-scoped app mounts only the request path's route family", async () => {
+  const [authApp, fullApp] = await Promise.all([
+    createApp({
+      requestPath: "/api/auth/cli-session/00000000-0000-4000-8000-000000000000",
+    }),
+    createApp(),
+  ]);
+
+  const mountedPaths = (app: { routes: ReadonlyArray<{ path: string }> }) =>
+    new Set(app.routes.map((route) => route.path));
+
+  const authPaths = mountedPaths(authApp);
+  const fullPaths = mountedPaths(fullApp);
+  const hasPrefix = (paths: Set<string>, prefix: string) =>
+    [...paths].some((path) => path.startsWith(prefix));
+
+  expect(hasPrefix(authPaths, "/api/auth/cli-session/:sessionId")).toBe(true);
+  expect(hasPrefix(fullPaths, "/api/auth/cli-session/:sessionId")).toBe(true);
+  expect(hasPrefix(fullPaths, "/api/credits/balance")).toBe(true);
+  expect(hasPrefix(authPaths, "/api/credits/balance")).toBe(false);
+
+  // Manually registered special-case routes stay present in every shard app.
+  expect(hasPrefix(authPaths, "/api/i18n/locale")).toBe(true);
+  expect(hasPrefix(authPaths, "/.well-known/openid-configuration")).toBe(true);
+});
+
+test("process-global wiring is installed once per isolate, not once per shard", async () => {
+  // Building the first app of an isolate installs the audit dispatcher.
+  resetProcessGlobalWiringForTests();
+  await createApp({ requestPath: "/api/auth/logout" });
+  const installed = getAuditDispatcher();
+  expect(installed).toBeDefined();
+
+  // A later shard must not clobber the dispatcher that in-flight requests
+  // (or a test substitution) already hold.
+  const substitute = {
+    dispatch: async () => undefined,
+  } as unknown as ReturnType<typeof getAuditDispatcher>;
+  setAuditDispatcher(substitute);
+  try {
+    await createApp({ requestPath: "/api/credits/balance" });
+    expect(getAuditDispatcher()).toBe(substitute);
+  } finally {
+    // Leave no process-global substitution behind for sibling tests.
+    setAuditDispatcher(installed);
+  }
 });

@@ -85,6 +85,45 @@ const SWITCH_VERB_RE = /\b(switch|use|change|connect|move|go|activate)\b/i;
 const AGENT_NOUN_RE =
 	/\b(agent|runtime|backend|profile|instance|server|node)\b/i;
 
+function wordSpans(
+	value: string,
+): Array<{ value: string; start: number; end: number }> {
+	const spans: Array<{ value: string; start: number; end: number }> = [];
+	let cursor = 0;
+	while (cursor < value.length) {
+		const code = value.charCodeAt(cursor);
+		const isWord =
+			(code >= 48 && code <= 57) ||
+			(code >= 65 && code <= 90) ||
+			code === 95 ||
+			(code >= 97 && code <= 122);
+		if (!isWord) {
+			cursor += 1;
+			continue;
+		}
+		const start = cursor;
+		while (cursor < value.length) {
+			const next = value.charCodeAt(cursor);
+			if (
+				!(
+					(next >= 48 && next <= 57) ||
+					(next >= 65 && next <= 90) ||
+					next === 95 ||
+					(next >= 97 && next <= 122)
+				)
+			)
+				break;
+			cursor += 1;
+		}
+		spans.push({
+			value: value.slice(start, cursor).toLowerCase(),
+			start,
+			end: cursor,
+		});
+	}
+	return spans;
+}
+
 /**
  * Extract the target profile from an explicit option or the message. Returns
  * null when no profile is named — AGENT_SWITCH never picks a profile blindly.
@@ -107,18 +146,66 @@ export function inferAgentSwitchProfile(
 	// Pull the phrase after the agent/runtime noun: "switch to my cloud agent"
 	// → "cloud"; "use the laptop runtime" → "laptop". The shell resolves this
 	// fuzzy label against the profile registry (id or label).
-	const match =
-		/\b(?:switch|use|change|connect|move|go|activate)\b\s+(?:to\s+|over\s+to\s+)?(?:the\s+|my\s+)?(.+?)\s+(?:agent|runtime|backend|profile|instance|server|node)\b/i.exec(
-			trimmed,
-		);
-	const label = match?.[1]?.trim();
+	const spans = wordSpans(trimmed);
+	const verbs = new Set([
+		"switch",
+		"use",
+		"change",
+		"connect",
+		"move",
+		"go",
+		"activate",
+	]);
+	const nouns = new Set([
+		"agent",
+		"runtime",
+		"backend",
+		"profile",
+		"instance",
+		"server",
+		"node",
+	]);
+	const verbIndex = spans.findIndex((span) => verbs.has(span.value));
+	let labelStartIndex = verbIndex + 1;
+	if (
+		spans[labelStartIndex]?.value === "over" &&
+		spans[labelStartIndex + 1]?.value === "to"
+	) {
+		labelStartIndex += 2;
+	} else if (spans[labelStartIndex]?.value === "to") {
+		labelStartIndex += 1;
+	}
+	if (
+		spans[labelStartIndex]?.value === "the" ||
+		spans[labelStartIndex]?.value === "my"
+	) {
+		labelStartIndex += 1;
+	}
+	const nounIndex = spans.findIndex(
+		(span, index) => index > labelStartIndex && nouns.has(span.value),
+	);
+	const labelStartSpan = spans[labelStartIndex];
+	const nounSpan = spans[nounIndex];
+	const label =
+		verbIndex >= 0 && nounIndex > labelStartIndex && labelStartSpan && nounSpan
+			? trimmed.slice(labelStartSpan.start, nounSpan.start).trim()
+			: undefined;
 	if (label && label.length > 0 && label.toLowerCase() !== "another") {
 		return label;
 	}
 	// "switch agent to X" / "switch to the X runtime" fallback: the phrase after
 	// "to".
-	const toMatch = /\bto\s+(?:the\s+|my\s+)?(.+?)\s*$/i.exec(trimmed);
-	const toLabel = toMatch?.[1]
+	const toIndex = spans.findIndex((span) => span.value === "to");
+	let fallbackStart = toIndex + 1;
+	if (
+		spans[fallbackStart]?.value === "the" ||
+		spans[fallbackStart]?.value === "my"
+	)
+		fallbackStart += 1;
+	const fallbackSpan = spans[fallbackStart];
+	const toLabel = (
+		toIndex >= 0 && fallbackSpan ? trimmed.slice(fallbackSpan.start) : undefined
+	)
 		?.replace(/\b(agent|runtime|backend|profile|instance|server|node)\b/gi, "")
 		.trim();
 	return toLabel && toLabel.length > 0 ? toLabel : null;

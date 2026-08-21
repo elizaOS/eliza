@@ -209,6 +209,7 @@ function buildWebsiteBlockerContext(
     method,
     pathname: url.pathname,
     runtime: runtime ?? undefined,
+    ownerEntityId: routeOwnerEntityId(runtime),
     readJsonBody: httpReadJsonBody,
     json,
     error,

@@ -20,7 +20,10 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
+import {
+  cloneRequestWithScheduledCronMetadata,
+  makeCronHandler,
+} from "@/lib/cron/cloudflare-cron";
 import {
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
@@ -29,10 +32,12 @@ import {
 import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
+import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
@@ -50,7 +55,14 @@ export {
 } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
-let appPromise: Promise<Hono<AppEnv>> | undefined;
+/**
+ * Full-app promises memoised per route shard (issue #22550). Each entry is a
+ * complete middleware stack whose generated routes are limited to the shard
+ * that can match the request path, so a cold isolate serving one path family
+ * does not evaluate the other ~600 route modules.
+ */
+const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
+const knownRouteShards = new Set(KNOWN_ROUTE_SHARD_KEYS);
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 /** Lazy thin shell for login-critical Steward GETs (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
@@ -192,9 +204,23 @@ type AgentDomainBindings = Pick<
   "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
 >;
 
-async function getApp(): Promise<Hono<AppEnv>> {
-  appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
-  return appPromise;
+function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
+  const shard = knownRouteShardKey(pathname, knownRouteShards);
+  let promise = fullAppPromises.get(shard);
+  if (!promise) {
+    promise = import("./bootstrap-app").then((m) =>
+      m.createApp({ requestPath: pathname }),
+    );
+    fullAppPromises.set(shard, promise);
+    // error-policy:J5 The dispatch caller observes this same rejection. Evict
+    // only the failed generation so a transient import/init error can retry.
+    void promise.catch(() => {
+      if (fullAppPromises.get(shard) === promise) {
+        fullAppPromises.delete(shard);
+      }
+    });
+  }
+  return promise;
 }
 
 /** Preserve Workerd upgrade responses; rebuilding one drops its `webSocket` extension. */
@@ -230,22 +256,31 @@ export function decorateFullAppDispatchResponse(
   });
 }
 
-async function dispatchFullApp(
+export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext | HonoExecutionContext,
+  loadFullApp?: () => Promise<Hono<AppEnv>>,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const moduleWasInitialized = appPromise !== undefined;
+  const requestPathname = new URL(request.url).pathname;
+  const moduleWasInitialized = loadFullApp
+    ? true
+    : fullAppPromises.has(
+        knownRouteShardKey(requestPathname, knownRouteShards),
+      );
+  const loadApp = loadFullApp ?? (() => getAppForPath(requestPathname));
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
-  const tracedRequest = new Request(request, { headers });
+  const tracedRequest = cloneRequestWithScheduledCronMetadata(request, {
+    headers,
+  });
   let moduleInitMs: number | null = null;
   let status: number | null = null;
 
   try {
-    const app = await getApp();
+    const app = await loadApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;
@@ -628,7 +663,11 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
 }
 
 function normalizeHostname(hostname: string | undefined): string | null {
-  const normalized = hostname?.trim().toLowerCase().replace(/\.+$/, "");
+  const value = hostname?.trim().toLowerCase();
+  if (!value) return null;
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 46) end--;
+  const normalized = value.slice(0, end);
   return normalized || null;
 }
 

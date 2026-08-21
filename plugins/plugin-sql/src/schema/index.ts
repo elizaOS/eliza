@@ -34,6 +34,13 @@ export {
   entityMergeCandidateTable,
   factCandidateTable,
 } from "./entityIdentity";
+export {
+  identityAuthorityStateTable,
+  identityCanonicalRedirectTable,
+  identityClaimTable,
+  identityMergeConfirmationTable,
+  identityMergeJournalTable,
+} from "./identityAuthority";
 export { logTable } from "./log";
 export { longTermMemories } from "./longTermMemories";
 export { memoryTable } from "./memory";

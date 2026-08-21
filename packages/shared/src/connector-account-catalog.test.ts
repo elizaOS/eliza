@@ -45,7 +45,7 @@ const EXPECTED: Record<
   google: {
     provider: "google",
     defaultRole: "OWNER",
-    defaultPurpose: ["messaging", "calendar", "drive", "meet"],
+    defaultPurpose: ["messaging", "calendar", "drive", "meet", "contacts"],
     supportsOAuth: true,
   },
   x: {
@@ -102,6 +102,7 @@ describe("connector account catalog defaults", () => {
       "drive.write",
       "meet.create",
       "meet.read",
+      "people.read",
     ]);
   });
 });

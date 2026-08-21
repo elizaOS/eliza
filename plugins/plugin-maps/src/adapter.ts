@@ -14,6 +14,8 @@ import {
 } from "@elizaos/core";
 import { MapsError } from "./errors.js";
 import {
+  mapsAttributionSchema,
+  mapsProviderIdSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -30,6 +32,8 @@ export interface MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
   readonly supportsCrossProviderRoutes?: boolean;
+  /** Provider-mandated attribution text, or absent when none is available. */
+  readonly attribution?: string;
   searchPlaces(request: PlaceSearchRequest): Promise<PlacePage>;
   getPlace(providerPlaceId: string): Promise<PlaceRef | null>;
   planRoute(request: RoutePlanRequest): Promise<RoutePlan>;
@@ -42,6 +46,8 @@ export interface JsonMapsHttpAdapterOptions {
   credential?: string;
   timeoutMs?: number;
   responseByteLimit?: number;
+  /** Provider-mandated attribution text rendered by first-party Maps views. */
+  attribution?: string;
   /** Explicit transport seam for deterministic SSRF/adversarial tests only. */
   testTransport?: Pick<
     GuardedFetchOptions,
@@ -156,6 +162,7 @@ function providerError(response: Response, body: unknown): MapsError {
 export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
+  readonly attribution?: string;
   private readonly baseOrigin: string;
   private readonly credential?: string;
   private readonly timeoutMs: number;
@@ -164,14 +171,26 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   private readonly allowPrivateNetworkForTests: boolean;
 
   constructor(options: JsonMapsHttpAdapterOptions) {
-    if (!/^[a-z0-9][a-z0-9_-]*$/i.test(options.id)) {
+    const providerId = mapsProviderIdSchema.safeParse(options.id);
+    if (!providerId.success) {
       throw new MapsError("Maps adapter id is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        cause: providerId.error,
       });
     }
     if (!/^conn_[A-Za-z0-9_-]{16,}$/.test(options.connectionId)) {
       throw new MapsError("Maps adapter connection id must be opaque.", {
         code: "MAPS_INVALID_INPUT",
+      });
+    }
+    const attribution =
+      options.attribution === undefined
+        ? undefined
+        : mapsAttributionSchema.safeParse(options.attribution);
+    if (attribution !== undefined && !attribution.success) {
+      throw new MapsError("Maps adapter attribution is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+        cause: attribution.error,
       });
     }
     let baseUrl: URL;
@@ -247,8 +266,9 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         code: "MAPS_INVALID_INPUT",
       });
     }
-    this.id = options.id;
+    this.id = providerId.data;
     this.connectionId = options.connectionId;
+    this.attribution = attribution?.data;
     this.baseOrigin = baseUrl.origin;
     this.credential = options.credential;
     this.timeoutMs = timeoutMs;

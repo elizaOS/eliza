@@ -58,6 +58,15 @@ export default defineConfig({
     ],
   },
   test: {
+    // The core alias above resolves to source, whose i18n barrel imports the
+    // git-ignored generated keyword module. Materialize it here so the declared
+    // package lane works on a checkout that has not built core.
+    globalSetup: [
+      path.resolve(
+        __dirname,
+        "../../packages/scripts/vitest/generated-sources.setup.ts",
+      ),
+    ],
     testTimeout: 90_000,
     hookTimeout: 30_000,
     environment: "node",

@@ -3,7 +3,11 @@
  * redaction over the tool-call cache write path.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultPrivacyRedactor } from "./redact.ts";
+import {
+  defaultPrivacyRedactor,
+  isRedactionDegraded,
+  REDACT_BUDGET_SENTINEL,
+} from "./redact.ts";
 
 const ORIG_ENV = { ...process.env };
 
@@ -65,6 +69,36 @@ describe("defaultPrivacyRedactor", () => {
     expect(out).not.toContain("37.7749");
   });
 
+  it("redacts coordinate objects with additional scalar fields", () => {
+    const out = defaultPrivacyRedactor(
+      '{"coords" : { "latitude" : 37.7749, "longitude" : -122.4194, "accuracy" : 12, "source_name": "gps" }}',
+    ) as string;
+    expect(out).toBe("{[REDACTED_GEO]}");
+  });
+
+  it("scans adversarial coordinate-like text in linear time", () => {
+    const input = `{"coords":{"latitude":0,"longitude":0${',"A":+\t'.repeat(50_000)}}}`;
+    expect(defaultPrivacyRedactor(input)).toBe("{[REDACTED_GEO]}");
+  });
+
+  it("scans many overlapping malformed coordinate candidates in linear time", () => {
+    // Every "coords" marker starts a candidate whose scan runs to the end of
+    // the unterminated input; a non-monotonic cursor would rescan each
+    // remaining suffix and go quadratic.
+    const input = '"coords":{"latitude":0,"longitude":0,'.repeat(50_000);
+    const out = defaultPrivacyRedactor(input) as string;
+    expect(out).toContain("[REDACTED_GEO]");
+    expect(out).not.toContain('"latitude":0');
+  });
+
+  it("still redacts a valid coords block after malformed candidates", () => {
+    const out = defaultPrivacyRedactor(
+      '"coords": nope, "coords" {}, {"coords":{"latitude":1.5,"longitude":2.5}}',
+    ) as string;
+    expect(out).toContain("{[REDACTED_GEO]}");
+    expect(out).not.toContain("1.5");
+  });
+
   it("redacts lat/lng pair", () => {
     const out = defaultPrivacyRedactor(
       '{"latitude": 48.8566, "longitude": 2.3522}',
@@ -104,6 +138,95 @@ describe("defaultPrivacyRedactor", () => {
     expect(defaultPrivacyRedactor(true)).toBe(true);
     expect(defaultPrivacyRedactor(null)).toBe(null);
     expect(defaultPrivacyRedactor(undefined)).toBe(undefined);
+  });
+
+  it("bounds a flat-wide object instead of redacting every key", () => {
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 150_000; i += 1) wide[`k${i}`] = i;
+    const out = defaultPrivacyRedactor(wide);
+    expect(out).toBe(REDACT_BUDGET_SENTINEL);
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("marks an accessor property degraded without invoking the getter", () => {
+    let getterCalls = 0;
+    const value: Record<string, unknown> = { ok: "plain" };
+    Object.defineProperty(value, "leak", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "secret";
+      },
+    });
+    const out = defaultPrivacyRedactor(value) as Record<string, unknown>;
+    expect(getterCalls).toBe(0);
+    expect(out.ok).toBe("plain");
+    expect(out.leak).toBe(REDACT_BUDGET_SENTINEL);
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("marks a revoked proxy degraded instead of throwing", () => {
+    const revocable = Proxy.revocable({ payload: "value" }, {});
+    revocable.revoke();
+    let out: unknown;
+    expect(() => {
+      out = defaultPrivacyRedactor({ nested: revocable.proxy });
+    }).not.toThrow();
+    expect((out as Record<string, unknown>).nested).toBe(
+      REDACT_BUDGET_SENTINEL,
+    );
+    expect(isRedactionDegraded(out)).toBe(true);
+  });
+
+  it("marks a proxy degraded without running any reflection trap", () => {
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const hostile = new Proxy(
+      { payload: "value" },
+      {
+        get() {
+          trapCalls.get += 1;
+          throw new TypeError("hostile get trap");
+        },
+        getOwnPropertyDescriptor() {
+          trapCalls.getOwnPropertyDescriptor += 1;
+          throw new TypeError("hostile descriptor trap");
+        },
+        getPrototypeOf() {
+          trapCalls.getPrototypeOf += 1;
+          throw new TypeError("hostile prototype trap");
+        },
+        ownKeys() {
+          trapCalls.ownKeys += 1;
+          throw new TypeError("hostile ownKeys trap");
+        },
+      },
+    );
+
+    const out = defaultPrivacyRedactor({ nested: hostile });
+
+    expect((out as Record<string, unknown>).nested).toBe(
+      REDACT_BUDGET_SENTINEL,
+    );
+    expect(isRedactionDegraded(out)).toBe(true);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
+  });
+
+  it("bounds an oversize string leaf", () => {
+    const huge = "a".repeat(4_000_001);
+    expect(defaultPrivacyRedactor({ blob: huge })).toEqual({
+      blob: REDACT_BUDGET_SENTINEL,
+    });
   });
 
   it("does not treat short strings as env secrets", () => {

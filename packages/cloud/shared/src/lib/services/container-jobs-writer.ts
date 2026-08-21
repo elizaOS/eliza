@@ -27,10 +27,22 @@
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { ContainerJobInsert, ContainerJobsWriter } from "./container-job-service";
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, next]) => `${JSON.stringify(key)}:${canonicalJson(next)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 /** Real writer over `jobsRepository`. Construct once; inject into ContainerJobEnqueuer. */
 export class JobsRepositoryContainerJobsWriter implements ContainerJobsWriter {
   async insertJob(job: ContainerJobInsert): Promise<{ id: string }> {
-    const created = await jobsRepository.create({
+    const jobData = {
+      ...(job.id ? { id: job.id } : {}),
       type: job.type,
       organization_id: job.organizationId,
       // user_id is a nullable FK; container jobs may be enqueued without a user
@@ -38,7 +50,18 @@ export class JobsRepositoryContainerJobsWriter implements ContainerJobsWriter {
       // the column is explicitly cleared rather than relying on insert defaults.
       user_id: job.userId ?? null,
       data: job.data,
-    });
+    };
+    const created = job.id
+      ? await jobsRepository.createOrGetById({ ...jobData, id: job.id })
+      : await jobsRepository.create(jobData);
+    if (
+      created.type !== job.type ||
+      created.organization_id !== job.organizationId ||
+      created.user_id !== (job.userId ?? null) ||
+      canonicalJson(created.data) !== canonicalJson(job.data)
+    ) {
+      throw new Error(`Deterministic job id ${created.id} is bound to a different intent`);
+    }
     return { id: created.id };
   }
 }
