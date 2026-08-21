@@ -297,7 +297,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     relativePath: "shared/src/lib/services/subscription-funding.ts",
     operation: "unclassified",
     fundingClass: "cash_only",
-    expectedSignals: { credit_service_reserve_and_deduct: 1 },
+    expectedSignals: { credit_service_reserve_and_deduct: 2 },
   },
   {
     relativePath: "shared/src/lib/services/telegram-automation/app-automation.ts",
