@@ -24,6 +24,8 @@ const playEntry = vi.hoisted(() => ({
   voiceListeners: new Map<string, (value: unknown) => void>(),
   voiceListenerRemovers: [] as Array<ReturnType<typeof vi.fn>>,
   voiceListenerSetupFailure: null as "transcript" | "error" | null,
+  voicePermission: vi.fn(async () => ({ granted: true })),
+  voiceStart: vi.fn(async () => ({ started: true })),
   voiceStop: vi.fn(async () => undefined),
 }));
 
@@ -59,9 +61,9 @@ vi.mock("@capacitor/core", () => ({
               return { remove };
             },
           ),
-          requestPermission: vi.fn(async () => ({ granted: true })),
+          requestPermission: playEntry.voicePermission,
           speak: vi.fn(async () => undefined),
-          startDictation: vi.fn(async () => ({ started: true })),
+          startDictation: playEntry.voiceStart,
           stopDictation: playEntry.voiceStop,
         },
 }));
@@ -129,6 +131,8 @@ beforeEach(() => {
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
   playEntry.secureSet.mockResolvedValue(undefined);
+  playEntry.voicePermission.mockResolvedValue({ granted: true });
+  playEntry.voiceStart.mockResolvedValue({ started: true });
   playEntry.voiceStop.mockResolvedValue(undefined);
 });
 
@@ -236,6 +240,25 @@ describe("Android Cloud renderer behavior", () => {
     });
   });
 
+  it("does not start native recognition after a delayed start is canceled", async () => {
+    let finishPermission: (value: { granted: boolean }) => void = () => {};
+    playEntry.voicePermission.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishPermission = resolve;
+      }),
+    );
+
+    const starting = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() =>
+      expect(playEntry.voicePermission).toHaveBeenCalled(),
+    );
+    await entry.androidCloudVoice.stop();
+    finishPermission({ granted: true });
+
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    expect(playEntry.voiceStart).not.toHaveBeenCalled();
+  });
+
   it("observes native-event voice teardown failures", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
@@ -263,6 +286,28 @@ describe("Android Cloud renderer behavior", () => {
       "listener teardown failed",
     );
     expect(playEntry.voiceStop).toHaveBeenCalledOnce();
+  });
+
+  it("stops native recognition before a pending listener remover times out", async () => {
+    vi.useFakeTimers();
+    try {
+      await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+      playEntry.voiceStop.mockClear();
+      playEntry.voiceListenerRemovers[0]?.mockImplementationOnce(
+        () => new Promise<void>(() => {}),
+      );
+
+      const stopping = entry.androidCloudVoice.stop();
+      const rejection = expect(stopping).rejects.toThrow("teardown timed out");
+      expect(playEntry.voiceStop).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+
+      await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
+      expect(playEntry.voiceListenerRemovers[0]).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports every listener and native teardown failure", async () => {

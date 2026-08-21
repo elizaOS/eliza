@@ -270,6 +270,14 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
 }
 
 let activeVoiceListeners: Array<{ remove: () => Promise<void> }> = [];
+const VOICE_LISTENER_TEARDOWN_TIMEOUT_MS = 1_000;
+let voiceGeneration = 0;
+
+function assertCurrentVoiceGeneration(generation: number): void {
+  if (voiceGeneration !== generation) {
+    throw new DOMException("Voice dictation start was canceled.", "AbortError");
+  }
+}
 
 interface PlayVoicePlugin {
   requestPermission(): Promise<{ granted: boolean }>;
@@ -301,7 +309,9 @@ function stopVoiceAfterNativeEvent(): void {
 export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript, onError) {
     await androidCloudVoice.stop();
+    const generation = ++voiceGeneration;
     const permissions = await PlayVoice.requestPermission();
+    assertCurrentVoiceGeneration(generation);
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
     }
@@ -316,6 +326,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         },
       );
       activeVoiceListeners = [transcriptListener];
+      assertCurrentVoiceGeneration(generation);
       const errorListener = await PlayVoice.addListener("error", (event) => {
         onError(
           new Error(
@@ -325,9 +336,11 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         stopVoiceAfterNativeEvent();
       });
       activeVoiceListeners.push(errorListener);
+      assertCurrentVoiceGeneration(generation);
       const result = await PlayVoice.startDictation({
         language: navigator.language || "en-US",
       });
+      assertCurrentVoiceGeneration(generation);
       if (!result.started) {
         throw new Error(result.error || "Voice dictation could not start.");
       }
@@ -344,21 +357,48 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
     }
   },
   async stop() {
+    voiceGeneration += 1;
     const listeners = activeVoiceListeners;
-    activeVoiceListeners = [];
-    const removalResults = await Promise.allSettled(
-      listeners.map((listener) => listener.remove()),
+    // Start the native microphone stop before touching listener handles. A
+    // broken Capacitor remover must never keep recognition alive.
+    const nativeStopResult = PlayVoice.stopDictation().then(
+      () => ({ status: "fulfilled" as const }),
+      (reason: unknown) => ({ status: "rejected" as const, reason }),
     );
-    let nativeStopError: unknown;
-    try {
-      await PlayVoice.stopDictation();
-    } catch (error) {
-      nativeStopError = error;
-    }
+    const removalResults = await Promise.allSettled(
+      listeners.map(async (listener) => {
+        let timeout: ReturnType<typeof window.setTimeout> | undefined;
+        const removal = listener.remove().then(() => {
+          activeVoiceListeners = activeVoiceListeners.filter(
+            (candidate) => candidate !== listener,
+          );
+        });
+        try {
+          await Promise.race([
+            removal,
+            new Promise<never>((_resolve, reject) => {
+              timeout = window.setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      "Voice listener teardown timed out; cleanup remains retryable.",
+                    ),
+                  ),
+                VOICE_LISTENER_TEARDOWN_TIMEOUT_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+        }
+      }),
+    );
+    const nativeStop = await nativeStopResult;
     const teardownErrors = removalResults.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
-    if (nativeStopError !== undefined) teardownErrors.push(nativeStopError);
+    if (nativeStop.status === "rejected")
+      teardownErrors.push(nativeStop.reason);
     if (teardownErrors.length === 1) throw teardownErrors[0];
     if (teardownErrors.length > 1) {
       throw new AggregateError(

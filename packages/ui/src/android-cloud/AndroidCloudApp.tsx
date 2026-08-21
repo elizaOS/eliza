@@ -78,6 +78,37 @@ export function AndroidCloudApp({
   const abortRef = useRef<AbortController | null>(null);
   const loginAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
+  const browserOperationRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingLoginCleanupRef = useRef<{
+    sessionId: string;
+    token: string;
+  } | null>(null);
+  const voiceAttemptRef = useRef(0);
+  const voicePhaseRef = useRef<"idle" | "starting" | "listening" | "stopping">(
+    "idle",
+  );
+  const mountedRef = useRef(true);
+
+  const runBrowserOperation = useCallback(
+    (operation: () => Promise<void> | void): Promise<void> => {
+      const result = browserOperationRef.current.then(operation, operation);
+      browserOperationRef.current = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
+    [],
+  );
+
+  const discardPendingLogin = useCallback(async () => {
+    const pending = pendingLoginCleanupRef.current;
+    if (!pending) return;
+    await client.discardLoginAttempt(pending.sessionId, pending.token);
+    if (pendingLoginCleanupRef.current === pending) {
+      pendingLoginCleanupRef.current = null;
+    }
+  }, [client]);
 
   const restore = useCallback(
     async (
@@ -160,11 +191,15 @@ export function AndroidCloudApp({
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     void restore();
     return () => {
+      mountedRef.current = false;
       loginAttemptRef.current += 1;
       loginAbortRef.current?.abort();
       abortRef.current?.abort();
+      voiceAttemptRef.current += 1;
+      voicePhaseRef.current = "stopping";
       void voice?.stop().catch((cleanupError) => {
         // error-policy:J6 component unmount has no remaining UI boundary, so
         // voice teardown is best effort but its failure remains diagnostic.
@@ -193,8 +228,14 @@ export function AndroidCloudApp({
     setBusy(true);
     setError(null);
     try {
+      await discardPendingLogin();
       const attempt = await client.beginLogin();
-      await openExternal(attempt.browserUrl);
+      if (loginAttemptRef.current !== attemptNumber) return;
+      await runBrowserOperation(async () => {
+        if (loginAttemptRef.current !== attemptNumber) return;
+        await openExternal(attempt.browserUrl);
+      });
+      if (loginAttemptRef.current !== attemptNumber) return;
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await new Promise((resolve) =>
@@ -207,13 +248,20 @@ export function AndroidCloudApp({
         );
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
+        pendingLoginCleanupRef.current = {
+          sessionId: attempt.sessionId,
+          token: result.token,
+        };
         if (loginAttemptRef.current !== attemptNumber) {
-          await client.discardLoginAttempt(attempt.sessionId, result.token);
+          await discardPendingLogin();
           return;
         }
-        await closeExternal?.();
+        await runBrowserOperation(async () => {
+          if (loginAttemptRef.current !== attemptNumber) return;
+          await closeExternal?.();
+        });
         if (loginAttemptRef.current !== attemptNumber) {
-          await client.discardLoginAttempt(attempt.sessionId, result.token);
+          await discardPendingLogin();
           return;
         }
         const restoredCurrentSession = await restore(attemptNumber, {
@@ -222,39 +270,58 @@ export function AndroidCloudApp({
         });
         if (!restoredCurrentSession) {
           if (loginAttemptRef.current === attemptNumber) {
-            await client.discardLoginAttempt(attempt.sessionId, result.token);
+            await discardPendingLogin();
           }
           return;
         }
         if (loginAttemptRef.current !== attemptNumber) {
-          await client.discardLoginAttempt(attempt.sessionId, result.token);
+          await discardPendingLogin();
           return;
         }
         client.acceptLoginAttempt(attempt.sessionId);
+        pendingLoginCleanupRef.current = null;
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
+      let reportedError: unknown = signInError;
+      if (pendingLoginCleanupRef.current) {
+        try {
+          await discardPendingLogin();
+        } catch (cleanupError) {
+          reportedError = new AggregateError(
+            [signInError, cleanupError],
+            "Sign-in failed and the credential cleanup needs attention.",
+          );
+        }
+      }
       if (loginAttemptRef.current !== attemptNumber) {
         if (
-          !(signInError instanceof Error) ||
-          signInError.name !== "AbortError"
+          !(reportedError instanceof Error) ||
+          reportedError.name !== "AbortError"
         ) {
           setError(
-            `Sign-in was canceled, but credential cleanup needs attention: ${errorMessage(signInError)}`,
+            `Sign-in was canceled, but credential cleanup needs attention: ${errorMessage(reportedError)}`,
           );
         }
         return;
       }
       // error-policy:J4 the sign-in boundary renders the actionable failure.
-      setError(errorMessage(signInError));
+      setError(errorMessage(reportedError));
     } finally {
       if (loginAbortRef.current === loginController) {
         loginAbortRef.current = null;
       }
       if (loginAttemptRef.current === attemptNumber) setBusy(false);
     }
-  }, [client, closeExternal, openExternal, restore]);
+  }, [
+    client,
+    closeExternal,
+    discardPendingLogin,
+    openExternal,
+    restore,
+    runBrowserOperation,
+  ]);
 
   const cancelSignIn = useCallback(() => {
     loginAttemptRef.current += 1;
@@ -263,8 +330,14 @@ export function AndroidCloudApp({
     setBusy(false);
     setSession(null);
     setPhase("signed-out");
-    void closeExternal?.();
-  }, [closeExternal]);
+    void runBrowserOperation(async () => {
+      await closeExternal?.();
+    }).catch((closeError) => {
+      setError(
+        `The sign-in browser could not be closed: ${errorMessage(closeError)}`,
+      );
+    });
+  }, [closeExternal, runBrowserOperation]);
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -349,14 +422,22 @@ export function AndroidCloudApp({
   }, [busy, client, conversationId, draft, session]);
 
   const toggleDictation = useCallback(async () => {
-    if (listening) {
+    if (voicePhaseRef.current !== "idle") {
+      const attempt = ++voiceAttemptRef.current;
+      voicePhaseRef.current = "stopping";
       try {
         await voice?.stop();
-        setListening(false);
+        if (voiceAttemptRef.current === attempt && mountedRef.current) {
+          voicePhaseRef.current = "idle";
+          setListening(false);
+        }
       } catch (dictationError) {
         // error-policy:J4 native dictation teardown failure stays visible.
-        setListening(false);
-        setError(errorMessage(dictationError));
+        if (voiceAttemptRef.current === attempt && mountedRef.current) {
+          voicePhaseRef.current = "idle";
+          setListening(false);
+          setError(errorMessage(dictationError));
+        }
       }
       return;
     }
@@ -364,10 +445,14 @@ export function AndroidCloudApp({
       setError("Voice dictation is not available on this device.");
       return;
     }
+    const attempt = ++voiceAttemptRef.current;
+    voicePhaseRef.current = "starting";
     try {
       let completedBeforeStartResolved = false;
       await voice.requestAndStart(
         (value) => {
+          if (voiceAttemptRef.current !== attempt || !mountedRef.current)
+            return;
           completedBeforeStartResolved = true;
           const transcript = value.trim();
           if (transcript) {
@@ -376,23 +461,37 @@ export function AndroidCloudApp({
             );
           }
           setListening(false);
+          voicePhaseRef.current = "idle";
         },
         (dictationError) => {
+          if (voiceAttemptRef.current !== attempt || !mountedRef.current)
+            return;
           completedBeforeStartResolved = true;
           setListening(false);
           setError(errorMessage(dictationError));
+          voicePhaseRef.current = "idle";
         },
       );
-      if (!completedBeforeStartResolved) {
+      if (
+        voiceAttemptRef.current === attempt &&
+        mountedRef.current &&
+        !completedBeforeStartResolved
+      ) {
+        voicePhaseRef.current = "listening";
         setError(null);
         setListening(true);
+      } else if (!completedBeforeStartResolved) {
+        await voice.stop();
       }
     } catch (dictationError) {
       // error-policy:J4 denied or failed dictation is visible at the input.
-      setListening(false);
-      setError(errorMessage(dictationError));
+      if (voiceAttemptRef.current === attempt && mountedRef.current) {
+        voicePhaseRef.current = "idle";
+        setListening(false);
+        setError(errorMessage(dictationError));
+      }
     }
-  }, [listening, voice]);
+  }, [voice]);
 
   const speak = useCallback(
     (text: string) => {
