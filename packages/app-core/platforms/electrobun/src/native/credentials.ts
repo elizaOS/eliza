@@ -291,11 +291,38 @@ const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
 interface ChromiumSafeStorageProcess {
   exited: Promise<number>;
   stdout: ReadableStream<Uint8Array>;
+  stderr: ReadableStream<Uint8Array>;
+  kill(signal?: number | NodeJS.Signals): void;
 }
 
 interface ChromiumSafeStorageDependencies {
   platform?: NodeJS.Platform;
   spawn?: (command: string[]) => ChromiumSafeStorageProcess;
+  timeoutMs?: number;
+  terminationGraceMs?: number;
+}
+
+const CHROMIUM_SAFE_STORAGE_TIMEOUT_MS = 3_000;
+const CHROMIUM_SAFE_STORAGE_TERMINATION_GRACE_MS = 250;
+
+async function settlesWithin<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function readChromiumSafeStoragePassword(
@@ -304,13 +331,47 @@ export async function readChromiumSafeStoragePassword(
 ): Promise<string | null> {
   if ((dependencies.platform ?? process.platform) !== "darwin") return null;
   try {
-    const command = ["security", "find-generic-password", "-s", service, "-w"];
+    const command = [
+      "/usr/bin/security",
+      "find-generic-password",
+      "-s",
+      service,
+      "-w",
+    ];
     const proc = dependencies.spawn
       ? dependencies.spawn(command)
       : Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
-    const exitCode = await proc.exited;
+    const exit = proc.exited.then(
+      (exitCode) => ({ exitCode }),
+      () => ({ exitCode: -1 }),
+    );
+    const stdout = new Response(proc.stdout).text();
+    const stderr = new Response(proc.stderr).text();
+    const completed = Promise.all([exit, stdout, stderr]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      completed,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(
+          () => resolve(null),
+          dependencies.timeoutMs ?? CHROMIUM_SAFE_STORAGE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!result) {
+      const graceMs =
+        dependencies.terminationGraceMs ??
+        CHROMIUM_SAFE_STORAGE_TERMINATION_GRACE_MS;
+      proc.kill("SIGTERM");
+      if (!(await settlesWithin(exit, graceMs))) {
+        proc.kill("SIGKILL");
+        await settlesWithin(exit, graceMs);
+      }
+      return null;
+    }
+    const [{ exitCode }, output] = result;
     if (exitCode !== 0) return null;
-    const output = await new Response(proc.stdout).text();
     const trimmed = output.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {
