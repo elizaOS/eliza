@@ -78,16 +78,30 @@ export const twitterEnvSchema = z.object({
 export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
 /**
- * Parse safe integer with a default value. Negative values fall back to the
- * default like NaN does: every numeric TWITTER_* setting (intervals, retry
- * limit, tweet length, follower counts) is a magnitude, and a negative
- * interval survives getRandomInterval's min < max guard only to collapse the
- * scheduler's setTimeout delay to ~0, defeating the posting-rate limiter.
+ * Parse a strictly whole positive integer. `parseInt` stops at the first
+ * non-digit, so `"1h"` / `"90s"` / `"12.5"` would otherwise become 1 / 90 / 12
+ * and collapse the posting-rate limiter the same way a negative interval did
+ * (#21661). Zero is rejected because a 0-minute delay is that same collapse.
+ */
+function parseStrictPositiveInt(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+/**
+ * Parse safe integer with a default value. Negative, zero, partial, and
+ * non-numeric values fall back to the default: every numeric TWITTER_* setting
+ * (intervals, retry limit, tweet length, follower counts) is a magnitude, and
+ * a junk or zero interval survives getRandomInterval's min < max guard only to
+ * collapse the scheduler's setTimeout delay to ~0, defeating the posting-rate
+ * limiter.
  */
 function safeParseInt(value: string | undefined, defaultValue: number): number {
-  if (!value) return defaultValue;
-  const parsed = parseInt(value, 10);
-  return Number.isNaN(parsed) || parsed < 0 ? defaultValue : parsed;
+  return parseStrictPositiveInt(value) ?? defaultValue;
 }
 
 /**
@@ -546,8 +560,8 @@ export function getRandomInterval(
         runtime,
         "TWITTER_POST_INTERVAL_MAX",
       ) as string;
-      minInterval = postMin ? safeParseInt(postMin, 0) : undefined;
-      maxInterval = postMax ? safeParseInt(postMax, 0) : undefined;
+      minInterval = parseStrictPositiveInt(postMin);
+      maxInterval = parseStrictPositiveInt(postMax);
       fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_POST_INTERVAL") as string,
         120,
@@ -563,8 +577,8 @@ export function getRandomInterval(
         runtime,
         "TWITTER_ENGAGEMENT_INTERVAL_MAX",
       ) as string;
-      minInterval = engagementMin ? safeParseInt(engagementMin, 0) : undefined;
-      maxInterval = engagementMax ? safeParseInt(engagementMax, 0) : undefined;
+      minInterval = parseStrictPositiveInt(engagementMin);
+      maxInterval = parseStrictPositiveInt(engagementMax);
       fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string,
         30,
@@ -580,8 +594,8 @@ export function getRandomInterval(
         runtime,
         "TWITTER_DISCOVERY_INTERVAL_MAX",
       ) as string;
-      minInterval = discoveryMin ? safeParseInt(discoveryMin, 0) : undefined;
-      maxInterval = discoveryMax ? safeParseInt(discoveryMax, 0) : undefined;
+      minInterval = parseStrictPositiveInt(discoveryMin);
+      maxInterval = parseStrictPositiveInt(discoveryMax);
       fixedInterval = 20; // Default discovery interval
       break;
     }
