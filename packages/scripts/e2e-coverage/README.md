@@ -1,6 +1,6 @@
-# e2e and synthetic-world coverage gates
+# e2e gates and synthetic-world coverage reporting
 
-Three complementary coverage gates live in this directory. They read real
+Two coverage gates and one advisory inventory live in this directory. They read real
 production registration source and configuration statically, without booting a
 provider or importing plugin side effects.
 
@@ -8,8 +8,8 @@ provider or importing plugin side effects.
    plugin and host registration is inventoried across actions, promoted
    subactions, providers, services, evaluators, events, routes, views, models,
    connector ingress/egress, scheduled workers, queues, native bridges, and
-   Cloud services. Every row is covered by an executable artifact with an exact
-   boundary signal or has one explicit shrinking-baseline disposition.
+   Cloud services. Coverage and dependency dispositions are derived from the
+   current source tree; the inventory is report-only while its proof corpus grows.
 2. **Surface coverage ship-gate (issue #8802)** — every slash command, pre-LLM
    shortcut (#8791), plugin-declared HTTP route, and view must have a real
    recorded e2e or a written exemption.
@@ -35,35 +35,37 @@ Each generated row records:
 - mock availability/fidelity and reset support;
 - deterministic and live-model scenario ids and Cloud E2E cells;
 - evidence class, exact boundary artifacts/signals and owning #22896 workstream;
-- one of `covered`, `uncovered`, `exempt`, `platform-deferred`,
-  `provider-qualified-only`, or `unsupported-product`, with a written reason.
+- one derived status such as `covered`, `uncovered`, `platform-deferred`, or
+  `provider-qualified-only`, with a written reason.
 
-`uncovered` is the fail-closed default for a production surface that is safe to
-simulate but has no executable boundary proof yet. It is intentionally distinct
-from `exempt`, which requires a reviewed reason that the surface does not belong
-in the synthetic-world product contract.
+`uncovered` is the report-time default for a production surface that has no
+executable boundary proof yet. Provider, connector, and model surfaces without
+explicit mock ownership are reported as `provider-qualified-only`; they cannot
+be presented as covered.
 
 The same artifact includes a census of every maintained plugin, the core,
 agent, and app-core hosts, Cloud API, and every production Cloud service
 package. A package with no production runtime registration is retained as
 `no-runtime-registration` with a written reason instead of silently
 disappearing from the inventory. Canonical row ids use package, kind, and the
-registered boundary name; moving an implementation file does not expand or
-invalidate the baseline.
+registered boundary name; moving an implementation file does not change its id.
 
 `runtime-surface-dependencies.json` is the reviewed dependency authority for
 providers, connectors, model handlers, and routes. Exactly one package/kind
-rule must exist for every such production surface, and stale or duplicate rules
-also fail. Package imports such as React, Zod, SDKs, parsers, and database
+rule must exist for every such production surface. Package imports such as
+React, Zod, SDKs, parsers, and database
 drivers remain visible under `packageDependencies`, but never imply an external
 service or mock. A service rule names its protocol and either a repository-local
 mock source plus owner or a concrete missing-mock reason. A claimed source must
 exist inside the repository; mock/reset evidence remains row-specific and is
-not inferred from catalog ownership. The catalog records its planned composition with
-the richer provider conformance catalog in PR #23185 without treating that
-unmerged stack as present evidence.
+not inferred from catalog ownership. The catalog records closed draft PR #23185
+only as a design reference for a richer provider conformance catalog; it does
+not treat that unmerged work as present evidence or a required stack. The
+current-develop migration has 61 rules and 94 package/kind selectors: three
+selectors were added and four stale selectors were removed from the prior
+snapshot.
 
-`covered` is derived, never baselined. A deterministic scenario declares the
+Coverage and dependency status are derived, never baselined. A deterministic scenario declares the
 full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare
 objects and `scenario({...})` exports are both resolved; action evidence must
 come from an asserted turn, and other runtime calls must be reachable from a
@@ -71,19 +73,28 @@ turn assertion or final-check callback. Setup, seed, unused-helper, comment,
 and prefix collisions never count. A Cloud E2E test
 uses the exact title `runtime-surface:<canonical-id>` and asserts the matching
 request or runtime call in that same test callback. Package ownership, an id,
-or a boundary-name substring alone never counts. All other current rows live
-in `runtime-surface-baseline.json`; a new row, a removed row, a now-covered row
-left in the baseline, a placeholder reason, or an artifact-free covered claim
-fails the ratchet. The gate compares with `origin/develop`: classifications may
-only be removed, never added or moved to another status in the same change.
+or a boundary-name substring alone never counts. The initial proof corpus
+includes a deterministic Notes action scenario and a real booted-Cloud locale
+route cell, so both artifact classes are nonzero before any future enforcement.
 
-Run the canonical gate and generate its machine-readable and reviewer-readable
+Drift comparison is opt-in and requires explicit package scopes. It compares
+two generated reports rather than consulting Git or a whole-repository frozen
+snapshot. The report command always exits zero for inventory findings; malformed
+arguments or an inventory construction error remain ordinary command failures.
+
+Run the advisory report and generate its machine-readable and reviewer-readable
 artifacts with:
 
 ```bash
-bun run audit:runtime-surface-coverage
+bun run report:runtime-surface-coverage
 bun test packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts
 bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
+```
+
+Compare one package against a previously generated report with:
+
+```bash
+bun run report:runtime-surface-coverage -- --compare reports/coverage/runtime-surfaces.json --package @elizaos/plugin-notes
 ```
 
 The report command writes `runtime-surfaces.json`, `runtime-surfaces.md`, and
@@ -95,12 +106,11 @@ matrix and the parent #22896 workstreams.
 
 ### #8801/#8802 compatibility
 
-`bun run audit:e2e-coverage` runs the canonical #22897 row gate and then the
-historical #8801 package gate, so existing CI callers gain the stronger check
-without losing the former regression contract. `bun run audit:e2e-coverage:legacy`
-preserves the exact former #8801-only output for scripts that consume its
-package-level result. The #8802 matrix files and viewer names are unchanged;
-the new runtime artifacts are additive.
+`bun run audit:e2e-coverage` retains the existing #8801/#8802 enforcement
+contract. The #22897 runtime census does not run in that gate. Its JSON,
+Markdown, and HTML outputs are additive report artifacts for reviewers and the
+parent #22896 workstreams. Enforcement is deliberately deferred until the
+proof corpus and mock ownership catalog are materially complete.
 
 ---
 

@@ -132,7 +132,7 @@ describe("runtime surface dependency catalog", () => {
     ).toThrow(/mockSource is missing/);
   });
 
-  test("the committed catalog is versioned and declares the provider stack", () => {
+  test("the committed catalog is versioned and records its closed design reference", () => {
     const committed = loadRuntimeDependencyCatalog();
     expect(committed.schema).toBe(RUNTIME_DEPENDENCY_SCHEMA);
     expect(committed.upstreamCatalog).toMatchObject({
@@ -142,6 +142,6 @@ describe("runtime surface dependency catalog", () => {
     expect(committed.rules).toHaveLength(61);
     expect(
       committed.rules.reduce((count, rule) => count + rule.kinds.length, 0),
-    ).toBe(95);
+    ).toBe(94);
   });
 });

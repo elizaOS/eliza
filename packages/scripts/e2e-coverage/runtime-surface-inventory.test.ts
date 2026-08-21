@@ -1,7 +1,7 @@
 /**
- * Exercises the production-registration runtime inventory and its shrinking
- * classification ratchet with the real repository plus deterministic adversarial
- * fixtures. No plugin module, provider client, or external credential is loaded.
+ * Exercises the report-only production-registration inventory with the real
+ * repository plus deterministic adversarial fixtures. No plugin module,
+ * provider client, or external credential is loaded.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -16,19 +16,16 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
-  candidateClassification,
-  evaluateRuntimeSurfaceCoverage,
+  compareRuntimeSurfaceInventories,
+  inspectRuntimeSurfaceHealth,
 } from "./check-runtime-surface-coverage.ts";
 import {
   buildRuntimeSurfaceInventory,
   isDeterministicScenarioSource,
   isExecutableBoundaryEvidence,
-  loadRuntimeSurfaceBaseline,
   packageEntryPoints,
   RUNTIME_SURFACE_REPO_ROOT,
   RUNTIME_SURFACE_SCHEMA,
-  RUNTIME_SURFACE_STATUSES,
-  type RuntimeSurfaceBaseline,
   type RuntimeSurfaceInventory,
   type RuntimeSurfaceKind,
   type RuntimeSurfaceRow,
@@ -104,37 +101,27 @@ function inventory(rows: RuntimeSurfaceRow[]): RuntimeSurfaceInventory {
   };
 }
 
-function baseline(
-  entries: Array<[string, Exclude<RuntimeSurfaceStatus, "covered">, string?]>,
-): RuntimeSurfaceBaseline {
-  return {
-    schema: RUNTIME_SURFACE_SCHEMA,
-    generatedFrom: "fixture",
-    classifications: Object.fromEntries(
-      entries.map(([id, status, reason]) => [
-        id,
-        {
-          status,
-          reason:
-            reason ??
-            "Fixture classification has an explicit and actionable written reason.",
-        },
-      ]),
-    ),
-    packageClassifications: {},
-  };
-}
-
 describe("runtime-surface production inventory", () => {
-  const realBaseline = loadRuntimeSurfaceBaseline();
   const realInventory = buildRuntimeSurfaceInventory({
-    baseline: realBaseline,
     generatedAt: "2026-08-20T00:00:00.000Z",
   });
 
-  test("enforces the committed classification ratchet against production registrations", () => {
-    const result = evaluateRuntimeSurfaceCoverage(realInventory, realBaseline);
-    expect(result, JSON.stringify(result, null, 2)).toMatchObject({ ok: true });
+  test("reports a structurally valid production census without a frozen baseline", () => {
+    expect(inspectRuntimeSurfaceHealth(realInventory)).toMatchObject({
+      ok: true,
+      duplicateRows: [],
+      invalidCoverage: [],
+      coveredWithoutMockOwner: [],
+    });
+    expect(realInventory.rows.some((row) => row.status === "covered")).toBe(
+      true,
+    );
+    expect(
+      realInventory.rows.some((row) => row.deterministicScenarioIds.length > 0),
+    ).toBe(true);
+    expect(realInventory.rows.some((row) => row.cloudE2eCells.length > 0)).toBe(
+      true,
+    );
   });
 
   test("covers every declared runtime kind with source-backed canonical rows", () => {
@@ -830,37 +817,7 @@ crons = ["0 * * * *", "30 * * * *"]
     }
   });
 
-  test("accepts every explicit status class with a written reason", () => {
-    const classifiedStatuses = RUNTIME_SURFACE_STATUSES.filter(
-      (status): status is Exclude<RuntimeSurfaceStatus, "covered"> =>
-        status !== "covered",
-    );
-    const rows = [row("covered", "covered")];
-    const entries: Array<[string, Exclude<RuntimeSurfaceStatus, "covered">]> =
-      [];
-    for (const status of classifiedStatuses) {
-      rows.push(row(status, status));
-      entries.push([status, status]);
-    }
-    expect(
-      evaluateRuntimeSurfaceCoverage(inventory(rows), baseline(entries)).ok,
-    ).toBe(true);
-  });
-
-  test("rejects each status class when its reason is a placeholder", () => {
-    for (const status of RUNTIME_SURFACE_STATUSES.filter(
-      (value) => value !== "covered",
-    )) {
-      const result = evaluateRuntimeSurfaceCoverage(
-        inventory([row(status, status)]),
-        baseline([[status, status, "TBD"]]),
-      );
-      expect(result.ok, status).toBe(false);
-      expect(result.invalidClassifications).toContain(status);
-    }
-  });
-
-  test("rejects new, stale, silently covered, duplicate, and artifact-free rows", () => {
+  test("reports duplicate, artifact-free, and mock-owner coverage findings", () => {
     const badCovered = row("covered", "covered", { boundarySignals: [] });
     const coveredWithoutMockOwner = row("covered-without-mock", "covered", {
       externalServiceDependencies: [
@@ -877,140 +834,47 @@ crons = ["0 * * * *", "30 * * * *"]
       ],
       dependencyDisposition: "mock-missing",
     });
-    const result = evaluateRuntimeSurfaceCoverage(
+    const result = inspectRuntimeSurfaceHealth(
       inventory([
         badCovered,
         coveredWithoutMockOwner,
-        row("new", "exempt"),
-        row("duplicate", "exempt"),
-        row("duplicate", "exempt"),
-      ]),
-      baseline([
-        ["covered", "exempt"],
-        ["duplicate", "platform-deferred"],
-        ["stale", "unsupported-product"],
+        row("duplicate", "uncovered"),
+        row("duplicate", "uncovered"),
       ]),
     );
     expect(result.ok).toBe(false);
-    expect(result.newlyUnclassified).toContain("new");
-    expect(result.staleClassifications).toContain("stale");
-    expect(result.silentlyCovered).toContain("covered");
     expect(result.invalidCoverage).toContain("covered");
-    expect(result.invalidDependencyOwnership).toContain("covered-without-mock");
+    expect(result.coveredWithoutMockOwner).toContain("covered-without-mock");
     expect(result.duplicateRows).toContain("duplicate");
   });
 
-  test("assigns dependency-correct candidate dispositions", () => {
-    expect(
-      candidateClassification("native-bridge", ["native-host"], [], []).status,
-    ).toBe("platform-deferred");
-    expect(candidateClassification("model-handler", [], [], []).status).toBe(
-      "uncovered",
-    );
-    expect(
-      candidateClassification(
-        "provider",
-        [],
-        [{ id: "google-workspace-api", protocol: "Google APIs" }],
-        [
-          {
-            serviceId: "google-workspace-api",
-            availability: "missing",
-            owner: null,
-            source: null,
-            reason: "No resettable mock is registered for this fixture.",
-          },
-        ],
-      ).status,
-    ).toBe("provider-qualified-only");
-    expect(candidateClassification("action", [], [], []).status).toBe(
-      "uncovered",
-    );
-  });
-
-  test("rejects blanket classification reasons reused across many surfaces", () => {
-    const rows = Array.from({ length: 9 }, (_, index) =>
-      row(`surface-${index}`, "uncovered"),
-    );
-    const repeatedReason =
-      "A broad generated disposition must never stand in for per-surface review.";
-    const entries = rows.map(
-      (entry) =>
-        [entry.id, "uncovered", repeatedReason] as [
-          string,
-          "uncovered",
-          string,
-        ],
-    );
-    const result = evaluateRuntimeSurfaceCoverage(
-      inventory(rows),
-      baseline(entries),
-    );
-    expect(result.ok).toBe(false);
-    expect(result.overbroadClassificationReasons).toHaveLength(1);
-  });
-
-  test("allows only contraction relative to the develop baseline", () => {
-    const parent = baseline([
-      ["existing", "uncovered"],
-      ["implemented", "uncovered"],
+  test("diffs only explicit package scopes instead of freezing the repository", () => {
+    const previous = inventory([
+      row("owned:action:removed", "uncovered", {
+        packageName: "@elizaos/owned",
+      }),
+      row("other:action:ignored", "uncovered", {
+        packageName: "@elizaos/other",
+      }),
     ]);
-    const contracted = baseline([["existing", "uncovered"]]);
-    expect(
-      evaluateRuntimeSurfaceCoverage(
-        inventory([row("existing", "uncovered")]),
-        contracted,
-        parent,
-      ).ok,
-    ).toBe(true);
-    const expanded = baseline([
-      ["existing", "uncovered"],
-      ["new", "uncovered"],
+    const current = inventory([
+      row("owned:action:added", "uncovered", {
+        packageName: "@elizaos/owned",
+      }),
+      row("other:action:changed", "covered", {
+        packageName: "@elizaos/other",
+      }),
     ]);
-    const expansionResult = evaluateRuntimeSurfaceCoverage(
-      inventory([row("existing", "uncovered"), row("new", "uncovered")]),
-      expanded,
-      parent,
-    );
-    expect(expansionResult.ok).toBe(false);
-    expect(expansionResult.expandedFromParent).toEqual(["new"]);
-    const changed = baseline([["existing", "platform-deferred"]]);
-    const changeResult = evaluateRuntimeSurfaceCoverage(
-      inventory([row("existing", "platform-deferred")]),
-      changed,
-      parent,
-    );
-    expect(changeResult.ok).toBe(false);
-    expect(changeResult.changedFromParent).toEqual(["existing"]);
-  });
-
-  test("fails closed for zero-surface packages and rejects stale dispositions", () => {
-    const fixture = inventory([]);
-    fixture.packages = [
-      {
-        owner: "@elizaos/test",
-        packageName: "@elizaos/test",
-        packageDir: "plugins/plugin-test",
-        runtimeRequirements: [],
-        platformRequirements: [],
-        packageDependencies: [],
-        registeredSurfaceIds: [],
-        registrationState: "no-runtime-registration",
-        reason: "UNCLASSIFIED",
-      },
-    ];
-    expect(evaluateRuntimeSurfaceCoverage(fixture, baseline([])).ok).toBe(
-      false,
-    );
-    const reviewed = baseline([]);
-    reviewed.packageClassifications["plugins/plugin-test"] = {
-      status: "no-runtime-registration",
-      reason:
-        "This package exports compile-time fixtures only and has no runtime entrypoint.",
-    };
-    expect(evaluateRuntimeSurfaceCoverage(fixture, reviewed).ok).toBe(true);
-    fixture.packages[0].registrationState = "registered-surfaces";
-    fixture.packages[0].registeredSurfaceIds = ["new-surface"];
-    expect(evaluateRuntimeSurfaceCoverage(fixture, reviewed).ok).toBe(false);
+    expect(
+      compareRuntimeSurfaceInventories(current, previous, ["@elizaos/owned"]),
+    ).toEqual({
+      packages: ["@elizaos/owned"],
+      added: ["owned:action:added"],
+      removed: ["owned:action:removed"],
+      changed: [],
+    });
+    expect(() =>
+      compareRuntimeSurfaceInventories(current, previous, []),
+    ).toThrow(/explicit package scope/);
   });
 });
