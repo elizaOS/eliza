@@ -145,7 +145,8 @@ export interface SubscriptionDto {
   allowanceRemainingUsd: string;
   allowanceExpiresAt: IsoDateString;
   rateLimits: SubscriptionRateEnvelopeDto;
-  resourceCeilings: SubscriptionResourceCeilingsDto;
+  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
+  resourceCeilings: SubscriptionResourceCeilingsDto | null;
 }
 
 export type AgentSandboxStatus =
