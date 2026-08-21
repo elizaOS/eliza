@@ -10886,6 +10886,7 @@ export async function persistInferenceTimingSummary(
 				duration: summary.totalMs ?? undefined,
 				metadata: {
 					label: summary.label,
+					traceId: summary.traceId,
 					modelProvider: summary.modelProvider,
 					timeToFirstTokenMs: summary.timeToFirstTokenMs,
 					timeToFirstVisibleMs: summary.timeToFirstVisibleMs,

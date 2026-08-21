@@ -24,6 +24,10 @@ import {
   timeInferenceSpan,
 } from "@elizaos/core";
 import {
+  recordGatewayResponseTelemetry,
+  withInferenceTraceHeader,
+} from "../utils/trace-correlation";
+import {
   getActionPlannerModel,
   getLargeModel,
   getMediumModel,
@@ -555,6 +559,10 @@ export async function requestNativeWithWarmingRetry(
   for (;;) {
     const response = await withNativeChatLimit(doRequest, label);
     const bodyText = await response.text();
+    // Recorded before the status check so the give-up 503 keeps its gateway
+    // decomposition too — a turn that burned the whole warming ladder is
+    // exactly the turn whose pre-forward attribution matters.
+    recordGatewayResponseTelemetry(response, label);
     if (response.status !== 503) return { response, bodyText };
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
     if (delayMs === undefined) return { response, bodyText };
@@ -1279,10 +1287,10 @@ async function generateTextWithModel(
     requestBody.temperature = params.temperature;
   }
 
-  const responsesHeaders: Record<string, string> = {
+  const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   if (isSpanSamplerHonoringModel(modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
@@ -1379,10 +1387,10 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   // Per-span sampler overrides only ride along when the resolved model is a
   // fork-built eliza-1 deployment that knows how to honor the header. Other
   // upstreams (OpenAI / Anthropic / generic OpenRouter) strip unknown headers
@@ -1802,10 +1810,10 @@ export async function streamNativeChatCompletion(
   // can meter the streamed call accurately.
   requestBody.stream_options = { include_usage: true };
 
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   if (isSpanSamplerHonoringModel(context.modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
@@ -1870,6 +1878,9 @@ export async function streamNativeChatCompletion(
     );
     await sleepMs(delayMs);
   }
+  // Recorded before the ok-check so a failed forward still keeps its gateway
+  // decomposition on the turn — errors are where attribution matters most.
+  recordGatewayResponseTelemetry(response, "chat/completions:stream");
 
   if (!response.ok) {
     let errorBody: { message?: string } | undefined;
