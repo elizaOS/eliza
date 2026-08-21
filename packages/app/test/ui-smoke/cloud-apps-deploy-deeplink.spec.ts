@@ -176,6 +176,46 @@ test.beforeEach(async ({ page }) => {
   // spec's cloud mock deliberately does not serve — the deep-link contract under
   // test assumes an already-set-up shell, not the onboarding flow.
   await seedAppStorage(page);
+  // Instrument the navigate-view bus BEFORE boot: the listener count is the
+  // explicit shell-ready boundary the deep-link dispatch below waits on, and
+  // the dispatch count backs the single-delivery assertion — a real OS deep
+  // link is delivered exactly once, so the spec must never retry the event.
+  await page.addInitScript(() => {
+    const instrumented = window as unknown as {
+      __elizaNavigateViewListenerCount?: number;
+      __elizaCloudAppsNavigateDispatchCount?: number;
+    };
+    instrumented.__elizaNavigateViewListenerCount = 0;
+    instrumented.__elizaCloudAppsNavigateDispatchCount = 0;
+    const originalAdd = window.addEventListener.bind(window);
+    const originalRemove = window.removeEventListener.bind(window);
+    const originalDispatch = window.dispatchEvent.bind(window);
+    window.addEventListener = ((type: string, ...rest: unknown[]) => {
+      if (type === "eliza:navigate:view") {
+        instrumented.__elizaNavigateViewListenerCount =
+          (instrumented.__elizaNavigateViewListenerCount ?? 0) + 1;
+      }
+      return (originalAdd as (...args: unknown[]) => unknown)(type, ...rest);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((type: string, ...rest: unknown[]) => {
+      if (type === "eliza:navigate:view") {
+        instrumented.__elizaNavigateViewListenerCount =
+          (instrumented.__elizaNavigateViewListenerCount ?? 0) - 1;
+      }
+      return (originalRemove as (...args: unknown[]) => unknown)(type, ...rest);
+    }) as typeof window.removeEventListener;
+    window.dispatchEvent = ((event: Event) => {
+      const detail = (event as CustomEvent<{ viewId?: string }>).detail;
+      if (
+        event.type === "eliza:navigate:view" &&
+        detail?.viewId === "cloud-apps"
+      ) {
+        instrumented.__elizaCloudAppsNavigateDispatchCount =
+          (instrumented.__elizaCloudAppsNavigateDispatchCount ?? 0) + 1;
+      }
+      return originalDispatch(event);
+    }) as typeof window.dispatchEvent;
+  });
   await installDefaultAppRoutes(page);
 });
 
@@ -202,29 +242,43 @@ test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref dep
     await expect(setupDialog).toBeHidden();
   }
 
-  // The exact intent `resolveDeepLinkNavigationIntent("apps/deploy")` produces
-  // (unit-locked in packages/app/src/deep-link-routing.test.ts), dispatched on
-  // the same bus main.tsx's live deep-link handler uses. The shell registers
-  // that listener asynchronously during boot, so a single dispatch can race it
-  // and be lost — re-dispatch until the Applications list actually mounts.
+  // The shell registers its `eliza:navigate:view` listener in a mount effect,
+  // so an intent dispatched before registration would be silently lost. Wait
+  // on the instrumented registration count (the explicit shell-ready
+  // boundary), then dispatch the exact intent
+  // `resolveDeepLinkNavigationIntent("apps/deploy")` produces (unit-locked in
+  // packages/app/src/deep-link-routing.test.ts) exactly once, on the same bus
+  // main.tsx's live deep-link handler uses.
+  await page.waitForFunction(
+    () =>
+      ((window as unknown as { __elizaNavigateViewListenerCount?: number })
+        .__elizaNavigateViewListenerCount ?? 0) > 0,
+    undefined,
+    { timeout: 30_000 },
+  );
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewId: "cloud-apps", viewPath: "/cloud-apps" },
+      }),
+    );
+  });
+  // Applications list (NativeAppsStudio → ApplicationsPage) with the fixture
+  // app, mounted by that single delivery.
   const appCard = page.getByText(APP_NAME, { exact: true }).first();
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate(() => {
-          window.dispatchEvent(
-            new CustomEvent("eliza:navigate:view", {
-              detail: { viewId: "cloud-apps", viewPath: "/cloud-apps" },
-            }),
-          );
-        });
-        return appCard.isVisible();
-      },
-      { timeout: 30_000, intervals: [1_000] },
-    )
-    .toBe(true);
-  // Applications list (NativeAppsStudio → ApplicationsPage) with the fixture app.
-  await expect(appCard).toBeVisible();
+  await expect(appCard).toBeVisible({ timeout: 30_000 });
+  // Negative assertion: the intent was delivered once and only once — a retry
+  // loop here would mask a lost-intent regression at the listener boundary.
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __elizaCloudAppsNavigateDispatchCount?: number;
+          }
+        ).__elizaCloudAppsNavigateDispatchCount,
+    ),
+  ).toBe(1);
   await page.screenshot({
     path: `${EVIDENCE_DIR}/cloud-apps-deploy-01-list.png`,
     fullPage: true,
