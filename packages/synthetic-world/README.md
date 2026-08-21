@@ -34,4 +34,9 @@ timers, resets named-fault attempts and the seeded random stream, and expects
 production schedulers and queues to rehydrate their callbacks from restored
 domain state.
 
+`world.stateHash` remains the compatibility hash for manifest data only.
+`world.executionStateHash` additionally hashes manifest identity, namespace,
+virtual clock and ordered timer metadata, random position, fault attempts, and
+the observation ledger. Timer callback source is intentionally excluded.
+
 See [`CLAUDE.md`](./CLAUDE.md) for ownership and fixture-safety rules.

@@ -18,6 +18,17 @@ interface ScheduledTimer {
   intervalMs?: number;
 }
 
+export interface VirtualClockSnapshot {
+  readonly now: string;
+  readonly timezone: string;
+  readonly sequence: number;
+  readonly timers: readonly {
+    readonly id: string;
+    readonly dueAt: string;
+    readonly intervalMs?: number;
+  }[];
+}
+
 export class VirtualClock {
   private currentMs: number;
   private sequence = 0;
@@ -135,6 +146,26 @@ export class VirtualClock {
 
   public get pendingTimerCount(): number {
     return this.timers.size;
+  }
+
+  public snapshot(): VirtualClockSnapshot {
+    return {
+      now: this.nowIso(),
+      timezone: this.timezone,
+      sequence: this.sequence,
+      timers: [...this.timers.values()]
+        .sort(
+          (left, right) =>
+            left.dueMs - right.dueMs || left.id.localeCompare(right.id),
+        )
+        .map((timer) => ({
+          id: timer.id,
+          dueAt: new Date(timer.dueMs).toISOString(),
+          ...(timer.intervalMs === undefined
+            ? {}
+            : { intervalMs: timer.intervalMs }),
+        })),
+    };
   }
 
   private schedule(

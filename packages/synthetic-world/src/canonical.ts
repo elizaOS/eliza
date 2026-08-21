@@ -68,4 +68,8 @@ export class DeterministicRandom {
       minInclusive + Math.floor(this.next() * (maxExclusive - minInclusive))
     );
   }
+
+  public snapshot(): { readonly state: number } {
+    return { state: this.state };
+  }
 }

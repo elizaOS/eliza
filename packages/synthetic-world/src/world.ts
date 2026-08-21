@@ -31,6 +31,19 @@ export interface WorldStateSnapshot {
 
 export type WorldSnapshot = WorldStateSnapshot;
 
+export interface WorldExecutionSnapshot {
+  readonly schemaVersion: WorldManifest["schemaVersion"];
+  readonly worldId: string;
+  readonly manifestHash: string;
+  readonly namespace: string;
+  readonly stateHash: string;
+  readonly data: WorldData;
+  readonly clock: ReturnType<VirtualClock["snapshot"]>;
+  readonly random: ReturnType<DeterministicRandom["snapshot"]>;
+  readonly faults: ReturnType<FaultController["snapshot"]>;
+  readonly ledger: ReturnType<ObservationLedger["snapshot"]>;
+}
+
 export interface BoundaryExecutionOptions<T extends JsonValue> {
   readonly input: JsonValue;
   readonly idempotencyKey?: string;
@@ -91,6 +104,26 @@ export class SyntheticWorld {
 
   public get stateHash(): string {
     return payloadHash(this.currentData as unknown as JsonValue);
+  }
+
+  public executionSnapshot(): WorldExecutionSnapshot {
+    this.assertOpen();
+    return {
+      schemaVersion: this.initialManifest.schemaVersion,
+      worldId: this.initialManifest.worldId,
+      manifestHash: payloadHash(this.initialManifest as unknown as JsonValue),
+      namespace: this.namespace,
+      stateHash: this.stateHash,
+      data: this.data,
+      clock: this.clock.snapshot(),
+      random: this.random.snapshot(),
+      faults: this.faults.snapshot(),
+      ledger: this.ledger.snapshot(),
+    };
+  }
+
+  public get executionStateHash(): string {
+    return payloadHash(this.executionSnapshot() as unknown as JsonValue);
   }
 
   public snapshot(): WorldStateSnapshot {
