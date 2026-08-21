@@ -1,7 +1,7 @@
 /**
  * `listEvents`/`listCalendars` drain pages via `nextPageToken`, which must
- * terminate even when the Google Calendar API (or a misbehaving proxy)
- * repeats a page token or never stops minting new ones. Mirrors the
+ * terminate when the Google Calendar API (or a misbehaving proxy)
+ * repeats a page token. Mirrors the
  * equivalent Google Meet pagination coverage in
  * `meet.canonical-artifact.test.ts`.
  */
@@ -46,31 +46,14 @@ describe("listEvents pagination", () => {
     expect(list).toHaveBeenCalledTimes(2);
   });
 
-  it("bounds event-list pagination against a provider that never repeats but never stops", async () => {
-    let page = 0;
-    const list = vi.fn(async () => {
-      page += 1;
-      return { data: { items: [], nextPageToken: `unique-token-${page}` } };
-    });
-    const client = clientFor({ events: { list } });
-
-    await expect(client.listEvents({ accountId: "acct-1" })).rejects.toMatchObject({
-      code: "GOOGLE_CALENDAR_PAGINATION_LIMIT_EXCEEDED",
-    });
-    expect(list).toHaveBeenCalledTimes(1_000);
-    expect(list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pageToken: "unique-token-999" })
-    );
-  });
-
-  it("accepts a terminal response on the exact final allowed page", async () => {
+  it("accepts a terminal response beyond the former fixed page ceiling", async () => {
     let page = 0;
     const list = vi.fn(async () => {
       page += 1;
       return {
         data: {
-          items: page === 1_000 ? [{ id: "last-event" }] : [],
-          ...(page < 1_000 && { nextPageToken: `unique-token-${page}` }),
+          items: page === 1_001 ? [{ id: "last-event" }] : [],
+          ...(page < 1_001 && { nextPageToken: `unique-token-${page}` }),
         },
       };
     });
@@ -79,7 +62,7 @@ describe("listEvents pagination", () => {
     await expect(client.listEvents({ accountId: "acct-1" })).resolves.toMatchObject([
       { id: "last-event" },
     ]);
-    expect(list).toHaveBeenCalledTimes(1_000);
+    expect(list).toHaveBeenCalledTimes(1_001);
   });
 });
 
@@ -98,17 +81,22 @@ describe("listCalendars pagination", () => {
     expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: "c1" }));
   });
 
-  it("bounds calendar-list pagination against a provider that never repeats but never stops", async () => {
+  it("accepts a calendar beyond the former fixed page ceiling", async () => {
     let page = 0;
     const list = vi.fn(async () => {
       page += 1;
-      return { data: { items: [], nextPageToken: `unique-token-${page}` } };
+      return {
+        data: {
+          items: page === 1_001 ? [{ id: "late-calendar" }] : [],
+          ...(page < 1_001 && { nextPageToken: `unique-token-${page}` }),
+        },
+      };
     });
     const client = clientFor({ calendarList: { list } });
 
-    await expect(client.listCalendars({ accountId: "acct-1" })).rejects.toMatchObject({
-      code: "GOOGLE_CALENDAR_PAGINATION_LIMIT_EXCEEDED",
-    });
-    expect(list).toHaveBeenCalledTimes(1_000);
+    await expect(client.listCalendars({ accountId: "acct-1" })).resolves.toMatchObject([
+      { calendarId: "late-calendar" },
+    ]);
+    expect(list).toHaveBeenCalledTimes(1_001);
   });
 });

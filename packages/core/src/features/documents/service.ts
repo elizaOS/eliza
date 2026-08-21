@@ -20,7 +20,6 @@ import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
-	DOCUMENT_LIST_MAX_PINNED_PAGES,
 	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
@@ -715,22 +714,7 @@ export class DocumentService extends Service {
 		const pinnedDocuments: Memory[] = [];
 		let cursor: DocumentListCursor | undefined;
 		const seenCursors = new Set<string>();
-		let pageCount = 0;
 		do {
-			pageCount += 1;
-			if (pageCount > DOCUMENT_LIST_MAX_PINNED_PAGES) {
-				throw new ElizaError(
-					"Pinned document list exceeded maximum page limit",
-					{
-						code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
-						context: {
-							pageCount,
-							maxPages: DOCUMENT_LIST_MAX_PINNED_PAGES,
-						},
-						severity: "fatal",
-					},
-				);
-			}
 			const page = await this.listDocumentsDetailedWithRequester(
 				{
 					limit: DOCUMENT_LIST_MAX_LIMIT,
