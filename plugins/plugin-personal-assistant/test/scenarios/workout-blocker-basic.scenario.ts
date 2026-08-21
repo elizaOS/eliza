@@ -13,6 +13,7 @@ export default scenario({
   id: "workout-blocker-basic",
   title: "Workout blocker routine",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

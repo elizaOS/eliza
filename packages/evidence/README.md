@@ -100,6 +100,7 @@ artifacts (root exists but is empty).
 | `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |
 | `scenario-runner` | `reports/scenarios/` | scenario |
+| `provider-qualification` | `reports/provider-qualification/` | — |
 
 The former roots `device-e2e-output/`,
 `packages/app/reports/walkthrough/`, and
@@ -109,6 +110,18 @@ reviewer with explicit `--source`; that compatibility mode never runs
 implicitly. Artifacts are copied into the bundle and hashed **as stored** so
 later producer writes cannot mutate a finalized run and a corrupt copy fails at
 add time.
+
+The coordinated provider-qualification producer runs after the matrix captures
+its baseline. It independently reverifies 13 externally emitted
+`publication.json` capsules and the v2 release catalog, refuses a missing,
+extra, duplicate, unqualified, or cleanup-unbound canary, then atomically
+publishes those capsules and capsule-derived Markdown beneath
+`reports/provider-qualification/<operator-run-id>/`. The ingestor rejects raw
+`qualification.json`, retired catalogs, missing publication Markdown, and any
+other file shape in that release tree. Each publication embeds the public-only
+v4 artifact and an artifact-bound signed cleanup proof; raw authorization
+inputs, targets, operation preimages, credentials, private keys, raw
+trajectories, and runner transcripts are never producer output.
 
 ## CLI
 
@@ -136,7 +149,10 @@ their identity changes during the copy.
 The coordinated matrix captures a content-and-filesystem-identity snapshot
 before its lanes run and passes it through `--baseline`; untouched files in
 persistent producer roots are excluded, while files written or replaced during
-the run are included even when their resulting bytes equal the prior bytes.
+the run are included even when their resulting bytes equal the prior bytes. The
+opt-in `--provider-qualification-config=<file>` step deliberately runs between
+that snapshot and bundle creation, so its atomically published summaries belong
+to the exact matrix bundle rather than being excluded as pre-existing output.
 
 ## How later pieces slot in
 

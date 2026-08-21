@@ -20,6 +20,7 @@ export default scenario({
   id: "adhd-duplicate-capture-dedup",
   title: "ADHD: an identical re-ask collapses to one reminder, not two",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

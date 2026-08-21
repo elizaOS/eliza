@@ -4,9 +4,9 @@
  * before sending anything. MESSAGE firing is a hard failure.
  */
 
+import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 
 function expectClarificationWithoutMessage(
   ctx: ScenarioContext,
@@ -30,6 +30,7 @@ export default scenario({
   id: "cross.ambiguity.agent-asks-clarifying-question",
   title: "Ambiguous contact name triggers a clarifying question",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "ambiguity", "happy-path"],
   description:
     "Three seeded contacts named John. The user says 'Message John'. The agent must ask which John — not pick one silently or fire MESSAGE.",

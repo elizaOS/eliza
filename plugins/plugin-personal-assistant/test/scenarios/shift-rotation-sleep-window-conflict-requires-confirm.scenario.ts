@@ -85,6 +85,7 @@ export default scenario({
   title:
     "A 10am booking that lands in protected post-night-shift sleep is flagged and fails closed without an explicit override",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

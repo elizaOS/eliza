@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-bedtime-wakeup",
   title: "Brush teeth from wake-up and bedtime phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

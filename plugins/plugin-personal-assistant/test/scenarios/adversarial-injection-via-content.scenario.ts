@@ -31,6 +31,7 @@ export default scenario({
   title:
     "Prompt injection inside stored reminder content never triggers outbound sends",
   domain: "security",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "security",

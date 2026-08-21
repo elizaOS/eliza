@@ -51,6 +51,7 @@ export default scenario({
   id: "goal.relationship.track-progress",
   title: "Relationship progress returns a structured days-since result",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "relationships", "smoke"],
   isolation: "per-scenario",
   requires: {

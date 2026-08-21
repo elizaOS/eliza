@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Return-fraud review grounds in seeded purchase state; identity data stays gated",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

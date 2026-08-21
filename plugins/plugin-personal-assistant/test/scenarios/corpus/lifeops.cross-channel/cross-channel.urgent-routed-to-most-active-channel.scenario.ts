@@ -45,6 +45,7 @@ export default scenario({
   title:
     "Urgent send routes to most-active channel (Telegram), not stale Gmail",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "routing", "urgent", "channel-selection"],
   isolation: "per-scenario",
   requires: {

@@ -68,7 +68,38 @@ export default {
 - `responseJudge: { rubric, minimumScore }` — LLM-as-judge scoring
 
 **Final checks** (after all turns, in `finalChecks` array):
-`actionCalled`, `selectedAction`, `judgeRubric`, `connectorDispatchOccurred`, `memoryWriteOccurred`, `approvalRequestExists`, `browserTaskCompleted`, `messageDelivered`, and more — see `schema/index.js` for the full list.
+`actionCalled`, `selectedAction`, `judgeRubric`, `connectorDispatchOccurred`,
+`noSideEffects`, `memoryWriteOccurred`, `approvalRequestExists`,
+`browserTaskCompleted`, `messageDelivered`, and more — see `schema/index.js`
+for the full list.
+
+Use turn-scoped binding checks for safety and ordering. Action names, action
+success values, and response prose do not prove that an effect happened:
+
+```ts
+finalChecks: [
+  {
+    type: "noSideEffects",
+    name: "proposal is read-only",
+    turn: "proposal",
+    allowApprovalRequests: true,
+  },
+  {
+    type: "connectorDispatchOccurred",
+    name: "one confirmed dispatch",
+    channel: "sms",
+    turn: "confirm",
+    minCount: 1,
+    maxCount: 1,
+    delivered: true,
+  },
+]
+```
+
+`noSideEffects` inspects authoritative connector dispatches, durable state
+transitions, artifacts, and approval creation. It intentionally ignores
+action-result inference. Set `allowApprovalRequests` only when creating a
+pending approval is the safe continuation being tested.
 
 ## CLI flags
 
@@ -113,6 +144,372 @@ The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned
 same-process observations cannot satisfy these contracts.
+
+Approval-gated provider effects use signed transition groups. The manifest
+binds exactly one `pending` observation to a proposal stage and the correlated
+`approved` and `done` observations to later approval stages. Qualification
+requires all three durable rows to retain the same hashed approval ID and
+request payload and rejects reordered or stage-substituted evidence. A
+pre-approval `provider-no-effect` contract may use
+`intervalCoverage: "before-referenced-stage"`; its unchanged provider snapshot
+must begin no later than scenario start and end at, never after, its single
+signed approval-stage reference. This proves absence only for that bounded
+phase and does not conflict with the separately evidenced provider effect after
+approval.
+
+The provider-canary catalog under `packages/test/scenarios/provider-qualified/`
+covers Gmail, Google Calendar, Google Drive/Sheets, Discord, Slack, Telegram,
+WhatsApp, X DM, Twilio SMS and voice, BlueBubbles/iMessage, Signal, and Duffel
+travel. Before authenticated ingress, an operator controller must pass the
+exact canary definition and its externally authored manifest through
+`preflightProviderCanary`. Missing manifests are a hard refusal, and a manifest
+for another scenario, account, connector, or observation contract is rejected.
+This preflight only validates the trust binding; it does not execute the canary
+or manufacture qualification evidence. Non-qualifiable generic surfaces are
+source-documented in `_provider-canary-exclusions.json`.
+
+The Google Workspace operator controller covers the Gmail send, Google
+Calendar event-create, and Google Drive/Sheets spreadsheet-create canaries. It
+accepts only the exact result of an offline signed-manifest preflight and maps
+validated operations to the production `GoogleWorkspaceService` method shapes.
+Before it starts a run, the controller requires externally supplied capability
+implementations for account-scoped OAuth readiness, authenticated deployed
+ingress, deployed trajectory export, independent provider readback,
+authenticated replay, and both independently executed failure probes. A
+missing capability or OAuth scope is a hard refusal before ingress. Its output
+is raw unsigned source material with `qualificationClaimed: false`; the direct
+service adapter is also non-qualifying and is intended only behind the deployed
+ingress boundary. Provider qualification still requires the normal independent
+signing, trajectory verification, semantic judge, and offline artifact
+verification flow.
+
+The Slack operator boundary validates the signed workspace, root channel,
+payload, run nonce, and two negative probes before making any network request.
+Its read-only observer authenticates a distinct Slack principal with
+`auth.test`, then uses `conversations.history` to require the exact human
+ingress followed by a strictly later exact bot effect. The observer polling
+floor respects Slack's current one-request-per-minute limit for affected apps.
+The returned receipts remain unsigned and carry `qualificationClaimed: false`;
+execution still refuses until deployed trajectory export, authenticated event
+replay, and independent failure-probe capabilities exist.
+
+Provider-specific operator boundaries now cover the complete 13-canary
+catalog: BlueBubbles/iMessage; Discord; Duffel; Gmail, Calendar, and
+Drive/Sheets through Google Workspace; Signal, Telegram, WhatsApp, and X DM
+through the messaging boundary; Slack; and Twilio SMS and voice. Each boundary
+revalidates its exact signed operation and account binding before credentials or
+ingress, requires authenticated readback/replay/failure-probe/trajectory seams,
+and emits only unsigned source receipts with `qualificationClaimed: false`.
+Concrete read-only adapters exist where the provider exposes a safe inspection
+surface; protected operator capabilities supply the remaining deployed seams.
+The detailed prerequisites and non-claims live beside each controller in its
+`*-operator-readiness.md` document.
+
+Duffel qualification is hold-only. The signed operation fixes the offer,
+passengers, order type, total minor units, and currency; the durable approval
+must retain the same payload through pending, approved, and done observations.
+Execution refuses offer capability, order-type, or price drift before order
+creation, never captures payment for the canary, and treats any ambiguous
+post-dispatch failure as reconciliation-required rather than retryable. Duffel's
+`x-client-correlation-id` is retained for tracing only and is never represented
+as provider idempotency.
+
+### Operator manifest authorization
+
+Before provisioning a target or sending authenticated ingress, authorize the
+canonical manifest offline and validate it against deployment-owned public-key
+pins:
+
+```ts
+import {
+  authorizeProviderCanary,
+  createProviderCanaryTargetBinding,
+  preflightAuthorizedProviderCanaryExecution,
+} from "@elizaos/scenario-runner";
+
+const targetBinding = createProviderCanaryTargetBinding({
+  kind: operationKind,
+  providerTarget,
+  operationInput,
+});
+const authorization = authorizeProviderCanary({
+  scenario,
+  bindings: { ...bindings, target: { ...bindings.target, operation: targetBinding } },
+  manifestAuthorityPrivateKey, // an Ed25519 private KeyObject
+});
+
+preflightAuthorizedProviderCanaryExecution({
+  scenario,
+  authorization,
+  pinnedManifestAuthorityPublicKeysPem,
+  operationKind,
+  providerTarget,
+  operationInput,
+});
+```
+
+The returned authorization bundle contains only the manifest, key ID, digest,
+and signature; it never serializes the private key. Generate and retain the key
+outside the repository (prefer an offline signer or managed key store), publish
+only the SPKI public-key pin, and keep provider credentials out of the manifest.
+The provider target and complete non-credential operation input remain in
+operator-controlled JSON; their canonical hashes are signed into the manifest
+and rechecked before execution.
+The independent observer must repeat that exact hash-only operation binding and
+the manifest-authorized capability grant hashes in each signed
+connector-binding record. Qualification rejects evidence for a different
+recipient, resource, operation input, or authorization grant even when the
+observer signature and connector account are otherwise valid.
+Every operator manifest must also bind two negative probes for the same
+provider operation: one authorization denial and one provider rejection. Each
+probe fixes the connector/account, canonical request-payload hash, expected
+status and error-code hash, authorization-grant hash, and provider-state scope.
+After the positive scenario ends, the independent observer must execute and
+sign both probes, including exact response hashes and equal before/after
+provider snapshot hashes. Missing, substituted, stale, unexpectedly successful,
+or state-changing probes make the run unpublishable. Authorization denial must
+record no provider request ID; provider rejection must record a hashed provider
+request ID, proving that the rejection reached the provider boundary.
+This preflight proves operator authorization of the exact scenario and binding
+contract only. It does not contact a provider, create observations, run the
+independent semantic judge, or make evidence publishable.
+
+### External canary execution
+
+The executable controller boundary accepts one closed operator config after the
+manifest has been authorized. Version 2 accepts the scenario only as
+executable-free, key-sorted canonical JSON (one trailing newline), rejects IDs
+outside the repository-owned 13-canary catalog, and requires the catalog's exact
+operation kind. It validates the signed scenario, target, input, and
+failure-probe preimages before importing any credential-capable code. The
+operator capability module is a prebuilt ESM bundle whose exact bytes are
+pinned by SHA-256; its factory supplies authenticated ingress, an independent
+observer, isolated trajectory verification, an independent semantic judge, and
+cleanup. The CLI supplies the publisher so no qualification output is written
+until the orchestrator has fully reverified the artifact and cleanup succeeds:
+
+```bash
+bun run --cwd packages/scenario-runner provider-canary -- \
+  /absolute/path/to/external-canary-config.json
+```
+
+```json
+{
+  "schema": "eliza.external-provider-canary-config.v2",
+  "scenarioDefinitionFile": "scenario.json",
+  "authorizationFile": "authorization.json",
+  "operationKind": "gmail.email-send",
+  "providerTargetFile": "provider-target.json",
+  "operationInputFile": "operation-input.json",
+  "failureProbesFile": "failure-probes.json",
+  "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
+  "observerPublicKeyFiles": ["keys/provider-observer.pub.pem"],
+  "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
+  "operatorModuleFile": "operator/provider-capabilities.mjs",
+  "operatorModuleSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "operatorStateDir": "/absolute/private/operator-state",
+  "outputDir": "qualification-output"
+}
+```
+
+The capability bundle is trusted operator code, not a plugin loaded from the
+pull request under test. Build and review it outside the tested checkout, pin
+the resulting single entry module, and obtain credentials from the operator's
+secret manager rather than JSON or process arguments. Importing the module is
+allowed only after authorization preflight, but JavaScript modules are not a
+sandbox; a digest proves exact bytes, not that those bytes are safe. Every
+capability must still produce the independently signed evidence required by the
+qualifier. Missing capabilities, an invalid signature, module drift, failed
+cleanup, or an unpublishable decision exits nonzero and writes no output.
+
+Create `operatorStateDir` before execution with mode `0700`; it must be a real,
+current-user-owned directory, not a symlink. The CLI exclusively and durably
+records the signed manifest as `in-progress` before operator code loads, then
+fully stages the capsule while it remains invisible, durably transitions to
+`consumed`, and only then atomically exposes the directory. A failure before
+durable consumption becomes `reconciliation-required`; a process crash leaves
+`in-progress`. A publication failure after consumption retains the staged
+capsule and the `consumed` state for manual recovery without provider replay.
+All three states refuse replay and require an operator to reconcile provider state rather
+than deleting or editing the journal. Freshness settings are optional tightening
+controls only: signature age cannot exceed five minutes and clock skew cannot
+exceed five seconds. Publication is staged in an empty sibling directory and
+renamed into place atomically, so readers never observe a partial capsule. Fatal
+CLI output never includes operator errors, stacks, paths, credentials, targets,
+or private input; detailed reconciliation belongs in the protected journal and
+operator telemetry.
+
+### Offline qualification verification
+
+After an external controller completes one isolated provider run, verify the
+retained artifacts with trusted code and deployment-owned public-key pins:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  verify /absolute/path/to/verify-config.json
+```
+
+```json
+{
+  "schema": "eliza.provider-qualification-verify-config.v2",
+  "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
+  "authorizationFile": "authorization.json",
+  "operationKind": "gmail.email-send",
+  "providerTargetFile": "provider-target.json",
+  "operationInputFile": "operation-input.json",
+  "failureProbesFile": "failure-probes.json",
+  "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
+  "runDir": "run",
+  "observerEvidenceFile": "observer-evidence.json",
+  "observerPublicKeyFiles": ["keys/provider-observer.pub.pem"],
+  "semanticEvidenceFile": "semantic-evidence.json",
+  "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
+  "runnerReportFile": "runner-report.json",
+  "outputDir": "/private/operator/provider-qualification/operator-run-001/gmail"
+}
+```
+
+The closed `eliza.provider-qualification-verify-config.v2` JSON object names
+the authored scenario, operator authorization, isolated run directory, signed
+observer and semantic-judge envelopes, runner report, three independent sets
+of public-key files, and a new output directory. Paths are resolved relative to
+the config file. Optional controls are `expectedTrajectoryRelativePaths`,
+`maxArtifactAgeMs`, `maxSignatureAgeMs`, and `maxClockSkewMs`; unknown fields
+fail validation.
+
+`failure-probes.json` is a private operator input containing the exact raw
+preimages for the signed negative-probe commitments. It is a closed array with
+one `authorization-denied` probe and one `provider-rejected` probe, using the
+manifest probe IDs and non-secret request, expected-error, state-scope, and
+authorization-grant descriptors. The verifier recomputes every domain-separated
+hash before ingress. Never place bearer tokens, OAuth refresh tokens, private
+keys, or other provider credentials in this file; keep those in the operator's
+secret manager. Do not publish this private input as provider evidence.
+
+The verifier recomputes trajectory and stage hashes from disk, validates the
+operator signature, derives qualification from the signed observer and judge
+evidence, and writes a mode-0600 v4 `qualification.json` capsule plus
+`qualification.md` into a newly created mode-0700 directory. Exit status is
+zero only for a publishable decision with independently verified provider
+acceptance, provider readback, and idempotent replay. The v4 capsule contains
+the canonical scenario and manifest, public Ed25519 pins, signed hash-only
+observer and judge envelopes, a path-free verified trajectory inventory, the
+hash-only runner-result projection, and the recomputed decision. It contains no
+private target preimages, credentials, private keys, raw trajectory bodies,
+runner transcript, or local run-directory path. This command does not execute
+ingress, collect evidence, access provider credentials, or post to GitHub.
+
+Anyone with the published capsule can replay the complete offline proof without
+the private operator inputs:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  reverify reports/provider-qualification/<run>/<canary>/qualification.json
+```
+
+`reverify` recomputes public-key identities and signatures, the verified
+trajectory-set and runner-result projections, the qualification decision, and
+every verifier-transcript digest. It exits nonzero for an unpublishable or
+internally inconsistent capsule.
+
+Release publication additionally requires the signed cleanup capsule emitted
+atomically by `eliza-provider-canary`. Reverify the release authority with:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  reverify-publication reports/provider-qualification/<run>/<canary>/publication.json
+```
+
+The cleanup proof signs the exact v4 artifact digest, run, manifest, cleanup
+scope, and raw controller-material digest. Its key must be the exact observer
+signer authorized by the manifest; a self-declared capsule key is rejected.
+
+Private verifier inputs remain operator material. For repository evidence
+review, use the coordinated matrix producer described in
+`scripts/evidence-review/README.md`; it consumes only the 13 externally emitted
+`publication.json` capsules and publishes only reverified cleanup-bound
+capsules, their derived Markdown, and the canonical catalog beneath
+`reports/provider-qualification/<operator-run-id>/` after the exact catalog
+passes. A publication created before the matrix snapshot is baseline-excluded.
+
+Once every canary has a cleanup-bound publication capsule, create the release
+catalog with a closed `eliza.provider-qualification-catalog-config.v3` file:
+
+```json
+{
+  "schema": "eliza.provider-qualification-catalog-config.v3",
+  "expectedRepositorySha": "0123456789abcdef0123456789abcdef01234567",
+  "publicationFiles": [
+    "bluebubbles/publication.json",
+    "discord/publication.json",
+    "duffel/publication.json",
+    "gmail/publication.json",
+    "google-calendar/publication.json",
+    "google-sheets/publication.json",
+    "signal/publication.json",
+    "slack/publication.json",
+    "telegram/publication.json",
+    "twilio-sms/publication.json",
+    "twilio-voice/publication.json",
+    "whatsapp/publication.json",
+    "x-dm/publication.json"
+  ],
+  "outputDir": "catalog-output"
+}
+```
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  catalog /absolute/path/to/catalog-config.json
+```
+
+List all 13 artifact files in canonical scenario order in the real config. The
+catalog command compares their signed scenario IDs to the repository-owned
+`PROVIDER_CANARY_SCENARIO_IDS` inventory; callers cannot redefine completeness.
+It rejects missing, extra, reordered, or substituted scenarios, modified
+artifact digests, unqualified decisions, repository drift, and mixed
+deployments before writing `catalog.json` and the PR/issue-ready `catalog.md`.
+
+When the catalog is run through the coordinated matrix producer, its private
+JSON and all verifier JSON stay in a mode-0700 temporary directory. The
+producer supplies the staged artifact paths and catalog output directory; the
+corresponding fields in the operator's direct-CLI configs are not publication
+destinations in this mode.
+
+## Evidence scopes
+
+`evidenceScope` describes the claim a scenario is designed to support; it does
+not change where the scenario runs (`lane`) or how trustworthy its evidence is
+(`executionProfile`):
+
+- `runner-fixture` — runner, schema, or interception behavior only.
+- `domain-contract` — deterministic domain/state-machine behavior.
+- `model-behavior` — model selection, extraction, or response quality.
+- `connector-contract` — a connector adapter exercised against deterministic
+  fixture infrastructure; it is still simulated and does not prove delivery.
+- `provider-certification` — qualified external provider evidence only.
+
+The schema keeps `runner-fixture` as a compatibility default for external
+callers, and reports count every use. Maintained corpora must classify the field
+explicitly; the shared and personal-assistant corpus gate requires a zero
+default count.
+`provider-certification` and `executionProfile:
+"provider-qualified"` must be declared together. A simulated pass is never
+provider certification, including when it used a live model or real plugin
+code.
+
+Planned behavior that is not yet executable must use `status: "pending"` with
+an explicit dependency in its title or description. Pending definitions remain
+inventory-visible but are excluded from ordinary execution unless
+`SCENARIO_INCLUDE_PENDING=1`; do not encode an unrelated fallback as a passing
+implementation or delete the definition to hide the gap.
+
+An invalid historical claim may instead be retired when the product capability
+was deliberately removed, the scenario was renamed without changing its
+contract, or a stronger scenario covers the same behavior. Every retirement
+must be recorded in the corpus `_scenario-retirements.json` manifest as
+`removed`, `renamed`, or `covered-by`, with a live replacement or checked source
+evidence. Unsupported behavior that is still planned is not a retirement.
 
 ## Key env vars
 

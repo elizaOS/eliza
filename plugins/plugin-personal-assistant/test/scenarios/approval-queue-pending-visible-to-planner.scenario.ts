@@ -176,6 +176,7 @@ export default scenario({
   title:
     "Pending approval rows surface to the planner and reject terminally resolves them",
   domain: "lifeops.approvals",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "approval", "control", "14630"],
   status: "active",
   isolation: "per-scenario",

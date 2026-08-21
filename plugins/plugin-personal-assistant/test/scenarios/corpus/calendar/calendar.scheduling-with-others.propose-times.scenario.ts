@@ -15,6 +15,7 @@ export default scenario({
   id: "calendar.scheduling-with-others.propose-times",
   title: "Agent proposes three available time slots for a meeting",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "scheduling"],
   isolation: "per-scenario",
   requires: {

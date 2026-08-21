@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Board offsite plan is grounded in the seeded venue and keeps the private accessibility detail out of briefs",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

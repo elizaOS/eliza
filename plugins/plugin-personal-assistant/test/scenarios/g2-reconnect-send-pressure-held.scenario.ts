@@ -13,6 +13,7 @@ export default scenario({
   id: "g2-reconnect-send-pressure-held",
   title: "Send-it-now pressure does not bypass the reconnect approval gate",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G2",

@@ -1,21 +1,55 @@
-/** Scenario fixture for discord local reply to dm; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves an exact Discord-local DM payload is dispatched only after owner confirmation. */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  createStatefulMessageConnectorFixture,
+  registerFixtureSeed,
+  registerUnknownEntityResolutionSeed,
+} from "../_fixtures/stateful-message-connector.ts";
+
+const fixture = createStatefulMessageConnectorFixture({
+  source: "discord-local",
+  label: "Discord Local",
+  conversations: [
+    {
+      channelId: "dm-bob-001",
+      recipientId: "discord-user-bob-4488",
+      label: "Bob",
+      kind: "contact",
+      messages: [
+        {
+          id: "discord-msg-bob-latest",
+          sender: "Bob",
+          text: "Are you close?",
+          createdAt: Date.parse("2026-08-18T17:00:00.000Z"),
+        },
+      ],
+    },
+  ],
+});
+
+const sendParameters = {
+  action: "send",
+  source: "discord-local",
+  accountId: "test-owner",
+  target: "Bob",
+  targetKind: "contact",
+  message: "I'll be there soon.",
+  persist: false,
+};
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "discord.local.reply-to-dm",
-  title: "Reply to Discord DM with confirmation",
+  title: "Discord-local reply dispatches exact payload after confirmation",
   domain: "messaging.discord-local",
-  tags: ["messaging", "discord", "confirmation"],
+  tags: ["messaging", "discord", "confirmation", "dispatch-receipt"],
+  description:
+    "Exercises MESSAGE's real recipient-confirmation gate with a stateful Discord-local connector fixture, proving no preapproval dispatch and one exact postapproval provider receipt.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
@@ -24,118 +58,71 @@ export default scenario({
       title: "Discord Local Reply",
     },
   ],
+  seed: [
+    registerFixtureSeed(fixture),
+    registerUnknownEntityResolutionSeed("I'll be there soon."),
+  ],
   turns: [
     {
-      kind: "message",
-      name: "draft reply",
+      kind: "action",
+      name: "request-discord-send",
       room: "main",
-      text: "Draft a reply to the latest Discord DM from Bob saying I'll be there soon.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "discord DM draft reply",
-        includesAny: ["discord", "Bob", "draft", "reply"],
-      }),
-      // De-echoed (#9310): the old keywords ("draft", "bob", "reply") all
-      // appeared in the user's own turn text. The draft-and-hold contract is
-      // enforced by excluding premature send claims here, the judge, and the
-      // two-step action-ledger gate in finalChecks.
-      responseExcludes: [
-        "already sent",
-        "has been sent",
-        "i've sent",
-        "i have sent",
-        "sent it",
-      ],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 1 must produce a Discord draft reply to Bob and hold it instead of claiming it was already sent.",
+      text: "Send Bob a Discord DM saying I'll be there soon.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
+      assertTurn: () =>
+        fixture.dispatches.length === 0
+          ? undefined
+          : "Discord dispatch occurred before owner confirmation",
     },
     {
-      kind: "message",
-      name: "confirm send",
+      kind: "action",
+      name: "confirm-discord-send",
       room: "main",
-      text: "Send it.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "discord DM send after confirmation",
-        includesAny: ["send", "discord", "reply"],
-      }),
-      // "send" was an echo of this turn's own text ("Send it."); the reply
-      // must claim completed/in-flight delivery, not merely repeat the verb.
-      responseIncludesAny: ["sent", "sending", "delivered", "on its way"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 2 must reflect that the drafted Discord reply is being sent because the user explicitly confirmed it.",
+      text: "Yes, send that exact Discord DM now.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      type: "connectorDispatchOccurred",
+      channel: "discord-local",
+      turn: "request-discord-send",
+      expected: false,
+      maxCount: 0,
+    },
+    {
+      type: "connectorDispatchOccurred",
+      channel: "discord-local",
+      turn: "confirm-discord-send",
+      expected: true,
+      minCount: 1,
+      maxCount: 1,
     },
     {
       type: "custom",
-      name: "discord-local-reply-two-step-gate",
-      predicate: async (ctx) => {
-        const firstBlob = JSON.stringify(ctx.turns?.[0]?.actionsCalled ?? []);
-        const secondBlob = JSON.stringify(ctx.turns?.[1]?.actionsCalled ?? []);
-        if (
-          /send|"confirmed":true/i.test(firstBlob) &&
-          !/draft/i.test(firstBlob)
-        ) {
-          return "first turn appears to have sent the Discord reply instead of drafting it";
-        }
-        if (!/send|"confirmed":true/i.test(secondBlob)) {
-          const responseText = String(ctx.turns?.[1]?.responseText ?? "");
-          if (!/\bsent\b|\bsending\b/i.test(responseText)) {
-            return "second turn did not clearly send the Discord reply after confirmation";
-          }
-        }
+      name: "discord-send-preserves-target-content-and-provider-receipt",
+      predicate: (ctx) => {
+        const dispatch = fixture.dispatches[0];
+        const observed = ctx.connectorDispatches?.filter(
+          (entry) => entry.channel === "discord-local",
+        );
+        return fixture.dispatches.length === 1 &&
+          dispatch?.target.entityId === "discord-user-bob-4488" &&
+          dispatch.content.text === "I'll be there soon." &&
+          observed?.length === 1 &&
+          observed[0]?.delivered === true &&
+          observed[0]?.providerMessageIds?.[0] === dispatch.providerMessageId
+          ? undefined
+          : `expected one exact delivered Discord dispatch, saw ${JSON.stringify({ fixture: fixture.dispatches, observed })}`;
       },
     },
-    {
-      type: "custom",
-      name: "discord-local-reply-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "discord DM draft then send",
-        includesAny: ["discord", "draft", "send", "reply"],
-        minCount: 2,
-      }),
-    },
-    {
-      type: "custom",
-      name: "discord-local-reply-send-target-and-payload",
-      predicate: async (ctx) => {
-        const sendAction = [...ctx.actionsCalled]
-          .reverse()
-          .find((entry) => entry.actionName === "MESSAGE");
-        if (!sendAction) {
-          return "expected a MESSAGE action for the confirmed Discord reply";
-        }
-
-        const blob = JSON.stringify(sendAction).toLowerCase();
-        if (!blob.includes("discord")) {
-          return "expected the confirmed reply send payload to target Discord";
-        }
-        if (!blob.includes("bob")) {
-          return "expected the confirmed Discord reply send payload to preserve Bob as the DM target";
-        }
-        if (!/there soon|be there|i'?ll be there/.test(blob)) {
-          return "expected the confirmed Discord reply payload to include the typed reply text";
-        }
-        return undefined;
-      },
-    },
-    judgeRubric({
-      name: "discord-local-reply-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant drafted a Discord DM reply first and only sent it after the explicit confirmation turn.",
-    }),
   ],
 });

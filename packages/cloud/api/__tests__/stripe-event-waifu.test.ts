@@ -5,7 +5,7 @@ const agentId = "123e4567-e89b-12d3-a456-426614174000";
 const paymentIntentId = "pi_agent_topup";
 const webhookFetch = mock(async () => Response.json({ ok: true }));
 const getTransactionByStripePaymentIntent = mock(
-  async (): Promise<{ id: string } | null> => null,
+  async (_paymentIntentId: string): Promise<{ id: string } | null> => null,
 );
 const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const getByStripeInvoiceId = mock(async () => null);
@@ -13,6 +13,33 @@ const createInvoice = mock(async () => undefined);
 const calculateRevenueSplits = mock(async () => ({ splits: [] }));
 const enqueueAgentRestartOnce = mock(async () => ({ jobId: "job-restart" }));
 const triggerImmediate = mock(async () => undefined);
+const markAppChargePaid = mock(async () => ({
+  disposition: "settled" as const,
+  callback: null,
+}));
+const processAppPurchase = mock(async () => ({
+  creditsAdded: 5,
+  platformOffset: 0,
+  creatorEarnings: 0,
+  newBalance: 5,
+}));
+const settleLegacyCheckout = mock(
+  async (params: {
+    organizationId: string | null;
+    initiatedByUserId: string | null;
+    purchaseType: string;
+    claimedCredits: string | null;
+    paymentIntentId: string;
+  }) => ({
+    organizationId: params.organizationId,
+    initiatedByUserId: params.initiatedByUserId,
+    purchaseType: params.purchaseType,
+    creditsToGrant: params.claimedCredits ?? "0",
+    alreadyApplied: Boolean(
+      await getTransactionByStripePaymentIntent(params.paymentIntentId),
+    ),
+  }),
+);
 
 function dbChain(rows: unknown[]) {
   return {
@@ -49,7 +76,14 @@ const dbRead = {
   ),
 };
 
-mock.module("@/db/helpers", () => ({ dbRead }));
+mock.module("@/db/helpers", () => ({
+  dbRead,
+  dbWrite: {},
+  writeTransaction: mock(
+    async (operation: (transaction: unknown) => Promise<unknown>) =>
+      operation({}),
+  ),
+}));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Agent Org" })),
@@ -68,17 +102,12 @@ mock.module("@/lib/services/app-charge-callbacks", () => ({
 }));
 mock.module("@/lib/services/app-charge-settlement", () => ({
   appChargeSettlementService: {
-    markPaid: mock(async () => undefined),
+    markPaid: markAppChargePaid,
   },
 }));
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: {
-    processPurchase: mock(async () => ({
-      creditsAdded: 5,
-      platformOffset: 0,
-      creatorEarnings: 0,
-      newBalance: 5,
-    })),
+    processPurchase: processAppPurchase,
   },
 }));
 mock.module("@/lib/services/auto-top-up", () => ({
@@ -125,6 +154,14 @@ mock.module("@/lib/services/referrals", () => ({
     calculateRevenueSplits,
   },
 }));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    settle: mock(async () => {
+      throw new Error("durable checkout orders are outside this focused suite");
+    }),
+    settleLegacy: settleLegacyCheckout,
+  },
+}));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
@@ -145,6 +182,9 @@ describe("stripe checkout queue waifu top-up callback", () => {
     webhookFetch.mockClear();
     enqueueAgentRestartOnce.mockClear();
     triggerImmediate.mockClear();
+    markAppChargePaid.mockClear();
+    processAppPurchase.mockClear();
+    settleLegacyCheckout.mockClear();
     getTransactionByStripePaymentIntent.mockImplementation(async () => null);
   });
 
@@ -182,17 +222,15 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacyCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: paymentIntentId,
-        metadata: expect.objectContaining({
-          agent_id: agentId,
-          session_id: "cs_agent_paid",
-        }),
+        claimedCredits: "5.00",
+        paymentIntentId,
+        checkoutSessionId: "cs_agent_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).toHaveBeenCalledTimes(1);
     const [url, init] = (webhookFetch.mock.calls[0] ?? []) as unknown as [
       string,
@@ -204,7 +242,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
     const body = JSON.parse(String((init as RequestInit).body));
     expect(body).toMatchObject({
       event: "credits.topped_up",
-      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}`,
+      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}:settled`,
       elizaCloudAgentId: agentId,
       organizationId: "agent-org",
       tokenContractAddress: "0x0000000000000000000000000000000000000009",
@@ -264,16 +302,105 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacyCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: "pi_org_topup",
+        claimedCredits: "5.00",
+        paymentIntentId: "pi_org_topup",
+        checkoutSessionId: "cs_org_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).not.toHaveBeenCalled();
     expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
     expect(triggerImmediate).not.toHaveBeenCalled();
+  });
+
+  test("passes Stripe's authoritative currency and exact charge correlation to settlement", async () => {
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_app_charge",
+        eventType: "checkout.session.completed",
+        paymentIntentId: "pi_app_charge",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_app_charge",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: "cs_app_charge",
+              payment_status: "paid",
+              amount_total: 500,
+              currency: "usd",
+              payment_intent: "pi_app_charge",
+              metadata: {
+                organization_id: "payer-org",
+                user_id: "payer-user",
+                credits: "5.00",
+                type: "app_credit_purchase",
+                source: "miniapp_app",
+                app_id: "app-five",
+                charge_request_id: "charge-five",
+              },
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(markAppChargePaid).toHaveBeenCalledTimes(1);
+    expect(markAppChargePaid).toHaveBeenCalledWith({
+      appId: "app-five",
+      chargeRequestId: "charge-five",
+      provider: "stripe",
+      providerPaymentId: "pi_app_charge",
+      amountUsd: 5,
+      currency: "usd",
+      payerUserId: "payer-user",
+      payerOrganizationId: "payer-org",
+      metadata: { stripe_checkout_session_id: "cs_app_charge" },
+    });
+  });
+
+  test("rejects app checkout metadata that disagrees with Stripe's settled amount", async () => {
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_app_charge_mismatch",
+        eventType: "checkout.session.completed",
+        paymentIntentId: "pi_app_charge_mismatch",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_app_charge_mismatch",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: "cs_app_charge_mismatch",
+              payment_status: "paid",
+              amount_total: 500,
+              currency: "usd",
+              payment_intent: "pi_app_charge_mismatch",
+              metadata: {
+                organization_id: "payer-org",
+                user_id: "payer-user",
+                credits: "499.00",
+                source: "miniapp_app",
+                app_id: "app-five",
+                charge_request_id: "charge-five",
+              },
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(processAppPurchase).not.toHaveBeenCalled();
+    expect(markAppChargePaid).not.toHaveBeenCalled();
   });
 
   test("retries the restart enqueue for duplicate agent top-up deliveries", async () => {

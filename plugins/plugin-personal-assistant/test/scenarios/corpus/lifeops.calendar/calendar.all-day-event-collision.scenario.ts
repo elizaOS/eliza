@@ -47,6 +47,7 @@ export default scenario({
   id: "calendar.all-day-event-collision",
   title: "Rescheduling into an all-day OOO day surfaces the conflict",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "all-day", "conflict-detection"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

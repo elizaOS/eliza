@@ -1,4 +1,7 @@
-/** Scenario fixture for reminder lifecycle dismiss; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/**
+ * Exercises a real reminder occurrence through delivery, an explicit LIFE
+ * skip/dismiss transition, and suppression of a later due escalation rung.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 function assertApiBody(options: {
@@ -39,6 +42,7 @@ export default scenario({
   id: "reminder.lifecycle.dismiss",
   title: "User dismisses a reminder without completing the task",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "cancel-mid-flow"],
   isolation: "per-scenario",
   requires: {
@@ -75,6 +79,11 @@ export default scenario({
               offsetMinutes: 0,
               label: "In-app reminder",
             },
+            {
+              channel: "in_app",
+              offsetMinutes: 30,
+              label: "Later in-app reminder",
+            },
           ],
         },
       },
@@ -96,9 +105,9 @@ export default scenario({
       kind: "message",
       name: "dismiss reminder through chat",
       room: "discord",
-      text: "dismiss the dentist reminder, I don't need to do it today",
+      text: "Skip Call dentist for today.",
       plannerIncludesAll: ["<name>life</name>"],
-      responseIncludesAny: ["dismiss", "okay", "got it", "removed"],
+      responseIncludesAny: ["skip", "skipping", "okay", "got it"],
     },
     {
       kind: "api",
@@ -114,6 +123,31 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      name: "dismiss-transition-is-skipped-occurrence",
+      predicate: (ctx) => {
+        const dismissTurn = ctx.turns?.find(
+          (turn) => turn.name === "dismiss reminder through chat",
+        );
+        const life = dismissTurn?.actionsCalled.find(
+          (action) => action.actionName === "LIFE",
+        );
+        if (!life || life.error || life.result?.success !== true) {
+          return "expected a successful LIFE skip transition on the dismiss turn";
+        }
+        const data =
+          life.result.data && typeof life.result.data === "object"
+            ? (life.result.data as Record<string, unknown>)
+            : null;
+        if (data?.state !== "skipped") {
+          return `expected occurrence state=skipped, saw ${String(data?.state)}`;
+        }
+        if (data.title !== "Call dentist") {
+          return `expected the Call dentist occurrence, saw ${String(data.title)}`;
+        }
+      },
+    },
     {
       type: "definitionCountDelta",
       title: "Call dentist",

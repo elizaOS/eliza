@@ -122,6 +122,7 @@ export default scenario({
   title:
     "Approval queue resolution: pending -> approved executes, reject is a no-op",
   domain: "lifeops.approvals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "approval", "outcome"],
   description:
     "Two paths over the live approval_requests queue. APPROVE path: a pending sign_document approval is seeded, the owner approves, and the row transitions pending -> approved/executing/done with the gated executor firing. REJECT companion path: a second pending approval is seeded, the owner rejects, the row lands in 'rejected', and no sign/send side effect ever runs.",

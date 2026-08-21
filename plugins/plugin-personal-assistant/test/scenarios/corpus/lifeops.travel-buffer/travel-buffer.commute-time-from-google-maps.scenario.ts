@@ -41,6 +41,7 @@ export default scenario({
   title:
     "Cross-town offsite — buffer reflects real commute estimate or surface limit",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "maps", "needs-richer-fixtures"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

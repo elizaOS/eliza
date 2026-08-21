@@ -11,6 +11,7 @@ export default scenario({
   id: "goal.health.set-weight",
   title: "Set a health goal to lose 10 lbs by June",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "health", "happy-path"],
   isolation: "per-scenario",
   requires: {

@@ -42,6 +42,7 @@ export default scenario({
   id: "travel-buffer.skip-when-back-to-back-same-location",
   title: "No travel buffer added between back-to-back same-location meetings",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "calendar"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

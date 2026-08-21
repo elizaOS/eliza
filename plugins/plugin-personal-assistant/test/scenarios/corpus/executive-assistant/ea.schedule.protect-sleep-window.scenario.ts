@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.schedule.protect-sleep-window",
   title: "Protect sleep window unless the user explicitly overrides it",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: [
     "executive-assistant",
     "calendar",
@@ -40,7 +41,7 @@ export default scenario({
       room: "main",
       text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "sleep-window preference capture",
         includesAny: ["11pm", "8am", "sleep", "calls"],
       }),
@@ -57,7 +58,7 @@ export default scenario({
       room: "main",
       text: "Can you schedule a 7am call tomorrow, or should we move it?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "sleep-window conflict resolution",
         includesAny: ["7am", "move", "sleep", "override"],
       }),
@@ -72,7 +73,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
     },
     {
       type: "memoryWriteOccurred",
@@ -82,7 +83,7 @@ export default scenario({
       type: "custom",
       name: "ea-protect-sleep-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "sleep-window preference capture and conflict resolution",
         includesAny: ["11pm", "8am", "sleep", "7am", "move"],
       }),

@@ -14,6 +14,7 @@ export default scenario({
   title:
     "ntfy delivery receipt is persisted so the ladder knows not to escalate",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "ntfy", "receipt"],
   description:
     "After ntfy returns 200 with a delivery receipt, the agent must record the receipt against the push so the escalation ladder does NOT advance. Catches a bug where receipts are ignored and the ladder over-fires.",

@@ -13,6 +13,7 @@ export default scenario({
   id: "persona-typo-fast-typer",
   title: "Persona: typo-heavy fast typer still books Thursday 3pm",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "persona", "robustness"],
   isolation: "per-scenario",
   requires: {

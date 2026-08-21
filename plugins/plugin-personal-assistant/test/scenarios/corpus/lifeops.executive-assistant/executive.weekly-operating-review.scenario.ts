@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.weekly-operating-review",
   title: "Weekly operating review extracts commitments, risks, and decisions",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "weekly-review", "planning"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -90,6 +90,7 @@ export default scenario({
   title:
     "Reminder request with Apple permission denied falls back internally or asks for grant",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "reminders",

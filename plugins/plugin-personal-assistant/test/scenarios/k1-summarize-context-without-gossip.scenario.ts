@@ -9,6 +9,7 @@ export default scenario({
   id: "k1-summarize-context-without-gossip",
   title: "K1 friend disclosure summary avoids gossip",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "K1", "third-party-support", "privacy"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

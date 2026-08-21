@@ -37,6 +37,7 @@ export default scenario({
   title:
     "Night owl: instructions embedded in a shared brief are treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "night-owl",

@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Vendor recovery grounds in the seeded missed visit and withholds the lockbox code",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "household", "vendor", "outcome"],
   isolation: "per-scenario",
   requires: {

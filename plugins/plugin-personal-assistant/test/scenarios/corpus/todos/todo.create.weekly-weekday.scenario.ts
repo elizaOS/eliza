@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.create.weekly-weekday",
   title: "Create a weekday morning recurring stretch todo",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "time-of-day-edge"],
   isolation: "per-scenario",
   requires: {

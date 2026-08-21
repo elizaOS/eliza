@@ -68,6 +68,7 @@ export default scenario({
   id: "inbox-triage.empty-inbox",
   title: "Inbox triage on empty inbox reports zero honestly",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

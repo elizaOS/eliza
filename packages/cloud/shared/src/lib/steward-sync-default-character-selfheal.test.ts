@@ -7,6 +7,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../test-utils/credit-settlement-mocks";
 
 let orgCharacters: Array<{ id: string }> = [];
 let createFailuresRemaining = 0;
@@ -56,12 +60,8 @@ mock.module("./utils/logger", () => ({
 
 // steward-sync's other service imports; inert stubs so the module loads.
 mock.module("./services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: { addCredits: async () => ({ success: true }) },
 }));
 mock.module("./services/organizations", () => ({

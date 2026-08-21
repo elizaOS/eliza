@@ -9,6 +9,7 @@ export default scenario({
   id: "goal.career.quarterly-review",
   title: "Quarterly review now asserts current review_goal semantics",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "career", "smoke"],
   description:
     "This scenario exercises the current review_goal path on a seeded career goal and asserts the structured review summary that the runtime returns today.",

@@ -8,6 +8,7 @@ export default scenario({
   id: "water-mandarin",
   title: "Drink water from Mandarin Chinese phrasing (neutral)",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

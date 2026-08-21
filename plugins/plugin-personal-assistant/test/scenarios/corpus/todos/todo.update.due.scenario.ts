@@ -10,6 +10,7 @@ export default scenario({
   id: "todo.update.due",
   title: "Push a seeded todo's due date to tomorrow",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "multi-turn-memory"],
   isolation: "per-scenario",
   requires: {

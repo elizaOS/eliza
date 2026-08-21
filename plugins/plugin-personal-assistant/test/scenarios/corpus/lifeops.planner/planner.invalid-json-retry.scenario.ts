@@ -129,6 +129,7 @@ export default scenario({
   id: "planner.invalid-json-retry",
   title: "Planner recovers when model output is malformed on the first attempt",
   domain: "lifeops.planner",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "planner", "retry", "trajectory-recorder", "robustness"],
   isolation: "per-scenario",
   requires: {

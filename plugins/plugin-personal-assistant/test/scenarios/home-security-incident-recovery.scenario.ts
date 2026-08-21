@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Security incident plan grounds in seeded household state; travel dates stay private",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -28,6 +28,9 @@
  *   activity — paginated relationship/identity/fact activity timeline.
  *   followup — schedule a follow-up touch-base with a contact via the
  *              FollowUp service (was SCHEDULE_FOLLOW_UP).
+ *   set_goal — persist a relationship goal and optional contact cadence.
+ *   progress — read the durable cadence health for a relationship goal.
+ *   import   — persist a typed roster supplied by a platform adapter.
  */
 
 import type {
@@ -83,6 +86,9 @@ const CONTACT_OPS = [
   "merge",
   "activity",
   "followup",
+  "set_goal",
+  "progress",
+  "import",
 ] as const;
 type ContactOp = (typeof CONTACT_OPS)[number];
 
@@ -145,6 +151,11 @@ interface ContactParams {
   scheduledAt?: string;
   priority?: string;
   message?: string;
+  // set_goal / progress
+  goalText?: string;
+  targetCadenceDays?: number;
+  // import
+  contacts?: unknown;
 }
 
 interface RelationshipActivityItem {
@@ -182,6 +193,43 @@ interface RelationshipsServiceLike {
     updates: Record<string, unknown>,
   ): Promise<boolean>;
   getContact?(entityId: UUID): Promise<unknown | null>;
+  setRelationshipGoal?(
+    contactId: UUID,
+    goal: { goalText: string; targetCadenceDays?: number },
+  ): Promise<{
+    goalText: string;
+    targetCadenceDays?: number;
+    setAt: string;
+  }>;
+  getRelationshipProgress?(contactId: UUID): Promise<{
+    contactId: UUID;
+    goal: { goalText: string; targetCadenceDays?: number } | null;
+    lastInteractionAt: string | null;
+    cadenceHealth:
+      | "no-goal"
+      | "never-contacted"
+      | "on-track"
+      | "due"
+      | "overdue";
+    daysSinceInteraction: number | null;
+    targetCadenceDays: number | null;
+  } | null>;
+  importContactsFromPlatform?(
+    platform: string,
+    contacts: Array<{
+      platform: string;
+      identifier: string;
+      displayName?: string;
+      displayLabel?: string;
+      categories?: string[];
+      tags?: string[];
+      notes?: string;
+    }>,
+  ): Promise<{
+    imported: unknown[];
+    linkedToExisting: unknown[];
+    skipped: Array<{ seed: unknown; reason: string }>;
+  }>;
 }
 
 interface FollowUpServiceLike {
@@ -629,6 +677,9 @@ async function handleSearch(
       },
     };
   } catch (error) {
+    // error-policy:J1 The action boundary converts the typed service failure
+    // into a planner-visible result after recording diagnostics.
+    runtime.reportError("CONTACT.search", error, { query, platform });
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:search] Error:", errMsg);
     return fail(
@@ -775,6 +826,9 @@ async function handleRead(
       },
     };
   } catch (error) {
+    // error-policy:J1 The action boundary returns a structured read failure
+    // after reporting the underlying service error.
+    runtime.reportError("CONTACT.read", error, { entityId, name });
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("[CONTACT:read] Error:", errMsg);
     return fail(
@@ -2058,6 +2112,298 @@ async function handleFollowup(
   };
 }
 
+async function resolveRelationshipContactId(
+  relationships: RelationshipsServiceLike,
+  params: ContactParams,
+  op: "set_goal" | "progress",
+): Promise<UUID | ActionResult> {
+  const requestedId = readString(params.entityId);
+  if (isLikelyUuid(requestedId)) {
+    if (relationships.getContact) {
+      const contact = await relationships.getContact(requestedId);
+      if (!contact) {
+        return fail(`Contact ${requestedId} was not found.`, "NOT_FOUND", op);
+      }
+    }
+    return requestedId;
+  }
+
+  const name = readString(params.name);
+  if (!name) {
+    return fail("name or entityId is required.", "MISSING_CONTACT", op);
+  }
+  if (!relationships.searchContacts) {
+    return fail(
+      "Relationships service cannot resolve contacts by name.",
+      "SERVICE_UNAVAILABLE",
+      op,
+    );
+  }
+  const matches = await relationships.searchContacts({ searchTerm: name });
+  if (matches.length === 0) {
+    return fail(`Contact "${name}" was not found.`, "NOT_FOUND", op);
+  }
+  if (matches.length > 1) {
+    return fail(
+      `More than one contact matches "${name}". Provide an entityId.`,
+      "AMBIGUOUS_CONTACT",
+      op,
+    );
+  }
+  return matches[0].entityId;
+}
+
+async function handleSetGoal(
+  runtime: IAgentRuntime,
+  params: ContactParams,
+): Promise<ActionResult> {
+  const relationships = getRelationshipsService(runtime);
+  if (!relationships?.setRelationshipGoal) {
+    return fail(
+      "Relationship goal management is unavailable.",
+      "SERVICE_UNAVAILABLE",
+      "set_goal",
+    );
+  }
+  const goalText = readString(params.goalText);
+  if (!goalText) {
+    return fail("goalText is required.", "MISSING_GOAL", "set_goal");
+  }
+  const cadence = params.targetCadenceDays;
+  if (
+    cadence !== undefined &&
+    (!Number.isFinite(cadence) || cadence < 1 || !Number.isInteger(cadence))
+  ) {
+    return fail(
+      "targetCadenceDays must be a positive whole number.",
+      "INVALID_CADENCE",
+      "set_goal",
+    );
+  }
+  const resolved = await resolveRelationshipContactId(
+    relationships,
+    params,
+    "set_goal",
+  );
+  if (typeof resolved !== "string") return resolved;
+
+  try {
+    const goal = await relationships.setRelationshipGoal(resolved, {
+      goalText,
+      ...(cadence === undefined ? {} : { targetCadenceDays: cadence }),
+    });
+    return {
+      success: true,
+      text: `Set relationship goal for ${readString(params.name) ?? resolved}.`,
+      values: { success: true, contactId: resolved, goalText },
+      data: {
+        actionName: CONTACT_ACTION,
+        op: "set_goal",
+        contactId: resolved,
+        goal,
+      },
+    };
+  } catch (error) {
+    // error-policy:J1 The action boundary returns a structured goal failure
+    // after reporting the underlying service error.
+    runtime.reportError("CONTACT.setGoal", error, { contactId: resolved });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error("[CONTACT:set_goal] Error:", errMsg);
+    return fail(
+      `Failed to set relationship goal: ${errMsg}`,
+      "SET_GOAL_FAILED",
+      "set_goal",
+    );
+  }
+}
+
+async function handleProgress(
+  runtime: IAgentRuntime,
+  params: ContactParams,
+): Promise<ActionResult> {
+  const relationships = getRelationshipsService(runtime);
+  if (!relationships?.getRelationshipProgress) {
+    return fail(
+      "Relationship progress is unavailable.",
+      "SERVICE_UNAVAILABLE",
+      "progress",
+    );
+  }
+  const resolved = await resolveRelationshipContactId(
+    relationships,
+    params,
+    "progress",
+  );
+  if (typeof resolved !== "string") return resolved;
+
+  const progress = await relationships.getRelationshipProgress(resolved);
+  if (!progress) {
+    return fail(`Contact ${resolved} was not found.`, "NOT_FOUND", "progress");
+  }
+  return {
+    success: true,
+    text: `Relationship cadence is ${progress.cadenceHealth}.`,
+    values: {
+      success: true,
+      contactId: resolved,
+      cadenceHealth: progress.cadenceHealth,
+    },
+    data: {
+      actionName: CONTACT_ACTION,
+      op: "progress",
+      progress,
+    },
+  };
+}
+
+async function handleImport(
+  runtime: IAgentRuntime,
+  params: ContactParams,
+): Promise<ActionResult> {
+  const relationships = getRelationshipsService(runtime);
+  if (!relationships?.importContactsFromPlatform) {
+    return fail(
+      "Platform contact import is unavailable.",
+      "SERVICE_UNAVAILABLE",
+      "import",
+    );
+  }
+  const platform = readString(params.platform)?.toLowerCase();
+  if (!platform) {
+    return fail("platform is required.", "MISSING_PLATFORM", "import");
+  }
+  if (!Array.isArray(params.contacts) || params.contacts.length === 0) {
+    return fail(
+      "contacts must be a non-empty typed roster.",
+      "MISSING_CONTACTS",
+      "import",
+    );
+  }
+  if (params.contacts.length > 100) {
+    return fail(
+      "contacts cannot contain more than 100 entries per import.",
+      "IMPORT_LIMIT_EXCEEDED",
+      "import",
+    );
+  }
+
+  const contacts: Array<{
+    platform: string;
+    identifier: string;
+    displayName?: string;
+    displayLabel?: string;
+    categories?: string[];
+    tags?: string[];
+    notes?: string;
+  }> = [];
+  for (const [index, value] of params.contacts.entries()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return fail(
+        `contacts[${index}] must be an object.`,
+        "INVALID_CONTACT",
+        "import",
+      );
+    }
+    const record = value as Record<string, unknown>;
+    const identifier = readString(record.identifier);
+    const entryPlatform: string =
+      readString(record.platform)?.toLowerCase() ?? platform;
+    if (!identifier || entryPlatform !== platform) {
+      return fail(
+        `contacts[${index}] must have a non-empty identifier for ${platform}.`,
+        "INVALID_CONTACT",
+        "import",
+      );
+    }
+    const displayName = readString(record.displayName);
+    const displayLabel = readString(record.displayLabel);
+    const categories = readStringArray(record.categories);
+    const tags = readStringArray(record.tags);
+    const notes = readString(record.notes);
+    for (const field of ["categories", "tags"] as const) {
+      const raw = record[field];
+      if (
+        raw !== undefined &&
+        (!Array.isArray(raw) ||
+          raw.length === 0 ||
+          raw.some(
+            (item) => typeof item !== "string" || item.trim().length === 0,
+          ))
+      ) {
+        return fail(
+          `contacts[${index}].${field} must be a non-empty string array when supplied.`,
+          "INVALID_CONTACT",
+          "import",
+        );
+      }
+    }
+    for (const [field, raw, parsed] of [
+      ["displayName", record.displayName, displayName],
+      ["displayLabel", record.displayLabel, displayLabel],
+      ["notes", record.notes, notes],
+    ] as const) {
+      if (raw !== undefined && parsed === undefined) {
+        return fail(
+          `contacts[${index}].${field} has an invalid type or empty value.`,
+          "INVALID_CONTACT",
+          "import",
+        );
+      }
+    }
+    contacts.push({
+      platform,
+      identifier,
+      ...(displayName ? { displayName } : {}),
+      ...(displayLabel ? { displayLabel } : {}),
+      ...(categories ? { categories } : {}),
+      ...(tags ? { tags } : {}),
+      ...(notes ? { notes } : {}),
+    });
+  }
+
+  try {
+    const result = await relationships.importContactsFromPlatform(
+      platform,
+      contacts,
+    );
+    return {
+      success: true,
+      text: `Imported ${result.imported.length} ${platform} contacts; linked ${result.linkedToExisting.length}; skipped ${result.skipped.length}.`,
+      values: {
+        success: true,
+        platform,
+        importedCount: result.imported.length,
+        linkedCount: result.linkedToExisting.length,
+        skippedCount: result.skipped.length,
+      },
+      data: {
+        actionName: CONTACT_ACTION,
+        op: "import",
+        platform,
+        requestedCount: contacts.length,
+        importedCount: result.imported.length,
+        linkedCount: result.linkedToExisting.length,
+        skippedCount: result.skipped.length,
+        result,
+      },
+    };
+  } catch (error) {
+    // error-policy:J1 The action boundary returns a structured import failure
+    // after reporting the underlying service error.
+    runtime.reportError("CONTACT.import", error, {
+      platform,
+      requestedCount: contacts.length,
+    });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error("[CONTACT:import] Error:", errMsg);
+    return fail(
+      `Failed to import contacts: ${errMsg}`,
+      "IMPORT_FAILED",
+      "import",
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Action
 // ---------------------------------------------------------------------------
@@ -2135,9 +2481,12 @@ export const contactAction: Action = {
     "  link     — propose / confirm a merge of two entities representing the same person across platforms.\n" +
     "  merge    — accept or reject a pending merge candidate by id.\n" +
     "  activity — paginated activity timeline for the Rolodex.\n" +
-    "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).",
+    "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).\n" +
+    "  set_goal — persist a relationship goal and optional target cadence for a contact.\n" +
+    "  progress — read a contact's durable relationship-goal cadence health.\n" +
+    "  import — persist a typed contact roster supplied by a platform adapter (not connector discovery).",
   descriptionCompressed:
-    "Rolodex contacts create|read|search|update|delete|link|merge|activity|followup",
+    "Rolodex contacts create|read|search|update|delete|link|merge|activity|followup|set_goal|progress|import",
   parameters: [
     {
       name: "action",
@@ -2370,6 +2719,48 @@ export const contactAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
+    {
+      name: "goalText",
+      description: "set_goal: the durable relationship objective.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "targetCadenceDays",
+      description:
+        "set_goal: optional positive whole-number cadence in days used for progress and overdue follow-ups.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "contacts",
+      description:
+        "import: typed roster supplied by an upstream platform adapter; each entry requires identifier and may include displayName, displayLabel, categories, tags, and notes.",
+      required: false,
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            platform: { type: "string" as const },
+            identifier: { type: "string" as const },
+            displayName: { type: "string" as const },
+            displayLabel: { type: "string" as const },
+            categories: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
+            tags: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
+            notes: { type: "string" as const },
+          },
+          required: ["identifier"],
+          additionalProperties: false,
+        },
+      },
+    },
   ],
   validate: async (
     runtime: IAgentRuntime,
@@ -2381,7 +2772,9 @@ export const contactAction: Action = {
     {
       const params = getParams(options);
       if (
-        readOp(params.action ?? params.subaction ?? params.op) === "followup"
+        readOp(params.action) ??
+        readOp(params.subaction) ??
+        readOp(params.op)
       ) {
         return true;
       }
@@ -2432,6 +2825,12 @@ export const contactAction: Action = {
         return handleActivity(runtime, params);
       case "followup":
         return handleFollowup(runtime, params);
+      case "set_goal":
+        return handleSetGoal(runtime, params);
+      case "progress":
+        return handleProgress(runtime, params);
+      case "import":
+        return handleImport(runtime, params);
     }
   },
   examples: [

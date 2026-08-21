@@ -15,6 +15,7 @@ export default scenario({
   id: "adhd-capture-ambiguous-form-referent-clarified",
   title: "ADHD: an ambiguous 'the form thing' gets a clarifier before any move",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "ambiguity", "clarification", "12283"],
   tier: "T2",
   status: "active",

@@ -48,6 +48,7 @@ export default scenario({
   id: "scheduling.propose-respects-blackouts",
   title: "Proposed slots avoid commute / lunch / gym blackout windows",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "blackouts"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

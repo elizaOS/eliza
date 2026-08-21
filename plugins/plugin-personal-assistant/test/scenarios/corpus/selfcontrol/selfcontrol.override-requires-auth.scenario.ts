@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.override-requires-auth",
   title: "Early unblock asks whether a block exists first",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "clarification", "unblock"],
   description:
     "When the user asks for a quick unblock without enough context, the assistant checks active block state and asks whether X is currently blocked before proceeding.",

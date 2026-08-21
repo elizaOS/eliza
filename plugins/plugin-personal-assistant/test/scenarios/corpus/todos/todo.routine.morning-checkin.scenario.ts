@@ -12,6 +12,7 @@ export default scenario({
   id: "todo.routine.morning-checkin",
   title: "Morning check-in surfaces overdue todo context",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke"],
   isolation: "per-scenario",
   requires: {

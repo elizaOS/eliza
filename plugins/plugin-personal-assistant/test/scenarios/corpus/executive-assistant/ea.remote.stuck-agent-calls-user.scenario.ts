@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.remote.stuck-agent-calls-user",
   title: "Call the user for help when the assistant gets stuck",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "remote", "escalation", "transcript-derived"],
   description:
     "Transcript-derived case: when browser or computer-use automation gets blocked, the assistant should escalate to the user instead of silently failing.",

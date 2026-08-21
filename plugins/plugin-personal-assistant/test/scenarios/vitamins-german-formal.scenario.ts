@@ -9,6 +9,7 @@ export default scenario({
   id: "vitamins-german-formal",
   title: "Vitamins tied to a meal window (German, formal Sie)",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

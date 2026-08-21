@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Warn when passport expiry is inside the international trip's 6-month rule",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "passport", "compliance"],
   description:
     "Many countries require ≥6 months passport validity from entry date. When booking an international trip whose entry date is within that window, the agent must warn the user — NOT silently book and let them get stuck at the airport.",

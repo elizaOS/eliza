@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.board-pack-prep",
   title: "Board pack prep gathers docs, metrics, risks, and approvals",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "board-pack", "documents"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

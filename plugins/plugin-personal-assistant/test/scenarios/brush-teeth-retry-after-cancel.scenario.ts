@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-retry-after-cancel",
   title: "Brush teeth retry after backing out",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

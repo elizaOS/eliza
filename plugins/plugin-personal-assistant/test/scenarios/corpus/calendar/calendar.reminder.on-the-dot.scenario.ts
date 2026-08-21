@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar.reminder.on-the-dot",
   title: "Event starting right now fires an immediate reminder",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "time-of-day-edge"],
   isolation: "per-scenario",
   requires: {

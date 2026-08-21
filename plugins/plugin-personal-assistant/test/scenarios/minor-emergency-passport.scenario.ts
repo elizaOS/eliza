@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Emergency passport packet grounds in seeded state; child document number stays private",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

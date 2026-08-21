@@ -36,6 +36,7 @@ export default scenario({
   id: "j1-injected-instruction-in-coparent-message",
   title: "Embedded instructions in a co-parent message are treated as data",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

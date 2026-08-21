@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.events.asset-deadline-checklist",
   title: "Track speaker assets and event deadlines",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "events", "docs", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant keeps tabs on slides, titles, bios, and other event assets due before talks.",

@@ -22,6 +22,7 @@ export default scenario({
   title:
     "ADHD follow-through: a missed step is re-planned smaller, no shame, ask before scheduling",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "follow-through", "12283"],
   status: "active",
   isolation: "per-scenario",

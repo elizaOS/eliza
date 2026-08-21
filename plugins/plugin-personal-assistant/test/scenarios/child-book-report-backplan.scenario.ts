@@ -17,6 +17,7 @@ export default scenario({
   id: "child-book-report-backplan",
   title: "Child voice: book-report deadline becomes a back-planned reminder",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "child-voice", "student-deadline", "14352"],
   tier: "T2",
   status: "active",

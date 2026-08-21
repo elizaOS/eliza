@@ -19,6 +19,10 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import {
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
+} from "../../../test-utils/credit-settlement-mocks";
 
 // A deferred whose settlement we control, to model a slow DB write that would
 // still be in flight if the caller did NOT await it.
@@ -55,12 +59,8 @@ const finalUserWithOrg = {
 };
 
 mock.module("./services/credits", () => ({
-  assertCreditRefundWithinReservation: () => {
-    throw new Error("credit refund assertion is outside this test path");
-  },
-  assertValidCreditSettlementCosts: () => {
-    throw new Error("credit settlement assertion is outside this test path");
-  },
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   creditsService: { addCredits: async () => ({ success: true }) },
 }));
 mock.module("./services/organizations", () => ({

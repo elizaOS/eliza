@@ -14,6 +14,7 @@ export default scenario({
   id: "ea.push.cancellation-fee-warning",
   title: "Warn the user when missing something may incur a fee",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "push", "risk", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant warns the user that a late cancellation may cost money and offers to act immediately. Action requires approval before any side-effect (e.g., contacting the venue).",

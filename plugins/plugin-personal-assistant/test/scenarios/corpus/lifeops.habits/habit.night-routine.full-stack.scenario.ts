@@ -10,6 +10,7 @@ export default scenario({
   id: "habit.night-routine.full-stack",
   title: "Set up a full night routine in one request",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "multi-action"],
   isolation: "per-scenario",
   requires: {

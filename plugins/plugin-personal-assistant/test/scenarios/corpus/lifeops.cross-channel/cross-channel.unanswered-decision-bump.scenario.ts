@@ -24,6 +24,7 @@ export default scenario({
   id: "cross-channel.unanswered-decision-bump",
   title: "Unanswered question gets bumped (resend / escalate) after waiting",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "followup", "bump", "unanswered"],
   isolation: "per-scenario",
   requires: {

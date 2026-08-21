@@ -6,6 +6,7 @@ export default scenario({
   id: "reminder.water.hourly-weekdays",
   title: "Drink water hourly on weekdays",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "happy-path"],
   isolation: "per-scenario",
   requires: {

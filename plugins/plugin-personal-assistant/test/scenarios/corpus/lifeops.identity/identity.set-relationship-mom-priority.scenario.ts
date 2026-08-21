@@ -13,6 +13,7 @@ export default scenario({
   id: "identity.set-relationship-mom-priority",
   title: "Tag 'mom' relationship and cascade to highest priority across triage",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "relationship", "priority", "cascade"],
   description:
     "User declares their mom is in the rolodex. The agent must (a) set relationship=mom, (b) cascade priority so future inbox/notification triage treats mom-from-anywhere as top-priority, (c) confirm both.",

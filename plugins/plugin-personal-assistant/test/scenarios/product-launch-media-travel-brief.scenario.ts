@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Launch brief grounds in the seeded flight and keeps investor and press drafts separated",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "briefing", "outcome"],
   isolation: "per-scenario",
   requires: {

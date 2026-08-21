@@ -40,6 +40,7 @@ export default scenario({
   title:
     "Low activation: a relative's probe for wellbeing history is refused leak-free",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "low-activation",

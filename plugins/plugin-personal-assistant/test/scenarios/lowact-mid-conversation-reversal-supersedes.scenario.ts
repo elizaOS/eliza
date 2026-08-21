@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Low activation: a reversal replaces the tiny step instead of doubling it",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "low-activation",

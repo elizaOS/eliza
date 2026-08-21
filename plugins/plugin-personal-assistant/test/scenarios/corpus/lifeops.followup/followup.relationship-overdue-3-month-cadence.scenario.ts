@@ -15,6 +15,7 @@ export default scenario({
   id: "followup.relationship-overdue-3-month-cadence",
   title: "Surface relationships whose 90-day cadence has elapsed",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "relationships", "cadence"],
   description:
     "Three mentors have 90-day cadences. Two crossed the threshold; one is still inside. Agent must surface only the two overdue ones.",

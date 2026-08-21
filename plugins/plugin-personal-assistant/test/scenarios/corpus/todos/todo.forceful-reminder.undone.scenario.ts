@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.forceful-reminder.undone",
   title: "Undone overdue todo prompts forceful reminder on greeting",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke", "retry-after-failure"],
   isolation: "per-scenario",
   requires: {

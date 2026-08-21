@@ -258,6 +258,7 @@ export default scenario({
   title:
     "Night owl sleep protection: a low-value reminder is held in her 04:00–11:30 quiet hours; only a high-priority one breaks through",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

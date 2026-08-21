@@ -12,6 +12,7 @@ export default scenario({
   id: "health.exercise-goal-progress-mid-week",
   title: "Mid-week check on weekly exercise goal",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "goal", "progress"],
   isolation: "per-scenario",
   requires: {

@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Low activation: 'am I broken?' — supportive, non-clinical, no diagnosis",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

@@ -14,6 +14,9 @@
     "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "paths": {
+      "@elizaos/scenario-runner/scenario-assertions": [
+        "./src/scenario-assertions.ts"
+      ],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/node": ["../core/src/index.node.ts"],

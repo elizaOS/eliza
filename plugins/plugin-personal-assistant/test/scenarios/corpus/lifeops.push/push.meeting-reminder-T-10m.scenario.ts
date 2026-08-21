@@ -13,6 +13,7 @@ export default scenario({
   id: "push.meeting-reminder-T-10m",
   title: "Schedule a T-10m meeting reminder on desktop + mobile",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "reminder", "T-10m"],
   description:
     "User asks for a 10-minute-before reminder for a specific meeting. Agent must schedule via DEVICE_INTENT and confirm the timing.",

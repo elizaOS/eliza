@@ -14,6 +14,7 @@ export default scenario({
   title:
     "SMS the user 4h before an appointment if a required signature is still pending",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "sms", "deadline", "signature"],
   description:
     "Tomorrow's appointment requires a signed consent. If unsigned, the agent must fire an SMS 4h before — not a desktop notification that might be missed when the user is mobile. SMS specifically.",

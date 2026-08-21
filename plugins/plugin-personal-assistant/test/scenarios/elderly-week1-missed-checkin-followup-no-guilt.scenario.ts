@@ -29,6 +29,7 @@ export default scenario({
   title:
     "Elderly week-1: follow-up after a missed check-in is gentle and guilt-free, never scolding",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "persona", "elderly", "tone", "no-reply", "week1", "14354"],
   status: "active",
   isolation: "per-scenario",

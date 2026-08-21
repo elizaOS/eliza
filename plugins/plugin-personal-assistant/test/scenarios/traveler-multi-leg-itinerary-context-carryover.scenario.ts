@@ -24,6 +24,7 @@ export default scenario({
   title:
     "Traveler: a multi-leg itinerary is retained and re-planned against across turns",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "timezone", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

@@ -10,6 +10,7 @@ export default scenario({
   id: "g2-post-send-followup",
   title: "G2 approved reconnect logs interaction and creates next follow-up",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "G2", "relationships", "entity", "followup"],
   isolation: "per-scenario",
   rooms: [

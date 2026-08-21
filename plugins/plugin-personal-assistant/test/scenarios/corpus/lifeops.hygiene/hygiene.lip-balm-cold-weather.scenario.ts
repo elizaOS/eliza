@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.lip-balm-cold-weather",
   title: "Lip balm every few hours during cold weather",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "interval"],
   isolation: "per-scenario",
   requires: {

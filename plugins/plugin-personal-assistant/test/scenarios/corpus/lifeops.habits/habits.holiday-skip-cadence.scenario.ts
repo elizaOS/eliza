@@ -19,6 +19,7 @@ export default scenario({
   id: "habits.holiday-skip-cadence",
   title: "Holiday days are skipped without breaking habit streak",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "holiday", "robustness"],
   isolation: "per-scenario",
   requires: {

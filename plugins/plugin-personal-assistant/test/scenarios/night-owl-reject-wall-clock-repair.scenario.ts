@@ -27,6 +27,7 @@ export default scenario({
   title:
     "Night owl: a mistaken 9am proposal is repaired to after-wake, no 9am survives",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "night-owl", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

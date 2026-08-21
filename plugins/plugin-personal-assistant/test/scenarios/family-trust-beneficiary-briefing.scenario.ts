@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Trust briefing grounds in seeded trust state; conflict note stays private",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

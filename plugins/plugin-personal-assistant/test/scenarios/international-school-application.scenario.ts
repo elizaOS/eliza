@@ -10,6 +10,7 @@ export default scenario({
   title:
     "School application grounds in seeded packet state; child details stay out of broad drafts",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

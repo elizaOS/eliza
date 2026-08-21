@@ -18,6 +18,7 @@ export default scenario({
   title:
     "Vendor counteroffer stays in drafts and the Tuesday follow-up is scheduled",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

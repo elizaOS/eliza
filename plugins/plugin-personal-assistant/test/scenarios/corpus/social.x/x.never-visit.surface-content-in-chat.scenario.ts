@@ -12,6 +12,7 @@ export default scenario({
   id: "x.never-visit.surface-content-in-chat",
   title: "Agent surfaces X content in chat without redirecting user",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "happy-path"],
   description:
     "User should not be redirected to X; the assistant should surface seeded X content directly in chat.",

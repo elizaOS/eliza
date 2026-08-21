@@ -136,6 +136,75 @@ describe("scenario-runner edge expansion", () => {
     );
   });
 
+  it("rejects runtime-only metadata forms that static discovery cannot audit", async () => {
+    const fixtures: ReadonlyArray<{
+      name: string;
+      prefix?: string;
+      metadata: string;
+      expected: string;
+    }> = [
+      {
+        name: "getter.scenario.ts",
+        metadata: 'get evidenceScope() { return "provider-certification"; },',
+        expected: "evidenceScope must be a statically readable string literal",
+      },
+      {
+        name: "shorthand.scenario.ts",
+        prefix: 'const executionProfile = "provider-qualified";',
+        metadata: "executionProfile,",
+        expected:
+          "executionProfile must be a statically readable string literal",
+      },
+      {
+        name: "spread.scenario.ts",
+        prefix: 'const hidden = { evidenceScope: "provider-certification" };',
+        metadata: "...hidden,",
+        expected: "scenario metadata cannot use object spreads",
+      },
+      {
+        name: "computed.scenario.ts",
+        metadata: '["evidenceScope"]: "provider-certification",',
+        expected: "scenario metadata cannot use computed property names",
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const dir = await makeTempScenarioDir();
+      await writeScenarioFile(dir, fixture.name, [
+        ...(fixture.prefix ? [fixture.prefix] : []),
+        "export default {",
+        `  id: "fixture.${fixture.name}",`,
+        '  title: "Static metadata boundary",',
+        '  domain: "fixture",',
+        `  ${fixture.metadata}`,
+        '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+        "};",
+      ]);
+
+      await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+        fixture.expected,
+      );
+    }
+  });
+
+  it("rejects duplicate metadata whose static and runtime values disagree", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "duplicate.scenario.ts", [
+      "export default {",
+      '  id: "fixture.duplicate",',
+      '  title: "Duplicate metadata",',
+      '  evidenceScope: "model-behavior",',
+      '  evidenceScope: "provider-certification",',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      'scenario metadata cannot declare duplicate property "evidenceScope"',
+    );
+  });
+
   it("only appends edge context to non-blank message-like turn text", () => {
     const expanded = expandScenarioDefinition("fixture.scenario.ts", {
       id: "fixture.mixed",

@@ -15,6 +15,7 @@ export default scenario({
   id: "health.weight-trend-7-day-avg",
   title: "Weight trend uses 7-day average, not a single reading",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "weight", "trend"],
   isolation: "per-scenario",
   requires: {

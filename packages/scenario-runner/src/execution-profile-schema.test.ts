@@ -4,10 +4,14 @@
  */
 
 import {
+  DEFAULT_SCENARIO_EVIDENCE_SCOPE,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
+  isScenarioEvidenceScope,
   isScenarioExecutionProfile,
   type ScenarioDefinition,
   scenario,
+  scenarioEvidenceScope,
+  scenarioEvidenceScopeLabel,
   scenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
@@ -67,6 +71,58 @@ describe("scenario execution profile", () => {
   });
 });
 
+describe("scenario evidence scope", () => {
+  it("defaults legacy definitions conservatively without claiming an integration", () => {
+    expect(DEFAULT_SCENARIO_EVIDENCE_SCOPE).toBe("runner-fixture");
+    expect(scenarioEvidenceScope(base)).toBe("runner-fixture");
+    expect(scenarioEvidenceScopeLabel("runner-fixture")).toContain(
+      "diagnostic only",
+    );
+  });
+
+  it("accepts only the five closed scope values", () => {
+    for (const evidenceScope of [
+      "runner-fixture",
+      "domain-contract",
+      "model-behavior",
+      "connector-contract",
+      "provider-certification",
+    ]) {
+      expect(isScenarioEvidenceScope(evidenceScope)).toBe(true);
+    }
+    expect(isScenarioEvidenceScope("end-to-end")).toBe(false);
+    expect(() =>
+      scenario({
+        ...base,
+        evidenceScope: "real-provider",
+      } as unknown as ScenarioDefinition),
+    ).toThrow(/invalid evidenceScope/);
+  });
+
+  it("binds provider certification bidirectionally to qualified execution", () => {
+    expect(() =>
+      scenario({
+        ...base,
+        evidenceScope: "provider-certification",
+      }),
+    ).toThrow(/incompatible evidenceScope/);
+    expect(() =>
+      scenario({
+        ...base,
+        executionProfile: "provider-qualified",
+        evidenceScope: "connector-contract",
+      }),
+    ).toThrow(/incompatible evidenceScope/);
+    expect(
+      scenarioEvidenceScope({
+        ...base,
+        executionProfile: "provider-qualified",
+        evidenceScope: "provider-certification",
+      }),
+    ).toBe("provider-certification");
+  });
+});
+
 describe("trusted-observation final-check schema", () => {
   it("accepts the closed observation checks and shared provenance filters", () => {
     expect(() =>
@@ -79,6 +135,9 @@ describe("trusted-observation final-check schema", () => {
             operation: "calendar.create",
             state: ["pending", "approved"],
             minCount: 1,
+            transitionGroupId: "calendar-approval",
+            transitionIndex: 0,
+            trajectoryPhase: "proposal",
           },
           {
             type: "durableDraftObserved",
@@ -94,7 +153,9 @@ describe("trusted-observation final-check schema", () => {
           {
             type: "providerNoEffectObserved",
             provider: "imessage",
-            intervalCoversScenario: true,
+            intervalCoversScenario: false,
+            intervalEndsBeforeReferencedStage: true,
+            trajectoryPhase: "approval",
           },
           {
             type: "scheduledTaskObserved",

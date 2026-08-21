@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Accommodation coordination grounds in the seeded school request and withholds the medication",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

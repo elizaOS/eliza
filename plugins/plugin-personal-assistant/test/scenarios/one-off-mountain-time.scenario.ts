@@ -9,6 +9,7 @@ export default scenario({
   id: "one-off-mountain-time",
   title: "One-off reminder with full timezone phrase",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

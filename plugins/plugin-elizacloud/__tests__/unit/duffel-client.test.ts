@@ -301,10 +301,13 @@ describe("createOrder", () => {
 
   it("posts a hold order and maps the response", async () => {
     let capturedBody: unknown;
+    let capturedHeaders: HeadersInit | undefined;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
         capturedBody = JSON.parse(opts.body as string);
+        capturedHeaders = opts.headers;
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -346,7 +349,10 @@ describe("createOrder", () => {
     );
     process.env.DUFFEL_API_KEY = "fake-key";
 
-    const order = await createOrder(baseRequest);
+    const order = await createOrder({
+      ...baseRequest,
+      clientCorrelationId: "approval:request-123:duffel",
+    });
 
     const body = capturedBody as {
       data: {
@@ -358,9 +364,13 @@ describe("createOrder", () => {
     expect(body.data.type).toBe("hold");
     expect(body.data.selected_offers).toEqual(["off_123"]);
     expect(body.data.passengers[0]?.id).toBe("pas_123");
+    expect(capturedHeaders).toMatchObject({
+      "x-client-correlation-id": "approval:request-123:duffel",
+    });
     expect(order.id).toBe("ord_123");
     expect(order.bookingReference).toBe("RZPNX8");
     expect(order.paymentStatus?.awaitingPayment).toBe(true);
+    expect(timeoutSpy).toHaveBeenCalledWith(135_000);
   });
 
   it("throws if no offer is supplied", async () => {
@@ -368,6 +378,16 @@ describe("createOrder", () => {
     await expect(createOrder({ ...baseRequest, selectedOffers: [] })).rejects.toThrow(
       /exactly one selected offer/
     );
+  });
+
+  it("rejects an empty client correlation id before order dispatch", async () => {
+    process.env.DUFFEL_API_KEY = "fake-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createOrder({ ...baseRequest, clientCorrelationId: "  " })).rejects.toThrow(
+      /client correlation id/
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -431,6 +451,7 @@ describe("getOrder", () => {
 describe("createPayment", () => {
   it("posts a balance payment for a hold order", async () => {
     let capturedBody: unknown;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
@@ -468,6 +489,7 @@ describe("createPayment", () => {
     };
     expect(body.data.order_id).toBe("ord_123");
     expect(body.data.payment.type).toBe("balance");
+    expect(timeoutSpy).toHaveBeenCalledWith(135_000);
     expect(payment.id).toBe("pay_123");
     expect(payment.status).toBe("succeeded");
   });

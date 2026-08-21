@@ -33,6 +33,7 @@ export default scenario({
   id: "calendar.multi-account-selection",
   title: "Two connected calendars triggers a clarification before write",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "multi-account", "clarification"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

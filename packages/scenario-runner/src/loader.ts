@@ -9,13 +9,17 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
-  DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
+  type ScenarioEvidenceScope,
+  type ScenarioExecutionProfile,
   type ScenarioLane,
+  scenarioEvidenceScope,
+  scenarioExecutionProfile,
   scenarioLane,
   scenario as validateScenarioDefinition,
 } from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
+import { assertScenarioQuality } from "./corpus-quality.ts";
 
 async function walk(dir: string, out: string[]): Promise<void> {
   const entries = await readdir(dir);
@@ -50,13 +54,52 @@ export interface ScenarioMetadata {
   file: string;
   id: string;
   status?: string;
+  pendingReason?: string;
   title?: string;
   /** Persona-scenario complexity tier as declared in the file. */
   tier?: string;
   /** CI lane as declared in the file; absent means the default lane. */
-  lane?: string;
+  lane: ScenarioLane;
+  /** Execution trust boundary, conservatively defaulted for legacy files. */
+  executionProfile: ScenarioExecutionProfile;
+  /** Truthful behavioral claim supported by the scenario. */
+  evidenceScope: ScenarioEvidenceScope;
+  /** True when evidenceScope was absent and received the migration default. */
+  evidenceScopeDefaulted: boolean;
   edgeVariant?: string;
   baseScenarioId?: string;
+}
+
+async function resolveScenarioFilterAliases(
+  root: string,
+  filter?: Set<string>,
+): Promise<Set<string> | undefined> {
+  if (!filter || filter.size === 0) return filter;
+  const aliasPath = path.join(root, "_scenario-id-aliases.json");
+  let raw: string;
+  try {
+    raw = await readFile(aliasPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return filter;
+    throw error;
+  }
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`[scenario-loader] ${aliasPath}: expected an object map`);
+  }
+  const aliases = parsed as Record<string, unknown>;
+  return new Set(
+    [...filter].map((id) => {
+      const replacement = aliases[id];
+      if (replacement === undefined) return id;
+      if (typeof replacement !== "string" || !replacement.trim()) {
+        throw new Error(
+          `[scenario-loader] ${aliasPath}: alias ${id} must map to a non-empty string`,
+        );
+      }
+      return replacement;
+    }),
+  );
 }
 
 export const SCENARIO_EDGE_VARIANTS = [
@@ -299,6 +342,54 @@ function getStaticStringProperty(
   return undefined;
 }
 
+const STATIC_SCENARIO_METADATA_FIELDS = new Set([
+  "id",
+  "title",
+  "status",
+  "pendingReason",
+  "tier",
+  "lane",
+  "executionProfile",
+  "evidenceScope",
+]);
+
+function assertStaticScenarioMetadataObject(
+  objectLiteral: ts.ObjectLiteralExpression,
+  file: string,
+): void {
+  const authoredPropertyNames = new Set<string>();
+  for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use object spreads because classification fields would not be statically auditable`,
+      );
+    }
+    if (!("name" in property) || !property.name) continue;
+    if (ts.isComputedPropertyName(property.name)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use computed property names because classification fields would not be statically auditable`,
+      );
+    }
+    const name = propertyNameText(property.name);
+    if (!name) continue;
+    if (authoredPropertyNames.has(name)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot declare duplicate property "${name}" because static and runtime classification could disagree`,
+      );
+    }
+    authoredPropertyNames.add(name);
+    if (!STATIC_SCENARIO_METADATA_FIELDS.has(name)) continue;
+    if (
+      !ts.isPropertyAssignment(property) ||
+      staticStringValue(property.initializer) === undefined
+    ) {
+      throw new Error(
+        `[scenario-loader] ${file}: ${name} must be a statically readable string literal`,
+      );
+    }
+  }
+}
+
 function scenarioObjectFromExpression(
   expression: ts.Expression,
 ): ts.ObjectLiteralExpression | null {
@@ -360,19 +451,44 @@ export async function loadScenarioMetadataFile(
       `[scenario-loader] ${file}: no statically readable scenario object in default export or exported 'scenario' value.`,
     );
   }
+  assertStaticScenarioMetadataObject(objectLiteral, file);
   const id = getStaticStringProperty(objectLiteral, "id");
   if (!id) {
     throw new Error(
       `[scenario-loader] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
     );
   }
+  const lane = getStaticStringProperty(objectLiteral, "lane");
+  const executionProfile = getStaticStringProperty(
+    objectLiteral,
+    "executionProfile",
+  );
+  const authoredEvidenceScope = getStaticStringProperty(
+    objectLiteral,
+    "evidenceScope",
+  );
+  const classification = {
+    id,
+    title: getStaticStringProperty(objectLiteral, "title") ?? id,
+    domain: "static-metadata",
+    turns: [],
+    ...(lane === undefined ? {} : { lane }),
+    ...(executionProfile === undefined ? {} : { executionProfile }),
+    ...(authoredEvidenceScope === undefined
+      ? {}
+      : { evidenceScope: authoredEvidenceScope }),
+  } as unknown as ScenarioDefinition;
   return {
     file,
     id,
-    title: getStaticStringProperty(objectLiteral, "title"),
+    title: classification.title,
     status: getStaticStringProperty(objectLiteral, "status"),
+    pendingReason: getStaticStringProperty(objectLiteral, "pendingReason"),
     tier: getStaticStringProperty(objectLiteral, "tier"),
-    lane: getStaticStringProperty(objectLiteral, "lane"),
+    lane: scenarioLane(classification),
+    executionProfile: scenarioExecutionProfile(classification),
+    evidenceScope: scenarioEvidenceScope(classification),
+    evidenceScopeDefaulted: authoredEvidenceScope === undefined,
   };
 }
 
@@ -404,9 +520,12 @@ export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
   // strict finalCheck/lane validation entirely.
   try {
     validateScenarioDefinition(candidate);
+    assertScenarioQuality(candidate, file);
   } catch (err) {
+    // error-policy:J2 Preserve the validation failure beneath file context.
     throw new Error(
       `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   return { file, scenario: candidate };
@@ -419,6 +538,7 @@ export async function loadAllScenarios(
   includeExpanded = shouldExpandScenarioEdges(),
   lane?: ScenarioLane,
 ): Promise<LoadedScenario[]> {
+  const resolvedFilter = await resolveScenarioFilterAliases(root, filter);
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
   const includePending = process.env.SCENARIO_INCLUDE_PENDING === "1";
@@ -436,7 +556,8 @@ export async function loadAllScenarios(
     const candidates = [result, ...expanded];
     if (result.scenario.status === "pending" && !includePending) continue;
     for (const candidate of candidates) {
-      if (filter && !filter.has(candidate.scenario.id)) continue;
+      if (resolvedFilter && !resolvedFilter.has(candidate.scenario.id))
+        continue;
       loaded.push(candidate);
     }
   }
@@ -450,6 +571,7 @@ export async function listScenarioMetadata(
   includeExpanded = shouldExpandScenarioEdges(),
   laneFilter?: string,
 ): Promise<ScenarioMetadata[]> {
+  const resolvedFilter = await resolveScenarioFilterAliases(root, filter);
   const files = await discoverScenarios(root);
   const loaded: ScenarioMetadata[] = [];
   const includePending = process.env.SCENARIO_INCLUDE_PENDING === "1";
@@ -463,7 +585,7 @@ export async function listScenarioMetadata(
     // Apply the default lane exactly like `scenarioLane()` does on the run
     // path (loadAllScenarios): a scenario with no declared lane IS a
     // live-only scenario, so `list --lane live-only` must include it.
-    if (laneFilter && (result.lane ?? DEFAULT_SCENARIO_LANE) !== laneFilter) {
+    if (laneFilter && result.lane !== laneFilter) {
       continue;
     }
     if (result.status === "pending" && !includePending) continue;
@@ -472,7 +594,7 @@ export async function listScenarioMetadata(
       ...(includeExpanded ? expandScenarioMetadata(result) : []),
     ];
     for (const candidate of candidates) {
-      if (filter && !filter.has(candidate.id)) continue;
+      if (resolvedFilter && !resolvedFilter.has(candidate.id)) continue;
       loaded.push(candidate);
     }
   }

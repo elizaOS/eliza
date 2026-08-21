@@ -17,6 +17,7 @@ export default scenario({
   id: "health.heart-rate-spike-alert",
   title: "Heart-rate spike — agent surfaces data, no diagnosis",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "heart-rate", "safety"],
   isolation: "per-scenario",
   requires: {

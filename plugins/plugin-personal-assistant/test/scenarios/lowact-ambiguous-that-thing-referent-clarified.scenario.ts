@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Low activation: an ambiguous 'that thing' gets one gentle clarifier, not a guess",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "low-activation",

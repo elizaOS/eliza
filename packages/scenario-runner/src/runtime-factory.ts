@@ -16,6 +16,7 @@ import {
   createCharacter,
   logger,
   ModelType,
+  promoteSubactionsToActions,
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
@@ -94,13 +95,16 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   >;
   const KnowledgeGraphService = agentModule.KnowledgeGraphService;
   const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  const contactAction = agentModule.contactAction;
   if (
     typeof KnowledgeGraphService !== "function" ||
     knowledgeGraphSchema === null ||
-    typeof knowledgeGraphSchema !== "object"
+    typeof knowledgeGraphSchema !== "object" ||
+    contactAction === null ||
+    typeof contactAction !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+      "[scenario-runner] @elizaos/agent did not expose the relationship graph and CONTACT contracts",
     );
   }
 
@@ -111,6 +115,11 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
     schema: knowledgeGraphSchema as Plugin["schema"],
     services: [
       KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+    ],
+    actions: [
+      ...promoteSubactionsToActions(
+        contactAction as NonNullable<Plugin["actions"]>[number],
+      ),
     ],
   };
 }
@@ -691,6 +700,25 @@ export function scenarioPgliteDirOverride(
   return null;
 }
 
+export function buildScenarioRuntimeSettings(
+  executionProfile: ScenarioExecutionProfile,
+  providerName: RuntimeFactoryResult["providerConfig"]["name"],
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  if (executionProfile !== "simulated") return {};
+  return {
+    ...(env.SKILLS_DIR ? { SKILLS_DIR: env.SKILLS_DIR } : {}),
+    ACTION_CALLBACK_VOICE_REWRITE: "false",
+    LIFEOPS_INBOX_PRIORITY_SCORING: "false",
+    ...(providerName === DETERMINISTIC_MODEL_PROVIDER_NAME
+      ? {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          ELIZAOS_CLOUD_USE_INFERENCE: "false",
+        }
+      : {}),
+  };
+}
+
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
@@ -802,16 +830,10 @@ export async function createScenarioRuntime(
   const character = createCharacter({
     name: options?.characterName ?? "ScenarioAgent",
   });
-  const scenarioRuntimeSettings =
-    executionProfile === "simulated"
-      ? {
-          ...(process.env.SKILLS_DIR
-            ? { SKILLS_DIR: process.env.SKILLS_DIR }
-            : {}),
-          ACTION_CALLBACK_VOICE_REWRITE: "false",
-          LIFEOPS_INBOX_PRIORITY_SCORING: "false",
-        }
-      : {};
+  const scenarioRuntimeSettings = buildScenarioRuntimeSettings(
+    executionProfile,
+    providerConfig.name,
+  );
   const runtime = new AgentRuntimeCtor({
     character,
     plugins: [],
@@ -821,7 +843,9 @@ export async function createScenarioRuntime(
     // does not consult process.env. Mirror the scenario env into runtime
     // settings so skills storage lands in the throwaway temp directory.
     // These settings exist only to keep the legacy simulated harness
-    // deterministic. Provider-qualified runs inherit the production defaults.
+    // deterministic. In particular, the deterministic provider owns its text
+    // and embedding slots before scenario-required plugins initialize.
+    // Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
   });
   const registeredPluginPackages = new Set<string>();
@@ -981,9 +1005,11 @@ export async function createScenarioRuntime(
     // Dashboard routes remain a compatibility-harness capability. Qualified
     // runs receive only packages declared by the scenario, preventing an
     // ambient route bundle from making a missing production dependency pass.
-    const routesModule = (await import(
-      "@elizaos/plugin-personal-assistant"
-    )) as Record<string, unknown>;
+    const lifeOpsRoutesPackage: string = "@elizaos/plugin-personal-assistant";
+    const routesModule = (await import(lifeOpsRoutesPackage)) as Record<
+      string,
+      unknown
+    >;
     const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
       "personalAssistantRoutesPlugin",
     ]);

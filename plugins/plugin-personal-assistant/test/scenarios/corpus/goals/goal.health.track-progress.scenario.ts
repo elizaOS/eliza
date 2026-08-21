@@ -69,6 +69,7 @@ export default scenario({
   id: "goal.health.track-progress",
   title: "Health goal review returns a structured progress summary",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "health", "smoke"],
   isolation: "per-scenario",
   requires: {

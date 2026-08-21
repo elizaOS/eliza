@@ -13,6 +13,7 @@ export default scenario({
   id: "gmail-retry-followup",
   title: "Gmail retry and refinement actually re-query the Gmail API",
   domain: "gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "executive-assistant", "outcome"],
   isolation: "per-scenario",
   requires: {

@@ -1,23 +1,21 @@
 /**
  * Parameter-extraction test: a long, meandering utterance containing a
  * contact name, a specific date-time, and a subject. The agent must
- * extract "Alex" as the target and a date-time near next Tuesday noon.
+ * extract "Alex" as the target and normalize next Tuesday noon against the
+ * explicit reference clock and IANA timezone supplied in the request.
  *
- * Accepts any of SCHEDULE_FOLLOW_UP / CREATE_TASK / LIFE — the important
- * part is that the captured parameters contain the extracted entities.
+ * CONTACT is the canonical contact-scoped follow-up boundary; accepting a
+ * generic task/reminder action here would hide an incorrect route.
  */
 
 import type { CapturedAction } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const ACCEPTED_ACTIONS = [
-  "SCHEDULE_FOLLOW_UP",
-  "CREATE_TASK",
-  "LIFE",
-  // LifeOps' RELATIONSHIP action handles contact-scoped follow-up scheduling
-  // when the utterance mentions a specific person + a follow-up time.
-  "RELATIONSHIP",
-];
+const EXPECTED_ACTION = "CONTACT";
+
+const REFERENCE_CLOCK = "2026-08-18T09:00:00-07:00";
+const REFERENCE_TIMEZONE = "America/Los_Angeles";
+const EXPECTED_INSTANT = "2026-08-25T19:00:00.000Z";
 
 function extractParamText(action: CapturedAction): string {
   const parts: string[] = [];
@@ -36,14 +34,45 @@ function extractParamText(action: CapturedAction): string {
   return parts.join(" | ");
 }
 
+function collectTemporalValues(
+  value: unknown,
+  values: string[] = [],
+): string[] {
+  if (Array.isArray(value)) {
+    for (const item of value) collectTemporalValues(item, values);
+    return values;
+  }
+  if (!value || typeof value !== "object") return values;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      typeof item === "string" &&
+      ["scheduledAt", "dueAt", "atIso", "startAt"].includes(key)
+    ) {
+      values.push(item);
+    } else {
+      collectTemporalValues(item, values);
+    }
+  }
+  return values;
+}
+
+function isExpectedInstant(value: string): boolean {
+  const parsed = Date.parse(value);
+  return (
+    Number.isFinite(parsed) &&
+    new Date(parsed).toISOString() === EXPECTED_INSTANT
+  );
+}
+
 export default scenario({
   lane: "live-only",
   id: "cross.parameter-extraction.complex-natural-language",
   title: "Extracts contact and date-time from a long utterance",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "parameter-extraction", "critical"],
   description:
-    "Long meandering follow-up request. The agent must route to a reminder/follow-up action and its captured parameters must contain 'Alex' and a date-time near next Tuesday noon.",
+    "Long meandering follow-up request with a fixed reference clock. The agent must route to a reminder/follow-up action and structurally normalize next Tuesday noon in America/Los_Angeles to the exact UTC instant.",
 
   isolation: "per-scenario",
 
@@ -99,24 +128,37 @@ export default scenario({
       kind: "message",
       name: "long-utterance",
       room: "main",
-      text: "Hey so I've been meaning to follow up with Alex Rodriguez from the consulting firm we talked to in January — can you remind me to email them next Tuesday at noon about the pricing proposal?",
+      text: `Reference clock: ${REFERENCE_CLOCK}; timezone: ${REFERENCE_TIMEZONE}. Hey so I've been meaning to follow up with Alex Rodriguez from the consulting firm we talked to in January — can you remind me to email them next Tuesday at noon about the pricing proposal?`,
       assertTurn: (turn) => {
-        const hit = turn.actionsCalled.find((a) =>
-          ACCEPTED_ACTIONS.includes(a.actionName),
+        const hit = turn.actionsCalled.find(
+          (action) => action.actionName === EXPECTED_ACTION,
         );
         if (!hit) {
           const fired =
             turn.actionsCalled.map((a) => a.actionName).join(", ") || "(none)";
-          return `Expected one of [${ACCEPTED_ACTIONS.join(", ")}] but got: ${fired}`;
+          return `Expected ${EXPECTED_ACTION} but got: ${fired}`;
         }
         const blob = extractParamText(hit);
         if (!/alex/i.test(blob)) {
           return `Captured action params did not contain 'Alex'. Params: ${blob}`;
         }
-        const nextTuesdayNoonRe =
-          /(tue|tuesday|12:00|12pm|noon|1[2]:00|t1[2]:)/i;
-        if (!nextTuesdayNoonRe.test(blob)) {
-          return `Captured action params did not mention next-Tuesday-noon signal. Params: ${blob}`;
+        const data =
+          hit.result?.data && typeof hit.result.data === "object"
+            ? (hit.result.data as Record<string, unknown>)
+            : null;
+        if (hit.result?.success !== true || data?.op !== "followup") {
+          return `Expected a successful CONTACT followup result, saw ${JSON.stringify(hit.result)}`;
+        }
+        if (data.contactName !== "Alex Rodriguez") {
+          return `Expected exact resolved contact Alex Rodriguez, saw ${JSON.stringify(data.contactName)}`;
+        }
+        const temporalValues = collectTemporalValues({
+          parameters: hit.parameters,
+          data: hit.result?.data,
+          values: hit.result?.values,
+        });
+        if (!temporalValues.some(isExpectedInstant)) {
+          return `Expected a structural scheduled instant normalizing to ${EXPECTED_INSTANT} (next Tuesday noon in ${REFERENCE_TIMEZONE} from ${REFERENCE_CLOCK}); saw ${JSON.stringify(temporalValues)}. Params: ${blob}`;
         }
       },
     },
@@ -127,11 +169,11 @@ export default scenario({
       type: "custom",
       name: "followup-action-with-extracted-params",
       predicate: async (ctx) => {
-        const hit = ctx.actionsCalled.find((a) =>
-          ACCEPTED_ACTIONS.includes(a.actionName),
+        const hit = ctx.actionsCalled.find(
+          (action) => action.actionName === EXPECTED_ACTION,
         );
         if (!hit) {
-          return `No follow-up action fired. Accepted: ${ACCEPTED_ACTIONS.join(", ")}`;
+          return `No canonical ${EXPECTED_ACTION} follow-up action fired.`;
         }
       },
     },

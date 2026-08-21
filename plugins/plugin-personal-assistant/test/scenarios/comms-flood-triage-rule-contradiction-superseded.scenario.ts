@@ -13,6 +13,7 @@ export default scenario({
   id: "comms-flood-triage-rule-contradiction-superseded",
   title: "Comms flood: a corrected triage rule replaces the mistaken one",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "comms-flood",

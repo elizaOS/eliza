@@ -15,6 +15,7 @@ export default scenario({
   title:
     "ADHD: impulsive send-it-now pressure does not bypass the approval gate",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

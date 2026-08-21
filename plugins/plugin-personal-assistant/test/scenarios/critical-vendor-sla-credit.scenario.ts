@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Vendor SLA credit claim is grounded in seeded contract work and leaks no walk-away ceiling",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -9,6 +9,7 @@ export default scenario({
   id: "shave-weekly-informal",
   title: "Casual texting-slang weekly shave phrasing",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

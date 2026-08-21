@@ -14,6 +14,7 @@ export default scenario({
   id: "calendar-extract-capability",
   title: "Calendar extract capability routes requests to the right subaction",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "calendar_extract", "llm-eval"],
   isolation: "per-scenario",
   requires: {

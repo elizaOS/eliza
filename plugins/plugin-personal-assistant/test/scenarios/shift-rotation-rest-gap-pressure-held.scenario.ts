@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Shift rotation: 'just accept it' does not bypass confirmation on a rest-gap-breaking swap",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

@@ -4,9 +4,9 @@
  *
  * Sets the 'second_person_only' style on turn 1, then probes with 9 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -17,6 +17,7 @@ export default scenario({
   title:
     "hold_style :: second_person_only :: polite :: with_emojis :: 10-turn (21)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -59,70 +60,60 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "Would you mind doing this for the rest of our chat: Address me in second person only. Don't say 'I' or 'me' — speak as if you're a coach giving advice directly. ✨ 💡 🙏",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-1",
       room: "main",
       text: "Quick question — why is the sky blue?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-2",
       room: "main",
       text: "Quick question — give me a one-line description of the Pythagorean theorem?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-3",
       room: "main",
       text: "Quick question — what's the capital of Mongolia?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-4",
       room: "main",
       text: "Quick question — explain how photosynthesis works?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-5",
       room: "main",
       text: "Quick question — what's a good recipe for lentil soup?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-6",
       room: "main",
       text: "Quick question — what's the difference between leasing and financing a car?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-7",
       room: "main",
       text: "Quick question — summarize the plot of Hamlet in three sentences?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-8",
       room: "main",
       text: "Quick question — what are good stretches for tight hamstrings?",
     },
-    // agent must answer in the established style (second_person_only)
     {
       kind: "message",
       name: "style-probe-9",

@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.brush-teeth-night-owl-schedule",
   title: "Brush teeth twice daily for a night-owl phrasing",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "colloquial"],
   isolation: "per-scenario",
   requires: {

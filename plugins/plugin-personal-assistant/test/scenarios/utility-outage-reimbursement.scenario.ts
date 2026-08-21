@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Outage claim grounds in the seeded event and keeps the medicine list out of the filing",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

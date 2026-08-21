@@ -18,6 +18,7 @@ export default scenario({
   title:
     "Draft sweep grounds in the live queue and a split approve/reject decision lands",
   domain: "executive.approvals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "approvals", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

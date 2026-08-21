@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.water-custom-cadence-with-meals",
   title: "Drink water with every meal",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "meal-anchored"],
   isolation: "per-scenario",
   requires: {

@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.search-by-sender",
   title: "Gmail search by sender uses from: operator",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "search", "sender"],
   isolation: "per-scenario",
   requires: {

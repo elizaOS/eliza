@@ -688,7 +688,16 @@ export class IMessageService extends Service implements IIMessageService {
     const registration = {
       source: IMESSAGE_SERVICE_NAME,
       label: "iMessage",
-      capabilities: ["send_message", "attachments", "contact_resolution", "chat_context"],
+      capabilities: [
+        "send_message",
+        "read_messages",
+        "search_messages",
+        "list_channels",
+        "get_user",
+        "attachments",
+        "contact_resolution",
+        "chat_context",
+      ],
       supportedTargetKinds: ["phone", "email", "contact", "user", "group", "room"],
       contexts: ["phone", "social", "connectors"],
       description:

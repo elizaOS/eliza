@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Control: a plain reminder, confirmed crisply, no unsolicited coaching",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "control", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

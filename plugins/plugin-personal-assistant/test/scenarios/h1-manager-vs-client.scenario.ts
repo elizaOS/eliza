@@ -10,6 +10,7 @@ export default scenario({
   id: "h1-manager-vs-client",
   title: "H1 manager/report relationship types land as typed edges",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H1", "relationships", "entity", "knowledge-graph"],
   isolation: "per-scenario",
   rooms: [

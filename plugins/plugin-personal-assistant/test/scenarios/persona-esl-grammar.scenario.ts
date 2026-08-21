@@ -13,6 +13,7 @@ export default scenario({
   id: "persona-esl-grammar",
   title: "Persona: ESL grammar errors still book Thursday 3pm",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "persona", "robustness", "multilingual"],
   isolation: "per-scenario",
   requires: {

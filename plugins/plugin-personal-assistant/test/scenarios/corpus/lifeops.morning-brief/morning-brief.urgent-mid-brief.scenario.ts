@@ -98,6 +98,7 @@ export default scenario({
   title:
     "Morning brief surfaces urgent items that landed in the triage table at brief time",
   domain: "lifeops.morning-brief",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "morning-brief", "freshness", "urgency", "robustness"],
   isolation: "per-scenario",
   requires: {

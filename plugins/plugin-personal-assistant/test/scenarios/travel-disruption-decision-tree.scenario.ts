@@ -9,6 +9,7 @@ export default scenario({
   id: "travel-disruption-decision-tree",
   title: "Assistant builds a travel disruption decision tree before acting",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "calendar"],
   isolation: "per-scenario",
   requires: {

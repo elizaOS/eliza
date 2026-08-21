@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Eldercare paperwork is grounded in the seeded specialist visit and keeps the diagnosis out of logistics",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

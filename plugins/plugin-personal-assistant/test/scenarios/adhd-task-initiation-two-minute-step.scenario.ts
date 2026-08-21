@@ -26,6 +26,7 @@ export default scenario({
   id: "adhd-task-initiation-two-minute-step",
   title: "ADHD: stuck on starting → one consented two-minute step, no shame",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },

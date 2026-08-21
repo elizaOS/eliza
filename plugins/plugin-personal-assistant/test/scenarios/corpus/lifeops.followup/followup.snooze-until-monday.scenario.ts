@@ -13,6 +13,7 @@ export default scenario({
   id: "followup.snooze-until-monday",
   title: "Snooze a follow-up until Monday morning and confirm the wake time",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "snooze", "scheduling"],
   description:
     "User says 'snooze until Monday'. Agent must store an explicit wake time (Monday 9am local), not a vague 'I'll get back to it'. The wake time must be in the structured payload.",

@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Family/work conflict repair grounds in seeded commitments without over-sharing",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

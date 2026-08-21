@@ -46,6 +46,7 @@ export default scenario({
   id: "calendar.create.simple",
   title: "Create a calendar event for a simple meeting",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "smoke", "happy-path"],
   isolation: "per-scenario",
   requires: {

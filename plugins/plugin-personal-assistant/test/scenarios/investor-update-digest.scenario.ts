@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Investor update grounds in seeded board notes; sensitive customer stays unnamed",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

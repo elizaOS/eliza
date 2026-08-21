@@ -13,6 +13,7 @@ export default scenario({
   id: "followup.set-cadence-quarterly",
   title: "Set a quarterly check-in cadence on a specific relationship",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "relationships", "cadence"],
   description:
     "User wants quarterly check-ins with their old mentor. The agent must persist the cadence on the contact (not a generic 30-day default) and confirm the cadence back specifically.",

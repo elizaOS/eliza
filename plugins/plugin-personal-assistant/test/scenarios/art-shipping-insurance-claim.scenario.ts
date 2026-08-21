@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Art shipping claim is grounded in seeded shipper/insurer tasks and sends nothing",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

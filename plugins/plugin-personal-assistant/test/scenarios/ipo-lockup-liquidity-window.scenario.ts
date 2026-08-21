@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Lockup window plan grounds in seeded liquidity state; no trade is authorized",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {

@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.duffel-cloud-relay",
   title: "Flight search hits Duffel via the Eliza Cloud relay, not direct",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "duffel", "eliza-cloud", "relay"],
   description:
     "Travel searches must route through the Eliza Cloud relay so billing and rate-limit policy are enforced server-side. This scenario asserts that BOOK_TRAVEL was invoked with a Duffel search, and that the cloud-mediated path was hit (no raw direct Duffel call).",

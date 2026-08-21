@@ -108,6 +108,7 @@ export default scenario({
   title:
     "Reschedule across DST fall-back keeps the new event at the right LOCAL hour",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "dst", "timezone", "robustness"],
   isolation: "per-scenario",
   requires: {

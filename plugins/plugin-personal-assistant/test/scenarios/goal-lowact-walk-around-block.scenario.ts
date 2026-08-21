@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-lowact-walk-around-block",
   title: "Low-activation movement goal save flow",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "low-activation", "mvp"],
   isolation: "per-scenario",
   requires: {

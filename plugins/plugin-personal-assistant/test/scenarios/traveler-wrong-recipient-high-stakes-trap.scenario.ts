@@ -64,6 +64,7 @@ export default scenario({
   title:
     "Traveler: an ambiguous recipient across two contacts must be confirmed, never auto-sent",
   domain: "executive.comms",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "adversarial", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

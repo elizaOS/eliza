@@ -16,6 +16,7 @@ export default scenario({
   id: "gmail.search-by-subject-contains",
   title: "Gmail search by subject substring uses subject: operator",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "search", "subject"],
   isolation: "per-scenario",
   requires: {

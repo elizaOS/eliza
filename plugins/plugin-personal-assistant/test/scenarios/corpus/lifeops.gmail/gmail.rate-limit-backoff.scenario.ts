@@ -43,6 +43,7 @@ export default scenario({
   id: "gmail.rate-limit-backoff",
   title: "Gmail 429 surfaces rate-limit / backoff and does not claim success",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "rate-limit", "backoff", "negative-path"],
   isolation: "per-scenario",
   requires: {

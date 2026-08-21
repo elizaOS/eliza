@@ -1,18 +1,42 @@
-// Defines the reminder timezone mismatch outcome LifeOps scenario-runner spec.
+/** Proves reminder windows resolve in their stored IANA timezone instead of the host timezone. */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-function assertApiBody(options: {
-  includesAll?: ReadonlyArray<string>;
-}): (status: number, body: unknown) => string | undefined {
-  return (_status, body) => {
-    const serialized =
-      typeof body === "string" ? body : JSON.stringify(body ?? "");
-    for (const needle of options.includesAll ?? []) {
-      if (!serialized.includes(needle)) {
-        return `expected body to include "${needle}"`;
-      }
-    }
+const TITLE = "Tokyo morning travel check-in";
+
+function assertSingleDelivery(
+  _status: number,
+  body: unknown,
+): string | undefined {
+  const attempts =
+    body &&
+    typeof body === "object" &&
+    Array.isArray((body as { attempts?: unknown }).attempts)
+      ? (body as { attempts: unknown[] }).attempts
+      : null;
+  if (!attempts) return `expected attempts array, saw ${JSON.stringify(body)}`;
+  const matching = attempts.filter((attempt) => {
+    if (!attempt || typeof attempt !== "object") return false;
+    return (
+      (attempt as { deliveryMetadata?: { title?: unknown } }).deliveryMetadata
+        ?.title === TITLE
+    );
+  });
+  if (matching.length !== 1)
+    return `expected exactly one ${TITLE} attempt, saw ${matching.length}`;
+  const row = matching[0] as {
+    outcome?: unknown;
+    channel?: unknown;
+    scheduledFor?: unknown;
   };
+  if (row.outcome !== "delivered" && row.outcome !== "delivered_read") {
+    return `expected delivered outcome, saw ${String(row.outcome)}`;
+  }
+  if (row.channel !== "in_app") {
+    return `expected in_app channel, saw ${String(row.channel)}`;
+  }
+  if (row.scheduledFor !== "2027-01-14T20:00:00.000Z") {
+    return `expected Tokyo 05:00 window start at 2027-01-14T20:00:00.000Z, saw ${String(row.scheduledFor)}`;
+  }
 }
 
 /**
@@ -24,11 +48,12 @@ function assertApiBody(options: {
  * clock — the timezone-mismatch edge case (issue #9970).
  */
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "reminder-timezone-mismatch-outcome",
   title: "A reminder window honors its own timezone, not the host clock",
   domain: "reminders",
-  tags: ["lifeops", "reminders"],
+  evidenceScope: "domain-contract",
+  tags: ["pr", "deterministic", "lifeops", "reminders", "timezone"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -48,7 +73,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title: "Tokyo morning check-in",
+        title: TITLE,
         timezone: "Asia/Tokyo",
         priority: 1,
         cadence: {
@@ -73,7 +98,7 @@ export default scenario({
       path: "/api/lifeops/reminders/process",
       body: { now: "2027-01-15T02:00:00.000Z", limit: 10 },
       expectedStatus: 200,
-      assertResponse: assertApiBody({ includesAll: ["delivered", "in_app"] }),
+      assertResponse: assertSingleDelivery,
     },
   ],
 });

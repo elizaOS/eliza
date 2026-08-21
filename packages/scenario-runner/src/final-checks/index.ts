@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type CapturedConnectorDispatch,
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
@@ -358,6 +359,46 @@ function matchesChannel(
   );
 }
 
+/** Action-result guesses are useful diagnostics, never side-effect evidence. */
+function isBindingConnectorDispatch(
+  dispatch: CapturedConnectorDispatch,
+): boolean {
+  return dispatch.evidenceSource !== "action-result-inference";
+}
+
+function selectedTurnExecutions(
+  ctx: ScenarioContext,
+  turn: string | string[] | undefined,
+): NonNullable<ScenarioContext["turns"]> {
+  const turns = ctx.turns ?? [];
+  if (turn === undefined) return turns;
+  const accepted = toArray(turn);
+  return turns.filter(
+    (execution) =>
+      typeof execution.name === "string" && accepted.includes(execution.name),
+  );
+}
+
+function connectorDispatchesForTurn(
+  ctx: ScenarioContext,
+  turn: string | string[] | undefined,
+): CapturedConnectorDispatch[] {
+  if (turn === undefined) return ctx.connectorDispatches ?? [];
+  return selectedTurnExecutions(ctx, turn).flatMap(
+    (execution) => execution.connectorDispatches ?? [],
+  );
+}
+
+function actionsForTurn(
+  ctx: ScenarioContext,
+  turn: string | string[] | undefined,
+): ScenarioContext["actionsCalled"] {
+  if (turn === undefined) return ctx.actionsCalled;
+  return selectedTurnExecutions(ctx, turn).flatMap(
+    (execution) => execution.actionsCalled,
+  );
+}
+
 function actionParameters(
   action: ScenarioContext["actionsCalled"][number],
 ): Record<string, unknown> | null {
@@ -388,6 +429,54 @@ function valuesEqual(actual: unknown, expected: unknown): boolean {
     );
   }
   return actual === expected;
+}
+
+function valuesEqualWithExactArrays(
+  actual: unknown,
+  expected: unknown,
+): boolean {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || actual.length !== expected.length) {
+      return false;
+    }
+    const unmatched = [...actual];
+    for (const expectedEntry of expected) {
+      const index = unmatched.findIndex((actualEntry) =>
+        valuesEqualWithExactArrays(actualEntry, expectedEntry),
+      );
+      if (index < 0) return false;
+      unmatched.splice(index, 1);
+    }
+    return unmatched.length === 0;
+  }
+  if (
+    actual &&
+    expected &&
+    typeof actual === "object" &&
+    typeof expected === "object"
+  ) {
+    const actualRecord = toRecord(actual);
+    const expectedRecord = toRecord(expected);
+    if (!actualRecord || !expectedRecord) return false;
+    return Object.entries(expectedRecord).every(([key, value]) =>
+      valuesEqualWithExactArrays(actualRecord[key], value),
+    );
+  }
+  return actual === expected;
+}
+
+function matchesExpectedFieldsWithArrayPolicy(
+  actual: unknown,
+  expected: Record<string, unknown> | undefined,
+  exactArrays: boolean,
+): boolean {
+  if (!exactArrays) return matchesExpectedFields(actual, expected);
+  if (!expected) return true;
+  const actualRecord = toRecord(actual);
+  if (!actualRecord) return false;
+  return Object.entries(expected).every(([key, value]) =>
+    valuesEqualWithExactArrays(actualRecord[key], value),
+  );
 }
 
 function readPath(value: unknown, path: string): unknown {
@@ -518,9 +607,11 @@ function isDefinitionListingService(
 async function createLifeOpsService(
   runtime: FinalCheckRuntime,
 ): Promise<unknown> {
-  const { LifeOpsService } = await import(
-    "@elizaos/plugin-personal-assistant/lifeops/service"
-  );
+  const lifeOpsServicePackage: string =
+    "@elizaos/plugin-personal-assistant/lifeops/service";
+  const { LifeOpsService } = (await import(lifeOpsServicePackage)) as {
+    LifeOpsService: new (runtime: IAgentRuntime) => unknown;
+  };
   // Scenario final checks receive the live agent runtime; FinalCheckRuntime is
   // the structural subset they need, but LifeOpsService requires the full one.
   return new LifeOpsService(runtime as IAgentRuntime);
@@ -888,7 +979,53 @@ type GmailMockRequest = {
   query?: string;
   body?: unknown;
   createdAt?: string;
+  gmail?: unknown;
 };
+
+type GmailRequestEvidence =
+  | { requests: GmailMockRequest[]; error?: never }
+  | { requests?: never; error: string };
+
+function gmailMockRequestsForTurn(
+  ctx: ScenarioContext,
+  turn: string | string[] | undefined,
+): GmailRequestEvidence | null {
+  if (turn === undefined) return null;
+  const requestedTurns = toArray(turn);
+  const executions = selectedTurnExecutions(ctx, turn);
+  const observedNames = new Set(executions.map((execution) => execution.name));
+  const missingTurns = requestedTurns.filter(
+    (name) => !observedNames.has(name),
+  );
+  if (missingTurns.length > 0) {
+    return {
+      error: `turn-scoped Gmail provider evidence is missing turn(s): ${missingTurns.join(", ")}`,
+    };
+  }
+  const missingLedgers = executions
+    .filter((execution) => execution.providerRequests === undefined)
+    .map((execution) => execution.name ?? "(unnamed)");
+  if (missingLedgers.length > 0) {
+    return {
+      error: `turn-scoped Gmail provider ledger unavailable for: ${missingLedgers.join(", ")}`,
+    };
+  }
+  return {
+    requests: executions.flatMap((execution) =>
+      (execution.providerRequests ?? [])
+        .filter((request) => request.provider === "gmail")
+        .map((request) => ({
+          environment: request.environment,
+          method: request.method,
+          path: request.path,
+          query: request.query,
+          body: request.body,
+          createdAt: request.createdAt,
+          gmail: request.metadata,
+        })),
+    ),
+  };
+}
 
 async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
   const base = process.env.ELIZA_MOCK_GOOGLE_BASE;
@@ -912,12 +1049,29 @@ async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
     : [];
 }
 
+async function resolveGmailMockRequests(
+  ctx: ScenarioContext,
+  turn: string | string[] | undefined,
+): Promise<GmailRequestEvidence> {
+  const turnEvidence = gmailMockRequestsForTurn(ctx, turn);
+  if (turnEvidence !== null) return turnEvidence;
+  try {
+    return { requests: await readGmailMockRequests() };
+  } catch (error) {
+    return {
+      error: `Gmail mock request evidence unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 function gmailRequestMatches(
   entry: GmailMockRequest,
   filters: {
     method?: string | string[];
     path?: string | string[];
     body?: Record<string, unknown>;
+    gmail?: Record<string, unknown>;
+    exactArrays?: boolean;
   },
 ): boolean {
   if (
@@ -932,7 +1086,18 @@ function gmailRequestMatches(
   ) {
     return false;
   }
-  return matchesExpectedFields(entry.body, filters.body);
+  return (
+    matchesExpectedFieldsWithArrayPolicy(
+      entry.body,
+      filters.body,
+      filters.exactArrays === true,
+    ) &&
+    matchesExpectedFieldsWithArrayPolicy(
+      entry.gmail,
+      filters.gmail,
+      filters.exactArrays === true,
+    )
+  );
 }
 
 function gmailSendLedgerPaths(): string[] {
@@ -943,7 +1108,12 @@ function hasGmailDraftData(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
   const data = actionResultData(action);
-  return Boolean(data?.gmailDraft);
+  return Boolean(
+    data?.gmailDraft ||
+      (matchesChannel(String(data?.source ?? ""), "gmail") &&
+        typeof data?.draftId === "string" &&
+        data.draftId.length > 0),
+  );
 }
 
 function hasConfirmedGmailSendAction(
@@ -1137,6 +1307,10 @@ type TrustedObservationCheck = {
   state?: string | string[];
   minCount?: number;
   intervalCoversScenario?: boolean;
+  intervalEndsBeforeReferencedStage?: boolean;
+  transitionGroupId?: string;
+  transitionIndex?: number;
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 
 const TRUSTED_OBSERVATION_KIND_BY_CHECK: Record<
@@ -1300,6 +1474,7 @@ function runTrustedObservationCheck(
     }
     return (
       check.type !== "providerNoEffectObserved" ||
+      check.intervalEndsBeforeReferencedStage === true ||
       check.intervalCoversScenario === false ||
       observationCoversScenario(
         observation,
@@ -1813,12 +1988,19 @@ registerFinalCheckHandler("approvalRequestExists", (check, { ctx }) => {
 });
 
 registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
-  const { from, to, actionName } = check as {
+  const { from, to, actionName, turn } = check as {
     from: string;
     to: string;
     actionName?: string | string[];
+    turn?: string | string[];
   };
-  const matched = (ctx.stateTransitions ?? []).filter((transition) => {
+  const transitions =
+    turn === undefined
+      ? (ctx.stateTransitions ?? [])
+      : selectedTurnExecutions(ctx, turn).flatMap(
+          (execution) => execution.stateTransitions ?? [],
+        );
+  const matched = transitions.filter((transition) => {
     if (transition.subject !== "approval") {
       return false;
     }
@@ -1848,8 +2030,8 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
   }
   const { channel } = check as { channel: string | string[] };
   const channels = toArray(channel);
-  const hit = ctx.connectorDispatches.filter((d) =>
-    channels.includes(d.channel),
+  const hit = ctx.connectorDispatches.filter(
+    (d) => isBindingConnectorDispatch(d) && channels.includes(d.channel),
   );
   if (hit.length === 0) {
     return {
@@ -1862,9 +2044,9 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
 
 registerFinalCheckHandler("pushEscalationOrder", (check, { ctx }) => {
   const { channelOrder } = check as { channelOrder: string[] };
-  const seen = (ctx.connectorDispatches ?? []).map(
-    (dispatch) => dispatch.channel,
-  );
+  const seen = (ctx.connectorDispatches ?? [])
+    .filter(isBindingConnectorDispatch)
+    .map((dispatch) => dispatch.channel);
   let cursor = 0;
   for (const channel of channelOrder) {
     const index = seen.indexOf(channel, cursor);
@@ -2072,26 +2254,18 @@ registerFinalCheckHandler("draftExists", (check, { ctx }) => {
 });
 
 registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
-  const { channel, expected } = check as {
+  const { channel, expected, turn } = check as {
     channel?: string | string[];
     expected?: boolean;
+    turn?: string | string[];
   };
-  const dispatchDelivered = (ctx.connectorDispatches ?? []).some(
+  const dispatchDelivered = connectorDispatchesForTurn(ctx, turn).some(
     (dispatch) =>
-      dispatch.delivered === true && matchesChannel(dispatch.channel, channel),
+      isBindingConnectorDispatch(dispatch) &&
+      dispatch.delivered === true &&
+      matchesChannel(dispatch.channel, channel),
   );
-  const actionDelivered = ctx.actionsCalled.some((action) => {
-    const data = actionResultData(action);
-    if (!data) {
-      return false;
-    }
-    const status = typeof data.status === "string" ? data.status : "";
-    return (
-      matchesChannel(data.channel as string | undefined, channel) &&
-      ["sent", "delivered", "completed"].includes(status.toLowerCase())
-    );
-  });
-  const any = dispatchDelivered || actionDelivered;
+  const any = dispatchDelivered;
   const want = expected ?? true;
   if (any === want) {
     return {
@@ -2105,35 +2279,94 @@ registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
   };
 });
 
+registerFinalCheckHandler("noSideEffects", (check, { ctx }) => {
+  const { turn, allowApprovalRequests } = check as {
+    turn?: string | string[];
+    allowApprovalRequests?: boolean;
+  };
+  const selectedTurns =
+    turn === undefined ? undefined : selectedTurnExecutions(ctx, turn);
+  const dispatches = (
+    selectedTurns
+      ? selectedTurns.flatMap(
+          (execution) => execution.connectorDispatches ?? [],
+        )
+      : (ctx.connectorDispatches ?? [])
+  ).filter(isBindingConnectorDispatch);
+  const transitions = selectedTurns
+    ? selectedTurns.flatMap((execution) => execution.stateTransitions ?? [])
+    : (ctx.stateTransitions ?? []);
+  const artifacts = selectedTurns
+    ? selectedTurns.flatMap((execution) => execution.artifacts ?? [])
+    : (ctx.artifacts ?? []);
+  const approvals = selectedTurns
+    ? selectedTurns.flatMap((execution) => execution.approvalRequests ?? [])
+    : (ctx.approvalRequests ?? []);
+
+  const failures: string[] = [];
+  if (dispatches.length > 0) failures.push(`${dispatches.length} dispatch(es)`);
+  if (transitions.length > 0)
+    failures.push(`${transitions.length} state transition(s)`);
+  if (artifacts.length > 0) failures.push(`${artifacts.length} artifact(s)`);
+  if (!allowApprovalRequests && approvals.length > 0)
+    failures.push(`${approvals.length} approval request(s)`);
+
+  if (failures.length > 0) {
+    return {
+      status: "failed",
+      detail: `expected no binding side effects${turn === undefined ? "" : ` on turn(s) [${toArray(turn).join(",")}]`}; saw ${failures.join(", ")}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `no binding side effects${turn === undefined ? "" : ` on turn(s) [${toArray(turn).join(",")}]`}`,
+  };
+});
+
 registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
-  const { channel, actionName, minCount } = check as {
+  const {
+    channel,
+    actionName,
+    minCount,
+    maxCount,
+    expected,
+    delivered,
+    status,
+    turn,
+    idempotencyKey,
+    providerMessageId,
+  } = check as {
     channel: string | string[];
     actionName?: string | string[];
     minCount?: number;
+    maxCount?: number;
+    expected?: boolean;
+    delivered?: boolean;
+    status?: string | string[];
+    turn?: string | string[];
+    idempotencyKey?: string;
+    providerMessageId?: string;
   };
-  const dispatchCount = (ctx.connectorDispatches ?? []).filter((dispatch) =>
-    matchesChannel(dispatch.channel, channel),
-  ).length;
-  const actionFallbackCount = ctx.actionsCalled.filter((action) => {
-    if (!matchesActionName(action.actionName, actionName)) {
-      return false;
-    }
-    const data = actionResultData(action);
-    if (!data) {
-      return false;
-    }
-    const status = typeof data.status === "string" ? data.status : "";
-    return (
-      matchesChannel(data.channel as string | undefined, channel) &&
-      ["sent", "delivered", "completed"].includes(status.toLowerCase())
-    );
-  }).length;
-  const total = dispatchCount + actionFallbackCount;
-  const want = typeof minCount === "number" ? minCount : 1;
-  if (total < want) {
+  const matching = connectorDispatchesForTurn(ctx, turn).filter(
+    (dispatch) =>
+      isBindingConnectorDispatch(dispatch) &&
+      matchesChannel(dispatch.channel, channel) &&
+      matchesActionName(dispatch.actionName ?? "", actionName) &&
+      (delivered === undefined || dispatch.delivered === delivered) &&
+      (status === undefined ||
+        toArray(status).includes(dispatch.status ?? "")) &&
+      (idempotencyKey === undefined ||
+        dispatch.idempotencyKey === idempotencyKey) &&
+      (providerMessageId === undefined ||
+        dispatch.providerMessageIds?.includes(providerMessageId) === true),
+  );
+  const total = matching.length;
+  const want = expected === false ? 0 : (minCount ?? 1);
+  const ceiling = expected === false ? 0 : maxCount;
+  if (total < want || (ceiling !== undefined && total > ceiling)) {
     return {
       status: "failed",
-      detail: `expected ${want} connector dispatch(es) on [${toArray(channel).join(",")}], saw ${total}`,
+      detail: `expected ${want}${ceiling !== undefined ? `..${ceiling}` : "+"} binding connector dispatch(es) on [${toArray(channel).join(",")}], saw ${total}`,
     };
   }
   return {
@@ -2143,15 +2376,29 @@ registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
 });
 
 registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
-  const { actionName, subaction, operation, fields, minCount } = check as {
+  const {
+    actionName,
+    subaction,
+    operation,
+    fields,
+    minCount,
+    maxCount,
+    expected,
+    turn,
+    exactArrays,
+  } = check as {
     actionName?: string | string[];
     subaction?: string | string[];
     operation?: string | string[];
     fields?: Record<string, unknown>;
     minCount?: number;
+    maxCount?: number;
+    expected?: boolean;
+    turn?: string | string[];
+    exactArrays?: boolean;
   };
   const actionNames = actionName ?? ["MESSAGE", "GMAIL_ACTION", "INBOX"];
-  const matched = ctx.actionsCalled.filter((action) => {
+  const matched = actionsForTurn(ctx, turn).filter((action) => {
     if (!matchesActionName(action.actionName, actionNames)) {
       return false;
     }
@@ -2161,25 +2408,37 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     }
     if (
       subaction !== undefined &&
-      !toArray(subaction).includes(String(params.subaction ?? ""))
+      !toArray(subaction).includes(
+        String(params.subaction ?? params.action ?? params.operation ?? ""),
+      )
     ) {
       return false;
     }
     const actualOperation =
-      params.operation ?? readPath(params, "details.operation");
+      params.operation ??
+      readPath(params, "details.operation") ??
+      (params.action === "manage" ? readPath(params, "details.action") : null);
     if (
       operation !== undefined &&
       !toArray(operation).includes(String(actualOperation ?? ""))
     ) {
       return false;
     }
-    return matchesExpectedFields(params, fields);
+    return matchesExpectedFieldsWithArrayPolicy(
+      params,
+      fields,
+      exactArrays === true,
+    );
   });
-  const want = typeof minCount === "number" ? minCount : 1;
-  if (matched.length < want) {
+  const want = expected === false ? 0 : (minCount ?? 1);
+  const ceiling = expected === false ? 0 : maxCount;
+  if (
+    matched.length < want ||
+    (ceiling !== undefined && matched.length > ceiling)
+  ) {
     return {
       status: "failed",
-      detail: `expected ${want} Gmail action(s) with structured arguments; saw ${matched.length}`,
+      detail: `expected ${want}${ceiling !== undefined ? `..${ceiling}` : "+"} Gmail action(s) with structured arguments; saw ${matched.length}`,
     };
   }
   return {
@@ -2188,25 +2447,49 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler("gmailMockRequest", async (check) => {
-  const { method, path, body, expected, minCount } = check as {
+registerFinalCheckHandler("gmailMockRequest", async (check, { ctx }) => {
+  const {
+    method,
+    path,
+    body,
+    gmail,
+    expected,
+    minCount,
+    maxCount,
+    turn,
+    exactArrays,
+  } = check as {
     method?: string | string[];
     path?: string | string[];
     body?: Record<string, unknown>;
+    gmail?: Record<string, unknown>;
     expected?: boolean;
     minCount?: number;
+    maxCount?: number;
+    turn?: string | string[];
+    exactArrays?: boolean;
   };
-  const requests = await readGmailMockRequests();
+  const evidence = await resolveGmailMockRequests(ctx, turn);
+  if (evidence.requests === undefined) {
+    return {
+      status: "failed",
+      detail: evidence.error ?? "Gmail mock request evidence unavailable",
+    };
+  }
+  const requests = evidence.requests;
   const matched = requests.filter((entry) =>
-    gmailRequestMatches(entry, { method, path, body }),
+    gmailRequestMatches(entry, { method, path, body, gmail, exactArrays }),
   );
   const wantPresent = expected ?? true;
   const wantCount = typeof minCount === "number" ? minCount : 1;
   if (wantPresent) {
-    if (matched.length < wantCount) {
+    if (
+      matched.length < wantCount ||
+      (maxCount !== undefined && matched.length > maxCount)
+    ) {
       return {
         status: "failed",
-        detail: `expected ${wantCount} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
+        detail: `expected ${wantCount}${maxCount !== undefined ? `..${maxCount}` : "+"} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
       };
     }
     return {
@@ -2227,15 +2510,25 @@ registerFinalCheckHandler("gmailMockRequest", async (check) => {
 });
 
 registerFinalCheckHandler("gmailDraftCreated", async (check, { ctx }) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
+  const { expected, turn } = check as {
+    expected?: boolean;
+    turn?: string | string[];
+  };
+  const evidence = await resolveGmailMockRequests(ctx, turn);
+  if (evidence.requests === undefined) {
+    return {
+      status: "failed",
+      detail: evidence.error ?? "Gmail mock request evidence unavailable",
+    };
+  }
+  const requests = evidence.requests;
   const ledgerHit = requests.some((entry) =>
     gmailRequestMatches(entry, {
       method: "POST",
       path: "/gmail/v1/users/me/drafts",
     }),
   );
-  const actionHit = ctx.actionsCalled.some((action) =>
+  const actionHit = actionsForTurn(ctx, turn).some((action) =>
     hasGmailDraftData(action),
   );
   const any = ledgerHit || actionHit;
@@ -2267,9 +2560,19 @@ registerFinalCheckHandler("gmailDraftDeleted", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailMessageSent", async (check) => {
-  const { expected } = check as { expected?: boolean };
-  const requests = await readGmailMockRequests();
+registerFinalCheckHandler("gmailMessageSent", async (check, { ctx }) => {
+  const { expected, turn } = check as {
+    expected?: boolean;
+    turn?: string | string[];
+  };
+  const evidence = await resolveGmailMockRequests(ctx, turn);
+  if (evidence.requests === undefined) {
+    return {
+      status: "failed",
+      detail: evidence.error ?? "Gmail mock request evidence unavailable",
+    };
+  }
+  const requests = evidence.requests;
   const any = requests.some((entry) =>
     gmailRequestMatches(entry, {
       method: "POST",
@@ -2286,17 +2589,27 @@ registerFinalCheckHandler("gmailMessageSent", async (check) => {
   };
 });
 
-registerFinalCheckHandler("gmailBatchModify", async (check) => {
-  const { expected, body } = check as {
+registerFinalCheckHandler("gmailBatchModify", async (check, { ctx }) => {
+  const { expected, body, turn, exactArrays } = check as {
     expected?: boolean;
     body?: Record<string, unknown>;
+    turn?: string | string[];
+    exactArrays?: boolean;
   };
-  const requests = await readGmailMockRequests();
+  const evidence = await resolveGmailMockRequests(ctx, turn);
+  if (evidence.requests === undefined) {
+    return {
+      status: "failed",
+      detail: evidence.error ?? "Gmail mock request evidence unavailable",
+    };
+  }
+  const requests = evidence.requests;
   const any = requests.some((entry) =>
     gmailRequestMatches(entry, {
       method: "POST",
       path: "/gmail/v1/users/me/messages/batchModify",
       body,
+      exactArrays,
     }),
   );
   const want = expected ?? true;
@@ -2310,12 +2623,20 @@ registerFinalCheckHandler("gmailBatchModify", async (check) => {
 });
 
 registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
-  const { state } = check as {
+  const { state, turn } = check as {
     state: "pending" | "confirmed" | "canceled" | "cancelled";
+    turn?: string | string[];
   };
+  const selectedActions = actionsForTurn(ctx, turn);
+  const selectedApprovals =
+    turn === undefined
+      ? (ctx.approvalRequests ?? [])
+      : selectedTurnExecutions(ctx, turn).flatMap(
+          (execution) => execution.approvalRequests ?? [],
+        );
   if (state === "pending") {
     const any =
-      (ctx.approvalRequests ?? []).some(
+      selectedApprovals.some(
         (request) =>
           matchesActionName(request.actionName, [
             "MESSAGE",
@@ -2323,7 +2644,7 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
             "send_email",
           ]) && request.state === "pending",
       ) ||
-      ctx.actionsCalled.some((action) => {
+      selectedActions.some((action) => {
         const data = actionResultData(action);
         return (
           data?.pendingApproval === true || data?.requiresConfirmation === true
@@ -2334,21 +2655,28 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       : { status: "failed", detail: "no pending Gmail approval observed" };
   }
   if (state === "confirmed") {
-    const requests = await readGmailMockRequests();
+    const evidence = await resolveGmailMockRequests(ctx, turn);
+    if (evidence.requests === undefined) {
+      return {
+        status: "failed",
+        detail: evidence.error ?? "Gmail mock request evidence unavailable",
+      };
+    }
+    const requests = evidence.requests;
     const sendHit = requests.some((entry) =>
       gmailRequestMatches(entry, {
         method: "POST",
         path: gmailSendLedgerPaths(),
       }),
     );
-    const actionHit = ctx.actionsCalled.some((action) =>
+    const actionHit = selectedActions.some((action) =>
       hasConfirmedGmailSendAction(action),
     );
     return sendHit || actionHit
       ? { status: "passed", detail: "confirmed Gmail send observed" }
       : { status: "failed", detail: "no confirmed Gmail send observed" };
   }
-  const canceled = ctx.actionsCalled.some((action) => {
+  const canceled = selectedActions.some((action) => {
     const data = actionResultData(action);
     return data?.noop === true && data?.cancelled === true;
   });

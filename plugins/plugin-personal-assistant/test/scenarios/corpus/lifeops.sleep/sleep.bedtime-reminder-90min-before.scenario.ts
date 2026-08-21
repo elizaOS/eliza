@@ -17,6 +17,7 @@ export default scenario({
   id: "sleep.bedtime-reminder-90min-before",
   title: "Bedtime wind-down reminder 90 minutes before sleep",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "habit", "reminder"],
   isolation: "per-scenario",
   requires: {

@@ -33,6 +33,46 @@ function errorBody(body: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe("Google Gmail mock fault injection", () => {
+  it("publishes challenge fixtures and records exact list-result IDs", async () => {
+    activeMocks = await startMocks({ envs: ["google"] });
+    const baseUrl = activeMocks.baseUrls.google;
+
+    const fixtures = await jsonRequest(
+      `${baseUrl}/__mock/google/gmail/fixtures`,
+    );
+    expect(fixtures.response.status).toBe(200);
+    expect(fixtures.body.fixtures).toEqual(
+      expect.objectContaining({
+        default: expect.arrayContaining([
+          "msg-finance-receipt",
+          "msg-medium-newsletter",
+          "msg-spam-phishing",
+          "msg-trash-receipt",
+        ]),
+        "high-priority-client.eml": [
+          "msg-urgent-client",
+          "msg-sarah",
+          "msg-medium-newsletter",
+        ],
+      }),
+    );
+
+    const listed = await jsonRequest(
+      `${baseUrl}/gmail/v1/users/me/messages?q=from%3Afinance%40example.com`,
+    );
+    expect(listed.response.status).toBe(200);
+    const ledger = await jsonRequest(`${baseUrl}/__mock/requests`);
+    const requests = ledger.body.requests as Array<{
+      gmail?: { action?: string; ids?: string[] };
+    }>;
+    expect(requests.at(-1)?.gmail).toEqual(
+      expect.objectContaining({
+        action: "messages.list",
+        ids: ["msg-finance", "msg-finance-receipt"],
+      }),
+    );
+  });
+
   it.each([
     ["server_error", 500, "INTERNAL"],
     ["auth_expired", 401, "UNAUTHENTICATED"],

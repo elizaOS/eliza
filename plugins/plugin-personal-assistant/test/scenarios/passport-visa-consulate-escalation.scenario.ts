@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Consulate escalation grounds in seeded state; passport details stay gated",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

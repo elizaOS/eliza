@@ -22,6 +22,7 @@ export default scenario({
   id: "selfcontrol.self-set-enforcement.ask-before",
   title: "Agent confirms blocking plan before enforcing",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "confirmation", "ambiguity"],
   description:
     "Turn 1 — user makes a blocking request that is loose; agent must clarify and not immediately enforce the block. No WEBSITE_BLOCK fires on turn 1.",

@@ -16,6 +16,7 @@ export default scenario({
   id: "gmail.search-by-label",
   title: "Gmail search by label uses label: operator",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "search", "label"],
   isolation: "per-scenario",
   requires: {

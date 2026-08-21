@@ -14,6 +14,7 @@ export default scenario({
   id: "g1-apology-draft-requires-approval",
   title: "G1 overdue reply apology draft is held for approval",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "G1", "overdue-reply", "approval", "outcome"],
   isolation: "per-scenario",
   requires: {

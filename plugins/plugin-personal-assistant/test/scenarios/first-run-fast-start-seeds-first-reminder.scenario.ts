@@ -27,6 +27,7 @@ export default scenario({
   id: "first-run-fast-start-seeds-first-reminder",
   title: "First-run fast-start: defaults + wake time → first reminder seeded",
   domain: "lifeops.first-run",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "first-run", "onboarding", "mvp", "14353"],
   status: "active",
   tier: "T2",

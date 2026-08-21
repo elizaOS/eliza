@@ -230,6 +230,7 @@ import { fail, requireNonEmptyString } from "./service-normalize.js";
 import type { TransactionalDb } from "./sql.js";
 import { getZonedDateParts } from "./time.js";
 import type {
+  ApprovedFlightBookingSnapshot,
   FlightBookingExecutionResult,
   PreparedFlightBooking,
   TravelBookingPassenger,
@@ -2350,6 +2351,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     offer: DuffelOffer;
     passengers: ReadonlyArray<TravelBookingPassenger>;
     orderType: "hold" | "instant";
+    providerIdempotencyKey: string;
   }): Promise<DuffelOrder> {
     return this.travelDomain.createFlightOrder(args);
   }
@@ -2374,13 +2376,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      approved: ApprovedFlightBookingSnapshot;
+      providerIdempotencyKey: string;
     },
   ): Promise<FlightBookingExecutionResult> {
     const result = await this.travelDomain.bookFlightItinerary(
       requestUrl,
       args,
     );
-    // A confirmed itinerary is the strongest travel signal we have: the owner
+    // A paid instant order is the strongest travel signal we have: the owner
     // will be away for the booked window. Record it as a first-class travel
     // fact so the `during_travel` scheduling gate can derive `travelActive`.
     // The window comes from the booked order's own departure/arrival segments;
@@ -2388,7 +2392,9 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // destination-zone signal Duffel exposes — orders carry IATA codes, not
     // zones. A store-write failure is not swallowed: a silently-dropped travel
     // fact would leave the gate blind, so we let it surface.
-    const departingAt = result.order.slices[0]?.segments[0]?.departingAt;
+    const departingAt = result.paymentCommitted
+      ? result.order.slices[0]?.segments[0]?.departingAt
+      : undefined;
     const lastSlice = result.order.slices[result.order.slices.length - 1];
     const arrivingAt =
       lastSlice?.segments[lastSlice.segments.length - 1]?.arrivingAt;

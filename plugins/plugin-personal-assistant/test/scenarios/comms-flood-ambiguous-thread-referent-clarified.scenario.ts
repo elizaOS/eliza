@@ -12,6 +12,7 @@ export default scenario({
   id: "comms-flood-ambiguous-thread-referent-clarified",
   title: "Comms flood: ambiguous thread referent is clarified before muting",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "ambiguity", "clarification"],
   tier: "T2",
   isolation: "per-scenario",

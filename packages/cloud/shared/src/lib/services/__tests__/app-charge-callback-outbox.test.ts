@@ -7,6 +7,7 @@ process.env.NODE_ENV ||= "test";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
 const CHARGE_ID = "00000000-0000-4000-8000-0000000000a2";
+const PGLITE_TIMEOUT = 60_000;
 const params = {
   appId: "00000000-0000-4000-8000-0000000000a3",
   chargeRequestId: CHARGE_ID,
@@ -43,7 +44,7 @@ beforeAll(async () => {
     delivered_at timestamptz, terminal_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
   )`);
-});
+}, PGLITE_TIMEOUT);
 
 afterAll(async () => closeDb?.());
 
@@ -52,9 +53,9 @@ beforeEach(async () => {
   await dbWrite.execute("DELETE FROM crypto_payments");
   await dbWrite.execute(`INSERT INTO crypto_payments
     (id, organization_id, payment_address, token, network, expected_amount, credits_to_add, status, expires_at, metadata)
-    VALUES ('${CHARGE_ID}', '${ORG_ID}', 'charge', 'USD', 'internal', '10', '10', 'confirmed',
-      now() + interval '1 hour', '{"kind":"app_charge_request","app_id":"${params.appId}"}')`);
-});
+    VALUES ('${CHARGE_ID}', '${ORG_ID}', 'charge', 'USD', 'APP_CHARGE', '10', '10', 'confirmed',
+      now() + interval '1 hour', '{"kind":"app_charge_request","app_id":"${params.appId}","providers":["stripe","oxapay"]}')`);
+}, PGLITE_TIMEOUT);
 
 describe("app charge callback outbox", () => {
   test("enqueue replay validates the immutable payload", async () => {
@@ -163,13 +164,14 @@ describe("app charge callback outbox", () => {
   });
 
   test("app charge status and callback intent commit together and replay recovers deletion", async () => {
-    await dbWrite.execute(`UPDATE crypto_payments SET status='pending' WHERE id='${CHARGE_ID}'`);
+    await dbWrite.execute(`UPDATE crypto_payments SET status='requested' WHERE id='${CHARGE_ID}'`);
     const settlement = {
       appId: params.appId,
       chargeRequestId: CHARGE_ID,
       provider: "stripe" as const,
       providerPaymentId: "pi_exact",
-      amountUsd: "10.123456789",
+      amountUsd: "10.00",
+      currency: "USD",
       payerOrganizationId: ORG_ID,
     };
 
@@ -180,7 +182,7 @@ describe("app charge callback outbox", () => {
     expect(rows.rows).toHaveLength(1);
     expect(
       (rows.rows[0] as { payload: { params: { amountUsd: string } } }).payload.params.amountUsd,
-    ).toBe("10.123456789");
+    ).toBe("10.00");
 
     await dbWrite.execute("DELETE FROM app_charge_callback_outbox");
     await settlementService.markPaid(settlement);
@@ -190,7 +192,7 @@ describe("app charge callback outbox", () => {
     expect(rows.rows).toHaveLength(1);
     await expect(
       settlementService.markPaid({ ...settlement, providerPaymentId: "pi_other" }),
-    ).rejects.toThrow("already settled by another payment");
+    ).rejects.toThrow("does not match this settlement replay");
   });
 
   test("failed charge status and notification intent commit atomically", async () => {

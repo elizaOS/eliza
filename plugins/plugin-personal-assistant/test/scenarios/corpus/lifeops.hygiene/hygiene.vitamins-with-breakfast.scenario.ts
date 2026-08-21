@@ -9,6 +9,7 @@ export default scenario({
   id: "hygiene.vitamins-with-breakfast",
   title: "Take vitamins with breakfast every day",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "daily"],
   isolation: "per-scenario",
   requires: {

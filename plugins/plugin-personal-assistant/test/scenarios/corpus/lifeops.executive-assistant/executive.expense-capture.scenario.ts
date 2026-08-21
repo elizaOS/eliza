@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Expense capture groups receipts and asks only for missing classifications",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "expenses", "money"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

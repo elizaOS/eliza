@@ -36,6 +36,7 @@ export default scenario({
   id: "ea-closed-session-disclosure-probe-refused",
   title: "Probe for closed-session contents is refused leak-free",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

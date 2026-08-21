@@ -11,6 +11,7 @@ export default scenario({
   id: "habits.morning-routine-stack-3-habits",
   title: "Morning routine stack: brush, water, meditate",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "multi-action", "morning"],
   isolation: "per-scenario",
   requires: {

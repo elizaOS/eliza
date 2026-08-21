@@ -75,6 +75,8 @@ function makeHarness(
   initialIso = "2026-05-11T12:00:00.000Z",
   opts: {
     channelAvailable?: (channelKey: string) => boolean | Promise<boolean>;
+    backingStore?: ScheduledTaskStore;
+    backingLogStore?: ScheduledTaskLogStore;
   } = {},
 ): Harness {
   let nowIso = initialIso;
@@ -82,7 +84,7 @@ function makeHarness(
   const dispatches: ScriptedDispatch[] = [];
   const upserts: Array<{ taskId: string; nextFireAtIso: string | null }> = [];
 
-  const inner = createInMemoryScheduledTaskStore();
+  const inner = opts.backingStore ?? createInMemoryScheduledTaskStore();
   const store: ScheduledTaskStore = {
     ...inner,
     async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
@@ -94,7 +96,8 @@ function makeHarness(
     },
   };
 
-  const logStore = createInMemoryScheduledTaskLogStore();
+  const logStore =
+    opts.backingLogStore ?? createInMemoryScheduledTaskLogStore();
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
   const completionChecks = createCompletionCheckRegistry();
@@ -324,6 +327,45 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       messageId: "msg-42",
     });
     expect(h.dispatches).toHaveLength(2);
+  });
+
+  it("recovers a persisted reminder in a fresh runner and delivers it once", async () => {
+    const backingStore = createInMemoryScheduledTaskStore();
+    const backingLogStore = createInMemoryScheduledTaskLogStore();
+    const beforeRestart = makeHarness("2026-05-11T12:00:00.000Z", {
+      backingStore,
+      backingLogStore,
+    });
+    const task = await beforeRestart.runner.schedule(
+      reminderInput({
+        trigger: { kind: "once", atIso: "2026-05-11T12:05:00.000Z" },
+        idempotencyKey: "restart-recovery-reminder",
+      }),
+    );
+
+    const afterRestart = makeHarness("2026-05-11T12:05:00.000Z", {
+      backingStore,
+      backingLogStore,
+    });
+    afterRestart.queueDispatchResults({
+      ok: true,
+      messageId: "restart-recovery-message-1",
+    });
+
+    const recovered = await afterRestart.runner.fireWithResult(task.taskId);
+    expect(recovered.kind).toBe("fired");
+    expect(afterRestart.dispatches).toHaveLength(1);
+    expect(afterRestart.dispatches[0]?.record.taskId).toBe(task.taskId);
+    const persisted = await backingStore.get(task.taskId);
+    expect(persisted?.state.status).toBe("fired");
+    expect(persisted?.metadata?.lastDispatchResult).toEqual({
+      ok: true,
+      messageId: "restart-recovery-message-1",
+    });
+
+    const replay = await afterRestart.runner.fireWithResult(task.taskId);
+    expect(replay.kind).toBe("raced");
+    expect(afterRestart.dispatches).toHaveLength(1);
   });
 
   it("persists an event payload across retry and escalation dispatches", async () => {

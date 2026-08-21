@@ -15,6 +15,7 @@ export default scenario({
   id: "health.weekly-step-trend",
   title: "Weekly step trend compares to prior week",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "trend", "steps"],
   isolation: "per-scenario",
   requires: {

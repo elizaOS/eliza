@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Diligence follow-up is scheduled with real arguments and the legal hold gate holds",
   domain: "executive.followup",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

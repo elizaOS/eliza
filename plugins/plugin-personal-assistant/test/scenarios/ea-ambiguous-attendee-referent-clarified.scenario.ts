@@ -13,6 +13,7 @@ export default scenario({
   id: "ea-ambiguous-attendee-referent-clarified",
   title: "Ambiguous attendee referent triggers a clarifier before any change",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -102,6 +102,7 @@ export default scenario({
   id: "comms-flood-digest-window-batching",
   title: "Comms flood: batch the noise into one digest, not a ping per message",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

@@ -12,6 +12,7 @@ export default scenario({
   title:
     "Series B launch thread is closer to owner exemplars than consultant copy",
   domain: "lifeops.creative",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "creative-draft", "owner-voice", "judge", "live", "14871"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },

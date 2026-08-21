@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.create.one-off",
   title: "Create a single one-off todo",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke", "happy-path"],
   isolation: "per-scenario",
   requires: {

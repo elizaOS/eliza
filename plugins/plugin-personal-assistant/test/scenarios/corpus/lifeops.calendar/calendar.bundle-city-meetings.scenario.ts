@@ -43,6 +43,7 @@ export default scenario({
   id: "calendar.bundle-city-meetings",
   title: "Bundles NYC meetings compactly during a one-day visit",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "travel", "bundling"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

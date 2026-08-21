@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.partial-day-trip-no-hotel",
   title: "Same-day trip books flight only, does not auto-include a hotel",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "same-day", "hotel"],
   description:
     "User asks for a same-day there-and-back trip. The agent must book only flights and NOT silently add a hotel — even if 'overnight stay' or 'standard trip' templates exist. Catches a 'helpful' over-booking failure mode.",

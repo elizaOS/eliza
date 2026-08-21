@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Priority triage ranks the seeded blocker above seeded noise and schedules it",
   domain: "executive.prioritization",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "prioritize", "inbox", "outcome"],
   isolation: "per-scenario",
   requires: {

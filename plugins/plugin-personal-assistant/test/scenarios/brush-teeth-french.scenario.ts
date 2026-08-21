@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-french",
   title: "Brush teeth from polite French phrasing (vous)",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

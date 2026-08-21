@@ -9,6 +9,7 @@ export default scenario({
   id: "water-french-casual",
   title: "Drink water from casual French (tu) phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

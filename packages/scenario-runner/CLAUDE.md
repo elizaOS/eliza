@@ -12,6 +12,8 @@ This package is the canonical integration-test runtime for elizaOS plugins and a
 packages/scenario-runner/
   bin/
     eliza-scenarios          # CLI entry shim — imports the built dist/cli.js
+    eliza-provider-canary    # Authorization-first external canary executor
+    eliza-provider-qualification # Offline evidence verifier and cataloger
   schema/
     index.js / index.d.ts   # ScenarioDefinition, ScenarioTurn, CapturedAction, etc.
   src/
@@ -25,6 +27,7 @@ packages/scenario-runner/
     cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
+    provider-qualified/      # External canary authorization, execution, evidence, and verification
     seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
     types.ts                 # TurnReport / ScenarioReport / AggregateReport / RunnerContext

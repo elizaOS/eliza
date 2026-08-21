@@ -26,6 +26,7 @@ export default scenario({
   id: "night-owl-observed-wake-drift-adaptation",
   title: "Night owl: observed wake drift updates the anchor, not a stale 11:30",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "night-owl", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

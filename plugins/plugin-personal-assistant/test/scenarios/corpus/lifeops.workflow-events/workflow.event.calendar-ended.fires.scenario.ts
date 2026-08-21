@@ -53,6 +53,7 @@ export default scenario({
   title:
     "Event-triggered workflow fires when a synced event's end time has passed",
   domain: "lifeops.workflow-events",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "workflow", "event-trigger"],
   isolation: "per-scenario",
   seed: [

@@ -54,6 +54,7 @@ export default scenario({
   id: "gmail.partial-failure-50-of-100-modified",
   title: "Gmail batchModify partial failure reported honestly",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "partial-failure", "honesty", "robustness"],
   isolation: "per-scenario",
   requires: {

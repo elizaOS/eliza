@@ -44,6 +44,7 @@ export default scenario({
   id: "cross-channel.group-chat-handoff-status",
   title: "Handoff status query returns honest no-active state when none exists",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "handoff", "status", "honesty"],
   isolation: "per-scenario",
   requires: {

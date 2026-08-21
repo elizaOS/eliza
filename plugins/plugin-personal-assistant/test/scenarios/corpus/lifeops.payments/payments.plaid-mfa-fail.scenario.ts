@@ -116,6 +116,7 @@ export default scenario({
   id: "payments.plaid-mfa-fail",
   title: "Plaid MFA failure surfaces actionable re-auth, never claims success",
   domain: "lifeops.payments",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "payments",

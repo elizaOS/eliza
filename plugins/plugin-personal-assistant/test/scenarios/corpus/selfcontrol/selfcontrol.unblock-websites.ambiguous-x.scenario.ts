@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.unblock-websites.ambiguous-x",
   title: "Unblock requests do not require restating the hostname",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "multi-turn", "unblock", "clarity"],
   description:
     "When the user clearly wants the current website block removed, 'can you unblock x?' should route to the website unblock action instead of asking what x means.",

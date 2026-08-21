@@ -38,6 +38,7 @@ export default scenario({
   id: "scheduling.confirm-time-creates-event",
   title: "User confirms a proposed slot — agent creates the event",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "confirmation"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

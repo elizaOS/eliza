@@ -91,6 +91,7 @@ export default scenario({
   id: "convo.echo-self-test",
   title: "Convo framework self-test: ECHO_TEST action is captured",
   domain: "convo",
+  evidenceScope: "runner-fixture",
   // Keyless-deterministic: the trivial ECHO_TEST plugin runs in-memory and the
   // routing fixtures registered below force the action selection under the
   // deterministic model provider. No external service, no secret. Verified passing
@@ -100,9 +101,6 @@ export default scenario({
   description:
     "Registers a trivial ECHO_TEST plugin and verifies the scripted runner captures the action call with success=true.",
 
-  requires: {
-    plugins: ["echo-test"],
-  },
   isolation: "per-scenario",
 
   seed: [

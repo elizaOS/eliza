@@ -13,6 +13,7 @@ export default scenario({
   id: "cross.language.spanish-english-mixed",
   title: "Spanish-language task-creation request routes correctly",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "i18n", "critical"],
   description:
     "User asks in Spanish to create a task called 'llamar a mamá'. The agent must route to CREATE_TASK or LIFE and its response should either be in Spanish or include the task title verbatim.",

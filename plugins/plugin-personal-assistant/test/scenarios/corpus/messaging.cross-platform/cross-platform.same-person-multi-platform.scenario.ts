@@ -1,10 +1,5 @@
-/** Scenario fixture for cross platform same person multi platform; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves an alias resolves to one canonical cross-platform person. */
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   acceptCanonicalIdentityMerge,
@@ -12,20 +7,24 @@ import {
   seedCanonicalIdentityFixture,
 } from "../../../../test/helpers/lifeops-identity-merge-fixtures.ts";
 
-const PERSON_NAME = "Priya Rao";
+const PERSON_NAME = "Scenario Priya Rao";
+const PERSON_ALIAS = "Scenario P. Rao";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "cross-platform.same-person-multi-platform",
   title: "Recognize one person across Gmail, Signal, Telegram, and WhatsApp",
   domain: "messaging.cross-platform",
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
   tags: [
     "cross-platform",
     "messaging",
     "identity-merge",
     "parameter-extraction",
   ],
-  status: "pending",
+  description:
+    "Queries MESSAGE.read_with_contact using a scenario-scoped alias and verifies it resolves to one canonical identity across every linked platform.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -49,43 +48,28 @@ export default scenario({
         }
         const fixture = await seedCanonicalIdentityFixture({
           runtime,
-          seedKey: "scenario-same-person",
+          seedKey: "scenario-priya",
           personName: PERSON_NAME,
+          priorNames: [PERSON_ALIAS],
         });
-        await acceptCanonicalIdentityMerge(runtime, fixture);
+        if (!fixture.alreadySeeded) {
+          await acceptCanonicalIdentityMerge(runtime, fixture);
+        }
         return undefined;
       },
     },
   ],
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "ask about priyas cross-platform messages",
       room: "main",
-      text: "Show me everywhere Priya Rao has messaged me recently. She is the same person across Gmail, Signal, Telegram, and WhatsApp.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
-        description:
-          "cross-platform conversation lookup for one canonical person",
-        includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
-      }),
-      // De-echoed (#9310): the old keywords ("Priya", "Gmail", "Signal",
-      // "Telegram", "WhatsApp") all appeared in the user's own turn text
-      // (which also says "same person", so that phrase is excluded too). The
-      // reply must express the canonical-identity outcome in derived words.
-      responseIncludesAny: [
-        "single",
-        "merged",
-        "unified",
-        "consolidated",
-        "one contact",
-        "one thread",
-      ],
-      responseJudge: {
-        minimumScore: 0.75,
-        rubric:
-          "The assistant must treat Priya Rao as one person, not multiple disconnected contacts, and summarize cross-platform message context across Gmail, Signal, Telegram, and WhatsApp.",
+      actionName: "MESSAGE",
+      text: "Resolve this alias and read its cross-platform conversations.",
+      options: {
+        parameters: { action: "read_with_contact", contact: PERSON_ALIAS },
       },
+      responseIncludes: ["Priya Rao", "5 thread(s)", "10 messages"],
     },
   ],
   finalChecks: [
@@ -105,19 +89,29 @@ export default scenario({
     },
     {
       type: "custom",
-      name: "cross-platform-same-person-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
-        description:
-          "cross-platform conversation lookup for one canonical person",
-        includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
-      }),
+      predicate: (ctx) => {
+        const action = ctx.actionsCalled.find(
+          (entry) => entry.actionName === "MESSAGE" && entry.result?.success,
+        );
+        const data = action?.result?.data as
+          | {
+              operation?: string;
+              personName?: string;
+              platforms?: string[];
+              totalMessages?: number;
+            }
+          | undefined;
+        if (
+          data?.operation !== "read_with_contact" ||
+          data.personName !== PERSON_NAME
+        ) {
+          return `expected alias ${PERSON_ALIAS} to resolve to ${PERSON_NAME}`;
+        }
+        if (data.totalMessages !== 10 || data.platforms?.length !== 5) {
+          return `expected one canonical five-platform result with ten messages, got ${JSON.stringify(data)}`;
+        }
+        return undefined;
+      },
     },
-    judgeRubric({
-      name: "cross-platform-same-person-rubric",
-      threshold: 0.75,
-      description:
-        "End-to-end: Priya Rao is handled as one canonical person whose conversation context spans Gmail, Signal, Telegram, and WhatsApp.",
-    }),
   ],
 });

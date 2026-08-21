@@ -50,6 +50,7 @@ export default scenario({
   id: "inbox-triage.archive-low-value-newsletters",
   title: "Archive newsletters >7d old via approval gate; person mail untouched",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "archive", "policy", "approval-required"],
   isolation: "per-scenario",
   requires: {

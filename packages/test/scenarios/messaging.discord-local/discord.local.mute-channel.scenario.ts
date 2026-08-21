@@ -1,83 +1,81 @@
-/** Scenario fixture for discord local mute channel; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves muting a Discord-local room changes the authoritative participant state. */
+
 import type { AgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+
+const muteParameters: {
+  action: "mute";
+  platform: "discord-local";
+  roomId?: string;
+} = {
+  action: "mute",
+  platform: "discord-local",
+};
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "discord.local.mute-channel",
-  title: "Discord mute request updates the live room mute state",
+  title: "Discord-local mute changes authoritative room state",
   domain: "messaging.discord-local",
-  tags: ["messaging", "discord", "routing", "state-transition"],
+  tags: ["messaging", "discord", "mute", "state-transition"],
   description:
-    "A Discord channel mute request should invoke MUTE_ROOM and leave the live participant state set to MUTED.",
+    "Invokes the canonical MUTE_ROOM action in a Discord-local room and verifies authoritative runtime participant state rather than accepting a transcript claim.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
-      source: "dashboard",
-      channelType: "DM",
-      title: "Discord Local Mute",
+      source: "discord-local",
+      channelType: "GROUP",
+      title: "gm",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "bind-exact-discord-room-id",
+      apply: (ctx) => {
+        if (!ctx.primaryRoomId) return "primary room unavailable";
+        muteParameters.roomId = ctx.primaryRoomId;
+        return undefined;
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "mute gm channel",
+      kind: "action",
+      name: "mute-gm-room",
       room: "main",
-      text: "Mute the #gm channel",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MUTE_ROOM"],
-        description: "discord mute room action",
-        includesAny: ["Muted", "muted"],
-      }),
+      text: "Mute this Discord #gm channel.",
+      actionName: "ROOM",
+      options: { parameters: muteParameters },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "MUTE_ROOM",
-    },
-    {
       type: "custom",
-      name: "discord-local-mute-routing",
+      name: "discord-room-is-authoritatively-muted",
       predicate: async (ctx) => {
         const runtime = ctx.runtime as AgentRuntime | undefined;
-        if (!runtime) {
-          return "scenario runtime unavailable";
+        if (!runtime || !ctx.primaryRoomId) {
+          return "scenario runtime or primary room unavailable";
         }
-        const muteAction = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "MUTE_ROOM",
-        );
-        if (!muteAction) {
-          return "expected MUTE_ROOM to be called";
-        }
-        const data =
-          muteAction.result?.data && typeof muteAction.result.data === "object"
-            ? (muteAction.result.data as {
-                muted?: boolean;
-                roomId?: string;
-                roomName?: string;
-              })
-            : null;
-        if (!data?.muted) {
-          return "expected MUTE_ROOM result with muted=true";
-        }
-        if (typeof data.roomId !== "string" || data.roomId.length === 0) {
-          return "expected MUTE_ROOM result to include roomId";
-        }
-        const currentState = await runtime.getParticipantUserState(
-          data.roomId,
+        const state = await runtime.getParticipantUserState(
+          ctx.primaryRoomId,
           runtime.agentId,
         );
-        if (currentState !== "MUTED") {
-          return `expected live participant user state MUTED, got ${currentState ?? "(missing)"}`;
-        }
-        return undefined;
+        return state === "MUTED"
+          ? undefined
+          : `expected MUTED participant state, saw ${state ?? "(missing)"}`;
       },
+    },
+    {
+      type: "connectorDispatchOccurred",
+      channel: "discord-local",
+      expected: false,
+      maxCount: 0,
     },
   ],
 });

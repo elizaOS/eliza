@@ -40,6 +40,7 @@ export default scenario({
   title:
     "Bulk archive of ~50 messages goes through batchModify, not per-message",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "batch", "scale", "quota"],
   isolation: "per-scenario",
   requires: {

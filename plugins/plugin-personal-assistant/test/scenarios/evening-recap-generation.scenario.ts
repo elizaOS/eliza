@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Evening recap grounds in seeded slipped/upcoming state and carries forward",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "briefing",

@@ -19,6 +19,7 @@ export default scenario({
   title:
     "Contractor invoice authorization resolves and a receipt follow-up is scheduled",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "approvals", "outcome"],
   isolation: "per-scenario",
   requires: {

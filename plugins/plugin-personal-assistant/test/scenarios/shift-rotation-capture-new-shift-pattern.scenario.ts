@@ -152,6 +152,7 @@ export default scenario({
   title:
     "Capture a shift-aware post-clock-out reminder from a plain 'on nights starting Monday' statement, never scheduling it into protected daytime sleep",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

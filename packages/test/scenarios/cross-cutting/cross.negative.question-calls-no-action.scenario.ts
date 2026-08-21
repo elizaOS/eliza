@@ -4,9 +4,9 @@
  * no follow-up scheduling, no contact add, no outbound message).
  */
 
+import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 
 const FORBIDDEN_SIDE_EFFECTS = [
   "MESSAGE",
@@ -33,6 +33,7 @@ export default scenario({
   id: "cross.negative.question-calls-no-action",
   title: "Trivia question is answered without side-effect actions",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "negative", "critical"],
   description:
     "'What is the capital of France?' must be answered in the response text (Paris) without the agent firing MESSAGE, CREATE_TASK, SCHEDULE_FOLLOW_UP, or ADD_CONTACT.",
@@ -60,6 +61,11 @@ export default scenario({
   ],
 
   finalChecks: [
+    {
+      type: "noSideEffects",
+      name: "trivia-has-no-binding-effect",
+      turn: "user-trivia",
+    },
     {
       type: "custom",
       name: "trivia-reply-without-side-effects",

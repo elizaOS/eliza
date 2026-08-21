@@ -13,6 +13,7 @@ export default scenario({
   id: "push.scheduled-notification-cancel-when-event-cancelled",
   title: "Cancelling a calendar event also cancels its pending push ladder",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "cancel", "calendar", "rollback"],
   description:
     "T-1h / T-10m / T-0 reminders were scheduled for an event. The event got cancelled. Agent must tear down the pending ladder — not let reminders fire for a meeting that no longer exists.",

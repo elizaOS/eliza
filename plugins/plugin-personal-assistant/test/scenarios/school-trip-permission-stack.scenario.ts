@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Trip permission stack grounds in the seeded packet and withholds the passport number",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

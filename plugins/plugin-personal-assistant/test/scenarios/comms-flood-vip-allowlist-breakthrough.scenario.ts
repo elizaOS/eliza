@@ -23,6 +23,7 @@ export default scenario({
   title:
     "Comms flood: two named VIP sources break through the digest on any channel",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "vip", "12283"],
   status: "active",
   isolation: "per-scenario",

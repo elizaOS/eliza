@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.finance-dispute",
   title: "Finance dispute collects receipts, messages, and approval path",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "finance", "dispute"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

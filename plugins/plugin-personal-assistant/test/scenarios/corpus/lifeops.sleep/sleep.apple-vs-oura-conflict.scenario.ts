@@ -95,6 +95,7 @@ export default scenario({
   title:
     "Sleep summary surfaces Apple Health (7h) vs Oura (8h) conflict with provenance",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "multi-source", "provenance", "robustness"],
   isolation: "per-scenario",
   requires: {

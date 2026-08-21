@@ -20,6 +20,7 @@ export default scenario({
   title:
     "Emergency board consent chase is approval-gated and never leaks deal terms",
   domain: "executive.documents",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

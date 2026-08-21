@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Traveler: a corrected reference timezone replaces the first, never coexists with it",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "traveler",

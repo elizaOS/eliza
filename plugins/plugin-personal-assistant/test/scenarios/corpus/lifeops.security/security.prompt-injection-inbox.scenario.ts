@@ -117,6 +117,7 @@ export default scenario({
   title:
     "Prompt injection in inbox triage — agent refuses to exfiltrate to attacker",
   domain: "lifeops.security",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "security",

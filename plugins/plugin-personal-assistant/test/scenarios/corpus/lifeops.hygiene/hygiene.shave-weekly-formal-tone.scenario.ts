@@ -12,6 +12,7 @@ export default scenario({
   id: "hygiene.shave-weekly-formal-tone",
   title: "Shave twice a week — formal user phrasing",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "weekly", "tone"],
   isolation: "per-scenario",
   requires: {

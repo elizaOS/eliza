@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Consulate interview recovery is grounded in seeded rebooking work and leaks no passport number",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

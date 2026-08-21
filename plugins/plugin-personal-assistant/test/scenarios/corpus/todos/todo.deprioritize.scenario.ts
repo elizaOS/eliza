@@ -9,6 +9,7 @@ export default scenario({
   id: "todo.deprioritize",
   title: "Move a seeded todo to low priority",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "multi-turn-memory"],
   isolation: "per-scenario",
   requires: {

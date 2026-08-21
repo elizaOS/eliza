@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Pet relocation runbook grounds in the seeded permit and withholds the microchip number",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

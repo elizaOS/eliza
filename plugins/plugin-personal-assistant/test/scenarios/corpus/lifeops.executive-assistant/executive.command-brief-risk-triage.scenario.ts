@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.command-brief-risk-triage",
   title: "Command brief compresses calendar, inbox, reminders, and decisions",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "command-brief", "chat-first"],
   description:
     "The assistant landing flow should produce a small decision brief across calendar, inbox, reminders, and blocked decisions instead of dumping every record.",

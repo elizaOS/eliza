@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Anonymous donor diligence is grounded in seeded tasks and never names the family",
   domain: "executive.privacy",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

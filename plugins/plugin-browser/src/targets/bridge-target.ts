@@ -137,17 +137,11 @@ export async function dispatchBridgeCommand(
       return {
         mode: "desktop",
         subaction: command.subaction,
-        value: page
-          ? {
-              url: page.url,
-              title: page.title,
-              browser: page.browser,
-              profileId: page.profileId,
-              windowId: page.windowId,
-              tabId: page.tabId,
-              capturedAt: page.capturedAt,
-            }
-          : null,
+        // State is the read contract for a synchronized companion page. Keep
+        // the complete owner-scoped context so callers can ground replies in
+        // selected text, headings, links, and forms instead of re-fetching the
+        // page through a second, potentially divergent path.
+        value: page,
       };
     }
     case "get": {

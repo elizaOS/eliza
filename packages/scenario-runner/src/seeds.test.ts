@@ -5,7 +5,7 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { createRealTestRuntime } from "@elizaos/core/testing";
 import type {
@@ -211,13 +211,14 @@ function createSeedHarness() {
       _unique?: boolean,
     ) => "fact-id" as UUID,
   );
+  const createEntity = vi.fn(async (_entity: Entity) => undefined);
   const runtime = {
     agentId: "00000000-0000-0000-0000-000000000001" as UUID,
     getService: vi.fn((serviceName: string) =>
       serviceName === "relationships" ? relationships : null,
     ),
     getEntityById: vi.fn(async () => null),
-    createEntity: vi.fn(async () => undefined),
+    createEntity,
     createMemory,
   } as unknown as AgentRuntime;
   return {
@@ -230,6 +231,7 @@ function createSeedHarness() {
     relationships,
     runtime,
     createMemory,
+    createEntity,
   };
 }
 
@@ -1190,6 +1192,24 @@ describe("scenario memory seeds", () => {
       }),
       { displayName: "Alex Rivera" },
     );
+  });
+
+  it("namespaces deterministic contact ids by scenario", async () => {
+    const { createEntity, ctx } = createSeedHarness();
+    ctx.scenarioId = "relationship-scenario-a";
+    await applyScenarioSeedStep(ctx, {
+      type: "contact",
+      name: "Alice Chen",
+    } satisfies ScenarioSeedStep);
+    ctx.scenarioId = "relationship-scenario-b";
+    await applyScenarioSeedStep(ctx, {
+      type: "contact",
+      name: "Alice Chen",
+    } satisfies ScenarioSeedStep);
+
+    const ids = createEntity.mock.calls.map(([entity]) => entity.id);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
   });
 
   it("maps merged-entity memory seeds into relationship contacts with all handles", async () => {

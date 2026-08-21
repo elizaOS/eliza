@@ -38,6 +38,7 @@ export default scenario({
   title:
     "Pre-meeting dossier references the seeded 9am event without fabrication",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "dossier", "no-fabrication"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -57,6 +57,18 @@ const message = {
 	createdAt: 1,
 } as unknown as Memory;
 
+describe("MESSAGE explicit operation validation", () => {
+	it("accepts a structurally invoked operation without inferred chat context", async () => {
+		const valid = await messageAction.validate(
+			mockRuntime([]),
+			message,
+			undefined,
+			{ parameters: { action: "read_with_contact" } },
+		);
+		expect(valid).toBe(true);
+	});
+});
+
 async function listConnections(runtime: IAgentRuntime): Promise<ActionResult> {
 	const result = await messageAction.handler(
 		runtime,

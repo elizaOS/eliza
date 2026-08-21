@@ -99,7 +99,7 @@
       ],
       "existingScenarioRefs": [
         "calendar.reschedule.simple",
-        "followup.draft-cross-platform.gmail"
+        "followup.draft.gmail"
       ],
       "integrations": ["gmail", "google-calendar"],
       "providers": ["Gmail API", "Google Calendar API"],
@@ -463,7 +463,7 @@
         "calendar.reminder.1hr-before",
         "calendar.reminder.10min-before",
         "calendar.reminder.on-the-dot",
-        "reminder.cross-platform.fires-on-mac-and-phone"
+        "reminder.ladder.delivers-three-rungs"
       ],
       "integrations": ["calendar", "desktop-notify", "mobile-notify"],
       "providers": ["native notifications"],

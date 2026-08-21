@@ -15,6 +15,7 @@ export default scenario({
   id: "persona-voice-transcript",
   title: "Persona: voice-transcript homophones still book Thursday 3pm",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "persona", "robustness", "voice"],
   isolation: "per-scenario",
   requires: {

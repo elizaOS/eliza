@@ -65,6 +65,7 @@ export default scenario({
   id: "inbox-triage.first-name-disambig",
   title: "Ambiguous first name (two Jills) → agent clarifies, does not send",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-learning-spanish-basic",
   title: "Learning goal save flow",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "learning", "mvp"],
   isolation: "per-scenario",
   requires: {

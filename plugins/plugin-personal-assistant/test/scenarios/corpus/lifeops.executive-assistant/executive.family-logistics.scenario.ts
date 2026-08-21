@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Family logistics reconciles appointments, rides, forms, and reminders",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "family", "personal-admin"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

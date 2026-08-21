@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Travel consent prep grounds in seeded trip state; passport data stays gated",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -43,6 +43,7 @@ export default scenario({
   id: "scheduling.reject-all-proposals-asks-clarify",
   title: "All proposed slots rejected — agent asks for guidance",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "clarification"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

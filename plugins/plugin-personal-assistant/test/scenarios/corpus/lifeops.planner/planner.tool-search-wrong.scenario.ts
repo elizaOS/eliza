@@ -71,6 +71,7 @@ export default scenario({
   title:
     'Planner self-corrects when "block out time" misleads retrieval to website/app blockers',
   domain: "lifeops.planner",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "planner", "tool-search", "self-correction", "robustness"],
   isolation: "per-scenario",
   requires: {

@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.inbox.priority-ranks-urgent-before-low",
   title: "Rank urgent blockers ahead of low-priority noise",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "briefing", "triage", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant should put urgent blockers first and demote low-value inbound.",
@@ -35,7 +36,7 @@ export default scenario({
       room: "main",
       text: "Show me the urgent blockers first and separate them from low-priority inbound.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "priority-ranked inbox brief",
         includesAny: ["urgent", "low", "priority", "blocker"],
       }),
@@ -56,11 +57,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
       includesAny: ["urgent", "low", "priority", "blocker"],
     },
     {
@@ -71,7 +72,7 @@ export default scenario({
       type: "custom",
       name: "ea-priority-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "priority-ranked inbox brief",
         includesAny: ["urgent", "low", "priority", "blocker"],
       }),

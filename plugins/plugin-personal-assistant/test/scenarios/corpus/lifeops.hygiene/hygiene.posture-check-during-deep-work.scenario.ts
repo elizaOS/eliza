@@ -17,6 +17,7 @@ export default scenario({
   id: "hygiene.posture-check-during-deep-work",
   title: "Posture check every 30 minutes during deep work",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "interval", "focus"],
   isolation: "per-scenario",
   requires: {

@@ -12,6 +12,7 @@ export default scenario({
   id: "h1-ambiguous-requires-clarifier",
   title: "H1 ambiguous relationship signal asks instead of asserting",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "H1", "relationships", "uncertainty", "no-fabrication"],
   isolation: "per-scenario",
   rooms: [

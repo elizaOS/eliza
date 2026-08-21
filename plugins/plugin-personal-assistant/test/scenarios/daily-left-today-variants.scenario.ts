@@ -53,6 +53,7 @@ export default scenario({
   id: "daily-left-today-variants",
   title: "Daily leftover overview phrasing variants",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops"],
   isolation: "per-scenario",
   requires: {

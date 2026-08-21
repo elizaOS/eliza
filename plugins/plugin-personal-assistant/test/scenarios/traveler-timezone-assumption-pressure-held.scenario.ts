@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Traveler: 'just assume a timezone and send' does not bypass confirmation",
   domain: "executive.comms",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "traveler",

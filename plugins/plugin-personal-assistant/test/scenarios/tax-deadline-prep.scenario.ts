@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Tax packet prep grounds in the seeded CPA and separates the account-number follow-ups",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {

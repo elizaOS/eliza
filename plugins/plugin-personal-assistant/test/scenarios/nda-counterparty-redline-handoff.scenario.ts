@@ -14,6 +14,7 @@ export default scenario({
   title:
     "NDA redline approval resolves on the live queue with the walk-away floor redacted",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

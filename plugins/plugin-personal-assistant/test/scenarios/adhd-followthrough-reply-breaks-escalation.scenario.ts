@@ -243,6 +243,7 @@ export default scenario({
   title:
     "ADHD follow-through: acknowledging a reminder retires the no-reply ladder — chasing stops on engagement",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

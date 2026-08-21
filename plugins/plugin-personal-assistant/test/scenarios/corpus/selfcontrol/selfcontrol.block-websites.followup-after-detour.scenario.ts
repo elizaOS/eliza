@@ -19,6 +19,7 @@ export default scenario({
   id: "selfcontrol.block-websites.followup-after-detour",
   title: "Block previously named websites after an unrelated detour",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "multi-turn", "context-carryover"],
   description:
     "The blocker should recover the websites from recent conversation even after the user talks about something else before confirming.",

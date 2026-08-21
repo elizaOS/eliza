@@ -24,6 +24,7 @@ export default scenario({
   id: "lowact-quiet-user-reengagement-tone",
   title: "Low activation: re-engage a quiet user warmly, no guilt, no pile-on",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

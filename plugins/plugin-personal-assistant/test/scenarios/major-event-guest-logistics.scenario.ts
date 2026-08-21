@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Fundraiser logistics ground in seeded guest state; VIP notes stay in approval",
   domain: "executive.events",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

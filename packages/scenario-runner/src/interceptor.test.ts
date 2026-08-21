@@ -35,8 +35,8 @@ function makeFakeRuntime(): FakeRuntime {
 const asRuntime = (rt: FakeRuntime): IAgentRuntime =>
   rt as unknown as IAgentRuntime;
 
-describe("captureConnectorDispatchesFromAction delivered default", () => {
-  it("marks delivered=true only when the action reports success: true", () => {
+describe("captureConnectorDispatchesFromAction evidence boundary", () => {
+  it("does not mark delivery when an action merely reports success", () => {
     const dispatches: CapturedConnectorDispatch[] = [];
     captureConnectorDispatchesFromAction(
       dispatches,
@@ -45,7 +45,11 @@ describe("captureConnectorDispatchesFromAction delivered default", () => {
       { success: true, data: {} },
     );
     expect(dispatches).toHaveLength(1);
-    expect(dispatches[0]!.delivered).toBe(true);
+    expect(dispatches[0]).toMatchObject({
+      delivered: false,
+      evidenceSource: "action-result-inference",
+      status: "reported_success",
+    });
   });
 
   it("marks delivered=false when the action reports success: false", () => {
@@ -56,7 +60,11 @@ describe("captureConnectorDispatchesFromAction delivered default", () => {
       { channel: "sms" },
       { success: false, data: {} },
     );
-    expect(dispatches[0]!.delivered).toBe(false);
+    expect(dispatches[0]).toMatchObject({
+      delivered: false,
+      evidenceSource: "action-result-inference",
+      status: "reported_failure",
+    });
   });
 
   it("defaults delivered to false when no boolean success is present", () => {
@@ -71,7 +79,49 @@ describe("captureConnectorDispatchesFromAction delivered default", () => {
       { channel: "sms" },
       { data: {} },
     );
-    expect(dispatches[0]!.delivered).toBe(false);
+    expect(dispatches[0]?.delivered).toBe(false);
+  });
+});
+
+describe("runtime connector boundary capture", () => {
+  it("records structural provider acceptance from sendMessageToTarget", async () => {
+    const runtime = {
+      actions: [],
+      async sendMessageToTarget(_target?: unknown, _content?: unknown) {
+        return {
+          kind: "delivered" as const,
+          receipt: {
+            providerMessageIds: ["provider-42"] as [string, ...string[]],
+            acceptedAt: 123,
+            persistence: {
+              status: "persisted" as const,
+              memoryIds: ["00000000-0000-0000-0000-000000000042"],
+            },
+          },
+          memories: [],
+        };
+      },
+    };
+    const interceptor = attachInterceptor(runtime as never);
+
+    await runtime.sendMessageToTarget(
+      { source: "discord", accountId: "account-1", channelId: "channel-1" },
+      {
+        text: "hello",
+        metadata: { scheduledDispatchKey: "dispatch-42" },
+      },
+    );
+
+    expect(interceptor.connectorDispatches).toEqual([
+      expect.objectContaining({
+        channel: "discord",
+        delivered: true,
+        evidenceSource: "runtime-send-handler",
+        status: "delivered",
+        providerMessageIds: ["provider-42"],
+        idempotencyKey: "dispatch-42",
+      }),
+    ]);
   });
 });
 

@@ -59,6 +59,7 @@ export default scenario({
   title:
     "G2 cadence watcher emits a relationship follow-up for stale friend edge",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "G2", "followup", "scheduled-task", "relationships"],
   isolation: "per-scenario",
   rooms: [

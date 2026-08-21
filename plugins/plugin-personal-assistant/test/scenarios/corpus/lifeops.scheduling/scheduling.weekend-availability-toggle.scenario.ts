@@ -35,6 +35,7 @@ export default scenario({
   id: "scheduling.weekend-availability-toggle",
   title: "Handles weekend-availability request against weekday-only prefs",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "weekend"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

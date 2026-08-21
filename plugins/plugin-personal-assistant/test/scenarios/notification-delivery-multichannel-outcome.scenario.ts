@@ -145,6 +145,7 @@ export default scenario({
   title:
     "Notification delivery: a multi-channel reminder plan fans out, delivers in_app twice (plan + escalation), and persists the per-channel result",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: [
     "lifeops",
     "reminders",

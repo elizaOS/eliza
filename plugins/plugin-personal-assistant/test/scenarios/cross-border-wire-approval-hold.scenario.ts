@@ -19,6 +19,7 @@ export default scenario({
   title:
     "Cross-border wire is held: rejected authorization releases no payment",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

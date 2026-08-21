@@ -45,6 +45,7 @@ export default scenario({
   title:
     "Cross-persona: shares only availability with a third party, never volunteers sensitive facts",
   domain: "lifeops.privacy",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "control", "adversarial", "privacy", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

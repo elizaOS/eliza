@@ -1,111 +1,80 @@
-/** Scenario fixture for discord gateway bot routes to user agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+/** Proves Discord's production managed-route retry seam returns a typed owner-bound reply. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "discord-gateway.bot-routes-to-user-agent",
-  title: "Discord gateway bot routes to the active assistant",
-  domain: "gateway",
-  tags: ["gateway", "discord", "smoke"],
+  title: "Discord managed ingress retries and preserves agent ownership",
+  domain: "gateway-contract",
+  tags: ["gateway", "discord", "ownership", "retry", "deterministic-contract"],
   description:
-    "A Discord gateway DM resolves to the owning user agent and returns inbox-grounded context from the same Discord room.",
+    "Runs the production Discord bounded-routing helper across a transient failure and typed success response. It does not claim Discord API delivery.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
   rooms: [
     {
       id: "main",
-      source: "discord",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Discord Gateway Bot Routes To User Agent",
+      title: "Discord route contract",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "discord-inbound",
+      kind: "action",
+      name: "route-with-bounded-retry",
       room: "main",
-      text: "What's in this Discord gateway DM? Summarize it back to me.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "Discord gateway inbox read",
-        includesAny: ["discord", "dm", "message"],
-      }),
+      actionName: "DISCORD_GATEWAY_ROUTE_CONTRACT",
+      assertTurn: (turn: ScenarioTurnExecution) => {
+        const d = (
+          turn.responseBody as {
+            data?: {
+              outcome?: { ok?: boolean; attempts?: number };
+              invalidIngressStatus?: number;
+              validIngressStatus?: number;
+              durableJobs?: number;
+              owner?: string;
+              channelId?: string;
+            };
+          }
+        )?.data;
+        return d?.invalidIngressStatus === 401 &&
+          d.validIngressStatus === 204 &&
+          d.durableJobs === 1 &&
+          d.outcome?.ok === true &&
+          d.outcome.attempts === 2 &&
+          d.owner === "agent-owner-1" &&
+          d.channelId === "discord-dm:444"
+          ? undefined
+          : `unexpected route result ${JSON.stringify(d)}`;
+      },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
-      includesAny: ["discord", "dm", "message", "channel", "guild"],
-    },
-    {
       type: "custom",
-      name: "discord-gateway-inbox-context-is-real",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "Discord gateway inbox read",
-        includesAny: ["discord", "dm", "message"],
-      }),
-    },
-    {
-      type: "custom",
-      name: "discord-gateway-response-is-grounded",
-      predicate: async (ctx) => {
-        const reply = (ctx.turns?.[0]?.responseText ?? "").trim();
-        if (!reply) {
-          return "expected a non-empty Discord gateway response";
-        }
-
-        const hit = ctx.actionsCalled.find((action) =>
-          ["MESSAGE", "MESSAGE"].includes(action.actionName),
-        );
-        if (!hit) {
-          return "expected an INBOX action";
-        }
-
-        const blob = JSON.stringify(hit).toLowerCase();
-        if (
-          !blob.includes("discord") ||
-          (!blob.includes("dm") && !blob.includes("channel"))
-        ) {
-          return "expected Discord room metadata in the inbox action payload";
-        }
-        return undefined;
-      },
-    },
-    {
-      type: "custom",
-      name: "discord-gateway-room-ownership-is-real",
-      predicate: async (ctx) => {
-        const hit = ctx.actionsCalled.find((action) =>
-          ["MESSAGE", "MESSAGE"].includes(action.actionName),
-        );
-        if (!hit) {
-          return "expected an INBOX action";
-        }
-
-        const blob = JSON.stringify(hit).toLowerCase();
-        if (!blob.includes("roomid")) {
-          return "expected the Discord inbox payload to include roomId";
-        }
-        if (!blob.includes("discord-dm:") && !blob.includes("discord-guild:")) {
-          return "expected a namespaced Discord roomId";
-        }
-        if (!blob.includes("channelid")) {
-          return "expected Discord channel metadata in the inbox payload";
-        }
-        return undefined;
-      },
+      name: "one-owner-bound-route",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one route effect, saw ${harness.dispatches.length}`,
     },
   ],
 });

@@ -24,6 +24,7 @@ export default scenario({
   id: "sleep.nap-night-disambiguation",
   title: "Nap vs night sleep — agent disambiguates main sleep",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "disambiguation", "nap"],
   isolation: "per-scenario",
   requires: {

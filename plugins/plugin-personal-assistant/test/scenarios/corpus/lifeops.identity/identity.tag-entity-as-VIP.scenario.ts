@@ -13,6 +13,7 @@ export default scenario({
   id: "identity.tag-entity-as-VIP",
   title: "Tag a customer entity as VIP for inbox + push triage",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "vip", "tag"],
   description:
     "Whale customer at Acme. User tags them VIP. The tag must propagate so inbox triage promotes their threads and push escalations get tighter SLAs — confirmed in the reply.",

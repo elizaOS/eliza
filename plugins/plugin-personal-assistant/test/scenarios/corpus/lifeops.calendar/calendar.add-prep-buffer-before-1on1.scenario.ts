@@ -43,6 +43,7 @@ export default scenario({
   id: "calendar.add-prep-buffer-before-1on1",
   title: "Adds a 15-min prep block before a 1:1",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "prep-buffer"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

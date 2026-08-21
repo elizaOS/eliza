@@ -4,9 +4,9 @@
  *
  * Tests whether the agent goes silent after being asked, and stays silent across 4 subsequent unrelated user turns. No explicit release in this scenario.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "shut_up.polite.code.011",
   title: "shut_up :: polite :: code :: 5-turn (11)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:shut_up",
@@ -64,35 +65,30 @@ export default scenario({
     },
   ],
   turns: [
-    // instruction turn — agent may briefly acknowledge
     {
       kind: "message",
       name: "ask-for-silence",
       room: "main",
       text: "Could you please stop responding for a bit? I just want to think in peace. Stay silent until I @mention you.\n```\n// instruction: persist across topics\nbehavior.persist = true;\n```",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-1",
       room: "main",
       text: "And another thing...",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-2",
       room: "main",
       text: "Anyway.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-3",
       room: "main",
       text: "Continuing the vent.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-4",

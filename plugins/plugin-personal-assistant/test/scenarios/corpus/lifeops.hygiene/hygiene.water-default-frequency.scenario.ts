@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.water-default-frequency",
   title: "Drink water default daily frequency",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "interval"],
   isolation: "per-scenario",
   requires: {

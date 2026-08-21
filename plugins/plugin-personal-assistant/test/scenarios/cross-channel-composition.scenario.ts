@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Cross-channel composition drafts a grounded email for approval and sends nothing",
   domain: "messaging.cross-platform",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "messaging", "cross-channel", "llm-eval", "outcome"],
   isolation: "per-scenario",
   requires: {

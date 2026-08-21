@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.archive-thread",
   title: "Archive a Gmail thread (all messages)",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "archive", "thread"],
   isolation: "per-scenario",
   requires: {

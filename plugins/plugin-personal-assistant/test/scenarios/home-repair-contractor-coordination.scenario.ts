@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Contractor coordination grounds in seeded bids; door code stays out of chat",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "household", "calendar", "outcome"],
   isolation: "per-scenario",
   requires: {

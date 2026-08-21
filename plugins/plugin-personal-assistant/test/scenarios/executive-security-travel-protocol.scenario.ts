@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Security travel plan grounds in seeded alias and driver state; drafts stay staged",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "privacy", "outcome"],
   isolation: "per-scenario",
   requires: {

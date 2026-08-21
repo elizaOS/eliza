@@ -36,6 +36,7 @@ export default scenario({
   id: "calendar.check-availability-thursday-morning",
   title: "Free/busy query for Thursday morning surfaces the seeded events",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "free-busy", "availability"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

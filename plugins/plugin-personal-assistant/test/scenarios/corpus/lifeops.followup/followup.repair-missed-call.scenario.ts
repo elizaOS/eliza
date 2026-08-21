@@ -12,6 +12,7 @@ export default scenario({
   id: "followup.repair-missed-call",
   title: "Apologize specifically for a missed call and propose a reschedule",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "repair", "calendar"],
   description:
     "User missed a 1:1 call with Maria. The agent's repair-message must (a) acknowledge the specific miss — not a generic 'sorry I missed you', (b) propose 2–3 concrete reschedule slots from open calendar time. Generic apologies fail.",

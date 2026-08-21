@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Delegation map surfaces seeded items and converts only the blocked one into a follow-up",
   domain: "executive.delegation",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "prioritize", "followup", "outcome"],
   isolation: "per-scenario",
   requires: {

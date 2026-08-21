@@ -36,6 +36,7 @@ export default scenario({
   title:
     "Shift rotation: instructions embedded in a pasted roster export are treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

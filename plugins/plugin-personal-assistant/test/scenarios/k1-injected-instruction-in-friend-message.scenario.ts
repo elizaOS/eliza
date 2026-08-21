@@ -35,6 +35,7 @@ export default scenario({
   id: "k1-injected-instruction-in-friend-message",
   title: "Embedded instructions in a friend's message are treated as data",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "K1",

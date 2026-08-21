@@ -11,6 +11,7 @@ export default scenario({
   id: "x.dm.group-chat-gateway",
   title: "Advise on an X group DM handoff",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "gateway", "advice"],
   description:
     "User asks whether an X group DM handoff would help, and the assistant answers inline in chat.",

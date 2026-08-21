@@ -16,6 +16,7 @@ export default scenario({
   id: "cross.action-selection.wrong-action-fails",
   title: "Reminder request routes to a reminder/task action",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "critical", "ambiguity"],
   description:
     "User asks to set a reminder. The agent must invoke one of the valid reminder-shaped actions (CREATE_TASK, SCHEDULE_FOLLOW_UP, or LIFE). REPLY alone is not sufficient — that would mean the agent acknowledged the request verbally but did nothing.",

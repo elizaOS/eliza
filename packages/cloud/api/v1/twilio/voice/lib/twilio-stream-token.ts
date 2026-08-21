@@ -3,8 +3,8 @@
  * claims fix the call, tenant, agent, and conversation before socket upgrade.
  */
 
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import { z } from "zod";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 
 const TOKEN_VERSION = 1;
 const TOKEN_TTL_SECONDS = 120;

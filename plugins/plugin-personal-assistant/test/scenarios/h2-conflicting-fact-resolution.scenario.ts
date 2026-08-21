@@ -19,6 +19,7 @@ export default scenario({
   id: "h2-conflicting-fact-resolution",
   title: "H2 owner correction supersedes captured relationship fact",
   domain: "lifeops.kg",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H2", "entity", "correction", "relationship"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

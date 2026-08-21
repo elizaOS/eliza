@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Medical POA packet is held: rejected approval produces no distribution",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

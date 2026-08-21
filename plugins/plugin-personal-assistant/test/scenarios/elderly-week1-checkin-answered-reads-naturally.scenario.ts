@@ -30,6 +30,7 @@ export default scenario({
   title:
     "Elderly week-1: she answers the morning check-in ramblingly — warm, plain, not infantilizing",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "persona", "elderly", "tone", "week1", "14354"],
   status: "active",
   isolation: "per-scenario",

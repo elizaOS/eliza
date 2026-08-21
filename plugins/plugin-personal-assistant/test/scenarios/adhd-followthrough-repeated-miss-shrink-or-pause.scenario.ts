@@ -21,6 +21,7 @@ export default scenario({
   title:
     "ADHD follow-through: repeated misses offer a smaller habit or a pause, never streak shame",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "follow-through", "12283"],
   status: "active",
   isolation: "per-scenario",

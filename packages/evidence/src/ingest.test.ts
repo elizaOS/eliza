@@ -3,7 +3,7 @@
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
  * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
  * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
- * scenario-runner reports). Also
+ * scenario-runner reports, and provider-qualification artifacts). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
  * empty silo reports `ingested` with zero artifacts — never the same result.
  */
@@ -100,6 +100,28 @@ function buildFixtureRepo(): string {
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
+  // The coordinated producer publishes public hash-bound capsules only after
+  // every private verifier input passes the exact-inventory catalog.
+  write(
+    repo,
+    "reports/provider-qualification/run-1/gmail/publication.json",
+    '{"schema":"eliza.provider-qualification-publication.v1","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1","cleanupProof":{"payload":{}},"qualificationArtifact":{"schema":"eliza.provider-qualification-artifact.v4","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1"}}\n',
+  );
+  write(
+    repo,
+    "reports/provider-qualification/run-1/gmail/publication.md",
+    "# Provider cleanup publication\n",
+  );
+  write(
+    repo,
+    "reports/provider-qualification/run-1/catalog/catalog.json",
+    '{"schema":"eliza.provider-qualification-catalog.v2"}\n',
+  );
+  write(
+    repo,
+    "reports/provider-qualification/run-1/catalog/catalog.md",
+    "# Provider qualification catalog\n",
+  );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
   return repo;
@@ -401,6 +423,11 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 1,
       },
+      "provider-qualification": {
+        silo: "provider-qualification",
+        status: "ingested",
+        artifactCount: 4,
+      },
     });
   });
 
@@ -433,6 +460,25 @@ describe("ingestAllSilos", () => {
     expect(
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
+    expect(
+      byPath["misc/provider-qualification/run-1/catalog/catalog.json"],
+    ).toMatchObject({
+      kind: "report",
+      source: "provider-qualification",
+    });
+    expect(
+      byPath["misc/provider-qualification/run-1/catalog/catalog.md"],
+    ).toMatchObject({
+      kind: "report",
+      source: "provider-qualification",
+      producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
+    });
+    expect(
+      byPath["misc/provider-qualification/run-1/gmail/publication.json"],
+    ).toMatchObject({ kind: "report", source: "provider-qualification" });
+    expect(
+      byPath["misc/provider-qualification/run-1/gmail/publication.md"],
+    ).toMatchObject({ kind: "report", source: "provider-qualification" });
     expect(
       byPath["lanes/native/android-2026-07-05T01-02-03-004Z/summary.json"],
     ).toMatchObject({ kind: "report", source: "device-e2e" });
@@ -504,6 +550,41 @@ describe("ingestAllSilos", () => {
     for (const name of SILO_NAMES) {
       if (name === "aesthetic-audit") continue;
       expect(byName[name].status).toBe("absent");
+    }
+  });
+
+  it("rejects raw artifacts, missing derived Markdown, and retired catalogs", async () => {
+    for (const setup of [
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/qualification.json",
+          '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+        ),
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/publication.json",
+          '{"schema":"eliza.provider-qualification-publication.v1"}\n',
+        ),
+      (repo: string) => {
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.json",
+          '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
+        );
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.md",
+          "# retired\n",
+        );
+      },
+    ]) {
+      const repo = tmpDir();
+      setup(repo);
+      await expect(build(repo)).rejects.toMatchObject({
+        code: "PROVIDER_PUBLICATION_INVALID",
+      });
     }
   });
 });

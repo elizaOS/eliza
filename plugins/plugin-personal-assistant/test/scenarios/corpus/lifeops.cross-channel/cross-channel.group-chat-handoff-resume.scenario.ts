@@ -21,6 +21,7 @@ export default scenario({
   id: "cross-channel.group-chat-handoff-resume",
   title: "Resume after handoff — agent catches user up on group chat",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "handoff", "resume", "catchup"],
   isolation: "per-scenario",
   requires: {

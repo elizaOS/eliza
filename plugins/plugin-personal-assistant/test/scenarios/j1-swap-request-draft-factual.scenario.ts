@@ -10,6 +10,7 @@ export default scenario({
   id: "j1-swap-request-draft-factual",
   title: "Swap request draft stays factual and waits for owner approval",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "messaging", "approvals", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {

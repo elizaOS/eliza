@@ -454,6 +454,45 @@ describe("isIdempotentBrowserSubaction", () => {
 // ---------------------------------------------------------------------------
 
 describe("Bridge capability manifest excludes session-gated subactions (#18258 review)", () => {
+  it("returns the complete synchronized page context for state reads", async () => {
+    const { dispatchBridgeCommand } = await import(
+      "../targets/bridge-target.js"
+    );
+    const page = {
+      browser: "chrome",
+      profileId: "profile-1",
+      windowId: "window-1",
+      tabId: "tab-1",
+      url: "https://speaker-portal.example.com/submissions",
+      title: "Speaker Portal Submissions",
+      selectionText: "selected deck details",
+      mainText: "Speaker portal submissions and review queue",
+      headings: ["Submissions", "Review queue"],
+      links: [
+        {
+          text: "Back to dashboard",
+          href: "https://speaker-portal.example.com/dashboard",
+        },
+      ],
+      forms: [
+        {
+          action: "https://speaker-portal.example.com/submissions",
+          fields: ["deckUrl", "speakerName"],
+        },
+      ],
+      capturedAt: "2026-08-18T00:00:00.000Z",
+      metadata: {},
+    };
+    const result = await dispatchBridgeCommand(
+      {
+        getCurrentBrowserPage: vi.fn(async () => page),
+      } as never,
+      { subaction: "state" },
+    );
+
+    expect(result.value).toEqual(page);
+  });
+
   it("BRIDGE_SUPPORTED_SUBACTIONS does not advertise session-gated operations", async () => {
     const { BRIDGE_SUPPORTED_SUBACTIONS } = await import(
       "../targets/bridge-target.js"

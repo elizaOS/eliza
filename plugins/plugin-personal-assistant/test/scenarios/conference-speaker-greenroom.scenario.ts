@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Keynote run of show is grounded in seeded summit work and keeps the embargoed subject out of ops briefs",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

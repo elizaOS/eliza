@@ -1,21 +1,55 @@
-/** Scenario fixture for signal reply; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves an exact Signal payload reaches the connector only after owner confirmation. */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  createStatefulMessageConnectorFixture,
+  registerFixtureSeed,
+  registerUnknownEntityResolutionSeed,
+} from "../_fixtures/stateful-message-connector.ts";
+
+const fixture = createStatefulMessageConnectorFixture({
+  source: "signal",
+  label: "Signal",
+  conversations: [
+    {
+      channelId: "+14155550888",
+      recipientId: "+14155550888",
+      label: "Dana",
+      kind: "contact",
+      messages: [
+        {
+          id: "signal-dana-latest",
+          sender: "Dana",
+          text: "Did the booking go through?",
+          createdAt: Date.parse("2026-08-18T18:55:00.000Z"),
+        },
+      ],
+    },
+  ],
+});
+
+const sendParameters = {
+  action: "send",
+  source: "signal",
+  accountId: "test-owner",
+  target: "Dana",
+  targetKind: "contact",
+  message: "I confirmed the booking.",
+  persist: false,
+};
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "signal.reply",
-  title: "Reply to Signal message with confirmation",
+  title: "Signal reply dispatches exact payload after confirmation",
   domain: "messaging.signal",
-  tags: ["messaging", "signal", "confirmation"],
+  tags: ["messaging", "signal", "confirmation", "dispatch-receipt"],
+  description:
+    "Runs the real MESSAGE recipient-confirmation gate against a stateful Signal connector fixture and verifies one exact E.164 target, payload, and provider-style receipt after approval.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
@@ -24,82 +58,70 @@ export default scenario({
       title: "Signal Reply",
     },
   ],
+  seed: [
+    registerFixtureSeed(fixture),
+    registerUnknownEntityResolutionSeed("I confirmed the booking."),
+  ],
   turns: [
     {
-      kind: "message",
-      name: "draft signal reply",
+      kind: "action",
+      name: "request-signal-send",
       room: "main",
-      text: "Reply on Signal to Dana saying I confirmed the booking.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "signal draft reply",
-        includesAny: ["signal", "Dana", "draft", "reply"],
-      }),
-      responseIncludesAny: ["signal", "dana", "draft"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 1 must produce a Signal draft reply to Dana and keep it unsent until confirmation.",
+      text: "Send Dana a Signal message saying I confirmed the booking.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
+      assertTurn: () =>
+        fixture.dispatches.length === 0
+          ? undefined
+          : "Signal dispatched before explicit approval",
     },
     {
-      kind: "message",
-      name: "confirm send",
+      kind: "action",
+      name: "confirm-signal-send",
       room: "main",
-      text: "Send it.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "signal send after confirmation",
-        includesAny: ["send", "signal", "reply"],
-      }),
-      responseIncludesAny: ["sent", "sending", "send"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 2 must reflect that the drafted Signal reply is now being sent because the user explicitly confirmed it.",
+      text: "Yes, send that exact Signal message now.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      type: "connectorDispatchOccurred",
+      channel: "signal",
+      turn: "request-signal-send",
+      expected: false,
+      maxCount: 0,
+    },
+    {
+      type: "connectorDispatchOccurred",
+      channel: "signal",
+      turn: "confirm-signal-send",
+      minCount: 1,
+      maxCount: 1,
     },
     {
       type: "custom",
-      name: "signal-reply-two-step-gate",
-      predicate: async (ctx) => {
-        const firstBlob = JSON.stringify(ctx.turns?.[0]?.actionsCalled ?? []);
-        const secondBlob = JSON.stringify(ctx.turns?.[1]?.actionsCalled ?? []);
-        if (
-          /send|"confirmed":true/i.test(firstBlob) &&
-          !/draft/i.test(firstBlob)
-        ) {
-          return "first turn appears to have sent the Signal reply instead of drafting it";
-        }
-        if (!/send|"confirmed":true/i.test(secondBlob)) {
-          const responseText = String(ctx.turns?.[1]?.responseText ?? "");
-          if (!/\bsent\b|\bsending\b/i.test(responseText)) {
-            return "second turn did not clearly send the Signal reply after confirmation";
-          }
-        }
+      name: "signal-send-is-exact-and-receipted",
+      predicate: (ctx) => {
+        const dispatch = fixture.dispatches[0];
+        const observed = ctx.connectorDispatches?.filter(
+          (entry) => entry.channel === "signal",
+        );
+        return fixture.dispatches.length === 1 &&
+          dispatch?.target.entityId === "+14155550888" &&
+          dispatch.content.text === "I confirmed the booking." &&
+          observed?.length === 1 &&
+          observed[0]?.delivered === true &&
+          observed[0]?.providerMessageIds?.[0] === dispatch.providerMessageId
+          ? undefined
+          : `expected one exact delivered Signal dispatch, saw ${JSON.stringify({ fixture: fixture.dispatches, observed })}`;
       },
     },
-    {
-      type: "custom",
-      name: "signal-reply-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "signal draft then send",
-        includesAny: ["signal", "draft", "send", "reply"],
-        minCount: 2,
-      }),
-    },
-    judgeRubric({
-      name: "signal-reply-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant drafted a Signal reply first and only sent it after the explicit confirmation turn.",
-    }),
   ],
 });

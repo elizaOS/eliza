@@ -28,6 +28,7 @@ export default scenario({
   id: "reminder-daily-recurrence-outcome",
   title: "A daily reminder fires on consecutive days",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders"],
   isolation: "per-scenario",
   requires: {

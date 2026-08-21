@@ -1,21 +1,21 @@
-/** Scenario fixture for relationships status goals progress; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves CONTACT returns structured cadence progress for a durable goal. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { expectSuccessfulActionData } from "./_assertions.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
+const CONTACT_NAME = "Nora Delgado";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "relationships.status-goals.progress",
-  title: "Quarterly relationship progress routes into follow-up list review",
+  title: "Report quarterly relationship-goal progress",
   domain: "relationships",
-  tags: ["lifeops", "relationships", "follow-up"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["lifeops", "relationships", "follow-up", "cadence"],
   description:
-    "A quarterly relationship-progress question currently routes into the generic follow-up list flow.",
+    "Calls CONTACT.progress and verifies the structured overdue status, goal, and 90-day cadence from RelationshipsService.",
 
   isolation: "per-scenario",
   requires: {
@@ -33,73 +33,38 @@ export default scenario({
 
   seed: [
     {
-      type: "memory",
-      content: {
-        kind: "contact",
-        name: "Alice Chen",
-        relationshipGoal: "stay in touch quarterly",
-        followupThresholdDays: 90,
-        lastContactedAt: new Date(now - 100 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: CONTACT_NAME,
+      relationshipGoal: "stay in touch quarterly",
+      followupThresholdDays: 90,
+      lastContactedAt: new Date(now - 100 * DAY_MS).toISOString(),
     },
   ],
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "progress-query",
       room: "main",
-      text: "Who should I follow up with to stay on track with my quarterly relationship goals?",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "quarterly relationship follow-up review",
-        includesAny: ["quarter", "follow"],
-      }),
-      responseIncludesAny: ["follow-up", "due"],
+      actionName: "CONTACT",
+      text: "Read Nora's relationship-goal progress.",
+      options: {
+        parameters: { action: "progress", name: CONTACT_NAME },
+      },
+      responseIncludesAll: ["overdue"],
     },
   ],
 
   finalChecks: [
     {
-      type: "actionCalled",
-      actionName: "RELATIONSHIP",
-      minCount: 1,
-    },
-    {
       type: "custom",
-      name: "relationship-progress-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "quarterly relationship follow-up review",
-        includesAny: ["quarter", "follow"],
-      }),
-    },
-    {
-      type: "custom",
-      name: "relationship-progress-followup-list",
-      predicate: async (ctx) => {
-        const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "RELATIONSHIP",
-        );
-        const data =
-          action?.result?.data && typeof action.result.data === "object"
-            ? (action.result.data as {
-                subaction?: string;
-                followUps?: unknown[];
-                overdue?: unknown[];
-              })
-            : null;
-        if (!data) {
-          return "expected RELATIONSHIP result data";
-        }
-        if (
-          data.subaction !== "follow_up_list" &&
-          data.subaction !== "list_overdue_followups"
-        ) {
-          return `expected follow-up list subaction, got ${data.subaction ?? "(missing)"}`;
-        }
-        return undefined;
-      },
+      name: "relationship-progress-structured-result",
+      predicate: (ctx) =>
+        expectSuccessfulActionData({
+          ctx,
+          actionName: "CONTACT",
+          includes: ["progress", "stay in touch quarterly", "90", "overdue"],
+        }),
     },
   ],
 });

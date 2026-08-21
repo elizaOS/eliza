@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.vip-escalation",
   title: "VIP escalation chooses the right channel and urgency",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "vip", "escalation"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

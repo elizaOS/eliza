@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Companion rebooking grounds in the seeded flight and withholds the passport number",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

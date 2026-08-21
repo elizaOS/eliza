@@ -13,6 +13,7 @@ export default scenario({
   id: "push.stuck-agent-falls-back-to-SMS",
   title: "When the voice call to the stuck-agent user fails, fall back to SMS",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "fallback", "escalation"],
   description:
     "Voice call to the user went to voicemail. The agent must fall back to SMS — not give up, not silently retry voice.",

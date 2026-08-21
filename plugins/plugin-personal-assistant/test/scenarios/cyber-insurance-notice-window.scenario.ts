@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Cyber-insurance notice is grounded in seeded policy work and holds the incident description for counsel",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

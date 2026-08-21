@@ -9,6 +9,7 @@ export default scenario({
   id: "todo.create.every-10-days",
   title: "Create an every-10-days Invisalign tray swap todo",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "ambiguous-parameter"],
   isolation: "per-scenario",
   requires: {

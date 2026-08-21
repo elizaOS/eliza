@@ -195,11 +195,38 @@ mock.module("@/lib/services/credits", () => {
     required = 0;
   }
   return {
-    assertCreditRefundWithinReservation: () => {
-      throw new Error("credit refund assertion is outside this test path");
+    assertCreditRefundWithinReservation: ({
+      reservedAmount,
+      refundAmount,
+    }: {
+      reservedAmount: number;
+      refundAmount: number;
+    }) => {
+      if (
+        !Number.isFinite(reservedAmount) ||
+        reservedAmount < 0 ||
+        !Number.isFinite(refundAmount) ||
+        refundAmount < 0 ||
+        refundAmount - reservedAmount > 0.000001
+      ) {
+        throw new Error("invalid credit refund settlement");
+      }
     },
-    assertValidCreditSettlementCosts: () => {
-      throw new Error("credit settlement assertion is outside this test path");
+    assertValidCreditSettlementCosts: ({
+      reservedAmount,
+      actualCost,
+    }: {
+      reservedAmount: number;
+      actualCost: number;
+    }) => {
+      if (
+        !Number.isFinite(reservedAmount) ||
+        reservedAmount < 0 ||
+        !Number.isFinite(actualCost) ||
+        actualCost < 0
+      ) {
+        throw new Error("invalid credit settlement costs");
+      }
     },
     InsufficientCreditsError,
   };

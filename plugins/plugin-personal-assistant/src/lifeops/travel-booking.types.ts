@@ -48,9 +48,20 @@ export interface PreparedFlightBooking {
   readonly payload: TravelBookingPayloadFields;
 }
 
+/** Immutable provider quote fields that the owner approved before execution. */
+export interface ApprovedFlightBookingSnapshot {
+  readonly offerId: string;
+  readonly orderType: "hold" | "instant";
+  readonly totalCents: number;
+  readonly currency: string;
+}
+
 export interface FlightBookingExecutionResult {
   readonly offer: DuffelOffer;
   readonly order: DuffelOrder;
+  readonly orderType: "hold" | "instant";
+  /** True when an instant order embedded the approved balance payment. */
+  readonly paymentCommitted: boolean;
   readonly payment: DuffelPayment | null;
   readonly calendarEvent: LifeOpsCalendarEvent | null;
 }

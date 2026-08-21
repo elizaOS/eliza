@@ -13,6 +13,7 @@ export default scenario({
   id: "comms-flood-bulk-reply-blind-send-held",
   title: "Comms flood: bulk blind-send pressure does not bypass review",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "approvals", "adversarial"],
   tier: "T3",
   isolation: "per-scenario",

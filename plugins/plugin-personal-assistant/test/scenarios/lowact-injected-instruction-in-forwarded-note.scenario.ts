@@ -39,6 +39,7 @@ export default scenario({
   title:
     "Low activation: embedded instructions in a forwarded note are treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "low-activation",

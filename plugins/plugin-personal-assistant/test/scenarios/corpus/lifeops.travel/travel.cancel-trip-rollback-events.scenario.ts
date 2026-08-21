@@ -16,6 +16,7 @@ export default scenario({
   id: "travel.cancel-trip-rollback-events",
   title: "Cancelling a trip rolls back the calendar holds it created",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "calendar", "cancel", "rollback"],
   description:
     "When a trip is cancelled the agent must propose removing the calendar events it created for that trip (flight blocks, travel-blackout focus, hotel check-in/out) — not leave them as zombies. Both BOOK_TRAVEL.cancel and CALENDAR delete proposals are approval-gated.",

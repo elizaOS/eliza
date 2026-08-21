@@ -12,6 +12,7 @@ export default scenario({
   id: "calendar.defend-time.protects-focus",
   title: "Agent protects calendar focus blocks from meeting requests",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "time-defense"],
   isolation: "per-scenario",
   requires: {
@@ -47,7 +48,7 @@ export default scenario({
       name: "request-during-focus",
       text: "Add a 30-minute call with Sam tomorrow at 10:30am even though that's during my focus block.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "focus-block conflict handling",
       }),
       responseIncludesAny: [
@@ -62,13 +63,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
     },
     {
       type: "custom",
       name: "focus-block-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "focus-block conflict handling",
         includesAny: ["focus", "Sam", "10:30"],
       }),

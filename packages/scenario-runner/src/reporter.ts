@@ -16,8 +16,11 @@ import {
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import {
+  isScenarioEvidenceScope,
   isScenarioExecutionProfile,
+  type ScenarioEvidenceScope,
   type ScenarioExecutionProfile,
+  scenarioEvidenceScopeLabel,
 } from "@elizaos/scenario-runner/schema";
 import type {
   AggregateReport,
@@ -619,6 +622,38 @@ export function validateScenarioEvidenceReport(report: ScenarioReport): void {
       `unsupported profile "${String(report.executionProfile)}"`,
     );
   }
+  if (
+    report.evidenceScope !== undefined &&
+    !isScenarioEvidenceScope(report.evidenceScope)
+  ) {
+    evidenceFailure(
+      report.id,
+      "evidenceScope",
+      `unsupported scope "${String(report.evidenceScope)}"`,
+    );
+  }
+  if (
+    report.evidenceScope !== undefined &&
+    report.executionProfile !== undefined &&
+    (report.evidenceScope === "provider-certification") !==
+      (report.executionProfile === "provider-qualified")
+  ) {
+    evidenceFailure(
+      report.id,
+      "evidenceScope",
+      `scope "${report.evidenceScope}" is incompatible with executionProfile "${report.executionProfile}"`,
+    );
+  }
+  if (
+    report.evidenceScopeDefaulted === true &&
+    report.evidenceScope !== "runner-fixture"
+  ) {
+    evidenceFailure(
+      report.id,
+      "evidenceScopeDefaulted",
+      "defaulted classifications must use the conservative runner-fixture scope",
+    );
+  }
   if (report.evidence === undefined) {
     return;
   }
@@ -847,6 +882,57 @@ function aggregateEvidence(
   return summary;
 }
 
+function aggregateClassifications(
+  scenarios: readonly ScenarioReport[],
+): AggregateReport["classificationSummary"] {
+  const summary: AggregateReport["classificationSummary"] = {
+    laneCounts: {
+      "pr-deterministic": 0,
+      "live-only": 0,
+      unreported: 0,
+    },
+    executionProfileCounts: {
+      simulated: 0,
+      "provider-qualified": 0,
+      unreported: 0,
+    },
+    evidenceScopeCounts: {
+      "runner-fixture": 0,
+      "domain-contract": 0,
+      "model-behavior": 0,
+      "connector-contract": 0,
+      "provider-certification": 0,
+      unreported: 0,
+    },
+    defaultedEvidenceScopeCount: 0,
+    selfGradedJudgeCount: 0,
+  };
+  for (const scenario of scenarios) {
+    if (scenario.lane === "pr-deterministic" || scenario.lane === "live-only") {
+      summary.laneCounts[scenario.lane] += 1;
+    } else {
+      summary.laneCounts.unreported += 1;
+    }
+    if (isScenarioExecutionProfile(scenario.executionProfile)) {
+      summary.executionProfileCounts[scenario.executionProfile] += 1;
+    } else {
+      summary.executionProfileCounts.unreported += 1;
+    }
+    if (isScenarioEvidenceScope(scenario.evidenceScope)) {
+      summary.evidenceScopeCounts[scenario.evidenceScope] += 1;
+    } else {
+      summary.evidenceScopeCounts.unreported += 1;
+    }
+    if (scenario.evidenceScopeDefaulted === true) {
+      summary.defaultedEvidenceScopeCount += 1;
+    }
+    if (scenario.judgeSelfGraded === true) {
+      summary.selfGradedJudgeCount += 1;
+    }
+  }
+  return summary;
+}
+
 function evidenceSummaryMatches(
   actual: AggregateReport["evidenceSummary"],
   expected: AggregateReport["evidenceSummary"],
@@ -874,6 +960,39 @@ function evidenceSummaryMatches(
   );
 }
 
+function classificationSummaryMatches(
+  actual: AggregateReport["classificationSummary"],
+  expected: AggregateReport["classificationSummary"],
+): boolean {
+  return (
+    actual.laneCounts["pr-deterministic"] ===
+      expected.laneCounts["pr-deterministic"] &&
+    actual.laneCounts["live-only"] === expected.laneCounts["live-only"] &&
+    actual.laneCounts.unreported === expected.laneCounts.unreported &&
+    actual.executionProfileCounts.simulated ===
+      expected.executionProfileCounts.simulated &&
+    actual.executionProfileCounts["provider-qualified"] ===
+      expected.executionProfileCounts["provider-qualified"] &&
+    actual.executionProfileCounts.unreported ===
+      expected.executionProfileCounts.unreported &&
+    actual.evidenceScopeCounts["runner-fixture"] ===
+      expected.evidenceScopeCounts["runner-fixture"] &&
+    actual.evidenceScopeCounts["domain-contract"] ===
+      expected.evidenceScopeCounts["domain-contract"] &&
+    actual.evidenceScopeCounts["model-behavior"] ===
+      expected.evidenceScopeCounts["model-behavior"] &&
+    actual.evidenceScopeCounts["connector-contract"] ===
+      expected.evidenceScopeCounts["connector-contract"] &&
+    actual.evidenceScopeCounts["provider-certification"] ===
+      expected.evidenceScopeCounts["provider-certification"] &&
+    actual.evidenceScopeCounts.unreported ===
+      expected.evidenceScopeCounts.unreported &&
+    actual.defaultedEvidenceScopeCount ===
+      expected.defaultedEvidenceScopeCount &&
+    actual.selfGradedJudgeCount === expected.selfGradedJudgeCount
+  );
+}
+
 /**
  * Protect every serialization path from a hand-built aggregate whose profile
  * or publishability summary disagrees with its per-scenario evidence.
@@ -892,6 +1011,17 @@ export function validateAggregateEvidenceReport(report: AggregateReport): void {
   if (!evidenceSummaryMatches(report.evidenceSummary, expectedSummary)) {
     throw new Error(
       "aggregate evidenceSummary does not match validated scenario evidence",
+    );
+  }
+  const expectedClassifications = aggregateClassifications(report.scenarios);
+  if (
+    !classificationSummaryMatches(
+      report.classificationSummary,
+      expectedClassifications,
+    )
+  ) {
+    throw new Error(
+      `aggregate classificationSummary does not match validated scenario classifications: reported=${JSON.stringify(report.classificationSummary)} expected=${JSON.stringify(expectedClassifications)}`,
     );
   }
 }
@@ -960,6 +1090,7 @@ export function buildAggregate(
   totals.costUsd = sumTrajectoryCostUsd(runDir);
   const executionProfile = aggregateExecutionProfile(scenarios);
   const evidenceSummary = aggregateEvidence(scenarios);
+  const classificationSummary = aggregateClassifications(scenarios);
   return {
     runId,
     startedAtIso,
@@ -967,6 +1098,7 @@ export function buildAggregate(
     providerName,
     executionProfile,
     scenarios,
+    classificationSummary,
     evidenceSummary,
     totals,
     totalCount: scenarios.length,
@@ -1233,6 +1365,7 @@ function scenarioViewerHtml(): string {
     header { position:sticky; top:0; z-index:2; background:#fff; border-bottom:1px solid var(--line); padding:16px 20px; }
     h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
     .muted { color:var(--muted); }
+    .notice { margin-top:8px; border:1px solid #d69a38; border-radius:6px; background:#fff7e6; color:#6b4300; padding:7px 9px; }
     .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; padding:14px 20px; }
     .card,.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
     .card { padding:10px; }
@@ -1261,7 +1394,7 @@ function scenarioViewerHtml(): string {
   </style>
 </head>
 <body>
-  <header><h1>Eliza Scenario Run Viewer</h1><div id="meta" class="muted"></div></header>
+  <header><h1>Eliza Scenario Run Viewer</h1><div id="meta" class="muted"></div><div id="trust-banner" class="notice"></div></header>
   <div id="cards" class="cards"></div>
   <main>
     <aside class="panel">
@@ -1296,6 +1429,12 @@ function scenarioViewerHtml(): string {
     function renderCards() {
       const r = data.report || {}, t = r.totals || {};
       document.getElementById("meta").textContent = \`\${data.runDir || ""} · provider=\${r.providerName || ""} · \${r.startedAtIso || ""} → \${r.completedAtIso || ""}\`;
+      const c = r.classificationSummary || {}, scopes = c.evidenceScopeCounts || {};
+      const certified = scopes["provider-certification"] || 0;
+      const defaulted = c.defaultedEvidenceScopeCount || 0;
+      document.getElementById("trust-banner").textContent = certified > 0
+        ? \`Provider-certification scope specifications: \${certified}; publishable qualified results: \${r.evidenceSummary?.publishableScenarioCount || 0}.\`
+        : \`No provider certification is claimed. Simulated passes are diagnostic/contract evidence only.\${defaulted ? " " + defaulted + " scenario(s) use the conservative legacy runner-fixture default." : ""}\`;
       const items = [["Scenarios", r.totalCount || 0], ["Passed", t.passed || 0], ["Failed", t.failed || 0], ["Skipped", t.skipped || 0], ["Trajectory files", data.trajectories?.files?.length || 0], ["Native rows", data.nativeExport?.rows?.length || 0]];
       document.getElementById("cards").innerHTML = items.map(([k,v]) => \`<div class="card"><span class="muted">\${esc(k)}</span><b>\${esc(v)}</b></div>\`).join("");
     }
@@ -1375,7 +1514,7 @@ function scenarioViewerHtml(): string {
       const trajSummaries = trajectorySummaryMatches(s.id);
       const native = nativeMatches(s.id);
       document.getElementById("detail").innerHTML = \`
-        <div class="turn"><strong class="\${esc(s.status)}">\${esc(s.status)}</strong> · \${esc(s.title)} · \${esc(s.domain)} · \${esc((s.tags||[]).join(", "))}</div>
+        <div class="turn"><strong class="\${esc(s.status)}">\${esc(s.status)}</strong> · \${esc(s.title)} · \${esc(s.domain)} · scope: \${esc(s.evidenceScope || "unreported")}\${s.evidenceScopeDefaulted ? " (legacy default; classification debt)" : ""} · \${esc((s.tags||[]).join(", "))}</div>
         \${turnsTable(s)}
         <details open><summary>Call-by-call trajectory summary (\${trajSummaries.length})</summary>\${trajectorySummarySection(trajSummaries)}</details>
         <details open><summary>Native model-boundary rows (\${native.length})</summary>\${native.map((row,i) => \`<div class="turn"><strong>row \${i}</strong><pre>\${json(row)}</pre></div>\`).join("") || '<div class="turn muted">No native rows for this scenario.</div>'}</details>
@@ -1445,6 +1584,25 @@ export function printStdoutSummary(report: AggregateReport): void {
   lines.push(
     `Evidence: ${report.evidenceSummary.qualificationCounts.qualified} qualified, ${report.evidenceSummary.qualificationCounts.unqualified} unqualified, ${report.evidenceSummary.qualificationCounts.ineligible} ineligible, ${report.evidenceSummary.unreportedScenarioCount} unreported; ${report.evidenceSummary.publishableScenarioCount} publishable`,
   );
+  lines.push(
+    `Scopes: ${Object.entries(report.classificationSummary.evidenceScopeCounts)
+      .map(([scope, count]) =>
+        scope === "unreported"
+          ? `${count} unreported`
+          : `${count} ${scenarioEvidenceScopeLabel(scope as ScenarioEvidenceScope)}`,
+      )
+      .join(", ")}`,
+  );
+  if (report.executionProfile !== "provider-qualified") {
+    lines.push(
+      "NOTICE: simulated scenario passes are diagnostic/contract evidence, not provider certification.",
+    );
+  }
+  if (report.classificationSummary.defaultedEvidenceScopeCount > 0) {
+    lines.push(
+      `WARNING: ${report.classificationSummary.defaultedEvidenceScopeCount} scenario(s) omitted evidenceScope and were conservatively labeled runner fixture; classify this migration debt explicitly.`,
+    );
+  }
   if (report.totals.finalChecksSkipped > 0) {
     lines.push(
       `WARNING: ${report.totals.finalChecksSkipped} finalCheck(s) skipped (dependency missing) — those checks proved nothing this run:`,

@@ -17,6 +17,7 @@ export default scenario({
   id: "gmail.send-draft-after-approval",
   title: "Draft → explicit approval → Gmail send fires",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "send", "approval", "two-turn"],
   isolation: "per-scenario",
   requires: {

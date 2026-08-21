@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Embargo briefing grounds in seeded embargo state; embargoed figure stays withheld",
   domain: "executive.media",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

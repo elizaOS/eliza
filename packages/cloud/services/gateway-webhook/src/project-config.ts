@@ -6,7 +6,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 const LABEL_SELECTOR = "eliza.ai/gateway-config=true";
 
 const projectConfigs = new Map<string, Record<string, string>>();
-let refreshTimer: Timer | null = null;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 let k8sToken: string | null = null;
 let k8sCaCert: string | null = null;

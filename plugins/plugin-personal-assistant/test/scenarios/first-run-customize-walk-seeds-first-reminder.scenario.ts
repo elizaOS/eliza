@@ -28,6 +28,7 @@ export default scenario({
   id: "first-run-customize-walk-seeds-first-reminder",
   title: "First-run customize: full question walk → first reminder seeded",
   domain: "lifeops.first-run",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "first-run", "onboarding", "customize", "mvp", "14353"],
   status: "active",
   tier: "T2",

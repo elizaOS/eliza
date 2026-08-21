@@ -8,6 +8,7 @@ export default scenario({
   id: "legal-deadline-redline",
   title: "Assistant triages contract redlines and preserves approval gates",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "documents", "approvals"],
   isolation: "per-scenario",
   requires: {

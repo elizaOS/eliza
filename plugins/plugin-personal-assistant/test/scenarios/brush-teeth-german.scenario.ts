@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-german",
   title: "Brush teeth from German formal (Sie) phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

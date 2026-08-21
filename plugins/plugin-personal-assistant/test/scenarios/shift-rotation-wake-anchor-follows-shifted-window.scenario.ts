@@ -245,6 +245,7 @@ export default scenario({
   title:
     "Wake-anchored reminder re-anchors to the shifted wake window and stays silent at the old morning slot",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

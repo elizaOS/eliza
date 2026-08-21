@@ -35,6 +35,7 @@ export default scenario({
   id: "g1-injected-instruction-in-overdue-email",
   title: "Embedded instructions in an overdue email are treated as data",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G1",

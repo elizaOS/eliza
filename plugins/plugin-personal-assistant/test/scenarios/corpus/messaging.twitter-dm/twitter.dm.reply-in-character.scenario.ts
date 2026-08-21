@@ -13,6 +13,7 @@ export default scenario({
   id: "twitter.dm.reply-in-character",
   title: "Reply to Twitter DM in user's typical tone",
   domain: "messaging.twitter-dm",
+  evidenceScope: "model-behavior",
   tags: ["messaging", "twitter", "parameter-extraction"],
   isolation: "per-scenario",
   requires: {
@@ -50,7 +51,7 @@ export default scenario({
       room: "main",
       text: "Draft a reply to that Twitter DM from @eliza_art in my usual tone.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["X", "MESSAGE", "MESSAGE"],
+        acceptedActions: ["X", "MESSAGE"],
         description: "Twitter/X DM draft in the owner's tone",
         includesAny: ["x", "dm", "draft", "eliza_art"],
       }),
@@ -65,7 +66,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["X", "MESSAGE", "MESSAGE"],
+      actionName: ["X", "MESSAGE"],
     },
     {
       type: "draftExists",
@@ -76,7 +77,7 @@ export default scenario({
       type: "custom",
       name: "twitter-dm-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["X", "MESSAGE", "MESSAGE"],
+        acceptedActions: ["X", "MESSAGE"],
         description: "Twitter/X DM draft in the owner's tone",
         includesAny: ["x", "dm", "draft", "eliza_art"],
       }),

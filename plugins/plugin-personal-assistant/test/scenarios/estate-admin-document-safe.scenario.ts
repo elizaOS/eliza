@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Estate document pass is grounded in seeded trust work and never exposes account numbers",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

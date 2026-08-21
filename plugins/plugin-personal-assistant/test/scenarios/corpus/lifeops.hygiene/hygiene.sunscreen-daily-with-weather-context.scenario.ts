@@ -19,6 +19,7 @@ export default scenario({
   id: "hygiene.sunscreen-daily-with-weather-context",
   title: "Sunscreen every morning with weather context",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "daily"],
   isolation: "per-scenario",
   requires: {

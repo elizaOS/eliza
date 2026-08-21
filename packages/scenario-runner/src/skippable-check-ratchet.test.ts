@@ -96,7 +96,7 @@ function finalCheckTypes(sourceFile: ts.SourceFile): string[] {
  * True only for `export default scenario({...})` — a DIRECT scenario whose
  * literal `finalChecks` is the complete set. Factory-built scenarios
  * (`export default buildXScenario({...})`) have their checks augmented inside
- * the factory (the connector-certification factory, for example, adds
+ * the factory (the connector-contract factory, for example, adds
  * `memoryWriteOccurred` + a `custom` predicate), so their file-local
  * `finalChecks` is only a fragment and must NOT be judged statically.
  */

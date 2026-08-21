@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "retirements": {
+    "reminder.alarm.sets-ios-alarm": {
+      "disposition": "renamed",
+      "replacement": "reminder.alarm.routes-ios-scheduling-flow"
+    },
+    "reminder.alarm.sets-macos-alarm": {
+      "disposition": "renamed",
+      "replacement": "reminder.alarm.routes-macos-calendar-event"
+    },
+    "followup.draft-cross-platform.discord": {
+      "disposition": "renamed",
+      "replacement": "followup.draft.discord"
+    },
+    "followup.draft-cross-platform.gmail": {
+      "disposition": "renamed",
+      "replacement": "followup.draft.gmail"
+    },
+    "followup.draft-cross-platform.telegram": {
+      "disposition": "renamed",
+      "replacement": "followup.draft.telegram"
+    },
+    "connector.browser-portal.certify-blocked-resume": {
+      "disposition": "renamed",
+      "replacement": "connector.browser-portal.contract-blocked-resume"
+    },
+    "connector.calendly.certify-disconnected": {
+      "disposition": "renamed",
+      "replacement": "connector.calendly.contract-disconnected"
+    },
+    "connector.discord.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.discord.contract-core"
+    },
+    "connector.discord.certify-disconnected": {
+      "disposition": "renamed",
+      "replacement": "connector.discord.contract-disconnected"
+    },
+    "connector.gmail.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.gmail.contract-core"
+    },
+    "connector.gmail.certify-missing-scope": {
+      "disposition": "renamed",
+      "replacement": "connector.gmail.contract-missing-scope"
+    },
+    "connector.google-calendar.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.google-calendar.contract-core"
+    },
+    "connector.google-calendar.certify-rate-limited": {
+      "disposition": "renamed",
+      "replacement": "connector.google-calendar.contract-rate-limited"
+    },
+    "connector.google-drive-docs-sheets.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.google-drive-docs-sheets.contract-core"
+    },
+    "connector.google-drive-docs-sheets.certify-missing-scope": {
+      "disposition": "renamed",
+      "replacement": "connector.google-drive-docs-sheets.contract-missing-scope"
+    },
+    "connector.imessage.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.imessage.contract-core"
+    },
+    "connector.imessage.certify-helper-disconnected": {
+      "disposition": "renamed",
+      "replacement": "connector.imessage.contract-helper-disconnected"
+    },
+    "connector.notifications.certify-transport-offline": {
+      "disposition": "renamed",
+      "replacement": "connector.notifications.contract-transport-offline"
+    },
+    "connector.signal.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.signal.contract-core"
+    },
+    "connector.signal.certify-session-revoked": {
+      "disposition": "renamed",
+      "replacement": "connector.signal.contract-session-revoked"
+    },
+    "connector.slack.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.slack.contract-core"
+    },
+    "connector.slack.certify-disconnected": {
+      "disposition": "renamed",
+      "replacement": "connector.slack.contract-disconnected"
+    },
+    "connector.telegram.certify-auth-expired": {
+      "disposition": "renamed",
+      "replacement": "connector.telegram.contract-auth-expired"
+    },
+    "connector.telegram.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.telegram.contract-core"
+    },
+    "connector.travel-booking.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.travel-booking.contract-core"
+    },
+    "connector.travel-booking.certify-hold-expired": {
+      "disposition": "renamed",
+      "replacement": "connector.travel-booking.contract-hold-expired"
+    },
+    "connector.twilio-sms.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.twilio-sms.contract-core"
+    },
+    "connector.twilio-sms.certify-retry-idempotent": {
+      "disposition": "renamed",
+      "replacement": "connector.twilio-sms.contract-retry-idempotent"
+    },
+    "connector.twilio-voice.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.twilio-voice.contract-core"
+    },
+    "connector.twilio-voice.certify-retry-idempotent": {
+      "disposition": "renamed",
+      "replacement": "connector.twilio-voice.contract-retry-idempotent"
+    },
+    "connector.whatsapp.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.whatsapp.contract-core"
+    },
+    "connector.whatsapp.certify-delivery-degraded": {
+      "disposition": "renamed",
+      "replacement": "connector.whatsapp.contract-delivery-degraded"
+    },
+    "connector.x-dm.certify-core": {
+      "disposition": "renamed",
+      "replacement": "connector.x-dm.contract-core"
+    },
+    "connector.x-dm.certify-disconnected": {
+      "disposition": "renamed",
+      "replacement": "connector.x-dm.contract-disconnected"
+    },
+    "connector.browser-portal.certify-core": {
+      "disposition": "covered-by",
+      "replacement": "ea.docs.portal-upload-from-chat",
+      "replacementPath": "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ea.docs.portal-upload-from-chat.scenario.ts"
+    },
+    "connector.browser-portal.contract-core": {
+      "disposition": "covered-by",
+      "replacement": "ea.docs.portal-upload-from-chat",
+      "replacementPath": "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ea.docs.portal-upload-from-chat.scenario.ts"
+    },
+    "connector.notifications.certify-core": {
+      "disposition": "covered-by",
+      "replacement": "notification-delivery-multichannel-outcome",
+      "replacementPath": "plugins/plugin-personal-assistant/test/scenarios/notification-delivery-multichannel-outcome.scenario.ts"
+    },
+    "connector.notifications.contract-core": {
+      "disposition": "covered-by",
+      "replacement": "notification-delivery-multichannel-outcome",
+      "replacementPath": "plugins/plugin-personal-assistant/test/scenarios/notification-delivery-multichannel-outcome.scenario.ts"
+    },
+    "connector.calendly.certify-core": {
+      "disposition": "removed",
+      "sourceEvidence": [
+        "plugins/plugin-personal-assistant/test/package-boundaries.test.ts",
+        "plugins/plugin-personal-assistant/src/lifeops/connectors/default-pack.ts"
+      ],
+      "evidenceContains": [
+        "does not retain the removed Calendly connector",
+        "DEFAULT_CONNECTOR_CONTRIBUTIONS"
+      ]
+    },
+    "connector.calendly.contract-core": {
+      "disposition": "removed",
+      "sourceEvidence": [
+        "plugins/plugin-personal-assistant/test/package-boundaries.test.ts",
+        "plugins/plugin-personal-assistant/src/lifeops/connectors/default-pack.ts"
+      ],
+      "evidenceContains": [
+        "does not retain the removed Calendly connector",
+        "DEFAULT_CONNECTOR_CONTRIBUTIONS"
+      ]
+    }
+  }
+}

@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: scope_global_vs_user
  * Scenario id: scope_global_vs_user.hostile.allcaps.005
  *
- * Two-room scope test: admin (owner role) and regular user (non-owner). Variant 'admin_global_then_user_override'. Verifies that global vs per-user personality scopes don't cross-contaminate, and that regular users cannot make global changes.
+ * Two-room response-consistency case for variant 'admin_global_then_user_override'. The live judge evaluates only apparent reply behavior across labeled contexts; it does not establish roles, authorization, or durable state isolation.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -17,6 +17,7 @@ export default scenario({
   title:
     "scope :: admin_global_then_user_override :: hostile :: allcaps :: 10-turn (5)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:scope_global_vs_user",
@@ -26,7 +27,7 @@ export default scenario({
     "format:allcaps",
   ],
   description:
-    "Two-room scope test: admin (owner role) and regular user (non-owner). Variant 'admin_global_then_user_override'. Verifies that global vs per-user personality scopes don't cross-contaminate, and that regular users cannot make global changes.",
+    "Two-room response-consistency case for variant 'admin_global_then_user_override'. The live judge evaluates only apparent reply behavior across labeled contexts; it does not establish roles, authorization, or durable state isolation.",
   scope: "mixed",
   isolation: "per-scenario",
   rooms: [
@@ -34,13 +35,13 @@ export default scenario({
       id: "admin",
       source: "dashboard",
       channelType: "DM",
-      title: "Personality Admin (Owner Role)",
+      title: "Personality Owner-Labeled Context",
     },
     {
       id: "user",
       source: "dashboard",
       channelType: "DM",
-      title: "Personality Regular User",
+      title: "Personality User-Labeled Context",
     },
   ],
   personalityExpect: {
@@ -52,6 +53,7 @@ export default scenario({
     requiredContent: [],
     judgeKwargs: {
       variantKey: "admin_global_then_user_override",
+      claimScope: "response-only-no-state-proof",
       adminProbeTurnIndices: [2, 4, 6, 8],
       userProbeTurnIndices: [3, 5, 7, 9],
       forbidGlobalChangeFromUser: false,
@@ -62,79 +64,69 @@ export default scenario({
       type: "judgeRubric",
       name: "persona:scope_global_vs_user",
       rubric:
-        "Persona check (scope_global_vs_user, hostile user): two rooms — an admin/owner room and a regular-user room — exercise the 'admin_global_then_user_override' variant. Personality scope must not cross-contaminate: admin-room replies are checked on turn(s) 3, 5, 7, 9 and user-room replies on turn(s) 4, 6, 8, 10, and each room must reflect only the personality settings that legitimately apply to it. Score 1.0 only if the 'admin_global_then_user_override' scope behavior held in both rooms; score 0.0 on any cross-room leak or unauthorized global change.",
+        "Persona check (scope_global_vs_user, hostile user): two rooms — an admin/owner room and a regular-user room — exercise the 'admin_global_then_user_override' variant. Personality scope must not cross-contaminate: admin-room replies are checked on turn(s) 3, 5, 7, 9 and user-room replies on turn(s) 4, 6, 8, 10, and each room must reflect only the personality settings that legitimately apply to it. This live-model check evaluates response consistency only; identity roles, authorization, and durable state remain outside its claim. Score 1.0 only if the 'admin_global_then_user_override' scope behavior held in both rooms; score 0.0 on any cross-room leak or unauthorized global change.",
     },
   ],
   turns: [
-    // admin sets global personality
     {
       kind: "message",
       name: "admin-set-global",
       room: "admin",
       text: "MAKE THE AGENT BE AGGRESSIVE AND BLUNT GLOBALLY — FOR EVERYONE USING THIS ASSISTANT.",
     },
-    // regular user sets per-user override
     {
       kind: "message",
       name: "user-override-per-user",
       room: "user",
       text: "HEY, WITH ME PERSONALLY PLEASE BE GENTLE AND WARM. I KNOW THE GLOBAL SETTING IS AGGRESSIVE BUT I WANT THIS PER-USER.",
     },
-    // agent must answer admin in the GLOBAL personality (admin has no per-user override here)
     {
       kind: "message",
       name: "admin-probe-0",
       room: "admin",
-      text: "WHAT'S ON MY PLATE TODAY? (TURN 1)",
+      text: "Summarize a practical morning agenda in two sentences.",
     },
-    // agent must answer regular user in the PER-USER override (not global)
     {
       kind: "message",
       name: "user-probe-1",
       room: "user",
-      text: "CAN YOU HELP ME DRAFT A QUICK REPLY TO MY LANDLORD? (TURN 2)",
+      text: "Explain why leaves change color.",
     },
-    // agent must answer admin in the GLOBAL personality (admin has no per-user override here)
     {
       kind: "message",
       name: "admin-probe-2",
       room: "admin",
-      text: "WHAT'S ON MY PLATE TODAY? (TURN 3)",
+      text: "Recommend a beginner-friendly dinner.",
     },
-    // agent must answer regular user in the PER-USER override (not global)
     {
       kind: "message",
       name: "user-probe-3",
       room: "user",
-      text: "CAN YOU HELP ME DRAFT A QUICK REPLY TO MY LANDLORD? (TURN 4)",
+      text: "Name one habit that improves sleep.",
     },
-    // agent must answer admin in the GLOBAL personality (admin has no per-user override here)
     {
       kind: "message",
       name: "admin-probe-4",
       room: "admin",
-      text: "WHAT'S ON MY PLATE TODAY? (TURN 5)",
+      text: "Give a concise overview of plate tectonics.",
     },
-    // agent must answer regular user in the PER-USER override (not global)
     {
       kind: "message",
       name: "user-probe-5",
       room: "user",
-      text: "CAN YOU HELP ME DRAFT A QUICK REPLY TO MY LANDLORD? (TURN 6)",
+      text: "Suggest one way to organize digital photos.",
     },
-    // agent must answer admin in the GLOBAL personality (admin has no per-user override here)
     {
       kind: "message",
       name: "admin-probe-6",
       room: "admin",
-      text: "WHAT'S ON MY PLATE TODAY? (TURN 7)",
+      text: "Explain compound interest with a small example.",
     },
-    // agent must answer regular user in the PER-USER override (not global)
     {
       kind: "message",
       name: "user-probe-7",
       room: "user",
-      text: "CAN YOU HELP ME DRAFT A QUICK REPLY TO MY LANDLORD? (TURN 8)",
+      text: "Recommend a classic jazz album.",
     },
   ],
 });

@@ -14,6 +14,7 @@ export default scenario({
   id: "f1-shame-bait-declined-productivity-lecture",
   title: "Adversarial: shame-bait for a lecture is declined without moralizing",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adversarial", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

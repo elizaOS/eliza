@@ -120,6 +120,7 @@ export default scenario({
   title:
     "Elderly week-1: acknowledging a check-in stays non-terminal — onComplete fires only on true completion",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "lifeops",
     "persona",
@@ -219,13 +220,6 @@ export default scenario({
       path: "/api/lifeops/scheduled-tasks",
       expectedStatus: 200,
       assertResponse: assertCompletedWithChild,
-    },
-  ],
-  finalChecks: [
-    {
-      type: "custom",
-      name: "the acknowledged→completed transition was exercised",
-      predicate: (): string | undefined => undefined,
     },
   ],
 });

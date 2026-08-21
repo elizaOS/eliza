@@ -251,6 +251,8 @@ async function handleCloudRequest(
       appDomainId: "ad_scenario_1",
       zoneId: "zone_scenario_1",
       status: "pending",
+      pendingReason:
+        "Requires the currently unavailable runtime capability or deterministic fixture named by this scenario before activation.",
       verified: false,
       expiresAt: "2027-07-01T00:00:00.000Z",
       pendingZoneProvisioning: false,

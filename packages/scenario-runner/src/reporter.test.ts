@@ -78,6 +78,28 @@ function aggregateReport(): AggregateReport {
         providerName: "deterministic-model-provider",
       },
     ],
+    classificationSummary: {
+      laneCounts: {
+        "pr-deterministic": 0,
+        "live-only": 0,
+        unreported: 1,
+      },
+      executionProfileCounts: {
+        simulated: 0,
+        "provider-qualified": 0,
+        unreported: 1,
+      },
+      evidenceScopeCounts: {
+        "runner-fixture": 0,
+        "domain-contract": 0,
+        "model-behavior": 0,
+        "connector-contract": 0,
+        "provider-certification": 0,
+        unreported: 1,
+      },
+      defaultedEvidenceScopeCount: 0,
+      selfGradedJudgeCount: 0,
+    },
     evidenceSummary: {
       reportedScenarioCount: 0,
       unreportedScenarioCount: 1,
@@ -354,6 +376,89 @@ describe("scenario report aggregation", () => {
       unreportedScenarioCount: 3,
       publishableScenarioCount: 0,
     });
+    expect(report.classificationSummary).toEqual({
+      laneCounts: {
+        "pr-deterministic": 0,
+        "live-only": 0,
+        unreported: 3,
+      },
+      executionProfileCounts: {
+        simulated: 0,
+        "provider-qualified": 0,
+        unreported: 3,
+      },
+      evidenceScopeCounts: {
+        "runner-fixture": 0,
+        "domain-contract": 0,
+        "model-behavior": 0,
+        "connector-contract": 0,
+        "provider-certification": 0,
+        unreported: 3,
+      },
+      defaultedEvidenceScopeCount: 0,
+      selfGradedJudgeCount: 0,
+    });
+  });
+
+  it("counts explicit classifications and conservative legacy defaults", () => {
+    const report = buildAggregate(
+      [
+        {
+          ...aggregateReport().scenarios[0],
+          lane: "pr-deterministic",
+          executionProfile: "simulated",
+          evidenceScope: "runner-fixture",
+          evidenceScopeDefaulted: true,
+        },
+        {
+          ...aggregateReport().scenarios[0],
+          id: "connector.contract",
+          lane: "live-only",
+          executionProfile: "simulated",
+          evidenceScope: "connector-contract",
+          judgeSelfGraded: true,
+        },
+      ],
+      null,
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-classifications",
+    );
+
+    expect(report.classificationSummary).toMatchObject({
+      laneCounts: { "pr-deterministic": 1, "live-only": 1, unreported: 0 },
+      executionProfileCounts: {
+        simulated: 2,
+        "provider-qualified": 0,
+        unreported: 0,
+      },
+      evidenceScopeCounts: {
+        "runner-fixture": 1,
+        "connector-contract": 1,
+        "provider-certification": 0,
+        unreported: 0,
+      },
+      defaultedEvidenceScopeCount: 1,
+      selfGradedJudgeCount: 1,
+    });
+  });
+
+  it("rejects report-level certification relabeling without qualified execution", () => {
+    expect(() =>
+      buildAggregate(
+        [
+          {
+            ...aggregateReport().scenarios[0],
+            executionProfile: "simulated",
+            evidenceScope: "provider-certification",
+          },
+        ],
+        null,
+        "2026-05-23T00:00:00.000Z",
+        "2026-05-23T00:01:00.000Z",
+        "run-false-certification",
+      ),
+    ).toThrow(/incompatible with executionProfile "simulated"/);
   });
 
   it("preserves trusted evidence and derives profile and observation summaries", () => {
@@ -645,6 +750,12 @@ describe("scenario report aggregation", () => {
     ];
     report.totalCount = report.scenarios.length;
     report.evidenceSummary.unreportedScenarioCount = report.scenarios.length;
+    report.classificationSummary.laneCounts.unreported =
+      report.scenarios.length;
+    report.classificationSummary.executionProfileCounts.unreported =
+      report.scenarios.length;
+    report.classificationSummary.evidenceScopeCounts.unreported =
+      report.scenarios.length;
 
     writeReportBundle(report, outDir);
 

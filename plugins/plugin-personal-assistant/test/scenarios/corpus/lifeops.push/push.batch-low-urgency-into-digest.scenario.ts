@@ -13,6 +13,7 @@ export default scenario({
   id: "push.batch-low-urgency-into-digest",
   title: "Batch low-urgency pushes into a single end-of-day digest",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "digest", "batch"],
   description:
     "Three low-urgency reminders are pending (newsletter draft, archive cleanup, weekly habit nudge). Rather than firing three separate pings, the agent must batch into one end-of-day digest push.",

@@ -35,6 +35,7 @@ export default scenario({
   title:
     "Three 1:1s seeded — agent disambiguates instead of guessing which to delete",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "disambiguation", "delete"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

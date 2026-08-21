@@ -22,6 +22,7 @@ export default scenario({
   id: "selfcontrol.integration-with-todos.auto-block",
   title: "Todo-gated social block asks for specific sites",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "clarification", "todo-gated"],
   description:
     "A todo-gated auto-block request without explicit websites should ask which social sites to include before the rule is created.",

@@ -11,6 +11,7 @@ export default scenario({
   title:
     "War-room brief grounds in the seeded rollback doc and keeps the confidential customer out of the invite",
   domain: "executive.delegation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

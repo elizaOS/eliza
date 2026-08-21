@@ -13,6 +13,7 @@ export default scenario({
   title:
     "ADHD follow-through: a reversed pause revises the chase instead of stacking a second one",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

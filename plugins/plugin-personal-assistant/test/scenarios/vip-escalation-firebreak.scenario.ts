@@ -11,6 +11,7 @@ export default scenario({
   title:
     "VIP firebreak holds the watch and grounds the escalation in the seeded legal matter",
   domain: "executive.escalation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

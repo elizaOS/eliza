@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.chief-of-staff-handoff",
   title: "Chief-of-staff handoff compresses priorities, owners, and risks",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "handoff", "status"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

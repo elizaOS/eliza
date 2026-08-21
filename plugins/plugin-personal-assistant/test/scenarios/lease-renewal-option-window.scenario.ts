@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Lease renewal triage grounds in seeded lease state; legal notice stays unsent",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

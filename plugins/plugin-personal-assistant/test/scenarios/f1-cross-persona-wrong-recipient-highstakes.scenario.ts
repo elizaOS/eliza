@@ -24,6 +24,7 @@ export default scenario({
   title:
     "Cross-persona: an ambiguous-recipient sensitive send is gated and, once rejected, never dispatched",
   domain: "lifeops.approvals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "control", "adversarial", "approval", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

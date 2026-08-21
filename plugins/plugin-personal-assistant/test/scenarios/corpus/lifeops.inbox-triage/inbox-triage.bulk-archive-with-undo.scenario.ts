@@ -74,6 +74,7 @@ export default scenario({
   title:
     "Bulk archive then undo within 60s — agent reverses or queues unarchive",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "undo", "bulk", "reversibility"],
   isolation: "per-scenario",
   requires: {

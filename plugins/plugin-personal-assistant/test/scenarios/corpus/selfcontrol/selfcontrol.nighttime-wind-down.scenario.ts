@@ -8,6 +8,7 @@ export default scenario({
   id: "selfcontrol.nighttime-wind-down",
   title: "Nightly wind-down request asks which apps to block",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "clarification", "time-of-day-edge"],
   description:
     "A nightly wind-down block request without specific apps should prompt for which apps to include.",

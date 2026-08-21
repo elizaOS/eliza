@@ -20,6 +20,7 @@ export default scenario({
   id: "lifeops.pause.vacation-window",
   title: "User asks for vacation mode → LIFEOPS verb=pause is invoked",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "pause", "vacation", "controls"],
   description:
     "When the owner asks the agent to pause routines for a vacation window, the planner should route to the LIFEOPS action with verb=pause. The result data should carry the resolved pause window so downstream callers can verify scope.",

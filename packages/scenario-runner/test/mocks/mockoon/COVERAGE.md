@@ -280,7 +280,7 @@ recorded so we don't lose it):
   drafts can ride the existing envs.
 - `test/scenarios/todos/` — uses an in-memory store; no external surface, so
   no Mockoon hookup needed.
-- `test/scenarios/connector-certification/` — by design exercises each
+- `test/scenarios/connector-contracts/` — by design exercises each
   connector against the matching Mockoon env; already wired through the
   certification harness.
 

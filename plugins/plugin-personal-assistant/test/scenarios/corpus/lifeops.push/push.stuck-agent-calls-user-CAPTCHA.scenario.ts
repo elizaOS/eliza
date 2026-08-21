@@ -13,6 +13,7 @@ export default scenario({
   id: "push.stuck-agent-calls-user-CAPTCHA",
   title: "Browser CAPTCHA blocks the agent — escalate via voice call",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "escalation", "captcha", "remote-help"],
   description:
     "Computer-use is doing a flight check-in, hits a CAPTCHA wall. Per the remote-help policy in PRD §Remote, the agent must call the user (not just send a passive notification) so they can complete the CAPTCHA in real time.",

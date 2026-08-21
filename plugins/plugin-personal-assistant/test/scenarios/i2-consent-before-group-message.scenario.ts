@@ -10,6 +10,7 @@ export default scenario({
   id: "i2-consent-before-group-message",
   title: "I2 neutral drafts stay behind approval for both parties",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I2", "mediation", "approval", "message-draft"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

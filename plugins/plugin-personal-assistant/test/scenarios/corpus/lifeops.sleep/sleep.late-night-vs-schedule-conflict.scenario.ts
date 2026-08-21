@@ -21,6 +21,7 @@ export default scenario({
   id: "sleep.late-night-vs-schedule-conflict",
   title: "Late-night sleep + early meeting — agent surfaces conflict",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "conflict", "calendar"],
   isolation: "per-scenario",
   requires: {

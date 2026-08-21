@@ -1,12 +1,15 @@
 /** Scenario fixture for gmail triage high priority client; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailNoWriteOnTurns } from "./_gmail-contracts.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.triage.high-priority-client",
   title: "Triage flags high-priority client email",
   domain: "messaging.gmail",
+  evidenceScope: "connector-contract",
   tags: ["messaging", "gmail", "triage", "parameter-extraction"],
   isolation: "per-scenario",
   requires: {
@@ -25,7 +28,12 @@ export default scenario({
     {
       type: "gmailInbox",
       account: "test-owner",
-      fixture: "sarah-product-brief.eml",
+      fixture: "high-priority-client.eml",
+      requiredMessageIds: [
+        "msg-urgent-client",
+        "msg-sarah",
+        "msg-medium-newsletter",
+      ],
     },
   ],
   turns: [
@@ -37,30 +45,43 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.7,
         rubric:
-          "The reply must clearly identify the seeded high-priority client email as needing prompt attention. A vague inbox summary without a prioritized client item fails.",
+          "The reply must identify Maya Ortiz's launch-blocking message as the immediate priority, distinguish it from Sarah's ordinary request and the Medium newsletter, and cite today's 2 PM deadline.",
       },
     },
   ],
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE", "GMAIL_ACTION", "INBOX"],
       subaction: "triage",
+      turn: "triage high priority",
     },
     {
       type: "gmailMockRequest",
       method: "GET",
       path: "/gmail/v1/users/me/messages",
       minCount: 1,
+      turn: "triage high priority",
+    },
+    {
+      type: "gmailMockRequest",
+      method: "GET",
+      path: "/gmail/v1/users/me/messages/msg-urgent-client",
+      minCount: 1,
+      turn: "triage high priority",
     },
     {
       type: "gmailNoRealWrite",
     },
+    gmailNoWriteOnTurns(
+      "high-priority triage is read-only",
+      "triage high priority",
+    ),
     judgeRubric({
       name: "gmail-high-priority-triage-rubric",
       threshold: 0.7,
       description:
-        "End-to-end: the assistant prioritized the client email that needs an immediate response instead of flattening everything into a generic inbox summary.",
+        "End-to-end: the assistant prioritized Maya's IMPORTANT launch-blocking email and its 2 PM deadline over realistic unread decoys without writing Gmail state.",
     }),
   ],
   cleanup: [

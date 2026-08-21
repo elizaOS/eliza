@@ -16,6 +16,7 @@ export default scenario({
   title:
     "CFO reference checks are grounded in seeded search work and never name the candidate",
   domain: "executive.hiring",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

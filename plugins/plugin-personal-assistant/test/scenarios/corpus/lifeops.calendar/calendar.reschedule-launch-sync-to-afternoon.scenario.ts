@@ -35,6 +35,7 @@ export default scenario({
   id: "calendar.reschedule-launch-sync-to-afternoon",
   title: "Move the morning launch sync to an afternoon slot",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "reschedule"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -68,6 +68,7 @@ export default scenario({
   id: "inbox-triage.imap-only-account-degraded",
   title: "IMAP-only account refuses Gmail labels without faking success",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

@@ -16,6 +16,7 @@ export default scenario({
   id: "health.today-overview-walk-run-strain",
   title: "Today's overview combines walk, run, and strain in one summary",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "overview"],
   isolation: "per-scenario",
   requires: {

@@ -1,0 +1,664 @@
+/**
+ * Implements the offline provider-qualification verifier and renderer. The
+ * command consumes operator-authorized, independently signed artifacts from a
+ * completed external run; it never receives connector credentials or executes
+ * provider ingress.
+ */
+
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { loadScenarioFile } from "../loader.ts";
+import type { ScenarioReport } from "../types.ts";
+import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
+import {
+  PROVIDER_OPERATION_KINDS,
+  type ProviderOperationKind,
+} from "./operation-binding.ts";
+import {
+  type ProviderCanaryAuthorization,
+  type ProviderFailureProbeMaterial,
+  preflightAuthorizedProviderCanaryExecution,
+} from "./operator-authorization.ts";
+import {
+  type ProviderQualificationPublicationCapsule,
+  reverifyProviderQualificationPublication,
+} from "./publication-capsule.ts";
+import type {
+  SignedProviderObserverEvidence,
+  SignedSemanticJudgeEvidence,
+} from "./qualification.ts";
+import {
+  assembleProviderQualificationArtifact,
+  type ProviderQualificationArtifact,
+  reverifyProviderQualificationArtifact,
+  validateProviderQualificationArtifact,
+} from "./qualification-artifact.ts";
+import {
+  assembleProviderQualificationCatalog,
+  type ProviderQualificationCatalog,
+  renderProviderQualificationCatalogMarkdown,
+} from "./qualification-catalog.ts";
+import { verifyScenarioTrajectories } from "./trajectory-verifier.ts";
+
+export const PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA =
+  "eliza.provider-qualification-verify-config.v2" as const;
+export const PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA =
+  "eliza.provider-qualification-catalog-config.v3" as const;
+
+export interface ProviderQualificationVerifyConfig {
+  schema: typeof PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA;
+  scenarioFile: string;
+  authorizationFile: string;
+  operationKind: ProviderOperationKind;
+  providerTargetFile: string;
+  operationInputFile: string;
+  failureProbesFile: string;
+  manifestAuthorityPublicKeyFiles: readonly [string, ...string[]];
+  runDir: string;
+  observerEvidenceFile: string;
+  observerPublicKeyFiles: readonly [string, ...string[]];
+  semanticEvidenceFile: string;
+  semanticJudgePublicKeyFiles: readonly [string, ...string[]];
+  runnerReportFile: string;
+  outputDir: string;
+  expectedTrajectoryRelativePaths?: readonly string[];
+  maxArtifactAgeMs?: number;
+  maxSignatureAgeMs?: number;
+  maxClockSkewMs?: number;
+}
+
+export interface ProviderQualificationCatalogConfig {
+  schema: typeof PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA;
+  expectedRepositorySha: string;
+  publicationFiles: readonly [string, ...string[]];
+  outputDir: string;
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new Error(`${label} must be a plain JSON object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
+function stringArray(
+  value: unknown,
+  label: string,
+): readonly [string, ...string[]] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((entry) => typeof entry !== "string" || entry.trim() === "")
+  ) {
+    throw new Error(`${label} must be a non-empty string array`);
+  }
+  return value as [string, ...string[]];
+}
+
+function optionalInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return value as number;
+}
+
+export function parseProviderQualificationVerifyConfig(
+  value: unknown,
+): ProviderQualificationVerifyConfig {
+  const input = record(value, "verify config");
+  const required = [
+    "schema",
+    "scenarioFile",
+    "authorizationFile",
+    "operationKind",
+    "providerTargetFile",
+    "operationInputFile",
+    "failureProbesFile",
+    "manifestAuthorityPublicKeyFiles",
+    "runDir",
+    "observerEvidenceFile",
+    "observerPublicKeyFiles",
+    "semanticEvidenceFile",
+    "semanticJudgePublicKeyFiles",
+    "runnerReportFile",
+    "outputDir",
+  ];
+  const optional = [
+    "expectedTrajectoryRelativePaths",
+    "maxArtifactAgeMs",
+    "maxSignatureAgeMs",
+    "maxClockSkewMs",
+  ];
+  const allowed = new Set([...required, ...optional]);
+  const missing = required.filter((key) => !Object.hasOwn(input, key));
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+  if (missing.length > 0 || unknown.length > 0) {
+    throw new Error(
+      `verify config violates the closed shape (missing=${missing.join(",") || "none"}; unknown=${unknown.join(",") || "none"})`,
+    );
+  }
+  if (input.schema !== PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA) {
+    throw new Error("verify config schema is unsupported");
+  }
+  const operationKind = requiredString(input.operationKind, "operationKind");
+  if (
+    !(PROVIDER_OPERATION_KINDS as readonly string[]).includes(operationKind)
+  ) {
+    throw new Error("operationKind is unsupported");
+  }
+  const expected = input.expectedTrajectoryRelativePaths;
+  if (
+    expected !== undefined &&
+    (!Array.isArray(expected) ||
+      expected.some((item) => typeof item !== "string"))
+  ) {
+    throw new Error("expectedTrajectoryRelativePaths must be a string array");
+  }
+  return {
+    schema: PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA,
+    scenarioFile: requiredString(input.scenarioFile, "scenarioFile"),
+    authorizationFile: requiredString(
+      input.authorizationFile,
+      "authorizationFile",
+    ),
+    operationKind: operationKind as ProviderOperationKind,
+    providerTargetFile: requiredString(
+      input.providerTargetFile,
+      "providerTargetFile",
+    ),
+    operationInputFile: requiredString(
+      input.operationInputFile,
+      "operationInputFile",
+    ),
+    failureProbesFile: requiredString(
+      input.failureProbesFile,
+      "failureProbesFile",
+    ),
+    manifestAuthorityPublicKeyFiles: stringArray(
+      input.manifestAuthorityPublicKeyFiles,
+      "manifestAuthorityPublicKeyFiles",
+    ),
+    runDir: requiredString(input.runDir, "runDir"),
+    observerEvidenceFile: requiredString(
+      input.observerEvidenceFile,
+      "observerEvidenceFile",
+    ),
+    observerPublicKeyFiles: stringArray(
+      input.observerPublicKeyFiles,
+      "observerPublicKeyFiles",
+    ),
+    semanticEvidenceFile: requiredString(
+      input.semanticEvidenceFile,
+      "semanticEvidenceFile",
+    ),
+    semanticJudgePublicKeyFiles: stringArray(
+      input.semanticJudgePublicKeyFiles,
+      "semanticJudgePublicKeyFiles",
+    ),
+    runnerReportFile: requiredString(
+      input.runnerReportFile,
+      "runnerReportFile",
+    ),
+    outputDir: requiredString(input.outputDir, "outputDir"),
+    ...(expected === undefined
+      ? {}
+      : { expectedTrajectoryRelativePaths: expected as string[] }),
+    ...(optionalInteger(input.maxArtifactAgeMs, "maxArtifactAgeMs") ===
+    undefined
+      ? {}
+      : { maxArtifactAgeMs: input.maxArtifactAgeMs as number }),
+    ...(optionalInteger(input.maxSignatureAgeMs, "maxSignatureAgeMs") ===
+    undefined
+      ? {}
+      : { maxSignatureAgeMs: input.maxSignatureAgeMs as number }),
+    ...(optionalInteger(input.maxClockSkewMs, "maxClockSkewMs") === undefined
+      ? {}
+      : { maxClockSkewMs: input.maxClockSkewMs as number }),
+  };
+}
+
+export function parseProviderQualificationCatalogConfig(
+  value: unknown,
+): ProviderQualificationCatalogConfig {
+  const input = record(value, "catalog config");
+  const expected = [
+    "schema",
+    "expectedRepositorySha",
+    "publicationFiles",
+    "outputDir",
+  ];
+  const missing = expected.filter((key) => !Object.hasOwn(input, key));
+  const unknown = Object.keys(input).filter((key) => !expected.includes(key));
+  if (missing.length > 0 || unknown.length > 0) {
+    throw new Error(
+      `catalog config violates the closed shape (missing=${missing.join(",") || "none"}; unknown=${unknown.join(",") || "none"})`,
+    );
+  }
+  if (input.schema !== PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA) {
+    throw new Error("catalog config schema is unsupported");
+  }
+  const repositorySha = requiredString(
+    input.expectedRepositorySha,
+    "expectedRepositorySha",
+  );
+  if (!/^[a-f0-9]{40}$/.test(repositorySha)) {
+    throw new Error(
+      "expectedRepositorySha must be a lowercase 40-character Git SHA",
+    );
+  }
+  const publicationFiles = stringArray(
+    input.publicationFiles,
+    "publicationFiles",
+  );
+  if (
+    publicationFiles.length !== PROVIDER_CANARY_SCENARIO_IDS.length ||
+    new Set(publicationFiles).size !== publicationFiles.length
+  ) {
+    throw new Error(
+      `publicationFiles must contain exactly ${PROVIDER_CANARY_SCENARIO_IDS.length} unique provider publication capsules`,
+    );
+  }
+  return {
+    schema: PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA,
+    expectedRepositorySha: repositorySha,
+    publicationFiles,
+    outputDir: requiredString(input.outputDir, "outputDir"),
+  };
+}
+
+function readJson<T>(file: string, label: string): T {
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch (error) {
+    // error-policy:J2 preserve file or JSON failures at the CLI boundary.
+    throw new Error(`failed to read ${label} from ${file}`, { cause: error });
+  }
+}
+
+function resolveFrom(baseDir: string, candidate: string): string {
+  return path.resolve(baseDir, candidate);
+}
+
+function readPublicKeys(
+  baseDir: string,
+  files: readonly [string, ...string[]],
+): [string, ...string[]] {
+  return files.map((file) =>
+    readFileSync(resolveFrom(baseDir, file), "utf8"),
+  ) as [string, ...string[]];
+}
+
+export function renderProviderQualificationMarkdown(
+  artifact: ProviderQualificationArtifact,
+): string {
+  const qualified = artifact.decision.qualification.status === "qualified";
+  const capsule = artifact.reverification;
+  const keyIds = (
+    pins: ProviderQualificationArtifact["reverification"]["publicKeyPins"][keyof ProviderQualificationArtifact["reverification"]["publicKeyPins"]],
+  ): string => pins.map((pin) => `\`${pin.keyId}\``).join(", ");
+  const reasons =
+    artifact.decision.qualification.reasons.length === 0
+      ? "None"
+      : artifact.decision.qualification.reasons
+          .map((reason) => `\`${reason}\``)
+          .join(", ");
+  return [
+    `## Provider qualification: ${artifact.scenarioId}`,
+    "",
+    `- Status: **${qualified ? "QUALIFIED" : "UNQUALIFIED"}**`,
+    `- Publishable: **${artifact.decision.qualification.publishable ? "yes" : "no"}**`,
+    `- Repository SHA: \`${artifact.repositorySha}\``,
+    `- Deployment SHA: \`${artifact.deploymentSha}\``,
+    `- Run ID: \`${artifact.runId}\``,
+    `- Manifest SHA-256: \`${artifact.manifestSha256}\``,
+    `- Trajectory set SHA-256: \`${artifact.trajectorySetSha256}\``,
+    `- Verified trajectory artifacts: **${capsule.verifierTranscript.inventory.trajectoryCount}**`,
+    `- Verified trajectory stages: **${capsule.verifierTranscript.inventory.trajectoryStageCount}**`,
+    `- Manifest authority key IDs: ${keyIds(capsule.publicKeyPins.manifestAuthorities)}`,
+    `- Provider observer key IDs: ${keyIds(capsule.publicKeyPins.providerObservers)}`,
+    `- Semantic judge key IDs: ${keyIds(capsule.publicKeyPins.semanticJudges)}`,
+    `- Observer envelope SHA-256: \`${artifact.observerEvidenceSha256}\``,
+    `- Semantic envelope SHA-256: \`${artifact.semanticEvidenceSha256}\``,
+    `- Failure-path observations SHA-256: \`${capsule.verifierTranscript.proofDigests.failurePathObservationsSha256}\``,
+    `- Readback/replay assurances SHA-256: \`${capsule.verifierTranscript.proofDigests.readbackReplayAssurancesSha256}\``,
+    `- Artifact SHA-256: \`${artifact.artifactSha256}\``,
+    `- Provider authorization verified: **${artifact.decision.guarantees.providerAuthorizationVerified ? "yes" : "no"}**`,
+    `- Provider failure paths verified: **${artifact.decision.guarantees.providerFailurePathsVerified ? "yes" : "no"}**`,
+    `- Provider acceptance verified: **${artifact.decision.guarantees.providerAcceptanceVerified ? "yes" : "no"}**`,
+    `- Provider readback verified: **${artifact.decision.guarantees.providerReadbackVerified ? "yes" : "no"}**`,
+    `- Idempotent replay verified: **${artifact.decision.guarantees.providerIdempotencyVerified ? "yes" : "no"}**`,
+    `- Reasons: ${reasons}`,
+    "",
+    "This summary contains hashes and qualification state only. The corresponding qualification.json is a public-key/hash-only capsule that can be reverified offline; it excludes credentials, private target inputs, private keys, raw run-directory paths, and runner transcripts.",
+    "",
+  ].join("\n");
+}
+
+/** Render release-facing cleanup state only from a reverified publication. */
+export function renderProviderQualificationPublicationMarkdown(
+  value: unknown,
+): string {
+  const publication = reverifyProviderQualificationPublication(value);
+  return [
+    renderProviderQualificationMarkdown(
+      publication.qualificationArtifact,
+    ).trimEnd(),
+    "",
+    "### Cleanup publication proof",
+    "",
+    `- Cleanup disposition: **${publication.cleanupProof.payload.disposition}**`,
+    `- Cleanup signer key ID: \`${publication.cleanupSignerPin.keyId}\``,
+    `- Cleanup scope SHA-256: \`${publication.cleanupScopeSha256}\``,
+    `- Raw controller material SHA-256: \`${publication.rawControllerMaterialSha256}\``,
+    `- Cleanup proof SHA-256: \`${publication.cleanupProofSha256}\``,
+    `- Publication SHA-256: \`${publication.publicationSha256}\``,
+    "",
+  ].join("\n");
+}
+
+export function writeProviderQualificationOutputExclusive(
+  outputDir: string,
+  artifact: ProviderQualificationArtifact,
+): void {
+  mkdirSync(outputDir, { recursive: false, mode: 0o700 });
+  writeProviderQualificationOutputIntoReservedDirectory(outputDir, artifact);
+}
+
+/** Write a capsule into an empty directory atomically reserved by a caller. */
+export function writeProviderQualificationOutputIntoReservedDirectory(
+  outputDir: string,
+  artifact: ProviderQualificationArtifact,
+): void {
+  const jsonTemporary = path.join(outputDir, ".qualification.json.tmp");
+  const markdownTemporary = path.join(outputDir, ".qualification.md.tmp");
+  writeFileSync(jsonTemporary, `${JSON.stringify(artifact, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  writeFileSync(
+    markdownTemporary,
+    renderProviderQualificationMarkdown(artifact),
+    {
+      flag: "wx",
+      mode: 0o600,
+    },
+  );
+  renameSync(jsonTemporary, path.join(outputDir, "qualification.json"));
+  renameSync(markdownTemporary, path.join(outputDir, "qualification.md"));
+}
+
+/** Atomically write the artifact and its required cleanup publication capsule. */
+export function writeProviderQualificationPublicationIntoReservedDirectory(
+  outputDir: string,
+  value: unknown,
+): ProviderQualificationPublicationCapsule {
+  const publication = reverifyProviderQualificationPublication(value);
+  writeProviderQualificationOutputIntoReservedDirectory(
+    outputDir,
+    publication.qualificationArtifact,
+  );
+  const jsonTemporary = path.join(outputDir, ".publication.json.tmp");
+  const markdownTemporary = path.join(outputDir, ".publication.md.tmp");
+  writeFileSync(jsonTemporary, `${JSON.stringify(publication, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  writeFileSync(
+    markdownTemporary,
+    renderProviderQualificationPublicationMarkdown(publication),
+    { flag: "wx", mode: 0o600 },
+  );
+  renameSync(jsonTemporary, path.join(outputDir, "publication.json"));
+  renameSync(markdownTemporary, path.join(outputDir, "publication.md"));
+  return publication;
+}
+
+function writeExclusiveCatalogOutput(
+  outputDir: string,
+  catalog: ProviderQualificationCatalog,
+): void {
+  mkdirSync(outputDir, { recursive: false, mode: 0o700 });
+  writeFileSync(
+    path.join(outputDir, "catalog.json"),
+    `${JSON.stringify(catalog, null, 2)}\n`,
+    { flag: "wx", mode: 0o600 },
+  );
+  writeFileSync(
+    path.join(outputDir, "catalog.md"),
+    renderProviderQualificationCatalogMarkdown(catalog),
+    { flag: "wx", mode: 0o600 },
+  );
+}
+
+export async function verifyProviderQualificationFromConfig(
+  configFile: string,
+  now = new Date(),
+): Promise<ProviderQualificationArtifact> {
+  const absoluteConfigFile = path.resolve(configFile);
+  const baseDir = path.dirname(absoluteConfigFile);
+  const config = parseProviderQualificationVerifyConfig(
+    readJson(absoluteConfigFile, "verify config"),
+  );
+  const scenario = (
+    await loadScenarioFile(resolveFrom(baseDir, config.scenarioFile))
+  ).scenario;
+  const authorization = readJson<ProviderCanaryAuthorization>(
+    resolveFrom(baseDir, config.authorizationFile),
+    "operator authorization",
+  );
+  const authorityPins = readPublicKeys(
+    baseDir,
+    config.manifestAuthorityPublicKeyFiles,
+  );
+  const authorized = preflightAuthorizedProviderCanaryExecution({
+    scenario,
+    authorization,
+    pinnedManifestAuthorityPublicKeysPem: authorityPins,
+    operationKind: config.operationKind,
+    providerTarget: readJson(
+      resolveFrom(baseDir, config.providerTargetFile),
+      "provider target",
+    ),
+    operationInput: readJson(
+      resolveFrom(baseDir, config.operationInputFile),
+      "provider operation input",
+    ),
+    failureProbes: readJson<
+      readonly [
+        ProviderFailureProbeMaterial,
+        ProviderFailureProbeMaterial,
+        ...ProviderFailureProbeMaterial[],
+      ]
+    >(
+      resolveFrom(baseDir, config.failureProbesFile),
+      "provider failure probes",
+    ),
+  });
+  const signedEvidence = readJson<SignedProviderObserverEvidence>(
+    resolveFrom(baseDir, config.observerEvidenceFile),
+    "provider observer evidence",
+  );
+  const signedSemanticEvidence = readJson<SignedSemanticJudgeEvidence>(
+    resolveFrom(baseDir, config.semanticEvidenceFile),
+    "semantic judge evidence",
+  );
+  const runnerReport = readJson<ScenarioReport>(
+    resolveFrom(baseDir, config.runnerReportFile),
+    "runner report",
+  );
+  const manifest = authorized.authorization.manifest;
+  const connectorEnvironment = manifest.connectors[0]?.environment;
+  if (
+    !connectorEnvironment ||
+    manifest.connectors.some(
+      (connector) => connector.environment !== connectorEnvironment,
+    )
+  ) {
+    throw new Error(
+      "all manifest connectors must share one observer environment",
+    );
+  }
+  const trajectories = verifyScenarioTrajectories({
+    runDir: resolveFrom(baseDir, config.runDir),
+    runId: manifest.run.runId,
+    scenarioId: scenario.id,
+    scenarioStartedAtIso: signedEvidence.payload.scenarioStartedAtIso,
+    scenarioEndedAtIso: signedEvidence.payload.scenarioEndedAtIso,
+    environment: connectorEnvironment,
+    ...(config.expectedTrajectoryRelativePaths === undefined
+      ? {}
+      : { expectedRelativePaths: config.expectedTrajectoryRelativePaths }),
+    ...(config.maxArtifactAgeMs === undefined
+      ? {}
+      : { maxRunDirectoryAgeMs: config.maxArtifactAgeMs }),
+    ...(config.maxClockSkewMs === undefined
+      ? {}
+      : { maxClockSkewMs: config.maxClockSkewMs }),
+    now,
+  });
+  const artifact = assembleProviderQualificationArtifact({
+    scenarioDefinition: scenario,
+    manifest,
+    manifestSignature: authorized.authorization.manifestSignature,
+    pinnedManifestAuthorityPublicKeysPem: authorityPins,
+    trajectories,
+    signedEvidence,
+    pinnedObserverPublicKeysPem: readPublicKeys(
+      baseDir,
+      config.observerPublicKeyFiles,
+    ),
+    signedSemanticEvidence,
+    pinnedSemanticJudgePublicKeysPem: readPublicKeys(
+      baseDir,
+      config.semanticJudgePublicKeyFiles,
+    ),
+    runnerReport,
+    nowIso: now.toISOString(),
+    ...(config.maxSignatureAgeMs === undefined
+      ? {}
+      : { maxSignatureAgeMs: config.maxSignatureAgeMs }),
+    ...(config.maxClockSkewMs === undefined
+      ? {}
+      : { maxClockSkewMs: config.maxClockSkewMs }),
+  });
+  reverifyProviderQualificationArtifact(artifact);
+  writeProviderQualificationOutputExclusive(
+    resolveFrom(baseDir, config.outputDir),
+    artifact,
+  );
+  return artifact;
+}
+
+/** Reverify one portable v4 capsule without its original private inputs. */
+export function reverifyProviderQualificationArtifactFile(
+  artifactFile: string,
+): ProviderQualificationArtifact {
+  const absoluteArtifactFile = path.resolve(artifactFile);
+  const artifact = validateProviderQualificationArtifact(
+    readJson(absoluteArtifactFile, "provider qualification artifact"),
+  );
+  reverifyProviderQualificationArtifact(artifact);
+  return artifact;
+}
+
+/** Reverify the release-facing artifact-plus-cleanup capsule from one file. */
+export function reverifyProviderQualificationPublicationFile(
+  publicationFile: string,
+): ProviderQualificationPublicationCapsule {
+  return reverifyProviderQualificationPublication(
+    readJson(
+      path.resolve(publicationFile),
+      "provider qualification publication",
+    ),
+  );
+}
+
+export function verifyProviderQualificationCatalogFromConfig(
+  configFile: string,
+  now = new Date(),
+): ProviderQualificationCatalog {
+  const absoluteConfigFile = path.resolve(configFile);
+  const baseDir = path.dirname(absoluteConfigFile);
+  const config = parseProviderQualificationCatalogConfig(
+    readJson(absoluteConfigFile, "catalog config"),
+  );
+  const catalog = assembleProviderQualificationCatalog({
+    publications: config.publicationFiles.map((file) =>
+      readJson(resolveFrom(baseDir, file), "qualification publication"),
+    ),
+    expectedRepositorySha: config.expectedRepositorySha,
+    createdAtIso: now.toISOString(),
+  });
+  writeExclusiveCatalogOutput(resolveFrom(baseDir, config.outputDir), catalog);
+  return catalog;
+}
+
+export async function runProviderQualificationCli(
+  argv: readonly string[] = process.argv.slice(2),
+): Promise<number> {
+  if (
+    argv.length !== 2 ||
+    !["verify", "reverify", "reverify-publication", "catalog"].includes(
+      argv[0] ?? "",
+    )
+  ) {
+    process.stderr.write(
+      "usage: eliza-provider-qualification <verify|reverify|reverify-publication|catalog> <file.json>\n",
+    );
+    return 2;
+  }
+  if (argv[0] === "catalog") {
+    const catalog = verifyProviderQualificationCatalogFromConfig(argv[1]);
+    process.stdout.write(renderProviderQualificationCatalogMarkdown(catalog));
+    return 0;
+  }
+  if (argv[0] === "reverify") {
+    const artifact = reverifyProviderQualificationArtifactFile(argv[1]);
+    process.stdout.write(renderProviderQualificationMarkdown(artifact));
+    return artifact.decision.qualification.publishable ? 0 : 1;
+  }
+  if (argv[0] === "reverify-publication") {
+    const publication = reverifyProviderQualificationPublicationFile(argv[1]);
+    process.stdout.write(
+      renderProviderQualificationPublicationMarkdown(publication),
+    );
+    return 0;
+  }
+  const artifact = await verifyProviderQualificationFromConfig(argv[1]);
+  process.stdout.write(renderProviderQualificationMarkdown(artifact));
+  return artifact.decision.qualification.publishable ? 0 : 1;
+}
+
+export function runProviderQualificationCliAndExit(): void {
+  runProviderQualificationCli()
+    .then((code) => process.exit(code))
+    // error-policy:J1 the executable boundary reports refusal and exits nonzero.
+    .catch((error: unknown) => {
+      process.stderr.write(
+        `[eliza-provider-qualification] fatal: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
+      process.exit(1);
+    });
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  runProviderQualificationCliAndExit();
+}

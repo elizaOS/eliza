@@ -7,6 +7,7 @@ export default scenario({
   title:
     "Create a todo on the dashboard, confirm it, then query it from mobile",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke"],
   isolation: "per-scenario",
   requires: {

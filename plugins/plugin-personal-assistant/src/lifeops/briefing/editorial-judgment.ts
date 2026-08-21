@@ -25,6 +25,7 @@ export type LifeOpsBriefItemKind =
   | "reminder"
   | "habit"
   | "goal"
+  | "followup"
   | "recurring_charge";
 
 export type LifeOpsBriefEngagementEventType =
@@ -132,6 +133,7 @@ function inboxConsequence(item: LifeOpsBriefingInboxItem): number {
 }
 
 function lifeConsequence(item: LifeOpsBriefingLifeItem): number {
+  if (item.kind === "followup") return 70;
   if (item.kind === "goal") return 75;
   if (item.kind === "todo") return item.dueAt ? 80 : 55;
   if (item.kind === "reminder") return item.dueAt ? 65 : 45;

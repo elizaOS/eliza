@@ -43,6 +43,7 @@ export default scenario({
   id: "habits.week-spanning-behavior",
   title: "Weekly habit progress respects the user's week boundary",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "weekly", "locale"],
   isolation: "per-scenario",
   requires: {

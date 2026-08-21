@@ -65,6 +65,7 @@ export default scenario({
   title:
     "Detect a calendar double-booking and reschedule so the new slot no longer overlaps",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "conflict", "reschedule", "outcome"],
   isolation: "per-scenario",
   requires: {

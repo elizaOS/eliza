@@ -415,6 +415,7 @@ export default scenario({
   title: "Live information routes safely and grounds the final answer",
   domain: "cross-cutting",
   lane: "live-only",
+  evidenceScope: "model-behavior",
   isolation: "per-scenario",
   tags: ["agent", "live-information", "routing", "web", "security"],
   description:

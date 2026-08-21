@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "Reply to the last Telegram message from Carol saying I'm on my way.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "telegram draft reply",
         includesAny: ["telegram", "Carol", "draft", "reply"],
       }),
@@ -49,7 +49,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "telegram send after confirmation",
         includesAny: ["send", "telegram", "reply"],
       }),
@@ -64,7 +64,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "custom",
@@ -80,7 +80,7 @@ export default scenario({
           return "first turn appears to have sent the Telegram reply instead of drafting it";
         }
         const sendAction = secondActions.find((entry) =>
-          ["MESSAGE", "MESSAGE"].includes(entry.actionName),
+          ["MESSAGE"].includes(entry.actionName),
         );
         if (!sendAction) {
           return "second turn did not call the Telegram send action after confirmation";
@@ -97,7 +97,7 @@ export default scenario({
       type: "custom",
       name: "telegram-local-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "telegram draft then send",
         includesAny: ["telegram", "draft", "send", "reply"],
         minCount: 2,

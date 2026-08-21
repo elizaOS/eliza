@@ -9,6 +9,7 @@ export default scenario({
   id: "vitamins-italian",
   title: "Vitamins from Italian phrasing (neutral register)",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

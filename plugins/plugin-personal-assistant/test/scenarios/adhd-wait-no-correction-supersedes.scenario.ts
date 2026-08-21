@@ -14,6 +14,7 @@ export default scenario({
   id: "adhd-wait-no-correction-supersedes",
   title: "ADHD: a mid-message self-correction supersedes the first task",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

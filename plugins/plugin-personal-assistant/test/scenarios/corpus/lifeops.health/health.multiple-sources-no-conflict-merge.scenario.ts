@@ -16,6 +16,7 @@ export default scenario({
   id: "health.multiple-sources-no-conflict-merge",
   title: "Multiple agreeing sources merge without surfacing a conflict",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "multi-source", "merge"],
   isolation: "per-scenario",
   requires: {

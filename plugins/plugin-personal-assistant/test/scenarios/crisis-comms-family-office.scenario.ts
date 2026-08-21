@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Crisis comms plan is grounded in seeded counsel work and keeps the sensitive matter out of drafts",
   domain: "executive.escalation",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "messaging", "privacy", "outcome"],
   isolation: "per-scenario",
   requires: {

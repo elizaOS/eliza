@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.create-draft-with-cc-bcc",
   title: "Draft with CC and BCC keeps roles distinct",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "draft", "cc", "bcc"],
   isolation: "per-scenario",
   requires: {

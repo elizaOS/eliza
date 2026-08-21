@@ -14,6 +14,7 @@ export default scenario({
   id: "followup.bump-unanswered-decision-2-days",
   title: "Bump an unanswered decision after 2 days with context preserved",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "bump"],
   description:
     "An unanswered decision is sitting 48 hours old. The agent must nudge with the original context attached — not start a fresh ask. Tests the 'preserve context across the bump' contract from PRD §Drive Follow-Through.",

@@ -9,6 +9,7 @@ export default scenario({
   title:
     "Cancel a seeded calendar event with two-turn destructive confirmation",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "destructive-confirmation"],
   isolation: "per-scenario",
   requires: {

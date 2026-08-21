@@ -4,9 +4,9 @@
  *
  * Sets the 'no_hedging' style on turn 1, then probes with 4 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "hold_style.polite.code.011",
   title: "hold_style :: no_hedging :: polite :: code :: 5-turn (11)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -58,35 +59,30 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "Would you mind doing this for the rest of our chat: Stop using hedge words. No 'I think', no 'maybe', no 'perhaps', no 'might', no 'could be'. Direct statements only.\n```\n// instruction: persist across topics\nbehavior.persist = true;\n```",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-1",
       room: "main",
       text: "Quick question — translate 'good evening' to Japanese?",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-2",
       room: "main",
       text: "Quick question — what's a simple breakfast I can make in five minutes?",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-3",
       room: "main",
       text: "Quick question — what's the boiling point of water at 5000 feet elevation?",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-4",

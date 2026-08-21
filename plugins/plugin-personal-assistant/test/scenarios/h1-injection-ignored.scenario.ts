@@ -12,6 +12,7 @@ export default scenario({
   id: "h1-injection-ignored",
   title: "H1 relationship inference ignores forwarded prompt injection",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "H1", "relationships", "prompt-injection", "privacy"],
   isolation: "per-scenario",
   rooms: [

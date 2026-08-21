@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.skincare-am-pm-routine",
   title: "Skincare routine twice daily, AM and PM",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "twice-daily"],
   isolation: "per-scenario",
   requires: {

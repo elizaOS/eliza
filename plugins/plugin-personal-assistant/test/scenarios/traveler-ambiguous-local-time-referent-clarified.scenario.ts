@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Traveler: a bare clock time across a hop is clarified before anything moves",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "traveler",

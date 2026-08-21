@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Room crisis recovery is grounded in seeded vendor state and holds changes for approval",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

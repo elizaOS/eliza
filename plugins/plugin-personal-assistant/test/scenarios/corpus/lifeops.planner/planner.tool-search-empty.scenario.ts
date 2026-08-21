@@ -74,6 +74,7 @@ export default scenario({
   title:
     "Planner falls back to natural-language reply when no tool matches the request",
   domain: "lifeops.planner",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "planner",

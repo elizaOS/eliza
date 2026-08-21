@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Trust distribution authorization resolves through the live approval queue",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

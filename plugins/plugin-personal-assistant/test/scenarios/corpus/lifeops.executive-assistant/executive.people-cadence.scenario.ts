@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.people-cadence",
   title: "People cadence prepares relationship touchpoints",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "relationships", "cadence"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

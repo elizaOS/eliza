@@ -17,6 +17,7 @@ export default scenario({
   id: "lifeops-extension.reports-to-agent-ui",
   title: "Extension pushes telemetry to agent UI",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: ["browser", "activity", "extension"],
   description:
     "Tests the extension -> agent UI surface. User asks the agent to confirm the extension is connected and reporting, and the seeded telemetry must be reflected in the answer.",

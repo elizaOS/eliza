@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-spanish",
   title: "Brush teeth from Spanish phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

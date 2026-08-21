@@ -22,6 +22,7 @@ export default scenario({
   title:
     "Traveler: a pre-trip circadian-shift plan is proposed, wellness-framed",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "timezone", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

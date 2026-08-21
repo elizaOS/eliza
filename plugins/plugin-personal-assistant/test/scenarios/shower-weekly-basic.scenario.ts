@@ -14,6 +14,7 @@ export default scenario({
   id: "shower-weekly-basic",
   title: "Shower weekly cadence",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Art storage renewal review is grounded in seeded vendor/broker tasks and leaks no valuation",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

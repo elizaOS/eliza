@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.intro-routing",
   title: "Intro routing decides accept, delegate, decline, or schedule",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "inbox", "relationships"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

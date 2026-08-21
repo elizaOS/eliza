@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar.reschedule.conflict-detection",
   title: "Reschedule that conflicts with another event surfaces a warning",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "ambiguous-parameter"],
   isolation: "per-scenario",
   requires: {

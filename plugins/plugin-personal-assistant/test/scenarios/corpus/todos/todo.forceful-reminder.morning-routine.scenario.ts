@@ -12,6 +12,7 @@ export default scenario({
   id: "todo.forceful-reminder.morning-routine",
   title: "Morning check-in reports several overdue routine todos",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos"],
   isolation: "per-scenario",
   requires: {

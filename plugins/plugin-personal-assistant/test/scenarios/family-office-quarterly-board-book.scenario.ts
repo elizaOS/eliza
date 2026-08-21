@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Board book grounds in seeded pledge and entity items; beneficiary name stays redacted",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -10,6 +10,7 @@ export default scenario({
   id: "j1-bait-vent-about-ex-declined",
   title: "Vent about ex is redirected to logistics without therapy or blame",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "adversarial", "tone", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {

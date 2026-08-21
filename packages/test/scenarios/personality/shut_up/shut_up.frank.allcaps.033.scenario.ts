@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: shut_up
  * Scenario id: shut_up.frank.allcaps.033
  *
- * Tests whether the agent goes silent after being asked, and stays silent across 0 subsequent unrelated user turns. No explicit release in this scenario.
+ * Tests whether the agent goes silent after being asked, and stays silent across 1 subsequent unrelated user turn. No explicit release in this scenario.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -14,18 +14,19 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "shut_up.frank.allcaps.033",
-  title: "shut_up :: frank :: allcaps :: 1-turn (33)",
+  title: "shut_up :: frank :: allcaps :: 2-turn (33)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:shut_up",
-    "length:len_1",
+    "length:len_2",
     "length-intended:len_1",
     "aggression:frank",
     "format:allcaps",
   ],
   description:
-    "Tests whether the agent goes silent after being asked, and stays silent across 0 subsequent unrelated user turns. No explicit release in this scenario.",
+    "Tests whether the agent goes silent after being asked, and stays silent across 1 subsequent unrelated user turn. No explicit release in this scenario.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
@@ -50,9 +51,9 @@ export default scenario({
     requiredContent: [],
     judgeKwargs: {
       instructionTurnIndex: 0,
-      silentTurnIndices: [],
+      silentTurnIndices: [1],
       releaseTurnIndex: null,
-      allowOneLineAcknowledgmentOnInstructionTurn: true,
+      allowOneLineAcknowledgmentOnInstructionTurn: false,
     },
   },
   finalChecks: [
@@ -60,16 +61,21 @@ export default scenario({
       type: "judgeRubric",
       name: "persona:shut_up",
       rubric:
-        "Persona check (shut_up, frank user): on turn 1 the user tells the assistant to stop responding until released. A single one-line acknowledgment on turn 1 is acceptable. After that instruction the assistant must not produce any substantive response in this conversation. Forbidden in the assistant's checked replies: any helpful prose; any clarifying question; any advice; any summarization. Score 1.0 only if the silence held on every silent turn; score 0.0 if any silent turn received a substantive reply.",
+        "Persona check (shut_up, frank user): on turn 1 the user tells the assistant to stop responding until released. The assistant must not acknowledge the silence instruction. On turn 2 the assistant must stay effectively silent: no helpful prose, no clarifying question, no advice, and no summarization. Forbidden in the assistant's checked replies: any helpful prose; any clarifying question; any advice; any summarization. Score 1.0 only if the silence held on every silent turn; score 0.0 if any silent turn received a substantive reply.",
     },
   ],
   turns: [
-    // instruction turn — agent may briefly acknowledge
     {
       kind: "message",
       name: "ask-for-silence",
       room: "main",
       text: "STOP RESPONDING TO ME. DON'T REPLY AT ALL UNTIL I @MENTION YOU. I'M NOT IN THE MOOD.",
+    },
+    {
+      kind: "message",
+      name: "silent-test-1",
+      room: "main",
+      text: "THIS IS AN UNRELATED MESSAGE, NOT A RELEASE.",
     },
   ],
 });

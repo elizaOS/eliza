@@ -13,6 +13,7 @@ export default scenario({
   id: "i1-account-correction-supersedes",
   title: "Corrected rupture account supersedes rather than stacks",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "I1",

@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Legal deadline tracks docs, calendar, approvals, and counsel follow-up",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "documents", "deadline"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -6,6 +6,7 @@ export default scenario({
   title:
     "Traveler: absolute-instant reminder survives a timezone-change signal",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "timezone", "outcome"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },

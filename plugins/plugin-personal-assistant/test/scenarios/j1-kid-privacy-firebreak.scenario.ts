@@ -11,6 +11,7 @@ export default scenario({
   id: "j1-kid-privacy-firebreak",
   title: "Kid-private school detail stays out of unrelated messages",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "privacy", "messaging", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {

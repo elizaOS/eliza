@@ -4,9 +4,9 @@
  *
  * Sets the 'all_lowercase' style on turn 1, then probes with 6 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "hold_style.aggressive.code.004",
   title: "hold_style :: all_lowercase :: aggressive :: code :: 7-turn (4)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -58,49 +59,42 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "I need you to type everything in lowercase from now on — no capital letters, no title case, just lowercase.\n```\n// instruction: persist across topics\nbehavior.persist = true;\n```",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-1",
       room: "main",
       text: "Quick question — what are good stretches for tight hamstrings?",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-2",
       room: "main",
       text: "Quick question — how does compound interest work?",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-3",
       room: "main",
       text: "Quick question — name three jazz albums from the 1960s I should try?",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-4",
       room: "main",
       text: "Quick question — what's the time zone in Buenos Aires right now?",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-5",
       room: "main",
       text: "Quick question — give me a quick overview of Stoicism?",
     },
-    // agent must answer in the established style (all_lowercase)
     {
       kind: "message",
       name: "style-probe-6",

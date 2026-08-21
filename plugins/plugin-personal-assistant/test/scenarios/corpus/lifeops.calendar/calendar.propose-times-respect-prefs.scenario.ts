@@ -50,6 +50,7 @@ export default scenario({
   id: "calendar.propose-times-respect-prefs",
   title: "Proposed slots honor 09:00-18:00 prefs + 12:00-13:00 lunch blackout",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "preferences", "scheduling"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

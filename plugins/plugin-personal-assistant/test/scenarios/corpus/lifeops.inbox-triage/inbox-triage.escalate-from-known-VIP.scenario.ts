@@ -38,6 +38,7 @@ export default scenario({
   id: "inbox-triage.escalate-from-known-VIP",
   title: "Low-urgency mail from VIP escalates to top of triage",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "vip", "entity-aware", "ranking"],
   isolation: "per-scenario",
   requires: {

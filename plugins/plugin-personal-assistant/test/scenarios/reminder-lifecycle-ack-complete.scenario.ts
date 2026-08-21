@@ -43,6 +43,7 @@ export default scenario({
   id: "reminder-lifecycle-ack-complete",
   title: "Compressed reminder lifecycle with ack and completion",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops"],
   isolation: "per-scenario",
   requires: {

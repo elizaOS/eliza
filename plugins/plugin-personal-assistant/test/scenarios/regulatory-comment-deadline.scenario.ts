@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Regulatory comment plan grounds in the seeded docket and keeps privileged counsel material held",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

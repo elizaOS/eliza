@@ -12,6 +12,7 @@ export default scenario({
   id: "health.workout-completion-streak",
   title: "Workout completion streak from health data",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "streak", "workout"],
   isolation: "per-scenario",
   requires: {

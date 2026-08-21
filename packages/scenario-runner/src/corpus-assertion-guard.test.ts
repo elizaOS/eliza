@@ -74,6 +74,7 @@ interface ScenarioFacts {
   hasMessageAsGmailLabelExpectation: boolean;
   deadTurnAssertionFields: string[];
   duplicateTopLevelFields: string[];
+  duplicateActionAlternatives: string[];
 }
 
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
@@ -219,6 +220,50 @@ function collectDirectTurnKeys(sourceFile: ts.SourceFile): Set<string> {
   return keys;
 }
 
+function collectDuplicateActionAlternatives(
+  sourceFile: ts.SourceFile,
+): string[] {
+  const duplicates: string[] = [];
+  const inspectedProperties = new Set([
+    "acceptedActions",
+    "expectedActions",
+    "actionName",
+  ]);
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isPropertyAssignment(node) &&
+      inspectedProperties.has(propertyNameText(node.name) ?? "") &&
+      ts.isArrayLiteralExpression(node.initializer) &&
+      node.initializer.elements.every(ts.isStringLiteral)
+    ) {
+      const values = node.initializer.elements
+        .filter(ts.isStringLiteral)
+        .map((element) => element.text.trim().toUpperCase());
+      const repeated = [
+        ...new Set(
+          values.filter(
+            (value, index) =>
+              value.length > 0 && values.indexOf(value) !== index,
+          ),
+        ),
+      ];
+      if (repeated.length > 0) {
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+            .line + 1;
+        duplicates.push(
+          `${propertyNameText(node.name)}@${line}:${repeated.join(",")}`,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return duplicates;
+}
+
 function analyze(file: string): ScenarioFacts {
   const src = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(
@@ -249,6 +294,7 @@ function analyze(file: string): ScenarioFacts {
       "id",
       "lane",
     ]),
+    duplicateActionAlternatives: collectDuplicateActionAlternatives(sourceFile),
   };
 }
 
@@ -256,6 +302,48 @@ const facts: ScenarioFacts[] =
   SCENARIO_ROOTS.flatMap(walkScenarioFiles).map(analyze);
 const rel = (f: ScenarioFacts) => relative(repoRoot, f.file);
 const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
+  // Production-quality scenario sweep: executable domain contracts replacing
+  // pending or transcript-only connector, gateway, messaging, relationship,
+  // activity, and browser fixtures. These IDs remain explicit so adding or
+  // removing deterministic evidence always requires review.
+  "activity.per-app.weekly-average",
+  "billing.20-percent-markup-applied",
+  "bluebubbles.imessage.receive",
+  "bluebubbles.imessage.send-blue",
+  "connector.google-calendar.contract-core",
+  "connector.google-drive-docs-sheets.contract-core",
+  "connector.travel-booking.contract-core",
+  "cross-platform.inbox",
+  "cross-platform.same-person-multi-platform",
+  "discord-gateway.bot-routes-to-user-agent",
+  "discord.local.mute-channel",
+  "discord.local.read-recent",
+  "discord.local.reply-to-dm",
+  "followup.daily-digest",
+  "followup.threshold-14-days",
+  "followup.track-overdue",
+  "imessage.cross-reference-contact",
+  "imessage.read-incoming",
+  "imessage.reply-with-confirmation",
+  "lifeops-extension.see-what-user-sees",
+  "relationships.import-from-platform",
+  "relationships.status-goals.progress",
+  "relationships.status-goals.set",
+  "reminder-dst-boundary-outcome",
+  "reminder-idempotent-retry-outcome",
+  "reminder-timezone-mismatch-outcome",
+  "reminder.acknowledgement.concurrent",
+  "reminder.lifecycle.edit-cancel-resume",
+  "signal.read-recent",
+  "signal.reply",
+  "telegram-gateway.bot-routes-to-user-agent",
+  "twilio.call.outbound-with-confirmation",
+  "twilio.call.receive",
+  "twilio.sms.receive-route-to-agent",
+  "twilio.sms.send-from-agent-with-confirmation",
+  "whatsapp-gateway.bot-routes-to-user-agent",
+  "whatsapp.read",
+  "whatsapp.reply",
   // LifeOps persona pack A1 (adhd-capture-and-start, #12769). Convention (G1):
   // pr-deterministic persona scenarios live in
   // plugins/plugin-personal-assistant/test/scenarios — the one root scanned by
@@ -378,11 +466,16 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "orchestrator-view-cloud-deploy",
   "orchestrator-watchdog-stall",
   "persona.flexible-scheduling",
+  // Personality safety foundation: direct action/store/ingress proof that a
+  // user-scoped gate suppresses replies, audits both mutations, lifts, and
+  // leaves the global slot untouched, plus fail-closed global authorization.
+  "personality.global-scope.authorization-contract",
+  "personality.reply-gate.structural-contract",
   "relationships.list-entities",
-  "reminder.cross-platform.acknowledged-syncs",
-  "reminder.cross-platform.fires-on-mac-and-phone",
   "reminder.escalation.intensity-up",
-  "reminder.escalation.silent-dismiss",
+  "reminder.escalation.unacknowledged-ladder",
+  "reminder.ladder.acknowledged-suppresses-later",
+  "reminder.ladder.delivers-three-rungs",
   // LifeOps persona pack B2 (shift-rotation, marcus_shift, #12772). Convention
   // (G1): pr-deterministic persona scenarios live in
   // plugins/plugin-personal-assistant/test/scenarios — the one root scanned by
@@ -405,6 +498,14 @@ describe("scenario corpus assertion guard", () => {
     const offenders = facts
       .filter((f) => f.duplicateTopLevelFields.length > 0)
       .map((f) => `${rel(f)} (${f.duplicateTopLevelFields.join(", ")})`)
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it("does not repeat literal action alternatives in assertions", () => {
+    const offenders = facts
+      .filter((f) => f.duplicateActionAlternatives.length > 0)
+      .map((f) => `${rel(f)} (${f.duplicateActionAlternatives.join("; ")})`)
       .sort();
     expect(offenders).toEqual([]);
   });

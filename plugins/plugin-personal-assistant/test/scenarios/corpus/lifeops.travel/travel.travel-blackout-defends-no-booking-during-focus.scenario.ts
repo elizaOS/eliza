@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Travel blackout defends against booking flights during a focus window",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "calendar", "blackout", "defense"],
   description:
     "User has a 'deep work / no travel' focus window on the calendar (matches PRD §Defend Calendar). Someone proposes a flight that lands inside it. The agent must refuse to silently book and either propose a different slot or surface the conflict for the user.",

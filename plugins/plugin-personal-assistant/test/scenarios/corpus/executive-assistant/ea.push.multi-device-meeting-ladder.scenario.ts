@@ -14,6 +14,7 @@ export default scenario({
   id: "ea.push.multi-device-meeting-ladder",
   title: "Send a multi-device reminder ladder before important meetings",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "push", "reminders", "transcript-derived"],
   description:
     "Transcript-derived case: remind on desktop and phone at one hour, ten minutes, and start time, and stop the ladder once the user acknowledges on either device.",

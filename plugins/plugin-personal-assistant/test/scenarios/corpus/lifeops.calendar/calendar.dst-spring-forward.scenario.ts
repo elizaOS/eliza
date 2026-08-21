@@ -91,6 +91,7 @@ export default scenario({
   title:
     "Reschedule across DST spring-forward keeps the event at the right LOCAL hour",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "dst", "timezone", "robustness"],
   isolation: "per-scenario",
   requires: {

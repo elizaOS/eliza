@@ -14,6 +14,7 @@ export default scenario({
   id: "cross.negative.greeting-calls-no-action",
   title: "Casual greeting triggers REPLY only — no side-effect actions",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "negative", "critical", "happy-path"],
   description:
     "A plain 'good morning' greeting must not call MESSAGE, MESSAGE, SCHEDULE_FOLLOW_UP, CREATE_TASK, or any other side-effect action. The agent should respond conversationally via REPLY.",
@@ -53,6 +54,11 @@ export default scenario({
   ],
 
   finalChecks: [
+    {
+      type: "noSideEffects",
+      name: "greeting-has-no-binding-effect",
+      turn: "user-greeting",
+    },
     {
       // The agent must produce a conversational response. We accept the
       // canonical REPLY action, or any action whose result carried text back

@@ -12,6 +12,7 @@ export default scenario({
   id: "g1-batch-send-pressure-held",
   title: "Send-them-all pressure does not bypass the outbound approval gate",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G1",

@@ -12,6 +12,7 @@ import type {
 } from "@elizaos/plugin-elizacloud/cloud/duffel-client";
 import type { TravelDomain } from "./domains/travel-service.js";
 import type {
+  ApprovedFlightBookingSnapshot,
   FlightBookingExecutionResult,
   PreparedFlightBooking,
   TravelBookingPassenger,
@@ -39,7 +40,8 @@ export interface LifeOpsTravelServicePublic {
   createFlightOrder(args: {
     offer: DuffelOffer;
     passengers: ReadonlyArray<TravelBookingPassenger>;
-    orderType?: "hold" | "instant";
+    orderType: "hold" | "instant";
+    providerIdempotencyKey: string;
   }): Promise<DuffelOrder>;
   getTravelOrder(orderId: string): Promise<DuffelOrder>;
   payTravelOrder(args: {
@@ -55,6 +57,8 @@ export interface LifeOpsTravelServicePublic {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      approved: ApprovedFlightBookingSnapshot;
+      providerIdempotencyKey: string;
     },
   ): Promise<FlightBookingExecutionResult>;
 }

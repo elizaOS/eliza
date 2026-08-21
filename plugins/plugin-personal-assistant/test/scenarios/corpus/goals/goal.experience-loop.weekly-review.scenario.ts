@@ -105,6 +105,7 @@ export default scenario({
   id: "goal.experience-loop.weekly-review",
   title: "Weekly goal review returns drifting versus on-track goals",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "experience-loop", "smoke"],
   isolation: "per-scenario",
   requires: {

@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Detect a wrong-merge and unmerge while preserving each side's history",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "unmerge", "conflict"],
   description:
     "Two people were accidentally merged into one entity (same display name 'Alex Lee', different real people). User flags the bad merge. Agent must split, preserve each history, and confirm which messages belong where.",

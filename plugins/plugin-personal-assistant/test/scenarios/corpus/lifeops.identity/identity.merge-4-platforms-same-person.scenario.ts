@@ -13,6 +13,7 @@ export default scenario({
   id: "identity.merge-4-platforms-same-person",
   title: "Merge gmail + signal + telegram + discord handles into one entity",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "merge", "multi-platform"],
   description:
     "Stress test: 4 handles on 4 platforms for one person. Merge must preserve every handle, pick a canonical display name, and store the platform-of-origin per handle.",

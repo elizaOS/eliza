@@ -12,6 +12,7 @@ export default scenario({
   id: "k1-no-clinical-claims",
   title: "K1 sad-friend support stays non-clinical",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "K1", "third-party-support", "non-clinical"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

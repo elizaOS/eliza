@@ -10,6 +10,7 @@ export default scenario({
   id: "child-book-report-cancel-reask",
   title: "Child voice: cancelled book-report reminder is not duplicated",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "child-voice", "student-deadline", "14352"],
   tier: "T2",
   status: "active",

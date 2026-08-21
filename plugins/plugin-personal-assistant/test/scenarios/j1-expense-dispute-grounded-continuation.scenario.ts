@@ -13,6 +13,7 @@ export default scenario({
   id: "j1-expense-dispute-grounded-continuation",
   title: "Contested $43 reimbursement stays grounded in the recorded receipt",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "finance", "dispute", "mvp", "14789"],
   tier: "T3",
   isolation: "per-scenario",

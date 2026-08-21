@@ -30,6 +30,7 @@ export default scenario({
   id: "reminder-not-yet-due-outcome",
   title: "A reminder is not delivered before its scheduled time",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders"],
   isolation: "per-scenario",
   requires: {

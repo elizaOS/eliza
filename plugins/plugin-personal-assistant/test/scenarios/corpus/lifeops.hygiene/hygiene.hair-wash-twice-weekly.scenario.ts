@@ -16,6 +16,7 @@ export default scenario({
   id: "hygiene.hair-wash-twice-weekly",
   title: "Wash hair twice a week",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "weekly"],
   isolation: "per-scenario",
   requires: {

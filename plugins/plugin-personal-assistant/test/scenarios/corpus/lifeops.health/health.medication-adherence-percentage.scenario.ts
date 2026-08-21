@@ -14,6 +14,7 @@ export default scenario({
   id: "health.medication-adherence-percentage",
   title: "Medication adherence percentage over the past month",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "medication", "adherence"],
   isolation: "per-scenario",
   requires: {

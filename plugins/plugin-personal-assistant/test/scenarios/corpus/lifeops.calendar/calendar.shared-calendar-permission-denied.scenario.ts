@@ -46,6 +46,7 @@ export default scenario({
   id: "calendar.shared-calendar-permission-denied",
   title: "Read-only shared calendar surfaces the permission gap",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "permissions", "robustness"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

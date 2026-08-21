@@ -13,6 +13,7 @@ export default scenario({
   id: "push.meeting-reminder-T-0",
   title: "Fire a start-time meeting reminder with the join link",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "reminder", "T-0"],
   description:
     "User wants a reminder right at meeting start with the join link inline. Agent must schedule via DEVICE_INTENT for T=0 and embed the link in the payload.",

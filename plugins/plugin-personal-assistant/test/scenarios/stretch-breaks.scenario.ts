@@ -9,6 +9,7 @@ export default scenario({
   id: "stretch-breaks",
   title: "Stretch default breaks during the day",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

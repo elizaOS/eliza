@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Evacuation runbook is grounded in seeded household state and schedules the reminder ladder",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "household", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {

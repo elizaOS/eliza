@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Pledge payment coordination is grounded in seeded foundation work and leaks no routing digits",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

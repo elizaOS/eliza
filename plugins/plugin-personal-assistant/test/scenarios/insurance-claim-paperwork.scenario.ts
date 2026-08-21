@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Luggage claim packet grounds in seeded flight and policy state; claim stays unsubmitted",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {

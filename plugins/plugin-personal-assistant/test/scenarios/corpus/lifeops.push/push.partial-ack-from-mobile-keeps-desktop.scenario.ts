@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Partial 'snooze' ack from mobile defers but keeps the desktop copy alive",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "snooze", "partial-ack"],
   description:
     "User taps 'snooze 10m' on mobile (not 'ack/dismiss'). The desktop copy should remain so the snoozed reminder re-fires on both devices 10m later, not just one.",

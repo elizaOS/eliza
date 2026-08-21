@@ -18,6 +18,7 @@ export default scenario({
   id: "sleep.health-goal-grounding-weekly-review",
   title: "Weekly sleep review marks under-target as needs-attention",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "goals", "review"],
   isolation: "per-scenario",
   requires: {

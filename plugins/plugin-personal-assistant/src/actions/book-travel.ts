@@ -28,7 +28,10 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../lifeops/approval-queue.types.js";
-import { TravelPostBookingProjectionError } from "../lifeops/domains/travel-service.js";
+import {
+  TravelApprovalDriftError,
+  TravelPostBookingProjectionError,
+} from "../lifeops/domains/travel-service.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -40,6 +43,7 @@ import {
   ApprovalAmbiguousDeliveryError,
   runApprovalDispatch,
 } from "./lib/approval-execution.js";
+import { ApprovalKnownNonDeliveryError } from "./lib/messaging-helpers.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -330,11 +334,17 @@ function buildApprovalText(request: ApprovalRequest): string {
       : (payload?.currency ?? "the quoted total");
   const orderType =
     payload?.orderType === "hold"
-      ? "hold then pay"
+      ? "place a payment-free hold"
       : payload?.orderType === "instant"
-        ? "book immediately"
+        ? "book immediately and pay the approved total"
         : "book";
-  return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
+  const calendarText =
+    payload?.orderType === "hold"
+      ? " I will not create a calendar event until the hold is separately paid."
+      : payload?.calendarSync?.enabled === false
+        ? " I will not create a calendar event."
+        : " I will sync the itinerary to your calendar.";
+  return `Queued travel approval for ${route}. Once you approve, I will ${orderType}.${calendarText} Current quote: ${total}.`;
 }
 
 // Internal travel-booking handler. The travel surface is delegated to from the
@@ -600,9 +610,23 @@ export async function executeApprovedBookTravel(args: {
   if (payload.kind !== "flight") {
     throw new Error(`Unsupported travel kind: ${payload.kind}`);
   }
-  if (!payload.offerId && !payload.search) {
-    throw new Error("Approved travel booking is missing offer/search context");
+  if (
+    !payload.offerId ||
+    (payload.orderType !== "hold" && payload.orderType !== "instant") ||
+    !Number.isInteger(payload.totalCents) ||
+    payload.totalCents <= 0 ||
+    !payload.currency?.trim()
+  ) {
+    throw new Error(
+      "Approved travel booking is missing its immutable offer, order type, or quoted price",
+    );
   }
+  const approvedQuote = {
+    offerId: payload.offerId,
+    orderType: payload.orderType,
+    totalCents: payload.totalCents,
+    currency: payload.currency,
+  } as const;
   const passengers = Array.isArray(payload.passengers)
     ? payload.passengers
     : [];
@@ -625,7 +649,10 @@ export async function executeApprovedBookTravel(args: {
     };
   }
   let calendarGrantId: string | undefined;
-  if (payload.calendarSync?.enabled !== false) {
+  if (
+    payload.orderType === "instant" &&
+    payload.calendarSync?.enabled !== false
+  ) {
     try {
       const grant = await service.requireGoogleCalendarWriteGrant(
         INTERNAL_URL,
@@ -653,7 +680,7 @@ export async function executeApprovedBookTravel(args: {
     subjectUserId: args.request.subjectUserId,
     prepared: {
       provider: "duffel",
-      dispatch: async () => {
+      dispatch: async (providerIdempotencyKey) => {
         let booked: Awaited<ReturnType<LifeOpsService["bookFlightItinerary"]>>;
         try {
           booked = await service.bookFlightItinerary(INTERNAL_URL, {
@@ -662,8 +689,16 @@ export async function executeApprovedBookTravel(args: {
             passengers,
             calendarSync: payload.calendarSync ?? null,
             calendarGrantId,
+            approved: approvedQuote,
+            providerIdempotencyKey,
           });
         } catch (error) {
+          if (error instanceof TravelApprovalDriftError) {
+            throw new ApprovalKnownNonDeliveryError(
+              "TRAVEL_APPROVED_QUOTE_CHANGED",
+              error.message,
+            );
+          }
           if (error instanceof TravelPostBookingProjectionError) {
             throw new ApprovalAmbiguousDeliveryError(
               error.message,
@@ -671,6 +706,8 @@ export async function executeApprovedBookTravel(args: {
                 provider: "duffel",
                 orderId: error.booking.order.id,
                 bookingReference: error.booking.order.bookingReference ?? null,
+                orderType: error.booking.orderType,
+                paymentCommitted: error.booking.paymentCommitted,
                 paymentId: error.booking.payment?.id ?? null,
                 projectionComplete: false,
               },
@@ -685,6 +722,8 @@ export async function executeApprovedBookTravel(args: {
             provider: "duffel",
             orderId: booked.order.id,
             bookingReference: booked.order.bookingReference ?? null,
+            orderType: booked.orderType,
+            paymentCommitted: booked.paymentCommitted,
             paymentId: booked.payment?.id ?? null,
           },
         };
@@ -718,12 +757,15 @@ export async function executeApprovedBookTravel(args: {
     : "";
   const paymentText = booked.payment
     ? ` Payment ${booked.payment.id} captured for ${booked.payment.amount} ${booked.payment.currency}.`
-    : "";
+    : booked.paymentCommitted
+      ? ` The approved ${booked.offer.totalAmount} ${booked.offer.totalCurrency} payment was submitted with the instant order.`
+      : " No payment was submitted.";
   const calendarText = booked.calendarEvent
     ? ` Synced to calendar as "${booked.calendarEvent.title}".`
     : "";
+  const outcomeVerb = booked.orderType === "hold" ? "Held" : "Booked";
   const text =
-    `Booked ${route}.${bookingReference}${paymentText}${calendarText}`.trim();
+    `${outcomeVerb} ${route}.${bookingReference}${paymentText}${calendarText}`.trim();
 
   if (args.callback) {
     await args.callback({ text });
@@ -737,6 +779,8 @@ export async function executeApprovedBookTravel(args: {
       requestId: done.id,
       bookingReference: booked.order.bookingReference,
       orderId: booked.order.id,
+      orderType: booked.orderType,
+      paymentCommitted: booked.paymentCommitted,
       paymentId: booked.payment?.id ?? null,
       calendarEventId: booked.calendarEvent?.id ?? null,
     },
@@ -747,6 +791,8 @@ export async function executeApprovedBookTravel(args: {
       state: done.state,
       bookingReference: booked.order.bookingReference,
       orderId: booked.order.id,
+      orderType: booked.orderType,
+      paymentCommitted: booked.paymentCommitted,
       paymentId: booked.payment?.id ?? null,
       calendarEventId: booked.calendarEvent?.id ?? null,
       offerId: booked.offer.id,

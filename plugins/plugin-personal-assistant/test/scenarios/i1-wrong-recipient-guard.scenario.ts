@@ -11,6 +11,7 @@ export default scenario({
   id: "i1-wrong-recipient-guard",
   title: "I1 repair context stays off the wrong recipient",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I1", "privacy", "wrong-recipient", "relationships"],
   isolation: "per-scenario",
   rooms: [

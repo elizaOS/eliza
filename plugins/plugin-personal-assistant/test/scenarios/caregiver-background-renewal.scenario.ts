@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Caregiver background renewal is grounded in seeded vendor work and leaks no ID number",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

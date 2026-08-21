@@ -9,6 +9,7 @@ export default scenario({
   id: "water-default-frequency",
   title: "Drink water default daily frequency",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

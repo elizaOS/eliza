@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Renovation payment hold grounds in the seeded invoice and withholds the alarm code",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

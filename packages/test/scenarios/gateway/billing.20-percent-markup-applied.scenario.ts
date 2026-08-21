@@ -1,106 +1,83 @@
-/** Scenario fixture for billing 20 percent markup applied; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves the production gateway's segment-based Twilio SMS markup calculation. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  type ScenarioContext,
+  type ScenarioTurnExecution,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
-function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
-  const action = ctx.turns?.[1]?.actionsCalled.find((entry) =>
-    ["MESSAGE", "MESSAGE"].includes(entry.actionName),
-  );
-  if (!action?.result?.data || typeof action.result.data !== "object") {
-    return "expected a Twilio send action with structured billing data";
-  }
-
-  const data = action.result.data as {
-    result?: {
-      billing?: {
-        rawCost: number;
-        markup: number;
-        billedCost: number;
-        markupRate: number;
-        segments: number;
-      };
-    };
-  };
-  const billing = data.result?.billing;
-  if (!billing) {
-    return "expected Twilio SMS billing details in the send result";
-  }
-  if (billing.markupRate !== 0.2) {
-    return `expected 20% markup, saw ${billing.markupRate}`;
-  }
-  if (billing.segments < 4) {
-    return "expected a multi-segment Twilio SMS so the markup is visible";
-  }
-  if (billing.rawCost <= 0) {
-    return "expected a positive raw SMS cost";
-  }
-  if (billing.billedCost <= billing.rawCost) {
-    return "expected billed SMS cost to exceed raw cost";
-  }
-  const expectedMarkup = billing.billedCost - billing.rawCost;
-  if (Math.abs(expectedMarkup - billing.markup) > 1e-6) {
-    return "expected billedCost - rawCost to equal markup";
-  }
-}
-
+const harness = createGatewayContractHarness();
+const longBody = "A".repeat(500);
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "billing.20-percent-markup-applied",
-  title: "Gateway SMS usage is billed with 20% markup",
-  domain: "gateway",
-  tags: ["gateway", "billing", "credentials-missing-edge"],
+  title: "Gateway Twilio SMS billing applies exact 20 percent markup",
+  domain: "gateway-contract",
+  tags: ["gateway", "billing", "twilio", "deterministic-contract"],
   description:
-    "Agent drafts and sends a Twilio SMS with a structured billing breakdown that includes raw, markup, and billed amounts.",
+    "Calls the production gateway billing function and checks exact segment, raw-cost, markup, and billed-cost arithmetic. It does not claim a provider charge.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
   rooms: [
     {
       id: "main",
-      source: "dashboard",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Billing 20 Percent Markup",
+      title: "Gateway billing",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "send-sms-for-billing",
+      kind: "action",
+      name: "calculate-multisegment-billing",
       room: "main",
-      text: 'Draft a Twilio SMS to my coworker and hold it for approval. Exact SMS: "I checked the plan, the vendor push is complete, the updated deck is in the shared folder, the QA notes are attached, the launch checklist is green, the finance numbers have been reconciled, and we are still on track for the afternoon review as long as nobody adds new scope before noon or changes the agenda without telling me. Please reply in the thread if anything changes, because I need a clean handoff, a stable agenda, and no surprises before the meeting starts. I am intentionally keeping this note detailed so the Twilio SMS spans multiple segments, exercises the markup path, and leaves a clear audit trail for billing. Add that the backup approval path is the same as last week, the escalation contact is still Sam, the summary needs to include the delta from the morning notes, and the final send should happen only after we confirm the exact recipient and time window."',
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "twilio sms draft",
-        includesAny: ["sms", "draft", "coworker", "approval"],
-      }),
-      responseIncludesAny: ["sms", "draft", "coworker", "approval"],
-    },
-    {
-      kind: "message",
-      name: "confirm-send",
-      room: "main",
-      text: "Yes, send that SMS exactly as drafted.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "twilio sms send confirmed",
-        includesAny: ["sms", "send", "confirmed", "sent"],
-      }),
-      responseIncludesAny: ["sent", "sending", "SMS"],
+      actionName: "TWILIO_BILLING_CONTRACT",
+      options: { body: longBody, costPerSegment: 0.25 },
+      assertTurn: (turn: ScenarioTurnExecution) => {
+        const billing = (
+          turn.responseBody as {
+            data?: {
+              billing?: {
+                segments?: number;
+                rawCost?: number;
+                markup?: number;
+                billedCost?: number;
+                markupRate?: number;
+                costPerSegment?: number;
+              };
+            };
+          }
+        )?.data?.billing;
+        return billing?.segments === 4 &&
+          billing.costPerSegment === 0.25 &&
+          billing.rawCost === 1 &&
+          billing.markup === 0.2 &&
+          billing.billedCost === 1.2 &&
+          billing.markupRate === 0.2
+          ? undefined
+          : `unexpected billing ${JSON.stringify(billing)}`;
+      },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "MESSAGE",
-    },
-    {
       type: "custom",
-      name: "billing-markup-structured-result",
-      predicate: async (ctx) => assertTwilioBillingResult(ctx),
+      name: "billing-has-no-provider-effect",
+      predicate: () =>
+        harness.dispatches.length === 0
+          ? undefined
+          : `billing unexpectedly dispatched ${harness.dispatches.length} request(s)`,
     },
   ],
 });

@@ -11,6 +11,7 @@ export default scenario({
   id: "k1-no-988-without-danger",
   title: "K1 crisis-adjacent friend support does not fabricate a guard",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "K1", "third-party-support", "safety-boundary"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

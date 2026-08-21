@@ -15,6 +15,7 @@ export default scenario({
   title:
     "EA handoff brief grounds in seeded open loops and stays behind the share gate",
   domain: "executive.delegation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

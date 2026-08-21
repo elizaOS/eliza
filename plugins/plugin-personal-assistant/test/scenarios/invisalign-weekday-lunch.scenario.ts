@@ -8,6 +8,7 @@ export default scenario({
   id: "invisalign-weekday-lunch",
   title: "Invisalign weekday lunch phrasing",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

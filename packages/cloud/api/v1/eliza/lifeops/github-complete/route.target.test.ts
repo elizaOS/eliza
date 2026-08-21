@@ -14,6 +14,7 @@ const createLifeOpsGithubReturnResponse = mock(
 );
 
 mock.module("@/lib/services/agent-github-return", () => ({
+  ...realAgentGithubReturn,
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin:
     realAgentGithubReturn.normalizePostMessageTargetOrigin,

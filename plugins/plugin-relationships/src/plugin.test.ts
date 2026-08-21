@@ -53,5 +53,6 @@ describe("@elizaos/plugin-relationships contract", () => {
     );
     expect(view?.viewKind).toBe("developer");
     expect(view?.visibleInManager).toBe(true);
+    expect(view?.relatedActions).toEqual([RELATIONSHIPS_ACTION_NAME]);
   });
 });

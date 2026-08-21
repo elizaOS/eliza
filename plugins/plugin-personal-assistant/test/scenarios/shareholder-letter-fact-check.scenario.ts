@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Letter fact-check grounds in the seeded draft and keeps the embargoed divestiture out of the brief",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

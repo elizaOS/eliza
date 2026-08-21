@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.approval-batch-safe-actions",
   title: "Approval batch separates safe actions from owner approvals",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "approvals", "safety"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

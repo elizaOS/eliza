@@ -4,9 +4,9 @@
  *
  * Sets the 'no_hedging' style on turn 1, then probes with 3 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "hold_style.aggressive.allcaps.019",
   title: "hold_style :: no_hedging :: aggressive :: allcaps :: 4-turn (19)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -58,28 +59,24 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "I NEED YOU TO STOP USING HEDGE WORDS. NO 'I THINK', NO 'MAYBE', NO 'PERHAPS', NO 'MIGHT', NO 'COULD BE'. DIRECT STATEMENTS ONLY.",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-1",
       room: "main",
       text: "Quick question — how do I get red wine out of a white shirt?",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-2",
       room: "main",
       text: "Quick question — what's the strongest material in the human body?",
     },
-    // agent must answer in the established style (no_hedging)
     {
       kind: "message",
       name: "style-probe-3",

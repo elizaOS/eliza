@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Fraud review grounds in the seeded vendor file and never shares the portal credential",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

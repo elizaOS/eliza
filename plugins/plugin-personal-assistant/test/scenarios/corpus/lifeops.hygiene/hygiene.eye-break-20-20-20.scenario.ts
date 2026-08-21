@@ -10,6 +10,7 @@ export default scenario({
   id: "hygiene.eye-break-20-20-20",
   title: "20-20-20 eye break every 20 minutes",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "interval", "eyes"],
   isolation: "per-scenario",
   requires: {

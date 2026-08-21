@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-savings-trip-basic",
   title: "Savings goal save flow",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "savings", "mvp"],
   isolation: "per-scenario",
   requires: {

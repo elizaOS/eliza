@@ -236,6 +236,7 @@ export default scenario({
   title:
     "Traveler DST integrity: a daily 08:00 reminder keeps its local time across a fall-back transition",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

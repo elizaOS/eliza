@@ -25,6 +25,7 @@ export default scenario({
   id: "todo.list.today",
   title: "List todos for today",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke", "happy-path"],
   isolation: "per-scenario",
   requires: {

@@ -38,6 +38,7 @@ export default scenario({
   id: "calendar.cancel-tentative-launch-checklist",
   title: "Cancel a tentative 'launch checklist' event cleanly",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "cancel"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

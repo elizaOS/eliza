@@ -219,6 +219,7 @@ export default scenario({
   title:
     "Low activation: a parked one-small-step resurfaces once at its gentle later time, never dropped or early",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

@@ -11,6 +11,7 @@ export default scenario({
   id: "habit.morning-routine.full-stack",
   title: "Set up a full morning routine in one request",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "multi-action", "happy-path"],
   isolation: "per-scenario",
   requires: {

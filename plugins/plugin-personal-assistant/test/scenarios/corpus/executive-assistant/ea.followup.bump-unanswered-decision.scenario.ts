@@ -14,6 +14,7 @@ export default scenario({
   id: "ea.followup.bump-unanswered-decision",
   title: "Bump an unanswered decision that is blocking other people",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "followup", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant keeps bumping a scheduling or event decision until it is resolved.",

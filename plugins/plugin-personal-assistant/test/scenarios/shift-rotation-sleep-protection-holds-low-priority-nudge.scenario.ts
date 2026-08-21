@@ -257,6 +257,7 @@ export default scenario({
   title:
     "Protected post-night-shift sleep holds a low-value ping while an important reminder breaks through",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

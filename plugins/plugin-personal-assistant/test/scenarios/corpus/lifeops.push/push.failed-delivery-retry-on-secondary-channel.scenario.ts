@@ -13,6 +13,7 @@ export default scenario({
   id: "push.failed-delivery-retry-on-secondary-channel",
   title: "Failed ntfy delivery triggers a secondary-channel retry",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "ntfy", "retry", "fallback"],
   description:
     "Primary push via ntfy returned a delivery failure. Per the escalation ladder, the agent must retry via the next channel (SMS) — not silently drop or retry ntfy forever.",

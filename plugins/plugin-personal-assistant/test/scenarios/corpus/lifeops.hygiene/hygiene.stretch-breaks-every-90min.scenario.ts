@@ -17,6 +17,7 @@ export default scenario({
   id: "hygiene.stretch-breaks-every-90min",
   title: "Stretch break every 90 minutes during work",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "interval"],
   isolation: "per-scenario",
   requires: {

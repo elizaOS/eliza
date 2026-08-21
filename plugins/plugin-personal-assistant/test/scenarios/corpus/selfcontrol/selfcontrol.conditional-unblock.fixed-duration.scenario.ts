@@ -6,6 +6,7 @@ export default scenario({
   id: "selfcontrol.conditional-unblock.fixed-duration",
   title: "Unlock X for a fixed window after the workout",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "conditional-unblock", "happy-path"],
   description:
     "After completing the workout habit, X should unlock for 60 minutes as a fixed-duration reward window.",

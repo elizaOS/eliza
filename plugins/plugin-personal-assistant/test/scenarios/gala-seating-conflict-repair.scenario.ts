@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Gala seating repair grounds in seeded event state; relationship history stays private",
   domain: "executive.messaging",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

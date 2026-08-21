@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Gift milestone tracks relationship context, date, budget, and delivery",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "relationships", "personal-admin"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

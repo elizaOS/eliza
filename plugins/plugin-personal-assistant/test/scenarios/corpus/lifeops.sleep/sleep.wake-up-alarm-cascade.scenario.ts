@@ -17,6 +17,7 @@ export default scenario({
   id: "sleep.wake-up-alarm-cascade",
   title: "Wake-up alarm cascade at 7:00, 7:05, 7:10",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "alarm", "cascade"],
   isolation: "per-scenario",
   requires: {

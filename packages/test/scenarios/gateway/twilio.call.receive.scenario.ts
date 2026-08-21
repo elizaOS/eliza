@@ -1,71 +1,127 @@
-/** Scenario fixture for twilio call receive; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+/** Proves Twilio voice call direction mapping and bounded realtime TwiML generation. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "twilio.call.receive",
-  title: "Inbound Twilio voice transcript routes to the agent",
-  domain: "gateway",
-  tags: ["gateway", "twilio", "call", "smoke"],
+  title: "Twilio inbound voice maps caller and produces scoped realtime TwiML",
+  domain: "gateway-contract",
+  tags: ["gateway", "twilio", "voice", "twiml", "deterministic-contract"],
   description:
-    "Once an inbound Twilio voice call has been transcribed into the user's Twilio room, the agent should treat it like real inbound message context and respond through a normal action path.",
+    "Exercises production voice direction and TwiML helpers at the authenticated route's domain seam. It does not place or receive a live PSTN call.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
   rooms: [
     {
       id: "main",
-      source: "twilio",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Twilio Call Receive",
+      title: "Twilio voice ingress",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "inbound-call",
+      kind: "action",
+      name: "reject-invalid-voice-signature",
       room: "main",
-      text: "[call transcript] Hi agent, this is a voice call coming in from my phone.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
-        description: "twilio voice transcript route-to-agent",
-        includesAny: ["call", "voice", "received", "hello"],
-      }),
-      responseIncludesAny: ["call", "voice", "received", "hello"],
+      actionName: "TWILIO_VOICE_INGRESS_CONTRACT",
+      options: {
+        callSid: "CA_invalid_91",
+        direction: "inbound",
+        from: "+15551112222",
+        to: "+15555550000",
+        variant: "invalid-signature",
+      },
+      assertTurn: (turn: ScenarioTurnExecution) =>
+        (turn.responseBody as { data?: { status?: number } })?.data?.status ===
+        403
+          ? undefined
+          : `invalid voice signature was not rejected: ${JSON.stringify(turn.responseBody)}`,
+    },
+    {
+      kind: "action",
+      name: "reject-wrong-voice-account",
+      room: "main",
+      actionName: "TWILIO_VOICE_INGRESS_CONTRACT",
+      options: {
+        callSid: "CA_wrong_91",
+        direction: "inbound",
+        from: "+15551112222",
+        to: "+15555550000",
+        variant: "wrong-account",
+      },
+      assertTurn: (turn: ScenarioTurnExecution) =>
+        (turn.responseBody as { data?: { status?: number } })?.data?.status ===
+        403
+          ? undefined
+          : `wrong voice account was not rejected: ${JSON.stringify(turn.responseBody)}`,
+    },
+    {
+      kind: "action",
+      name: "map-inbound-call",
+      room: "main",
+      actionName: "TWILIO_VOICE_INGRESS_CONTRACT",
+      options: {
+        callSid: "CA_inbound_91",
+        direction: "inbound",
+        from: "+15551112222",
+        to: "+15555550000",
+        variant: "valid",
+      },
+      assertTurn: (turn: ScenarioTurnExecution) => {
+        const d = (
+          turn.responseBody as {
+            data?: {
+              status?: number;
+              ingressBody?: string;
+              participants?: {
+                callerNumber?: string;
+                publicLineNumber?: string;
+                outbound?: boolean;
+              };
+              twiml?: string;
+              persistedCall?: { callSid?: string };
+            };
+          }
+        )?.data;
+        return d?.status === 200 &&
+          d.ingressBody?.includes("not configured") &&
+          d.participants?.callerNumber === "+15551112222" &&
+          d.participants.publicLineNumber === "+15555550000" &&
+          d.participants.outbound === false &&
+          d.persistedCall?.callSid === "CA_inbound_91" &&
+          d.twiml?.includes("voice-session-91") &&
+          d.twiml.includes("scoped-media-token")
+          ? undefined
+          : `unexpected voice mapping ${JSON.stringify(d)}`;
+      },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["REPLY", "MESSAGE", "MESSAGE"],
-    },
-    {
       type: "custom",
-      name: "twilio-call-receive-produces-grounded-response",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
-        description: "twilio voice transcript route-to-agent",
-        includesAny: ["call", "voice", "received", "hello"],
-      }),
-    },
-    {
-      type: "custom",
-      name: "twilio-call-receive-response-is-nonempty",
-      predicate: async (ctx) => {
-        const reply = String(ctx.turns?.[0]?.responseText ?? "").trim();
-        if (!reply) {
-          return "expected a non-empty Twilio voice transcript response";
-        }
-        if ((ctx.turns?.[0]?.actionsCalled.length ?? 0) === 0) {
-          return "expected the inbound Twilio voice transcript to invoke at least one action";
-        }
-        return undefined;
-      },
+      name: "one-call-record-effect",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one call effect, saw ${harness.dispatches.length}`,
     },
   ],
 });

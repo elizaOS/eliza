@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.moisturizer-after-shower",
   title: "Moisturizer after every shower",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits"],
   isolation: "per-scenario",
   requires: {

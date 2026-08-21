@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.delegation-map",
   title: "Delegation map identifies owners, blockers, and next asks",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "delegation", "relationships"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

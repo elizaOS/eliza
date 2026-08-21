@@ -12,6 +12,7 @@ export default scenario({
   id: "twitter.dm.schedule-reply",
   title: "Schedule a Twitter/X DM reply for later delivery",
   domain: "messaging.twitter-dm",
+  evidenceScope: "model-behavior",
   tags: ["messaging", "twitter", "routing", "trigger"],
   description:
     "A future-dated X DM reply should create a real trigger task instead of trying to send immediately through MESSAGE.",

@@ -49,6 +49,7 @@ export default scenario({
   id: "inbox-triage.unresponded-threads-72h",
   title: "Stale unresponded threads (>72h) surface in triage",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "stale-threads", "followup", "freshness"],
   isolation: "per-scenario",
   requires: {

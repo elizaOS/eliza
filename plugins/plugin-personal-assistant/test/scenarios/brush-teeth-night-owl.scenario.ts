@@ -13,6 +13,7 @@ export default scenario({
   id: "brush-teeth-night-owl",
   title: "Brush teeth for a night-owl phrasing",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

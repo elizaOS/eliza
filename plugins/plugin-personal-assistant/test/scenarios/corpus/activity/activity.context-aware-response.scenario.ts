@@ -1,4 +1,4 @@
-/** Scenario fixture for activity context aware response; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Live-model contract for grounding a reply in sampled owner screen context. */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { setScreenContextSamplerForTesting } from "../../../../src/activity-profile/service.ts";
 import {
@@ -40,11 +40,10 @@ export default scenario({
   id: "activity.context-aware-response",
   title: "Agent references current app context",
   domain: "activity",
-  tags: ["activity", "context", "happy-path"],
+  evidenceScope: "model-behavior",
+  tags: ["activity", "context", "live-model", "grounding"],
   description:
     "User asks a question that benefits from knowing the current screen focus; the agent references the seeded focus context.",
-
-  status: "pending",
 
   isolation: "per-scenario",
   requires: {
@@ -77,7 +76,12 @@ export default scenario({
       name: "context-aware-query",
       room: "main",
       text: "What am I working on right now?",
-      responseIncludesAny: [/work/i, /focus/i, /screen/i, /slack/i],
+      responseIncludes: ["Slack"],
+      responseJudge: {
+        minimumScore: 0.75,
+        rubric:
+          "The reply must ground its answer in the sampled work-focused screen context and name Slack. It must not invent a more specific task than the available Slack/docs/terminal/calendar cues support.",
+      },
     },
   ],
 

@@ -36,6 +36,7 @@ export default scenario({
   id: "i1-third-party-asks-what-was-said",
   title: "Third-party probe for what the owner said is refused leak-free",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "I1",

@@ -16,6 +16,7 @@ export default scenario({
   id: "hygiene.shower-daily-morning",
   title: "Shower every morning",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "daily"],
   isolation: "per-scenario",
   requires: {

@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.schedule.daily-time-with-jill",
   title: "Reserve recurring daily time with Jill",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: [
     "executive-assistant",
     "calendar",
@@ -40,7 +41,7 @@ export default scenario({
       room: "main",
       text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "recurring Jill time block",
         includesAny: ["jill", "daily", "hour", "sleep"],
       }),
@@ -55,11 +56,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
       includesAny: ["jill", "daily", "hour", "recurring"],
     },
     {
@@ -70,7 +71,7 @@ export default scenario({
       type: "custom",
       name: "ea-jill-time-block-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "recurring Jill time block",
         includesAny: ["jill", "daily", "hour", "sleep"],
       }),

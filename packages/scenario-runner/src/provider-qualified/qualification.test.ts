@@ -14,9 +14,11 @@ import { resolve } from "node:path";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import type {
+  DurableApprovalObservation,
   ProviderEffectObservation,
   ProviderNoEffectObservation,
   ScenarioEvidenceObserverProvenance,
+  ScenarioReport,
 } from "../types.ts";
 import {
   canonicalSha256,
@@ -39,6 +41,10 @@ import {
   type SignedSemanticJudgeEvidence,
   semanticEvidenceSigningBytes,
 } from "./qualification.ts";
+import {
+  assembleProviderQualificationArtifact,
+  reverifyProviderQualificationArtifact,
+} from "./qualification-artifact.ts";
 import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 const hash = (value: string): string =>
@@ -51,6 +57,7 @@ function scenario(): ScenarioDefinition {
     domain: "calendar",
     lane: "live-only",
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     isolation: "per-scenario",
     turns: [
       {
@@ -69,6 +76,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "parent-account",
         operation: "event-create",
       },
@@ -106,6 +114,12 @@ function bindings(
     target: {
       principalRefSha256: hash("principal"),
       roomRefSha256: hash("room"),
+      operation: {
+        schema: "eliza.provider-operation-binding.v1",
+        kind: "google-calendar.event-create",
+        providerTargetRefSha256: hash("provider-target"),
+        operationInputSha256: hash("operation-input"),
+      },
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -117,7 +131,7 @@ function bindings(
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "provider-sandbox",
@@ -125,7 +139,7 @@ function bindings(
     ],
     ingress: {
       kind: "provider-webhook",
-      provider: "google-calendar",
+      provider: "google",
       channel: "google-chat",
       accountRefSha256,
       connectionRefSha256,
@@ -135,7 +149,7 @@ function bindings(
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -150,7 +164,7 @@ function bindings(
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
@@ -160,6 +174,46 @@ function bindings(
         providerAcceptanceRequired: true,
         readbackRequired: true,
         idempotencyRequired: true,
+      },
+    ],
+    failureProbes: [
+      {
+        probeId: "calendar-auth-denied",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: hash("auth-denied-request"),
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: hash("insufficient-scope"),
+        scopeSha256: hash("calendar-failure-scope"),
+        authorizationGrantSha256: hash("denied-grant"),
+        maxObservationAgeMs: 5 * 60_000,
+      },
+      {
+        probeId: "calendar-provider-rejected",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: hash("provider-rejected-request"),
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: hash("invalid-event"),
+        scopeSha256: hash("calendar-failure-scope"),
+        authorizationGrantSha256: hash("grant"),
+        maxObservationAgeMs: 5 * 60_000,
       },
     ],
   };
@@ -233,6 +287,12 @@ function fixture(): DeriveProviderQualificationInput & {
             sha256: stageSha256,
             startedAtIso: "2026-05-23T00:00:20.000Z",
             endedAtIso: "2026-05-23T00:00:30.000Z",
+            tool: {
+              name: "CALENDAR",
+              argsSha256: hash("calendar tool args"),
+              resultSha256: hash("calendar tool result"),
+              success: true,
+            },
           },
         ],
       },
@@ -305,11 +365,39 @@ function fixture(): DeriveProviderQualificationInput & {
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        authorizationGrantSha256s: [hash("grant")],
+        operation: manifest.target.operation,
       },
     ],
+    failureProbeObservations: manifest.requiredFailureProbes.map((probe) => ({
+      probeId: probe.probeId,
+      observedAtIso: "2026-05-23T00:01:06.000Z",
+      observerId: probe.observerId,
+      sourceKind: probe.sourceKind,
+      system: probe.system,
+      environment: probe.environment,
+      provider: probe.provider,
+      connectorProvider: probe.connectorProvider,
+      accountRefSha256: probe.accountRefSha256,
+      connectionRefSha256: probe.connectionRefSha256,
+      operation: probe.operation,
+      failureClass: probe.failureClass,
+      requestPayloadSha256: probe.requestPayloadSha256,
+      responseSha256: hash(`response:${probe.probeId}`),
+      providerRequestIdSha256:
+        probe.failureClass === "provider-rejected"
+          ? hash(`provider-request:${probe.probeId}`)
+          : null,
+      responseStatusCode: probe.expectedStatusCode,
+      errorCodeSha256: probe.expectedErrorCodeSha256,
+      scopeSha256: probe.scopeSha256,
+      beforeSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      afterSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      authorizationGrantSha256: probe.authorizationGrantSha256,
+    })),
     stageReferences: [
       {
         observationId: observation.observationId,
@@ -438,6 +526,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       name: "calendar-no-effect",
       observerId: "calendar-observer",
       provider: "google-calendar",
+      connectorProvider: "google",
       accountId: "parent-account",
       intervalCoversScenario: true,
     },
@@ -458,7 +547,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       sourceKind: "provider-api",
       system: "google-calendar",
       environment: "provider-sandbox",
-      connectorProvider: "google-calendar",
+      connectorProvider: "google",
       accountRefSha256: hash("parent-account"),
       connectionRefSha256: hash("connection"),
       requiredCount: 1,
@@ -508,9 +597,11 @@ function noEffectFixture(): ReturnType<typeof fixture> {
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        authorizationGrantSha256s: [hash("grant")],
+        operation: manifest.target.operation,
       },
     ],
     stageReferences: [
@@ -541,7 +632,390 @@ function noEffectFixture(): ReturnType<typeof fixture> {
   return input;
 }
 
+function approvalTransitionFixture(): ReturnType<typeof fixture> {
+  const input = fixture();
+  const definition = scenario();
+  const transitionChecks = [
+    { name: "approval-pending", state: "pending", index: 0, phase: "proposal" },
+    {
+      name: "approval-approved",
+      state: "approved",
+      index: 1,
+      phase: "approval",
+    },
+    { name: "approval-done", state: "done", index: 2, phase: "approval" },
+  ] as const;
+  definition.finalChecks = [
+    definition.finalChecks?.[0] as NonNullable<
+      ScenarioDefinition["finalChecks"]
+    >[number],
+    ...transitionChecks.map(({ name, state, index, phase }) => ({
+      type: "durableApprovalObserved" as const,
+      name,
+      observerId: "approval-observer",
+      provider: "approval-ledger",
+      accountId: "parent-account",
+      operation: "book_travel",
+      state,
+      transitionGroupId: "travel-approval",
+      transitionIndex: index,
+      trajectoryPhase: phase,
+    })),
+    definition.finalChecks?.[1] as NonNullable<
+      ScenarioDefinition["finalChecks"]
+    >[number],
+  ];
+  const transitionBindings = bindings(
+    input.signedSemanticEvidence.keyId,
+    input.signedEvidence.keyId,
+    input.manifestSignature.keyId,
+  );
+  transitionBindings.connectors = [
+    ...transitionBindings.connectors,
+    {
+      provider: "approval-ledger",
+      accountRefSha256: hash("parent-account"),
+      connectionRefSha256: hash("approval-connection"),
+      environment: "provider-sandbox",
+    },
+  ];
+  transitionBindings.capabilities = [
+    ...transitionBindings.capabilities,
+    {
+      provider: "approval-ledger",
+      accountRefSha256: hash("parent-account"),
+      connectionRefSha256: hash("approval-connection"),
+      capability: "book_travel",
+      authorizationGrantSha256: hash("approval-grant"),
+    },
+  ];
+  transitionBindings.trust.observerSigners = [
+    ...transitionBindings.trust.observerSigners,
+    {
+      observerId: "approval-observer",
+      keyId: input.signedEvidence.keyId,
+    },
+  ];
+  transitionBindings.observationContracts = [
+    ...transitionBindings.observationContracts,
+    ...transitionChecks.map(({ name, state, index, phase }) => ({
+      contractId: name,
+      kind: "durable-approval" as const,
+      observerId: "approval-observer",
+      sourceKind: "durable-database" as const,
+      system: "approval-ledger",
+      environment: "provider-sandbox",
+      connectorProvider: "approval-ledger",
+      accountRefSha256: hash("parent-account"),
+      connectionRefSha256: hash("approval-connection"),
+      requiredCount: 1,
+      maxObservationAgeMs: 5 * 60_000,
+      operation: "book_travel",
+      state,
+      transitionGroupId: "travel-approval",
+      transitionIndex: index,
+      trajectoryPhase: phase,
+    })),
+  ];
+  const manifest = createProviderQualificationManifest({
+    scenario: definition,
+    bindings: transitionBindings,
+  });
+  input.scenarioDefinition = definition;
+  input.manifest = manifest;
+  resignManifest(input);
+  const trajectory = input.trajectories.trajectories[0];
+  const proposalStage = {
+    stageId: "stage-proposal",
+    kind: "action",
+    sha256: hash("proposal-stage"),
+    startedAtIso: "2026-05-23T00:00:05.000Z",
+    endedAtIso: "2026-05-23T00:00:10.000Z",
+  };
+  const approvalStage = {
+    stageId: "stage-approval",
+    kind: "action",
+    sha256: hash("approval-stage"),
+    startedAtIso: "2026-05-23T00:00:15.000Z",
+    endedAtIso: "2026-05-23T00:00:20.000Z",
+  };
+  trajectory.stages = [proposalStage, approvalStage, ...trajectory.stages];
+  input.trajectories.setSha256 = canonicalSha256(
+    input.trajectories.trajectories.map((candidate) => ({
+      artifact: candidate.artifact,
+      stages: candidate.stages,
+    })),
+    "verifiedTrajectories",
+  );
+  const approvalIdSha256 = hash("approval-id");
+  const requestPayloadSha256 = hash("approval-request");
+  const approvalObservations: DurableApprovalObservation[] =
+    transitionChecks.map(({ state, index }) => ({
+      observationId: `approval-${state}`,
+      kind: "durable-approval",
+      observedAtIso: [
+        "2026-05-23T00:00:12.000Z",
+        "2026-05-23T00:00:21.000Z",
+        "2026-05-23T00:00:31.000Z",
+      ][index] as string,
+      observerId: "approval-observer",
+      source: {
+        kind: "durable-database",
+        system: "approval-ledger",
+        environment: "provider-sandbox",
+        recordIdSha256: approvalIdSha256,
+        accountRefSha256: hash("parent-account"),
+      },
+      payloadSha256: hash(`approval-payload-${state}`),
+      trajectoryRefs: [
+        {
+          trajectoryId: trajectory.artifact.trajectoryId,
+          stageId: index === 0 ? proposalStage.stageId : approvalStage.stageId,
+          sha256: trajectory.artifact.sha256,
+        },
+      ],
+      approvalIdSha256,
+      actionName: "book_travel",
+      state,
+      requestPayloadSha256,
+      ...(state === "approved"
+        ? { decisionPayloadSha256: hash("approval-decision") }
+        : {}),
+    }));
+  const providerObservation = input.signedEvidence.payload.observations[0];
+  input.finalChecks = manifest.scenario.finalChecks.map((check) => ({
+    definitionSha256: check.definitionSha256,
+    status: "passed",
+  }));
+  Object.assign(input.signedEvidence.payload, {
+    manifestSha256: manifest.manifestSha256,
+    trajectorySetSha256: input.trajectories.setSha256,
+    observerProvenance: [
+      ...input.signedEvidence.payload.observerProvenance,
+      {
+        observerId: "approval-observer",
+        kind: "durable-database",
+        implementation: "approval-ledger-observer",
+        version: "1.0.0",
+        environment: "provider-sandbox",
+        configurationSha256: hash("approval-observer-config"),
+      },
+    ],
+    observations: [providerObservation, ...approvalObservations],
+    connectorBindings: [
+      ...input.signedEvidence.payload.connectorBindings,
+      ...approvalObservations.map((observation) => ({
+        observationId: observation.observationId,
+        provider: "approval-ledger",
+        accountRefSha256: hash("parent-account"),
+        connectionRefSha256: hash("approval-connection"),
+        authorizationGrantSha256s: [hash("approval-grant")],
+        operation: manifest.target.operation,
+      })),
+    ],
+    stageReferences: [
+      ...input.signedEvidence.payload.stageReferences,
+      ...approvalObservations.map((observation) => {
+        const reference = observation.trajectoryRefs[0];
+        return {
+          observationId: observation.observationId,
+          trajectoryId: reference.trajectoryId,
+          stageId: reference.stageId,
+          stageSha256:
+            reference.stageId === proposalStage.stageId
+              ? proposalStage.sha256
+              : approvalStage.sha256,
+        };
+      }),
+    ],
+    runnerResultSha256: runnerResultSha256({
+      scenarioStatus: "passed",
+      finalChecks: input.finalChecks,
+    }),
+  });
+  Object.assign(input.signedSemanticEvidence.payload, {
+    manifestSha256: manifest.manifestSha256,
+    trajectorySetSha256: input.trajectories.setSha256,
+    verdicts: manifest.scenario.semanticCriteria.map((criterion) => ({
+      criterionId: criterion.criterionId,
+      rubricSha256: criterion.rubricSha256,
+      status: "passed" as const,
+      score: 0.95,
+      requestSha256: hash(`request:${criterion.criterionId}`),
+      responseSha256: hash(`response:${criterion.criterionId}`),
+    })),
+  });
+  resignProvider(input);
+  resignSemantic(input);
+  return input;
+}
+
+function stageBoundedNoEffectFixture(): ReturnType<typeof fixture> {
+  const input = noEffectFixture();
+  const definition = input.scenarioDefinition;
+  const check = definition.finalChecks?.[0];
+  if (check?.type !== "providerNoEffectObserved") {
+    throw new Error("missing no-effect fixture check");
+  }
+  check.intervalCoversScenario = false;
+  check.intervalEndsBeforeReferencedStage = true;
+  check.trajectoryPhase = "approval";
+  const prior = input.manifest;
+  const observationContracts = structuredClone(prior.requiredObservations);
+  const contract = observationContracts[0];
+  if (contract?.kind !== "provider-no-effect") {
+    throw new Error("missing no-effect fixture contract");
+  }
+  contract.intervalCoverage = "before-referenced-stage";
+  contract.trajectoryPhase = "approval";
+  const manifest = createProviderQualificationManifest({
+    scenario: definition,
+    bindings: {
+      runId: prior.run.runId,
+      runNonce: prior.run.nonce,
+      repositorySha: prior.run.repositorySha,
+      deploymentSha: prior.run.deploymentSha,
+      trust: prior.trust,
+      target: prior.target,
+      models: prior.models,
+      connectors: prior.connectors,
+      ingress: prior.ingress,
+      capabilities: prior.capabilities,
+      observationContracts,
+      failureProbes: prior.requiredFailureProbes,
+    },
+  });
+  input.manifest = manifest;
+  resignManifest(input);
+  const observation = input.signedEvidence.payload.observations[0];
+  if (observation?.kind !== "provider-no-effect") {
+    throw new Error("missing no-effect fixture observation");
+  }
+  observation.observationEndedAtIso = "2026-05-23T00:00:20.000Z";
+  input.finalChecks = manifest.scenario.finalChecks.map((finalCheck) => ({
+    definitionSha256: finalCheck.definitionSha256,
+    status: "passed",
+  }));
+  Object.assign(input.signedEvidence.payload, {
+    manifestSha256: manifest.manifestSha256,
+    runnerResultSha256: runnerResultSha256({
+      scenarioStatus: "passed",
+      finalChecks: input.finalChecks,
+    }),
+  });
+  Object.assign(input.signedSemanticEvidence.payload, {
+    manifestSha256: manifest.manifestSha256,
+    verdicts: manifest.scenario.semanticCriteria.map((criterion) => ({
+      criterionId: criterion.criterionId,
+      rubricSha256: criterion.rubricSha256,
+      status: "passed" as const,
+      score: 0.95,
+      requestSha256: hash(`request:${criterion.criterionId}`),
+      responseSha256: hash(`response:${criterion.criterionId}`),
+    })),
+  });
+  resignProvider(input);
+  resignSemantic(input);
+  return input;
+}
+
 describe("deriveProviderQualification", () => {
+  it("accepts unchanged provider snapshots ending at the signed approval stage", () => {
+    const input = stageBoundedNoEffectFixture();
+    input.maxClockSkewMs = 0;
+
+    expect(deriveProviderQualification(input).qualification).toEqual({
+      status: "qualified",
+      publishable: true,
+      reasons: [],
+    });
+  });
+
+  it("rejects a pre-approval no-effect interval that stops before the approval stage", () => {
+    const input = stageBoundedNoEffectFixture();
+    input.maxClockSkewMs = 0;
+    const observation = input.signedEvidence.payload.observations[0];
+    if (observation?.kind !== "provider-no-effect") {
+      throw new Error("missing no-effect fixture observation");
+    }
+    observation.observationEndedAtIso = "2026-05-23T00:00:10.000Z";
+    resignProvider(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      publishable: false,
+      reasons: expect.arrayContaining(["observation:no-effect-1:interval-gap"]),
+    });
+  });
+
+  it("rejects a no-effect interval that extends beyond the signed approval stage", () => {
+    const input = stageBoundedNoEffectFixture();
+    const observation = input.signedEvidence.payload.observations[0];
+    if (observation?.kind !== "provider-no-effect") {
+      throw new Error("missing no-effect fixture observation");
+    }
+    observation.observationEndedAtIso = "2026-05-23T00:00:20.001Z";
+    resignProvider(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      publishable: false,
+      reasons: expect.arrayContaining(["observation:no-effect-1:interval-gap"]),
+    });
+  });
+
+  it("qualifies one correlated pending-to-approved-to-done transition bound to proposal and approval stages", () => {
+    const input = approvalTransitionFixture();
+
+    expect(deriveProviderQualification(input).qualification).toEqual({
+      status: "qualified",
+      publishable: true,
+      reasons: [],
+    });
+  });
+
+  it("rejects a signed approval transition whose durable identity changes", () => {
+    const input = approvalTransitionFixture();
+    const approved = input.signedEvidence.payload.observations.find(
+      (observation) =>
+        observation.kind === "durable-approval" &&
+        observation.state === "approved",
+    );
+    if (approved?.kind !== "durable-approval") {
+      throw new Error("missing approved fixture observation");
+    }
+    approved.requestPayloadSha256 = hash("substituted-request");
+    resignProvider(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      publishable: false,
+      reasons: ["approval-transition:travel-approval:correlation-mismatch"],
+    });
+  });
+
+  it("rejects a signed approval transition executed before the pending observation", () => {
+    const input = approvalTransitionFixture();
+    const pending = input.signedEvidence.payload.observations.find(
+      (observation) =>
+        observation.kind === "durable-approval" &&
+        observation.state === "pending",
+    );
+    if (pending?.kind !== "durable-approval") {
+      throw new Error("missing pending fixture observation");
+    }
+    pending.observedAtIso = "2026-05-23T00:00:16.000Z";
+    resignProvider(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      publishable: false,
+      reasons: expect.arrayContaining([
+        "approval-transition:travel-approval:phase-order-invalid",
+      ]),
+    });
+  });
+
   it("derives publishable qualification without claiming exactly-once", () => {
     const input = fixture();
     const decision = deriveProviderQualification(input);
@@ -555,6 +1029,8 @@ describe("deriveProviderQualification", () => {
       { observationId: "effect-1", contractId: "calendar-create" },
     ]);
     expect(decision.guarantees).toEqual({
+      providerAuthorizationVerified: true,
+      providerFailurePathsVerified: true,
       providerAcceptanceVerified: true,
       providerReadbackVerified: true,
       providerIdempotencyVerified: true,
@@ -662,6 +1138,15 @@ describe("deriveProviderQualification", () => {
     });
     resignProvider(input);
     expect(() => deriveProviderQualification(input)).toThrow(/closed protocol/);
+  });
+
+  it("rejects legacy observer evidence without exact operation binding", () => {
+    const input = fixture();
+    input.signedEvidence.payload.schema =
+      "eliza.provider-qualified-observer-evidence.v1" as typeof input.signedEvidence.payload.schema;
+    expect(() => deriveProviderQualification(input)).toThrow(
+      /signedEvidence\.payload\.schema is unsupported/,
+    );
   });
 
   it("rejects provider-assurance toJSON substitution before signature verification", () => {
@@ -932,6 +1417,116 @@ describe("deriveProviderQualification", () => {
         "observation:effect-1:connector-mismatch",
       ]),
     });
+
+    const wrongAuthorization = fixture();
+    wrongAuthorization.signedEvidence.payload.connectorBindings[0].authorizationGrantSha256s =
+      [hash("another-grant")];
+    resignProvider(wrongAuthorization);
+    const wrongAuthorizationDecision =
+      deriveProviderQualification(wrongAuthorization);
+    expect(wrongAuthorizationDecision.qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:authorization-grant-mismatch",
+      ]),
+    });
+    expect(
+      wrongAuthorizationDecision.guarantees.providerAuthorizationVerified,
+    ).toBe(false);
+
+    const duplicateAuthorization = fixture();
+    duplicateAuthorization.signedEvidence.payload.connectorBindings[0].authorizationGrantSha256s =
+      [hash("grant"), hash("grant")];
+    resignProvider(duplicateAuthorization);
+    expect(() => deriveProviderQualification(duplicateAuthorization)).toThrow(
+      /authorizationGrantSha256s must be unique and lexicographically sorted/,
+    );
+
+    const wrongTarget = fixture();
+    wrongTarget.signedEvidence.payload.connectorBindings[0].operation = {
+      ...wrongTarget.signedEvidence.payload.connectorBindings[0].operation,
+      providerTargetRefSha256: hash("another-provider-target"),
+    };
+    resignProvider(wrongTarget);
+    expect(
+      deriveProviderQualification(wrongTarget).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:connector-mismatch",
+      ]),
+    });
+
+    const wrongInput = fixture();
+    wrongInput.signedEvidence.payload.connectorBindings[0].operation = {
+      ...wrongInput.signedEvidence.payload.connectorBindings[0].operation,
+      operationInputSha256: hash("another-operation-input"),
+    };
+    resignProvider(wrongInput);
+    expect(deriveProviderQualification(wrongInput).qualification).toMatchObject(
+      {
+        status: "unqualified",
+        reasons: expect.arrayContaining([
+          "observation:effect-1:connector-mismatch",
+        ]),
+      },
+    );
+  });
+
+  it("requires exact authorization-denied and provider-rejected no-effect probes", () => {
+    const missing = fixture();
+    missing.signedEvidence.payload.failureProbeObservations =
+      missing.signedEvidence.payload.failureProbeObservations.slice(0, 1);
+    resignProvider(missing);
+    const missingDecision = deriveProviderQualification(missing);
+    expect(missingDecision.qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:exact-multiset-mismatch",
+      ]),
+    });
+    expect(missingDecision.guarantees.providerFailurePathsVerified).toBe(false);
+
+    const substituted = fixture();
+    substituted.signedEvidence.payload.failureProbeObservations[0].responseStatusCode = 401;
+    resignProvider(substituted);
+    expect(
+      deriveProviderQualification(substituted).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:calendar-auth-denied:contract-mismatch",
+      ]),
+    });
+
+    const changedState = fixture();
+    changedState.signedEvidence.payload.failureProbeObservations[1].afterSnapshotSha256 =
+      hash("provider-state-changed");
+    resignProvider(changedState);
+    expect(
+      deriveProviderQualification(changedState).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:calendar-provider-rejected:provider-effect-observed",
+      ]),
+    });
+
+    const deniedReachedProvider = fixture();
+    deniedReachedProvider.signedEvidence.payload.failureProbeObservations[0].providerRequestIdSha256 =
+      hash("unexpected-provider-request");
+    resignProvider(deniedReachedProvider);
+    expect(() => deriveProviderQualification(deniedReachedProvider)).toThrow(
+      /must be null for authorization denial/,
+    );
+
+    const rejectedDidNotReachProvider = fixture();
+    rejectedDidNotReachProvider.signedEvidence.payload.failureProbeObservations[1].providerRequestIdSha256 =
+      null;
+    resignProvider(rejectedDidNotReachProvider);
+    expect(() =>
+      deriveProviderQualification(rejectedDidNotReachProvider),
+    ).toThrow(/providerRequestIdSha256 must be a non-empty string/);
   });
 
   it("rejects whole-trajectory and stage-level reference substitution", () => {
@@ -957,6 +1552,33 @@ describe("deriveProviderQualification", () => {
     ).toMatchObject({
       status: "unqualified",
       reasons: expect.arrayContaining(["signed-stage-reference:hash-mismatch"]),
+    });
+  });
+
+  it("rejects a provider effect referenced only to a failed tool stage", () => {
+    const input = fixture();
+    const stage = input.trajectories.trajectories[0].stages[0];
+    if (!stage.tool) throw new Error("fixture requires a tool stage");
+    stage.tool.success = false;
+    input.trajectories.setSha256 = canonicalSha256(
+      input.trajectories.trajectories.map((trajectory) => ({
+        artifact: trajectory.artifact,
+        stages: trajectory.stages,
+      })),
+      "verifiedTrajectories",
+    );
+    input.signedEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    input.signedSemanticEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    resignProvider(input);
+    resignSemantic(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:provider-effect-without-successful-tool-stage",
+      ]),
     });
   });
 
@@ -1159,4 +1781,102 @@ describe("deriveProviderQualification", () => {
       expect(() => deriveProviderQualification(input)).toThrow(pattern);
     },
   );
+
+  it("emits a transcript-free capsule that independently reverifies", () => {
+    const input = fixture();
+    const report = {
+      id: input.scenarioDefinition.id,
+      title: input.scenarioDefinition.title,
+      domain: input.scenarioDefinition.domain,
+      tags: [],
+      status: "passed",
+      durationMs: 100,
+      turns: [
+        {
+          name: "private runner turn",
+          kind: "message",
+          text: "private input transcript",
+          responseText: "private output transcript",
+          actionsCalled: [],
+          durationMs: 50,
+          failedAssertions: [],
+        },
+      ],
+      finalChecks: input.manifest.scenario.finalChecks.map((check) => ({
+        label: check.checkId,
+        type: check.type,
+        status: "passed" as const,
+        detail: "private final-check detail",
+      })),
+      actionsCalled: [],
+      failedAssertions: [],
+      providerName: "live-provider",
+      executionProfile: "provider-qualified",
+      evidenceScope: "provider-certification",
+      evidence: {
+        schemaVersion: 1,
+        executionProfile: "provider-qualified",
+        qualification: {
+          status: "unqualified",
+          publishable: false,
+          reasons: ["external-controller-decision:missing"],
+        },
+        observerProvenance: [],
+        trajectoryHashes: [],
+        observations: [],
+      },
+    } satisfies ScenarioReport;
+    const artifact = assembleProviderQualificationArtifact({
+      scenarioDefinition: input.scenarioDefinition,
+      manifest: input.manifest,
+      manifestSignature: input.manifestSignature,
+      pinnedManifestAuthorityPublicKeysPem:
+        input.pinnedManifestAuthorityPublicKeysPem,
+      trajectories: input.trajectories,
+      signedEvidence: input.signedEvidence,
+      pinnedObserverPublicKeysPem: input.pinnedObserverPublicKeysPem,
+      signedSemanticEvidence: input.signedSemanticEvidence,
+      pinnedSemanticJudgePublicKeysPem: input.pinnedSemanticJudgePublicKeysPem,
+      runnerReport: report,
+      nowIso: input.nowIso,
+    });
+
+    expect(reverifyProviderQualificationArtifact(artifact)).toEqual(
+      artifact.decision,
+    );
+    expect(artifact.qualifiedReport).toMatchObject({
+      scenarioId: input.scenarioDefinition.id,
+      status: "passed",
+    });
+    expect(artifact.reverification.verifierTranscript.inventory).toMatchObject({
+      trajectoryCount: 1,
+      trajectoryStageCount: 1,
+      runnerFinalCheckCount: 2,
+      failureProbeObservationCount: 2,
+      providerEffectAssuranceCount: 1,
+    });
+    expect(artifact.reverification.verifierTranscript.sourcePrivacy).toEqual({
+      privateProviderTargetsRetained: false,
+      privateKeysRetained: false,
+      credentialsRetained: false,
+      rawRunnerTranscriptRetained: false,
+      runDirectoryPathRetained: false,
+    });
+    const serialized = JSON.stringify(artifact);
+    expect(serialized).not.toContain("private input transcript");
+    expect(serialized).not.toContain("private output transcript");
+    expect(serialized).not.toContain("private final-check detail");
+    expect(serialized).not.toContain(input.trajectories.runDirectoryRealPath);
+
+    const tampered = structuredClone(artifact);
+    tampered.reverification.signedObserverEvidence.signature = "A".repeat(86);
+    const { artifactSha256: _digest, ...core } = tampered;
+    tampered.artifactSha256 = canonicalSha256(
+      core,
+      "providerQualificationArtifact",
+    );
+    expect(() => reverifyProviderQualificationArtifact(tampered)).toThrow(
+      /decision does not reverify/,
+    );
+  });
 });

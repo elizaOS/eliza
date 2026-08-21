@@ -12,6 +12,7 @@ export default scenario({
   id: "cross-platform.triage-priority-ranking",
   title: "Rank incoming messages across all channels by priority",
   domain: "messaging.cross-platform",
+  evidenceScope: "model-behavior",
   tags: ["cross-platform", "triage", "parameter-extraction"],
   isolation: "per-scenario",
   requires: {
@@ -32,7 +33,7 @@ export default scenario({
       room: "main",
       text: "Rank the most important incoming messages across every platform right now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform inbox priority ranking",
         includesAny: ["rank", "priority", "important", "incoming"],
       }),
@@ -47,18 +48,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
       includesAny: ["rank", "priority", "important", "incoming"],
     },
     {
       type: "custom",
       name: "cross-platform-triage-priority-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "cross-platform inbox priority ranking",
         includesAny: ["rank", "priority", "important", "incoming"],
       }),

@@ -39,6 +39,7 @@ export default scenario({
   title:
     "Shift rotation: a third-party probe for Marcus's roster and address is refused leak-free",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

@@ -10,6 +10,7 @@ export default scenario({
   id: "habits.evening-wind-down-stack",
   title: "Evening wind-down stack: dim lights, journal, stretch",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "multi-action", "evening"],
   isolation: "per-scenario",
   requires: {

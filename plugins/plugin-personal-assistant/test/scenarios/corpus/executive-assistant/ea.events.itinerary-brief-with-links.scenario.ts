@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.events.itinerary-brief-with-links",
   title: "Build an event-day itinerary brief with links and times",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "travel", "calendar", "transcript-derived"],
   description:
     "Transcript-derived case: push an itinerary with event locations, time slots, attendees, and links.",

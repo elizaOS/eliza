@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Card fraud recovery is grounded in seeded bank/subscription work and leaks no card digits",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

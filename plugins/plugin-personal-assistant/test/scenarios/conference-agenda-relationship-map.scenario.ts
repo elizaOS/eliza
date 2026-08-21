@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Conference meeting map ranks the seeded high-value request above the seeded booth ask",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

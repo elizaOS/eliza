@@ -1,26 +1,22 @@
-/** Scenario fixture for lifeops extension see what user sees; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves BROWSER reads the complete synchronized companion page context. */
 
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedBrowserCurrentPageContext } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "lifeops-extension.see-what-user-sees",
   title: "Agent reads current page context from extension",
   domain: "browser.lifeops",
-  tags: ["browser", "context", "happy-path"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["browser", "context", "companion", "durable-readback"],
   description:
-    "User is on a web page and asks the agent to read the current browser page. The agent must route through MANAGE_LIFEOPS_BROWSER, read the synced page context, and surface URL, title, and selection text.",
-
-  status: "pending",
+    "Seeds the browser-companion projection, invokes BROWSER.state against the bridge target, and verifies the complete typed page receipt.",
 
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: ["@elizaos/plugin-browser"],
   },
 
   seed: [
@@ -64,71 +60,45 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "see-page-query",
       room: "main",
-      text: "Read my current browser page from the LifeOps browser extension.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MANAGE_LIFEOPS_BROWSER"],
-        description: "current browser page read",
-        includesAll: ["read_current_page"],
-      }),
-      responseIncludesAny: [
-        /speaker portal/i,
-        /current page/i,
-        /selection/i,
-        /browser/i,
-      ],
+      actionName: "BROWSER",
+      text: "Read the synchronized current companion page.",
+      options: { parameters: { action: "state", target: "bridge" } },
     },
   ],
 
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "MANAGE_LIFEOPS_BROWSER",
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "MANAGE_LIFEOPS_BROWSER",
-      includesAll: ["read_current_page"],
-    },
-    {
-      type: "custom",
-      name: "browser-current-page-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MANAGE_LIFEOPS_BROWSER"],
-        description: "current browser page read",
-        includesAll: ["read_current_page"],
-      }),
+      type: "actionCalled",
+      actionName: "BROWSER",
+      status: "success",
     },
     {
       type: "custom",
       name: "browser-current-page-result",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find(
-          (action) => action.actionName === "MANAGE_LIFEOPS_BROWSER",
+          (action) => action.actionName === "BROWSER",
         );
         if (!hit) {
-          return "expected MANAGE_LIFEOPS_BROWSER action result";
-        }
-        if (
-          !hit.parameters ||
-          typeof hit.parameters !== "object" ||
-          (hit.parameters as Record<string, unknown>).command !==
-            "read_current_page"
-        ) {
-          return "expected MANAGE_LIFEOPS_BROWSER command read_current_page";
+          return "expected BROWSER action result";
         }
         const data =
           hit.result?.data && typeof hit.result.data === "object"
             ? (hit.result.data as Record<string, unknown>)
             : null;
+        const result =
+          data?.result && typeof data.result === "object"
+            ? (data.result as Record<string, unknown>)
+            : null;
         const page =
-          data?.page && typeof data.page === "object"
-            ? (data.page as Record<string, unknown>)
+          result?.value && typeof result.value === "object"
+            ? (result.value as Record<string, unknown>)
             : null;
         if (!page) {
-          return "expected page payload in MANAGE_LIFEOPS_BROWSER result";
+          return "expected page payload in BROWSER state result";
         }
         if (page.url !== "https://speaker-portal.example.com/submissions") {
           return `expected seeded page url in result payload, got ${String(page.url ?? "")}`;

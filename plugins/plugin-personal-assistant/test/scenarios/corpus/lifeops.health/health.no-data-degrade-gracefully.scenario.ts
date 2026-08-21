@@ -17,6 +17,7 @@ export default scenario({
   id: "health.no-data-degrade-gracefully",
   title: "No health data — agent admits and offers to connect a source",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "no-data", "graceful-degradation"],
   isolation: "per-scenario",
   requires: {

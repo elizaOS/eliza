@@ -20,6 +20,7 @@ export default scenario({
   title:
     "Control: businesslike then ADHD disclosure in one thread, no announced mode switch",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "control", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

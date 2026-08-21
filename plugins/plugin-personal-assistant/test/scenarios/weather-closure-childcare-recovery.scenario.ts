@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Closure recovery grounds in the seeded backup care and keeps the door code out of the updates",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

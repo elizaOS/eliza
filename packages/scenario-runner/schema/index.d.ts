@@ -22,7 +22,14 @@ export type CapturedAction = {
 };
 
 export type ScenarioTurnExecution = {
+  name?: string;
   actionsCalled: CapturedAction[];
+  approvalRequests?: CapturedApprovalRequest[];
+  connectorDispatches?: CapturedConnectorDispatch[];
+  memoryWrites?: CapturedMemoryWrite[];
+  stateTransitions?: CapturedStateTransition[];
+  artifacts?: CapturedArtifact[];
+  providerRequests?: CapturedProviderRequest[];
   responseText?: string;
   statusCode?: number;
   responseBody?: unknown;
@@ -62,7 +69,38 @@ export type CapturedConnectorDispatch = {
   actionName?: string;
   payload?: unknown;
   sentAt?: string;
+  completedAt?: string;
   delivered?: boolean;
+  /**
+   * Boundary that produced this record. Action-result inference is diagnostic
+   * only and must never satisfy a binding delivery/provider-effect assertion.
+   */
+  evidenceSource?:
+    | "runtime-send-handler"
+    | "connector-contribution"
+    | "action-result-inference"
+    | "external-observer";
+  status?:
+    | "delivered"
+    | "partially_delivered"
+    | "not_delivered"
+    | "in_flight"
+    | "unknown"
+    | "reported_success"
+    | "reported_failure";
+  target?: {
+    source: string;
+    accountId?: string;
+    channelId?: string;
+    serverId?: string;
+    threadId?: string;
+    roomId?: string;
+    entityId?: string;
+  };
+  providerMessageIds?: string[];
+  replayed?: boolean;
+  errorCode?: string;
+  idempotencyKey?: string;
 };
 
 export type CapturedMemoryWrite = {
@@ -94,6 +132,19 @@ export type CapturedArtifact = {
   createdAt?: string;
 };
 
+/** A request observed at a controlled provider fixture boundary. */
+export type CapturedProviderRequest = {
+  provider: string;
+  environment?: string;
+  method: string;
+  path: string;
+  query?: string;
+  body?: unknown;
+  metadata?: unknown;
+  runId?: string;
+  createdAt?: string;
+};
+
 export type ScenarioContext = {
   runtime?: unknown;
   apiBaseUrl?: string;
@@ -115,6 +166,7 @@ export type ScenarioContext = {
   memoryWrites?: CapturedMemoryWrite[];
   stateTransitions?: CapturedStateTransition[];
   artifacts?: CapturedArtifact[];
+  providerRequests?: CapturedProviderRequest[];
 };
 
 /**
@@ -218,11 +270,19 @@ type TurnMatcher = string | RegExp;
 type TrustedObservationFilters = {
   observerId?: StringMatcher;
   provider?: StringMatcher;
+  /** Production connector/account namespace, which may differ from the external provider receipt namespace. */
+  connectorProvider?: StringMatcher;
   accountId?: StringMatcher;
   operation?: StringMatcher;
   resourceId?: StringMatcher;
   state?: StringMatcher;
   minCount?: number;
+  /** Correlates ordered durable approval states in provider-qualified evidence. */
+  transitionGroupId?: string;
+  /** Zero-based state position within the correlated transition. */
+  transitionIndex?: number;
+  /** Scenario phase whose signed trajectory stage caused the observation. */
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 type DefinitionCountRequiredSlot = {
   label?: string;
@@ -354,9 +414,15 @@ export type ScenarioFinalCheck =
       from: ApprovalRequestState;
       to: ApprovalRequestState;
       actionName?: StringMatcher;
+      turn?: StringMatcher;
     })
   | (CheckBase<"noSideEffectOnReject"> & {
       actionName: StringMatcher;
+    })
+  | (CheckBase<"noSideEffects"> & {
+      turn?: StringMatcher;
+      /** Approval creation is a safe continuation for requests that still need consent. */
+      allowApprovalRequests?: boolean;
     })
   | (CheckBase<"draftExists"> & {
       channel?: StringMatcher;
@@ -365,6 +431,7 @@ export type ScenarioFinalCheck =
   | (CheckBase<"messageDelivered"> & {
       channel?: StringMatcher;
       expected?: boolean;
+      turn?: StringMatcher;
     })
   | (CheckBase<"browserTaskCompleted"> & {
       expected?: boolean;
@@ -379,6 +446,15 @@ export type ScenarioFinalCheck =
       channel: StringMatcher;
       actionName?: StringMatcher;
       minCount?: number;
+      maxCount?: number;
+      expected?: boolean;
+      delivered?: boolean;
+      status?:
+        | CapturedConnectorDispatch["status"]
+        | CapturedConnectorDispatch["status"][];
+      turn?: StringMatcher;
+      idempotencyKey?: string;
+      providerMessageId?: string;
     })
   | (CheckBase<"durableApprovalObserved"> & TrustedObservationFilters)
   | (CheckBase<"durableDraftObserved"> & TrustedObservationFilters)
@@ -387,6 +463,8 @@ export type ScenarioFinalCheck =
       TrustedObservationFilters & {
         /** Require the observation window to cover the full scenario. Defaults to true. */
         intervalCoversScenario?: boolean;
+        /** End the unchanged-state interval at the referenced approval stage. */
+        intervalEndsBeforeReferencedStage?: boolean;
       })
   | (CheckBase<"scheduledTaskObserved"> & TrustedObservationFilters)
   | (CheckBase<"memoryWriteOccurred"> & {
@@ -416,6 +494,10 @@ export type ScenarioFinalCheck =
       operation?: StringMatcher;
       fields?: Record<string, unknown>;
       minCount?: number;
+      maxCount?: number;
+      expected?: boolean;
+      turn?: StringMatcher;
+      exactArrays?: boolean;
     })
   | (CheckBase<"gmailMockRequest"> & {
       method?: StringMatcher;
@@ -423,22 +505,31 @@ export type ScenarioFinalCheck =
       body?: Record<string, unknown>;
       expected?: boolean;
       minCount?: number;
+      maxCount?: number;
+      turn?: StringMatcher;
+      gmail?: Record<string, unknown>;
+      exactArrays?: boolean;
     })
   | (CheckBase<"gmailDraftCreated"> & {
       expected?: boolean;
+      turn?: StringMatcher;
     })
   | (CheckBase<"gmailDraftDeleted"> & {
       expected?: boolean;
     })
   | (CheckBase<"gmailMessageSent"> & {
       expected?: boolean;
+      turn?: StringMatcher;
     })
   | (CheckBase<"gmailBatchModify"> & {
       expected?: boolean;
       body?: Record<string, unknown>;
+      turn?: StringMatcher;
+      exactArrays?: boolean;
     })
   | (CheckBase<"gmailApproval"> & {
       state: "pending" | "confirmed" | "canceled" | "cancelled";
+      turn?: StringMatcher;
     })
   | CheckBase<"gmailNoRealWrite">
   | (CheckBase<"workflowDispatchOccurred"> & {
@@ -497,6 +588,16 @@ export type ScenarioLane = "pr-deterministic" | "live-only";
  * backed by trusted durable/provider observers and hashed trajectories.
  */
 export type ScenarioExecutionProfile = "simulated" | "provider-qualified";
+/**
+ * The behavioral claim a scenario is designed to support. This is orthogonal
+ * to scheduling (`lane`) and trust (`executionProfile`).
+ */
+export type ScenarioEvidenceScope =
+  | "runner-fixture"
+  | "domain-contract"
+  | "model-behavior"
+  | "connector-contract"
+  | "provider-certification";
 export type ScenarioTier = "T1" | "T2" | "T3" | "T4";
 
 /**
@@ -521,8 +622,9 @@ export type ScenarioRoomSpec = {
 };
 
 /**
- * Live-only personality expectation consumed by
- * `scripts/personality-bench-bridge.mjs` (not by the runner itself).
+ * Live-only personality expectation retained as corpus metadata. The runner
+ * executes the scenario's explicit judgeRubric checks; it does not translate
+ * this metadata into a second, divergent benchmark contract.
  */
 export type ScenarioPersonalityExpect = {
   bucket: string;
@@ -566,6 +668,8 @@ export type ScenarioDefinition = {
    */
   tier?: ScenarioTier;
   status?: "active" | "pending";
+  /** Required for pending scenarios; names the concrete capability/evidence dependency. */
+  pendingReason?: string;
   /**
    * CI lane this scenario is eligible for.
    * - `pr-deterministic`: runs keyless on every PR through the deterministic
@@ -582,6 +686,12 @@ export type ScenarioDefinition = {
    * publishable as provider evidence.
    */
   executionProfile?: ScenarioExecutionProfile;
+  /**
+   * Closed classification of what this scenario can truthfully claim. Legacy
+   * definitions may omit it during migration and resolve to `runner-fixture`;
+   * reports preserve that default as explicit classification debt.
+   */
+  evidenceScope?: ScenarioEvidenceScope;
   /**
    * Platform-gated deferral. Present only on `live-only` scenarios that cannot
    * run in any current lane because the platform/runner they need does not exist
@@ -602,10 +712,10 @@ export type ScenarioDefinition = {
   /** Personality corpus metadata (live-only judge bridge). */
   scope?: "user" | "mixed";
   personalityExpect?: ScenarioPersonalityExpect;
-  /** Connector-certification corpus metadata (`connector-certification/_factory.ts`). */
+  /** Connector-certification corpus metadata (`connector-contracts/_factory.ts`). */
   connector?: string;
   axis?: string;
-  /** Mockoon mock services the connector-certification lane boots for this scenario. */
+  /** Mockoon mock services the connector-contract lane boots for this scenario. */
   mockoon?: string[];
   turns: readonly ScenarioTurn[];
   seed?: ScenarioSeedStep[];
@@ -624,6 +734,9 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 /** Execution profile assumed for legacy scenario definitions. */
 export declare const DEFAULT_SCENARIO_EXECUTION_PROFILE: "simulated";
 
+/** Conservative scope assumed for legacy definitions during migration. */
+export declare const DEFAULT_SCENARIO_EVIDENCE_SCOPE: "runner-fixture";
+
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
 
@@ -640,6 +753,24 @@ export declare function isScenarioExecutionProfile(
 export declare function scenarioExecutionProfile(
   value: ScenarioDefinition,
 ): ScenarioExecutionProfile;
+
+/** Return whether a value is a supported scenario evidence scope. */
+export declare function isScenarioEvidenceScope(
+  value: unknown,
+): value is ScenarioEvidenceScope;
+
+/**
+ * Resolve and validate the scenario's claim classification. Provider
+ * certification is valid only at the provider-qualified trust boundary.
+ */
+export declare function scenarioEvidenceScope(
+  value: ScenarioDefinition,
+): ScenarioEvidenceScope;
+
+/** Human-readable, non-inflated label for reports and viewers. */
+export declare function scenarioEvidenceScopeLabel(
+  value: ScenarioEvidenceScope,
+): string;
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
 export declare function scenarioTier(

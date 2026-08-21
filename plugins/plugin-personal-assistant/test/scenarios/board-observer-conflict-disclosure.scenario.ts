@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Observer conflict disclosure is grounded in seeded counsel work and leaks no stake figure",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

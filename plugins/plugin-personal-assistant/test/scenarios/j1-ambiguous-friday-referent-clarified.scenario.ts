@@ -13,6 +13,7 @@ export default scenario({
   id: "j1-ambiguous-friday-referent-clarified",
   title: "Ambiguous Friday referent triggers a clarifier before any change",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Voice call fires only after the SMS rung has been unacknowledged for 10m",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "ladder", "voice", "last-resort"],
   description:
     "Escalation order: desktop → mobile → SMS → voice. Voice should fire only when the SMS rung went 10m+ unacknowledged. Catches over-eager voice escalation.",

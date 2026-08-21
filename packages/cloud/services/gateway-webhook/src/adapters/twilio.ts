@@ -6,6 +6,7 @@ import {
   classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
 } from "../billing";
+import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
@@ -138,6 +139,11 @@ async function verifySignature(
 export const twilioAdapter: PlatformAdapter = {
   platform: "twilio",
 
+  getDedupeScope(config, _event, project): string {
+    const accountId = resolveConnectorAccountId("twilio", config);
+    return `project:${project}:account:${accountId ?? "missing"}`;
+  },
+
   async verifyWebhook(
     request: Request,
     rawBody: string,
@@ -172,6 +178,11 @@ export const twilioAdapter: PlatformAdapter = {
     const searchParams = new URLSearchParams(rawBody);
     for (const [key, value] of searchParams) {
       params[key] = value;
+    }
+
+    if (config.accountSid && params.AccountSid !== config.accountSid) {
+      logger.warn("Twilio webhook account SID mismatch");
+      return false;
     }
 
     return verifySignature(config.authToken, sig, fullUrl, params);

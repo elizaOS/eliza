@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Warn on a 35-minute international layover instead of silently booking",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "layover", "risk"],
   description:
     "User requests a flight whose cheapest itinerary has a 35-minute international connection in an airport (LHR) that typically needs 90+ minutes. Agent must surface the risk and propose a safer alternative — not silently book the tight option.",

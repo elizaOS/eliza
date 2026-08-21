@@ -17,6 +17,7 @@ export default scenario({
   title:
     "NDA signature chase: pending approval resolves and the loop closes after signing",
   domain: "executive.documents",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "documents", "approvals", "outcome"],
   isolation: "per-scenario",
   requires: {
