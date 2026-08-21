@@ -2,9 +2,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { readChromiumSafeStoragePassword } from "./credentials.ts";
 
-function outputProcess(output: string, exitCode = 0) {
+function outputProcess(output: string, exitCode = 0, errorOutput = "") {
   const stdout = new Response(output).body;
-  const stderr = new Response("").body;
+  const stderr = new Response(errorOutput).body;
   if (!stdout || !stderr) throw new Error("Expected in-memory response bodies");
   return { exited: Promise.resolve(exitCode), kill: vi.fn(), stderr, stdout };
 }
@@ -86,6 +86,30 @@ describe("readChromiumSafeStoragePassword", () => {
     });
     expect(stdoutRead).toBe(true);
     expect(stderrRead).toBe(true);
+  });
+
+  it("rejects stdout that exceeds the configured byte cap", async () => {
+    const spawn = vi.fn(() => outputProcess("x".repeat(33)));
+
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        maxPipeBytes: 32,
+        platform: "darwin",
+        spawn,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects stderr that exceeds the configured byte cap", async () => {
+    const spawn = vi.fn(() => outputProcess("password", 0, "x".repeat(33)));
+
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        maxPipeBytes: 32,
+        platform: "darwin",
+        spawn,
+      }),
+    ).resolves.toBeNull();
   });
 
   it("bounds a stuck lookup, terminates it, and observes its exit", async () => {

@@ -298,12 +298,46 @@ interface ChromiumSafeStorageProcess {
 interface ChromiumSafeStorageDependencies {
   platform?: NodeJS.Platform;
   spawn?: (command: string[]) => ChromiumSafeStorageProcess;
+  maxPipeBytes?: number;
   timeoutMs?: number;
   terminationGraceMs?: number;
 }
 
 const CHROMIUM_SAFE_STORAGE_TIMEOUT_MS = 3_000;
 const CHROMIUM_SAFE_STORAGE_TERMINATION_GRACE_MS = 250;
+const CHROMIUM_SAFE_STORAGE_MAX_PIPE_BYTES = 64 * 1024;
+
+async function readPipeTextCapped(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<{ overflow: boolean; text: string }> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let storedBytes = 0;
+  let overflow = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - storedBytes;
+      if (remaining > 0) {
+        const retained =
+          value.byteLength > remaining ? value.slice(0, remaining) : value;
+        chunks.push(retained);
+        storedBytes += retained.byteLength;
+      }
+      if (value.byteLength > remaining) overflow = true;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return {
+    overflow,
+    text: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString(
+      "utf8",
+    ),
+  };
+}
 
 async function settlesWithin<T>(
   promise: Promise<T>,
@@ -345,8 +379,12 @@ export async function readChromiumSafeStoragePassword(
       (exitCode) => ({ exitCode }),
       () => ({ exitCode: -1 }),
     );
-    const stdout = new Response(proc.stdout).text();
-    const stderr = new Response(proc.stderr).text();
+    const maxPipeBytes = Math.max(
+      1,
+      dependencies.maxPipeBytes ?? CHROMIUM_SAFE_STORAGE_MAX_PIPE_BYTES,
+    );
+    const stdout = readPipeTextCapped(proc.stdout, maxPipeBytes);
+    const stderr = readPipeTextCapped(proc.stderr, maxPipeBytes);
     const completed = Promise.all([exit, stdout, stderr]);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
@@ -370,9 +408,10 @@ export async function readChromiumSafeStoragePassword(
       }
       return null;
     }
-    const [{ exitCode }, output] = result;
+    const [{ exitCode }, stdoutResult, stderrResult] = result;
+    if (stdoutResult.overflow || stderrResult.overflow) return null;
     if (exitCode !== 0) return null;
-    const trimmed = output.trim();
+    const trimmed = stdoutResult.text.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {
     // error-policy:J4 browser Safe Storage password unavailable
@@ -430,6 +469,23 @@ interface CookieDb {
 }
 type CookieDbOpener = (filename: string) => CookieDb;
 
+interface ChromiumCookieDependencies {
+  platform?: NodeJS.Platform;
+  appSupportDir?: string;
+  tempRootDir?: string;
+  existsSync?: (filePath: string) => boolean;
+  mkdtempSync?: (prefix: string) => string;
+  chmodSync?: (filePath: string, mode: number) => void;
+  copyFileSync?: (source: string, destination: string) => void;
+  rmSync?: (
+    directory: string,
+    options: { force: true; recursive: true },
+  ) => void;
+  openDb?: CookieDbOpener | null;
+  readSafeStoragePassword?: typeof readChromiumSafeStoragePassword;
+  decryptCookieValue?: typeof decryptChromiumCookieValue;
+}
+
 const runtimeRequire = createRequire(import.meta.url);
 let cookieDbOpenerCached: CookieDbOpener | null | undefined;
 
@@ -479,35 +535,48 @@ function resolveCookieDbOpener(): CookieDbOpener | null {
 export async function readChromiumCookies(
   host: string,
   cookieNames: string[],
+  dependencies: ChromiumCookieDependencies = {},
 ): Promise<BrowserCookieResult[]> {
-  if (process.platform !== "darwin") return [];
+  if ((dependencies.platform ?? process.platform) !== "darwin") return [];
 
-  const openDb = resolveCookieDbOpener();
+  const openDb = dependencies.openDb ?? resolveCookieDbOpener();
   if (!openDb) return [];
 
-  const appSupport = path.join(os.homedir(), "Library", "Application Support");
+  const appSupport =
+    dependencies.appSupportDir ??
+    path.join(os.homedir(), "Library", "Application Support");
+  const tempRoot = dependencies.tempRootDir ?? os.tmpdir();
+  const existsSync = dependencies.existsSync ?? fs.existsSync;
+  const mkdtempSync = dependencies.mkdtempSync ?? fs.mkdtempSync;
+  const chmodSync = dependencies.chmodSync ?? fs.chmodSync;
+  const copyFileSync = dependencies.copyFileSync ?? fs.copyFileSync;
+  const rmSync = dependencies.rmSync ?? fs.rmSync;
+  const readSafeStoragePassword =
+    dependencies.readSafeStoragePassword ?? readChromiumSafeStoragePassword;
+  const decryptCookieValue =
+    dependencies.decryptCookieValue ?? decryptChromiumCookieValue;
 
   for (const browser of CHROMIUM_BROWSERS) {
     const dbPath = path.join(appSupport, browser.cookiePath);
-    if (!fs.existsSync(dbPath)) continue;
+    if (!existsSync(dbPath)) continue;
 
     // Get the decryption key from Keychain
-    const password = await readChromiumSafeStoragePassword(
-      browser.keychainService,
-    );
+    const password = await readSafeStoragePassword(browser.keychainService);
     if (!password) continue;
 
     const key = deriveChromiumCookieKey(password);
 
+    let db: CookieDb | undefined;
+    let tempDir: string | undefined;
     try {
-      // Copy the DB to a temp file to avoid locking issues with the running browser
-      const tmpDb = path.join(
-        os.tmpdir(),
-        `eliza-cookies-${browser.name}-${Date.now()}.db`,
-      );
-      fs.copyFileSync(dbPath, tmpDb);
+      // Isolate every scan so concurrent imports cannot collide and cleanup can
+      // remove the database plus any SQLite sidecars as one private directory.
+      tempDir = mkdtempSync(path.join(tempRoot, "eliza-cookies-"));
+      chmodSync(tempDir, 0o700);
+      const tmpDb = path.join(tempDir, "Cookies");
+      copyFileSync(dbPath, tmpDb);
 
-      const db = openDb(tmpDb);
+      db = openDb(tmpDb);
       const nameParams = cookieNames.map(() => "?").join(", ");
       const rows = db
         .query(
@@ -518,21 +587,9 @@ export async function readChromiumCookies(
         encrypted_value: Buffer;
         expires_utc: number;
       }>;
-      db.close();
-
-      // Clean up temp file
-      try {
-        fs.unlinkSync(tmpDb);
-      } catch {
-        /* best effort */
-      }
-
       const results: BrowserCookieResult[] = [];
       for (const row of rows) {
-        const value = decryptChromiumCookieValue(
-          Buffer.from(row.encrypted_value),
-          key,
-        );
+        const value = decryptCookieValue(Buffer.from(row.encrypted_value), key);
         if (value) {
           results.push({
             name: row.name,
@@ -549,6 +606,21 @@ export async function readChromiumCookies(
         `[credentials] Failed to read ${browser.name} cookies:`,
         err,
       );
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // error-policy:J6 the read-only temporary database is still removed below
+        }
+      }
+      if (tempDir) {
+        try {
+          rmSync(tempDir, { force: true, recursive: true });
+        } catch {
+          // error-policy:J6 best-effort cleanup must not abort fallback to another browser
+        }
+      }
     }
   }
 
