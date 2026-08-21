@@ -29,7 +29,10 @@ import {
 } from "../../types";
 import { Service } from "../../types/service";
 import { stringToUuid } from "../../utils";
-import { truncateWellFormed } from "../../utils/well-formed";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed";
 import { runAutonomyPostResponse } from "./execution-facade";
 import type { AutonomyStatus } from "./types";
 
@@ -815,7 +818,7 @@ export class AutonomyService extends Service {
 		const callback = async (content: Content): Promise<Memory[]> => {
 			this.runtime.logger.debug(
 				{ src: "autonomy", agentId: this.runtime.agentId },
-				`Response generated: ${content.text?.substring(0, 100)}...`,
+				`Response generated: ${truncateWellFormed(toWellFormedUnicode(content.text ?? ""), 100)}...`,
 			);
 			// Persist response text for UI log views.
 			if (typeof content.text === "string" && content.text.trim().length > 0) {
@@ -1132,7 +1135,7 @@ export class AutonomyService extends Service {
 				const callback = async (content: Content): Promise<Memory[]> => {
 					this.runtime.logger.debug(
 						{ src: "autonomy", agentId: this.runtime.agentId },
-						`Autonomy response: ${content.text?.substring(0, 100)}...`,
+						`Autonomy response: ${truncateWellFormed(toWellFormedUnicode(content.text ?? ""), 100)}...`,
 					);
 					if (
 						typeof content.text === "string" &&
