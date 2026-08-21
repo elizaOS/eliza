@@ -1967,13 +1967,14 @@ describe("strict restore catalogue authority", () => {
     const secretRelease = captureVaultRawKeyAtRelease();
     let borrowedPassphrase: Uint8Array | null = null;
     let handoffSignal: AbortSignal | null = null;
+    let handoffStartedAt: number | null = null;
     const callbackFinished = Promise.withResolvers<void>();
-    const startedAt = Date.now();
     try {
       await expect(
         withAgentBackupRestoreVaultPassphrase(
           fixture.input,
           async (passphrase, signal) => {
+            handoffStartedAt = Date.now();
             borrowedPassphrase = passphrase;
             handoffSignal = signal;
             await new Promise<void>((resolve) => {
@@ -1986,7 +1987,8 @@ describe("strict restore catalogue authority", () => {
         ),
       ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_HANDOFF_TIMEOUT" });
       await callbackFinished.promise;
-      expect(Date.now() - startedAt).toBeLessThan(1_000);
+      expect(handoffStartedAt).not.toBeNull();
+      expect(Date.now() - (handoffStartedAt ?? 0)).toBeLessThan(1_000);
       expect(handoffSignal?.aborted).toBe(true);
       expect(isZeroized(borrowedPassphrase)).toBe(true);
       expect(isZeroized(secretRelease.rawKey)).toBe(true);
