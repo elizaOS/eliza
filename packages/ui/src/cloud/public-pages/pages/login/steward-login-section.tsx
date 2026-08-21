@@ -1441,7 +1441,7 @@ export default function StewardLoginSection() {
           type="button"
           onClick={handleVerifySms}
           disabled={loading !== null || smsCode.length !== 6}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
         >
           {loading === "sms" ? (
             <Spinner />
@@ -1457,7 +1457,7 @@ export default function StewardLoginSection() {
           <Button
             variant="ghost"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
             onClick={handleSendSms}
             disabled={resendDisabled}
           >
@@ -1503,7 +1503,7 @@ export default function StewardLoginSection() {
           </p>
           <Button
             type="button"
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover"
+            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
             onClick={() =>
               setRedirectTo(
                 externalSuccessDestination ??
@@ -1618,7 +1618,7 @@ export default function StewardLoginSection() {
               emailCode.length !== 6 ||
               emailCheckState !== "pending"
             }
-            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.emailCode.verify", {
@@ -1647,7 +1647,7 @@ export default function StewardLoginSection() {
         <Button
           variant="ghost"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
           onClick={handleEmail}
           disabled={resendDisabled}
         >
@@ -1716,7 +1716,7 @@ export default function StewardLoginSection() {
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -1741,7 +1741,7 @@ export default function StewardLoginSection() {
           <Button
             variant="ghost"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
             disabled={loading !== null}
             onClick={startPasskeySignup}
           >
@@ -1815,7 +1815,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleSendSms}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
           >
             {loading === "sms" ? (
               <Spinner />
@@ -1881,7 +1881,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1893,7 +1893,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1955,7 +1955,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={startPasskeySignup}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
             >
               {t("cloud.login.passkeyRecovery.setup", {
                 defaultValue: "Set up passkey",
@@ -1985,7 +1985,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -1997,7 +1997,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -2013,7 +2013,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -2035,7 +2035,7 @@ export default function StewardLoginSection() {
             aria-controls="steward-wallet-options"
             onClick={() => setShowWalletOptions((v) => !v)}
             disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
           >
             {t("cloud.login.moreOptions", {
               defaultValue: "Continue with a wallet",
@@ -2102,7 +2102,7 @@ export default function StewardLoginSection() {
                         type="button"
                         onClick={() => handleWalletIntent("ethereum")}
                         disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
                       >
                         {t("cloud.login.wallet.evm", {
                           defaultValue: "EVM wallet",
@@ -2115,7 +2115,7 @@ export default function StewardLoginSection() {
                         type="button"
                         onClick={() => handleWalletIntent("solana")}
                         disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
                       >
                         {t("cloud.login.wallet.solana", {
                           defaultValue: "Solana wallet",
