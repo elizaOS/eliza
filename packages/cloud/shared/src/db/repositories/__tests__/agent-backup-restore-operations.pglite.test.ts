@@ -539,6 +539,9 @@ describe("restore operation spine", () => {
       const replay = results.find((result) => result.replayed);
       expect(reserved).toBeDefined();
       expect(replay).toBeDefined();
+      if (!reserved || !replay) {
+        throw new Error("concurrent reservation did not return one reservation and one replay");
+      }
       expect(reserved.target).toEqual({
         nodeRecordId: TARGET_NODE_RECORD_ID,
         nodeId: "restore-target-a",
