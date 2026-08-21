@@ -45,4 +45,20 @@ describe("toJsonMetadataRecord", () => {
 
     expect(toJsonMetadataRecord(throwingObj)).toBeUndefined();
   });
+
+  it("fails closed to undefined on non-serializable values such as BigInt", () => {
+    expect(toJsonMetadataRecord({ n: 1n })).toBeUndefined();
+  });
+
+  it("fails closed to undefined when toJSON replaces the record root", () => {
+    expect(toJsonMetadataRecord({ toJSON: () => 7 })).toBeUndefined();
+    expect(toJsonMetadataRecord({ toJSON: () => null })).toBeUndefined();
+    expect(toJsonMetadataRecord({ toJSON: () => [1, 2] })).toBeUndefined();
+    expect(toJsonMetadataRecord({ toJSON: () => "scalar" })).toBeUndefined();
+    expect(toJsonMetadataRecord({ toJSON: () => undefined })).toBeUndefined();
+  });
+
+  it("accepts toJSON replacements that remain plain records", () => {
+    expect(toJsonMetadataRecord({ toJSON: () => ({ ok: true }) })).toEqual({ ok: true });
+  });
 });

@@ -124,7 +124,10 @@ export function toJsonMetadataRecord(
   }
 
   try {
-    return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
+    const parsed: unknown = JSON.parse(JSON.stringify(value));
+    // A hostile toJSON() can replace the record root with any JSON value; only
+    // a plain record may flow onward as sender/transport metadata.
+    return isRecord(parsed) ? (parsed as Record<string, JsonValue>) : undefined;
   } catch {
     // error-policy:J3 untrusted metadata may contain circular references or invalid JSON values; fail closed to undefined.
     return undefined;
