@@ -5,7 +5,8 @@
  * `nextPageToken`, mirroring the Drive contract) and search fans out to both
  * contact sources. Search issues the warmup request the People API documents
  * for `searchContacts`/`otherContacts.search` (an empty-query call primes the
- * server-side cache) before the real query so fresh mutations are visible.
+ * server-side cache) before the real query. Callers that require a freshly
+ * mutated contact must still honor Google's documented cache propagation delay.
  * A person record without a `resourceName` is malformed upstream data and
  * throws instead of fabricating a healthy-looking contact.
  */
@@ -86,16 +87,21 @@ export class GooglePeopleClient {
   }
 
   async getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> {
+    if (!/^people\/[^/\s]+$/.test(params.resourceName)) {
+      throw new ElizaError(
+        "Google People getContact requires a canonical people/{personId} resource name.",
+        {
+          code: "GOOGLE_PEOPLE_RESOURCE_NAME_INVALID",
+          context: { accountId: params.accountId },
+        }
+      );
+    }
     const people = await this.clientFactory.people(params, ["people.read"], "people.getContact");
     const response = await people.people.get({
       resourceName: params.resourceName,
       personFields: CONTACT_PERSON_FIELDS,
     });
-    return mapPerson(
-      response.data,
-      params.resourceName.startsWith("otherContacts/") ? "otherContact" : "contact",
-      "people.getContact"
-    );
+    return mapPerson(response.data, "contact", "people.getContact");
   }
 }
 

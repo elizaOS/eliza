@@ -1,8 +1,8 @@
 /**
  * Contract tests for `GooglePeopleClient` and the `people.read` capability:
  * page-based listing with opaque token replay, dual-source search (contacts +
- * Other Contacts) with the documented warmup request, malformed-upstream
- * rejection, auth failure propagation, and scope derivation. Deterministic
+ * Other Contacts) with the documented warmup request, canonical resource-name
+ * enforcement, malformed-upstream rejection, auth failure propagation, and scope derivation. Deterministic
  * harness — the googleapis People surface is replaced with protocol-faithful
  * fakes; no network access.
  */
@@ -255,12 +255,17 @@ describe("getContact", () => {
     );
   });
 
-  it("tags an otherContacts resource as interaction-derived", async () => {
-    const get = vi.fn(async () => ({ data: { resourceName: "otherContacts/o9" } }));
-    const { client } = clientFor({ get });
+  it.each(["", "   ", "otherContacts/o9", "people/", "people/c1/extra", "contact-c1"])(
+    "rejects non-canonical resource name %j before credential or API work",
+    async (resourceName) => {
+      const get = vi.fn();
+      const { client, peopleFactory } = clientFor({ get });
 
-    await expect(
-      client.getContact({ accountId: "acct-1", resourceName: "otherContacts/o9" })
-    ).resolves.toMatchObject({ source: "otherContact" });
-  });
+      await expect(client.getContact({ accountId: "acct-1", resourceName })).rejects.toMatchObject({
+        code: "GOOGLE_PEOPLE_RESOURCE_NAME_INVALID",
+      });
+      expect(peopleFactory).not.toHaveBeenCalled();
+      expect(get).not.toHaveBeenCalled();
+    }
+  );
 });

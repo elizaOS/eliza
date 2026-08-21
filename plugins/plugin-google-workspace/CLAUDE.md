@@ -47,7 +47,7 @@ Meet (`src/meet.ts` via `GoogleMeetClient`):
 People (`src/people.ts` via `GooglePeopleClient`, capability `people.read`):
 - `listContacts` — page-based saved-contact listing (opaque `nextPageToken` replay, Drive-style).
 - `searchContacts` — dual-source search over saved contacts and interaction-derived Other Contacts, with the documented empty-query warmup request; `includeOtherContacts: false` limits to saved contacts.
-- `getContact` — fetch one person by `resourceName` (`people/…` or `otherContacts/…`).
+- `getContact` — fetch one saved contact by its canonical `people/…` resource name. Other Contacts are searchable/listable only; Google's API has no `otherContacts.get` endpoint.
 - `generateReport` — builds a structured `GoogleMeetReport` from transcript + recording artifacts and includes a canonical `elizaos.meeting_artifact.v1` artifact.
 - `buildGoogleMeetCanonicalArtifact` / `classifyGoogleMeetImportError` — deterministic fixture helpers for saved Google API responses, Google Docs transcript mismatch warnings, missing-artifact classifications, and bot-free capture mapping.
 
