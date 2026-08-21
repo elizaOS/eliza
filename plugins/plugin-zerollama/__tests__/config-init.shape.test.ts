@@ -1,4 +1,8 @@
-/** Deterministic unit tests for base-URL/endpoint resolution and the init validation fetch (fetch mocked, no live server). */
+/**
+ * Deterministic unit tests for base-URL/endpoint resolution, init validation fetch,
+ * and loopback timeout abort handling for plugin self-tests.
+ */
+import http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
@@ -8,6 +12,7 @@ import { getApiBase, getBaseURL, getSetting } from "../utils/config";
 function runtime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
   return {
     getSetting: vi.fn((key: string) => settings[key] ?? null),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -113,11 +118,34 @@ describe("Ollama config and init plumbing", () => {
     );
   });
 
-  it("exports OLLAMA_INIT_PROBE_TIMEOUT_MS and attaches signal to self-test url validation probe", async () => {
+  it("exports OLLAMA_INIT_PROBE_TIMEOUT_MS with 5-second bound", () => {
     expect(OLLAMA_INIT_PROBE_TIMEOUT_MS).toBe(5_000);
+  });
 
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ models: [] })));
-    vi.stubGlobal("fetch", fetchMock);
+  it("aborts a stalled url validation probe via real loopback server and reports diagnostic error", async () => {
+    const sockets = new Set<import("node:net").Socket>();
+    const server = http.createServer((_req, _res) => {
+      // Intentionally stall response headers
+    });
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const addr = server.address() as import("node:net").AddressInfo;
+    const port = addr.port;
+
+    const reportErrorMock = vi.fn();
+    const testRuntime = {
+      ...runtime({ OLLAMA_BASE_URL: `http://127.0.0.1:${port}` }),
+      reportError: reportErrorMock,
+    } as unknown as IAgentRuntime;
+
+    const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation(() => originalTimeout(50));
 
     try {
       const urlTest = ollamaPlugin.tests?.[0]?.tests?.find(
@@ -125,17 +153,60 @@ describe("Ollama config and init plumbing", () => {
       );
       expect(urlTest).toBeDefined();
 
-      const testRuntime = runtime({ OLLAMA_BASE_URL: "http://remote:11434" });
-      await urlTest?.fn(testRuntime);
+      const start = Date.now();
+      await expect(urlTest?.fn(testRuntime)).resolves.toBeUndefined();
+      const elapsed = Date.now() - start;
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://remote:11434/api/tags",
-        expect.objectContaining({
-          signal: expect.any(AbortSignal),
-        })
+      expect(elapsed).toBeLessThan(4_000);
+      expect(timeoutSpy).toHaveBeenCalledWith(OLLAMA_INIT_PROBE_TIMEOUT_MS);
+      expect(reportErrorMock).toHaveBeenCalledTimes(1);
+      expect(reportErrorMock).toHaveBeenCalledWith(
+        "plugin-zerollama.test.url-validation",
+        expect.objectContaining({ name: "TimeoutError" })
       );
     } finally {
-      vi.unstubAllGlobals();
+      timeoutSpy.mockRestore();
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("completes cleanly when the loopback endpoint responds successfully", async () => {
+    const sockets = new Set<import("node:net").Socket>();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [] }));
+    });
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const addr = server.address() as import("node:net").AddressInfo;
+    const port = addr.port;
+
+    const reportErrorMock = vi.fn();
+    const testRuntime = {
+      ...runtime({ OLLAMA_BASE_URL: `http://127.0.0.1:${port}` }),
+      reportError: reportErrorMock,
+    } as unknown as IAgentRuntime;
+
+    try {
+      const urlTest = ollamaPlugin.tests?.[0]?.tests?.find(
+        (t) => t.name === "ollama_test_url_validation"
+      );
+      expect(urlTest).toBeDefined();
+
+      await expect(urlTest?.fn(testRuntime)).resolves.toBeUndefined();
+      expect(reportErrorMock).not.toHaveBeenCalled();
+    } finally {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });
