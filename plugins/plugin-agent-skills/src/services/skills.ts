@@ -871,7 +871,9 @@ export class AgentSkillsService extends Service {
 				previous.path === replacement.path &&
 				SKILL_SOURCE_PRECEDENCE[previous.source] >
 					SKILL_SOURCE_PRECEDENCE.marketplace
-			) return;
+			) {
+				return;
+			}
 			this.acknowledgedScanDigests.delete(safeSlug);
 			this.eligibilityCache.delete(safeSlug);
 			if (replacement) this.loadedSkills.set(safeSlug, replacement);
